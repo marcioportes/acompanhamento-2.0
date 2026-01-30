@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import MentorDashboard from './pages/MentorDashboard';
+import AccountsPage from './pages/AccountsPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -69,6 +70,32 @@ const AppContent = () => {
     }
   }
 
+  // Render content based on current view
+  const renderContent = () => {
+    // View de Contas é comum para aluno e mentor
+    if (currentView === 'accounts') {
+      return <AccountsPage />;
+    }
+
+    // Views específicas por role
+    if (isMentor()) {
+      return (
+        <MentorDashboard 
+          currentView={currentView} 
+          onViewChange={handleViewChange}
+        />
+      );
+    } else {
+      // Student views
+      switch (currentView) {
+        case 'dashboard':
+        case 'analytics':
+        default:
+          return <StudentDashboard currentView={currentView} />;
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950">
       {/* Background effects */}
@@ -93,14 +120,7 @@ const AppContent = () => {
           sidebarCollapsed ? 'ml-20' : 'ml-64'
         }`}
       >
-        {isMentor() ? (
-          <MentorDashboard 
-            currentView={currentView} 
-            onViewChange={handleViewChange}
-          />
-        ) : (
-          <StudentDashboard />
-        )}
+        {renderContent()}
       </main>
 
       {/* Add Trade Modal (for students) */}

@@ -10,7 +10,8 @@ import {
   ChevronRight,
   MessageSquare,
   Trophy,
-  AlertTriangle
+  AlertTriangle,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -27,12 +28,14 @@ const Sidebar = ({
   const studentMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'add-trade', label: 'Novo Trade', icon: PlusCircle },
+    { id: 'accounts', label: 'Contas', icon: Wallet },
     { id: 'analytics', label: 'Análises', icon: LineChart },
   ];
 
   const mentorMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'students', label: 'Alunos', icon: Users },
+    { id: 'accounts', label: 'Contas', icon: Wallet },
     { 
       id: 'pending', 
       label: 'Aguardando Feedback', 
