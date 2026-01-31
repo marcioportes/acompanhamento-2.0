@@ -1,6 +1,11 @@
 /**
  * Firebase Cloud Functions - Acompanhamento 2.0
  * 
+ * CORREÇÕES APLICADAS:
+ * - Bug #2: onTradeCreated agora atualiza o saldo da conta corretamente
+ * - Bug #2: onTradeUpdated recalcula e atualiza saldo quando resultado muda
+ * - Bug #2: onTradeDeleted reverte o resultado do trade no saldo
+ * 
  * Triggers automáticos para:
  * - Validação de trades contra plano
  * - Engine de Red Flags
@@ -85,8 +90,31 @@ const getDailyLoss = async (studentId, accountId, date) => {
   return totalLoss;
 };
 
+/**
+ * CORREÇÃO Bug #2: Atualiza o saldo da conta com o resultado do trade
+ */
+const updateAccountBalance = async (accountId, resultDiff) => {
+  if (!accountId || resultDiff === 0) return;
+
+  const accountRef = db.collection('accounts').doc(accountId);
+  const accountDoc = await accountRef.get();
+
+  if (accountDoc.exists) {
+    const account = accountDoc.data();
+    const currentBalance = account.currentBalance || account.initialBalance || 0;
+    const newBalance = currentBalance + resultDiff;
+
+    await accountRef.update({
+      currentBalance: newBalance,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`[updateAccountBalance] Conta ${accountId}: ${currentBalance} + ${resultDiff} = ${newBalance}`);
+  }
+};
+
 // ============================================
-// TRADE CREATED - Validação inicial
+// TRADE CREATED - Validação inicial + Atualiza saldo
 // ============================================
 
 exports.onTradeCreated = functions.firestore
@@ -186,6 +214,12 @@ exports.onTradeCreated = functions.firestore
 
       await snap.ref.update(updates);
 
+      // CORREÇÃO Bug #2: Atualizar saldo da conta com o resultado do trade
+      if (trade.accountId && trade.result !== undefined && trade.result !== null) {
+        await updateAccountBalance(trade.accountId, trade.result);
+        console.log(`[onTradeCreated] Saldo atualizado para conta ${trade.accountId}: +${trade.result}`);
+      }
+
       // 4. Criar notificação para mentor se houver red flags
       if (redFlags.length > 0) {
         await db.collection('notifications').add({
@@ -234,7 +268,7 @@ exports.onTradeUpdated = functions.firestore
     const tradeId = context.params.tradeId;
 
     // Evitar loops infinitos - só processa se campos relevantes mudaram
-    const relevantFields = ['entry', 'exit', 'qty', 'stopLoss', 'takeProfit', 'planId', 'emotion'];
+    const relevantFields = ['entry', 'exit', 'qty', 'side', 'stopLoss', 'takeProfit', 'planId', 'emotion', 'accountId'];
     const hasRelevantChanges = relevantFields.some(field => before[field] !== after[field]);
 
     if (!hasRelevantChanges) {
@@ -243,20 +277,74 @@ exports.onTradeUpdated = functions.firestore
 
     console.log(`[onTradeUpdated] Trade ${tradeId} atualizado`);
 
-    // Recalcular resultado
-    const result = (after.side === 'LONG')
-      ? (after.exit - after.entry) * after.qty
-      : (after.entry - after.exit) * after.qty;
+    try {
+      // Recalcular resultado
+      const newResult = (after.side === 'LONG')
+        ? (after.exit - after.entry) * after.qty
+        : (after.entry - after.exit) * after.qty;
 
-    const resultPercent = after.entry > 0 
-      ? ((after.exit - after.entry) / after.entry) * 100 * (after.side === 'LONG' ? 1 : -1)
-      : 0;
+      const resultPercent = after.entry > 0 
+        ? ((after.exit - after.entry) / after.entry) * 100 * (after.side === 'LONG' ? 1 : -1)
+        : 0;
 
-    await change.after.ref.update({
-      result,
-      resultPercent,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+      // Calcular diferença do resultado
+      const oldResult = before.result || 0;
+      const resultDiff = newResult - oldResult;
+
+      await change.after.ref.update({
+        result: newResult,
+        resultPercent,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // CORREÇÃO Bug #2: Atualizar saldo da conta se resultado mudou
+      if (resultDiff !== 0) {
+        // Se a conta mudou, precisamos reverter na conta antiga e aplicar na nova
+        if (before.accountId !== after.accountId) {
+          // Reverter resultado da conta antiga
+          if (before.accountId && oldResult !== 0) {
+            await updateAccountBalance(before.accountId, -oldResult);
+            console.log(`[onTradeUpdated] Revertido ${-oldResult} da conta antiga ${before.accountId}`);
+          }
+          // Aplicar resultado na conta nova
+          if (after.accountId) {
+            await updateAccountBalance(after.accountId, newResult);
+            console.log(`[onTradeUpdated] Aplicado ${newResult} na conta nova ${after.accountId}`);
+          }
+        } else if (after.accountId) {
+          // Mesma conta, só aplicar a diferença
+          await updateAccountBalance(after.accountId, resultDiff);
+          console.log(`[onTradeUpdated] Saldo ajustado em ${resultDiff} para conta ${after.accountId}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[onTradeUpdated] Erro:`, error);
+    }
+
+    return null;
+  });
+
+// ============================================
+// TRADE DELETED - Reverter saldo
+// ============================================
+
+exports.onTradeDeleted = functions.firestore
+  .document('trades/{tradeId}')
+  .onDelete(async (snap, context) => {
+    const trade = snap.data();
+    const tradeId = context.params.tradeId;
+
+    console.log(`[onTradeDeleted] Trade ${tradeId} deletado`);
+
+    try {
+      // CORREÇÃO Bug #2: Reverter o resultado do trade no saldo da conta
+      if (trade.accountId && trade.result !== undefined && trade.result !== null && trade.result !== 0) {
+        await updateAccountBalance(trade.accountId, -trade.result);
+        console.log(`[onTradeDeleted] Saldo revertido para conta ${trade.accountId}: ${-trade.result}`);
+      }
+    } catch (error) {
+      console.error(`[onTradeDeleted] Erro:`, error);
+    }
 
     return null;
   });
@@ -309,6 +397,12 @@ exports.onMovementCreated = functions.firestore
 
     console.log(`[onMovementCreated] Movimento ${movementId} criado na conta ${movement.accountId}`);
 
+    // Se for movimentação de saldo inicial, não atualizar (já foi considerado na criação da conta)
+    if (movement.isInitialBalance) {
+      console.log(`[onMovementCreated] Movimento é saldo inicial, ignorando atualização de saldo`);
+      return null;
+    }
+
     try {
       const accountRef = db.collection('accounts').doc(movement.accountId);
       const accountDoc = await accountRef.get();
@@ -338,46 +432,47 @@ exports.onMovementCreated = functions.firestore
   });
 
 // ============================================
-// TRADE RESULT - Atualizar saldo da conta
+// MOVEMENT DELETED - Reverter saldo da conta
 // ============================================
 
-exports.onTradeResultUpdated = functions.firestore
-  .document('trades/{tradeId}')
-  .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
+exports.onMovementDeleted = functions.firestore
+  .document('movements/{movementId}')
+  .onDelete(async (snap, context) => {
+    const movement = snap.data();
+    const movementId = context.params.movementId;
 
-    // Só atualiza saldo se resultado mudou e tem conta associada
-    if (before.result === after.result || !after.accountId) {
+    console.log(`[onMovementDeleted] Movimento ${movementId} deletado da conta ${movement.accountId}`);
+
+    // Não reverter se for saldo inicial (a conta está sendo deletada junto)
+    if (movement.isInitialBalance) {
+      console.log(`[onMovementDeleted] Movimento era saldo inicial, ignorando reversão`);
       return null;
     }
 
-    const tradeId = context.params.tradeId;
-    console.log(`[onTradeResultUpdated] Resultado do trade ${tradeId} mudou`);
-
     try {
-      const accountRef = db.collection('accounts').doc(after.accountId);
+      const accountRef = db.collection('accounts').doc(movement.accountId);
       const accountDoc = await accountRef.get();
 
       if (accountDoc.exists) {
         const account = accountDoc.data();
-        
-        // Reverter resultado anterior e aplicar novo
-        const oldResult = before.result || 0;
-        const newResult = after.result || 0;
-        const diff = newResult - oldResult;
+        let newBalance = account.currentBalance || account.initialBalance || 0;
 
-        const newBalance = (account.currentBalance || account.initialBalance || 0) + diff;
+        // Reverter: se era depósito, subtrai; se era saque, soma
+        if (movement.type === 'DEPOSIT') {
+          newBalance -= movement.amount;
+        } else if (movement.type === 'WITHDRAWAL') {
+          newBalance += movement.amount;
+        }
 
         await accountRef.update({
           currentBalance: newBalance,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        console.log(`[onTradeResultUpdated] Saldo ajustado em ${diff}: ${newBalance}`);
+        console.log(`[onMovementDeleted] Saldo revertido: ${newBalance}`);
       }
     } catch (error) {
-      console.error(`[onTradeResultUpdated] Erro:`, error);
+      console.error(`[onMovementDeleted] Erro:`, error);
     }
 
     return null;
@@ -517,6 +612,6 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2.0.0'
+    version: '2.1.0'
   });
 });

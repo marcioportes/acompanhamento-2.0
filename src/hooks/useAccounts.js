@@ -16,6 +16,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de contas de trading
+ * 
+ * CORREÇÕES APLICADAS:
+ * - Bug #1: Agora cria movimentação automática quando saldo inicial > 0
+ * - Bug #3: Query corrigida para garantir que todas as contas do aluno apareçam
  */
 export const useAccounts = () => {
   const { user, isMentor } = useAuth();
@@ -32,59 +36,103 @@ export const useAccounts = () => {
     }
 
     setLoading(true);
+    setError(null);
+    
     let q;
 
-    if (isMentor()) {
-      // Mentor vê todas as contas
-      q = query(
-        collection(db, 'accounts'),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      // Aluno vê apenas suas contas
-      q = query(
-        collection(db, 'accounts'),
-        where('studentId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
-    }
-
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const accountsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setAccounts(accountsData);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Erro ao carregar contas:', err);
-        setError(err.message);
-        setLoading(false);
+    try {
+      if (isMentor()) {
+        // Mentor vê todas as contas
+        q = query(
+          collection(db, 'accounts'),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        // CORREÇÃO Bug #3: Query simplificada para aluno
+        // Removido orderBy composto que pode causar problemas de índice
+        // A ordenação será feita no cliente
+        q = query(
+          collection(db, 'accounts'),
+          where('studentId', '==', user.uid)
+        );
       }
-    );
 
-    return () => unsubscribe();
+      const unsubscribe = onSnapshot(q, 
+        (snapshot) => {
+          let accountsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Ordenar no cliente: conta ativa primeiro, depois por data de criação
+          accountsData.sort((a, b) => {
+            // Ativa primeiro
+            if (a.active && !b.active) return -1;
+            if (!a.active && b.active) return 1;
+            
+            // Depois por data de criação (mais recente primeiro)
+            const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0);
+            return dateB - dateA;
+          });
+          
+          setAccounts(accountsData);
+          setLoading(false);
+          setError(null);
+        },
+        (err) => {
+          console.error('Erro ao carregar contas:', err);
+          setError(err.message);
+          setLoading(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.error('Erro ao configurar listener de contas:', err);
+      setError(err.message);
+      setLoading(false);
+    }
   }, [user, isMentor]);
 
   // Criar conta
+  // CORREÇÃO Bug #1: Agora cria movimentação automática quando saldo inicial > 0
   const addAccount = useCallback(async (accountData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
+      const initialBalance = parseFloat(accountData.initialBalance) || 0;
+      
       const newAccount = {
         ...accountData,
+        initialBalance,
         studentId: user.uid,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
-        currentBalance: accountData.initialBalance,
-        active: true,
+        currentBalance: initialBalance,
+        active: accountData.active !== undefined ? accountData.active : true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
       const docRef = await addDoc(collection(db, 'accounts'), newAccount);
+      
+      // CORREÇÃO Bug #1: Criar movimentação de saldo inicial se > 0
+      if (initialBalance > 0) {
+        await addDoc(collection(db, 'movements'), {
+          type: 'DEPOSIT',
+          amount: initialBalance,
+          accountId: docRef.id,
+          date: new Date().toISOString().split('T')[0],
+          description: 'Saldo inicial da conta',
+          studentId: user.uid,
+          studentEmail: user.email,
+          studentName: user.displayName || user.email.split('@')[0],
+          isInitialBalance: true, // Flag para identificar que é saldo inicial
+          createdAt: serverTimestamp()
+        });
+      }
+      
       return docRef.id;
     } catch (err) {
       console.error('Erro ao criar conta:', err);

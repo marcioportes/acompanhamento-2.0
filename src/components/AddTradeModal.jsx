@@ -6,9 +6,13 @@ import {
   Loader2, 
   AlertCircle,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Wallet,
+  ChevronDown,
+  CheckCircle
 } from 'lucide-react';
 import { SETUPS, EMOTIONS, EXCHANGES, SIDES } from '../firebase';
+import { useAccounts } from '../hooks/useAccounts';
 
 const AddTradeModal = ({ 
   isOpen, 
@@ -17,6 +21,8 @@ const AddTradeModal = ({
   editTrade = null,
   loading = false 
 }) => {
+  const { accounts, loading: accountsLoading } = useAccounts();
+  
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     ticker: '',
@@ -28,6 +34,7 @@ const AddTradeModal = ({
     setup: 'Rompimento',
     emotion: 'Disciplinado',
     notes: '',
+    accountId: '',
   });
   
   const [htfFile, setHtfFile] = useState(null);
@@ -36,12 +43,28 @@ const AddTradeModal = ({
   const [ltfPreview, setLtfPreview] = useState(null);
   const [errors, setErrors] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
+  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
 
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
+  const accountDropdownRef = useRef(null);
 
-  // Preencher dados para edição
+  // Fechar dropdown ao clicar fora
   useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
+        setShowAccountDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Preencher dados para edição ou selecionar conta ativa por padrão
+  // CORREÇÃO Bug #4: Separar lógica de reset de form da lógica de seleção de conta
+  useEffect(() => {
+    if (!isOpen) return; // Só processa quando modal está aberto
+    
     if (editTrade) {
       setFormData({
         date: editTrade.date,
@@ -54,12 +77,13 @@ const AddTradeModal = ({
         setup: editTrade.setup,
         emotion: editTrade.emotion,
         notes: editTrade.notes || '',
+        accountId: editTrade.accountId || '',
       });
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
     } else {
-      // Reset form
-      setFormData({
+      // Reset form apenas quando abre o modal (não quando accounts muda)
+      setFormData(prev => ({
         date: new Date().toISOString().split('T')[0],
         ticker: '',
         exchange: 'B3',
@@ -70,14 +94,42 @@ const AddTradeModal = ({
         setup: 'Rompimento',
         emotion: 'Disciplinado',
         notes: '',
-      });
+        // Manter accountId se já estava selecionado e ainda existe
+        accountId: prev.accountId && accounts.find(acc => acc.id === prev.accountId) 
+          ? prev.accountId 
+          : (accounts.find(acc => acc.active)?.id || ''),
+      }));
       setHtfFile(null);
       setLtfFile(null);
       setHtfPreview(null);
       setLtfPreview(null);
     }
     setErrors({});
-  }, [editTrade, isOpen]);
+  }, [editTrade, isOpen]); // CORREÇÃO: Removido accounts das dependências
+
+  // CORREÇÃO Bug #4: useEffect separado para atualizar accountId quando accounts muda
+  // Isso garante que quando uma nova conta é criada, ela aparece no dropdown
+  // sem resetar todo o formulário
+  useEffect(() => {
+    // Se não há conta selecionada e há contas disponíveis, selecionar a ativa
+    if (!formData.accountId && accounts.length > 0 && isOpen) {
+      const activeAccount = accounts.find(acc => acc.active);
+      if (activeAccount) {
+        setFormData(prev => ({
+          ...prev,
+          accountId: activeAccount.id
+        }));
+      }
+    }
+    // Se a conta selecionada não existe mais, limpar seleção
+    if (formData.accountId && accounts.length > 0 && !accounts.find(acc => acc.id === formData.accountId)) {
+      const activeAccount = accounts.find(acc => acc.active);
+      setFormData(prev => ({
+        ...prev,
+        accountId: activeAccount?.id || ''
+      }));
+    }
+  }, [accounts, isOpen]); // Depende de accounts para reagir a mudanças
 
   // Calcular preview do resultado
   useEffect(() => {
@@ -107,6 +159,14 @@ const AddTradeModal = ({
     // Limpar erro do campo
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: null }));
+    }
+  };
+
+  const handleAccountSelect = (accountId) => {
+    setFormData(prev => ({ ...prev, accountId }));
+    setShowAccountDropdown(false);
+    if (errors.accountId) {
+      setErrors(prev => ({ ...prev, accountId: null }));
     }
   };
 
@@ -176,6 +236,11 @@ const AddTradeModal = ({
       newErrors.qty = 'Quantidade inválida';
     }
 
+    // Conta é obrigatória
+    if (!formData.accountId) {
+      newErrors.accountId = 'Selecione uma conta';
+    }
+
     // Imagens são obrigatórias apenas para novos trades
     if (!editTrade) {
       if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
@@ -196,6 +261,29 @@ const AddTradeModal = ({
       onClose();
     } catch (err) {
       setErrors({ submit: err.message });
+    }
+  };
+
+  // Encontrar conta selecionada
+  const selectedAccount = accounts.find(acc => acc.id === formData.accountId);
+
+  // Mapear tipo de conta para cores
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'REAL': return 'emerald';
+      case 'DEMO': return 'blue';
+      case 'PROP': return 'purple';
+      default: return 'slate';
+    }
+  };
+
+  // Mapear moeda para símbolo
+  const getCurrencySymbol = (currency) => {
+    switch (currency) {
+      case 'BRL': return 'R$';
+      case 'USD': return '$';
+      case 'EUR': return '€';
+      default: return currency || 'R$';
     }
   };
 
@@ -233,6 +321,130 @@ const AddTradeModal = ({
                 <p className="text-sm text-red-400">{errors.submit}</p>
               </div>
             )}
+
+            {/* Seletor de Conta */}
+            <div className="mb-6">
+              <label className="input-label flex items-center gap-2">
+                <Wallet className="w-4 h-4" />
+                Conta *
+              </label>
+              
+              <div className="relative" ref={accountDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowAccountDropdown(!showAccountDropdown)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                    errors.accountId
+                      ? 'border-red-500/50 bg-red-500/5'
+                      : showAccountDropdown
+                        ? 'border-blue-500/50 bg-slate-800/80'
+                        : 'border-slate-700/50 bg-slate-800/50 hover:border-slate-600/50'
+                  }`}
+                >
+                  {selectedAccount ? (
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        getTypeColor(selectedAccount.type) === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
+                        getTypeColor(selectedAccount.type) === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                        'bg-purple-500/20 text-purple-400'
+                      }`}>
+                        <Wallet className="w-5 h-5" />
+                      </div>
+                      <div className="text-left">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white">{selectedAccount.name}</span>
+                          {selectedAccount.active && (
+                            <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                          <span>{selectedAccount.broker}</span>
+                          <span>•</span>
+                          <span>
+                            {getCurrencySymbol(selectedAccount.currency)}{' '}
+                            {(selectedAccount.currentBalance || selectedAccount.initialBalance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">Selecione uma conta</span>
+                  )}
+                  
+                  <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${showAccountDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showAccountDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700/50 rounded-xl shadow-xl z-50 py-2 max-h-60 overflow-y-auto">
+                    {accountsLoading ? (
+                      <div className="px-4 py-3 text-center text-slate-500 text-sm">
+                        Carregando contas...
+                      </div>
+                    ) : accounts.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <Wallet className="w-10 h-10 mx-auto mb-2 text-slate-600" />
+                        <p className="text-slate-500 text-sm">Nenhuma conta cadastrada</p>
+                        <p className="text-slate-600 text-xs mt-1">Crie uma conta primeiro</p>
+                      </div>
+                    ) : (
+                      accounts.map(account => {
+                        const color = getTypeColor(account.type);
+                        const isSelected = formData.accountId === account.id;
+                        
+                        return (
+                          <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => handleAccountSelect(account.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                              isSelected
+                                ? 'bg-blue-500/20'
+                                : 'hover:bg-slate-700/50'
+                            }`}
+                          >
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                              color === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
+                              color === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                              'bg-purple-500/20 text-purple-400'
+                            }`}>
+                              <Wallet className="w-5 h-5" />
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-white truncate">{account.name}</span>
+                                {account.active && (
+                                  <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-sm text-slate-500">
+                                <span>{account.broker}</span>
+                                <span>•</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  color === 'emerald' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  color === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                                  'bg-purple-500/20 text-purple-400'
+                                }`}>
+                                  {account.type === 'REAL' ? 'Real' : account.type === 'DEMO' ? 'Demo' : 'Prop'}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="text-right">
+                              <p className="font-medium text-white text-sm">
+                                {getCurrencySymbol(account.currency)}{' '}
+                                {(account.currentBalance || account.initialBalance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+              {errors.accountId && <span className="text-xs text-red-400 mt-1">{errors.accountId}</span>}
+            </div>
 
             {/* Grid de campos */}
             <div className="grid grid-cols-2 gap-4 mb-6">
