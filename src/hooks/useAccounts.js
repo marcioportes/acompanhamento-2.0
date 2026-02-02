@@ -16,10 +16,9 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de contas de trading
- * 
- * CORREÇÕES APLICADAS:
- * - Bug #1: Agora cria movimentação automática quando saldo inicial > 0
- * - Bug #3: Query corrigida para garantir que todas as contas do aluno apareçam
+ * * CORREÇÕES APLICADAS:
+ * - Bug #1: Movimento Inicial duplicando saldo (Resolvido: currentBalance inicia zerado)
+ * - Bug #2: Query ajustada para garantir visualização correta
  */
 export const useAccounts = () => {
   const { user, isMentor } = useAuth();
@@ -48,9 +47,7 @@ export const useAccounts = () => {
           orderBy('createdAt', 'desc')
         );
       } else {
-        // CORREÇÃO Bug #3: Query simplificada para aluno
-        // Removido orderBy composto que pode causar problemas de índice
-        // A ordenação será feita no cliente
+        // Aluno vê apenas suas contas
         q = query(
           collection(db, 'accounts'),
           where('studentId', '==', user.uid)
@@ -64,13 +61,13 @@ export const useAccounts = () => {
             ...doc.data()
           }));
           
-          // Ordenar no cliente: conta ativa primeiro, depois por data de criação
+          // Ordenação no cliente para evitar erros de índice composto no Firestore
           accountsData.sort((a, b) => {
-            // Ativa primeiro
+            // 1. Contas ativas no topo
             if (a.active && !b.active) return -1;
             if (!a.active && b.active) return 1;
             
-            // Depois por data de criação (mais recente primeiro)
+            // 2. Mais recentes depois
             const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0);
             const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0);
             return dateB - dateA;
@@ -96,7 +93,6 @@ export const useAccounts = () => {
   }, [user, isMentor]);
 
   // Criar conta
-  // CORREÇÃO Bug #1: Agora cria movimentação automática quando saldo inicial > 0
   const addAccount = useCallback(async (accountData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
@@ -105,19 +101,28 @@ export const useAccounts = () => {
       
       const newAccount = {
         ...accountData,
-        initialBalance,
+        initialBalance, // Mantém o registro do valor de "start" para referência (ex: R$ 3.000)
+        
+        // --- CORREÇÃO MATEMÁTICA ---
+        // Iniciamos com 0. O movimento de depósito abaixo será processado pelo sistema
+        // e atualizará este valor para 3.000. Se iniciarmos com 3.000, o movimento
+        // somará + 3.000, resultando em 6.000 (erro atual).
+        currentBalance: 0, 
+        
         studentId: user.uid,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
-        currentBalance: initialBalance,
         active: accountData.active !== undefined ? accountData.active : true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
+      // 1. Cria a Conta (Saldo Atual: 0)
       const docRef = await addDoc(collection(db, 'accounts'), newAccount);
       
-      // CORREÇÃO Bug #1: Criar movimentação de saldo inicial se > 0
+      // 2. Cria o Movimento (Valor: 3.000)
+      // O sistema (Cloud Function ou Hook de saldo) vai pegar este movimento
+      // e somar na conta: 0 + 3.000 = 3.000 (Correto).
       if (initialBalance > 0) {
         await addDoc(collection(db, 'movements'), {
           type: 'DEPOSIT',
@@ -128,7 +133,7 @@ export const useAccounts = () => {
           studentId: user.uid,
           studentEmail: user.email,
           studentName: user.displayName || user.email.split('@')[0],
-          isInitialBalance: true, // Flag para identificar que é saldo inicial
+          isInitialBalance: true,
           createdAt: serverTimestamp()
         });
       }
