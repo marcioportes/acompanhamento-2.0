@@ -1,13 +1,3 @@
-/**
- * AccountSetupWizard - Wizard para configuração inicial do aluno
- * 
- * Fluxo:
- * 1. Criar Conta (nome, corretora, tipo, moeda, saldo inicial)
- * 2. Criar Plano (setup default + regras de risco)
- * 
- * O wizard aparece quando aluno não possui conta
- */
-
 import { useState, useEffect } from 'react';
 import { 
   Wallet, 
@@ -20,28 +10,28 @@ import {
   Building2,
   DollarSign,
   Target,
-  Shield,
-  Settings
+  Shield
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const AccountSetupWizard = ({ onComplete }) => {
   const { user } = useAuth();
   const { addAccount } = useAccounts();
   const { addPlan } = usePlans();
-  const { currencies, brokers, loading: masterLoading } = useMasterData();
+  
+  // Hook atualizado (Strict Mode)
+  const { currencies, brokers, loading: masterLoading, error: masterError } = useMasterData();
   
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [defaultSetup, setDefaultSetup] = useState(null);
   
-  // Dados do formulário
   const [accountData, setAccountData] = useState({
     name: '',
     brokerId: '',
@@ -73,7 +63,6 @@ const AccountSetupWizard = ({ onComplete }) => {
           const setup = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
           setDefaultSetup(setup);
         } else {
-          // Se não tiver default, pegar o primeiro setup global
           const allSetupsQuery = query(
             collection(db, 'setups'),
             where('isGlobal', '==', true)
@@ -95,13 +84,10 @@ const AccountSetupWizard = ({ onComplete }) => {
   const handleAccountChange = (field, value) => {
     setAccountData(prev => {
       const updated = { ...prev, [field]: value };
-      
-      // Se mudou o broker, salvar também o nome
       if (field === 'brokerId') {
         const broker = brokers.find(b => b.id === value);
         updated.brokerName = broker?.name || '';
       }
-      
       return updated;
     });
   };
@@ -119,8 +105,8 @@ const AccountSetupWizard = ({ onComplete }) => {
       setError('Selecione uma corretora');
       return false;
     }
-    if (!accountData.initialBalance || parseFloat(accountData.initialBalance) <= 0) {
-      setError('Informe o saldo inicial');
+    if (!accountData.initialBalance || parseFloat(accountData.initialBalance) < 0) {
+      setError('Informe um saldo inicial válido');
       return false;
     }
     return true;
@@ -140,10 +126,8 @@ const AccountSetupWizard = ({ onComplete }) => {
 
   const nextStep = () => {
     setError(null);
-    
     if (step === 1 && !validateStep1()) return;
     if (step === 2 && !validateStep2()) return;
-    
     setStep(prev => prev + 1);
   };
 
@@ -157,24 +141,23 @@ const AccountSetupWizard = ({ onComplete }) => {
     setLoading(true);
     
     try {
-      // 1. Criar conta
-      const currency = currencies.find(c => c.code === accountData.currencyCode);
+      const currency = currencies.find(c => c.code === accountData.currencyCode) || {
+        id: accountData.currencyCode,
+        symbol: accountData.currencyCode === 'BRL' ? 'R$' : '$'
+      };
       
       const accountId = await addAccount({
         name: accountData.name,
         brokerId: accountData.brokerId,
         brokerName: accountData.brokerName,
-        currencyId: currency?.id || accountData.currencyCode,
+        currencyId: currency.id, // ID real do banco
         currencyCode: accountData.currencyCode,
-        currencySymbol: currency?.symbol || 'R$',
+        currencySymbol: currency.symbol,
         type: accountData.type,
         initialBalance: parseFloat(accountData.initialBalance),
         active: true
       });
       
-      console.log('Conta criada:', accountId);
-      
-      // 2. Criar plano com setup default
       if (defaultSetup) {
         await addPlan({
           setupId: defaultSetup.id,
@@ -184,17 +167,12 @@ const AccountSetupWizard = ({ onComplete }) => {
           minRiskReward: planData.minRiskReward,
           maxDailyLossPercent: planData.maxDailyLossPercent,
           targetPercent: planData.targetPercent,
-          blockedEmotions: ['Revenge', 'FOMO', 'Overtrading'], // Padrão
+          blockedEmotions: ['Revenge', 'FOMO', 'Overtrading'],
           active: true
         });
-        
-        console.log('Plano criado com setup:', defaultSetup.name);
       }
       
-      // 3. Callback de conclusão
-      if (onComplete) {
-        onComplete(accountId);
-      }
+      if (onComplete) onComplete(accountId);
       
     } catch (err) {
       console.error('Erro ao criar conta/plano:', err);
@@ -204,14 +182,48 @@ const AccountSetupWizard = ({ onComplete }) => {
     }
   };
 
+  // --- LOADING STATE ---
   if (masterLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+        <p className="text-slate-400">Carregando dados do sistema...</p>
       </div>
     );
   }
 
+  // --- ERROR STATE (CRÍTICO) ---
+  if (masterError || brokers.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] max-w-md mx-auto text-center space-y-6">
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8 text-red-500" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-white mb-2">Sistema Indisponível</h2>
+          <p className="text-slate-400">
+            {masterError 
+              ? `Erro de conexão: ${masterError}` 
+              : "Não foi possível carregar a lista de corretoras. Verifique sua conexão ou as permissões do banco."}
+          </p>
+        </div>
+        <div className="bg-slate-800 p-4 rounded-lg text-left w-full text-xs font-mono text-slate-300 overflow-x-auto">
+          <p>DEBUG INFO:</p>
+          <p>Brokers: {brokers.length}</p>
+          <p>Currencies: {currencies.length}</p>
+          <p>Status: {masterError ? 'CONN_ERROR' : 'EMPTY_DATA'}</p>
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="btn-secondary w-full"
+        >
+          Tentar Novamente
+        </button>
+      </div>
+    );
+  }
+
+  // --- WIZARD NORMAL ---
   return (
     <div className="max-w-2xl mx-auto">
       {/* Header */}
@@ -247,14 +259,7 @@ const AccountSetupWizard = ({ onComplete }) => {
         ))}
       </div>
 
-      {/* Step Labels */}
-      <div className="flex justify-between mb-8 px-4">
-        <span className={`text-sm ${step >= 1 ? 'text-blue-400' : 'text-slate-500'}`}>Conta</span>
-        <span className={`text-sm ${step >= 2 ? 'text-blue-400' : 'text-slate-500'}`}>Plano</span>
-        <span className={`text-sm ${step >= 3 ? 'text-blue-400' : 'text-slate-500'}`}>Confirmar</span>
-      </div>
-
-      {/* Error */}
+      {/* Error Display */}
       {error && (
         <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
@@ -327,7 +332,7 @@ const AccountSetupWizard = ({ onComplete }) => {
                 className="w-full"
               >
                 {currencies.map(curr => (
-                  <option key={curr.code} value={curr.code}>
+                  <option key={curr.id} value={curr.code}>
                     {curr.symbol} {curr.name}
                   </option>
                 ))}
@@ -349,9 +354,6 @@ const AccountSetupWizard = ({ onComplete }) => {
               step="0.01"
               className="w-full"
             />
-            <p className="text-xs text-slate-500 mt-1">
-              Este valor será registrado como depósito inicial
-            </p>
           </div>
         </div>
       )}
@@ -370,7 +372,6 @@ const AccountSetupWizard = ({ onComplete }) => {
                 <TrendingUp className="w-4 h-4 inline mr-2" />
                 Setup: <strong>{defaultSetup.name}</strong>
               </p>
-              <p className="text-xs text-slate-500 mt-1">{defaultSetup.description}</p>
             </div>
           )}
 
@@ -378,20 +379,15 @@ const AccountSetupWizard = ({ onComplete }) => {
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">
                 <Shield className="w-4 h-4 inline mr-1" />
-                Risco Máximo por Trade (%)
+                Risco Máximo (%)
               </label>
               <input
                 type="number"
                 value={planData.maxRiskPercent}
                 onChange={(e) => handlePlanChange('maxRiskPercent', e.target.value)}
-                min="0.1"
-                max="100"
                 step="0.1"
                 className="w-full"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                % máximo do saldo em risco por operação
-              </p>
             </div>
 
             <div>
@@ -402,33 +398,24 @@ const AccountSetupWizard = ({ onComplete }) => {
                 type="number"
                 value={planData.minRiskReward}
                 onChange={(e) => handlePlanChange('minRiskReward', e.target.value)}
-                min="0.5"
                 step="0.5"
                 className="w-full"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Risk:Reward mínimo aceitável
-              </p>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          
+           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">
-                Loss Diário Máximo (%)
+                Loss Diário (%)
               </label>
               <input
                 type="number"
                 value={planData.maxDailyLossPercent}
                 onChange={(e) => handlePlanChange('maxDailyLossPercent', e.target.value)}
-                min="1"
-                max="100"
                 step="0.5"
                 className="w-full"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Parar de operar ao atingir este %
-              </p>
             </div>
 
             <div>
@@ -439,24 +426,10 @@ const AccountSetupWizard = ({ onComplete }) => {
                 type="number"
                 value={planData.targetPercent}
                 onChange={(e) => handlePlanChange('targetPercent', e.target.value)}
-                min="1"
                 step="1"
                 className="w-full"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Objetivo de rentabilidade
-              </p>
             </div>
-          </div>
-
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
-            <p className="text-sm text-yellow-400">
-              <AlertCircle className="w-4 h-4 inline mr-2" />
-              Emoções bloqueadas: Revenge, FOMO, Overtrading
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              Trades com essas emoções gerarão alertas automáticos
-            </p>
           </div>
         </div>
       )}
@@ -466,7 +439,7 @@ const AccountSetupWizard = ({ onComplete }) => {
         <div className="glass-card p-6 space-y-6">
           <div className="flex items-center gap-3 mb-4">
             <Check className="w-6 h-6 text-emerald-400" />
-            <h2 className="text-lg font-semibold text-white">Confirmar Configuração</h2>
+            <h2 className="text-lg font-semibold text-white">Confirmar</h2>
           </div>
 
           <div className="space-y-4">
@@ -477,29 +450,10 @@ const AccountSetupWizard = ({ onComplete }) => {
                 <span className="text-white">{accountData.name}</span>
                 <span className="text-slate-500">Corretora:</span>
                 <span className="text-white">{accountData.brokerName}</span>
-                <span className="text-slate-500">Tipo:</span>
-                <span className="text-white">{accountData.type}</span>
-                <span className="text-slate-500">Saldo Inicial:</span>
+                <span className="text-slate-500">Saldo:</span>
                 <span className="text-emerald-400">
-                  {currencies.find(c => c.code === accountData.currencyCode)?.symbol || '$'}
-                  {parseFloat(accountData.initialBalance).toLocaleString()}
+                   {currencies.find(c => c.code === accountData.currencyCode)?.symbol} {parseFloat(accountData.initialBalance).toLocaleString()}
                 </span>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/50 rounded-xl p-4">
-              <h3 className="text-sm font-medium text-slate-400 mb-3">Plano de Trading</h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-slate-500">Setup:</span>
-                <span className="text-white">{defaultSetup?.name || 'Padrão'}</span>
-                <span className="text-slate-500">Risco Máximo:</span>
-                <span className="text-white">{planData.maxRiskPercent}%</span>
-                <span className="text-slate-500">R:R Mínimo:</span>
-                <span className="text-white">{planData.minRiskReward}</span>
-                <span className="text-slate-500">Loss Diário:</span>
-                <span className="text-white">{planData.maxDailyLossPercent}%</span>
-                <span className="text-slate-500">Meta:</span>
-                <span className="text-white">{planData.targetPercent}%</span>
               </div>
             </div>
           </div>
@@ -509,43 +463,19 @@ const AccountSetupWizard = ({ onComplete }) => {
       {/* Navigation */}
       <div className="flex justify-between mt-8">
         {step > 1 ? (
-          <button
-            onClick={prevStep}
-            className="btn-secondary flex items-center gap-2"
-            disabled={loading}
-          >
-            <ChevronLeft className="w-5 h-5" />
-            Voltar
+          <button onClick={prevStep} className="btn-secondary flex items-center gap-2" disabled={loading}>
+            <ChevronLeft className="w-5 h-5" /> Voltar
           </button>
-        ) : (
-          <div />
-        )}
+        ) : <div />}
 
         {step < 3 ? (
-          <button
-            onClick={nextStep}
-            className="btn-primary flex items-center gap-2"
-          >
-            Próximo
-            <ChevronRight className="w-5 h-5" />
+          <button onClick={nextStep} className="btn-primary flex items-center gap-2">
+            Próximo <ChevronRight className="w-5 h-5" />
           </button>
         ) : (
-          <button
-            onClick={handleSubmit}
-            className="btn-primary flex items-center gap-2"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Criando...
-              </>
-            ) : (
-              <>
-                <Check className="w-5 h-5" />
-                Criar Conta
-              </>
-            )}
+          <button onClick={handleSubmit} className="btn-primary flex items-center gap-2" disabled={loading}>
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+            Criar Conta
           </button>
         )}
       </div>

@@ -4,135 +4,84 @@ import {
   query, 
   where, 
   onSnapshot,
-  orderBy
+  orderBy 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
-/**
- * Hook para carregar dados mestres do sistema
- * (moedas, corretoras, tickers, exchanges, emotions)
- */
 export const useMasterData = () => {
   const [currencies, setCurrencies] = useState([]);
   const [brokers, setBrokers] = useState([]);
-  const [tickers, setTickers] = useState([]);
-  const [exchanges, setExchanges] = useState([]);
-  const [emotions, setEmotions] = useState([]);
+  const [tickers, setTickers] = useState([]); // Assets/Ativos
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     setLoading(true);
-    const unsubscribes = [];
-
-    try {
-      // Carregar moedas
-      const currenciesQuery = query(
-        collection(db, 'currencies'),
-        where('active', '==', true)
-      );
-      unsubscribes.push(
-        onSnapshot(currenciesQuery, (snapshot) => {
-          setCurrencies(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        })
-      );
-
-      // Carregar corretoras
-      const brokersQuery = query(
-        collection(db, 'brokers'),
-        where('active', '==', true),
-        orderBy('name', 'asc')
-      );
-      unsubscribes.push(
-        onSnapshot(brokersQuery, (snapshot) => {
-          setBrokers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        })
-      );
-
-      // Carregar tickers
-      const tickersQuery = query(
-        collection(db, 'tickers'),
-        where('active', '==', true),
-        orderBy('symbol', 'asc')
-      );
-      unsubscribes.push(
-        onSnapshot(tickersQuery, (snapshot) => {
-          setTickers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        })
-      );
-
-      // Carregar exchanges
-      const exchangesQuery = query(
-        collection(db, 'exchanges'),
-        where('active', '==', true)
-      );
-      unsubscribes.push(
-        onSnapshot(exchangesQuery, (snapshot) => {
-          setExchanges(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        })
-      );
-
-      // Carregar emoções
-      const emotionsQuery = query(
-        collection(db, 'emotions'),
-        where('active', '==', true),
-        orderBy('name', 'asc')
-      );
-      unsubscribes.push(
-        onSnapshot(emotionsQuery, (snapshot) => {
-          setEmotions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        })
-      );
-
+    
+    // Validar se DB foi inicializado
+    if (!db) {
+      setError("Firebase DB não inicializado");
       setLoading(false);
-
-    } catch (err) {
-      console.error('Erro ao carregar dados mestres:', err);
-      setError(err.message);
-      setLoading(false);
+      return;
     }
 
+    const unsubscribes = [];
+    let mounted = true;
+
+    // Função genérica para criar listeners
+    const createListener = (collectionName, setState, label) => {
+      try {
+        // Query estrita: Só traz o que estiver Ativo.
+        // Se seus dados no banco não tiverem 'active: true', isso retornará vazio.
+        const q = query(
+          collection(db, collectionName),
+          where('active', '==', true)
+        ); 
+        
+        const unsubscribe = onSnapshot(q, 
+          (snapshot) => {
+            if (!mounted) return;
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // console.log(`[MasterData] ${label} carregados:`, data.length); // Debug
+            setState(data);
+          },
+          (err) => {
+            console.error(`[MasterData] Erro ao carregar ${label}:`, err);
+            if (mounted) setError(`Erro de acesso em ${label}: ${err.message}`);
+          }
+        );
+        unsubscribes.push(unsubscribe);
+      } catch (err) {
+        console.error(`[MasterData] Falha crítica em ${label}:`, err);
+        if (mounted) setError(err.message);
+      }
+    };
+
+    // Inicializar listeners
+    createListener('currencies', setCurrencies, 'Moedas');
+    createListener('brokers', setBrokers, 'Corretoras');
+    createListener('tickers', setTickers, 'Ativos');
+    
+    // Timeout de segurança para remover o loading caso o Firebase demore
+    const timer = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 1500);
+
     return () => {
+      mounted = false;
       unsubscribes.forEach(unsub => unsub());
+      clearTimeout(timer);
     };
   }, []);
-
-  // Helpers
-  const getCurrencyByCode = (code) => currencies.find(c => c.code === code);
-  const getBrokerById = (id) => brokers.find(b => b.id === id);
-  const getTickerBySymbol = (symbol) => tickers.find(t => t.symbol === symbol);
-  const getExchangeByCode = (code) => exchanges.find(e => e.code === code);
-  const getEmotionById = (id) => emotions.find(e => e.id === id);
-  
-  // Filtrar tickers por exchange
-  const getTickersByExchange = (exchangeCode) => 
-    tickers.filter(t => t.exchange === exchangeCode);
-  
-  // Filtrar emoções por categoria
-  const getEmotionsByCategory = (category) => 
-    emotions.filter(e => e.category === category);
-  
-  // Emoções negativas (para bloquear no plano)
-  const getNegativeEmotions = () => 
-    emotions.filter(e => e.category === 'negative');
 
   return {
     currencies,
     brokers,
     tickers,
-    exchanges,
-    emotions,
+    assets: tickers, // Alias compatível
     loading,
-    error,
-    // Helpers
-    getCurrencyByCode,
-    getBrokerById,
-    getTickerBySymbol,
-    getExchangeByCode,
-    getEmotionById,
-    getTickersByExchange,
-    getEmotionsByCategory,
-    getNegativeEmotions
+    error
   };
 };
 
