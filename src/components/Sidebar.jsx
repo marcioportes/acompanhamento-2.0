@@ -5,13 +5,13 @@ import {
   Users,
   User,
   LogOut,
-  Settings,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
   Trophy,
   AlertTriangle,
-  Wallet
+  Wallet,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,7 +23,7 @@ const Sidebar = ({
   pendingFeedback = 0,
   studentsNeedingAttention = 0
 }) => {
-  const { user, userRole, logout, isMentor } = useAuth();
+  const { user, logout, isMentor } = useAuth();
 
   const studentMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -50,6 +50,7 @@ const Sidebar = ({
       badgeColor: 'red'
     },
     { id: 'ranking', label: 'Ranking', icon: Trophy },
+    { id: 'admin', label: 'Admin', icon: Database },
   ];
 
   const menuItems = isMentor() ? mentorMenuItems : studentMenuItems;

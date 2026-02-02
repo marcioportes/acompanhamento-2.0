@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import MentorDashboard from './pages/MentorDashboard';
 import AccountsPage from './pages/AccountsPage';
+import AdminPage from './pages/AdminPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -75,6 +76,11 @@ const AppContent = () => {
     // View de Contas é comum para aluno e mentor
     if (currentView === 'accounts') {
       return <AccountsPage />;
+    }
+
+    // View de Admin (apenas mentor)
+    if (currentView === 'admin' && isMentor()) {
+      return <AdminPage />;
     }
 
     // Views específicas por role
