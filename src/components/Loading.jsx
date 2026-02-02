@@ -1,25 +1,35 @@
 import { Loader2 } from 'lucide-react';
 
-const Loading = ({ text = 'Carregando...', fullScreen = false }) => {
+/**
+ * Componente de loading reutilizável
+ */
+const Loading = ({ 
+  fullScreen = false, 
+  text = 'Carregando...',
+  size = 'md'
+}) => {
+  const sizeClasses = {
+    sm: 'w-6 h-6',
+    md: 'w-10 h-10',
+    lg: 'w-16 h-16'
+  };
+
   if (fullScreen) {
     return (
-      <div className="fixed inset-0 bg-slate-950 flex items-center justify-center z-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-blue-500/20 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-blue-500 rounded-full animate-spin"></div>
-          </div>
-          <p className="text-slate-400 animate-pulse">{text}</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className={`${sizeClasses[size]} text-blue-500 animate-spin mx-auto mb-4`} />
+          <p className="text-slate-400">{text}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-center p-8">
-      <div className="flex items-center gap-3 text-slate-400">
-        <Loader2 className="w-5 h-5 animate-spin" />
-        <span>{text}</span>
+    <div className="flex items-center justify-center py-8">
+      <div className="text-center">
+        <Loader2 className={`${sizeClasses[size]} text-blue-500 animate-spin mx-auto mb-2`} />
+        {text && <p className="text-slate-500 text-sm">{text}</p>}
       </div>
     </div>
   );

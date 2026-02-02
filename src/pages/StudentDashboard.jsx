@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { DollarSign, Target, TrendingUp, Award, PlusCircle, BarChart3 } from 'lucide-react';
+import { DollarSign, Target, TrendingUp, Award, PlusCircle, Wallet } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import SetupAnalysis from '../components/SetupAnalysis';
@@ -9,19 +9,28 @@ import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
 import Filters from '../components/Filters';
+import AccountSetupWizard from '../components/AccountSetupWizard';
+import Loading from '../components/Loading';
 import { useTrades } from '../hooks/useTrades';
+import { useAccounts } from '../hooks/useAccounts';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateStats, filterTradesByPeriod, filterTradesByDateRange, searchTrades, formatCurrency, formatPercent } from '../utils/calculations';
 
 const StudentDashboard = () => {
   const { user } = useAuth();
-  const { trades, loading, addTrade, updateTrade, deleteTrade } = useTrades();
+  const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade } = useTrades();
+  const { accounts, loading: accountsLoading, getActiveAccount } = useAccounts();
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [filters, setFilters] = useState({ period: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
+  const [showWizard, setShowWizard] = useState(false);
+
+  // Verificar se tem contas (depois do loading)
+  const hasAccounts = accounts.length > 0;
+  const activeAccount = getActiveAccount();
 
   // Aplicar filtros
   const filteredTrades = useMemo(() => {
@@ -98,6 +107,47 @@ const StudentDashboard = () => {
     setFilters({ period: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   };
 
+  const handleWizardComplete = () => {
+    setShowWizard(false);
+    // O componente vai re-renderizar e mostrar o dashboard normal
+  };
+
+  // Loading
+  if (tradesLoading || accountsLoading) {
+    return <Loading fullScreen text="Carregando dados..." />;
+  }
+
+  // Se não tem conta, mostrar wizard ou botão para criar
+  if (!hasAccounts) {
+    if (showWizard) {
+      return <AccountSetupWizard onComplete={handleWizardComplete} />;
+    }
+
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Wallet className="w-10 h-10 text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-display font-bold text-white mb-4">
+            Bem-vindo ao Journal! 🚀
+          </h1>
+          <p className="text-slate-400 mb-8">
+            Para começar a registrar seus trades, você precisa criar uma conta de trading.
+            Vamos configurar tudo em poucos passos!
+          </p>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="btn-primary py-3 px-8"
+          >
+            <PlusCircle className="w-5 h-5 mr-2" />
+            Criar Minha Conta
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-6 lg:p-8">
       {/* Header */}
@@ -106,13 +156,41 @@ const StudentDashboard = () => {
           <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
             Olá, {user?.displayName || user?.email?.split('@')[0]}! 👋
           </h1>
-          <p className="text-slate-400 mt-1">Acompanhe sua evolução como trader</p>
+          <p className="text-slate-400 mt-1">
+            Acompanhe sua evolução como trader
+            {activeAccount && (
+              <span className="ml-2 text-sm bg-slate-800/50 px-2 py-1 rounded-lg">
+                Conta: {activeAccount.name}
+              </span>
+            )}
+          </p>
         </div>
         <button onClick={() => { setEditingTrade(null); setShowAddModal(true); }} className="btn-primary flex items-center gap-2">
           <PlusCircle className="w-5 h-5" />
           Novo Trade
         </button>
       </div>
+
+      {/* Info da Conta */}
+      {activeAccount && (
+        <div className="glass-card p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-500/20 rounded-xl">
+              <Wallet className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <p className="text-sm text-slate-400">Saldo Atual</p>
+              <p className={`text-xl font-bold ${activeAccount.currentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {formatCurrency(activeAccount.currentBalance || 0)}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-slate-400">Saldo Inicial</p>
+            <p className="text-white font-medium">{formatCurrency(activeAccount.initialBalance || 0)}</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

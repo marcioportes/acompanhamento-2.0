@@ -10,7 +10,6 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
-  getDocs
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, TRADE_STATUS } from '../firebase';
@@ -20,7 +19,7 @@ import { calculateTradeResult, calculateResultPercent } from '../utils/calculati
 export const useTrades = () => {
   const { user, isMentor } = useAuth();
   const [trades, setTrades] = useState([]);
-  const [allTrades, setAllTrades] = useState([]); // Para o mentor
+  const [allTrades, setAllTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -36,30 +35,34 @@ export const useTrades = () => {
     setLoading(true);
     setError(null);
 
-    // Query para trades do aluno atual (usando studentId ao invés de studentEmail)
+    let unsubscribeStudent = () => {};
+    let unsubscribeAll = () => {};
+
+    // FIX #8: Query simplificada para aluno - usar studentEmail (mais confiável)
+    // porque nem todos os trades antigos têm studentId
     const studentQuery = query(
       collection(db, 'trades'),
-      where('studentId', '==', user.uid),
+      where('studentEmail', '==', user.email),
       orderBy('date', 'desc')
     );
 
-    const unsubscribeStudent = onSnapshot(
+    unsubscribeStudent = onSnapshot(
       studentQuery,
       (snapshot) => {
         const tradesData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         }));
+        console.log(`[useTrades] Carregados ${tradesData.length} trades para ${user.email}`);
         setTrades(tradesData);
         setLoading(false);
       },
       (err) => {
         console.error('Error fetching student trades:', err);
-        // Fallback para query por email (compatibilidade)
+        // Se falhar (índice não existe), tentar sem orderBy
         const fallbackQuery = query(
           collection(db, 'trades'),
-          where('studentEmail', '==', user.email),
-          orderBy('date', 'desc')
+          where('studentEmail', '==', user.email)
         );
         
         onSnapshot(fallbackQuery, (snapshot) => {
@@ -67,15 +70,24 @@ export const useTrades = () => {
             id: doc.id,
             ...doc.data(),
           }));
+          // Ordenar no cliente
+          tradesData.sort((a, b) => {
+            const dateA = a.date || '';
+            const dateB = b.date || '';
+            return dateB.localeCompare(dateA);
+          });
+          console.log(`[useTrades] Fallback: Carregados ${tradesData.length} trades`);
           setTrades(tradesData);
+          setLoading(false);
+        }, (fallbackErr) => {
+          console.error('Fallback query also failed:', fallbackErr);
+          setError('Erro ao carregar trades. Verifique sua conexão.');
           setLoading(false);
         });
       }
     );
 
     // Se for mentor, buscar todos os trades
-    let unsubscribeAll = () => {};
-    
     if (isMentor()) {
       const allQuery = query(
         collection(db, 'trades'),
@@ -89,10 +101,25 @@ export const useTrades = () => {
             id: doc.id,
             ...doc.data(),
           }));
+          console.log(`[useTrades] Mentor: Carregados ${allTradesData.length} trades totais`);
           setAllTrades(allTradesData);
         },
         (err) => {
           console.error('Error fetching all trades:', err);
+          // Fallback sem orderBy
+          const fallbackAllQuery = query(collection(db, 'trades'));
+          onSnapshot(fallbackAllQuery, (snapshot) => {
+            const allTradesData = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+            allTradesData.sort((a, b) => {
+              const dateA = a.date || '';
+              const dateB = b.date || '';
+              return dateB.localeCompare(dateA);
+            });
+            setAllTrades(allTradesData);
+          });
         }
       );
     }
@@ -160,7 +187,7 @@ export const useTrades = () => {
         studentId: user.uid,
         
         // Novos campos da v2
-        status: TRADE_STATUS.PENDING_REVIEW,
+        status: TRADE_STATUS?.PENDING_REVIEW || 'PENDING_REVIEW',
         accountId: tradeData.accountId || null,
         planId: tradeData.planId || null,
         setupId: tradeData.setupId || null,
@@ -188,6 +215,7 @@ export const useTrades = () => {
       };
 
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
+      console.log('[useTrades] Trade criado:', docRef.id);
 
       // Upload das imagens
       let htfUrl = null;
@@ -265,6 +293,7 @@ export const useTrades = () => {
       updateData.updatedAt = serverTimestamp();
 
       await updateDoc(doc(db, 'trades', tradeId), updateData);
+      console.log('[useTrades] Trade atualizado:', tradeId);
 
       return { id: tradeId, ...updateData };
     } catch (err) {
@@ -305,6 +334,7 @@ export const useTrades = () => {
 
       // Deletar documento
       await deleteDoc(doc(db, 'trades', tradeId));
+      console.log('[useTrades] Trade deletado:', tradeId);
 
       return true;
     } catch (err) {
@@ -316,23 +346,31 @@ export const useTrades = () => {
     }
   }, [user]);
 
-  // Adicionar feedback (mentor)
+  // FIX #10 e #13: Adicionar feedback (mentor) - garantir atualização do status
   const addFeedback = useCallback(async (tradeId, feedback) => {
-    if (!user || !isMentor()) throw new Error('Apenas mentores podem adicionar feedback');
+    if (!user) throw new Error('Usuário não autenticado');
+    if (!isMentor()) throw new Error('Apenas mentores podem adicionar feedback');
+    if (!tradeId) throw new Error('ID do trade não fornecido');
+    if (!feedback || !feedback.trim()) throw new Error('Feedback não pode estar vazio');
+
+    console.log('[useTrades] Adicionando feedback ao trade:', tradeId);
 
     try {
-      await updateDoc(doc(db, 'trades', tradeId), {
-        mentorFeedback: feedback,
+      const updateData = {
+        mentorFeedback: feedback.trim(),
         feedbackDate: serverTimestamp(),
         feedbackBy: user.email,
-        status: TRADE_STATUS.REVIEWED, // Atualiza status para revisado
+        status: TRADE_STATUS?.REVIEWED || 'REVIEWED',
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      await updateDoc(doc(db, 'trades', tradeId), updateData);
+      console.log('[useTrades] Feedback adicionado com sucesso');
 
       return true;
     } catch (err) {
       console.error('Error adding feedback:', err);
-      throw err;
+      throw new Error('Erro ao adicionar feedback: ' + err.message);
     }
   }, [user, isMentor]);
 
@@ -369,12 +407,16 @@ export const useTrades = () => {
     return Array.from(students.values());
   }, [allTrades]);
 
-  // Trades aguardando feedback (usando status)
+  // FIX #13: Trades aguardando feedback - melhorar lógica
   const getTradesAwaitingFeedback = useCallback(() => {
-    return allTrades.filter(trade => 
-      trade.status === TRADE_STATUS.PENDING_REVIEW || 
-      (!trade.status && !trade.mentorFeedback) // Compatibilidade com trades antigos
-    );
+    return allTrades.filter(trade => {
+      // Se tem status definido, usar status
+      if (trade.status) {
+        return trade.status === (TRADE_STATUS?.PENDING_REVIEW || 'PENDING_REVIEW');
+      }
+      // Compatibilidade: trades antigos sem status
+      return !trade.mentorFeedback;
+    });
   }, [allTrades]);
 
   // Trades com red flags
@@ -389,10 +431,12 @@ export const useTrades = () => {
 
   // Trades revisados
   const getReviewedTrades = useCallback(() => {
-    return allTrades.filter(trade => 
-      trade.status === TRADE_STATUS.REVIEWED || 
-      (!trade.status && trade.mentorFeedback) // Compatibilidade
-    );
+    return allTrades.filter(trade => {
+      if (trade.status) {
+        return trade.status === (TRADE_STATUS?.REVIEWED || 'REVIEWED');
+      }
+      return !!trade.mentorFeedback;
+    });
   }, [allTrades]);
 
   return {

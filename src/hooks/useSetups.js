@@ -16,14 +16,18 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de setups de trading
+ * 
+ * Setups podem ser:
+ * - Globais (isGlobal: true) - criados pelo mentor, disponíveis para todos
+ * - Pessoais (isGlobal: false) - criados pelo aluno, apenas para ele
  */
 export const useSetups = () => {
-  const { user } = useAuth();
+  const { user, isMentor } = useAuth();
   const [setups, setSetups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Carregar setups (globais + do usuário)
+  // Carregar setups
   useEffect(() => {
     if (!user) {
       setSetups([]);
@@ -32,50 +36,89 @@ export const useSetups = () => {
     }
 
     setLoading(true);
-
-    // Query para setups globais e do usuário
-    const q = query(
-      collection(db, 'setups'),
-      where('active', '==', true),
-      orderBy('name', 'asc')
-    );
+    setError(null);
+    
+    // Carregar setups globais + setups pessoais do aluno
+    // Mentor vê todos os setups
+    let q;
+    
+    if (isMentor()) {
+      q = query(
+        collection(db, 'setups'),
+        where('active', '==', true),
+        orderBy('name', 'asc')
+      );
+    } else {
+      // Aluno vê setups globais (para todos verem os mesmos)
+      q = query(
+        collection(db, 'setups'),
+        where('active', '==', true),
+        orderBy('name', 'asc')
+      );
+    }
 
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
-        const setupsData = snapshot.docs.map(doc => ({
+        let setupsData = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
         
-        // Filtra: globais + criados pelo usuário
-        const filtered = setupsData.filter(s => 
-          s.isGlobal || s.createdBy === user.uid
-        );
+        // Se não for mentor, filtrar apenas globais ou do próprio aluno
+        if (!isMentor()) {
+          setupsData = setupsData.filter(s => 
+            s.isGlobal || s.studentId === user.uid
+          );
+        }
         
-        setSetups(filtered);
+        setSetups(setupsData);
         setLoading(false);
       },
       (err) => {
         console.error('Erro ao carregar setups:', err);
-        setError(err.message);
-        setLoading(false);
+        // Fallback: tentar sem orderBy
+        const fallbackQuery = query(
+          collection(db, 'setups'),
+          where('active', '==', true)
+        );
+        
+        onSnapshot(fallbackQuery, (snapshot) => {
+          let setupsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Ordenar no cliente
+          setupsData.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          
+          // Filtrar se não for mentor
+          if (!isMentor()) {
+            setupsData = setupsData.filter(s => 
+              s.isGlobal || s.studentId === user?.uid
+            );
+          }
+          
+          setSetups(setupsData);
+          setLoading(false);
+        });
       }
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, isMentor]);
 
-  // Criar setup personalizado
+  // Criar setup (mentor cria globais, aluno cria pessoais)
   const addSetup = useCallback(async (setupData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
       const newSetup = {
         ...setupData,
-        createdBy: user.uid,
-        isGlobal: false,
+        isGlobal: isMentor() ? (setupData.isGlobal !== false) : false, // Aluno sempre cria pessoal
+        studentId: isMentor() ? null : user.uid,
         active: true,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
 
       const docRef = await addDoc(collection(db, 'setups'), newSetup);
@@ -84,7 +127,7 @@ export const useSetups = () => {
       console.error('Erro ao criar setup:', err);
       throw err;
     }
-  }, [user]);
+  }, [user, isMentor]);
 
   // Atualizar setup
   const updateSetup = useCallback(async (setupId, setupData) => {
@@ -100,10 +143,14 @@ export const useSetups = () => {
     }
   }, []);
 
-  // Deletar setup (apenas personalizados)
+  // Deletar setup (soft delete - marca como inativo)
   const deleteSetup = useCallback(async (setupId) => {
     try {
-      await deleteDoc(doc(db, 'setups', setupId));
+      const setupRef = doc(db, 'setups', setupId);
+      await updateDoc(setupRef, {
+        active: false,
+        updatedAt: serverTimestamp()
+      });
     } catch (err) {
       console.error('Erro ao deletar setup:', err);
       throw err;
@@ -115,15 +162,31 @@ export const useSetups = () => {
     return setups.find(s => s.id === setupId);
   }, [setups]);
 
+  // Buscar setup por nome
+  const getSetupByName = useCallback((name) => {
+    return setups.find(s => s.name === name);
+  }, [setups]);
+
   // Buscar setups globais
   const getGlobalSetups = useCallback(() => {
     return setups.filter(s => s.isGlobal);
   }, [setups]);
 
-  // Buscar setups do usuário
-  const getUserSetups = useCallback(() => {
-    return setups.filter(s => !s.isGlobal && s.createdBy === user?.uid);
+  // Buscar setups pessoais do aluno
+  const getPersonalSetups = useCallback((studentId) => {
+    const id = studentId || user?.uid;
+    return setups.filter(s => !s.isGlobal && s.studentId === id);
   }, [setups, user]);
+
+  // Buscar setup default
+  const getDefaultSetup = useCallback(() => {
+    // Primeiro tenta encontrar um marcado como default
+    const defaultSetup = setups.find(s => s.isDefault && s.isGlobal);
+    if (defaultSetup) return defaultSetup;
+    
+    // Se não encontrar, retorna o primeiro global
+    return setups.find(s => s.isGlobal);
+  }, [setups]);
 
   return {
     setups,
@@ -133,8 +196,10 @@ export const useSetups = () => {
     updateSetup,
     deleteSetup,
     getSetupById,
+    getSetupByName,
     getGlobalSetups,
-    getUserSetups
+    getPersonalSetups,
+    getDefaultSetup
   };
 };
 

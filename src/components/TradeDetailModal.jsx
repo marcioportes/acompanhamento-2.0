@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   X, 
   TrendingUp, 
@@ -11,7 +11,8 @@ import {
   Send,
   Loader2,
   Clock,
-  FileText
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate } from '../utils/calculations';
 
@@ -26,22 +27,45 @@ const TradeDetailModal = ({
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  // FIX #12: Resetar estado quando trade muda
+  useEffect(() => {
+    setFeedback('');
+    setShowFeedbackInput(false);
+    setSubmitError(null);
+    setFullscreenImage(null);
+  }, [trade?.id]);
 
   if (!isOpen || !trade) return null;
 
   const isWin = trade.result >= 0;
 
+  // FIX #10: Melhorar handleSubmitFeedback com tratamento de erro
   const handleSubmitFeedback = async () => {
     if (!feedback.trim()) return;
+    if (!onAddFeedback) {
+      console.error('onAddFeedback não foi passado para o componente');
+      setSubmitError('Erro de configuração. Tente novamente.');
+      return;
+    }
+    
+    setSubmitError(null);
     
     try {
-      await onAddFeedback(trade.id, feedback);
+      console.log('Enviando feedback para trade:', trade.id);
+      await onAddFeedback(trade.id, feedback.trim());
+      console.log('Feedback enviado com sucesso');
       setFeedback('');
       setShowFeedbackInput(false);
     } catch (err) {
       console.error('Error adding feedback:', err);
+      setSubmitError('Erro ao enviar feedback. Tente novamente.');
     }
   };
+
+  // Verificar se tem red flags
+  const hasRedFlags = trade.hasRedFlags || (trade.redFlags && trade.redFlags.length > 0);
 
   return (
     <>
@@ -83,6 +107,19 @@ const TradeDetailModal = ({
                   <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded-lg">
                     {trade.exchange}
                   </span>
+                  {/* Status Badge */}
+                  {trade.status && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      trade.status === 'REVIEWED' 
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : trade.status === 'PENDING_REVIEW'
+                        ? 'bg-yellow-500/20 text-yellow-400'
+                        : 'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {trade.status === 'REVIEWED' ? 'Revisado' : 
+                       trade.status === 'PENDING_REVIEW' ? 'Aguardando' : trade.status}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {trade.studentName || trade.studentEmail?.split('@')[0]}
@@ -115,6 +152,23 @@ const TradeDetailModal = ({
 
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            {/* Red Flags Alert */}
+            {hasRedFlags && (
+              <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-red-400 mb-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  <span className="font-semibold">Red Flags Detectadas</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {trade.redFlags?.map((flag, index) => (
+                    <span key={index} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">
+                      {flag.type || flag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Detalhes Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800/30 rounded-xl p-4">
@@ -154,7 +208,7 @@ const TradeDetailModal = ({
                 </div>
                 <p className="text-white font-medium text-sm">
                   {trade.createdAt?.toDate 
-                    ? formatDate(trade.createdAt.toDate(), "dd/MM HH:mm")
+                    ? formatDate(trade.createdAt.toDate())
                     : formatDate(trade.createdAt)
                   }
                 </p>
@@ -276,6 +330,13 @@ const TradeDetailModal = ({
                 )}
               </div>
 
+              {/* Erro ao enviar */}
+              {submitError && (
+                <div className="mb-3 bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+                  {submitError}
+                </div>
+              )}
+
               {trade.mentorFeedback ? (
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
                   <p className="text-slate-300 text-sm whitespace-pre-wrap">
@@ -283,7 +344,10 @@ const TradeDetailModal = ({
                   </p>
                   {trade.feedbackDate && (
                     <p className="text-xs text-slate-500 mt-3">
-                      Enviado em {formatDate(trade.feedbackDate, "dd/MM/yyyy 'às' HH:mm")}
+                      Enviado em {formatDate(
+                        trade.feedbackDate?.toDate ? trade.feedbackDate.toDate() : trade.feedbackDate
+                      )}
+                      {trade.feedbackBy && ` por ${trade.feedbackBy}`}
                     </p>
                   )}
                 </div>
@@ -302,6 +366,7 @@ const TradeDetailModal = ({
                       onClick={() => {
                         setShowFeedbackInput(false);
                         setFeedback('');
+                        setSubmitError(null);
                       }}
                       className="btn-secondary py-2 px-4"
                       disabled={feedbackLoading}
