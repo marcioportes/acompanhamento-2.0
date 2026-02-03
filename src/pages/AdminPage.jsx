@@ -1,25 +1,21 @@
-/**
- * Página de Administração - Apenas para Mentor
- * Permite rodar seed e outras tarefas administrativas
- */
-
 import { useState } from 'react';
 import { 
   Database, 
-  RefreshCw, 
-  Check, 
-  AlertCircle, 
-  Loader2,
-  Shield,
-  Zap
+  Shield, 
+  Settings, 
+  List
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { runSeed, forceSeed, updateTickers } from '../utils/seedData';
+import TickerManager from './admin/TickerManager'; // Certifique-se de criar a pasta admin
 
 const AdminPage = () => {
   const { user, isMentor } = useAuth();
-  const [loading, setLoading] = useState(null);
-  const [result, setResult] = useState(null);
+  const [activeTab, setActiveTab] = useState('tickers');
+  
+  // States para as ferramentas de sistema (Seed)
+  const [sysLoading, setSysLoading] = useState(null);
+  const [sysResult, setSysResult] = useState(null);
 
   // Apenas mentor pode acessar
   if (!isMentor()) {
@@ -34,177 +30,116 @@ const AdminPage = () => {
     );
   }
 
-  const handleRunSeed = async () => {
-    setLoading('seed');
-    setResult(null);
-    try {
-      const res = await runSeed();
-      setResult(res);
-    } catch (err) {
-      setResult({ success: false, message: err.message });
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleForceSeed = async () => {
-    if (!window.confirm('Isso vai sobrescrever dados existentes. Continuar?')) return;
+  // Wrappers para as funções de seed existentes
+  const handleSystemAction = async (actionType, actionFn) => {
+    if (actionType === 'force' && !window.confirm('Cuidado! Isso pode sobrescrever dados. Continuar?')) return;
     
-    setLoading('force');
-    setResult(null);
+    setSysLoading(actionType);
+    setSysResult(null);
     try {
-      const res = await forceSeed();
-      setResult(res);
+      const res = await actionFn();
+      setSysResult(res);
     } catch (err) {
-      setResult({ success: false, message: err.message });
+      setSysResult({ success: false, message: err.message });
     } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleUpdateTickers = async () => {
-    setLoading('tickers');
-    setResult(null);
-    try {
-      const res = await updateTickers();
-      setResult(res);
-    } catch (err) {
-      setResult({ success: false, message: err.message });
-    } finally {
-      setLoading(null);
+      setSysLoading(null);
     }
   };
 
   return (
     <div className="min-h-screen p-6 lg:p-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
+        
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
-            <Database className="w-8 h-8 text-blue-400" />
-            Administração
-          </h1>
-          <p className="text-slate-400 mt-1">
-            Ferramentas administrativas do sistema
-          </p>
-        </div>
-
-        {/* Result */}
-        {result && (
-          <div className={`mb-6 p-4 rounded-xl border ${
-            result.success 
-              ? 'bg-emerald-500/10 border-emerald-500/30' 
-              : 'bg-red-500/10 border-red-500/30'
-          }`}>
-            <div className="flex items-center gap-3">
-              {result.success ? (
-                <Check className="w-5 h-5 text-emerald-400" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-red-400" />
-              )}
-              <span className={result.success ? 'text-emerald-400' : 'text-red-400'}>
-                {result.message}
-              </span>
-            </div>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
+              <Settings className="w-8 h-8 text-blue-400" />
+              Administração
+            </h1>
+            <p className="text-slate-400 mt-1">
+              Configurações globais e master data
+            </p>
           </div>
-        )}
-
-        {/* Cards */}
-        <div className="space-y-4">
-          {/* Seed Inicial */}
-          <div className="glass-card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-1">
-                  Seed Inicial
-                </h3>
-                <p className="text-sm text-slate-400">
-                  Popula dados iniciais (moedas, corretoras, tickers, setups, emoções).
-                  Só executa se o banco estiver vazio.
-                </p>
-              </div>
-              <button
-                onClick={handleRunSeed}
-                disabled={loading !== null}
-                className="btn-primary py-2 px-4"
-              >
-                {loading === 'seed' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Database className="w-4 h-4 mr-2" />
-                    Executar
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Forçar Seed */}
-          <div className="glass-card p-6 border-yellow-500/30">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-yellow-400 mb-1">
-                  Forçar Seed
-                </h3>
-                <p className="text-sm text-slate-400">
-                  Força a execução do seed mesmo com dados existentes.
-                  <span className="text-yellow-400"> Cuidado: pode sobrescrever dados!</span>
-                </p>
-              </div>
-              <button
-                onClick={handleForceSeed}
-                disabled={loading !== null}
-                className="btn-secondary py-2 px-4 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
-              >
-                {loading === 'force' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4 mr-2" />
-                    Forçar
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Atualizar Tickers */}
-          <div className="glass-card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-1">
-                  Atualizar Tickers
-                </h3>
-                <p className="text-sm text-slate-400">
-                  Atualiza apenas os tickers com as especificações corretas de tick
-                  (WINFUT, ES, NQ, etc).
-                </p>
-              </div>
-              <button
-                onClick={handleUpdateTickers}
-                disabled={loading !== null}
-                className="btn-primary py-2 px-4"
-              >
-                {loading === 'tickers' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Atualizar
-                  </>
-                )}
-              </button>
-            </div>
+          <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full text-xs text-blue-400">
+             Mentor: {user.email}
           </div>
         </div>
 
-        {/* Info */}
-        <div className="mt-8 p-4 bg-slate-800/50 rounded-xl">
-          <p className="text-sm text-slate-400">
-            <strong className="text-white">Logado como:</strong> {user?.email}
-          </p>
+        {/* Tabs Navigation */}
+        <div className="flex border-b border-slate-800 mb-8">
+          <button
+            onClick={() => setActiveTab('tickers')}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'tickers'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-slate-400 hover:text-white hover:border-slate-700'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            Ativos & Lotes
+          </button>
+          <button
+            onClick={() => setActiveTab('system')}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'system'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-slate-400 hover:text-white hover:border-slate-700'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            Sistema & Seeds
+          </button>
         </div>
+
+        {/* Conteúdo da Aba */}
+        <div className="min-h-[400px]">
+          
+          {/* ABA 1: GERENCIADOR DE TICKERS */}
+          {activeTab === 'tickers' && (
+            <TickerManager />
+          )}
+
+          {/* ABA 2: SISTEMA (ANTIGO ADMIN) */}
+          {activeTab === 'system' && (
+             <div className="space-y-6">
+                {sysResult && (
+                  <div className={`p-4 rounded-xl border ${sysResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                    {sysResult.message}
+                  </div>
+                )}
+                
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Seed Normal */}
+                  <div className="glass-card p-6">
+                    <h3 className="text-lg font-bold text-white mb-2">Seed Inicial</h3>
+                    <p className="text-sm text-slate-400 mb-4">Popula dados básicos se o banco estiver vazio.</p>
+                    <button 
+                      onClick={() => handleSystemAction('seed', runSeed)}
+                      disabled={sysLoading !== null}
+                      className="btn-secondary w-full"
+                    >
+                      {sysLoading === 'seed' ? 'Executando...' : 'Executar Seed'}
+                    </button>
+                  </div>
+
+                  {/* Seed Forçado */}
+                  <div className="glass-card p-6 border-red-500/20">
+                    <h3 className="text-lg font-bold text-red-400 mb-2">Forçar Reset</h3>
+                    <p className="text-sm text-slate-400 mb-4">Sobrescreve dados mestres. Use com cuidado.</p>
+                    <button 
+                      onClick={() => handleSystemAction('force', forceSeed)}
+                      disabled={sysLoading !== null}
+                      className="btn-primary bg-red-600 hover:bg-red-700 w-full border-none"
+                    >
+                      {sysLoading === 'force' ? 'Resetando...' : 'Forçar Reset'}
+                    </button>
+                  </div>
+                </div>
+             </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, TRADE_STATUS } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
+import { calculateResultPercent } from '../utils/calculations';
 
 export const useTrades = () => {
   const { user, isMentor } = useAuth();
@@ -27,9 +27,10 @@ export const useTrades = () => {
     let unsubscribeAll = () => {};
 
     // Listener do Aluno (Seus próprios trades)
+    // CORREÇÃO AQUI: Mudado de 'StudentId' para 'studentId'
     const studentQuery = query(
       collection(db, 'trades'),
-      where('StudentId', '==', user.uid),
+      where('studentId', '==', user.uid), 
       orderBy('date', 'desc')
     );
     
@@ -38,8 +39,8 @@ export const useTrades = () => {
         setTrades(data);
         setLoading(false);
       }, (err) => {
-        console.error("Erro query aluno:", err);
-        // Fallback se der erro de índice
+        console.error("Erro query aluno (tentando fallback):", err);
+        // Fallback: Se der erro de índice no 'orderBy', tenta buscar sem ordenação
         const fbQ = query(collection(db, 'trades'), where('studentId', '==', user.uid));
         onSnapshot(fbQ, (snap) => {
            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -74,17 +75,20 @@ export const useTrades = () => {
   // --- HELPER: UPLOAD IMAGEM ---
   const uploadImage = async (file, tradeId, type) => {
     if (!file) return null;
-    const path = `trades/${tradeId}/${type}_${Date.now()}.${file.name.split('.').pop()}`;
+    // Adicionei verificação de segurança no nome do arquivo
+    const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+    const path = `trades/${tradeId}/${type}_${Date.now()}_${safeName}`;
     const snap = await uploadBytes(ref(storage, path), file);
     return await getDownloadURL(snap.ref);
   };
 
-  // --- 2. ADICIONAR TRADE (COM MOVIMENTO FINANCEIRO) ---
+  // --- 2. ADICIONAR TRADE ---
   const addTrade = useCallback(async (tradeData, htfFile, ltfFile) => {
     if (!user) throw new Error('Usuário não autenticado');
-    setLoading(true);
+    // Não setamos loading=true aqui para não piscar a tela inteira, 
+    // deixamos o componente lidar com o loading do botão (isSubmitting)
+    
     try {
-      // 'result' já vem calculado do Modal (usando regra de Ticks ou Simples)
       const result = parseFloat(tradeData.result); 
       
       const newTrade = {
@@ -97,7 +101,7 @@ export const useTrades = () => {
         
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
-        studentId: user.uid,
+        studentId: user.uid, // Mantido minúsculo (correto)
         status: TRADE_STATUS?.PENDING_REVIEW || 'PENDING_REVIEW',
         redFlags: [],
         hasRedFlags: false,
@@ -109,13 +113,21 @@ export const useTrades = () => {
       // Salva Trade
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
       
-      // Upload Imagens
-      let htfUrl = null, ltfUrl = null;
-      if (htfFile) htfUrl = await uploadImage(htfFile, docRef.id, 'htf');
-      if (ltfFile) ltfUrl = await uploadImage(ltfFile, docRef.id, 'ltf');
-      if (htfUrl || ltfUrl) await updateDoc(doc(db, 'trades', docRef.id), { htfUrl, ltfUrl });
+      // Upload Imagens em paralelo para ser mais rápido
+      const uploads = [];
+      if (htfFile) uploads.push(uploadImage(htfFile, docRef.id, 'htf'));
+      else uploads.push(Promise.resolve(null));
+      
+      if (ltfFile) uploads.push(uploadImage(ltfFile, docRef.id, 'ltf'));
+      else uploads.push(Promise.resolve(null));
 
-      // GERA O MOVIMENTO FINANCEIRO (Atualiza Saldo Automaticamente)
+      const [htfUrl, ltfUrl] = await Promise.all(uploads);
+
+      if (htfUrl || ltfUrl) {
+        await updateDoc(doc(db, 'trades', docRef.id), { htfUrl, ltfUrl });
+      }
+
+      // GERA O MOVIMENTO FINANCEIRO
       if (newTrade.accountId) {
         await addDoc(collection(db, 'movements'), {
           type: 'TRADE_RESULT',
@@ -131,22 +143,19 @@ export const useTrades = () => {
         });
       }
 
+      // O onSnapshot cuidará de atualizar a lista automaticamente agora que o ID bate!
       return { id: docRef.id, ...newTrade, htfUrl, ltfUrl };
     } catch (err) {
       console.error('Erro ao adicionar trade:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   }, [user]);
 
   // --- 3. ATUALIZAR TRADE ---
   const updateTrade = useCallback(async (id, updates, htf, ltf) => {
       if(!user) throw new Error('No user');
-      setLoading(true);
       try {
         const data = {...updates};
-        // Recalcula percentual se houver mudança de preços
         if(updates.entry || updates.exit) {
             data.resultPercent = calculateResultPercent(
                 updates.side || data.side, 
@@ -164,30 +173,23 @@ export const useTrades = () => {
       } catch (err) {
         console.error(err);
         throw err;
-      } finally {
-        setLoading(false);
       }
   }, [user]);
 
   // --- 4. DELETAR TRADE ---
   const deleteTrade = useCallback(async (id, htf, ltf) => {
-      setLoading(true);
       try {
         if(htf) try { await deleteObject(ref(storage, htf)) } catch(e){}
         if(ltf) try { await deleteObject(ref(storage, ltf)) } catch(e){}
         await deleteDoc(doc(db, 'trades', id));
-        // Nota: O movimento financeiro permanece para histórico ou deve ser removido manualmente se desejado
         return true;
       } catch (err) {
         console.error(err);
         throw err;
-      } finally {
-        setLoading(false);
       }
-  }, [user]);
+  }, []); // Removido dependencia desnecessária
 
   // --- 5. FUNÇÕES DE MENTORIA ---
-  
   const addFeedback = useCallback(async (id, fb) => {
       if(!isMentor()) throw new Error('Apenas mentores');
       await updateDoc(doc(db, 'trades', id), {
@@ -198,13 +200,13 @@ export const useTrades = () => {
       });
   }, [user, isMentor]);
 
-  // --- 6. GETTERS E FILTROS (Recuperados!) ---
+  // --- 6. GETTERS E FILTROS ---
 
-  const getTradesByStudent = useCallback((email) => {
-    return allTrades.filter(t => t.studentId === uid);
+  const getTradesByStudent = useCallback((studentId) => {
+    // CORRIGIDO: usava 'uid' que não existia, agora usa o argumento
+    return allTrades.filter(t => t.studentId === studentId);
   }, [allTrades]);
 
-  // Esta era a função que estava faltando e causou o erro:
   const getUniqueStudents = useCallback(() => {
     const studentsMap = new Map();
     allTrades.forEach(trade => {
@@ -250,14 +252,12 @@ export const useTrades = () => {
     allTrades, 
     loading, 
     error,
-    // Actions
     addTrade, 
     updateTrade, 
     deleteTrade, 
     addFeedback,
-    // Getters (Agora completos)
     getTradesByStudent,
-    getUniqueStudents,         // <--- O erro sumirá agora
+    getUniqueStudents,
     getTradesGroupedByStudent,
     getTradesAwaitingFeedback,
     getTradesWithRedFlags,
