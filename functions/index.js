@@ -397,11 +397,9 @@ exports.onMovementCreated = functions.firestore
 
     console.log(`[onMovementCreated] Movimento ${movementId} criado na conta ${movement.accountId}`);
 
-    // Se for movimentação de saldo inicial, não atualizar (já foi considerado na criação da conta)
-    if (movement.isInitialBalance) {
-      console.log(`[onMovementCreated] Movimento é saldo inicial, ignorando atualização de saldo`);
-      return null;
-    }
+    // --- CORREÇÃO 1: REMOVIDO O BLOQUEIO DE SALDO INICIAL ---
+    // Queremos que o saldo inicial seja processado como qualquer outro depósito.
+    // Isso garante que o extrato e o saldo estejam sempre sincronizados.
 
     try {
       const accountRef = db.collection('accounts').doc(movement.accountId);
@@ -409,12 +407,21 @@ exports.onMovementCreated = functions.firestore
 
       if (accountDoc.exists) {
         const account = accountDoc.data();
-        let newBalance = account.currentBalance || account.initialBalance || 0;
+        
+        // --- CORREÇÃO 2: RESPEITAR O ZERO (CRÍTICO) ---
+        // Usamos '??' (Nullish Coalescing) ou verificação explicita.
+        // O operador '||' ignorava o 0 e pegava o initialBalance, causando duplicação.
+        let currentBalance = (account.currentBalance !== undefined) ? account.currentBalance : 0;
+        
+        let newBalance = currentBalance;
 
         if (movement.type === 'DEPOSIT') {
           newBalance += movement.amount;
         } else if (movement.type === 'WITHDRAWAL') {
           newBalance -= movement.amount;
+        } else if (movement.type === 'TRADE_RESULT') {
+             // Garantir que trade result também soma/subtrai (se o seu sistema usar este tipo)
+             newBalance += movement.amount; 
         }
 
         await accountRef.update({
@@ -422,7 +429,7 @@ exports.onMovementCreated = functions.firestore
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        console.log(`[onMovementCreated] Saldo atualizado: ${newBalance}`);
+        console.log(`[onMovementCreated] Saldo atualizado de ${currentBalance} para ${newBalance}`);
       }
     } catch (error) {
       console.error(`[onMovementCreated] Erro:`, error);

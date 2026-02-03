@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { SETUPS, EMOTIONS, EXCHANGES, SIDES } from '../firebase';
 import { useAccounts } from '../hooks/useAccounts';
+import { useMasterData } from '../hooks/useMasterData';
 
 const AddTradeModal = ({ 
   isOpen, 
@@ -22,6 +23,7 @@ const AddTradeModal = ({
   loading = false 
 }) => {
   const { accounts, loading: accountsLoading } = useAccounts();
+  const { tickers: masterTickers } = useMasterData(); 
   
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -44,12 +46,15 @@ const AddTradeModal = ({
   const [errors, setErrors] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+  
+  // Regra ativa para cálculo de Ticks (ex: WINFUT, ES)
+  const [activeAssetRule, setActiveAssetRule] = useState(null);
 
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
   const accountDropdownRef = useRef(null);
 
-  // Fechar dropdown ao clicar fora
+  // Fechar dropdown de conta ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
@@ -60,10 +65,9 @@ const AddTradeModal = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Preencher dados para edição ou selecionar conta ativa por padrão
-  // CORREÇÃO Bug #4: Separar lógica de reset de form da lógica de seleção de conta
+  // Inicialização: Preencher dados para edição ou resetar para novo trade
   useEffect(() => {
-    if (!isOpen) return; // Só processa quando modal está aberto
+    if (!isOpen) return;
     
     if (editTrade) {
       setFormData({
@@ -82,7 +86,6 @@ const AddTradeModal = ({
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
     } else {
-      // Reset form apenas quando abre o modal (não quando accounts muda)
       setFormData(prev => ({
         date: new Date().toISOString().split('T')[0],
         ticker: '',
@@ -94,7 +97,6 @@ const AddTradeModal = ({
         setup: 'Rompimento',
         emotion: 'Disciplinado',
         notes: '',
-        // Manter accountId se já estava selecionado e ainda existe
         accountId: prev.accountId && accounts.find(acc => acc.id === prev.accountId) 
           ? prev.accountId 
           : (accounts.find(acc => acc.active)?.id || ''),
@@ -103,35 +105,49 @@ const AddTradeModal = ({
       setLtfFile(null);
       setHtfPreview(null);
       setLtfPreview(null);
+      setActiveAssetRule(null);
     }
     setErrors({});
-  }, [editTrade, isOpen]); // CORREÇÃO: Removido accounts das dependências
+  }, [editTrade, isOpen]); 
 
-  // CORREÇÃO Bug #4: useEffect separado para atualizar accountId quando accounts muda
-  // Isso garante que quando uma nova conta é criada, ela aparece no dropdown
-  // sem resetar todo o formulário
+  // Selecionar conta ativa por padrão se não houver seleção
   useEffect(() => {
-    // Se não há conta selecionada e há contas disponíveis, selecionar a ativa
     if (!formData.accountId && accounts.length > 0 && isOpen) {
       const activeAccount = accounts.find(acc => acc.active);
       if (activeAccount) {
-        setFormData(prev => ({
-          ...prev,
-          accountId: activeAccount.id
-        }));
+        setFormData(prev => ({ ...prev, accountId: activeAccount.id }));
       }
     }
-    // Se a conta selecionada não existe mais, limpar seleção
+    // Se a conta selecionada não existe mais (foi deletada), reseta
     if (formData.accountId && accounts.length > 0 && !accounts.find(acc => acc.id === formData.accountId)) {
       const activeAccount = accounts.find(acc => acc.active);
-      setFormData(prev => ({
-        ...prev,
-        accountId: activeAccount?.id || ''
-      }));
+      setFormData(prev => ({ ...prev, accountId: activeAccount?.id || '' }));
     }
-  }, [accounts, isOpen]); // Depende de accounts para reagir a mudanças
+  }, [accounts, isOpen]);
 
-  // Calcular preview do resultado
+  // Detectar regra do ativo automaticamente (WINFUT, ES, etc)
+  useEffect(() => {
+    if (!formData.ticker) {
+      setActiveAssetRule(null);
+      return;
+    }
+
+    const userInput = formData.ticker.toUpperCase();
+    const rule = masterTickers.find(t => 
+      t.symbol === userInput || userInput.startsWith(t.symbol)
+    );
+
+    if (rule) {
+      setActiveAssetRule(rule);
+      if (rule.exchange) {
+        setFormData(prev => ({ ...prev, exchange: rule.exchange }));
+      }
+    } else {
+      setActiveAssetRule(null);
+    }
+  }, [formData.ticker, masterTickers]);
+
+  // Calcular preview do resultado em tempo real
   useEffect(() => {
     const { entry, exit, qty, side } = formData;
     if (entry && exit && qty) {
@@ -140,23 +156,32 @@ const AddTradeModal = ({
       const qtyNum = parseFloat(qty);
       
       if (!isNaN(entryNum) && !isNaN(exitNum) && !isNaN(qtyNum)) {
-        let result;
+        let rawDiff;
         if (side === 'LONG') {
-          result = (exitNum - entryNum) * qtyNum;
+          rawDiff = exitNum - entryNum;
         } else {
-          result = (entryNum - exitNum) * qtyNum;
+          rawDiff = entryNum - exitNum;
         }
+
+        let result;
+        // Lógica Híbrida: Se tem regra de tick (ex: WINFUT), usa ela. Se não, cálculo simples.
+        if (activeAssetRule && activeAssetRule.tickSize && activeAssetRule.tickValue) {
+           const ticks = rawDiff / activeAssetRule.tickSize;
+           result = ticks * activeAssetRule.tickValue * qtyNum;
+        } else {
+           result = rawDiff * qtyNum;
+        }
+
         setPreviewResult(result);
       }
     } else {
       setPreviewResult(null);
     }
-  }, [formData.entry, formData.exit, formData.qty, formData.side]);
+  }, [formData.entry, formData.exit, formData.qty, formData.side, activeAssetRule]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Limpar erro do campo
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: null }));
     }
@@ -174,25 +199,16 @@ const AddTradeModal = ({
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validar tipo
     if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-      setErrors(prev => ({ 
-        ...prev, 
-        [type]: 'Apenas imagens JPG, PNG ou WebP são aceitas' 
-      }));
+      setErrors(prev => ({ ...prev, [type]: 'Apenas imagens JPG, PNG ou WebP são aceitas' }));
       return;
     }
 
-    // Validar tamanho (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setErrors(prev => ({ 
-        ...prev, 
-        [type]: 'Imagem muito grande (máximo 5MB)' 
-      }));
+      setErrors(prev => ({ ...prev, [type]: 'Imagem muito grande (máximo 5MB)' }));
       return;
     }
 
-    // Criar preview
     const reader = new FileReader();
     reader.onloadend = () => {
       if (type === 'htf') {
@@ -204,8 +220,6 @@ const AddTradeModal = ({
       }
     };
     reader.readAsDataURL(file);
-
-    // Limpar erro
     setErrors(prev => ({ ...prev, [type]: null }));
   };
 
@@ -223,25 +237,13 @@ const AddTradeModal = ({
 
   const validate = () => {
     const newErrors = {};
-
     if (!formData.date) newErrors.date = 'Data é obrigatória';
     if (!formData.ticker.trim()) newErrors.ticker = 'Ticker é obrigatório';
-    if (!formData.entry || isNaN(parseFloat(formData.entry))) {
-      newErrors.entry = 'Preço de entrada inválido';
-    }
-    if (!formData.exit || isNaN(parseFloat(formData.exit))) {
-      newErrors.exit = 'Preço de saída inválido';
-    }
-    if (!formData.qty || isNaN(parseFloat(formData.qty)) || parseFloat(formData.qty) <= 0) {
-      newErrors.qty = 'Quantidade inválida';
-    }
+    if (!formData.entry || isNaN(parseFloat(formData.entry))) newErrors.entry = 'Preço inválido';
+    if (!formData.exit || isNaN(parseFloat(formData.exit))) newErrors.exit = 'Preço inválido';
+    if (!formData.qty || isNaN(parseFloat(formData.qty)) || parseFloat(formData.qty) <= 0) newErrors.qty = 'Quantidade inválida';
+    if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
 
-    // Conta é obrigatória
-    if (!formData.accountId) {
-      newErrors.accountId = 'Selecione uma conta';
-    }
-
-    // Imagens são obrigatórias apenas para novos trades
     if (!editTrade) {
       if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
       if (!ltfFile && !ltfPreview) newErrors.ltf = 'Imagem LTF é obrigatória';
@@ -253,21 +255,25 @@ const AddTradeModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     if (!validate()) return;
 
+    // Injeta o resultado calculado (que já considera os ticks)
+    const payload = {
+        ...formData,
+        result: previewResult
+    };
+
     try {
-      await onSubmit(formData, htfFile, ltfFile);
+      await onSubmit(payload, htfFile, ltfFile);
       onClose();
     } catch (err) {
       setErrors({ submit: err.message });
     }
   };
 
-  // Encontrar conta selecionada
+  // Helpers de UI
   const selectedAccount = accounts.find(acc => acc.id === formData.accountId);
 
-  // Mapear tipo de conta para cores
   const getTypeColor = (type) => {
     switch (type) {
       case 'REAL': return 'emerald';
@@ -277,7 +283,6 @@ const AddTradeModal = ({
     }
   };
 
-  // Mapear moeda para símbolo
   const getCurrencySymbol = (currency) => {
     switch (currency) {
       case 'BRL': return 'R$';
@@ -292,10 +297,7 @@ const AddTradeModal = ({
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="modal-backdrop"
-        onClick={onClose}
-      />
+      <div className="modal-backdrop" onClick={onClose} />
       
       {/* Modal */}
       <div className="modal-content w-full max-w-2xl max-h-[90vh] overflow-hidden">
@@ -322,7 +324,7 @@ const AddTradeModal = ({
               </div>
             )}
 
-            {/* Seletor de Conta */}
+            {/* Seletor de Conta Customizado */}
             <div className="mb-6">
               <label className="input-label flex items-center gap-2">
                 <Wallet className="w-4 h-4" />
@@ -461,17 +463,32 @@ const AddTradeModal = ({
                 {errors.date && <span className="text-xs text-red-400">{errors.date}</span>}
               </div>
 
-              {/* Ticker */}
-              <div className="input-group">
+              {/* Ticker (MODIFICADO: Com Datalist e Feedback de Regra) */}
+              <div className="input-group relative">
                 <label className="input-label">Ticker *</label>
                 <input
                   type="text"
                   name="ticker"
                   value={formData.ticker}
                   onChange={handleChange}
-                  placeholder="Ex: PETR4, AAPL"
+                  placeholder="Ex: WINFUT, ES, AAPL"
                   className={`uppercase ${errors.ticker ? 'ring-2 ring-red-500/50' : ''}`}
+                  list="tickers-list"
                 />
+                <datalist id="tickers-list">
+                  {masterTickers.map(t => (
+                    <option key={t.id} value={t.symbol}>{t.name}</option>
+                  ))}
+                </datalist>
+
+                {/* Feedback Visual da Regra Ativa */}
+                {activeAssetRule && (
+                   <div className="absolute right-0 top-0 mt-8 mr-3 text-xs text-emerald-400 flex items-center gap-1 pointer-events-none bg-emerald-900/20 px-2 py-0.5 rounded">
+                     <CheckCircle className="w-3 h-3"/> 
+                     Tick: {activeAssetRule.tickSize} = {selectedAccount ? getCurrencySymbol(selectedAccount.currency) : '$'}{activeAssetRule.tickValue}
+                   </div>
+                )}
+
                 {errors.ticker && <span className="text-xs text-red-400">{errors.ticker}</span>}
               </div>
 
@@ -575,7 +592,7 @@ const AddTradeModal = ({
                       : 'bg-red-500/10 border-red-500/30 text-red-400'
                 }`}>
                   {previewResult !== null
-                    ? `${previewResult >= 0 ? '+' : ''}R$ ${previewResult.toFixed(2)}`
+                    ? `${previewResult >= 0 ? '+' : ''}${selectedAccount ? getCurrencySymbol(selectedAccount.currency) : 'R$'} ${previewResult.toFixed(2)}`
                     : 'Preencha os valores'
                   }
                 </div>
