@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  X, Upload, Image, Loader2, AlertCircle, 
-  TrendingUp, TrendingDown, Wallet, ChevronDown, CheckCircle 
+  X, 
+  Upload, 
+  Image, 
+  Loader2, 
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  ChevronDown,
+  CheckCircle
 } from 'lucide-react';
 import { SETUPS, EMOTIONS, EXCHANGES, SIDES } from '../firebase';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 
 /**
- * Modal de Criação e Edição de Trades.
- * * @component
- * @param {boolean} isOpen - Controla a visibilidade do modal.
- * @param {function} onClose - Função para fechar o modal.
- * @param {function} onSubmit - Função assíncrona que recebe o payload e os arquivos de imagem.
- * @param {object} [editTrade] - Objeto do trade se estiver em modo de edição (null se novo).
- * @param {boolean} loading - Estado de carregamento do processo de salvamento.
+ * AddTradeModal (Fixed Layout Version)
+ * Corrige o problema de botões escondidos usando um layout Flexbox vertical.
+ * Header e Footer ficam fixos, apenas o corpo do formulário rola.
  */
 const AddTradeModal = ({ 
   isOpen, 
@@ -23,11 +27,9 @@ const AddTradeModal = ({
   editTrade = null,
   loading = false 
 }) => {
-  // --- HOOKS E CONTEXTOS ---
-  const { accounts } = useAccounts(); // Dados das contas para o dropdown
-  const { tickers: masterTickers } = useMasterData(); // Master Data para validação de regras
+  const { accounts, loading: accountsLoading } = useAccounts();
+  const { tickers: masterTickers } = useMasterData(); 
   
-  // --- ESTADO LOCAL ---
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     ticker: '',
@@ -42,34 +44,22 @@ const AddTradeModal = ({
     accountId: '',
   });
   
-  // Estados de Imagem e Preview
   const [htfFile, setHtfFile] = useState(null);
   const [ltfFile, setLtfFile] = useState(null);
   const [htfPreview, setHtfPreview] = useState(null);
   const [ltfPreview, setLtfPreview] = useState(null);
-  
-  // Estados de Controle de UI
   const [errors, setErrors] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
-  
-  /** * @type {object|null} activeAssetRule
-   * Armazena a regra de negócio do ativo identificado (ex: minLot, tickSize).
-   * Essencial para validação de integridade.
-   */
   const [activeAssetRule, setActiveAssetRule] = useState(null);
 
-  // Refs para manipulação direta do DOM (limpeza de inputs de arquivo)
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
   const accountDropdownRef = useRef(null);
 
-  // --- EFEITOS COLATERAIS (Side Effects) ---
+  // --- EFEITOS (Lógica de Negócio) ---
 
-  /**
-   * Effect: Click Outside Listener
-   * Fecha o dropdown de contas se o usuário clicar fora dele.
-   */
+  // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
@@ -80,16 +70,11 @@ const AddTradeModal = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  /**
-   * Effect: Inicialização e Reset
-   * Popula o formulário se for edição ou reseta se for novo trade.
-   * Garante integridade ao abrir o modal.
-   */
+  // Inicialização
   useEffect(() => {
     if (!isOpen) return;
     
     if (editTrade) {
-      // Modo Edição: Popula com dados existentes
       setFormData({
         date: editTrade.date,
         ticker: editTrade.ticker,
@@ -106,7 +91,6 @@ const AddTradeModal = ({
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
     } else {
-      // Novo Trade: Reseta e tenta selecionar conta ativa padrão
       setFormData(prev => ({
         date: new Date().toISOString().split('T')[0],
         ticker: '',
@@ -118,12 +102,10 @@ const AddTradeModal = ({
         setup: 'Rompimento',
         emotion: 'Disciplinado',
         notes: '',
-        // Tenta manter conta selecionada anteriormente ou pega a primeira ativa
         accountId: prev.accountId && accounts.find(acc => acc.id === prev.accountId) 
           ? prev.accountId 
           : (accounts.find(acc => acc.active)?.id || ''),
       }));
-      // Limpeza de imagens
       setHtfFile(null);
       setLtfFile(null);
       setHtfPreview(null);
@@ -131,46 +113,29 @@ const AddTradeModal = ({
       setActiveAssetRule(null);
     }
     setErrors({});
-  }, [editTrade, isOpen, accounts]); // Adicionado accounts para garantir sincronia
+  }, [editTrade, isOpen, accounts]); 
 
-  /**
-   * Effect: Detecção de Regra de Ativo (Engine de Validação)
-   * Monitora o input de Ticker e busca correspondência no Master Data.
-   */
+  // Regra de Ativo (WINFUT vs Ações)
   useEffect(() => {
     if (!formData.ticker) {
       setActiveAssetRule(null);
       return;
     }
-
     const userInput = formData.ticker.toUpperCase();
-    
-    // Busca exata ou por prefixo (ex: WINFUT busca WIN)
     const rule = masterTickers.find(t => t.symbol === userInput) || 
                  masterTickers.find(t => userInput.startsWith(t.symbol));
 
     if (rule) {
       setActiveAssetRule(rule);
-      // Aplica a bolsa do ativo automaticamente se disponível
-      if (rule.exchange) {
-        setFormData(prev => ({ ...prev, exchange: rule.exchange }));
-      }
-      // Limpa erro de ticker se o usuário corrigiu
-      if (errors.ticker) setErrors(prev => ({...prev, ticker: null}));
+      if (rule.exchange) setFormData(prev => ({ ...prev, exchange: rule.exchange }));
     } else {
       setActiveAssetRule(null);
     }
   }, [formData.ticker, masterTickers]);
 
-  /**
-   * Effect: Cálculo de P&L Estimado (Preview Result)
-   * Calcula o resultado financeiro em tempo real baseado no input.
-   * Suporta lógica de Ticks (Futuros) e Lógica Simples (Ações/Cripto).
-   */
+  // Cálculo de P&L
   useEffect(() => {
     const { entry, exit, qty, side } = formData;
-    
-    // Guard Clause: Só calcula se tiver todos os números
     if (entry && exit && qty) {
       const entryNum = parseFloat(entry);
       const exitNum = parseFloat(exit);
@@ -179,14 +144,10 @@ const AddTradeModal = ({
       if (!isNaN(entryNum) && !isNaN(exitNum) && !isNaN(qtyNum)) {
         let rawDiff = side === 'LONG' ? exitNum - entryNum : entryNum - exitNum;
         let result;
-
-        // REGRA DE NEGÓCIO: Cálculo por Tick vs Cálculo Linear
         if (activeAssetRule && activeAssetRule.tickSize && activeAssetRule.tickValue) {
-           // Ex: (100 pts / 5 pts) * R$ 1,00 * 1 ctr = R$ 20,00
            const ticks = rawDiff / activeAssetRule.tickSize;
            result = ticks * activeAssetRule.tickValue * qtyNum;
         } else {
-           // Ex: (R$ 10,50 - R$ 10,00) * 100 ações = R$ 50,00
            result = rawDiff * qtyNum;
         }
         setPreviewResult(result);
@@ -196,7 +157,7 @@ const AddTradeModal = ({
     }
   }, [formData.entry, formData.exit, formData.qty, formData.side, activeAssetRule]);
 
-  // --- HANDLERS (Manipuladores de Eventos) ---
+  // --- HANDLERS ---
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -213,18 +174,14 @@ const AddTradeModal = ({
   const handleFileChange = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Validação de Tipo
     if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
-      setErrors(prev => ({ ...prev, [type]: 'Formato inválido. Use JPG, PNG ou WebP.' }));
+      setErrors(prev => ({ ...prev, [type]: 'Apenas imagens JPG, PNG ou WebP' }));
       return;
     }
-    // Validação de Tamanho (5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setErrors(prev => ({ ...prev, [type]: 'Imagem muito grande (máximo 5MB).' }));
+      setErrors(prev => ({ ...prev, [type]: 'Imagem muito grande (máximo 5MB)' }));
       return;
     }
-
     const reader = new FileReader();
     reader.onloadend = () => {
       if (type === 'htf') { setHtfFile(file); setHtfPreview(reader.result); } 
@@ -235,44 +192,28 @@ const AddTradeModal = ({
   };
 
   const removeImage = (type) => {
-    if (type === 'htf') { 
-      setHtfFile(null); 
-      setHtfPreview(null); 
-      if (htfInputRef.current) htfInputRef.current.value = ''; 
-    } else { 
-      setLtfFile(null); 
-      setLtfPreview(null); 
-      if (ltfInputRef.current) ltfInputRef.current.value = ''; 
-    }
+    if (type === 'htf') { setHtfFile(null); setHtfPreview(null); if (htfInputRef.current) htfInputRef.current.value = ''; } 
+    else { setLtfFile(null); setLtfPreview(null); if (ltfInputRef.current) ltfInputRef.current.value = ''; }
   };
-
-  // --- VALIDAÇÃO DE DADOS (Core Logic) ---
 
   const validate = () => {
     const newErrors = {};
-    
-    // Campos Obrigatórios Básicos
     if (!formData.date) newErrors.date = 'Data é obrigatória';
     if (!formData.ticker.trim()) newErrors.ticker = 'Ticker é obrigatório';
     if (!formData.entry || isNaN(parseFloat(formData.entry))) newErrors.entry = 'Preço inválido';
     if (!formData.exit || isNaN(parseFloat(formData.exit))) newErrors.exit = 'Preço inválido';
     if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
 
-    // VALIDAÇÃO DE LOTE (Correção Solicitada)
     const qtyNum = parseFloat(formData.qty);
     if (!formData.qty || isNaN(qtyNum) || qtyNum <= 0) {
       newErrors.qty = 'Quantidade inválida';
     } else if (activeAssetRule) {
-      // Normaliza minLot ou contractSize (Legacy Support)
       const minLot = activeAssetRule.minLot || activeAssetRule.contractSize || 1;
-      
-      // Verifica resto da divisão para garantir multiplicidade
       if (qtyNum % minLot !== 0) {
-        newErrors.qty = `Quantidade inválida. Deve ser múltiplo de ${minLot} para este ativo.`;
+        newErrors.qty = `Quantidade deve ser múltipla de ${minLot}`;
       }
     }
 
-    // Imagens obrigatórias apenas na criação
     if (!editTrade) {
       if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
       if (!ltfFile && !ltfPreview) newErrors.ltf = 'Imagem LTF é obrigatória';
@@ -284,13 +225,8 @@ const AddTradeModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Bloqueia envio se validação falhar
-    if (!validate()) return; 
-
-    // Payload final com resultado calculado
+    if (!validate()) return;
     const payload = { ...formData, result: previewResult };
-
     try {
       await onSubmit(payload, htfFile, ltfFile);
       onClose();
@@ -299,26 +235,20 @@ const AddTradeModal = ({
     }
   };
 
-  // --- HELPERS DE RENDERIZAÇÃO ---
+  // UI Helpers
   const selectedAccount = accounts.find(acc => acc.id === formData.accountId);
-  const getCurrencySymbol = (acc) => {
-    if (!acc) return 'R$';
-    switch (acc.currency) {
-      case 'USD': return '$';
-      case 'EUR': return '€';
-      default: return 'R$';
-    }
-  };
+  const getCurrencySymbol = (currency) => currency === 'USD' ? '$' : currency === 'EUR' ? '€' : 'R$';
 
   if (!isOpen) return null;
 
   return (
     <>
-      <div className="modal-backdrop" onClick={onClose} />
-      <div className="modal-content w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="glass-card flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-800/50 flex-shrink-0">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        {/* Container Principal: Flex Column para forçar Footer no final */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          
+          {/* 1. HEADER (Fixo) */}
+          <div className="flex items-center justify-between p-6 border-b border-slate-800 flex-none bg-slate-900 z-10">
             <h2 className="text-xl font-display font-bold text-white">
               {editTrade ? 'Editar Trade' : 'Novo Trade'}
             </h2>
@@ -327,184 +257,204 @@ const AddTradeModal = ({
             </button>
           </div>
 
-          {/* Form Scrollable */}
-          <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1">
-            {errors.submit && (
-              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-red-400" />
-                <p className="text-sm text-red-400">{errors.submit}</p>
-              </div>
-            )}
-
-            {/* Account Selector (Custom Dropdown) */}
-            <div className="mb-6 relative" ref={accountDropdownRef}>
-              <label className="input-label">Conta *</label>
-              <button
-                type="button"
-                onClick={() => setShowAccountDropdown(!showAccountDropdown)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                  errors.accountId ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700/50 bg-slate-800/50'
-                }`}
-              >
-                {selectedAccount ? (
-                  <span className="text-white font-medium flex items-center gap-2">
-                    <Wallet className="w-4 h-4 text-slate-400"/> {selectedAccount.name}
-                  </span>
-                ) : <span className="text-slate-500">Selecione uma conta...</span>}
-                <ChevronDown className="w-4 h-4 text-slate-400" />
-              </button>
+          {/* 2. BODY (Scrollable) */}
+          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
+            
+            {/* O form envolve apenas os inputs, mas é conectado ao botão via ID */}
+            <form id="trade-form" onSubmit={handleSubmit} className="space-y-6">
               
-              {showAccountDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
-                  {accounts.map(acc => (
-                    <button key={acc.id} type="button" onClick={() => handleAccountSelect(acc.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50 last:border-0">
-                      {acc.name} <span className="text-xs text-slate-500 ml-2">({acc.broker})</span>
-                    </button>
-                  ))}
+              {errors.submit && (
+                <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-3 text-red-400 text-sm">
+                  <AlertCircle className="w-5 h-5" /> {errors.submit}
                 </div>
               )}
-              {errors.accountId && <span className="text-xs text-red-400 mt-1">{errors.accountId}</span>}
-            </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              {/* Date Input */}
-              <div className="input-group">
-                <label className="input-label">Data</label>
-                <input type="date" name="date" value={formData.date} onChange={handleChange} />
-              </div>
-
-              {/* Ticker Input com Datalist e Validação Visual */}
-              <div className="input-group relative">
-                <label className="input-label">Ticker *</label>
-                <input 
-                  type="text" name="ticker" value={formData.ticker} onChange={handleChange} 
-                  className={`uppercase ${errors.ticker ? 'ring-2 ring-red-500/50' : ''}`}
-                  placeholder="PETR4, WIN..." list="tickers-list" autoComplete="off"
-                />
-                <datalist id="tickers-list">
-                  {masterTickers.map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
-                </datalist>
-
-                {/* Badge de Regra Ativa (Feedback UX) */}
-                {activeAssetRule && (
-                  <div className="absolute right-0 top-0 mt-8 mr-2 text-[10px] text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-500/20 pointer-events-none">
-                    Lote Mín: {activeAssetRule.minLot || activeAssetRule.contractSize || 1}
+              {/* SELEÇÃO DE CONTA */}
+              <div className="relative" ref={accountDropdownRef}>
+                <label className="text-xs text-slate-500 mb-1.5 block font-medium">Conta *</label>
+                <button
+                  type="button"
+                  onClick={() => setShowAccountDropdown(!showAccountDropdown)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
+                    errors.accountId ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700/50 bg-slate-800/50'
+                  }`}
+                >
+                  {selectedAccount ? (
+                    <span className="text-white font-medium flex items-center gap-2">
+                      <Wallet className="w-4 h-4 text-slate-400"/> {selectedAccount.name}
+                    </span>
+                  ) : <span className="text-slate-500">Selecione...</span>}
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </button>
+                
+                {showAccountDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
+                    {accounts.map(acc => (
+                      <button key={acc.id} type="button" onClick={() => handleAccountSelect(acc.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50 last:border-0">
+                        {acc.name} <span className="text-xs text-slate-500 ml-2">({acc.broker})</span>
+                      </button>
+                    ))}
                   </div>
                 )}
-                {errors.ticker && <span className="text-xs text-red-400">{errors.ticker}</span>}
+                {errors.accountId && <span className="text-xs text-red-400 block mt-1">{errors.accountId}</span>}
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Bolsa</label>
-                <select name="exchange" value={formData.exchange} onChange={handleChange}>
-                  {EXCHANGES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
-                </select>
-              </div>
+              {/* INPUTS GRID */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="input-label">Data *</label>
+                  <input type="date" name="date" value={formData.date} onChange={handleChange} className="input-dark w-full" />
+                </div>
 
-              <div className="input-group">
-                <label className="input-label">Lado</label>
-                <div className="flex bg-slate-800/50 rounded-xl p-1 border border-slate-700/50">
-                  {SIDES.map(side => (
-                    <button
-                      key={side} type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, side }))}
-                      className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                        formData.side === side
-                          ? side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {side}
-                    </button>
-                  ))}
+                <div className="relative">
+                  <label className="input-label">Ticker *</label>
+                  <input 
+                    type="text" name="ticker" value={formData.ticker} onChange={handleChange} 
+                    className={`input-dark w-full uppercase ${errors.ticker ? 'border-red-500' : ''}`}
+                    placeholder="WINFUT" list="tickers-list" autoComplete="off"
+                  />
+                  <datalist id="tickers-list">
+                    {masterTickers.map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
+                  </datalist>
+                  {activeAssetRule && (
+                    <div className="absolute right-0 top-0 mt-8 mr-2 text-[10px] text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-500/20">
+                      Lote Mín: {activeAssetRule.minLot || 1}
+                    </div>
+                  )}
+                  {errors.ticker && <span className="text-xs text-red-400 block mt-1">{errors.ticker}</span>}
+                </div>
+
+                <div>
+                  <label className="input-label">Bolsa</label>
+                  <select name="exchange" value={formData.exchange} onChange={handleChange} className="input-dark w-full">
+                    {EXCHANGES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="input-label">Lado</label>
+                  <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                    {SIDES.map(side => (
+                      <button
+                        key={side} type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, side }))}
+                        className={`flex-1 py-2 text-xs font-medium rounded transition-all ${
+                          formData.side === side
+                            ? side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {side}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="input-label">Entrada</label>
+                  <input type="number" name="entry" step="any" value={formData.entry} onChange={handleChange} className="input-dark w-full" placeholder="0.00" />
+                </div>
+
+                <div>
+                  <label className="input-label">Saída</label>
+                  <input type="number" name="exit" step="any" value={formData.exit} onChange={handleChange} className="input-dark w-full" placeholder="0.00" />
+                </div>
+
+                <div>
+                  <label className="input-label">Quantidade *</label>
+                  <input 
+                    type="number" name="qty" value={formData.qty} onChange={handleChange} 
+                    className={`input-dark w-full ${errors.qty ? 'border-red-500' : ''}`}
+                    step={activeAssetRule ? (activeAssetRule.minLot || 1) : 1}
+                  />
+                  {errors.qty && <span className="text-xs text-red-400 block mt-1">{errors.qty}</span>}
+                </div>
+
+                <div>
+                  <label className="input-label">Resultado (Est.)</label>
+                  <div className={`input-dark w-full flex items-center justify-center font-mono font-bold ${
+                    previewResult >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'
+                  }`}>
+                    {previewResult !== null 
+                      ? `${previewResult >= 0 ? '+' : ''}${selectedAccount ? getCurrencySymbol(selectedAccount.currency) : 'R$'} ${previewResult.toFixed(2)}` 
+                      : '---'}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="input-label">Setup</label>
+                  <select name="setup" value={formData.setup} onChange={handleChange} className="input-dark w-full">
+                    {SETUPS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="input-label">Emoção</label>
+                  <select name="emotion" value={formData.emotion} onChange={handleChange} className="input-dark w-full">
+                    {EMOTIONS.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
                 </div>
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Entrada</label>
-                <input type="number" name="entry" value={formData.entry} onChange={handleChange} placeholder="0.00" step="any" />
+              {/* Observações */}
+              <div>
+                <label className="input-label">Observações</label>
+                <textarea name="notes" rows="2" value={formData.notes} onChange={handleChange} className="input-dark w-full resize-none" placeholder="Racional do trade..." />
               </div>
 
-              <div className="input-group">
-                <label className="input-label">Saída</label>
-                <input type="number" name="exit" value={formData.exit} onChange={handleChange} placeholder="0.00" step="any" />
+              {/* Imagens */}
+              <div className="grid grid-cols-2 gap-4">
+                 {['htf', 'ltf'].map(type => (
+                   <div key={type}>
+                     <label className="input-label mb-2 uppercase">{type} Image *</label>
+                     {(type === 'htf' ? htfPreview : ltfPreview) ? (
+                       <div className="relative group h-24 rounded-lg overflow-hidden border border-slate-700">
+                         <img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" />
+                         <button type="button" onClick={() => removeImage(type)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"><X/></button>
+                       </div>
+                     ) : (
+                       <label className={`flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:bg-slate-800 ${errors[type] ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700'}`}>
+                         <Upload className="w-5 h-5 text-slate-500" />
+                         <span className="text-[10px] text-slate-500 mt-1">Upload</span>
+                         <input ref={type === 'htf' ? htfInputRef : ltfInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, type)} />
+                       </label>
+                     )}
+                     {errors[type] && <span className="text-[10px] text-red-400 block mt-1">{errors[type]}</span>}
+                   </div>
+                 ))}
               </div>
+            </form>
+          </div>
 
-              {/* Input de Quantidade com Step Inteligente */}
-              <div className="input-group">
-                <label className="input-label">Quantidade *</label>
-                <input 
-                  type="number" name="qty" value={formData.qty} onChange={handleChange} 
-                  placeholder={activeAssetRule ? `Múltiplos de ${activeAssetRule.minLot || 1}` : "100"}
-                  // UI UX: Step inteligente baseado no lote
-                  step={activeAssetRule ? (activeAssetRule.minLot || activeAssetRule.contractSize || 1) : 1}
-                  className={errors.qty ? 'ring-2 ring-red-500/50 border-red-500' : ''}
-                />
-                {errors.qty && <span className="text-xs text-red-400 mt-1 block">{errors.qty}</span>}
-              </div>
+          {/* 3. FOOTER (Fixo e Visível) */}
+          <div className="flex-none p-4 border-t border-slate-800 bg-slate-900 flex justify-end gap-3 z-20 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.3)]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="trade-form" // Conecta este botão externo ao form interno
+              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg shadow-blue-900/20 disabled:opacity-50 transition-all flex items-center"
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {editTrade ? 'Salvar Alterações' : 'Registrar Trade'}
+            </button>
+          </div>
 
-              <div className="input-group">
-                <label className="input-label">Resultado Estimado</label>
-                <div className={`py-3 px-4 rounded-xl border font-mono font-bold text-center ${
-                  previewResult === null ? 'bg-slate-800/50 border-slate-700/50 text-slate-500'
-                  : previewResult >= 0 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
-                }`}>
-                  {previewResult !== null 
-                    ? `${previewResult >= 0 ? '+' : ''}${getCurrencySymbol(selectedAccount)} ${previewResult.toFixed(2)}` 
-                    : '---'}
-                </div>
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Setup</label>
-                <select name="setup" value={formData.setup} onChange={handleChange}>
-                  {SETUPS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <div className="input-group">
-                <label className="input-label">Emoção</label>
-                <select name="emotion" value={formData.emotion} onChange={handleChange}>
-                  {EMOTIONS.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Seção de Imagens (HTF/LTF) */}
-            <div className="grid grid-cols-2 gap-4 mt-6">
-               {['htf', 'ltf'].map(type => (
-                 <div key={type} className="input-group">
-                   <label className="input-label text-xs uppercase text-slate-500 mb-2 block">{type} Image *</label>
-                   {(type === 'htf' ? htfPreview : ltfPreview) ? (
-                     <div className="relative group rounded-xl overflow-hidden border border-slate-700 h-32">
-                       <img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" />
-                       <button type="button" onClick={() => removeImage(type)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-                         <X />
-                       </button>
-                     </div>
-                   ) : (
-                     <label className={`flex flex-col items-center justify-center h-32 border-2 border-dashed rounded-xl cursor-pointer hover:bg-slate-800/50 transition-colors ${errors[type] ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700'}`}>
-                       <Upload className="w-6 h-6 text-slate-500 mb-2" />
-                       <span className="text-xs text-slate-500">Upload {type.toUpperCase()}</span>
-                       <input ref={type === 'htf' ? htfInputRef : ltfInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, type)} />
-                     </label>
-                   )}
-                   {errors[type] && <span className="text-xs text-red-400 mt-1">{errors[type]}</span>}
-                 </div>
-               ))}
-            </div>
-
-            {/* Footer com Ações */}
-            <div className="flex items-center justify-end gap-3 pt-6 mt-6 border-t border-slate-800/50">
-              <button type="button" onClick={onClose} className="btn-secondary" disabled={loading}>Cancelar</button>
-              <button type="submit" className="btn-primary" disabled={loading}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                {editTrade ? 'Salvar Alterações' : 'Registrar Trade'}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
+
+      <style>{`
+        .input-label { display: block; font-size: 0.75rem; color: rgb(148 163 184); margin-bottom: 0.25rem; font-weight: 500; }
+        .input-dark { background: rgb(15 23 42); border: 1px solid rgb(51 65 85); padding: 0.5rem; border-radius: 0.5rem; color: white; outline: none; transition: border-color 0.2s; font-size: 0.875rem; }
+        .input-dark:focus { border-color: rgb(37 99 235); }
+      `}</style>
     </>
   );
 };

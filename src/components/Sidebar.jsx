@@ -1,7 +1,5 @@
 import { 
   LayoutDashboard, 
-  PlusCircle, 
-  LineChart, 
   Users,
   User,
   LogOut,
@@ -11,7 +9,9 @@ import {
   Trophy,
   AlertTriangle,
   Wallet,
-  Database
+  Database,
+  BookOpen, // Ícone semântico para Diário
+  LineChart
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,11 +25,11 @@ const Sidebar = ({
 }) => {
   const { user, logout, isMentor } = useAuth();
 
+  // Menu do Aluno Atualizado
   const studentMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'add-trade', label: 'Novo Trade', icon: PlusCircle },
-    { id: 'accounts', label: 'Contas', icon: Wallet },
-    { id: 'analytics', label: 'Análises', icon: LineChart },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, // Foco em Analytics
+    { id: 'journal', label: 'Diário', icon: BookOpen },             // Gestão de Lista (Substitui tabela do dash)
+    { id: 'accounts', label: 'Contas', icon: Wallet },              // Configurações
   ];
 
   const mentorMenuItems = [
@@ -79,9 +79,9 @@ const Sidebar = ({
             {!collapsed && (
               <div className="overflow-hidden">
                 <h1 className="font-display font-bold text-white truncate">
-                  Acompanhamento
+                  Titchio
                 </h1>
-                <p className="text-xs text-slate-500">2.0</p>
+                <p className="text-xs text-slate-500">Alpha</p>
               </div>
             )}
           </div>
@@ -105,7 +105,11 @@ const Sidebar = ({
             <button
               key={item.id}
               onClick={() => onViewChange(item.id)}
-              className={`menu-item w-full ${currentView === item.id ? 'active' : ''}`}
+              className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                currentView === item.id 
+                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+              }`}
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />
               {!collapsed && (
