@@ -11,14 +11,15 @@ import {
   ChevronDown,
   CheckCircle
 } from 'lucide-react';
-import { SETUPS, EMOTIONS, EXCHANGES, SIDES } from '../firebase';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 
+// Sides são fixos (não vem do Firestore)
+const SIDES = ['LONG', 'SHORT'];
+
 /**
  * AddTradeModal (Fixed Layout Version)
- * Corrige o problema de botões escondidos usando um layout Flexbox vertical.
- * Header e Footer ficam fixos, apenas o corpo do formulário rola.
+ * Usa useMasterData para buscar setups, emotions, exchanges do Firestore
  */
 const AddTradeModal = ({ 
   isOpen, 
@@ -28,18 +29,24 @@ const AddTradeModal = ({
   loading = false 
 }) => {
   const { accounts, loading: accountsLoading } = useAccounts();
-  const { tickers: masterTickers } = useMasterData(); 
+  const { 
+    setups, 
+    emotions, 
+    exchanges, 
+    tickers: masterTickers,
+    loading: masterLoading 
+  } = useMasterData(); 
   
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     ticker: '',
-    exchange: 'B3',
+    exchange: '',
     side: 'LONG',
     entry: '',
     exit: '',
     qty: '',
-    setup: 'Rompimento',
-    emotion: 'Disciplinado',
+    setup: '',
+    emotion: '',
     notes: '',
     accountId: '',
   });
@@ -70,7 +77,7 @@ const AddTradeModal = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Inicialização
+  // Inicialização - definir defaults quando dados carregam
   useEffect(() => {
     if (!isOpen) return;
     
@@ -91,20 +98,25 @@ const AddTradeModal = ({
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
     } else {
+      // Defaults baseados nos dados do Firestore
+      const defaultExchange = exchanges.length > 0 ? exchanges[0].code : 'B3';
+      const defaultSetup = setups.length > 0 ? setups[0].name : '';
+      const defaultEmotion = emotions.length > 0 ? emotions.find(e => e.category === 'neutral')?.name || emotions[0].name : '';
+      
       setFormData(prev => ({
         date: new Date().toISOString().split('T')[0],
         ticker: '',
-        exchange: 'B3',
+        exchange: defaultExchange,
         side: 'LONG',
         entry: '',
         exit: '',
         qty: '',
-        setup: 'Rompimento',
-        emotion: 'Disciplinado',
+        setup: defaultSetup,
+        emotion: defaultEmotion,
         notes: '',
         accountId: prev.accountId && accounts.find(acc => acc.id === prev.accountId) 
           ? prev.accountId 
-          : (accounts.find(acc => acc.active)?.id || ''),
+          : (accounts.find(acc => acc.active)?.id || accounts[0]?.id || ''),
       }));
       setHtfFile(null);
       setLtfFile(null);
@@ -113,7 +125,7 @@ const AddTradeModal = ({
       setActiveAssetRule(null);
     }
     setErrors({});
-  }, [editTrade, isOpen, accounts]); 
+  }, [editTrade, isOpen, accounts, exchanges, setups, emotions]); 
 
   // Regra de Ativo (WINFUT vs Ações)
   useEffect(() => {
@@ -122,8 +134,9 @@ const AddTradeModal = ({
       return;
     }
     const userInput = formData.ticker.toUpperCase();
-    const rule = masterTickers.find(t => t.symbol === userInput) || 
-                 masterTickers.find(t => userInput.startsWith(t.symbol));
+    const tickers = masterTickers || [];
+    const rule = tickers.find(t => t.symbol === userInput) || 
+                 tickers.find(t => userInput.startsWith(t.symbol));
 
     if (rule) {
       setActiveAssetRule(rule);
@@ -203,6 +216,7 @@ const AddTradeModal = ({
     if (!formData.entry || isNaN(parseFloat(formData.entry))) newErrors.entry = 'Preço inválido';
     if (!formData.exit || isNaN(parseFloat(formData.exit))) newErrors.exit = 'Preço inválido';
     if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
+    if (!formData.setup) newErrors.setup = 'Selecione um setup';
 
     const qtyNum = parseFloat(formData.qty);
     if (!formData.qty || isNaN(qtyNum) || qtyNum <= 0) {
@@ -240,6 +254,32 @@ const AddTradeModal = ({
   const getCurrencySymbol = (currency) => currency === 'USD' ? '$' : currency === 'EUR' ? '€' : 'R$';
 
   if (!isOpen) return null;
+
+  // Loading state
+  if (masterLoading || accountsLoading) {
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 flex items-center gap-4">
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+          <span className="text-white">Carregando...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Se não tem contas, mostrar mensagem
+  if (accounts.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md text-center">
+          <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-white mb-2">Nenhuma conta encontrada</h3>
+          <p className="text-slate-400 mb-4">Você precisa criar uma conta antes de registrar trades.</p>
+          <button onClick={onClose} className="btn-primary">Fechar</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -291,7 +331,7 @@ const AddTradeModal = ({
                   <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
                     {accounts.map(acc => (
                       <button key={acc.id} type="button" onClick={() => handleAccountSelect(acc.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50 last:border-0">
-                        {acc.name} <span className="text-xs text-slate-500 ml-2">({acc.broker})</span>
+                        {acc.name} <span className="text-xs text-slate-500 ml-2">({acc.broker || acc.brokerName})</span>
                       </button>
                     ))}
                   </div>
@@ -314,7 +354,7 @@ const AddTradeModal = ({
                     placeholder="WINFUT" list="tickers-list" autoComplete="off"
                   />
                   <datalist id="tickers-list">
-                    {masterTickers.map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
+                    {(masterTickers || []).map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
                   </datalist>
                   {activeAssetRule && (
                     <div className="absolute right-0 top-0 mt-8 mr-2 text-[10px] text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-500/20">
@@ -327,7 +367,7 @@ const AddTradeModal = ({
                 <div>
                   <label className="input-label">Bolsa</label>
                   <select name="exchange" value={formData.exchange} onChange={handleChange} className="input-dark w-full">
-                    {EXCHANGES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                    {exchanges.map(ex => <option key={ex.id} value={ex.code}>{ex.code} - {ex.name}</option>)}
                   </select>
                 </div>
 
@@ -351,13 +391,15 @@ const AddTradeModal = ({
                 </div>
 
                 <div>
-                  <label className="input-label">Entrada</label>
-                  <input type="number" name="entry" step="any" value={formData.entry} onChange={handleChange} className="input-dark w-full" placeholder="0.00" />
+                  <label className="input-label">Entrada *</label>
+                  <input type="number" name="entry" step="any" value={formData.entry} onChange={handleChange} className={`input-dark w-full ${errors.entry ? 'border-red-500' : ''}`} placeholder="0.00" />
+                  {errors.entry && <span className="text-xs text-red-400 block mt-1">{errors.entry}</span>}
                 </div>
 
                 <div>
-                  <label className="input-label">Saída</label>
-                  <input type="number" name="exit" step="any" value={formData.exit} onChange={handleChange} className="input-dark w-full" placeholder="0.00" />
+                  <label className="input-label">Saída *</label>
+                  <input type="number" name="exit" step="any" value={formData.exit} onChange={handleChange} className={`input-dark w-full ${errors.exit ? 'border-red-500' : ''}`} placeholder="0.00" />
+                  {errors.exit && <span className="text-xs text-red-400 block mt-1">{errors.exit}</span>}
                 </div>
 
                 <div>
@@ -382,16 +424,19 @@ const AddTradeModal = ({
                 </div>
 
                 <div>
-                  <label className="input-label">Setup</label>
-                  <select name="setup" value={formData.setup} onChange={handleChange} className="input-dark w-full">
-                    {SETUPS.map(s => <option key={s} value={s}>{s}</option>)}
+                  <label className="input-label">Setup *</label>
+                  <select name="setup" value={formData.setup} onChange={handleChange} className={`input-dark w-full ${errors.setup ? 'border-red-500' : ''}`}>
+                    <option value="">Selecione...</option>
+                    {setups.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                   </select>
+                  {errors.setup && <span className="text-xs text-red-400 block mt-1">{errors.setup}</span>}
                 </div>
 
                 <div>
                   <label className="input-label">Emoção</label>
                   <select name="emotion" value={formData.emotion} onChange={handleChange} className="input-dark w-full">
-                    {EMOTIONS.map(e => <option key={e} value={e}>{e}</option>)}
+                    <option value="">Selecione...</option>
+                    {emotions.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -409,7 +454,7 @@ const AddTradeModal = ({
                      <label className="input-label mb-2 uppercase">{type} Image *</label>
                      {(type === 'htf' ? htfPreview : ltfPreview) ? (
                        <div className="relative group h-24 rounded-lg overflow-hidden border border-slate-700">
-                         <img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" />
+                         <img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" alt={type} />
                          <button type="button" onClick={() => removeImage(type)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity"><X/></button>
                        </div>
                      ) : (
@@ -438,7 +483,7 @@ const AddTradeModal = ({
             </button>
             <button
               type="submit"
-              form="trade-form" // Conecta este botão externo ao form interno
+              form="trade-form"
               className="px-6 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg shadow-blue-900/20 disabled:opacity-50 transition-all flex items-center"
               disabled={loading}
             >

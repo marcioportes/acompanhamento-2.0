@@ -15,8 +15,33 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * Hook para gerenciamento de planos de trading
- * Plano = Aluno + Setup + Regras de risco
+ * Hook para gerenciamento de Planos de Trading
+ * 
+ * MODELO DE DADOS:
+ * {
+ *   name: string,                    // Nome do plano
+ *   description: string,             // "DT", "Swing", "Opções", "Position"
+ *   accountId: string,               // Conta vinculada
+ *   pl: number,                      // Patrimônio Líquido do plano
+ *   plPercent: number,               // % do saldo da conta (calculado)
+ *   riskPerOperation: number,        // Risco operacional (% máximo perda por op)
+ *   rrTarget: number,                // R:R mínimo
+ *   adjustmentCycle: string,         // Semanal | Mensal | Trimestral | Anual
+ *   cycleGoal: number,               // Meta do ciclo (%)
+ *   cycleStop: number,               // Stop do ciclo (%) - proteção PL
+ *   operationPeriod: string,         // Diário | Semanal | Mensal
+ *   periodGoal: number,              // Meta do período (%)
+ *   periodStop: number,              // Stop do período (%)
+ *   studentId: string,
+ *   studentEmail: string,
+ *   active: boolean,
+ *   createdAt: timestamp,
+ *   updatedAt: timestamp
+ * }
+ * 
+ * REGRAS:
+ * - Múltiplos planos por conta
+ * - Soma dos PLs ≤ saldo da conta (currentBalance)
  */
 export const usePlans = () => {
   const { user, isMentor } = useAuth();
@@ -33,52 +58,92 @@ export const usePlans = () => {
     }
 
     setLoading(true);
+    setError(null);
+    
     let q;
 
-    if (isMentor()) {
-      // Mentor vê todos os planos
-      q = query(
-        collection(db, 'plans'),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      // Aluno vê apenas seus planos
-      q = query(
-        collection(db, 'plans'),
-        where('studentId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
-    }
-
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const plansData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setPlans(plansData);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Erro ao carregar planos:', err);
-        setError(err.message);
-        setLoading(false);
+    try {
+      if (isMentor()) {
+        // Mentor vê todos os planos
+        q = query(
+          collection(db, 'plans'),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        // Aluno vê apenas seus planos
+        q = query(
+          collection(db, 'plans'),
+          where('studentId', '==', user.uid)
+        );
       }
-    );
 
-    return () => unsubscribe();
+      const unsubscribe = onSnapshot(q, 
+        (snapshot) => {
+          let plansData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          // Ordenar no cliente
+          plansData.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(0);
+            const dateB = b.createdAt?.toDate?.() || new Date(0);
+            return dateB - dateA;
+          });
+          
+          setPlans(plansData);
+          setLoading(false);
+        },
+        (err) => {
+          console.error('Erro ao carregar planos:', err);
+          setError(err.message);
+          setLoading(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.error('Erro ao configurar listener de planos:', err);
+      setError(err.message);
+      setLoading(false);
+    }
   }, [user, isMentor]);
 
-  // Criar plano
+  /**
+   * Criar plano
+   */
   const addPlan = useCallback(async (planData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
       const newPlan = {
-        ...planData,
-        studentId: planData.studentId || user.uid,
-        studentEmail: planData.studentEmail || user.email,
-        studentName: planData.studentName || user.displayName || user.email.split('@')[0],
+        // Dados básicos
+        name: planData.name || 'Plano de Trading',
+        description: planData.description || '',
+        accountId: planData.accountId,
+        
+        // Patrimônio
+        pl: parseFloat(planData.pl) || 0,
+        plPercent: parseFloat(planData.plPercent) || 0,
+        
+        // Risco
+        riskPerOperation: parseFloat(planData.riskPerOperation) || 2,
+        rrTarget: parseFloat(planData.rrTarget) || 2,
+        
+        // Ciclo de Ajuste
+        adjustmentCycle: planData.adjustmentCycle || 'Mensal',
+        cycleGoal: parseFloat(planData.cycleGoal) || 10,
+        cycleStop: parseFloat(planData.cycleStop) || 5,
+        
+        // Período de Operação
+        operationPeriod: planData.operationPeriod || 'Diário',
+        periodGoal: parseFloat(planData.periodGoal) || 2,
+        periodStop: parseFloat(planData.periodStop) || 2,
+        
+        // Metadados
+        studentId: user.uid,
+        studentEmail: user.email,
+        studentName: user.displayName || user.email.split('@')[0],
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -92,7 +157,9 @@ export const usePlans = () => {
     }
   }, [user]);
 
-  // Atualizar plano
+  /**
+   * Atualizar plano
+   */
   const updatePlan = useCallback(async (planId, planData) => {
     try {
       const planRef = doc(db, 'plans', planId);
@@ -106,7 +173,9 @@ export const usePlans = () => {
     }
   }, []);
 
-  // Deletar plano
+  /**
+   * Deletar plano
+   */
   const deletePlan = useCallback(async (planId) => {
     try {
       await deleteDoc(doc(db, 'plans', planId));
@@ -116,72 +185,103 @@ export const usePlans = () => {
     }
   }, []);
 
-  // Buscar planos por aluno
+  /**
+   * Buscar planos por conta
+   */
+  const getPlansByAccount = useCallback((accountId) => {
+    return plans.filter(p => p.accountId === accountId && p.active);
+  }, [plans]);
+
+  /**
+   * Buscar planos por aluno
+   */
   const getPlansByStudent = useCallback((studentId) => {
     return plans.filter(p => p.studentId === studentId);
   }, [plans]);
 
-  // Buscar planos ativos do aluno
-  const getActivePlans = useCallback((studentId) => {
-    const id = studentId || user?.uid;
-    return plans.filter(p => p.studentId === id && p.active);
-  }, [plans, user]);
-
-  // Buscar plano por setup
-  const getPlanBySetup = useCallback((studentId, setupId) => {
-    return plans.find(p => 
-      p.studentId === studentId && 
-      p.setupId === setupId && 
-      p.active
-    );
-  }, [plans]);
-
-  // Buscar plano por ID
+  /**
+   * Buscar plano por ID
+   */
   const getPlanById = useCallback((planId) => {
     return plans.find(p => p.id === planId);
   }, [plans]);
 
-  // Validar trade contra plano
-  const validateTradeAgainstPlan = useCallback((trade, plan, accountBalance) => {
+  /**
+   * Calcular PL total usado por conta
+   */
+  const getTotalPlByAccount = useCallback((accountId) => {
+    const accountPlans = plans.filter(p => p.accountId === accountId && p.active);
+    return accountPlans.reduce((sum, p) => sum + (p.pl || 0), 0);
+  }, [plans]);
+
+  /**
+   * Calcular PL disponível para nova alocação
+   */
+  const getAvailablePl = useCallback((accountId, currentBalance, excludePlanId = null) => {
+    const accountPlans = plans.filter(p => 
+      p.accountId === accountId && 
+      p.active && 
+      p.id !== excludePlanId
+    );
+    const usedPl = accountPlans.reduce((sum, p) => sum + (p.pl || 0), 0);
+    return Math.max(0, currentBalance - usedPl);
+  }, [plans]);
+
+  /**
+   * Validar trade contra plano
+   * Retorna array de violações/alertas
+   */
+  const validateTradeAgainstPlan = useCallback((trade, plan, periodPL = 0, cyclePL = 0) => {
     const violations = [];
 
     if (!plan) {
-      violations.push({
-        type: 'NO_PLAN',
-        message: 'Trade sem plano associado'
-      });
       return violations;
     }
 
-    // Validar risco máximo
-    if (plan.maxRiskPercent && accountBalance) {
-      const riskAmount = Math.abs(trade.result < 0 ? trade.result : 0);
-      const riskPercent = (riskAmount / accountBalance) * 100;
-      
-      if (riskPercent > plan.maxRiskPercent) {
+    // Verificar stop do período
+    if (plan.periodStop && periodPL < 0) {
+      const periodLossPercent = Math.abs(periodPL / plan.pl) * 100;
+      if (periodLossPercent >= plan.periodStop) {
         violations.push({
-          type: 'RISK_EXCEEDED',
-          message: `Risco ${riskPercent.toFixed(2)}% excede máximo de ${plan.maxRiskPercent}%`
+          type: 'PERIOD_STOP_HIT',
+          severity: 'critical',
+          message: `Stop do período atingido: -${periodLossPercent.toFixed(1)}% (limite: ${plan.periodStop}%)`
         });
       }
     }
 
-    // Validar R:R mínimo
-    if (plan.minRiskReward && trade.riskReward) {
-      if (trade.riskReward < plan.minRiskReward) {
+    // Verificar stop do ciclo
+    if (plan.cycleStop && cyclePL < 0) {
+      const cycleLossPercent = Math.abs(cyclePL / plan.pl) * 100;
+      if (cycleLossPercent >= plan.cycleStop) {
+        violations.push({
+          type: 'CYCLE_STOP_HIT',
+          severity: 'critical',
+          message: `Stop do ciclo atingido: -${cycleLossPercent.toFixed(1)}% (limite: ${plan.cycleStop}%)`
+        });
+      }
+    }
+
+    // Verificar R:R mínimo
+    if (plan.rrTarget && trade.riskReward) {
+      if (trade.riskReward < plan.rrTarget) {
         violations.push({
           type: 'RR_BELOW_MINIMUM',
-          message: `R:R ${trade.riskReward.toFixed(2)} abaixo do mínimo ${plan.minRiskReward}`
+          severity: 'warning',
+          message: `R:R ${trade.riskReward.toFixed(1)} abaixo do mínimo ${plan.rrTarget}`
         });
       }
     }
 
-    // Validar emoção bloqueada
-    if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotion)) {
-      violations.push({
-        type: 'BLOCKED_EMOTION',
-        message: `Estado emocional "${trade.emotion}" bloqueado no plano`
-      });
+    // Verificar risco operacional
+    if (plan.riskPerOperation && trade.riskPercent) {
+      if (trade.riskPercent > plan.riskPerOperation) {
+        violations.push({
+          type: 'RISK_EXCEEDED',
+          severity: 'warning',
+          message: `Risco ${trade.riskPercent.toFixed(1)}% excede limite de ${plan.riskPerOperation}%`
+        });
+      }
     }
 
     return violations;
@@ -194,10 +294,11 @@ export const usePlans = () => {
     addPlan,
     updatePlan,
     deletePlan,
+    getPlansByAccount,
     getPlansByStudent,
-    getActivePlans,
-    getPlanBySetup,
     getPlanById,
+    getTotalPlByAccount,
+    getAvailablePl,
     validateTradeAgainstPlan
   };
 };

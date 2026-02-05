@@ -9,9 +9,9 @@ import {
   Trophy,
   AlertTriangle,
   Wallet,
-  Database,
-  BookOpen, // Ícone semântico para Diário
-  LineChart
+  BookOpen,
+  LineChart,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,13 +25,14 @@ const Sidebar = ({
 }) => {
   const { user, logout, isMentor } = useAuth();
 
-  // Menu do Aluno Atualizado
+  // Menu do Aluno
   const studentMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }, // Foco em Analytics
-    { id: 'journal', label: 'Diário', icon: BookOpen },             // Gestão de Lista (Substitui tabela do dash)
-    { id: 'accounts', label: 'Contas', icon: Wallet },              // Configurações
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'journal', label: 'Diário', icon: BookOpen },
+    { id: 'accounts', label: 'Contas', icon: Wallet },
   ];
 
+  // Menu do Mentor
   const mentorMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'students', label: 'Alunos', icon: Users },
@@ -50,7 +51,7 @@ const Sidebar = ({
       badgeColor: 'red'
     },
     { id: 'ranking', label: 'Ranking', icon: Trophy },
-    { id: 'admin', label: 'Admin', icon: Database },
+    { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
   const menuItems = isMentor() ? mentorMenuItems : studentMenuItems;
@@ -79,7 +80,7 @@ const Sidebar = ({
             {!collapsed && (
               <div className="overflow-hidden">
                 <h1 className="font-display font-bold text-white truncate">
-                  Titchio
+                  Tchio
                 </h1>
                 <p className="text-xs text-slate-500">Alpha</p>
               </div>
