@@ -1,6 +1,6 @@
 /**
  * AccountDetailPage - Página de detalhes da conta (Ledger)
- * 
+ *
  * Layout:
  * - Header com saldos
  * - Botões de Depósito/Saque
@@ -8,11 +8,11 @@
  * - Tabela de movimentos (extrato)
  */
 
-import { useState, useMemo, useEffect } from 'react';
-import { 
-  ArrowLeft, Plus, Minus, Calendar, Download, RefreshCw,
+import { useState, useMemo } from 'react';
+import {
+  ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
-  Wallet, AlertCircle, Loader2, X, Check
+  Wallet, AlertCircle, Loader2, X, Check, RefreshCw
 } from 'lucide-react';
 import { useMovements } from '../hooks/useMovements';
 
@@ -44,12 +44,11 @@ const PERIODS = [
 ];
 
 const AccountDetailPage = ({ account, onBack }) => {
-  const { 
-    movements, 
-    loading, 
-    addDeposit, 
-    addWithdrawal,
-    getTotals 
+  const {
+    movements,
+    loading,
+    addDeposit,
+    addWithdrawal
   } = useMovements(account?.id);
 
   const [period, setPeriod] = useState('month');
@@ -63,11 +62,10 @@ const AccountDetailPage = ({ account, onBack }) => {
   // Filtrar movimentos por período
   const filteredMovements = useMemo(() => {
     if (!movements.length) return [];
-    
+
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    
-    // Calcular datas de início
+
     const getStartDate = () => {
       switch (period) {
         case 'today':
@@ -77,9 +75,8 @@ const AccountDetailPage = ({ account, onBack }) => {
           start.setDate(now.getDate() - now.getDay());
           return start.toISOString().split('T')[0];
         }
-        case 'month': {
+        case 'month':
           return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        }
         case 'quarter': {
           const quarterMonth = Math.floor(now.getMonth() / 3) * 3;
           return `${now.getFullYear()}-${String(quarterMonth + 1).padStart(2, '0')}-01`;
@@ -92,18 +89,36 @@ const AccountDetailPage = ({ account, onBack }) => {
     };
 
     const startDate = getStartDate();
-    
     if (!startDate) return movements;
-    
-    return movements.filter(m => m.date >= startDate);
+
+    return movements.filter(m => (m?.date || '') >= startDate);
   }, [movements, period]);
 
-  // Ordenar do mais recente para o mais antigo (para exibição)
+  /**
+   * ✅ CORREÇÃO CRÍTICA:
+   * Ordenar o extrato em ordem cronológica (antigo -> novo).
+   *
+   * Motivo:
+   * - A coluna "Saldo" (balanceAfter) faz sentido quando você lê
+   *   o extrato de cima pra baixo (linha a linha).
+   * - Isso elimina o efeito visual de "saldo não acompanha o extrato"
+   *   quando existe ajuste/depósito/trade com dateTime diferente.
+   */
   const sortedMovements = useMemo(() => {
-    return [...filteredMovements].reverse();
+    const data = [...filteredMovements];
+
+    data.sort((a, b) => {
+      const dtA = a?.dateTime || (a?.date ? `${a.date}T00:00:00.000Z` : '');
+      const dtB = b?.dateTime || (b?.date ? `${b.date}T00:00:00.000Z` : '');
+
+      // Ascendente: antigo -> novo
+      return dtA.localeCompare(dtB);
+    });
+
+    return data;
   }, [filteredMovements]);
 
-  // Calcular totais do período
+  // Calcular totais do período (não conta INITIAL_BALANCE como depósito do período)
   const periodTotals = useMemo(() => {
     const totals = {
       deposits: 0,
@@ -114,7 +129,6 @@ const AccountDetailPage = ({ account, onBack }) => {
 
     filteredMovements.forEach(m => {
       switch (m.type) {
-        case 'INITIAL_BALANCE':
         case 'DEPOSIT':
           totals.deposits += m.amount;
           break;
@@ -124,31 +138,32 @@ const AccountDetailPage = ({ account, onBack }) => {
         case 'TRADE_RESULT':
           totals.tradeResults += m.amount;
           break;
+        case 'INITIAL_BALANCE':
+        case 'ADJUSTMENT':
+        default:
+          break;
       }
-      totals.net += m.amount;
+      totals.net += (m.amount || 0);
     });
 
     return totals;
   }, [filteredMovements]);
 
-  // Saldo atual - SEMPRE calcular a partir dos movements quando disponível
+  // Saldo atual: usa o movimento mais recente (agora é o último da lista ordenada)
   const currentBalance = useMemo(() => {
-    // Se tem movements, usar o último balanceAfter
-    if (movements.length > 0) {
-      return movements[movements.length - 1].balanceAfter || 0;
+    if (sortedMovements.length > 0) {
+      return sortedMovements[sortedMovements.length - 1].balanceAfter || 0;
     }
-    // Se não tem movements mas tem account, usar currentBalance ou initialBalance
     return account?.currentBalance ?? account?.initialBalance ?? 0;
-  }, [movements, account]);
+  }, [sortedMovements, account]);
 
-  // Variação percentual - comparar com initialBalance
+  // Variação percentual
   const variation = useMemo(() => {
     const initial = account?.initialBalance || 0;
     if (initial === 0) return 0;
     return ((currentBalance - initial) / initial) * 100;
   }, [currentBalance, account]);
 
-  // Abrir modal de transação
   const openTransactionModal = (type) => {
     setTransactionType(type);
     setTransactionAmount('');
@@ -157,7 +172,6 @@ const AccountDetailPage = ({ account, onBack }) => {
     setShowTransactionModal(true);
   };
 
-  // Salvar transação
   const handleSaveTransaction = async () => {
     const amount = parseFloat(transactionAmount);
     if (!amount || amount <= 0) {
@@ -172,7 +186,6 @@ const AccountDetailPage = ({ account, onBack }) => {
       if (transactionType === 'DEPOSIT') {
         await addDeposit(account.id, amount, transactionDescription);
       } else {
-        // Verificar se tem saldo suficiente
         if (amount > currentBalance) {
           setError('Saldo insuficiente para este saque');
           setSaving(false);
@@ -182,13 +195,12 @@ const AccountDetailPage = ({ account, onBack }) => {
       }
       setShowTransactionModal(false);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Erro ao salvar movimentação');
     } finally {
       setSaving(false);
     }
   };
 
-  // Ícone do movimento
   const getMovementIcon = (type, amount) => {
     switch (type) {
       case 'INITIAL_BALANCE':
@@ -198,7 +210,7 @@ const AccountDetailPage = ({ account, onBack }) => {
       case 'WITHDRAWAL':
         return <ArrowUpCircle className="w-4 h-4 text-red-400" />;
       case 'TRADE_RESULT':
-        return amount >= 0 
+        return amount >= 0
           ? <TrendingUp className="w-4 h-4 text-emerald-400" />
           : <TrendingDown className="w-4 h-4 text-red-400" />;
       default:
@@ -206,7 +218,6 @@ const AccountDetailPage = ({ account, onBack }) => {
     }
   };
 
-  // Label do tipo
   const getTypeLabel = (type) => {
     switch (type) {
       case 'INITIAL_BALANCE': return 'Saldo Inicial';
@@ -230,7 +241,7 @@ const AccountDetailPage = ({ account, onBack }) => {
     <div className="min-h-screen p-6 lg:p-8 animate-in fade-in">
       {/* Header */}
       <div className="mb-6">
-        <button 
+        <button
           onClick={onBack}
           className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors"
         >
@@ -251,13 +262,13 @@ const AccountDetailPage = ({ account, onBack }) => {
 
           {/* Ações */}
           <div className="flex gap-3">
-            <button 
+            <button
               onClick={() => openTransactionModal('DEPOSIT')}
               className="btn-primary flex items-center gap-2"
             >
               <Plus className="w-4 h-4" /> Depósito
             </button>
-            <button 
+            <button
               onClick={() => openTransactionModal('WITHDRAWAL')}
               className="btn-secondary flex items-center gap-2 text-red-400 border-red-500/30 hover:bg-red-500/10"
             >
@@ -269,7 +280,6 @@ const AccountDetailPage = ({ account, onBack }) => {
 
       {/* Cards de Saldo */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* Saldo Atual */}
         <div className="glass-card p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Atual</p>
           <p className={`text-2xl font-bold ${currentBalance >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -280,7 +290,6 @@ const AccountDetailPage = ({ account, onBack }) => {
           </p>
         </div>
 
-        {/* Saldo Inicial */}
         <div className="glass-card p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Inicial</p>
           <p className="text-2xl font-bold text-white">
@@ -289,9 +298,10 @@ const AccountDetailPage = ({ account, onBack }) => {
           <p className="text-sm text-slate-500 mt-1">Capital investido</p>
         </div>
 
-        {/* P&L do Período */}
         <div className="glass-card p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">P&L Trades ({PERIODS.find(p => p.id === period)?.label})</p>
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
+            P&L Trades ({PERIODS.find(p => p.id === period)?.label})
+          </p>
           <p className={`text-2xl font-bold ${periodTotals.tradeResults >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {periodTotals.tradeResults >= 0 ? '+' : ''}{formatCurrency(periodTotals.tradeResults, account.currency)}
           </p>
@@ -304,7 +314,6 @@ const AccountDetailPage = ({ account, onBack }) => {
       {/* Filtro + Resumo */}
       <div className="glass-card mb-6">
         <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
-          {/* Filtro de Período */}
           <div className="flex items-center gap-3">
             <Calendar className="w-4 h-4 text-slate-500" />
             <select
@@ -318,7 +327,6 @@ const AccountDetailPage = ({ account, onBack }) => {
             </select>
           </div>
 
-          {/* Resumo do Período */}
           <div className="flex gap-6 text-sm">
             <div>
               <span className="text-slate-500">Depósitos: </span>
@@ -396,7 +404,8 @@ const AccountDetailPage = ({ account, onBack }) => {
             {sortedMovements.length} movimento{sortedMovements.length !== 1 ? 's' : ''}
           </span>
           <span className="text-slate-400">
-            Saldo atual: <span className={`font-bold ${currentBalance >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
+            Saldo atual:{' '}
+            <span className={`font-bold ${currentBalance >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
               {formatCurrency(currentBalance, account.currency)}
             </span>
           </span>
@@ -407,7 +416,6 @@ const AccountDetailPage = ({ account, onBack }) => {
       {showTransactionModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
-            {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 {transactionType === 'DEPOSIT' ? (
@@ -427,7 +435,6 @@ const AccountDetailPage = ({ account, onBack }) => {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-5 space-y-4">
               {error && (
                 <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
@@ -436,7 +443,6 @@ const AccountDetailPage = ({ account, onBack }) => {
                 </div>
               )}
 
-              {/* Saldo Disponível (para saque) */}
               {transactionType === 'WITHDRAWAL' && (
                 <div className="bg-slate-800/50 rounded-xl p-4">
                   <p className="text-xs text-slate-500 uppercase mb-1">Saldo Disponível</p>
@@ -446,7 +452,6 @@ const AccountDetailPage = ({ account, onBack }) => {
                 </div>
               )}
 
-              {/* Valor */}
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2">
                   Valor ({account.currency}) *
@@ -468,7 +473,6 @@ const AccountDetailPage = ({ account, onBack }) => {
                 </div>
               </div>
 
-              {/* Descrição */}
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2">
                   Descrição (opcional)
@@ -483,7 +487,6 @@ const AccountDetailPage = ({ account, onBack }) => {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex gap-3 p-5 border-t border-slate-800">
               <button
                 onClick={() => setShowTransactionModal(false)}
