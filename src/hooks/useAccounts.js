@@ -225,7 +225,7 @@ export const useAccounts = () => {
 
   /**
    * Deletar conta com CASCADE DELETE
-   * Remove todos os movements associados
+   * Remove todos os movements e plans associados
    */
   const deleteAccount = useCallback(async (accountId) => {
     try {
@@ -238,12 +238,26 @@ export const useAccounts = () => {
       
       console.log(`[useAccounts] Deletando ${movementsSnapshot.size} movements da conta ${accountId}`);
       
-      const deletePromises = movementsSnapshot.docs.map(docSnap => 
+      const movementDeletePromises = movementsSnapshot.docs.map(docSnap => 
         deleteDoc(doc(db, 'movements', docSnap.id))
       );
-      await Promise.all(deletePromises);
+      await Promise.all(movementDeletePromises);
       
-      // 2. Deletar a conta
+      // 2. Buscar e deletar todos os plans da conta
+      const plansQuery = query(
+        collection(db, 'plans'),
+        where('accountId', '==', accountId)
+      );
+      const plansSnapshot = await getDocs(plansQuery);
+      
+      console.log(`[useAccounts] Deletando ${plansSnapshot.size} plans da conta ${accountId}`);
+      
+      const planDeletePromises = plansSnapshot.docs.map(docSnap => 
+        deleteDoc(doc(db, 'plans', docSnap.id))
+      );
+      await Promise.all(planDeletePromises);
+      
+      // 3. Deletar a conta
       await deleteDoc(doc(db, 'accounts', accountId));
       
       console.log(`[useAccounts] Conta ${accountId} deletada com sucesso`);

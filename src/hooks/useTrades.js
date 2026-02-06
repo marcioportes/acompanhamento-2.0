@@ -158,28 +158,39 @@ export const useTrades = () => {
     setError(null);
 
     try {
-      // Calcular resultado
-      const result = calculateTradeResult(
-        tradeData.side,
-        tradeData.entry,
-        tradeData.exit,
-        tradeData.qty
-      );
+      // Calcular resultado - usar tickerRule se disponível
+      const entry = parseFloat(tradeData.entry);
+      const exit = parseFloat(tradeData.exit);
+      const qty = parseFloat(tradeData.qty);
+      const side = tradeData.side;
       
-      const resultPercent = calculateResultPercent(
-        tradeData.side,
-        tradeData.entry,
-        tradeData.exit
-      );
+      let result;
+      if (tradeData.tickerRule && tradeData.tickerRule.tickSize && tradeData.tickerRule.tickValue) {
+        // Cálculo baseado em tick (futuros, etc)
+        const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
+        const ticks = rawDiff / tradeData.tickerRule.tickSize;
+        result = ticks * tradeData.tickerRule.tickValue * qty;
+      } else {
+        // Cálculo simples (ações)
+        result = calculateTradeResult(side, entry, exit, qty);
+      }
+      
+      const resultPercent = calculateResultPercent(side, entry, exit);
 
-      // Criar documento com nova estrutura
+      // Criar documento - NÃO usar spread de tradeData para evitar sobrescrita
       const newTrade = {
         // Dados do trade
-        ...tradeData,
-        entry: parseFloat(tradeData.entry),
-        exit: parseFloat(tradeData.exit),
-        qty: parseFloat(tradeData.qty),
-        result,
+        date: tradeData.date,
+        ticker: tradeData.ticker?.toUpperCase() || '',
+        exchange: tradeData.exchange || '',
+        side: side,
+        entry: entry,
+        exit: exit,
+        qty: qty,
+        setup: tradeData.setup || '',
+        emotion: tradeData.emotion || '',
+        notes: tradeData.notes || '',
+        result: Math.round(result * 100) / 100, // Arredondar para 2 casas
         resultPercent,
         
         // Dados do aluno
@@ -196,6 +207,9 @@ export const useTrades = () => {
         // Stop e alvo (para cálculo de R:R)
         stopLoss: tradeData.stopLoss ? parseFloat(tradeData.stopLoss) : null,
         takeProfit: tradeData.takeProfit ? parseFloat(tradeData.takeProfit) : null,
+        
+        // Ticker rule para referência
+        tickerRule: tradeData.tickerRule || null,
         
         // Red flags serão preenchidas pela Cloud Function
         redFlags: [],
@@ -216,7 +230,7 @@ export const useTrades = () => {
       };
 
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
-      console.log('[useTrades] Trade criado:', docRef.id);
+      console.log('[useTrades] Trade criado:', docRef.id, 'Resultado:', result);
 
       // Upload das imagens
       let htfUrl = null;
@@ -314,30 +328,44 @@ export const useTrades = () => {
     setError(null);
 
     try {
-      const updateData = { ...updates };
+      const updateData = {};
       let newResult = null;
       let oldResult = null;
 
+      // Copiar campos relevantes (não usar spread para evitar lixo)
+      if (updates.date !== undefined) updateData.date = updates.date;
+      if (updates.ticker !== undefined) updateData.ticker = updates.ticker?.toUpperCase() || '';
+      if (updates.exchange !== undefined) updateData.exchange = updates.exchange;
+      if (updates.side !== undefined) updateData.side = updates.side;
+      if (updates.setup !== undefined) updateData.setup = updates.setup;
+      if (updates.emotion !== undefined) updateData.emotion = updates.emotion;
+      if (updates.notes !== undefined) updateData.notes = updates.notes;
+      if (updates.accountId !== undefined) updateData.accountId = updates.accountId;
+      if (updates.tickerRule !== undefined) updateData.tickerRule = updates.tickerRule;
+
       // Recalcular resultado se necessário
       if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
-        newResult = calculateTradeResult(
-          updates.side,
-          updates.entry,
-          updates.exit,
-          updates.qty
-        );
+        const entry = parseFloat(updates.entry);
+        const exit = parseFloat(updates.exit);
+        const qty = parseFloat(updates.qty);
+        const side = updates.side;
         
-        const resultPercent = calculateResultPercent(
-          updates.side,
-          updates.entry,
-          updates.exit
-        );
+        // Usar tickerRule se disponível
+        if (updates.tickerRule && updates.tickerRule.tickSize && updates.tickerRule.tickValue) {
+          const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
+          const ticks = rawDiff / updates.tickerRule.tickSize;
+          newResult = ticks * updates.tickerRule.tickValue * qty;
+        } else {
+          newResult = calculateTradeResult(side, entry, exit, qty);
+        }
+        
+        const resultPercent = calculateResultPercent(side, entry, exit);
 
-        updateData.result = newResult;
+        updateData.result = Math.round(newResult * 100) / 100;
         updateData.resultPercent = resultPercent;
-        updateData.entry = parseFloat(updates.entry);
-        updateData.exit = parseFloat(updates.exit);
-        updateData.qty = parseFloat(updates.qty);
+        updateData.entry = entry;
+        updateData.exit = exit;
+        updateData.qty = qty;
       }
 
       // Upload novas imagens se fornecidas
@@ -354,7 +382,7 @@ export const useTrades = () => {
       updateData.updatedAt = serverTimestamp();
 
       await updateDoc(doc(db, 'trades', tradeId), updateData);
-      console.log('[useTrades] Trade atualizado:', tradeId);
+      console.log('[useTrades] Trade atualizado:', tradeId, 'Resultado:', newResult);
 
       // ======== ATUALIZAR MOVIMENTO NO LEDGER (se resultado mudou) ========
       if (updates.accountId && newResult !== null) {

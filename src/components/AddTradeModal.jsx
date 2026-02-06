@@ -240,7 +240,16 @@ const AddTradeModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
-    const payload = { ...formData, result: previewResult };
+    // NÃO enviar result - deixar o hook calcular com a lógica correta
+    const payload = { 
+      ...formData,
+      // Incluir regra do ativo para cálculo correto no hook
+      tickerRule: activeAssetRule ? {
+        tickSize: activeAssetRule.tickSize,
+        tickValue: activeAssetRule.tickValue,
+        pointValue: activeAssetRule.pointValue
+      } : null
+    };
     try {
       await onSubmit(payload, htfFile, ltfFile);
       onClose();
