@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  Plus, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight
+  Plus, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
+  TrendingUp, TrendingDown // Ícones de performance adicionados
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import AccountDetailPage from './AccountDetailPage';
-
 // Firebase (para ler o ledger e calcular saldo real por conta)
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -32,11 +32,7 @@ const AccountsPage = () => {
   /**
    * Map de saldos reais calculados pelo ledger:
    * balancesByAccountId[accountId] = number
-   *
-   * Motivo:
-   * - O campo accounts.currentBalance está inconsistente (duplicando trades)
-   * - O ledger (movements) é a fonte de verdade, e o extrato já está correto
-   * - O card precisa refletir o ledger para manter integridade visual e contábil
+   * Motivo: Fonte de verdade é a coleção 'movements'
    */
   const [balancesByAccountId, setBalancesByAccountId] = useState({});
 
@@ -50,7 +46,6 @@ const AccountsPage = () => {
 
   // Filtro de sugestões de corretora
   const brokerNames = useMemo(() => brokers.map(b => b.name).sort(), [brokers]);
-
   const filteredBrokers = useMemo(() => {
     if (!formData.broker) return brokerNames.slice(0, 5);
     return brokerNames
@@ -60,12 +55,8 @@ const AccountsPage = () => {
 
   /**
    * Listener de saldo por conta (via movements)
-   * - Query simples (sem orderBy) para não depender de índice
-   * - Ordenação feita no client por dateTime/date
-   * - O saldo atual é o último balanceAfter do ledger ordenado
    */
   useEffect(() => {
-    // Limpar map se não há contas
     if (!accounts || accounts.length === 0) {
       setBalancesByAccountId({});
       return;
@@ -93,7 +84,7 @@ const AccountsPage = () => {
             return dtA.localeCompare(dtB);
           });
 
-          // Saldo real = último balanceAfter (se não tiver movimentos, fallback)
+          // Saldo real = último balanceAfter
           const realBalance =
             data.length > 0
               ? (data[data.length - 1].balanceAfter || 0)
@@ -105,7 +96,6 @@ const AccountsPage = () => {
           }));
         },
         (err) => {
-          // Se der erro, não quebra a tela: apenas cai no currentBalance legado
           console.error('[AccountsPage] Erro ao ouvir movements da conta:', acc.id, err);
           setBalancesByAccountId(prev => ({
             ...prev,
@@ -150,7 +140,6 @@ const AccountsPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!formData.name.trim()) {
       alert('Informe o nome da conta');
       return;
@@ -165,7 +154,6 @@ const AccountsPage = () => {
     }
 
     const isRealDerived = formData.type === 'REAL' || formData.type === 'PROP';
-
     const payload = {
       name: formData.name.trim(),
       broker: formData.broker.trim(),
@@ -176,8 +164,6 @@ const AccountsPage = () => {
       isReal: isRealDerived,
     };
 
-    // Se não está editando, incluir currentBalance inicial (legado)
-    // OBS: Mesmo que currentBalance esteja errado depois, o card agora usa o ledger (movements)
     if (!editingAccount) {
       payload.currentBalance = Number(formData.initialBalance);
     }
@@ -265,13 +251,20 @@ const AccountsPage = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {accounts.map(acc => {
-          // Saldo atual REAL pelo ledger (movements). Fallback para currentBalance legado.
+          // Saldo atual REAL pelo ledger. Fallback para currentBalance legado.
           const saldoAtual =
             balancesByAccountId[acc.id] ??
             (acc.currentBalance !== undefined ? acc.currentBalance : (acc.initialBalance || 0));
 
           const saldoInicial = acc.initialBalance || 0;
-          const isPositive = saldoAtual >= saldoInicial;
+
+          // CORREÇÃO 1: Solvência. Verde se positivo (>0), independente do lucro.
+          const isSolvent = saldoAtual >= 0;
+
+          // CORREÇÃO 2: Performance. Ícone indica se está lucrando ou em drawdown.
+          const isProfitable = saldoAtual >= saldoInicial;
+          const ProfitIcon = isProfitable ? TrendingUp : TrendingDown;
+          const profitColor = isProfitable ? 'text-emerald-500' : 'text-red-500';
 
           return (
             <div
@@ -294,15 +287,21 @@ const AccountsPage = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">Saldo Inicial</span>
                   <span className="text-white font-mono">
-                    {formatCurrency(acc.initialBalance || 0, acc.currency)}
+                    {formatCurrency(saldoInicial, acc.currency)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">Saldo Atual</span>
-                  <span className={`font-bold font-mono ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatCurrency(saldoAtual, acc.currency)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                     {/* Ícone de tendência (Performance) */}
+                     <ProfitIcon className={`w-4 h-4 ${profitColor}`} />
+                     
+                     {/* Valor Numérico (Solvência) */}
+                     <span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatCurrency(saldoAtual, acc.currency)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -477,17 +476,21 @@ const AccountsPage = () => {
 
       <style>{`
         .badge-account {
-          position: absolute; top: 1rem; right: 1rem;
+          position: absolute;
+          top: 1rem; right: 1rem;
           padding: 0.25rem 0.5rem; border-radius: 0.25rem;
           font-size: 0.625rem; text-transform: uppercase; font-weight: 700;
-          display: flex; align-items: center; gap: 0.25rem; border-width: 1px;
+          display: flex; align-items: center;
+          gap: 0.25rem; border-width: 1px;
         }
         .input-label {
-          display: block; font-size: 0.75rem; color: rgb(148 163 184);
+          display: block;
+          font-size: 0.75rem; color: rgb(148 163 184);
           margin-bottom: 0.5rem; font-weight: 500;
         }
         .input-dark {
-          background: rgb(15 23 42); border: 1px solid rgb(51 65 85);
+          background: rgb(15 23 42);
+          border: 1px solid rgb(51 65 85);
           padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: white;
           outline: none; transition: border-color 0.2s;
         }

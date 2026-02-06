@@ -1,13 +1,3 @@
-/**
- * AccountDetailPage - Página de detalhes da conta (Ledger)
- *
- * Layout:
- * - Header com saldos
- * - Botões de Depósito/Saque
- * - Filtro de período
- * - Tabela de movimentos (extrato)
- */
-
 import { useState, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Minus, Calendar,
@@ -95,14 +85,8 @@ const AccountDetailPage = ({ account, onBack }) => {
   }, [movements, period]);
 
   /**
-   * ✅ CORREÇÃO CRÍTICA:
    * Ordenar o extrato em ordem cronológica (antigo -> novo).
-   *
-   * Motivo:
-   * - A coluna "Saldo" (balanceAfter) faz sentido quando você lê
-   *   o extrato de cima pra baixo (linha a linha).
-   * - Isso elimina o efeito visual de "saldo não acompanha o extrato"
-   *   quando existe ajuste/depósito/trade com dateTime diferente.
+   * Motivo: Para o saldo fazer sentido linha a linha.
    */
   const sortedMovements = useMemo(() => {
     const data = [...filteredMovements];
@@ -118,7 +102,7 @@ const AccountDetailPage = ({ account, onBack }) => {
     return data;
   }, [filteredMovements]);
 
-  // Calcular totais do período (não conta INITIAL_BALANCE como depósito do período)
+  // Calcular totais do período
   const periodTotals = useMemo(() => {
     const totals = {
       deposits: 0,
@@ -282,7 +266,9 @@ const AccountDetailPage = ({ account, onBack }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="glass-card p-5">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Atual</p>
-          <p className={`text-2xl font-bold ${currentBalance >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
+          {/* CORREÇÃO: Saldo verde se >= 0 (solvência), independente se teve lucro ou prejuízo no total.
+          */}
+          <p className={`text-2xl font-bold ${currentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {formatCurrency(currentBalance, account.currency)}
           </p>
           <p className={`text-sm mt-1 ${variation >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
@@ -405,7 +391,8 @@ const AccountDetailPage = ({ account, onBack }) => {
           </span>
           <span className="text-slate-400">
             Saldo atual:{' '}
-            <span className={`font-bold ${currentBalance >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
+            {/* CORREÇÃO AQUI TAMBÉM */}
+            <span className={`font-bold ${currentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {formatCurrency(currentBalance, account.currency)}
             </span>
           </span>

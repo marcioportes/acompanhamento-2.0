@@ -7,14 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de contas de trading
- * 
- * ESCRITA HÍBRIDA (Retrocompatibilidade):
- * - Salva `type`: 'REAL' | 'DEMO' | 'PROP' (novo padrão)
- * - Salva `isReal`: boolean (para compatibilidade com hooks antigos)
- * 
- * LEITURA:
- * - Prioriza `type` se existir
- * - Fallback para `isReal` se `type` for nulo (contas antigas)
+ * VERSÃO 2.1 (DELETE ROBUSTO):
+ * - Garante que a exclusão da conta ocorra mesmo se falhar a exclusão de itens filhos.
  */
 export const useAccounts = () => {
   const { user, isMentor } = useAuth();
@@ -38,7 +32,6 @@ export const useAccounts = () => {
       if (isMentor()) {
         q = query(collection(db, 'accounts'), orderBy('createdAt', 'desc'));
       } else {
-        // Query simples para aluno - ordenação no cliente
         q = query(collection(db, 'accounts'), where('studentId', '==', user.uid));
       }
       
@@ -49,13 +42,11 @@ export const useAccounts = () => {
             return { 
               id: doc.id, 
               ...data,
-              // Normalizar: garantir que `type` e `isReal` estejam consistentes
               type: data.type || (data.isReal ? 'REAL' : 'DEMO'),
               isReal: data.isReal ?? (data.type === 'REAL' || data.type === 'PROP')
             };
           });
           
-          // Ordenação local: ativa primeiro, depois por data
           accountsData.sort((a, b) => {
             if (a.active && !b.active) return -1;
             if (!a.active && b.active) return 1;
@@ -82,30 +73,22 @@ export const useAccounts = () => {
     }
   }, [user, isMentor]);
 
-  /**
-   * Criar conta com ESCRITA HÍBRIDA
-   * - Salva `type` E `isReal` para retrocompatibilidade
-   * - Cria movimento de saldo inicial (INITIAL_BALANCE)
-   */
   const addAccount = useCallback(async (accountData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
       const initialAmount = parseFloat(accountData.initialBalance) || 0;
       const accountType = accountData.type || 'DEMO';
-      
-      // Calcular isReal a partir do type (ESCRITA HÍBRIDA)
       const isRealDerived = accountType === 'REAL' || accountType === 'PROP';
       
-      // 1. Cria a Conta
       const newAccount = {
         name: accountData.name,
         broker: accountData.broker,
         currency: accountData.currency || 'BRL',
-        type: accountType,           // Novo campo
-        isReal: isRealDerived,       // Campo legado para compatibilidade
+        type: accountType,
+        isReal: isRealDerived,
         initialBalance: initialAmount,
-        currentBalance: initialAmount, // Começa com saldo inicial
+        currentBalance: initialAmount,
         studentId: user.uid,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
@@ -117,7 +100,6 @@ export const useAccounts = () => {
       const docRef = await addDoc(collection(db, 'accounts'), newAccount);
       const accountId = docRef.id;
       
-      // 2. Cria o Movimento de saldo inicial (INITIAL_BALANCE)
       if (initialAmount > 0) {
         const movementDate = new Date().toISOString().split('T')[0];
         await addDoc(collection(db, 'movements'), {
@@ -128,7 +110,7 @@ export const useAccounts = () => {
           balanceAfter: initialAmount,
           description: 'Saldo inicial',
           date: movementDate,
-          dateTime: `${movementDate}T00:00:00.000Z`, // Sempre no início do dia
+          dateTime: `${movementDate}T00:00:00.000Z`,
           createdAt: serverTimestamp(),
           createdBy: user.uid
         });
@@ -141,33 +123,24 @@ export const useAccounts = () => {
     }
   }, [user]);
 
-  /**
-   * Atualizar conta com ESCRITA HÍBRIDA
-   * Se initialBalance mudou, cria movimento de ADJUSTMENT
-   */
   const updateAccount = useCallback(async (accountId, accountData) => {
     if (!user) throw new Error('Usuário não autenticado');
     
     try {
       const accountRef = doc(db, 'accounts', accountId);
-      
-      // Buscar conta atual para comparar
       const currentAccount = accounts.find(acc => acc.id === accountId);
       
-      // Se type foi alterado, recalcular isReal
       const updateData = { ...accountData };
       if (accountData.type) {
         updateData.isReal = accountData.type === 'REAL' || accountData.type === 'PROP';
       }
 
-      // Se initialBalance mudou, criar movimento ADJUSTMENT
       if (currentAccount && accountData.initialBalance !== undefined) {
         const oldInitial = currentAccount.initialBalance || 0;
         const newInitial = parseFloat(accountData.initialBalance) || 0;
         const diff = newInitial - oldInitial;
         
         if (diff !== 0) {
-          // Buscar último movimento para calcular saldo
           const movementsQuery = query(
             collection(db, 'movements'),
             where('accountId', '==', accountId)
@@ -180,7 +153,6 @@ export const useAccounts = () => {
               ...d.data(),
               id: d.id
             }));
-            // Ordenar por dateTime descendente para pegar o último
             allMovements.sort((a, b) => {
               const dtA = a.dateTime || a.date || '';
               const dtB = b.dateTime || b.date || '';
@@ -192,7 +164,6 @@ export const useAccounts = () => {
           const balanceAfter = balanceBefore + diff;
           const adjustmentDate = new Date().toISOString().split('T')[0];
           
-          // Criar movimento de ajuste
           await addDoc(collection(db, 'movements'), {
             accountId: accountId,
             type: 'ADJUSTMENT',
@@ -203,12 +174,11 @@ export const useAccounts = () => {
               ? `Ajuste: saldo inicial alterado de ${oldInitial} para ${newInitial}`
               : `Ajuste: saldo inicial alterado de ${oldInitial} para ${newInitial}`,
             date: adjustmentDate,
-            dateTime: new Date().toISOString(), // Timestamp atual
+            dateTime: new Date().toISOString(),
             createdAt: serverTimestamp(),
             createdBy: user.uid
           });
 
-          // Atualizar currentBalance também
           updateData.currentBalance = balanceAfter;
         }
       }
@@ -224,59 +194,55 @@ export const useAccounts = () => {
   }, [user, accounts]);
 
   /**
-   * Deletar conta com CASCADE DELETE
-   * Remove todos os movements e plans associados
+   * Deletar conta com CASCADE DELETE (Blindado)
+   * Tenta deletar filhos, mas garante a exclusão da conta no final.
    */
   const deleteAccount = useCallback(async (accountId) => {
     try {
-      // 1. Buscar e deletar todos os movements da conta
-      const movementsQuery = query(
-        collection(db, 'movements'),
-        where('accountId', '==', accountId)
-      );
-      const movementsSnapshot = await getDocs(movementsQuery);
+      // ETAPA 1: MOVIMENTOS
+      try {
+        const movementsQuery = query(collection(db, 'movements'), where('accountId', '==', accountId));
+        const movementsSnapshot = await getDocs(movementsQuery);
+        const movementDeletePromises = movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id)));
+        await Promise.all(movementDeletePromises);
+      } catch (e) {
+        console.warn('Erro não-bloqueante ao deletar movimentos:', e);
+      }
       
-      console.log(`[useAccounts] Deletando ${movementsSnapshot.size} movements da conta ${accountId}`);
+      // ETAPA 2: PLANOS (METAS)
+      try {
+        const plansQuery = query(collection(db, 'plans'), where('accountId', '==', accountId));
+        const plansSnapshot = await getDocs(plansQuery);
+        const planDeletePromises = plansSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id)));
+        await Promise.all(planDeletePromises);
+      } catch (e) {
+        console.warn('Erro não-bloqueante ao deletar planos:', e);
+      }
+
+      // ETAPA 3: TRADES
+      try {
+        const tradesQuery = query(collection(db, 'trades'), where('accountId', '==', accountId));
+        const tradesSnapshot = await getDocs(tradesQuery);
+        const tradesDeletePromises = tradesSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id)));
+        await Promise.all(tradesDeletePromises);
+      } catch (e) {
+        console.warn('Erro não-bloqueante ao deletar trades:', e);
+      }
       
-      const movementDeletePromises = movementsSnapshot.docs.map(docSnap => 
-        deleteDoc(doc(db, 'movements', docSnap.id))
-      );
-      await Promise.all(movementDeletePromises);
-      
-      // 2. Buscar e deletar todos os plans da conta
-      const plansQuery = query(
-        collection(db, 'plans'),
-        where('accountId', '==', accountId)
-      );
-      const plansSnapshot = await getDocs(plansQuery);
-      
-      console.log(`[useAccounts] Deletando ${plansSnapshot.size} plans da conta ${accountId}`);
-      
-      const planDeletePromises = plansSnapshot.docs.map(docSnap => 
-        deleteDoc(doc(db, 'plans', docSnap.id))
-      );
-      await Promise.all(planDeletePromises);
-      
-      // 3. Deletar a conta
+      // ETAPA 4: CONTA (O principal)
       await deleteDoc(doc(db, 'accounts', accountId));
+      console.log(`[useAccounts] Conta ${accountId} processada.`);
       
-      console.log(`[useAccounts] Conta ${accountId} deletada com sucesso`);
     } catch (err) { 
-      console.error('Erro ao deletar conta:', err);
+      console.error('Erro fatal ao deletar conta:', err);
       throw err; 
     }
   }, []);
 
-  /**
-   * Buscar contas por aluno
-   */
   const getAccountsByStudent = useCallback((studentId) => {
     return accounts.filter(acc => acc.studentId === studentId);
   }, [accounts]);
 
-  /**
-   * Buscar conta ativa do aluno
-   */
   const getActiveAccount = useCallback((studentId) => {
     const studentAccounts = studentId 
       ? accounts.filter(acc => acc.studentId === studentId)
@@ -284,9 +250,6 @@ export const useAccounts = () => {
     return studentAccounts.find(acc => acc.active) || studentAccounts[0];
   }, [accounts, user]);
 
-  /**
-   * Buscar contas reais (usando lógica híbrida)
-   */
   const getRealAccounts = useCallback(() => {
     return accounts.filter(acc => {
       if (acc.type) return acc.type === 'REAL' || acc.type === 'PROP';
@@ -294,9 +257,6 @@ export const useAccounts = () => {
     });
   }, [accounts]);
 
-  /**
-   * Buscar contas demo (usando lógica híbrida)
-   */
   const getDemoAccounts = useCallback(() => {
     return accounts.filter(acc => {
       if (acc.type) return acc.type === 'DEMO';

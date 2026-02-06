@@ -26,7 +26,8 @@ const AddTradeModal = ({
   onClose, 
   onSubmit, 
   editTrade = null,
-  loading = false 
+  loading = false,
+  plans = []
 }) => {
   const { accounts, loading: accountsLoading } = useAccounts();
   const { 
@@ -48,7 +49,7 @@ const AddTradeModal = ({
     setup: '',
     emotion: '',
     notes: '',
-    accountId: '',
+    planId: '',
   });
   
   const [htfFile, setHtfFile] = useState(null);
@@ -57,20 +58,20 @@ const AddTradeModal = ({
   const [ltfPreview, setLtfPreview] = useState(null);
   const [errors, setErrors] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
+  const [showPlanDropdown, setShowPlanDropdown] = useState(false);
   const [activeAssetRule, setActiveAssetRule] = useState(null);
 
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
-  const accountDropdownRef = useRef(null);
+  const planDropdownRef = useRef(null);
 
   // --- EFEITOS (Lógica de Negócio) ---
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target)) {
-        setShowAccountDropdown(false);
+      if (planDropdownRef.current && !planDropdownRef.current.contains(event.target)) {
+        setShowPlanDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -93,7 +94,7 @@ const AddTradeModal = ({
         setup: editTrade.setup,
         emotion: editTrade.emotion,
         notes: editTrade.notes || '',
-        accountId: editTrade.accountId || '',
+        planId: editTrade.planId || '',
       });
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
@@ -114,9 +115,9 @@ const AddTradeModal = ({
         setup: defaultSetup,
         emotion: defaultEmotion,
         notes: '',
-        accountId: prev.accountId && accounts.find(acc => acc.id === prev.accountId) 
-          ? prev.accountId 
-          : (accounts.find(acc => acc.active)?.id || accounts[0]?.id || ''),
+        planId: prev.planId && plans.find(p => p.id === prev.planId) 
+          ? prev.planId 
+          : (plans[0]?.id || ''),
       }));
       setHtfFile(null);
       setLtfFile(null);
@@ -125,7 +126,7 @@ const AddTradeModal = ({
       setActiveAssetRule(null);
     }
     setErrors({});
-  }, [editTrade, isOpen, accounts, exchanges, setups, emotions]); 
+  }, [editTrade, isOpen, plans, exchanges, setups, emotions]); 
 
   // Regra de Ativo (WINFUT vs Ações)
   useEffect(() => {
@@ -178,10 +179,10 @@ const AddTradeModal = ({
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
   };
 
-  const handleAccountSelect = (accountId) => {
-    setFormData(prev => ({ ...prev, accountId }));
-    setShowAccountDropdown(false);
-    if (errors.accountId) setErrors(prev => ({ ...prev, accountId: null }));
+  const handlePlanSelect = (planId) => {
+    setFormData(prev => ({ ...prev, planId }));
+    setShowPlanDropdown(false);
+    if (errors.planId) setErrors(prev => ({ ...prev, planId: null }));
   };
 
   const handleFileChange = (e, type) => {
@@ -215,7 +216,7 @@ const AddTradeModal = ({
     if (!formData.ticker.trim()) newErrors.ticker = 'Ticker é obrigatório';
     if (!formData.entry || isNaN(parseFloat(formData.entry))) newErrors.entry = 'Preço inválido';
     if (!formData.exit || isNaN(parseFloat(formData.exit))) newErrors.exit = 'Preço inválido';
-    if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
+    if (!formData.planId) newErrors.planId = 'Selecione um plano';
     if (!formData.setup) newErrors.setup = 'Selecione um setup';
 
     const qtyNum = parseFloat(formData.qty);
@@ -259,7 +260,8 @@ const AddTradeModal = ({
   };
 
   // UI Helpers
-  const selectedAccount = accounts.find(acc => acc.id === formData.accountId);
+  const selectedPlan = plans.find(p => p.id === formData.planId);
+  const selectedAccount = selectedPlan ? accounts.find(acc => acc.id === selectedPlan.accountId) : null;
   const getCurrencySymbol = (currency) => currency === 'USD' ? '$' : currency === 'EUR' ? '€' : 'R$';
 
   if (!isOpen) return null;
@@ -276,14 +278,14 @@ const AddTradeModal = ({
     );
   }
 
-  // Se não tem contas, mostrar mensagem
-  if (accounts.length === 0) {
+  // Se não tem planos, mostrar mensagem
+  if (plans.length === 0) {
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md text-center">
           <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-white mb-2">Nenhuma conta encontrada</h3>
-          <p className="text-slate-400 mb-4">Você precisa criar uma conta antes de registrar trades.</p>
+          <h3 className="text-lg font-bold text-white mb-2">Nenhum plano encontrado</h3>
+          <p className="text-slate-400 mb-4">Você precisa criar um plano antes de registrar trades.</p>
           <button onClick={onClose} className="btn-primary">Fechar</button>
         </div>
       </div>
@@ -318,34 +320,37 @@ const AddTradeModal = ({
                 </div>
               )}
 
-              {/* SELEÇÃO DE CONTA */}
-              <div className="relative" ref={accountDropdownRef}>
-                <label className="text-xs text-slate-500 mb-1.5 block font-medium">Conta *</label>
+              {/* SELEÇÃO DE PLANO */}
+              <div className="relative" ref={planDropdownRef}>
+                <label className="text-xs text-slate-500 mb-1.5 block font-medium">Plano *</label>
                 <button
                   type="button"
-                  onClick={() => setShowAccountDropdown(!showAccountDropdown)}
+                  onClick={() => setShowPlanDropdown(!showPlanDropdown)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                    errors.accountId ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700/50 bg-slate-800/50'
+                    errors.planId ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700/50 bg-slate-800/50'
                   }`}
                 >
-                  {selectedAccount ? (
+                  {selectedPlan ? (
                     <span className="text-white font-medium flex items-center gap-2">
-                      <Wallet className="w-4 h-4 text-slate-400"/> {selectedAccount.name}
+                      <Wallet className="w-4 h-4 text-slate-400"/> {selectedPlan.name} <span className="text-slate-500 text-xs">({selectedAccount?.name || 'Conta'})</span>
                     </span>
                   ) : <span className="text-slate-500">Selecione...</span>}
                   <ChevronDown className="w-4 h-4 text-slate-400" />
                 </button>
                 
-                {showAccountDropdown && (
+                {showPlanDropdown && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
-                    {accounts.map(acc => (
-                      <button key={acc.id} type="button" onClick={() => handleAccountSelect(acc.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50 last:border-0">
-                        {acc.name} <span className="text-xs text-slate-500 ml-2">({acc.broker || acc.brokerName})</span>
-                      </button>
-                    ))}
+                    {plans.map(plan => {
+                      const planAccount = accounts.find(a => a.id === plan.accountId);
+                      return (
+                        <button key={plan.id} type="button" onClick={() => handlePlanSelect(plan.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50 last:border-0">
+                          {plan.name} <span className="text-xs text-slate-500 ml-2">({planAccount?.name || 'Conta'})</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-                {errors.accountId && <span className="text-xs text-red-400 block mt-1">{errors.accountId}</span>}
+                {errors.planId && <span className="text-xs text-red-400 block mt-1">{errors.planId}</span>}
               </div>
 
               {/* INPUTS GRID */}

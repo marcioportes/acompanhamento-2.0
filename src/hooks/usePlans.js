@@ -16,32 +16,27 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de Planos de Trading
- * 
- * MODELO DE DADOS:
+ * * MODELO DE DADOS:
  * {
- *   name: string,                    // Nome do plano
- *   description: string,             // "DT", "Swing", "Opções", "Position"
- *   accountId: string,               // Conta vinculada
- *   pl: number,                      // Patrimônio Líquido do plano
- *   plPercent: number,               // % do saldo da conta (calculado)
- *   riskPerOperation: number,        // Risco operacional (% máximo perda por op)
- *   rrTarget: number,                // R:R mínimo
- *   adjustmentCycle: string,         // Semanal | Mensal | Trimestral | Anual
- *   cycleGoal: number,               // Meta do ciclo (%)
- *   cycleStop: number,               // Stop do ciclo (%) - proteção PL
- *   operationPeriod: string,         // Diário | Semanal | Mensal
- *   periodGoal: number,              // Meta do período (%)
- *   periodStop: number,              // Stop do período (%)
- *   studentId: string,
- *   studentEmail: string,
- *   active: boolean,
- *   createdAt: timestamp,
- *   updatedAt: timestamp
+ * name: string,                    // Nome do plano
+ * description: string,             // "DT", "Swing", "Opções", "Position"
+ * accountId: string,               // Conta vinculada
+ * pl: number,                      // Patrimônio Líquido do plano
+ * plPercent: number,               // % do saldo da conta (calculado)
+ * riskPerOperation: number,        // Risco operacional (% máximo perda por op)
+ * rrTarget: number,                // R:R mínimo
+ * adjustmentCycle: string,         // Semanal | Mensal | Trimestral | Anual
+ * cycleGoal: number,               // Meta do ciclo (%)
+ * cycleStop: number,               // Stop do ciclo (%) - proteção PL
+ * operationPeriod: string,         // Diário | Semanal | Mensal
+ * periodGoal: number,              // Meta do período (%)
+ * periodStop: number,              // Stop do período (%)
+ * studentId: string,
+ * studentEmail: string,
+ * active: boolean,
+ * createdAt: timestamp,
+ * updatedAt: timestamp
  * }
- * 
- * REGRAS:
- * - Múltiplos planos por conta
- * - Soma dos PLs ≤ saldo da conta (currentBalance)
  */
 export const usePlans = () => {
   const { user, isMentor } = useAuth();
@@ -228,6 +223,18 @@ export const usePlans = () => {
   }, [plans]);
 
   /**
+   * Helper: Retorna planos ativos/em progresso (IN_PROGRESS)
+   * Útil para preencher dropdowns na boleta
+   */
+  const getActivePlans = useCallback(() => {
+    return plans.filter(p => {
+       // Aceita 'IN_PROGRESS', 'ACTIVE' ou se não tiver status definido (legado) assume ativo
+       const status = p.status || 'ACTIVE';
+       return status === 'IN_PROGRESS' || status === 'ACTIVE';
+    });
+  }, [plans]);
+
+  /**
    * Validar trade contra plano
    * Retorna array de violações/alertas
    */
@@ -299,6 +306,7 @@ export const usePlans = () => {
     getPlanById,
     getTotalPlByAccount,
     getAvailablePl,
+    getActivePlans, // [NOVO] Exportando a função necessária
     validateTradeAgainstPlan
   };
 };
