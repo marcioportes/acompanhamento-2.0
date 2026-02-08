@@ -1,11 +1,12 @@
 /**
  * SettingsPage - Configurações Unificadas (apenas Mentor)
+ * VERSÃO 2.6 - Adicionado campo Emoji para Emoções
  */
 import { useState } from 'react';
 import { 
   Settings, TrendingUp, Building2, Landmark, DollarSign, Heart,
   Plus, Edit2, Trash2, X, Check, Loader2, AlertCircle, Shield,
-  Database, RefreshCw, Zap, Search, AlertTriangle
+  Database, RefreshCw, Zap, Search, Smile
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useMasterData } from '../hooks/useMasterData';
@@ -26,6 +27,13 @@ const EMOTION_CATEGORIES = [
   { value: 'neutral', label: 'Neutra', color: 'slate' },
   { value: 'negative', label: 'Negativa', color: 'red' },
 ];
+
+// Emojis sugeridos por categoria
+const EMOJI_SUGGESTIONS = {
+  positive: ['😎', '😌', '🎯', '💪', '✨', '🚀', '🔥', '👍', '😊', '🌟'],
+  neutral: ['😐', '😶', '🤔', '😑', '🙂', '😏'],
+  negative: ['😰', '😨', '🤑', '😴', '😤', '😱', '😡', '😢', '🥵', '🤯'],
+};
 
 const SettingsPage = () => {
   const { user, isMentor } = useAuth();
@@ -48,6 +56,7 @@ const SettingsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [adminLoading, setAdminLoading] = useState(null);
   const [adminResult, setAdminResult] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   if (!isMentor()) {
     return (
@@ -110,6 +119,7 @@ const SettingsPage = () => {
       ];
       case 'emotions': return [
         { key: 'name', label: 'Nome *', type: 'text', placeholder: 'Disciplinado' },
+        { key: 'emoji', label: 'Emoji *', type: 'emoji', placeholder: '😎' },
         { key: 'category', label: 'Categoria *', type: 'select', options: EMOTION_CATEGORIES },
       ];
       default: return [];
@@ -120,13 +130,19 @@ const SettingsPage = () => {
     setEditingItem(item);
     setFormData(item ? { ...item } : {});
     setError(null);
+    setShowEmojiPicker(false);
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
     const fields = getFormFields();
     for (const f of fields.filter(f => f.label.includes('*'))) {
-      if (!formData[f.key]?.trim()) {
+      const value = formData[f.key];
+      if (typeof value === 'string' && !value.trim()) {
+        setError(`Campo "${f.label.replace(' *', '')}" é obrigatório`);
+        return;
+      }
+      if (!value) {
         setError(`Campo "${f.label.replace(' *', '')}" é obrigatório`);
         return;
       }
@@ -182,7 +198,6 @@ const SettingsPage = () => {
   };
 
   const renderItem = (item) => {
-    const usage = checkUsage(activeTab, item);
     switch (activeTab) {
       case 'setups':
         return (
@@ -216,10 +231,16 @@ const SettingsPage = () => {
         const cat = EMOTION_CATEGORIES.find(c => c.value === item.category);
         return (
           <div className="flex items-center gap-3 flex-1">
-            <span className={`px-2 py-0.5 rounded text-xs font-bold bg-${cat?.color || 'slate'}-500/20 text-${cat?.color || 'slate'}-400`}>
-              {cat?.label || 'N/A'}
+            {/* Emoji grande e visível */}
+            <span className="text-3xl leading-none" title={item.name}>
+              {item.emoji || '❓'}
             </span>
-            <p className="font-medium text-white">{item.name}</p>
+            <div className="flex-1">
+              <p className="font-medium text-white">{item.name}</p>
+              <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold mt-1 bg-${cat?.color || 'slate'}-500/20 text-${cat?.color || 'slate'}-400`}>
+                {cat?.label || 'N/A'}
+              </span>
+            </div>
           </div>
         );
       default:
@@ -230,8 +251,11 @@ const SettingsPage = () => {
   const tabData = getTabData();
   const activeTabConfig = TABS.find(t => t.id === activeTab);
 
+  // Emojis filtrados pela categoria selecionada
+  const suggestedEmojis = formData.category ? EMOJI_SUGGESTIONS[formData.category] || [] : [];
+
   return (
-    <div className="min-h-screen p-6 lg:p-8 animate-in fade-in">
+    <div className="min-h-screen p-6 lg:p-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -397,10 +421,51 @@ const SettingsPage = () => {
                   <span className="text-sm text-red-400">{error}</span>
                 </div>
               )}
+              
               {getFormFields().map(field => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-slate-400 mb-2">{field.label}</label>
-                  {field.type === 'textarea' ? (
+                  
+                  {/* CAMPO EMOJI - NOVO */}
+                  {field.type === 'emoji' ? (
+                    <div className="space-y-3">
+                      {/* Input + Preview */}
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="text" 
+                          value={formData[field.key] || ''} 
+                          onChange={(e) => setFormData({...formData, [field.key]: e.target.value})} 
+                          placeholder={field.placeholder}
+                          maxLength={2}
+                          className="w-20 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-3xl focus:border-rose-500 outline-none"
+                        />
+                        <div className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 flex items-center gap-3">
+                          <span className="text-2xl">{formData[field.key] || '❓'}</span>
+                          <span className="text-white font-medium">{formData.name || 'Preview'}</span>
+                        </div>
+                      </div>
+
+                      {/* Sugestões de Emoji (baseado na categoria) */}
+                      {suggestedEmojis.length > 0 && (
+                        <div>
+                          <p className="text-xs text-slate-500 mb-2">Sugestões:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {suggestedEmojis.map((emoji, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setFormData({...formData, [field.key]: emoji})}
+                                className="w-10 h-10 flex items-center justify-center text-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-rose-500/50 rounded-lg transition-all"
+                                title={`Usar ${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : field.type === 'textarea' ? (
                     <textarea value={formData[field.key] || ''} onChange={(e) => setFormData({...formData, [field.key]: e.target.value})} placeholder={field.placeholder} rows={3} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 outline-none resize-none" />
                   ) : field.type === 'select' ? (
                     <select value={formData[field.key] || ''} onChange={(e) => setFormData({...formData, [field.key]: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none">

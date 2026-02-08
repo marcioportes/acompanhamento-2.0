@@ -9,22 +9,16 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
-  orderBy
+  orderBy,
+  writeBatch, 
+  getDocs,
+  limit 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciar dados mestres do sistema
- * - Setups (configurados pelo mentor)
- * - Bolsas/Exchanges
- * - Corretoras/Brokers
- * - Moedas
- * - Emoções
- * - Tickers (ativos negociáveis)
- * 
- * Mentor pode criar/editar/excluir
- * Aluno apenas lê
  */
 export const useMasterData = () => {
   const { user, isMentor } = useAuth();
@@ -65,8 +59,6 @@ export const useMasterData = () => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           setSetups(data);
-        }, (err) => {
-          console.error('Erro ao carregar setups:', err);
         })
       );
 
@@ -80,8 +72,6 @@ export const useMasterData = () => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           setExchanges(data);
-        }, (err) => {
-          console.error('Erro ao carregar exchanges:', err);
         })
       );
 
@@ -95,8 +85,6 @@ export const useMasterData = () => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           setBrokers(data);
-        }, (err) => {
-          console.error('Erro ao carregar brokers:', err);
         })
       );
 
@@ -109,8 +97,6 @@ export const useMasterData = () => {
         onSnapshot(currenciesQuery, (snapshot) => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setCurrencies(data);
-        }, (err) => {
-          console.error('Erro ao carregar currencies:', err);
         })
       );
 
@@ -124,8 +110,6 @@ export const useMasterData = () => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           setEmotions(data);
-        }, (err) => {
-          console.error('Erro ao carregar emotions:', err);
         })
       );
 
@@ -139,8 +123,6 @@ export const useMasterData = () => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           data.sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
           setTickers(data);
-        }, (err) => {
-          console.error('Erro ao carregar tickers:', err);
         })
       );
 
@@ -161,7 +143,6 @@ export const useMasterData = () => {
 
   const addItem = useCallback(async (collectionName, data) => {
     if (!isMentor()) throw new Error('Apenas mentor pode adicionar');
-    
     try {
       const docRef = await addDoc(collection(db, collectionName), {
         ...data,
@@ -178,7 +159,6 @@ export const useMasterData = () => {
 
   const updateItem = useCallback(async (collectionName, id, data) => {
     if (!isMentor()) throw new Error('Apenas mentor pode editar');
-    
     try {
       const docRef = doc(db, collectionName, id);
       await updateDoc(docRef, {
@@ -193,9 +173,7 @@ export const useMasterData = () => {
 
   const deleteItem = useCallback(async (collectionName, id) => {
     if (!isMentor()) throw new Error('Apenas mentor pode excluir');
-    
     try {
-      // Soft delete - marca como inativo
       const docRef = doc(db, collectionName, id);
       await updateDoc(docRef, {
         active: false,
@@ -213,25 +191,70 @@ export const useMasterData = () => {
   const updateSetup = useCallback((id, data) => updateItem('setups', id, data), [updateItem]);
   const deleteSetup = useCallback((id) => deleteItem('setups', id), [deleteItem]);
 
-  // ==================== EXCHANGES ====================
+  // ==================== EXCHANGES (BUG 3 FIXED) ====================
 
   const addExchange = useCallback((data) => addItem('exchanges', data), [addItem]);
   const updateExchange = useCallback((id, data) => updateItem('exchanges', id, data), [updateItem]);
-  const deleteExchange = useCallback((id) => deleteItem('exchanges', id), [deleteItem]);
+  
+  const deleteExchange = useCallback(async (id) => {
+    if (!isMentor()) throw new Error('Apenas mentor pode excluir');
 
-  // ==================== BROKERS ====================
+    try {
+      const exchangeToDeactivate = exchanges.find(e => e.id === id);
+      if (!exchangeToDeactivate) return;
+
+      // 1. Verificar se existem trades associados a esta bolsa
+      const tradesQuery = query(
+        collection(db, 'trades'),
+        where('exchange', '==', exchangeToDeactivate.code),
+        limit(1)
+      );
+      
+      const tradesSnapshot = await getDocs(tradesQuery);
+      
+      // Bloqueia a exclusão se houver trades
+      if (!tradesSnapshot.empty) {
+        throw new Error(`Não é possível excluir a bolsa ${exchangeToDeactivate.code} pois existem trades vinculados a ela.`);
+      }
+
+      const batch = writeBatch(db);
+      const timestamp = serverTimestamp();
+
+      // 2. Desativar a Bolsa
+      const exchangeRef = doc(db, 'exchanges', id);
+      batch.update(exchangeRef, { active: false, updatedAt: timestamp });
+
+      // 3. Desativar todos os Tickers vinculados à bolsa
+      const tickersQuery = query(
+        collection(db, 'tickers'),
+        where('exchange', '==', exchangeToDeactivate.code),
+        where('active', '==', true)
+      );
+      
+      const tickersSnapshot = await getDocs(tickersQuery);
+      tickersSnapshot.forEach((tickerDoc) => {
+        const tickerRef = doc(db, 'tickers', tickerDoc.id);
+        batch.update(tickerRef, { active: false, updatedAt: timestamp });
+      });
+
+      // 4. Commit atômico
+      await batch.commit();
+
+    } catch (err) {
+      console.error('Erro na exclusão em cascata:', err);
+      throw err;
+    }
+  }, [isMentor, exchanges]);
+
+  // ==================== OUTROS CRUDs ====================
 
   const addBroker = useCallback((data) => addItem('brokers', data), [addItem]);
   const updateBroker = useCallback((id, data) => updateItem('brokers', id, data), [updateItem]);
   const deleteBroker = useCallback((id) => deleteItem('brokers', id), [deleteItem]);
 
-  // ==================== CURRENCIES ====================
-
   const addCurrency = useCallback((data) => addItem('currencies', data), [addItem]);
   const updateCurrency = useCallback((id, data) => updateItem('currencies', id, data), [updateItem]);
   const deleteCurrency = useCallback((id) => deleteItem('currencies', id), [deleteItem]);
-
-  // ==================== EMOTIONS ====================
 
   const addEmotion = useCallback((data) => addItem('emotions', data), [addItem]);
   const updateEmotion = useCallback((id, data) => updateItem('emotions', id, data), [updateItem]);
@@ -248,59 +271,20 @@ export const useMasterData = () => {
   const getEmotionById = useCallback((id) => emotions.find(e => e.id === id), [emotions]);
   const getEmotionByName = useCallback((name) => emotions.find(e => e.name === name), [emotions]);
   
-  // Emoções por categoria
   const getPositiveEmotions = useCallback(() => emotions.filter(e => e.category === 'positive'), [emotions]);
   const getNegativeEmotions = useCallback(() => emotions.filter(e => e.category === 'negative'), [emotions]);
   const getNeutralEmotions = useCallback(() => emotions.filter(e => e.category === 'neutral'), [emotions]);
 
   return {
-    // Data
-    setups,
-    exchanges,
-    brokers,
-    currencies,
-    emotions,
-    tickers,
-    loading,
-    error,
-    
-    // CRUD Setups
-    addSetup,
-    updateSetup,
-    deleteSetup,
-    
-    // CRUD Exchanges
-    addExchange,
-    updateExchange,
-    deleteExchange,
-    
-    // CRUD Brokers
-    addBroker,
-    updateBroker,
-    deleteBroker,
-    
-    // CRUD Currencies
-    addCurrency,
-    updateCurrency,
-    deleteCurrency,
-    
-    // CRUD Emotions
-    addEmotion,
-    updateEmotion,
-    deleteEmotion,
-    
-    // Helpers
-    getSetupById,
-    getSetupByName,
-    getExchangeByCode,
-    getBrokerById,
-    getBrokerByName,
-    getCurrencyByCode,
-    getEmotionById,
-    getEmotionByName,
-    getPositiveEmotions,
-    getNegativeEmotions,
-    getNeutralEmotions
+    setups, exchanges, brokers, currencies, emotions, tickers, loading, error,
+    addSetup, updateSetup, deleteSetup,
+    addExchange, updateExchange, deleteExchange,
+    addBroker, updateBroker, deleteBroker,
+    addCurrency, updateCurrency, deleteCurrency,
+    addEmotion, updateEmotion, deleteEmotion,
+    getSetupById, getSetupByName, getExchangeByCode, getBrokerById,
+    getBrokerByName, getCurrencyByCode, getEmotionById, getEmotionByName,
+    getPositiveEmotions, getNegativeEmotions, getNeutralEmotions
   };
 };
 

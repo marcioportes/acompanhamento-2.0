@@ -31,9 +31,7 @@
   },
   "include": [
     "src",
-    "tests",
-    "vitest.config.ts",
-    "playwright.config.ts"
+    "tests"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -7,8 +7,9 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciamento de contas de trading
- * VERSÃO 2.1 (DELETE ROBUSTO):
- * - Garante que a exclusão da conta ocorra mesmo se falhar a exclusão de itens filhos.
+ * VERSÃO 2.5 (FIX DEFINITIVO):
+ * - Resolve erro "Missing permissions" na exclusão.
+ * - Estratégia: Busca trades pelo studentEmail (permitido) e seleciona os da conta via Javascript.
  */
 export const useAccounts = () => {
   const { user, isMentor } = useAuth();
@@ -16,7 +17,7 @@ export const useAccounts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Carregar contas (Listener padrão)
+  // Carregar contas
   useEffect(() => {
     if (!user) { 
       setAccounts([]); 
@@ -194,11 +195,12 @@ export const useAccounts = () => {
   }, [user, accounts]);
 
   /**
-   * Deletar conta com CASCADE DELETE (Blindado)
-   * Tenta deletar filhos, mas garante a exclusão da conta no final.
+   * Deletar conta com CASCADE DELETE (Estratégia Segura)
    */
   const deleteAccount = useCallback(async (accountId) => {
     try {
+      console.log(`[useAccounts] Iniciando exclusão da conta ${accountId}...`);
+
       // ETAPA 1: MOVIMENTOS
       try {
         const movementsQuery = query(collection(db, 'movements'), where('accountId', '==', accountId));
@@ -206,75 +208,69 @@ export const useAccounts = () => {
         const movementDeletePromises = movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id)));
         await Promise.all(movementDeletePromises);
       } catch (e) {
-        console.warn('Erro não-bloqueante ao deletar movimentos:', e);
+        console.warn('Erro ao deletar movimentos:', e);
       }
       
-      // ETAPA 2: PLANOS (METAS)
+      // ETAPA 2: PLANOS
       try {
         const plansQuery = query(collection(db, 'plans'), where('accountId', '==', accountId));
         const plansSnapshot = await getDocs(plansQuery);
         const planDeletePromises = plansSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id)));
         await Promise.all(planDeletePromises);
       } catch (e) {
-        console.warn('Erro não-bloqueante ao deletar planos:', e);
+        console.warn('Erro ao deletar planos:', e);
       }
 
-      // ETAPA 3: TRADES
+      // ETAPA 3: TRADES (FIX DEFINITIVO - FILTRO EM MEMÓRIA)
       try {
-        const tradesQuery = query(collection(db, 'trades'), where('accountId', '==', accountId));
-        const tradesSnapshot = await getDocs(tradesQuery);
-        const tradesDeletePromises = tradesSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id)));
+        let tradesToDelete = [];
+
+        if (isMentor()) {
+           // Mentor pode tudo
+           const q = query(collection(db, 'trades'), where('accountId', '==', accountId));
+           const snap = await getDocs(q);
+           tradesToDelete = snap.docs;
+        } else if (user?.email) {
+           // ALUNO:
+           // 1. Busca TUDO que é seu pelo email (Query Permitida e com Índice)
+           const q = query(collection(db, 'trades'), where('studentEmail', '==', user.email));
+           const snap = await getDocs(q);
+           
+           // 2. Filtra localmente os trades desta conta
+           tradesToDelete = snap.docs.filter(doc => doc.data().accountId === accountId);
+        }
+
+        console.log(`[useAccounts] Encontrados ${tradesToDelete.length} trades para deletar.`);
+
+        const tradesDeletePromises = tradesToDelete.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id)));
         await Promise.all(tradesDeletePromises);
       } catch (e) {
-        console.warn('Erro não-bloqueante ao deletar trades:', e);
+        console.warn('Erro ao deletar trades (verifique permissões):', e);
       }
       
-      // ETAPA 4: CONTA (O principal)
+      // ETAPA 4: CONTA
       await deleteDoc(doc(db, 'accounts', accountId));
-      console.log(`[useAccounts] Conta ${accountId} processada.`);
+      console.log(`[useAccounts] Conta deletada com sucesso.`);
       
     } catch (err) { 
       console.error('Erro fatal ao deletar conta:', err);
       throw err; 
     }
-  }, []);
+  }, [user, isMentor]);
 
-  const getAccountsByStudent = useCallback((studentId) => {
-    return accounts.filter(acc => acc.studentId === studentId);
-  }, [accounts]);
-
+  const getAccountsByStudent = useCallback((studentId) => accounts.filter(acc => acc.studentId === studentId), [accounts]);
   const getActiveAccount = useCallback((studentId) => {
     const studentAccounts = studentId 
       ? accounts.filter(acc => acc.studentId === studentId)
       : accounts.filter(acc => acc.studentId === user?.uid);
     return studentAccounts.find(acc => acc.active) || studentAccounts[0];
   }, [accounts, user]);
-
-  const getRealAccounts = useCallback(() => {
-    return accounts.filter(acc => {
-      if (acc.type) return acc.type === 'REAL' || acc.type === 'PROP';
-      return acc.isReal === true;
-    });
-  }, [accounts]);
-
-  const getDemoAccounts = useCallback(() => {
-    return accounts.filter(acc => {
-      if (acc.type) return acc.type === 'DEMO';
-      return acc.isReal === false || acc.isReal === undefined;
-    });
-  }, [accounts]);
+  const getRealAccounts = useCallback(() => accounts.filter(acc => acc.type === 'REAL' || acc.type === 'PROP' || acc.isReal === true), [accounts]);
+  const getDemoAccounts = useCallback(() => accounts.filter(acc => acc.type === 'DEMO' || (acc.isReal === false || acc.isReal === undefined)), [accounts]);
 
   return {
-    accounts, 
-    loading, 
-    error, 
-    addAccount, 
-    updateAccount, 
-    deleteAccount, 
-    getAccountsByStudent, 
-    getActiveAccount,
-    getRealAccounts,
-    getDemoAccounts
+    accounts, loading, error, addAccount, updateAccount, deleteAccount, 
+    getAccountsByStudent, getActiveAccount, getRealAccounts, getDemoAccounts
   };
 };
 

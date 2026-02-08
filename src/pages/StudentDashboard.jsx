@@ -1,17 +1,12 @@
 /**
  * StudentDashboard - Dashboard principal do aluno
- * 
- * Layout melhorado com:
- * - Cards de KPIs modernos com indicadores visuais
- * - Progresso de metas do plano (Stop/Gain)
- * - Análise SWOT automática
- * - Curva de capital e calendário
+ * VERSÃO 2.9 - Adicionado Card Resumo Conta/Plano (Tarefa 5)
  */
 
 import { useState, useMemo, useEffect } from 'react';
 import { 
   DollarSign, Target, TrendingUp, TrendingDown, Award, PlusCircle, 
-  Wallet, X, FlaskConical, Filter, BarChart3, Activity
+  Wallet, X, FlaskConical, Filter, BarChart3, Activity, Briefcase
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import TradingCalendar from '../components/TradingCalendar';
@@ -248,73 +243,49 @@ const StudentDashboard = () => {
       setTimeout(() => document.getElementById('daily-trades')?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
   };
-  
-  const resetFilters = () => setFilters(prev => ({ 
-    ...prev, 
-    period: 'all', 
-    ticker: 'all', 
-    setup: 'all', 
-    emotion: 'all', 
-    result: 'all', 
-    search: '' 
-  }));
-  
-  const availableTickers = useMemo(() => {
-    return Array.from(new Set(filteredTrades.map(t => t.ticker).filter(Boolean))).sort();
-  }, [filteredTrades]);
 
-  // Loading
-  if (tradesLoading || accountsLoading || plansLoading) {
-    return <Loading fullScreen text="Carregando dados..." />;
-  }
-  
-  // Wizard
-  if (showWizard && !wizardCompleted) {
-    return (
-      <AccountSetupWizard 
-        onComplete={() => {
-          setWizardCompleted(true);
-          setShowWizard(false);
-        }} 
-      />
-    );
-  }
-  
-  // Sem contas
-  if (!hasAccounts) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Wallet className="w-10 h-10 text-blue-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-4">Bem-vindo ao Journal! 🚀</h1>
-          <p className="text-slate-400 mb-8">Para começar, você precisa criar uma conta de trading.</p>
-          <button onClick={() => setShowWizard(true)} className="btn-primary py-3 px-8">
-            <PlusCircle className="w-5 h-5 mr-2" />
-            Criar Minha Conta
-          </button>
-        </div>
-      </div>
-    );
+  const resetFilters = () => {
+    setFilters(prev => ({ 
+      ...prev, 
+      period: 'all', 
+      ticker: 'all', 
+      setup: 'all', 
+      emotion: 'all', 
+      exchange: 'all', 
+      result: 'all', 
+      search: '' 
+    }));
+  };
+
+  const availableTickers = useMemo(() => 
+    [...new Set(filteredTrades.map(t => t.ticker))].sort(), 
+    [filteredTrades]
+  );
+
+  // Helper para ícone de sentimento (Tarefa 5)
+  const getSentimentIcon = (pnl) => {
+    if (pnl > 0) return <span className="text-2xl" title="Performance Positiva">😊</span>;
+    if (pnl < 0) return <span className="text-2xl" title="Performance Negativa">😟</span>;
+    return <span className="text-2xl" title="Neutro">😐</span>;
+  };
+
+  if (tradesLoading || accountsLoading || plansLoading) return <Loading fullScreen text="Carregando dashboard..." />;
+
+  if (!hasAccounts && !wizardCompleted) {
+    return <AccountSetupWizard onComplete={() => setWizardCompleted(true)} />;
   }
 
   return (
     <div className="min-h-screen p-6 lg:p-8 animate-in fade-in">
-      {/* Banner Demo */}
-      {isDemoView && (
-        <div className="bg-yellow-500/10 border-b border-yellow-500/20 p-2 text-center text-yellow-400 text-xs font-bold uppercase tracking-wider mb-6 -mx-6 lg:-mx-8 -mt-6 lg:-mt-8 flex items-center justify-center gap-2">
-          <FlaskConical className="w-4 h-4" /> Ambiente Simulado - Resultados não auditados
-        </div>
-      )}
-
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
-            Olá, {user?.displayName || user?.email?.split('@')[0] || 'Trader'}! 👋
+          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white flex items-center gap-3">
+            <BarChart3 className="text-blue-400" /> Meu Dashboard
           </h1>
-          <p className="text-slate-400 mt-1">Painel de Performance</p>
+          <p className="text-slate-400 mt-1">
+            {isDemoView ? '🧪 Modo Simulado' : '💼 Modo Real'} • {stats.totalTrades} trades registrados
+          </p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -332,6 +303,58 @@ const StudentDashboard = () => {
         </div>
       </div>
 
+      {/* TAREFA 5: Card Resumo Conta/Plano */}
+      <div className="mb-6">
+        <div className="glass-card p-4 lg:p-5 border-l-4 border-blue-500 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+              <Briefcase className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-slate-400 text-xs uppercase tracking-widest font-semibold">Conta Ativa</h3>
+              <p className="text-white font-bold text-lg">
+                {selectedAccounts.length > 1 
+                  ? `${selectedAccounts.length} Contas Selecionadas` 
+                  : selectedAccounts[0]?.name || 'Nenhuma conta'}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden md:block h-10 w-[1px] bg-slate-700/50" />
+
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+              <Target className="w-6 h-6 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-slate-400 text-xs uppercase tracking-widest font-semibold">Plano Operacional</h3>
+              <p className="text-white font-bold text-lg">
+                {activePlan?.name || 'Sem plano vinculado'}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden md:block h-10 w-[1px] bg-slate-700/50" />
+
+          <div className="flex items-center justify-between md:justify-start gap-8 w-full md:w-auto">
+            <div>
+              <h3 className="text-slate-400 text-xs uppercase tracking-widest font-semibold">Saldo Atual</h3>
+              <p className="text-white font-bold text-lg">{formatCurrency(aggregatedCurrentBalance)}</p>
+            </div>
+            <div>
+              <h3 className="text-slate-400 text-xs uppercase tracking-widest font-semibold">P&L {activePlan?.operationPeriod || 'Período'}</h3>
+              <p className={`font-bold text-lg ${periodPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {formatCurrency(periodPnL)}
+              </p>
+            </div>
+            <div className="flex flex-col items-center">
+              <h3 className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-1">Status</h3>
+              {getSentimentIcon(periodPnL)}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Filtros (Colapsável) */}
       {showFilters && (
         <div className="mb-6 animate-in slide-in-from-top-2">
@@ -345,8 +368,25 @@ const StudentDashboard = () => {
         </div>
       )}
 
-      {/* KPI Cards - Layout Moderno */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* KPI Cards - Layout Moderno com NOVO CARD */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        
+        {/* Saldo + P&L Total */}
+        <div className="glass-card p-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full" />
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3 bg-blue-500/20">
+            <Wallet className="w-6 h-6 text-blue-400" />
+          </div>
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo + P&L</p>
+          <p className="text-2xl font-bold text-white">
+            {formatCurrency(aggregatedCurrentBalance)}
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-slate-500">Inicial:</span>
+            <span className="text-xs text-slate-400">{formatCurrency(aggregatedInitialBalance)}</span>
+          </div>
+        </div>
+
         {/* P&L Acumulado */}
         <div className="glass-card p-5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-500/10 to-transparent rounded-bl-full" />
@@ -377,7 +417,7 @@ const StudentDashboard = () => {
           </p>
         </div>
 
-        {/* Profit Factor / Kelly */}
+        {/* Profit Factor */}
         <div className="glass-card p-5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full" />
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 ${stats.profitFactor >= 1 ? 'bg-purple-500/20' : 'bg-red-500/20'}`}>
@@ -490,6 +530,7 @@ const StudentDashboard = () => {
         onSubmit={handleAddTrade} 
         editTrade={editingTrade} 
         loading={isSubmitting} 
+        plans={plans}
       />
       <TradeDetailModal 
         isOpen={!!viewingTrade} 

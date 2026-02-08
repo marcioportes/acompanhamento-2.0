@@ -13,7 +13,7 @@ import { useTrades } from '../hooks/useTrades';
 import { calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, formatCurrency, formatPercent, filterTradesByPeriod } from '../utils/calculations';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
-  const { allTrades, loading, addFeedback, getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, getTradesAwaitingFeedback } = useTrades();
+  const { allTrades, loading, addFeedback, getTradesByStudent } = useTrades();
   
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
@@ -21,7 +21,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
   const [rankingSort, setRankingSort] = useState('totalPL');
   const [filters, setFilters] = useState({ period: 'all', search: '' });
 
-  // Mapear views da sidebar para views internas
   const viewMapping = {
     'dashboard': 'overview',
     'students': 'students',
@@ -32,11 +31,43 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
   
   const activeView = viewMapping[currentView] || 'overview';
 
-  const students = getUniqueStudents();
-  const groupedTrades = getTradesGroupedByStudent();
   const todayTrades = filterTradesByPeriod(allTrades, 'today');
-  const pendingFeedback = getTradesAwaitingFeedback();
-  const studentsNeedingAttention = identifyStudentsNeedingAttention(groupedTrades);
+  
+  // Extrair alunos únicos dos trades
+  const students = useMemo(() => {
+    const map = new Map();
+    allTrades.forEach(t => {
+      if (t.studentId && !map.has(t.studentId)) {
+        map.set(t.studentId, { id: t.studentId, name: t.studentName || 'Aluno', email: t.studentEmail || '' });
+      }
+    });
+    return Array.from(map.values());
+  }, [allTrades]);
+
+  // Agrupar trades por aluno
+  const groupedTrades = useMemo(() => {
+    const groups = {};
+    allTrades.forEach(t => {
+      const key = t.studentEmail || t.studentId || 'unknown';
+      if (!groups[key]) groups[key] = { trades: [], name: t.studentName, email: t.studentEmail };
+      groups[key].trades.push(t);
+    });
+    return groups;
+  }, [allTrades]);
+
+  // Trades aguardando feedback
+  const pendingFeedback = useMemo(() => {
+    return allTrades.filter(t => !t.mentorFeedback);
+  }, [allTrades]);
+
+  // Alunos que precisam atenção
+  const studentsNeedingAttention = useMemo(() => {
+    return identifyStudentsNeedingAttention(Object.values(groupedTrades).map(g => ({
+      ...g,
+      stats: calculateStats(g.trades)
+    })));
+  }, [groupedTrades]);
+
   const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
 
   const overallStats = useMemo(() => {
@@ -45,11 +76,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
       ...allStats,
       studentsCount: students.length,
       todayTrades: todayTrades.length,
-      avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0,
+      avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + (s.winRate || 0), 0) / ranking.length : 0,
     };
   }, [allTrades, students, todayTrades, ranking]);
 
-  const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
+  const selectedStudentTrades = selectedStudent ? (groupedTrades[selectedStudent.email]?.trades || []) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
 
   const handleAddFeedback = async (tradeId, feedback) => {
@@ -159,13 +190,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           </div>
           <div className="divide-y divide-slate-800/50">
             {students.map(student => {
-              const studentTrades = getTradesByStudent(student.email);
+              const studentTrades = groupedTrades[student.email]?.trades || [];
               const stats = calculateStats(studentTrades);
               return (
-                <div key={student.email} onClick={() => setSelectedStudent(student)} className="p-4 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer transition-colors">
+                <div key={student.email || student.id} onClick={() => setSelectedStudent(student)} className="p-4 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                      {student.name.charAt(0).toUpperCase()}
+                      {(student.name || 'A').charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <p className="font-medium text-white">{student.name}</p>
@@ -186,6 +217,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
                 </div>
               );
             })}
+            {students.length === 0 && (
+              <div className="p-8 text-center text-slate-500">
+                Nenhum aluno com trades registrados
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -211,7 +247,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
                   <div>
                     <p className="font-semibold text-white">{student.name}</p>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {student.reasons.map((reason, i) => (
+                      {(student.reasons || []).map((reason, i) => (
                         <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>
                       ))}
                     </div>
@@ -240,20 +276,25 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           </div>
           <div className="divide-y divide-slate-800/50">
             {ranking.map((student, index) => (
-              <div key={student.email} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
+              <div key={student.email || index} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>
                   {index + 1}
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-white">{student.name}</p>
-                  <p className="text-xs text-slate-500">{student.totalTrades} trades</p>
+                  <p className="font-medium text-white">{student.name || 'Aluno'}</p>
+                  <p className="text-xs text-slate-500">{student.totalTrades || 0} trades</p>
                 </div>
                 <div className="text-right">
-                  <p className={`font-semibold ${student.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(student.totalPL)}</p>
-                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p>
+                  <p className={`font-semibold ${(student.totalPL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(student.totalPL || 0)}</p>
+                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate || 0)}</p>
                 </div>
               </div>
             ))}
+            {ranking.length === 0 && (
+              <div className="p-8 text-center text-slate-500">
+                Nenhum dado para ranking
+              </div>
+            )}
           </div>
         </div>
       )}

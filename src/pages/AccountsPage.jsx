@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
-  TrendingUp, TrendingDown // Ícones de performance adicionados
+  TrendingUp, TrendingDown
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
+import { useAuth } from '../contexts/AuthContext';
 import AccountDetailPage from './AccountDetailPage';
+import StudentAccountGroup from '../components/StudentAccountGroup';
 // Firebase (para ler o ledger e calcular saldo real por conta)
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -23,11 +25,13 @@ const formatCurrency = (value, currency = 'BRL') => {
 const AccountsPage = () => {
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
+  const { isMentor } = useAuth();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [showBrokerSuggestions, setShowBrokerSuggestions] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   /**
    * Map de saldos reais calculados pelo ledger:
@@ -113,6 +117,71 @@ const AccountsPage = () => {
       });
     };
   }, [accounts]);
+
+  /**
+   * Agrupar contas por aluno (apenas para mentor)
+   */
+  const groupedAccounts = useMemo(() => {
+    if (!isMentor()) return {};
+
+    const groups = {};
+    
+    accounts.forEach(acc => {
+      const studentId = acc.studentId || 'unknown';
+      const studentName = acc.studentName || 'Aluno Sem Nome';
+      const studentEmail = acc.studentEmail || '';
+
+      if (!groups[studentId]) {
+        groups[studentId] = {
+          studentName,
+          studentEmail,
+          accounts: []
+        };
+      }
+
+      groups[studentId].accounts.push(acc);
+    });
+
+    // Ordenar contas dentro de cada grupo por ativa/data
+    Object.values(groups).forEach(group => {
+      group.accounts.sort((a, b) => {
+        if (a.active && !b.active) return -1;
+        if (!a.active && b.active) return 1;
+        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0);
+        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0);
+        return dateB - dateA;
+      });
+    });
+
+    return groups;
+  }, [accounts, isMentor]);
+
+  /**
+   * Filtrar grupos por busca (mentor)
+   */
+  const filteredGroups = useMemo(() => {
+    if (!isMentor()) return {};
+    
+    if (!searchTerm.trim()) return groupedAccounts;
+
+    const search = searchTerm.toLowerCase();
+    const filtered = {};
+
+    Object.entries(groupedAccounts).forEach(([studentId, data]) => {
+      const matchesName = data.studentName.toLowerCase().includes(search);
+      const matchesEmail = data.studentEmail.toLowerCase().includes(search);
+      const matchesAccount = data.accounts.some(acc => 
+        acc.name.toLowerCase().includes(search) ||
+        (acc.broker || '').toLowerCase().includes(search)
+      );
+
+      if (matchesName || matchesEmail || matchesAccount) {
+        filtered[studentId] = data;
+      }
+    });
+
+    return filtered;
+  }, [groupedAccounts, searchTerm, isMentor]);
 
   const openModal = (account = null) => {
     if (account) {
@@ -238,108 +307,159 @@ const AccountsPage = () => {
   }
 
   return (
-    <div className="min-h-screen p-6 lg:p-8 animate-in fade-in">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Minhas Contas</h1>
-          <p className="text-slate-400">Gerencie suas contas Reais, Demo e Mesas</p>
+    <div className="min-h-screen p-6 lg:p-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
+              {isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}
+            </h1>
+            <p className="text-slate-400 mt-1">
+              {isMentor() 
+                ? 'Visualize as contas de trading de seus alunos' 
+                : 'Gerencie suas contas de trading'
+              }
+            </p>
+          </div>
+
+          {/* Botão Adicionar (apenas para alunos) */}
+          {!isMentor() && (
+            <button onClick={() => openModal()} className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Nova Conta
+            </button>
+          )}
         </div>
-        <button onClick={() => openModal()} className="btn-primary flex items-center gap-2">
-          <Plus className="w-5 h-5" /> Nova Conta
-        </button>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {accounts.map(acc => {
-          // Saldo atual REAL pelo ledger. Fallback para currentBalance legado.
-          const saldoAtual =
-            balancesByAccountId[acc.id] ??
-            (acc.currentBalance !== undefined ? acc.currentBalance : (acc.initialBalance || 0));
-
-          const saldoInicial = acc.initialBalance || 0;
-
-          // CORREÇÃO 1: Solvência. Verde se positivo (>0), independente do lucro.
-          const isSolvent = saldoAtual >= 0;
-
-          // CORREÇÃO 2: Performance. Ícone indica se está lucrando ou em drawdown.
-          const isProfitable = saldoAtual >= saldoInicial;
-          const ProfitIcon = isProfitable ? TrendingUp : TrendingDown;
-          const profitColor = isProfitable ? 'text-emerald-500' : 'text-red-500';
-
-          return (
-            <div
-              key={acc.id}
-              className="glass-card p-6 relative group hover:border-slate-600 transition-colors cursor-pointer"
-              onClick={() => setSelectedAccount(acc)}
-            >
-              {getAccountBadge(acc)}
-
-              <div className="mb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-blue-400" /> {acc.name}
-                </h3>
-                <p className="text-sm text-slate-500">
-                  {acc.broker || acc.brokerName || 'Sem corretora'} • {acc.currency || 'BRL'}
-                </p>
-              </div>
-
-              <div className="space-y-3 border-t border-slate-800 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Saldo Inicial</span>
-                  <span className="text-white font-mono">
-                    {formatCurrency(saldoInicial, acc.currency)}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Saldo Atual</span>
-                  <div className="flex items-center gap-2">
-                     {/* Ícone de tendência (Performance) */}
-                     <ProfitIcon className={`w-4 h-4 ${profitColor}`} />
-                     
-                     {/* Valor Numérico (Solvência) */}
-                     <span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {formatCurrency(saldoAtual, acc.currency)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Indicador de clique */}
-              <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ChevronRight className="w-5 h-5 text-slate-500" />
-              </div>
-
-              {/* Botões de ação */}
-              <div
-                className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={(e) => { e.stopPropagation(); openModal(acc); }}
-                  className="p-2 hover:bg-blue-500/20 rounded text-blue-400"
-                  title="Editar"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }}
-                  className="p-2 hover:bg-red-500/20 rounded text-red-400"
-                  title="Excluir"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {accounts.length === 0 && (
-          <div className="col-span-full p-12 text-center border-2 border-dashed border-slate-800 rounded-2xl text-slate-500">
-            Nenhuma conta cadastrada.
+        {/* Barra de Busca (apenas para mentor) */}
+        {isMentor() && (
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar por aluno, conta ou corretora..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg 
+                       pl-10 pr-4 py-2.5 text-white placeholder-slate-500 text-sm
+                       focus:outline-none focus:border-emerald-500/50 transition-colors"
+            />
           </div>
         )}
       </div>
+
+      {/* VISUALIZAÇÃO POR ROLE */}
+      
+      {/* MENTOR: Contas Agrupadas por Aluno */}
+      {isMentor() ? (
+        <div className="space-y-4">
+          {Object.keys(filteredGroups).length === 0 ? (
+            <div className="text-center py-16">
+              <Wallet className="mx-auto mb-4 text-slate-600" size={64} />
+              <p className="text-xl text-slate-500">
+                {searchTerm ? 'Nenhum resultado encontrado' : 'Nenhum aluno com contas cadastradas'}
+              </p>
+            </div>
+          ) : (
+            Object.entries(filteredGroups).map(([studentId, data]) => (
+              <StudentAccountGroup
+                key={studentId}
+                studentName={data.studentName}
+                studentEmail={data.studentEmail}
+                accounts={data.accounts}
+                balancesByAccountId={balancesByAccountId}
+                onAccountClick={setSelectedAccount}
+                getAccountBadge={getAccountBadge}
+                formatCurrency={formatCurrency}
+              />
+            ))
+          )}
+        </div>
+      ) : (
+        /* ALUNO: Grid Normal de Contas */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {accounts.map(acc => {
+            const saldoInicial = acc.initialBalance || 0;
+            const saldoAtual = balancesByAccountId[acc.id] ?? acc.currentBalance ?? saldoInicial;
+            const profit = saldoAtual - saldoInicial;
+            const isProfitable = profit >= 0;
+            const isSolvent = saldoAtual >= 0;
+            const profitColor = isProfitable ? 'text-emerald-400' : 'text-red-400';
+            const ProfitIcon = isProfitable ? TrendingUp : TrendingDown;
+
+            return (
+              <div
+                key={acc.id}
+                onClick={() => setSelectedAccount(acc)}
+                className="relative glass-card p-6 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-2xl group"
+              >
+                {getAccountBadge(acc)}
+
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Wallet className="w-5 h-5 text-blue-400" />
+                    <h3 className="text-xl font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                      {acc.name}
+                    </h3>
+                  </div>
+                  <p className="text-sm text-slate-400 flex items-center gap-2">
+                    {acc.broker || acc.brokerName || 'Broker não informado'}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-400">Saldo Inicial</span>
+                    <span className="text-white font-mono">
+                      {formatCurrency(saldoInicial, acc.currency)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-400">Saldo Atual</span>
+                    <div className="flex items-center gap-2">
+                      <ProfitIcon className={`w-4 h-4 ${profitColor}`} />
+                      <span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatCurrency(saldoAtual, acc.currency)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <ChevronRight className="w-5 h-5 text-slate-500" />
+                </div>
+
+                <div
+                  className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openModal(acc); }}
+                    className="p-2 hover:bg-blue-500/20 rounded text-blue-400"
+                    title="Editar"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }}
+                    className="p-2 hover:bg-red-500/20 rounded text-red-400"
+                    title="Excluir"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {accounts.length === 0 && (
+            <div className="col-span-full p-12 text-center border-2 border-dashed border-slate-800 rounded-2xl text-slate-500">
+              Nenhuma conta cadastrada.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && (

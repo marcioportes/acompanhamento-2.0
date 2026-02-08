@@ -18,8 +18,9 @@ import { useMasterData } from '../hooks/useMasterData';
 const SIDES = ['LONG', 'SHORT'];
 
 /**
- * AddTradeModal (Fixed Layout Version)
+ * AddTradeModal (VERSÃO 2.7 - Dual Emotion)
  * Usa useMasterData para buscar setups, emotions, exchanges do Firestore
+ * ATUALIZADO: Agora tem emotionEntry e emotionExit separados
  */
 const AddTradeModal = ({ 
   isOpen, 
@@ -47,7 +48,8 @@ const AddTradeModal = ({
     exit: '',
     qty: '',
     setup: '',
-    emotion: '',
+    emotionEntry: '',  // NOVO: Emoção na entrada
+    emotionExit: '',   // NOVO: Emoção na saída
     notes: '',
     planId: '',
   });
@@ -92,7 +94,9 @@ const AddTradeModal = ({
         exit: editTrade.exit.toString(),
         qty: editTrade.qty.toString(),
         setup: editTrade.setup,
-        emotion: editTrade.emotion,
+        // MIGRAÇÃO: Se editTrade tem campo "emotion" antigo, usa ele nos dois campos
+        emotionEntry: editTrade.emotionEntry || editTrade.emotion || '',
+        emotionExit: editTrade.emotionExit || editTrade.emotion || '',
         notes: editTrade.notes || '',
         planId: editTrade.planId || '',
       });
@@ -113,7 +117,8 @@ const AddTradeModal = ({
         exit: '',
         qty: '',
         setup: defaultSetup,
-        emotion: defaultEmotion,
+        emotionEntry: defaultEmotion,  // Default para entrada
+        emotionExit: defaultEmotion,   // Default para saída
         notes: '',
         planId: prev.planId && plans.find(p => p.id === prev.planId) 
           ? prev.planId 
@@ -141,6 +146,7 @@ const AddTradeModal = ({
 
     if (rule) {
       setActiveAssetRule(rule);
+      // Se o ticker encontrado tem uma exchange definida, atualiza o formulário
       if (rule.exchange) setFormData(prev => ({ ...prev, exchange: rule.exchange }));
     } else {
       setActiveAssetRule(null);
@@ -171,6 +177,11 @@ const AddTradeModal = ({
     }
   }, [formData.entry, formData.exit, formData.qty, formData.side, activeAssetRule]);
 
+  // --- FILTRAGEM DE TICKERS POR BOLSA ---
+  const filteredTickers = (masterTickers || []).filter(t => 
+    !formData.exchange || t.exchange === formData.exchange
+  );
+
   // --- HANDLERS ---
 
   const handleChange = (e) => {
@@ -182,7 +193,7 @@ const AddTradeModal = ({
   const handlePlanSelect = (planId) => {
     setFormData(prev => ({ ...prev, planId }));
     setShowPlanDropdown(false);
-    if (errors.planId) setErrors(prev => ({ ...prev, planId: null }));
+    if (errors[planId]) setErrors(prev => ({ ...prev, planId: null }));
   };
 
   const handleFileChange = (e, type) => {
@@ -284,9 +295,11 @@ const AddTradeModal = ({
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 max-w-md text-center">
           <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-white mb-2">Nenhum plano encontrado</h3>
+          <h3 className="text-lg font-bold text-white mb-2">Nenhum Plano Encontrado</h3>
           <p className="text-slate-400 mb-4">Você precisa criar um plano antes de registrar trades.</p>
-          <button onClick={onClose} className="btn-primary">Fechar</button>
+          <button onClick={onClose} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+            Fechar
+          </button>
         </div>
       </div>
     );
@@ -294,48 +307,56 @@ const AddTradeModal = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        {/* Container Principal: Flex Column para forçar Footer no final */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-auto">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl my-8 shadow-2xl flex flex-col max-h-[90vh]">
           
           {/* 1. HEADER (Fixo) */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-800 flex-none bg-slate-900 z-10">
-            <h2 className="text-xl font-display font-bold text-white">
-              {editTrade ? 'Editar Trade' : 'Novo Trade'}
-            </h2>
-            <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors">
-              <X className="w-5 h-5" />
+          <div className="flex-none flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 z-30">
+            <div>
+              <h2 className="text-xl font-bold text-white">
+                {editTrade ? 'Editar Trade' : 'Novo Trade'}
+              </h2>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {selectedPlan ? `Plano: ${selectedPlan.name}` : 'Selecione um plano'}
+              </p>
+            </div>
+            <button onClick={onClose} disabled={loading} className="text-slate-400 hover:text-white transition-colors disabled:opacity-50">
+              <X className="w-6 h-6" />
             </button>
           </div>
 
-          {/* 2. BODY (Scrollable) */}
-          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
-            
-            {/* O form envolve apenas os inputs, mas é conectado ao botão via ID */}
+          {/* 2. CORPO (Scrollável) */}
+          <div className="flex-1 overflow-y-auto p-6 z-10">
             <form id="trade-form" onSubmit={handleSubmit} className="space-y-6">
               
+              {/* Erro Global */}
               {errors.submit && (
-                <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-3 text-red-400 text-sm">
-                  <AlertCircle className="w-5 h-5" /> {errors.submit}
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400" />
+                  <span className="text-sm text-red-400">{errors.submit}</span>
                 </div>
               )}
 
-              {/* SELEÇÃO DE PLANO */}
+              {/* Seletor de Plano */}
               <div className="relative" ref={planDropdownRef}>
-                <label className="text-xs text-slate-500 mb-1.5 block font-medium">Plano *</label>
+                <label className="input-label">Plano *</label>
                 <button
                   type="button"
                   onClick={() => setShowPlanDropdown(!showPlanDropdown)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${
-                    errors.planId ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700/50 bg-slate-800/50'
-                  }`}
+                  className={`input-dark w-full flex items-center justify-between ${errors.planId ? 'border-red-500' : ''}`}
                 >
-                  {selectedPlan ? (
-                    <span className="text-white font-medium flex items-center gap-2">
-                      <Wallet className="w-4 h-4 text-slate-400"/> {selectedPlan.name} <span className="text-slate-500 text-xs">({selectedAccount?.name || 'Conta'})</span>
+                  <div className="flex items-center gap-3">
+                    <Wallet className="w-4 h-4 text-blue-400" />
+                    <span className="font-medium">
+                      {selectedPlan ? selectedPlan.name : 'Selecione um plano...'}
                     </span>
-                  ) : <span className="text-slate-500">Selecione...</span>}
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                    {selectedAccount && (
+                      <span className="text-xs text-slate-500">
+                        ({selectedAccount.name})
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showPlanDropdown ? 'rotate-180' : ''}`} />
                 </button>
                 
                 {showPlanDropdown && (
@@ -368,7 +389,7 @@ const AddTradeModal = ({
                     placeholder="WINFUT" list="tickers-list" autoComplete="off"
                   />
                   <datalist id="tickers-list">
-                    {(masterTickers || []).map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
+                    {filteredTickers.map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
                   </datalist>
                   {activeAssetRule && (
                     <div className="absolute right-0 top-0 mt-8 mr-2 text-[10px] text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded border border-emerald-500/20">
@@ -446,11 +467,35 @@ const AddTradeModal = ({
                   {errors.setup && <span className="text-xs text-red-400 block mt-1">{errors.setup}</span>}
                 </div>
 
+                {/* NOVO: Emoção de ENTRADA */}
                 <div>
-                  <label className="input-label">Emoção</label>
-                  <select name="emotion" value={formData.emotion} onChange={handleChange} className="input-dark w-full">
+                  <label className="input-label">Emoção de Entrada</label>
+                  <select name="emotionEntry" value={formData.emotionEntry} onChange={handleChange} className="input-dark w-full">
                     <option value="">Selecione...</option>
-                    {emotions.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+                    {emotions.map(e => {
+                      const emoji = e.emoji || '';
+                      return (
+                        <option key={e.id} value={e.name}>
+                          {emoji ? `${emoji} ` : ''}{e.name}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* NOVO: Emoção de SAÍDA */}
+                <div>
+                  <label className="input-label">Emoção de Saída</label>
+                  <select name="emotionExit" value={formData.emotionExit} onChange={handleChange} className="input-dark w-full">
+                    <option value="">Selecione...</option>
+                    {emotions.map(e => {
+                      const emoji = e.emoji || '';
+                      return (
+                        <option key={e.id} value={e.name}>
+                          {emoji ? `${emoji} ` : ''}{e.name}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
