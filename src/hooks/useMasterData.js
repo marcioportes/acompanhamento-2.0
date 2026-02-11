@@ -19,6 +19,17 @@ import { useAuth } from '../contexts/AuthContext';
 
 /**
  * Hook para gerenciar dados mestres do sistema
+ * VERSÃO 3.0 - CRUD completo de Tickers + cascade delete Exchange→Tickers
+ * 
+ * Entidades: setups, exchanges, brokers, currencies, emotions, tickers
+ * Permissões: Mentor = CRUD completo | Aluno = leitura
+ * 
+ * REGRAS DE NEGÓCIO:
+ * - Ticker SEMPRE pertence a uma exchange (campo exchange = code da bolsa)
+ * - Deletar exchange desativa todos tickers vinculados (cascade)
+ * - Deletar exchange é bloqueado se há trades vinculados à bolsa
+ * - Deletar ticker é bloqueado se há trades usando aquele symbol
+ * - Tickers de futuros possuem tickSize, tickValue, minLot para cálculo de P&L
  */
 export const useMasterData = () => {
   const { user, isMentor } = useAuth();
@@ -32,7 +43,8 @@ export const useMasterData = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Carregar todos os dados mestres
+  // ==================== LISTENERS REALTIME ====================
+
   useEffect(() => {
     if (!user) {
       setSetups([]);
@@ -70,7 +82,7 @@ export const useMasterData = () => {
       unsubscribes.push(
         onSnapshot(exchangesQuery, (snapshot) => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          data.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
           setExchanges(data);
         })
       );
@@ -191,17 +203,21 @@ export const useMasterData = () => {
   const updateSetup = useCallback((id, data) => updateItem('setups', id, data), [updateItem]);
   const deleteSetup = useCallback((id) => deleteItem('setups', id), [deleteItem]);
 
-  // ==================== EXCHANGES (BUG 3 FIXED) ====================
+  // ==================== EXCHANGES (com cascade delete → tickers) ====================
 
   const addExchange = useCallback((data) => addItem('exchanges', data), [addItem]);
   const updateExchange = useCallback((id, data) => updateItem('exchanges', id, data), [updateItem]);
   
+  /**
+   * Deleta exchange com cascade: desativa todos os tickers vinculados
+   * BLOQUEIO: se houver trades usando esta bolsa, impede exclusão
+   */
   const deleteExchange = useCallback(async (id) => {
     if (!isMentor()) throw new Error('Apenas mentor pode excluir');
 
     try {
       const exchangeToDeactivate = exchanges.find(e => e.id === id);
-      if (!exchangeToDeactivate) return;
+      if (!exchangeToDeactivate) throw new Error('Bolsa não encontrada');
 
       // 1. Verificar se existem trades associados a esta bolsa
       const tradesQuery = query(
@@ -209,12 +225,10 @@ export const useMasterData = () => {
         where('exchange', '==', exchangeToDeactivate.code),
         limit(1)
       );
-      
       const tradesSnapshot = await getDocs(tradesQuery);
       
-      // Bloqueia a exclusão se houver trades
       if (!tradesSnapshot.empty) {
-        throw new Error(`Não é possível excluir a bolsa ${exchangeToDeactivate.code} pois existem trades vinculados a ela.`);
+        throw new Error(`Não é possível excluir a bolsa "${exchangeToDeactivate.code}" pois existem trades vinculados a ela.`);
       }
 
       const batch = writeBatch(db);
@@ -224,14 +238,15 @@ export const useMasterData = () => {
       const exchangeRef = doc(db, 'exchanges', id);
       batch.update(exchangeRef, { active: false, updatedAt: timestamp });
 
-      // 3. Desativar todos os Tickers vinculados à bolsa
+      // 3. CASCADE: Desativar todos os Tickers vinculados à bolsa
       const tickersQuery = query(
         collection(db, 'tickers'),
         where('exchange', '==', exchangeToDeactivate.code),
         where('active', '==', true)
       );
-      
       const tickersSnapshot = await getDocs(tickersQuery);
+      
+      const tickerCount = tickersSnapshot.size;
       tickersSnapshot.forEach((tickerDoc) => {
         const tickerRef = doc(db, 'tickers', tickerDoc.id);
         batch.update(tickerRef, { active: false, updatedAt: timestamp });
@@ -239,12 +254,163 @@ export const useMasterData = () => {
 
       // 4. Commit atômico
       await batch.commit();
+      
+      console.log(`Exchange "${exchangeToDeactivate.code}" desativada com ${tickerCount} ticker(s) em cascata.`);
 
     } catch (err) {
       console.error('Erro na exclusão em cascata:', err);
       throw err;
     }
   }, [isMentor, exchanges]);
+
+  // ==================== TICKERS ====================
+
+  /**
+   * Adiciona ticker vinculado a uma exchange
+   * Campos obrigatórios: symbol, name, exchange
+   * Campos opcionais (futuros): tickSize, tickValue, minLot, pointValue
+   */
+  const addTicker = useCallback(async (data) => {
+    if (!isMentor()) throw new Error('Apenas mentor pode adicionar');
+    
+    // Validação: exchange deve existir
+    if (!data.exchange) throw new Error('Ticker deve estar vinculado a uma bolsa');
+    const exchangeExists = exchanges.find(e => e.code === data.exchange);
+    if (!exchangeExists) throw new Error(`Bolsa "${data.exchange}" não encontrada`);
+    
+    // Validação: symbol único por exchange
+    const duplicate = tickers.find(t => 
+      t.symbol.toUpperCase() === (data.symbol || '').toUpperCase() && 
+      t.exchange === data.exchange
+    );
+    if (duplicate) throw new Error(`Ticker "${data.symbol}" já existe na bolsa "${data.exchange}"`);
+
+    // Normalizar dados numéricos
+    const normalized = {
+      symbol: (data.symbol || '').toUpperCase().trim(),
+      name: (data.name || '').trim(),
+      exchange: data.exchange,
+      tickSize: data.tickSize ? parseFloat(data.tickSize) : null,
+      tickValue: data.tickValue ? parseFloat(data.tickValue) : null,
+      minLot: data.minLot ? parseInt(data.minLot, 10) : 1,
+      pointValue: data.pointValue ? parseFloat(data.pointValue) : null,
+    };
+
+    return addItem('tickers', normalized);
+  }, [isMentor, addItem, exchanges, tickers]);
+
+  /**
+   * Atualiza ticker - mantém exchange se não fornecida
+   */
+  const updateTicker = useCallback(async (id, data) => {
+    if (!isMentor()) throw new Error('Apenas mentor pode editar');
+    
+    // Se está mudando exchange, validar
+    if (data.exchange) {
+      const exchangeExists = exchanges.find(e => e.code === data.exchange);
+      if (!exchangeExists) throw new Error(`Bolsa "${data.exchange}" não encontrada`);
+    }
+
+    // Se está mudando symbol, verificar duplicata
+    if (data.symbol) {
+      const currentTicker = tickers.find(t => t.id === id);
+      const targetExchange = data.exchange || currentTicker?.exchange;
+      const duplicate = tickers.find(t => 
+        t.id !== id &&
+        t.symbol.toUpperCase() === data.symbol.toUpperCase() && 
+        t.exchange === targetExchange
+      );
+      if (duplicate) throw new Error(`Ticker "${data.symbol}" já existe na bolsa "${targetExchange}"`);
+    }
+
+    // Normalizar dados numéricos
+    const normalized = { ...data };
+    if (data.symbol) normalized.symbol = data.symbol.toUpperCase().trim();
+    if (data.name) normalized.name = data.name.trim();
+    if (data.tickSize !== undefined) normalized.tickSize = data.tickSize ? parseFloat(data.tickSize) : null;
+    if (data.tickValue !== undefined) normalized.tickValue = data.tickValue ? parseFloat(data.tickValue) : null;
+    if (data.minLot !== undefined) normalized.minLot = data.minLot ? parseInt(data.minLot, 10) : 1;
+    if (data.pointValue !== undefined) normalized.pointValue = data.pointValue ? parseFloat(data.pointValue) : null;
+
+    return updateItem('tickers', id, normalized);
+  }, [isMentor, updateItem, exchanges, tickers]);
+
+  /**
+   * Deleta ticker (soft delete)
+   * BLOQUEIO: se houver trades usando este ticker, impede exclusão
+   */
+  const deleteTicker = useCallback(async (id) => {
+    if (!isMentor()) throw new Error('Apenas mentor pode excluir');
+
+    const tickerToDelete = tickers.find(t => t.id === id);
+    if (!tickerToDelete) throw new Error('Ticker não encontrado');
+
+    // Verificar se existem trades usando este ticker
+    const tradesQuery = query(
+      collection(db, 'trades'),
+      where('ticker', '==', tickerToDelete.symbol),
+      limit(1)
+    );
+    const tradesSnapshot = await getDocs(tradesQuery);
+    
+    if (!tradesSnapshot.empty) {
+      throw new Error(`Não é possível excluir o ticker "${tickerToDelete.symbol}" pois existem trades vinculados.`);
+    }
+
+    return deleteItem('tickers', id);
+  }, [isMentor, deleteItem, tickers]);
+
+  /**
+   * Importa múltiplos tickers em batch (usado pelo "Importar Populares")
+   * Ignora duplicatas silenciosamente
+   * @param {Array} tickersToImport - Array de { symbol, name, exchange, tickSize?, tickValue?, minLot? }
+   * @returns {Object} { imported: number, skipped: number }
+   */
+  const importTickers = useCallback(async (tickersToImport) => {
+    if (!isMentor()) throw new Error('Apenas mentor pode importar');
+    if (!Array.isArray(tickersToImport) || tickersToImport.length === 0) {
+      throw new Error('Lista de tickers vazia');
+    }
+
+    const batch = writeBatch(db);
+    const timestamp = serverTimestamp();
+    let imported = 0;
+    let skipped = 0;
+
+    for (const t of tickersToImport) {
+      // Verificar duplicata (por symbol + exchange)
+      const exists = tickers.find(existing => 
+        existing.symbol.toUpperCase() === (t.symbol || '').toUpperCase() &&
+        existing.exchange === t.exchange
+      );
+      
+      if (exists) {
+        skipped++;
+        continue;
+      }
+
+      const newDocRef = doc(collection(db, 'tickers'));
+      batch.set(newDocRef, {
+        symbol: (t.symbol || '').toUpperCase().trim(),
+        name: (t.name || '').trim(),
+        exchange: t.exchange,
+        tickSize: t.tickSize ? parseFloat(t.tickSize) : null,
+        tickValue: t.tickValue ? parseFloat(t.tickValue) : null,
+        minLot: t.minLot ? parseInt(t.minLot, 10) : 1,
+        pointValue: t.pointValue ? parseFloat(t.pointValue) : null,
+        active: true,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      imported++;
+    }
+
+    if (imported > 0) {
+      await batch.commit();
+    }
+
+    return { imported, skipped };
+  }, [isMentor, tickers]);
 
   // ==================== OUTROS CRUDs ====================
 
@@ -275,16 +441,40 @@ export const useMasterData = () => {
   const getNegativeEmotions = useCallback(() => emotions.filter(e => e.category === 'negative'), [emotions]);
   const getNeutralEmotions = useCallback(() => emotions.filter(e => e.category === 'neutral'), [emotions]);
 
+  // Tickers helpers
+  const getTickerBySymbol = useCallback((symbol) => tickers.find(t => t.symbol === symbol), [tickers]);
+  const getTickersByExchange = useCallback((exchangeCode) => {
+    if (!exchangeCode) return tickers;
+    return tickers.filter(t => t.exchange === exchangeCode);
+  }, [tickers]);
+
   return {
+    // Data
     setups, exchanges, brokers, currencies, emotions, tickers, loading, error,
+    
+    // CRUD Setups
     addSetup, updateSetup, deleteSetup,
+    
+    // CRUD Exchanges (com cascade delete)
     addExchange, updateExchange, deleteExchange,
+    
+    // CRUD Tickers
+    addTicker, updateTicker, deleteTicker, importTickers,
+    
+    // CRUD Brokers
     addBroker, updateBroker, deleteBroker,
+    
+    // CRUD Currencies
     addCurrency, updateCurrency, deleteCurrency,
+    
+    // CRUD Emotions
     addEmotion, updateEmotion, deleteEmotion,
+    
+    // Helpers
     getSetupById, getSetupByName, getExchangeByCode, getBrokerById,
     getBrokerByName, getCurrencyByCode, getEmotionById, getEmotionByName,
-    getPositiveEmotions, getNegativeEmotions, getNeutralEmotions
+    getPositiveEmotions, getNegativeEmotions, getNeutralEmotions,
+    getTickerBySymbol, getTickersByExchange,
   };
 };
 

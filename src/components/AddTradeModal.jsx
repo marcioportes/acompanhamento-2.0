@@ -18,9 +18,10 @@ import { useMasterData } from '../hooks/useMasterData';
 const SIDES = ['LONG', 'SHORT'];
 
 /**
- * AddTradeModal (VERSÃO 2.7 - Dual Emotion)
+ * AddTradeModal (VERSÃO 2.8 - Bolsa→Ticker flow)
  * Usa useMasterData para buscar setups, emotions, exchanges do Firestore
- * ATUALIZADO: Agora tem emotionEntry e emotionExit separados
+ * ATUALIZADO: Bolsa vem antes de Ticker, limpa ticker ao trocar bolsa
+ * Mantém: emotionEntry e emotionExit separados, auto-detect de exchange pelo ticker
  */
 const AddTradeModal = ({ 
   isOpen, 
@@ -381,12 +382,24 @@ const AddTradeModal = ({
                   <input type="date" name="date" value={formData.date} onChange={handleChange} className="input-dark w-full" />
                 </div>
 
+                <div>
+                  <label className="input-label">Bolsa *</label>
+                  <select name="exchange" value={formData.exchange} onChange={(e) => {
+                    const newExchange = e.target.value;
+                    setFormData(prev => ({ ...prev, exchange: newExchange, ticker: '' }));
+                    setActiveAssetRule(null);
+                  }} className="input-dark w-full">
+                    {exchanges.map(ex => <option key={ex.id} value={ex.code}>{ex.code} - {ex.name}</option>)}
+                  </select>
+                </div>
+
                 <div className="relative">
                   <label className="input-label">Ticker *</label>
                   <input 
                     type="text" name="ticker" value={formData.ticker} onChange={handleChange} 
                     className={`input-dark w-full uppercase ${errors.ticker ? 'border-red-500' : ''}`}
-                    placeholder="WINFUT" list="tickers-list" autoComplete="off"
+                    placeholder={formData.exchange ? `Ticker da ${formData.exchange}...` : 'WINFUT'} 
+                    list="tickers-list" autoComplete="off"
                   />
                   <datalist id="tickers-list">
                     {filteredTickers.map(t => <option key={t.id} value={t.symbol}>{t.name}</option>)}
@@ -397,13 +410,6 @@ const AddTradeModal = ({
                     </div>
                   )}
                   {errors.ticker && <span className="text-xs text-red-400 block mt-1">{errors.ticker}</span>}
-                </div>
-
-                <div>
-                  <label className="input-label">Bolsa</label>
-                  <select name="exchange" value={formData.exchange} onChange={handleChange} className="input-dark w-full">
-                    {exchanges.map(ex => <option key={ex.id} value={ex.code}>{ex.code} - {ex.name}</option>)}
-                  </select>
                 </div>
 
                 <div>

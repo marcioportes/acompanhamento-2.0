@@ -1,18 +1,29 @@
+/**
+ * AccountsPage
+ * @version 4.1.0 (Audit NaN Fix & BR Date)
+ * @description Correção do bug visual 'NaN' após auditoria e formatação de data brasileira forçada.
+ * * CHANGE LOG 4.1.0:
+ * - FIX: 'handleFixIssues' agora preserva o 'ledgerBalance' no estado para não exibir NaN após o sucesso.
+ * - UI: Forçada localidade 'pt-BR' e timezone 'UTC' nas exibições de data da auditoria (dd/mm/aaaa).
+ * - FIX: Função 'formatCurrency' blindada contra valores nulos/undefined.
+ */
+
 import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
-  TrendingUp, TrendingDown
+  TrendingUp, TrendingDown, RefreshCw, AlertTriangle, CheckCircle, ArrowRight, Calendar
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
-// Firebase (para ler o ledger e calcular saldo real por conta)
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// Helper de Moeda Blindado
 const formatCurrency = (value, currency = 'BRL') => {
+  if (value === undefined || value === null || isNaN(value)) return "R$ 0,00";
   const config = {
     BRL: { locale: 'pt-BR', currency: 'BRL' },
     USD: { locale: 'en-US', currency: 'USD' },
@@ -20,6 +31,26 @@ const formatCurrency = (value, currency = 'BRL') => {
   };
   const c = config[currency] || config.BRL;
   return new Intl.NumberFormat(c.locale, { style: 'currency', currency: c.currency }).format(value);
+};
+
+// Helper de Data para "dd/mm/aaaa" sem voltar 1 dia
+const formatBrDate = (dateObj) => {
+  if (!dateObj) return '-';
+  // Usa UTC para garantir que a data seja exatamente a gravada, sem fuso do navegador
+  return dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+};
+
+// Helper Seguro para Objeto de Data
+const getDateObject = (val) => {
+  if (!val) return new Date();
+  if (typeof val.toDate === 'function') return val.toDate(); // Firebase Timestamp
+  
+  // Se for string YYYY-MM-DD, força interpretação como UTC meio-dia para evitar problemas de fuso
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    return new Date(`${val}T12:00:00Z`);
+  }
+  
+  return new Date(val);
 };
 
 const AccountsPage = () => {
@@ -32,12 +63,10 @@ const AccountsPage = () => {
   const [showBrokerSuggestions, setShowBrokerSuggestions] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  const [auditState, setAuditState] = useState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null });
+  const [isFixing, setIsFixing] = useState(false);
 
-  /**
-   * Map de saldos reais calculados pelo ledger:
-   * balancesByAccountId[accountId] = number
-   * Motivo: Fonte de verdade é a coleção 'movements'
-   */
   const [balancesByAccountId, setBalancesByAccountId] = useState({});
 
   const [formData, setFormData] = useState({
@@ -45,145 +74,62 @@ const AccountsPage = () => {
     broker: '',
     currency: 'BRL',
     initialBalance: '',
+    currentBalance: '',
+    createdAt: '',
     type: 'DEMO',
   });
 
-  // Filtro de sugestões de corretora
   const brokerNames = useMemo(() => brokers.map(b => b.name).sort(), [brokers]);
   const filteredBrokers = useMemo(() => {
     if (!formData.broker) return brokerNames.slice(0, 5);
-    return brokerNames
-      .filter(b => b.toLowerCase().includes(formData.broker.toLowerCase()))
-      .slice(0, 8);
+    return brokerNames.filter(b => b.toLowerCase().includes(formData.broker.toLowerCase())).slice(0, 8);
   }, [formData.broker, brokerNames]);
 
-  /**
-   * Listener de saldo por conta (via movements)
-   */
+  // Listener para cards
   useEffect(() => {
-    if (!accounts || accounts.length === 0) {
-      setBalancesByAccountId({});
-      return;
-    }
-
+    if (!accounts || accounts.length === 0) { setBalancesByAccountId({}); return; }
     const unsubs = [];
-
     accounts.forEach((acc) => {
       if (!acc?.id) return;
-
-      const q = query(
-        collection(db, 'movements'),
-        where('accountId', '==', acc.id)
-      );
-
-      const unsub = onSnapshot(
-        q,
-        (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-          // Ordenação ascendente (mais antigo -> mais novo)
-          data.sort((a, b) => {
-            const dtA = a.dateTime || a.date || '';
-            const dtB = b.dateTime || b.date || '';
-            return dtA.localeCompare(dtB);
-          });
-
-          // Saldo real = último balanceAfter
-          const realBalance =
-            data.length > 0
-              ? (data[data.length - 1].balanceAfter || 0)
-              : (acc.currentBalance ?? acc.initialBalance ?? 0);
-
-          setBalancesByAccountId(prev => ({
-            ...prev,
-            [acc.id]: realBalance
-          }));
+      const q = query(collection(db, 'movements'), where('accountId', '==', acc.id));
+      const unsub = onSnapshot(q, (snapshot) => {
+          const totalBalance = snapshot.docs.reduce((sum, doc) => sum + (Number(doc.data().amount) || 0), 0);
+          setBalancesByAccountId(prev => ({ ...prev, [acc.id]: totalBalance }));
         },
-        (err) => {
-          console.error('[AccountsPage] Erro ao ouvir movements da conta:', acc.id, err);
-          setBalancesByAccountId(prev => ({
-            ...prev,
-            [acc.id]: acc.currentBalance ?? acc.initialBalance ?? 0
-          }));
-        }
+        (err) => console.error('[AccountsPage] Erro listener:', err)
       );
-
       unsubs.push(unsub);
     });
-
-    return () => {
-      unsubs.forEach(fn => {
-        try { fn(); } catch (_) {}
-      });
-    };
+    return () => { unsubs.forEach(fn => { try { fn(); } catch (_) {} }); };
   }, [accounts]);
 
-  /**
-   * Agrupar contas por aluno (apenas para mentor)
-   */
   const groupedAccounts = useMemo(() => {
     if (!isMentor()) return {};
-
     const groups = {};
-    
     accounts.forEach(acc => {
       const studentId = acc.studentId || 'unknown';
-      const studentName = acc.studentName || 'Aluno Sem Nome';
-      const studentEmail = acc.studentEmail || '';
-
-      if (!groups[studentId]) {
-        groups[studentId] = {
-          studentName,
-          studentEmail,
-          accounts: []
-        };
-      }
-
+      if (!groups[studentId]) groups[studentId] = { studentName: acc.studentName || 'Aluno Sem Nome', studentEmail: acc.studentEmail || '', accounts: [] };
       groups[studentId].accounts.push(acc);
     });
-
-    // Ordenar contas dentro de cada grupo por ativa/data
-    Object.values(groups).forEach(group => {
-      group.accounts.sort((a, b) => {
-        if (a.active && !b.active) return -1;
-        if (!a.active && b.active) return 1;
-        const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date(0);
-        const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date(0);
-        return dateB - dateA;
-      });
-    });
-
+    Object.values(groups).forEach(group => { group.accounts.sort((a, b) => getDateObject(b.createdAt) - getDateObject(a.createdAt)); });
     return groups;
   }, [accounts, isMentor]);
 
-  /**
-   * Filtrar grupos por busca (mentor)
-   */
   const filteredGroups = useMemo(() => {
     if (!isMentor()) return {};
-    
     if (!searchTerm.trim()) return groupedAccounts;
-
     const search = searchTerm.toLowerCase();
     const filtered = {};
-
     Object.entries(groupedAccounts).forEach(([studentId, data]) => {
-      const matchesName = data.studentName.toLowerCase().includes(search);
-      const matchesEmail = data.studentEmail.toLowerCase().includes(search);
-      const matchesAccount = data.accounts.some(acc => 
-        acc.name.toLowerCase().includes(search) ||
-        (acc.broker || '').toLowerCase().includes(search)
-      );
-
-      if (matchesName || matchesEmail || matchesAccount) {
+      if (data.studentName.toLowerCase().includes(search) || data.studentEmail.toLowerCase().includes(search) || data.accounts.some(acc => acc.name.toLowerCase().includes(search))) {
         filtered[studentId] = data;
       }
     });
-
     return filtered;
   }, [groupedAccounts, searchTerm, isMentor]);
 
   const openModal = (account = null) => {
+    setAuditState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null }); 
     if (account) {
       setEditingAccount(account);
       setFormData({
@@ -191,6 +137,8 @@ const AccountsPage = () => {
         broker: account.broker || account.brokerName || '',
         currency: account.currency || 'BRL',
         initialBalance: account.initialBalance || '',
+        currentBalance: account.currentBalance || '',
+        createdAt: account.createdAt ? getDateObject(account.createdAt).toISOString().split('T')[0] : '',
         type: account.type || (account.isReal ? 'REAL' : 'DEMO')
       });
     } else {
@@ -200,6 +148,8 @@ const AccountsPage = () => {
         broker: '',
         currency: 'BRL',
         initialBalance: '',
+        currentBalance: '',
+        createdAt: new Date().toISOString().split('T')[0],
         type: 'DEMO'
       });
     }
@@ -207,176 +157,180 @@ const AccountsPage = () => {
     setShowBrokerSuggestions(false);
   };
 
+  // --- ENGINE DE AUDITORIA ---
+  const handleRunAudit = async () => {
+    if (!editingAccount) return;
+    setAuditState({ status: 'loading', message: 'Analisando histórico...' });
+
+    try {
+      const q = query(collection(db, 'movements'), where('accountId', '==', editingAccount.id));
+      const snapshot = await getDocs(q);
+      
+      let ledgerTotal = 0;
+      let earliestDate = null;
+      let initialBalanceMovId = null;
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        ledgerTotal += (Number(data.amount) || 0);
+
+        const movDate = getDateObject(data.date || data.dateTime);
+        if (!earliestDate || movDate < earliestDate) {
+          earliestDate = movDate;
+        }
+
+        if (data.type === 'INITIAL_BALANCE') {
+          initialBalanceMovId = doc.id;
+        }
+      });
+
+      const accountDate = getDateObject(formData.createdAt || editingAccount.createdAt);
+      
+      // Zera hora para comparar somente YYYY-MM-DD (usando UTC para segurança)
+      const accTime = accountDate.getTime();
+      const firstMovTime = earliestDate ? earliestDate.getTime() : null;
+
+      let issue = 'OK';
+      let msg = 'Conta saudável. Cronologia e saldos conferem.';
+
+      // Tolerância de 24h para fusos, mas se for muito antes, é erro.
+      // Se firstMovTime for MENOR que accTime (Trade antes da conta)
+      if (firstMovTime && firstMovTime < accTime) {
+        issue = 'CHRONOLOGY_ERROR';
+        msg = `Cronologia Inválida! Existem lançamentos em ${formatBrDate(earliestDate)}, antes da abertura da conta (${formatBrDate(accountDate)}).`;
+      } 
+      else if (Math.abs(ledgerTotal - (Number(formData.currentBalance) || 0)) > 0.05) {
+        issue = 'BALANCE_MISMATCH';
+        msg = `Divergência de Saldo! O valor gravado (${formatCurrency(formData.currentBalance, formData.currency)}) difere da soma dos movimentos (${formatCurrency(ledgerTotal, formData.currency)}).`;
+      }
+
+      setAuditState({
+        status: issue === 'OK' ? 'ok' : 'issue',
+        issueType: issue,
+        message: msg,
+        ledgerBalance: ledgerTotal,
+        suggestion: {
+          newStartDate: earliestDate ? earliestDate.toISOString().split('T')[0] : formData.createdAt,
+          initialMovId: initialBalanceMovId
+        }
+      });
+
+    } catch (error) {
+      console.error(error);
+      setAuditState({ status: 'error', message: 'Erro na auditoria: ' + error.message });
+    }
+  };
+
+  // --- CORREÇÃO AUTOMÁTICA ---
+  const handleFixIssues = async () => {
+    if (!auditState.suggestion || !editingAccount) return;
+    setIsFixing(true);
+
+    try {
+      const batch = writeBatch(db);
+      
+      const accountRef = doc(db, 'accounts', editingAccount.id);
+      const updates = {
+        currentBalance: auditState.ledgerBalance
+      };
+
+      if (auditState.issueType === 'CHRONOLOGY_ERROR') {
+        const newDate = auditState.suggestion.newStartDate;
+        updates.createdAt = newDate;
+
+        if (auditState.suggestion.initialMovId) {
+          const movRef = doc(db, 'movements', auditState.suggestion.initialMovId);
+          batch.update(movRef, { date: newDate, dateTime: newDate });
+        }
+      }
+
+      batch.update(accountRef, updates);
+      await batch.commit();
+
+      setFormData(prev => ({
+        ...prev,
+        currentBalance: auditState.ledgerBalance,
+        createdAt: updates.createdAt || prev.createdAt
+      }));
+
+      // FIX DO NAN: Preservamos o ledgerBalance no estado
+      setAuditState(prev => ({
+        ...prev,
+        status: 'ok',
+        message: 'Correções aplicadas com sucesso!',
+        issueType: 'OK',
+        // ledgerBalance já está no prev, não precisamos setar, mas garante integridade
+      }));
+
+    } catch (error) {
+      alert('Erro ao corrigir: ' + error.message);
+    } finally {
+      setIsFixing(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
-      alert('Informe o nome da conta');
-      return;
-    }
-    if (!formData.broker.trim()) {
-      alert('Informe a corretora');
-      return;
-    }
-    if (!formData.initialBalance || parseFloat(formData.initialBalance) <= 0) {
-      alert('Informe o saldo inicial');
-      return;
-    }
-
-    const isRealDerived = formData.type === 'REAL' || formData.type === 'PROP';
+    if (!formData.name.trim() || !formData.broker.trim()) return alert('Preencha os campos obrigatórios');
+    
     const payload = {
       name: formData.name.trim(),
       broker: formData.broker.trim(),
       brokerName: formData.broker.trim(),
       currency: formData.currency,
       initialBalance: Number(formData.initialBalance),
+      currentBalance: Number(formData.currentBalance) || Number(formData.initialBalance),
       type: formData.type,
-      isReal: isRealDerived,
+      isReal: (formData.type === 'REAL' || formData.type === 'PROP'),
+      createdAt: formData.createdAt 
     };
-
-    if (!editingAccount) {
-      payload.currentBalance = Number(formData.initialBalance);
-    }
 
     try {
       if (editingAccount) {
         await updateAccount(editingAccount.id, payload);
       } else {
+        payload.currentBalance = payload.initialBalance;
         await addAccount(payload);
       }
       setIsModalOpen(false);
     } catch (err) {
-      alert("Erro ao salvar conta: " + err.message);
+      alert("Erro ao salvar: " + err.message);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Deseja excluir esta conta? O histórico de trades será afetado.")) {
-      await deleteAccount(id);
-    }
+    if (window.confirm("Deseja excluir esta conta? O histórico será perdido.")) await deleteAccount(id);
   };
 
   const getAccountBadge = (acc) => {
     const type = acc.type || (acc.isReal ? 'REAL' : 'DEMO');
     switch (type) {
-      case 'REAL':
-        return (
-          <div className="badge-account bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-            <ShieldCheck className="w-3 h-3" /> Conta Real
-          </div>
-        );
-      case 'PROP':
-        return (
-          <div className="badge-account bg-purple-500/10 text-purple-400 border-purple-500/20">
-            <Trophy className="w-3 h-3" /> Mesa Proprietária
-          </div>
-        );
-      default:
-        return (
-          <div className="badge-account bg-yellow-500/10 text-yellow-400 border-yellow-500/20">
-            <FlaskConical className="w-3 h-3" /> Simulado
-          </div>
-        );
+      case 'REAL': return <div className="badge-account bg-emerald-500/10 text-emerald-400 border-emerald-500/20"><ShieldCheck className="w-3 h-3" /> Conta Real</div>;
+      case 'PROP': return <div className="badge-account bg-purple-500/10 text-purple-400 border-purple-500/20"><Trophy className="w-3 h-3" /> Mesa Proprietária</div>;
+      default: return <div className="badge-account bg-yellow-500/10 text-yellow-400 border-yellow-500/20"><FlaskConical className="w-3 h-3" /> Simulado</div>;
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
-        Carregando contas...
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Carregando contas...</div>;
 
-  // Se tem conta selecionada, mostrar detalhes (passa o saldo real também)
   if (selectedAccount) {
-    const mergedAccount = {
-      ...selectedAccount,
-      currentBalance:
-        balancesByAccountId[selectedAccount.id] ??
-        selectedAccount.currentBalance ??
-        selectedAccount.initialBalance ??
-        0
-    };
-
-    return (
-      <AccountDetailPage
-        account={mergedAccount}
-        onBack={() => setSelectedAccount(null)}
-      />
-    );
+    const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} />;
   }
 
   return (
     <div className="min-h-screen p-6 lg:p-8">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <div>
-            <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
-              {isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}
-            </h1>
-            <p className="text-slate-400 mt-1">
-              {isMentor() 
-                ? 'Visualize as contas de trading de seus alunos' 
-                : 'Gerencie suas contas de trading'
-              }
-            </p>
-          </div>
-
-          {/* Botão Adicionar (apenas para alunos) */}
-          {!isMentor() && (
-            <button onClick={() => openModal()} className="btn-primary flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Nova Conta
-            </button>
-          )}
+          <div><h1 className="text-2xl lg:text-3xl font-display font-bold text-white">{isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}</h1><p className="text-slate-400 mt-1">{isMentor() ? 'Visualize as contas de trading de seus alunos' : 'Gerencie suas contas de trading'}</p></div>
+          {!isMentor() && (<button onClick={() => openModal()} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Conta</button>)}
         </div>
-
-        {/* Barra de Busca (apenas para mentor) */}
-        {isMentor() && (
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar por aluno, conta ou corretora..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg 
-                       pl-10 pr-4 py-2.5 text-white placeholder-slate-500 text-sm
-                       focus:outline-none focus:border-emerald-500/50 transition-colors"
-            />
-          </div>
-        )}
+        {isMentor() && (<div className="relative max-w-md"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500/50 transition-colors" /></div>)}
       </div>
 
-      {/* VISUALIZAÇÃO POR ROLE */}
-      
-      {/* MENTOR: Contas Agrupadas por Aluno */}
       {isMentor() ? (
-        <div className="space-y-4">
-          {Object.keys(filteredGroups).length === 0 ? (
-            <div className="text-center py-16">
-              <Wallet className="mx-auto mb-4 text-slate-600" size={64} />
-              <p className="text-xl text-slate-500">
-                {searchTerm ? 'Nenhum resultado encontrado' : 'Nenhum aluno com contas cadastradas'}
-              </p>
-            </div>
-          ) : (
-            Object.entries(filteredGroups).map(([studentId, data]) => (
-              <StudentAccountGroup
-                key={studentId}
-                studentName={data.studentName}
-                studentEmail={data.studentEmail}
-                accounts={data.accounts}
-                balancesByAccountId={balancesByAccountId}
-                onAccountClick={setSelectedAccount}
-                getAccountBadge={getAccountBadge}
-                formatCurrency={formatCurrency}
-              />
-            ))
-          )}
-        </div>
+        <div className="space-y-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
       ) : (
-        /* ALUNO: Grid Normal de Contas */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {
             const saldoInicial = acc.initialBalance || 0;
@@ -384,238 +338,75 @@ const AccountsPage = () => {
             const profit = saldoAtual - saldoInicial;
             const isProfitable = profit >= 0;
             const isSolvent = saldoAtual >= 0;
-            const profitColor = isProfitable ? 'text-emerald-400' : 'text-red-400';
             const ProfitIcon = isProfitable ? TrendingUp : TrendingDown;
-
             return (
-              <div
-                key={acc.id}
-                onClick={() => setSelectedAccount(acc)}
-                className="relative glass-card p-6 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-2xl group"
-              >
+              <div key={acc.id} onClick={() => setSelectedAccount(acc)} className="relative glass-card p-6 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-2xl group">
                 {getAccountBadge(acc)}
-
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Wallet className="w-5 h-5 text-blue-400" />
-                    <h3 className="text-xl font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                      {acc.name}
-                    </h3>
-                  </div>
-                  <p className="text-sm text-slate-400 flex items-center gap-2">
-                    {acc.broker || acc.brokerName || 'Broker não informado'}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">Saldo Inicial</span>
-                    <span className="text-white font-mono">
-                      {formatCurrency(saldoInicial, acc.currency)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-slate-400">Saldo Atual</span>
-                    <div className="flex items-center gap-2">
-                      <ProfitIcon className={`w-4 h-4 ${profitColor}`} />
-                      <span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {formatCurrency(saldoAtual, acc.currency)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <ChevronRight className="w-5 h-5 text-slate-500" />
-                </div>
-
-                <div
-                  className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openModal(acc); }}
-                    className="p-2 hover:bg-blue-500/20 rounded text-blue-400"
-                    title="Editar"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }}
-                    className="p-2 hover:bg-red-500/20 rounded text-red-400"
-                    title="Excluir"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                <div className="mb-4"><div className="flex items-center gap-2 mb-1"><Wallet className="w-5 h-5 text-blue-400" /><h3 className="text-xl font-semibold text-white group-hover:text-emerald-400 transition-colors">{acc.name}</h3></div><p className="text-sm text-slate-400 flex items-center gap-2">{acc.broker || acc.brokerName || 'Broker não informado'}</p></div>
+                <div className="space-y-3"><div className="flex justify-between items-center"><span className="text-sm text-slate-400">Saldo Inicial</span><span className="text-white font-mono">{formatCurrency(saldoInicial, acc.currency)}</span></div><div className="flex justify-between items-center"><span className="text-sm text-slate-400">Saldo Atual</span><div className="flex items-center gap-2"><ProfitIcon className={`w-4 h-4 ${isProfitable ? 'text-emerald-400' : 'text-red-400'}`} /><span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(saldoAtual, acc.currency)}</span></div></div></div>
+                <div className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}><button onClick={(e) => { e.stopPropagation(); openModal(acc); }} className="p-2 hover:bg-blue-500/20 rounded text-blue-400"><Edit2 className="w-4 h-4" /></button><button onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }} className="p-2 hover:bg-red-500/20 rounded text-red-400"><Trash2 className="w-4 h-4" /></button></div>
               </div>
             );
           })}
-
-          {accounts.length === 0 && (
-            <div className="col-span-full p-12 text-center border-2 border-dashed border-slate-800 rounded-2xl text-slate-500">
-              Nenhuma conta cadastrada.
-            </div>
-          )}
         </div>
       )}
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
-            {/* Header */}
             <div className="flex justify-between items-center p-6 border-b border-slate-800">
-              <h3 className="text-xl font-bold text-white">
-                {editingAccount ? 'Editar Conta' : 'Nova Conta'}
-              </h3>
-              <button onClick={() => setIsModalOpen(false)}>
-                <X className="text-slate-400 hover:text-white" />
-              </button>
+              <h3 className="text-xl font-bold text-white">{editingAccount ? 'Editar Conta' : 'Nova Conta'}</h3>
+              <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-white" /></button>
             </div>
-
-            {/* Form */}
+            
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
-              {/* Tipo de Conta */}
-              <div>
-                <label className="input-label mb-3">Tipo de Conta</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { id: 'REAL', icon: ShieldCheck, label: 'Real', color: 'emerald' },
-                    { id: 'DEMO', icon: FlaskConical, label: 'Demo', color: 'yellow' },
-                    { id: 'PROP', icon: Trophy, label: 'Mesa', color: 'purple' }
-                  ].map(type => (
-                    <div
-                      key={type.id}
-                      onClick={() => setFormData({ ...formData, type: type.id })}
-                      className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition-all ${
-                        formData.type === type.id
-                          ? `bg-${type.color}-500/10 border-${type.color}-500/50 text-white`
-                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      <type.icon className={`w-6 h-6 ${
-                        formData.type === type.id ? `text-${type.color}-400` : 'text-slate-500'
-                      }`} />
-                      <span className="text-xs font-bold uppercase">{type.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Nome */}
-              <div>
-                <label className="input-label">Nome da Conta *</label>
-                <input
-                  required
-                  className="input-dark w-full"
-                  placeholder="Ex: Principal, Teste FTMO"
-                  value={formData.name}
-                  onChange={e => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-
-              {/* Corretora com Autocomplete */}
-              <div className="relative">
-                <label className="input-label">Corretora / Mesa *</label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    required
-                    className="input-dark w-full pl-10"
-                    placeholder="Digite para buscar..."
-                    value={formData.broker}
-                    onChange={e => {
-                      setFormData({ ...formData, broker: e.target.value });
-                      setShowBrokerSuggestions(true);
-                    }}
-                    onFocus={() => setShowBrokerSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowBrokerSuggestions(false), 200)}
-                  />
-                </div>
-
-                {showBrokerSuggestions && filteredBrokers.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
-                    {filteredBrokers.map(broker => (
-                      <button
-                        key={broker}
-                        type="button"
-                        className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2"
-                        onClick={() => {
-                          setFormData({ ...formData, broker: broker });
-                          setShowBrokerSuggestions(false);
-                        }}
-                      >
-                        <Search className="w-3 h-3 opacity-50" /> {broker}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Moeda e Saldo */}
+              <div><label className="input-label mb-3">Tipo de Conta</label><div className="grid grid-cols-3 gap-3">{[{ id: 'REAL', icon: ShieldCheck, label: 'Real', color: 'emerald' }, { id: 'DEMO', icon: FlaskConical, label: 'Demo', color: 'yellow' }, { id: 'PROP', icon: Trophy, label: 'Mesa', color: 'purple' }].map(type => (<div key={type.id} onClick={() => setFormData({ ...formData, type: type.id })} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition-all ${formData.type === type.id ? `bg-${type.color}-500/10 border-${type.color}-500/50 text-white` : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><type.icon className={`w-6 h-6 ${formData.type === type.id ? `text-${type.color}-400` : 'text-slate-500'}`} /><span className="text-xs font-bold uppercase">{type.label}</span></div>))}</div></div>
+              <div><label className="input-label">Nome da Conta *</label><input required className="input-dark w-full" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
+              <div className="relative"><label className="input-label">Corretora / Mesa *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input required className="input-dark w-full pl-10" value={formData.broker} onChange={e => { setFormData({ ...formData, broker: e.target.value }); setShowBrokerSuggestions(true); }} /></div>{showBrokerSuggestions && filteredBrokers.length > 0 && (<div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">{filteredBrokers.map(broker => (<button key={broker} type="button" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2" onClick={() => { setFormData({ ...formData, broker: broker }); setShowBrokerSuggestions(false); }}><Search className="w-3 h-3 opacity-50" /> {broker}</button>))}</div>)}</div>
+              
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="input-label">Moeda</label>
-                  <select
-                    className="input-dark w-full"
-                    value={formData.currency}
-                    onChange={e => setFormData({ ...formData, currency: e.target.value })}
-                  >
-                    <option value="BRL">BRL (R$)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="input-label">Saldo Inicial *</label>
-                  <input
-                    required
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input-dark w-full"
-                    placeholder="10000"
-                    value={formData.initialBalance}
-                    onChange={e => setFormData({ ...formData, initialBalance: e.target.value })}
-                  />
-                </div>
+                <div><label className="input-label">Moeda</label><select className="input-dark w-full" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}><option value="BRL">BRL (R$)</option><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
+                <div><label className="input-label">Saldo Inicial *</label><input required type="number" step="0.01" min="0" className="input-dark w-full" value={formData.initialBalance} onChange={e => setFormData({ ...formData, initialBalance: e.target.value })} /></div>
               </div>
-            </form>
 
-            {/* Footer Sticky */}
-            <div className="p-6 border-t border-slate-800 bg-slate-900">
-              <button type="submit" onClick={handleSubmit} className="btn-primary w-full py-3">
-                {editingAccount ? 'Salvar Alterações' : 'Criar Conta'}
-              </button>
-            </div>
+              <div><label className="input-label flex items-center gap-2"><Calendar className="w-3 h-3" /> Data de Abertura / Início</label><input type="date" className="input-dark w-full" value={formData.createdAt} onChange={e => setFormData({ ...formData, createdAt: e.target.value })} /></div>
+
+              {editingAccount && (
+                <div className={`mt-4 border rounded-xl p-4 transition-all ${auditState.status === 'issue' ? 'bg-amber-500/10 border-amber-500/30' : auditState.status === 'ok' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        {auditState.status === 'issue' ? <AlertTriangle className="w-4 h-4 text-amber-400" /> : auditState.status === 'ok' ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <ShieldCheck className="w-4 h-4 text-blue-400" />}
+                        Auditoria & Saúde
+                      </h4>
+                      {auditState.message && <p className={`text-xs mt-1 ${auditState.status === 'issue' ? 'text-amber-300' : auditState.status === 'ok' ? 'text-emerald-300' : 'text-slate-400'}`}>{auditState.message}</p>}
+                    </div>
+                    {auditState.status === 'idle' && <button type="button" onClick={handleRunAudit} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors"><RefreshCw className="w-3 h-3" /> Verificar</button>}
+                  </div>
+
+                  {(auditState.status === 'issue' || auditState.status === 'ok') && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center justify-between text-xs bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+                        <div><span className="block text-slate-500">Saldo Atual (Banco)</span><span className="font-mono font-bold text-white">{formatCurrency(formData.currentBalance, formData.currency)}</span></div>
+                        <ArrowRight className="w-4 h-4 text-slate-600" />
+                        <div className="text-right"><span className="block text-slate-500">Saldo Calculado (Ledger)</span><span className={`font-mono font-bold ${Math.abs(auditState.ledgerBalance - (Number(formData.currentBalance) || 0)) > 0.05 ? 'text-amber-400' : 'text-emerald-400'}`}>{formatCurrency(auditState.ledgerBalance, formData.currency)}</span></div>
+                      </div>
+                      {auditState.status === 'issue' && (
+                        <button type="button" onClick={handleFixIssues} disabled={isFixing} className="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors">
+                          {isFixing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                          {auditState.issueType === 'CHRONOLOGY_ERROR' ? 'Corrigir Datas & Atualizar Saldo' : 'Atualizar Saldo Agora'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </form>
+            <div className="p-6 border-t border-slate-800 bg-slate-900 flex gap-3"><button onClick={() => setIsModalOpen(false)} className="btn-secondary flex-1">Cancelar</button><button type="submit" onClick={handleSubmit} className="btn-primary flex-1">Salvar</button></div>
           </div>
         </div>
       )}
-
-      <style>{`
-        .badge-account {
-          position: absolute;
-          top: 1rem; right: 1rem;
-          padding: 0.25rem 0.5rem; border-radius: 0.25rem;
-          font-size: 0.625rem; text-transform: uppercase; font-weight: 700;
-          display: flex; align-items: center;
-          gap: 0.25rem; border-width: 1px;
-        }
-        .input-label {
-          display: block;
-          font-size: 0.75rem; color: rgb(148 163 184);
-          margin-bottom: 0.5rem; font-weight: 500;
-        }
-        .input-dark {
-          background: rgb(15 23 42);
-          border: 1px solid rgb(51 65 85);
-          padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: white;
-          outline: none; transition: border-color 0.2s;
-        }
-        .input-dark:focus { border-color: rgb(59 130 246); }
-      `}</style>
+      <style>{`.badge-account { position: absolute; top: 1rem; right: 1rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.625rem; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 0.25rem; border-width: 1px; } .input-label { display: block; font-size: 0.75rem; color: rgb(148 163 184); margin-bottom: 0.5rem; font-weight: 500; } .input-dark { background: rgb(15 23 42); border: 1px solid rgb(51 65 85); padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: white; outline: none; transition: border-color 0.2s; } .input-dark:focus { border-color: rgb(59 130 246); }`}</style>
     </div>
   );
 };

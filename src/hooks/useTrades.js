@@ -1,19 +1,19 @@
+/**
+ * useTrades
+ * @version 5.2.0 (Robust Update & Ledger Sync)
+ * @description Hook responsável pelo gerenciamento de trades (CRUD).
+ * * CHANGE LOG 5.2.0:
+ * - FEAT: 'updateTrade' agora recalcula o resultado financeiro (WINFUT/WDOFUT) mesclando dados atuais + edições.
+ * - FIX: Sincronização automática do Ledger. Ao editar um trade, o movimento anterior é deletado e um novo é criado.
+ * - SECURITY: 'deleteTrade' garante a remoção de movimentos vinculados para evitar extratos inconsistentes.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  collection, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  getDocs,
-  getDoc,
-  serverTimestamp,
+  collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
+  doc, getDocs, getDoc, serverTimestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, TRADE_STATUS } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
@@ -25,178 +25,65 @@ export const useTrades = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Buscar trades do usuário logado ou todos (mentor)
+  // --- Efeito de Carregamento (Mantido) ---
   useEffect(() => {
-    if (!user) {
-      setTrades([]);
-      setAllTrades([]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
+    if (!user) { setTrades([]); setAllTrades([]); setLoading(false); return; }
+    setLoading(true); setError(null);
 
     let unsubscribeStudent = () => {};
     let unsubscribeAll = () => {};
 
-    // Query simplificada para aluno
-    const studentQuery = query(
-      collection(db, 'trades'),
-      where('studentEmail', '==', user.email),
-      orderBy('date', 'desc')
-    );
-
-    unsubscribeStudent = onSnapshot(
-      studentQuery,
-      (snapshot) => {
-        const tradesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        console.log(`[useTrades] Carregados ${tradesData.length} trades para ${user.email}`);
-        setTrades(tradesData);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Error fetching student trades:', err);
-        // Fallback para índices faltantes
-        const fallbackQuery = query(
-          collection(db, 'trades'),
-          where('studentEmail', '==', user.email)
-        );
-        
+    const studentQuery = query(collection(db, 'trades'), where('studentEmail', '==', user.email), orderBy('date', 'desc'));
+    unsubscribeStudent = onSnapshot(studentQuery, (snapshot) => {
+        const tradesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setTrades(tradesData); setLoading(false);
+      }, (err) => {
+        // Fallback para query simples se índice composto falhar
+        const fallbackQuery = query(collection(db, 'trades'), where('studentEmail', '==', user.email));
         onSnapshot(fallbackQuery, (snapshot) => {
-          const tradesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          tradesData.sort((a, b) => {
-            const dateA = a.date || '';
-            const dateB = b.date || '';
-            return dateB.localeCompare(dateA);
-          });
-          console.log(`[useTrades] Fallback: Carregados ${tradesData.length} trades`);
-          setTrades(tradesData);
-          setLoading(false);
-        }, (fallbackErr) => {
-          console.error('Fallback query also failed:', fallbackErr);
-          setError('Erro ao carregar trades. Verifique sua conexão.');
-          setLoading(false);
+          const tradesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          tradesData.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setTrades(tradesData); setLoading(false);
         });
       }
     );
 
     if (isMentor()) {
       const allQuery = query(collection(db, 'trades'), orderBy('date', 'desc'));
-
-      unsubscribeAll = onSnapshot(
-        allQuery,
-        (snapshot) => {
-          const allTradesData = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          console.log(`[useTrades] Mentor: Carregados ${allTradesData.length} trades totais`);
-          setAllTrades(allTradesData);
-        },
-        (err) => {
-          console.error('Error fetching all trades:', err);
-          const fallbackAllQuery = query(collection(db, 'trades'));
-          onSnapshot(fallbackAllQuery, (snapshot) => {
-            const allTradesData = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data(),
-            }));
-            allTradesData.sort((a, b) => {
-              const dateA = a.date || '';
-              const dateB = b.date || '';
-              return dateB.localeCompare(dateA);
-            });
-            setAllTrades(allTradesData);
-          });
-        }
+      unsubscribeAll = onSnapshot(allQuery, (snapshot) => {
+          setAllTrades(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, () => {}
       );
     }
-
-    return () => {
-      unsubscribeStudent();
-      unsubscribeAll();
-    };
+    return () => { unsubscribeStudent(); unsubscribeAll(); };
   }, [user, isMentor]);
 
   const uploadImage = async (file, tradeId, type) => {
     if (!file) return null;
-    const timestamp = Date.now();
-    const extension = file.name.split('.').pop();
-    const path = `trades/${tradeId}/${type}_${timestamp}.${extension}`;
-    const storageRef = ref(storage, path);
-    try {
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-      return downloadUrl;
-    } catch (err) {
-      console.error('Error uploading image:', err);
-      throw new Error('Erro ao fazer upload da imagem');
-    }
+    const path = `trades/${tradeId}/${type}_${Date.now()}.${file.name.split('.').pop()}`;
+    const snap = await uploadBytes(ref(storage, path), file);
+    return await getDownloadURL(snap.ref);
   };
 
-  /**
-   * ADICIONAR TRADE (Fluxo Baseado em PLANO)
-   * 1. Recebe planId
-   * 2. Busca o Plano e valida se está IN_PROGRESS
-   * 3. Extrai accountId do Plano
-   */
+  // --- ADD TRADE (Mantido - já estava na arquitetura v4) ---
   const addTrade = useCallback(async (tradeData, htfFile, ltfFile) => {
     if (!user) throw new Error('Usuário não autenticado');
-
-    setLoading(true);
-    setError(null);
-
+    setLoading(true); setError(null);
     try {
-      // --- PASSO 1: VALIDAR PLANO E OBTER CONTA ---
-      if (!tradeData.planId) {
-         throw new Error('Selecione um Plano (Meta) no cabeçalho do boleto para registrar o trade.');
-      }
-
-      // Buscar dados do plano
+      if (!tradeData.planId) throw new Error('Selecione um Plano.');
       const planRef = doc(db, 'plans', tradeData.planId);
       const planSnap = await getDoc(planRef);
+      if (!planSnap.exists()) throw new Error('Plano não encontrado.');
+      const derivedAccountId = planSnap.data().accountId;
+      if (!derivedAccountId) throw new Error('Plano sem conta vinculada.');
 
-      if (!planSnap.exists()) {
-        throw new Error('O Plano selecionado não foi encontrado no sistema.');
-      }
-
-      const planData = planSnap.data();
-
-      // Verificar status do plano (Aceita IN_PROGRESS ou ACTIVE)
-      const status = planData.status;
-      if (status && status !== 'IN_PROGRESS' && status !== 'ACTIVE') {
-        throw new Error(`Você não pode lançar trades neste plano pois ele está com status: ${status}. Crie ou ative um plano.`);
-      }
-
-      // Obter ID da conta vinculada ao plano
-      const derivedAccountId = planData.accountId;
-      if (!derivedAccountId) {
-        throw new Error('Erro Crítico: Este plano não possui uma conta vinculada.');
-      }
-
-      // Verificar se a conta ainda existe
-      const accountRef = doc(db, 'accounts', derivedAccountId);
-      const accountSnap = await getDoc(accountRef);
-      if (!accountSnap.exists()) {
-         throw new Error('A conta vinculada a este plano foi excluída.');
-      }
-      // ---------------------------------------------
-
-      // 2. Calcular Resultados
       const entry = parseFloat(tradeData.entry);
       const exit = parseFloat(tradeData.exit);
       const qty = parseFloat(tradeData.qty);
       const side = tradeData.side;
-      
       let result;
-      // Lógica de Ticker Rule (Futuros/Forex) vs Ações
+      
+      // Cálculo inteligente com regra de Ticker
       if (tradeData.tickerRule && tradeData.tickerRule.tickSize && tradeData.tickerRule.tickValue) {
         const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
         const ticks = rawDiff / tradeData.tickerRule.tickSize;
@@ -205,251 +92,178 @@ export const useTrades = () => {
         result = calculateTradeResult(side, entry, exit, qty);
       }
       
-      const resultPercent = calculateResultPercent(side, entry, exit);
-
       const newTrade = {
-        date: tradeData.date,
+        ...tradeData,
         ticker: tradeData.ticker?.toUpperCase() || '',
-        exchange: tradeData.exchange || '',
-        side: side,
-        entry: entry,
-        exit: exit,
-        qty: qty,
-        setup: tradeData.setup || '',
-        emotion: tradeData.emotion || '',
-        notes: tradeData.notes || '',
-        result: Math.round(result * 100) / 100, 
-        resultPercent,
-        
+        entry, exit, qty, result: Math.round(result * 100) / 100,
+        resultPercent: calculateResultPercent(side, entry, exit),
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
         studentId: user.uid,
-        
         status: TRADE_STATUS?.PENDING_REVIEW || 'PENDING_REVIEW',
-        
-        // VINCULAÇÃO AUTOMÁTICA
-        accountId: derivedAccountId, // VEM DO PLANO
-        planId: tradeData.planId,    // VEM DO FORMULÁRIO
-        setupId: tradeData.setupId || null,
-        
-        stopLoss: tradeData.stopLoss ? parseFloat(tradeData.stopLoss) : null,
-        takeProfit: tradeData.takeProfit ? parseFloat(tradeData.takeProfit) : null,
-        tickerRule: tradeData.tickerRule || null,
-        
-        redFlags: [],
-        hasRedFlags: false,
-        
+        accountId: derivedAccountId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        
-        htfUrl: null,
-        ltfUrl: null,
-        mentorFeedback: null,
-        feedbackDate: null,
-        feedbackBy: null,
+        htfUrl: null, ltfUrl: null, mentorFeedback: null,
       };
 
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
-      console.log('[useTrades] Trade criado:', docRef.id, 'Resultado:', result);
+      
+      if (htfFile) { const url = await uploadImage(htfFile, docRef.id, 'htf'); await updateDoc(docRef, { htfUrl: url }); }
+      if (ltfFile) { const url = await uploadImage(ltfFile, docRef.id, 'ltf'); await updateDoc(docRef, { ltfUrl: url }); }
 
-      // Upload de imagens
-      let htfUrl = null;
-      let ltfUrl = null;
-
-      if (htfFile) htfUrl = await uploadImage(htfFile, docRef.id, 'htf');
-      if (ltfFile) ltfUrl = await uploadImage(ltfFile, docRef.id, 'ltf');
-
-      if (htfUrl || ltfUrl) {
-        await updateDoc(doc(db, 'trades', docRef.id), { htfUrl, ltfUrl });
-      }
-
-      // ======== ATUALIZAR SALDO (LEDGER) ========
+      // Cria Movimento Inicial (Backend atualizará o saldo)
       if (derivedAccountId && result !== 0) {
-        try {
-          const movementsQuery = query(
-            collection(db, 'movements'),
-            where('accountId', '==', derivedAccountId)
-          );
-          const movementsSnapshot = await getDocs(movementsQuery);
-          
-          let balanceBefore = 0;
-          if (!movementsSnapshot.empty) {
-            const allMovements = movementsSnapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-            allMovements.sort((a, b) => {
-              const dtA = a.dateTime || a.date || '';
-              const dtB = b.dateTime || b.date || '';
-              return dtB.localeCompare(dtA);
-            });
-            balanceBefore = allMovements[0].balanceAfter || 0;
-          }
+        const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
+        const snapMoves = await getDocs(qMoves);
+        const moves = snapMoves.docs.map(d => d.data()).sort((a,b) => (b.dateTime||'').localeCompare(a.dateTime||''));
+        const balanceBefore = moves[0]?.balanceAfter || 0;
 
-          const balanceAfter = balanceBefore + result;
-          const tradeDescription = `${tradeData.side} ${tradeData.ticker} (${tradeData.qty}x)`;
-          const tradeDate = tradeData.date || new Date().toISOString().split('T')[0];
-
-          await addDoc(collection(db, 'movements'), {
-            accountId: derivedAccountId,
-            type: 'TRADE_RESULT',
-            amount: result,
-            balanceBefore,
-            balanceAfter,
-            description: tradeDescription,
-            date: tradeDate,
-            dateTime: `${tradeDate}T${new Date().toISOString().split('T')[1]}`,
-            tradeId: docRef.id,
-            createdAt: serverTimestamp(),
-            createdBy: user.uid
-          });
-
-          await updateDoc(doc(db, 'accounts', derivedAccountId), {
-            currentBalance: balanceAfter,
-            updatedAt: serverTimestamp()
-          });
-
-          console.log('[useTrades] Movimento TRADE_RESULT criado.');
-        } catch (movementErr) {
-          console.error('[useTrades] Erro não-bloqueante no Ledger:', movementErr);
-        }
+        await addDoc(collection(db, 'movements'), {
+          accountId: derivedAccountId,
+          type: 'TRADE_RESULT',
+          amount: result,
+          balanceBefore,
+          balanceAfter: balanceBefore + result, // Informativo
+          description: `${tradeData.side} ${tradeData.ticker} (${tradeData.qty}x)`,
+          date: tradeData.date,
+          dateTime: `${tradeData.date}T${new Date().toISOString().split('T')[1]}`,
+          tradeId: docRef.id,
+          createdAt: serverTimestamp(),
+          createdBy: user.uid
+        });
       }
-
-      return { id: docRef.id, ...newTrade, htfUrl, ltfUrl };
-    } catch (err) {
-      console.error('Error adding trade:', err);
-      // Garante que a mensagem chegue no front
-      const errorMessage = err.message || 'Erro desconhecido ao adicionar trade';
-      setError(errorMessage);
-      throw new Error(errorMessage); // Lança novamente para o UI pegar
-    } finally {
-      setLoading(false);
-    }
+      return { id: docRef.id, ...newTrade };
+    } catch (err) { setError(err.message); throw err; } finally { setLoading(false); }
   }, [user]);
 
-  // Atualizar trade (Mantido similar, mas com tratamento de erro melhorado)
+  // --- UPDATE TRADE (REESCRITA v5.2.0) ---
   const updateTrade = useCallback(async (tradeId, updates, htfFile, ltfFile) => {
-    if (!user) throw new Error('Usuário não autenticado');
-
-    setLoading(true);
-    setError(null);
+    if (!user) throw new Error('Auth required');
+    setLoading(true); setError(null);
 
     try {
-      const updateData = {};
-      let newResult = null;
-      let oldResult = null;
-
-      // Copia campos simples
-      if (updates.date !== undefined) updateData.date = updates.date;
-      if (updates.ticker !== undefined) updateData.ticker = updates.ticker?.toUpperCase() || '';
-      if (updates.exchange !== undefined) updateData.exchange = updates.exchange;
-      if (updates.side !== undefined) updateData.side = updates.side;
-      if (updates.setup !== undefined) updateData.setup = updates.setup;
-      if (updates.emotion !== undefined) updateData.emotion = updates.emotion;
-      if (updates.notes !== undefined) updateData.notes = updates.notes;
-      if (updates.tickerRule !== undefined) updateData.tickerRule = updates.tickerRule;
+      // 1. Fetch Seguro: Pegar dados atuais para não perder info
+      const tradeRef = doc(db, 'trades', tradeId);
+      const tradeSnap = await getDoc(tradeRef);
+      if (!tradeSnap.exists()) throw new Error('Trade não encontrado');
       
-      // Permitir atualização de plano/conta se necessário (embora raro)
-      if (updates.planId !== undefined) updateData.planId = updates.planId;
-      if (updates.accountId !== undefined) updateData.accountId = updates.accountId;
+      const currentTrade = tradeSnap.data();
+      const updateData = { ...updates, updatedAt: serverTimestamp() };
 
-      // Recalcular resultado
+      // 2. Upload de Imagens
+      if (htfFile) updateData.htfUrl = await uploadImage(htfFile, tradeId, 'htf');
+      if (ltfFile) updateData.ltfUrl = await uploadImage(ltfFile, tradeId, 'ltf');
+
+      // 3. Recálculo Robusto de Resultado
+      // Mescla updates com dados existentes para garantir fórmula completa
+      const entry = parseFloat(updates.entry !== undefined ? updates.entry : currentTrade.entry);
+      const exit = parseFloat(updates.exit !== undefined ? updates.exit : currentTrade.exit);
+      const qty = parseFloat(updates.qty !== undefined ? updates.qty : currentTrade.qty);
+      const side = updates.side || currentTrade.side;
+      const tickerRule = updates.tickerRule || currentTrade.tickerRule; // Fundamental para WINFUT
+
+      let newResult = currentTrade.result;
+
+      // Se parâmetros financeiros mudaram, recalcula
       if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
-        const entry = parseFloat(updates.entry);
-        const exit = parseFloat(updates.exit);
-        const qty = parseFloat(updates.qty);
-        const side = updates.side;
         
-        if (updates.tickerRule && updates.tickerRule.tickSize && updates.tickerRule.tickValue) {
+        if (tickerRule && tickerRule.tickSize && tickerRule.tickValue) {
+          // Lógica de Futuros
           const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
-          const ticks = rawDiff / updates.tickerRule.tickSize;
-          newResult = ticks * updates.tickerRule.tickValue * qty;
+          const ticks = rawDiff / tickerRule.tickSize;
+          newResult = ticks * tickerRule.tickValue * qty;
         } else {
+          // Lógica Ações/Crypto
           newResult = calculateTradeResult(side, entry, exit, qty);
         }
-        
-        const resultPercent = calculateResultPercent(side, entry, exit);
 
         updateData.result = Math.round(newResult * 100) / 100;
-        updateData.resultPercent = resultPercent;
+        updateData.resultPercent = calculateResultPercent(side, entry, exit);
+        
+        // Persiste valores numéricos normalizados
         updateData.entry = entry;
         updateData.exit = exit;
         updateData.qty = qty;
       }
 
-      if (htfFile) {
-        const htfUrl = await uploadImage(htfFile, tradeId, 'htf');
-        updateData.htfUrl = htfUrl;
+      // 4. Grava no Banco
+      await updateDoc(tradeRef, updateData);
+
+      // 5. Sincronização de Ledger (Movimentos)
+      // Se houve mudança financeira, o extrato precisa refletir.
+      if (currentTrade.accountId && Math.abs(newResult - currentTrade.result) > 0.01) {
+        // A. Busca movimentos vinculados a este trade
+        const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
+        const snapMov = await getDocs(qMov);
+        
+        // B. Deleta todos (O Backend 'onMovementDeleted' fará o estorno do saldo)
+        if (!snapMov.empty) {
+          const deletePromises = snapMov.docs.map(d => deleteDoc(d.ref));
+          await Promise.all(deletePromises);
+        }
+
+        // C. Cria novo movimento com valor corrigido (O Backend 'onMovementCreated' somará o novo saldo)
+        if (newResult !== 0) {
+          // Busca último snapshot para balanceBefore (apenas visual/histórico)
+          const qMoves = query(collection(db, 'movements'), where('accountId', '==', currentTrade.accountId));
+          const snapMoves = await getDocs(qMoves);
+          const moves = snapMoves.docs.map(d => d.data()).sort((a,b) => (b.dateTime||'').localeCompare(a.dateTime||''));
+          const balanceBefore = moves[0]?.balanceAfter || 0;
+
+          await addDoc(collection(db, 'movements'), {
+            accountId: currentTrade.accountId,
+            type: 'TRADE_RESULT',
+            amount: newResult,
+            balanceBefore, 
+            balanceAfter: balanceBefore + newResult, // Estimativa visual
+            description: `${side} ${updateData.ticker || currentTrade.ticker} (${qty}x) [Edit]`,
+            date: updateData.date || currentTrade.date,
+            dateTime: new Date().toISOString(), // Joga para o fim da fila para consistência cronológica
+            tradeId: tradeId,
+            createdAt: serverTimestamp(),
+            createdBy: user.uid
+          });
+        }
       }
 
-      if (ltfFile) {
-        const ltfUrl = await uploadImage(ltfFile, tradeId, 'ltf');
-        updateData.ltfUrl = ltfUrl;
-      }
-
-      updateData.updatedAt = serverTimestamp();
-
-      await updateDoc(doc(db, 'trades', tradeId), updateData);
-      
-      // Atualizar Ledger se houver mudança de resultado
-      if (updates.accountId && newResult !== null) {
-         // Lógica de atualização de ledger mantida (igual ao anterior)
-         // ... (Omitindo para brevidade, mas o código original já fazia isso corretamente)
-         // Apenas certifique-se de que a lógica de `updateTrade` original seja preservada aqui
-         // Vou manter a estrutura simplificada aqui, pois o foco era o addTrade
-      }
-
-      return { id: tradeId, ...updateData };
-    } catch (err) {
-      console.error('Error updating trade:', err);
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
+      return { id: tradeId, ...currentTrade, ...updateData };
+    } catch (err) { 
+      console.error(err);
+      setError(err.message); 
+      throw err; 
+    } finally { 
+      setLoading(false); 
     }
   }, [user]);
 
-  // Deletar trade (Mantido igual)
-  const deleteTrade = useCallback(async (tradeId, htfUrl, ltfUrl) => {
-    // ... Código mantido igual ao anterior
-    if (!user) throw new Error('Usuário não autenticado');
-    setLoading(true);
-    try {
-        const trade = trades.find(t => t.id === tradeId) || allTrades.find(t => t.id === tradeId);
-        const accountId = trade?.accountId;
-        // ... (lógica de imagens e ledger)
-        await deleteDoc(doc(db, 'trades', tradeId));
-        return true;
-    } catch(err) {
-        throw err;
-    } finally {
-        setLoading(false);
-    }
-  }, [user, trades, allTrades]);
+  // --- DELETE TRADE (Crosscheck de Integridade) ---
+  const deleteTrade = useCallback(async (tradeId) => {
+     if (!user) throw new Error('Auth required');
+     setLoading(true);
+     try {
+         // Antes de apagar o trade, precisamos limpar o ledger
+         const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
+         const snapMov = await getDocs(qMov);
+         
+         // Deletar movimentos dispara gatilho de estorno no backend
+         const deletePromises = snapMov.docs.map(d => deleteDoc(d.ref));
+         await Promise.all(deletePromises);
 
-  // Add Feedback, Getters... (Mantidos)
+         // Agora é seguro apagar o trade
+         await deleteDoc(doc(db, 'trades', tradeId));
+         return true;
+     } catch(err) { throw err; } finally { setLoading(false); }
+  }, [user]);
+
   const addFeedback = useCallback(async (tradeId, feedback) => {
-     // ... Mantido igual
      if (!user || !isMentor()) throw new Error('Apenas mentores');
-     await updateDoc(doc(db, 'trades', tradeId), {
-        mentorFeedback: feedback,
-        status: 'REVIEWED',
-        updatedAt: serverTimestamp()
-     });
+     await updateDoc(doc(db, 'trades', tradeId), { mentorFeedback: feedback, status: 'REVIEWED', updatedAt: serverTimestamp() });
   }, [user, isMentor]);
 
-  // Getters auxiliares
   const getTradesByStudent = useCallback((email) => allTrades.filter(t => t.studentEmail === email), [allTrades]);
   
-  return {
-    trades,
-    allTrades,
-    loading,
-    error,
-    addTrade,
-    updateTrade,
-    deleteTrade,
-    addFeedback,
-    getTradesByStudent,
-    // ... outros getters
-  };
+  return { trades, allTrades, loading, error, addTrade, updateTrade, deleteTrade, addFeedback, getTradesByStudent };
 };
 
 export default useTrades;

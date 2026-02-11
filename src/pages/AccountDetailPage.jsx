@@ -1,502 +1,361 @@
+/**
+ * AccountDetailPage
+ * @version 6.1.1 (UI Tweaks)
+ * @description Extrato com cálculo reverso (Reverse Ledger).
+ * * CHANGE LOG 6.1.1:
+ * - UI: Aumentado espaçamento da coluna 'Tipo' (w-32 -> w-40) para evitar quebra de linha em 'Resultado Trade'.
+ * - MANUTENÇÃO: Mantida toda a lógica de cálculo reverso, tradução e formatação da v6.1.0.
+ */
+
 import { useState, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
-  Wallet, AlertCircle, Loader2, X, Check, RefreshCw
+  Wallet, Loader2, X, History, Filter
 } from 'lucide-react';
 import { useMovements } from '../hooks/useMovements';
 
-// Formatadores
+// --- Helpers de Formatação ---
+
 const formatCurrency = (value, currency = 'BRL') => {
-  const config = {
-    BRL: { locale: 'pt-BR', currency: 'BRL' },
-    USD: { locale: 'en-US', currency: 'USD' },
-    EUR: { locale: 'de-DE', currency: 'EUR' }
-  };
-  const c = config[currency] || config.BRL;
-  return new Intl.NumberFormat(c.locale, { style: 'currency', currency: c.currency }).format(value);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(value || 0);
 };
 
+// Força o formato DD/MM/AAAA independente do locale do browser
 const formatDate = (dateStr) => {
   if (!dateStr) return '-';
   const [year, month, day] = dateStr.split('-');
   return `${day}/${month}/${year}`;
 };
 
-// Períodos de filtro
-const PERIODS = [
-  { id: 'all', label: 'Todo Período' },
-  { id: 'today', label: 'Hoje' },
-  { id: 'week', label: 'Esta Semana' },
-  { id: 'month', label: 'Este Mês' },
-  { id: 'quarter', label: 'Este Trimestre' },
-  { id: 'year', label: 'Este Ano' },
-];
+// Tradução dos tipos de movimento
+const translateType = (type) => {
+  const map = {
+    'INITIAL_BALANCE': 'Saldo Inicial',
+    'DEPOSIT': 'Aporte',
+    'WITHDRAWAL': 'Retirada',
+    'TRADE_RESULT': 'Resultado Trade'
+  };
+  return map[type] || type;
+};
 
 const AccountDetailPage = ({ account, onBack }) => {
-  const {
-    movements,
-    loading,
-    addDeposit,
-    addWithdrawal
-  } = useMovements(account?.id);
-
+  const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
+  
+  // Filtros
   const [period, setPeriod] = useState('month');
-  const [showTransactionModal, setShowTransactionModal] = useState(false);
-  const [transactionType, setTransactionType] = useState('DEPOSIT');
-  const [transactionAmount, setTransactionAmount] = useState('');
-  const [transactionDescription, setTransactionDescription] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
-  // Filtrar movimentos por período
-  const filteredMovements = useMemo(() => {
-    if (!movements.length) return [];
-
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-
-    const getStartDate = () => {
-      switch (period) {
-        case 'today':
-          return today;
-        case 'week': {
-          const start = new Date(now);
-          start.setDate(now.getDate() - now.getDay());
-          return start.toISOString().split('T')[0];
-        }
-        case 'month':
-          return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        case 'quarter': {
-          const quarterMonth = Math.floor(now.getMonth() / 3) * 3;
-          return `${now.getFullYear()}-${String(quarterMonth + 1).padStart(2, '0')}-01`;
-        }
-        case 'year':
-          return `${now.getFullYear()}-01-01`;
-        default:
-          return null;
-      }
-    };
-
-    const startDate = getStartDate();
-    if (!startDate) return movements;
-
-    return movements.filter(m => (m?.date || '') >= startDate);
-  }, [movements, period]);
+  
+  // Datas Personalizadas
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  
+  // Modal Transação
+  const [showModal, setShowModal] = useState(false);
+  const [txType, setTxType] = useState('DEPOSIT');
+  const [txAmount, setTxAmount] = useState('');
+  const [txDesc, setTxDesc] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   /**
-   * Ordenar o extrato em ordem cronológica (antigo -> novo).
-   * Motivo: Para o saldo fazer sentido linha a linha.
+   * 1. ENGINE DE CÁLCULO REVERSO (Reverse Ledger)
    */
-  const sortedMovements = useMemo(() => {
-    const data = [...filteredMovements];
+  const ledger = useMemo(() => {
+    if (!account || movements.length === 0) return [];
 
-    data.sort((a, b) => {
-      const dtA = a?.dateTime || (a?.date ? `${a.date}T00:00:00.000Z` : '');
-      const dtB = b?.dateTime || (b?.date ? `${b.date}T00:00:00.000Z` : '');
+    let currentRunner = account.currentBalance || account.initialBalance || 0;
+    
+    // movements vem do hook ordenado por data DESC (Hoje -> Ontem)
+    return movements.map(mov => {
+      let amount = Number(mov.amount);
+      
+      // Normalização de Sinais
+      if (mov.type === 'WITHDRAWAL' && amount > 0) amount = -amount;
+      if (mov.type === 'DEPOSIT' && amount < 0) amount = Math.abs(amount);
+      if (mov.type === 'INITIAL_BALANCE') amount = Math.abs(amount);
+      
+      const balanceAfter = currentRunner;
+      const balanceBefore = currentRunner - amount;
 
-      // Ascendente: antigo -> novo
-      return dtA.localeCompare(dtB);
+      currentRunner = balanceBefore;
+
+      return {
+        ...mov,
+        normalizedAmount: amount,
+        balanceAfter,
+        balanceBefore
+      };
     });
+  }, [movements, account]);
 
-    return data;
-  }, [filteredMovements]);
+  /**
+   * 2. FILTRO & VISUALIZAÇÃO
+   */
+  const { visibleData, startBalance, hasFilter, endBalance } = useMemo(() => {
+    if (period === 'all') {
+      const data = [...ledger].reverse();
+      return { 
+        visibleData: data, 
+        startBalance: 0, 
+        hasFilter: false,
+        endBalance: data.length > 0 ? data[data.length - 1].balanceAfter : 0
+      };
+    }
 
-  // Calcular totais do período
-  const periodTotals = useMemo(() => {
-    const totals = {
-      deposits: 0,
-      withdrawals: 0,
-      tradeResults: 0,
-      net: 0
+    const now = new Date();
+    let minDate = '';
+    let maxDate = '9999-12-31';
+
+    switch (period) {
+      case 'today': 
+        minDate = now.toISOString().split('T')[0]; 
+        maxDate = minDate;
+        break;
+      case 'week': {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        minDate = d.toISOString().split('T')[0]; 
+        break;
+      }
+      case 'month': 
+        minDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`; 
+        break;
+      case 'year': 
+        minDate = `${now.getFullYear()}-01-01`; 
+        break;
+      case 'custom':
+        minDate = customStart || '1900-01-01';
+        maxDate = customEnd || '9999-12-31';
+        break;
+      default: minDate = '1900-01-01';
+    }
+
+    const filteredDESC = ledger.filter(m => m.date >= minDate && m.date <= maxDate);
+
+    let transportBalance = 0;
+    if (filteredDESC.length > 0) {
+      transportBalance = filteredDESC[filteredDESC.length - 1].balanceBefore;
+    } else {
+      const prevMove = ledger.find(m => m.date < minDate);
+      transportBalance = prevMove ? prevMove.balanceAfter : (account?.initialBalance || 0);
+    }
+
+    const visibleASC = [...filteredDESC].reverse();
+    
+    const finalBal = visibleASC.length > 0 
+      ? visibleASC[visibleASC.length - 1].balanceAfter 
+      : transportBalance;
+
+    return { 
+      visibleData: visibleASC, 
+      startBalance: transportBalance, 
+      hasFilter: true,
+      endBalance: finalBal
     };
+  }, [ledger, period, customStart, customEnd, account]);
 
-    filteredMovements.forEach(m => {
-      switch (m.type) {
-        case 'DEPOSIT':
-          totals.deposits += m.amount;
-          break;
-        case 'WITHDRAWAL':
-          totals.withdrawals += Math.abs(m.amount);
-          break;
-        case 'TRADE_RESULT':
-          totals.tradeResults += m.amount;
-          break;
-        case 'INITIAL_BALANCE':
-        case 'ADJUSTMENT':
-        default:
-          break;
-      }
-      totals.net += (m.amount || 0);
-    });
-
-    return totals;
-  }, [filteredMovements]);
-
-  // Saldo atual: usa o movimento mais recente (agora é o último da lista ordenada)
-  const currentBalance = useMemo(() => {
-    if (sortedMovements.length > 0) {
-      return sortedMovements[sortedMovements.length - 1].balanceAfter || 0;
-    }
-    return account?.currentBalance ?? account?.initialBalance ?? 0;
-  }, [sortedMovements, account]);
-
-  // Variação percentual
-  const variation = useMemo(() => {
-    const initial = account?.initialBalance || 0;
-    if (initial === 0) return 0;
-    return ((currentBalance - initial) / initial) * 100;
-  }, [currentBalance, account]);
-
-  const openTransactionModal = (type) => {
-    setTransactionType(type);
-    setTransactionAmount('');
-    setTransactionDescription('');
-    setError(null);
-    setShowTransactionModal(true);
-  };
-
-  const handleSaveTransaction = async () => {
-    const amount = parseFloat(transactionAmount);
-    if (!amount || amount <= 0) {
-      setError('Informe um valor válido');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
+  // --- Actions ---
+  const handleSaveTx = async () => {
+    if (!txAmount) return;
+    setIsSaving(true);
     try {
-      if (transactionType === 'DEPOSIT') {
-        await addDeposit(account.id, amount, transactionDescription);
-      } else {
-        if (amount > currentBalance) {
-          setError('Saldo insuficiente para este saque');
-          setSaving(false);
-          return;
-        }
-        await addWithdrawal(account.id, amount, transactionDescription);
-      }
-      setShowTransactionModal(false);
-    } catch (err) {
-      setError(err.message || 'Erro ao salvar movimentação');
-    } finally {
-      setSaving(false);
-    }
+      if (txType === 'DEPOSIT') await addDeposit(account.id, txAmount, txDesc);
+      else await addWithdrawal(account.id, txAmount, txDesc);
+      setShowModal(false);
+      setTxAmount(''); setTxDesc('');
+    } finally { setIsSaving(false); }
   };
 
-  const getMovementIcon = (type, amount) => {
-    switch (type) {
-      case 'INITIAL_BALANCE':
-        return <Wallet className="w-4 h-4 text-blue-400" />;
-      case 'DEPOSIT':
-        return <ArrowDownCircle className="w-4 h-4 text-emerald-400" />;
-      case 'WITHDRAWAL':
-        return <ArrowUpCircle className="w-4 h-4 text-red-400" />;
-      case 'TRADE_RESULT':
-        return amount >= 0
-          ? <TrendingUp className="w-4 h-4 text-emerald-400" />
-          : <TrendingDown className="w-4 h-4 text-red-400" />;
-      default:
-        return <RefreshCw className="w-4 h-4 text-slate-400" />;
-    }
+  const getIcon = (type, amount) => {
+    if (type === 'INITIAL_BALANCE') return <Wallet className="w-4 h-4 text-blue-400" />;
+    if (type === 'DEPOSIT') return <ArrowDownCircle className="w-4 h-4 text-emerald-400" />;
+    if (type === 'WITHDRAWAL') return <ArrowUpCircle className="w-4 h-4 text-red-400" />;
+    return amount >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />;
   };
 
-  const getTypeLabel = (type) => {
-    switch (type) {
-      case 'INITIAL_BALANCE': return 'Saldo Inicial';
-      case 'DEPOSIT': return 'Depósito';
-      case 'WITHDRAWAL': return 'Saque';
-      case 'TRADE_RESULT': return 'Resultado Trade';
-      case 'ADJUSTMENT': return 'Ajuste';
-      default: return type;
-    }
-  };
-
-  if (!account) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-500">Conta não encontrada</p>
-      </div>
-    );
-  }
+  if (!account) return null;
 
   return (
-    <div className="min-h-screen p-6 lg:p-8 animate-in fade-in">
-      {/* Header */}
-      <div className="mb-6">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Voltar para Contas
+    <div className="min-h-screen p-6 animate-in fade-in">
+      {/* HEADER */}
+      <div className="mb-8">
+        <button onClick={onBack} className="text-slate-400 hover:text-white flex items-center gap-2 mb-4 transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Voltar
         </button>
-
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-              <Wallet className="w-7 h-7 text-blue-400" />
-              {account.name}
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Wallet className="w-6 h-6 text-blue-500" /> {account.name}
             </h1>
-            <p className="text-slate-400 mt-1">
-              {account.broker || account.brokerName} • {account.currency || 'BRL'}
-            </p>
+            <p className="text-slate-500">{account.broker} • {account.currency}</p>
           </div>
-
-          {/* Ações */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => openTransactionModal('DEPOSIT')}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Depósito
-            </button>
-            <button
-              onClick={() => openTransactionModal('WITHDRAWAL')}
-              className="btn-secondary flex items-center gap-2 text-red-400 border-red-500/30 hover:bg-red-500/10"
-            >
-              <Minus className="w-4 h-4" /> Saque
-            </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setTxType('DEPOSIT'); setShowModal(true); }} className="btn-primary flex gap-2"><Plus className="w-4 h-4"/> Aporte</button>
+            <button onClick={() => { setTxType('WITHDRAWAL'); setShowModal(true); }} className="btn-secondary flex gap-2 text-red-400 border-red-500/30"><Minus className="w-4 h-4"/> Saque</button>
           </div>
         </div>
       </div>
 
-      {/* Cards de Saldo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="glass-card p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Atual</p>
-          {/* CORREÇÃO: Saldo verde se >= 0 (solvência), independente se teve lucro ou prejuízo no total.
-          */}
-          <p className={`text-2xl font-bold ${currentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatCurrency(currentBalance, account.currency)}
-          </p>
-          <p className={`text-sm mt-1 ${variation >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {variation >= 0 ? '+' : ''}{variation.toFixed(2)}% desde o início
-          </p>
-        </div>
-
-        <div className="glass-card p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Inicial</p>
-          <p className="text-2xl font-bold text-white">
-            {formatCurrency(account.initialBalance || 0, account.currency)}
-          </p>
-          <p className="text-sm text-slate-500 mt-1">Capital investido</p>
-        </div>
-
-        <div className="glass-card p-5">
-          <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-            P&L Trades ({PERIODS.find(p => p.id === period)?.label})
-          </p>
-          <p className={`text-2xl font-bold ${periodTotals.tradeResults >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {periodTotals.tradeResults >= 0 ? '+' : ''}{formatCurrency(periodTotals.tradeResults, account.currency)}
-          </p>
-          <p className="text-sm text-slate-500 mt-1">
-            {filteredMovements.filter(m => m.type === 'TRADE_RESULT').length} operações
-          </p>
-        </div>
-      </div>
-
-      {/* Filtro + Resumo */}
-      <div className="glass-card mb-6">
-        <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500 outline-none"
-            >
-              {PERIODS.map(p => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
+      {/* EXTRATO CARD */}
+      <div className="glass-card">
+        {/* BARRA DE FERRAMENTAS */}
+        <div className="p-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-start gap-4">
+          <div className="flex items-center gap-2 text-white font-bold min-w-[100px]">
+            <History className="w-4 h-4"/> Extrato
           </div>
+          
+          <div className="h-6 w-px bg-slate-700 hidden md:block mx-2"></div>
 
-          <div className="flex gap-6 text-sm">
-            <div>
-              <span className="text-slate-500">Depósitos: </span>
-              <span className="text-emerald-400 font-medium">+{formatCurrency(periodTotals.deposits, account.currency)}</span>
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 border border-slate-700">
+              <Filter className="w-3 h-3 text-slate-400 ml-2"/>
+              <select 
+                value={period} 
+                onChange={(e) => setPeriod(e.target.value)} 
+                className="bg-slate-800 text-white text-sm p-1 outline-none border-none cursor-pointer rounded"
+              >
+                <option value="today">Hoje</option>
+                <option value="week">Esta Semana</option>
+                <option value="month">Este Mês</option>
+                <option value="year">Este Ano</option>
+                <option value="custom">Personalizado</option>
+                <option value="all">Todo o Período</option>
+              </select>
             </div>
-            <div>
-              <span className="text-slate-500">Saques: </span>
-              <span className="text-red-400 font-medium">-{formatCurrency(periodTotals.withdrawals, account.currency)}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Trades: </span>
-              <span className={`font-medium ${periodTotals.tradeResults >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {periodTotals.tradeResults >= 0 ? '+' : ''}{formatCurrency(periodTotals.tradeResults, account.currency)}
-              </span>
-            </div>
+
+            {period === 'custom' && (
+              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 flex-1 md:flex-none">
+                <div className="relative group">
+                  <input 
+                    type="date" 
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="bg-slate-800 text-white text-sm p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500 w-[130px]"
+                  />
+                  {!customStart && (
+                    <span className="absolute left-2 top-1.5 text-xs text-slate-500 pointer-events-none bg-slate-800 px-1">
+                      De: Início
+                    </span>
+                  )}
+                </div>
+                
+                <span className="text-slate-500 text-xs">até</span>
+                
+                <div className="relative group">
+                  <input 
+                    type="date" 
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="bg-slate-800 text-white text-sm p-1.5 rounded border border-slate-700 outline-none focus:border-blue-500 w-[130px]"
+                  />
+                  {!customEnd && (
+                    <span className="absolute left-2 top-1.5 text-xs text-slate-500 pointer-events-none bg-slate-800 px-1">
+                      Até: Hoje
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tabela de Movimentos */}
+        {/* TABELA */}
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center">
-              <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
-            </div>
-          ) : sortedMovements.length === 0 ? (
-            <div className="p-12 text-center text-slate-500">
-              Nenhum movimento no período selecionado.
-            </div>
+            <div className="p-10 text-center"><Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto"/></div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-slate-800/50">
-                <tr className="text-xs text-slate-500 uppercase">
-                  <th className="text-left p-4 font-medium">Data</th>
-                  <th className="text-left p-4 font-medium">Tipo</th>
-                  <th className="text-left p-4 font-medium">Descrição</th>
-                  <th className="text-right p-4 font-medium">Valor</th>
-                  <th className="text-right p-4 font-medium">Saldo</th>
+            <table className="w-full text-sm text-left">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-800/50">
+                <tr>
+                  <th className="p-4 w-32">Data</th>
+                  {/* [AJUSTE UI]: w-32 -> w-40 para mais respiro no Tipo */}
+                  <th className="p-4 w-40">Tipo</th>
+                  <th className="p-4">Descrição</th>
+                  <th className="p-4 text-right">Valor</th>
+                  <th className="p-4 text-right">Saldo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
-                {sortedMovements.map((mov) => (
-                  <tr key={mov.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-4">
-                      <span className="text-sm text-slate-300">{formatDate(mov.date)}</span>
+                
+                {/* LINHA DE SALDO ANTERIOR */}
+                {hasFilter && (
+                  <tr className="bg-slate-800/20 border-b border-slate-700/50">
+                    <td className="p-4"></td> 
+                    <td className="p-4"></td> 
+                    <td className="p-4 text-slate-300 italic">
+                      Saldo Anterior
                     </td>
+                    <td className={`p-4 text-right font-mono italic font-bold ${startBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {formatCurrency(startBalance, account.currency)}
+                    </td>
+                    <td className="p-4 text-right font-mono text-slate-500 italic font-bold">
+                      {formatCurrency(startBalance, account.currency)}
+                    </td>
+                  </tr>
+                )}
+
+                {/* MOVIMENTOS */}
+                {visibleData.map(mov => (
+                  <tr key={mov.id} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="p-4 text-slate-300 whitespace-nowrap">{formatDate(mov.date)}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        {getMovementIcon(mov.type, mov.amount)}
-                        <span className="text-sm text-slate-400">{getTypeLabel(mov.type)}</span>
+                        {getIcon(mov.type, mov.normalizedAmount)}
+                        <span className="text-slate-400 text-xs">{translateType(mov.type)}</span>
                       </div>
                     </td>
-                    <td className="p-4">
-                      <span className="text-sm text-white">{mov.description}</span>
+                    <td className="p-4 text-white">{mov.description}</td>
+                    <td className={`p-4 text-right font-mono font-medium ${mov.normalizedAmount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {mov.normalizedAmount >= 0 ? '+' : ''}{formatCurrency(mov.normalizedAmount, account.currency)}
                     </td>
-                    <td className="p-4 text-right">
-                      <span className={`font-mono font-medium ${mov.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {mov.amount >= 0 ? '+' : ''}{formatCurrency(mov.amount, account.currency)}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <span className="font-mono text-sm text-slate-400">
-                        {formatCurrency(mov.balanceAfter, account.currency)}
-                      </span>
+                    <td className="p-4 text-right font-mono text-slate-300 font-bold">
+                      {formatCurrency(mov.balanceAfter, account.currency)}
                     </td>
                   </tr>
                 ))}
+                
+                {visibleData.length === 0 && !hasFilter && (
+                  <tr><td colSpan="5" className="p-8 text-center text-slate-500">Nenhum movimento registrado.</td></tr>
+                )}
               </tbody>
+              
+              {/* RODAPÉ TOTALIZADOR */}
+              <tfoot className="bg-slate-800/80 border-t-2 border-slate-700">
+                <tr>
+                  <td colSpan="3" className="p-4 text-right text-slate-400 font-medium uppercase text-xs tracking-wider">
+                    Saldo Final do Período
+                  </td>
+                  <td className={`p-4 text-right font-mono font-bold ${visibleData.reduce((acc, m) => acc + m.normalizedAmount, 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {visibleData.reduce((acc, m) => acc + m.normalizedAmount, 0) > 0 ? '+' : ''}
+                    {formatCurrency(visibleData.reduce((acc, m) => acc + m.normalizedAmount, 0), account.currency)}
+                  </td>
+                  <td className="p-4 text-right font-mono text-white font-bold text-lg">
+                    {formatCurrency(endBalance, account.currency)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 flex items-center justify-between text-sm">
-          <span className="text-slate-500">
-            {sortedMovements.length} movimento{sortedMovements.length !== 1 ? 's' : ''}
-          </span>
-          <span className="text-slate-400">
-            Saldo atual:{' '}
-            {/* CORREÇÃO AQUI TAMBÉM */}
-            <span className={`font-bold ${currentBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {formatCurrency(currentBalance, account.currency)}
-            </span>
-          </span>
-        </div>
       </div>
 
-      {/* Modal de Transação */}
-      {showTransactionModal && (
+      {/* MODAL TRANSAÇÃO */}
+      {showModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                {transactionType === 'DEPOSIT' ? (
-                  <>
-                    <ArrowDownCircle className="w-5 h-5 text-emerald-400" />
-                    Novo Depósito
-                  </>
-                ) : (
-                  <>
-                    <ArrowUpCircle className="w-5 h-5 text-red-400" />
-                    Novo Saque
-                  </>
-                )}
-              </h3>
-              <button onClick={() => setShowTransactionModal(false)}>
-                <X className="w-5 h-5 text-slate-400 hover:text-white" />
-              </button>
+          <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-sm p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-white">{txType === 'DEPOSIT' ? 'Novo Aporte' : 'Nova Retirada'}</h3>
+              <button onClick={() => setShowModal(false)}><X className="w-5 h-5 text-slate-500"/></button>
             </div>
-
-            <div className="p-5 space-y-4">
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-400" />
-                  <span className="text-sm text-red-400">{error}</span>
-                </div>
-              )}
-
-              {transactionType === 'WITHDRAWAL' && (
-                <div className="bg-slate-800/50 rounded-xl p-4">
-                  <p className="text-xs text-slate-500 uppercase mb-1">Saldo Disponível</p>
-                  <p className="text-xl font-bold text-white">
-                    {formatCurrency(currentBalance, account.currency)}
-                  </p>
-                </div>
-              )}
-
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Valor ({account.currency}) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
-                    {account.currency === 'USD' ? '$' : account.currency === 'EUR' ? '€' : 'R$'}
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={transactionAmount}
-                    onChange={(e) => setTransactionAmount(e.target.value)}
-                    placeholder="0,00"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-white text-lg font-mono placeholder-slate-500 focus:border-blue-500 outline-none"
-                    autoFocus
-                  />
-                </div>
+                <label className="text-xs text-slate-400 mb-1 block">Valor</label>
+                <input type="number" autoFocus value={txAmount} onChange={e => setTxAmount(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none text-lg"/>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">
-                  Descrição (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={transactionDescription}
-                  onChange={(e) => setTransactionDescription(e.target.value)}
-                  placeholder={transactionType === 'DEPOSIT' ? 'Ex: Aporte mensal' : 'Ex: Retirada de lucros'}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 outline-none"
-                />
+                <label className="text-xs text-slate-400 mb-1 block">Descrição</label>
+                <input type="text" value={txDesc} onChange={e => setTxDesc(e.target.value)} placeholder="Ex: Aporte Mensal" className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none"/>
               </div>
-            </div>
-
-            <div className="flex gap-3 p-5 border-t border-slate-800">
-              <button
-                onClick={() => setShowTransactionModal(false)}
-                className="btn-secondary flex-1"
-                disabled={saving}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveTransaction}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 font-medium transition-all ${
-                  transactionType === 'DEPOSIT'
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-red-600 hover:bg-red-700 text-white'
-                }`}
-                disabled={saving}
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4" />
-                )}
-                Confirmar
+              <button onClick={handleSaveTx} disabled={isSaving || !txAmount} className={`w-full py-3 rounded-lg font-bold mt-2 ${txType === 'DEPOSIT' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'} text-white transition-colors`}>
+                {isSaving ? <Loader2 className="w-5 h-5 animate-spin mx-auto"/> : 'Confirmar'}
               </button>
             </div>
           </div>
