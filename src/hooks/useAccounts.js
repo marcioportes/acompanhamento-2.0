@@ -89,7 +89,7 @@ export const useAccounts = () => {
         type: accountType,
         isReal: isRealDerived,
         initialBalance: initialAmount,
-        currentBalance: initialAmount,
+        currentBalance: 0,
         studentId: user.uid,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
