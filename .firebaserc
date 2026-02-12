@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "acompanhamento-20"
+  },
+  "targets": {},
+  "etags": {
+    "acompanhamento-20": {
+      "extensionInstances": {
+        "firestore-send-email": "7e44419e4923ed3dbf36a31987c6ce6fd39c3eb1b45fa5e4007ae3b83425cad5"
+      }
+    }
   }
 }

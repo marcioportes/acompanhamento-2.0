@@ -15,6 +15,19 @@ service cloud.firestore {
       return request.auth.token.email == 'marcio.portes@me.com';
     }
     
+    // Mail collection (Extension Trigger Email)
+    // Apenas Cloud Functions podem escrever (via Admin SDK)
+    // Usuários não podem ler/escrever diretamente
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+    
+    // Students whitelist (mentor only)
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow write: if isMentor();
+    }
+    
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
