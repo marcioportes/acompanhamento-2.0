@@ -1,6 +1,7 @@
 /**
  * Firebase Cloud Functions - Acompanhamento 2.0
- * VERSÃO 5.3.0 - Integração Email via Trigger Email Extension
+ * VERSÃO 5.3.1 - Integração Email via Trigger Email Extension
+ * Modificação by mportes - inclusão da ativação do aluno depois do login
  */
 
 const functions = require('firebase-functions/v1');
@@ -384,6 +385,47 @@ exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
   } catch (error) {
     console.error('Erro ao reenviar convite:', error);
     throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+/**
+ * activateStudent - Ativa o aluno no primeiro login
+ * Chamada pelo Frontend (AuthContext) quando o status é 'pending'
+ */
+exports.activateStudent = functions.https.onCall(async (data, context) => {
+  // 1. Segurança: Garante que o usuário está autenticado
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+
+  const uid = context.auth.uid;
+
+  try {
+    const studentRef = db.collection('students').doc(uid);
+    const doc = await studentRef.get();
+
+    if (!doc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Perfil de aluno não encontrado');
+    }
+
+    // Apenas atualiza se ainda não estiver ativo para economizar escritas
+    if (doc.data().status === 'active') {
+      return { success: true, message: 'Aluno já ativo' };
+    }
+
+    // 2. Atualiza o status via Admin SDK (Bypassa regras de segurança)
+    await studentRef.update({
+      status: 'active',
+      firstLoginAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    console.log(`Aluno ${uid} ativado com sucesso.`);
+    return { success: true, message: 'Aluno ativado com sucesso' };
+
+  } catch (error) {
+    console.error('Erro ao ativar aluno:', error);
+    throw new functions.https.HttpsError('internal', 'Erro ao processar ativação');
   }
 });
 

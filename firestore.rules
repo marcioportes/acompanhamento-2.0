@@ -1,125 +1,130 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ==================================================
+    // FUNÇÕES AUXILIARES
+    // ==================================================
     
-    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
     
+    // Suporte a legado (Email) + Novo (UID)
+    function isOwnerByEmail(email) {
+      return request.auth.token.email == email;
+    }
+
     function isMentor() {
+      // Garante acesso total ao seu email
       return request.auth.token.email == 'marcio.portes@me.com';
     }
-    
-    // Mail collection (Extension Trigger Email)
-    // Apenas Cloud Functions podem escrever (via Admin SDK)
-    // Usuários não podem ler/escrever diretamente
+
+    // ==================================================
+    // REGRAS DE COLEÇÃO
+    // ==================================================
+
+    // MAIL - Mentor pode LER para ver status dos envios
     match /mail/{mailId} {
-      allow read, write: if false;
+      allow read: if isMentor();
+      allow write: if false; // Escrita apenas via Backend (Cloud Function/Extension)
     }
-    
-    // Students whitelist (mentor only)
+
+    // STUDENTS - Leitura aberta para autenticados, Escrita Mentor
     match /students/{studentId} {
       allow read: if isAuthenticated();
       allow write: if isMentor();
     }
-    
-    // Users collection
+
+    // USERS
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isOwner(userId) || isMentor();
     }
-    
-    // Currencies (read-only for all, write for mentor)
-    match /currencies/{currencyId} {
-      allow read: if isAuthenticated();
-      allow write: if isMentor();
+
+    // TRADES - Regra Híbrida (Resolve erro de Email vs UID)
+    match /trades/{tradeId} {
+      allow read: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId) || 
+        isOwnerByEmail(resource.data.studentEmail)
+      );
+      
+      allow create: if isAuthenticated(); 
+      
+      allow update, delete: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId) || 
+        isOwnerByEmail(resource.data.studentEmail)
+      );
     }
-    
-    // Brokers (read-only for all, write for mentor)
-    match /brokers/{brokerId} {
-      allow read: if isAuthenticated();
-      allow write: if isMentor();
-    }
-    
-    // Tickers (read-only for all, write for mentor)
-    match /tickers/{tickerId} {
-      allow read: if isAuthenticated();
-      allow write: if isMentor();
-    }
-    
-    // Exchanges (read-only for all, write for mentor)
-    match /exchanges/{exchangeId} {
-      allow read: if isAuthenticated();
-      allow write: if isMentor();
-    }
-    
-    // Setups (global setups read for all, students can create personal setups)
-    match /setups/{setupId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isMentor() || 
-        (resource.data.createdBy == request.auth.uid && resource.data.isGlobal == false);
-    }
-    
-    // Emotions (read-only for all, write for mentor)
-    match /emotions/{emotionId} {
-      allow read: if isAuthenticated();
-      allow write: if isMentor();
-    }
-    
-    // Accounts (students manage their own, mentor can read all)
+
+    // ACCOUNTS
     match /accounts/{accountId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
-      allow create: if isAuthenticated() && 
-        request.resource.data.studentId == request.auth.uid;
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
+      allow read: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId) || 
+        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail)) 
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId)
+      );
     }
-    
-    // Movements (students manage their own, mentor can read all)
+
+    // MOVEMENTS
     match /movements/{movementId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
+      allow update, delete: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId)
+      );
     }
-    
-    // Plans (students manage their own, mentor can read/write all)
+
+    // PLANS
     match /plans/{planId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
+      allow read: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId) || 
+        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
+      );
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
+      allow update, delete: if isAuthenticated() && (
+        isMentor() || 
+        isOwner(resource.data.studentId)
+      );
     }
-    
-    // Trades (students create their own, mentor can read/update all)
-    match /trades/{tradeId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
-      allow create: if isAuthenticated() && 
-        request.resource.data.studentId == request.auth.uid;
-      allow update: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
-      allow delete: if isAuthenticated() && 
-        (resource.data.studentId == request.auth.uid || isMentor());
+
+    // ==================================================
+    // DADOS MESTRES
+    // ==================================================
+
+    match /currencies/{id=**} { allow read: if isAuthenticated(); allow write: if isMentor(); }
+    match /brokers/{id=**} { allow read: if isAuthenticated(); allow write: if isMentor(); }
+    match /tickers/{id=**} { allow read: if isAuthenticated(); allow write: if isMentor(); }
+    match /exchanges/{id=**} { allow read: if isAuthenticated(); allow write: if isMentor(); }
+    match /emotions/{id=**} { allow read: if isAuthenticated(); allow write: if isMentor(); }
+
+    match /setups/{setupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isMentor() || (resource.data.createdBy == request.auth.uid && resource.data.isGlobal == false);
     }
-    
-    // Notifications (users read their own, system creates)
+
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.targetUserId == request.auth.uid || 
-         resource.data.targetRole == 'mentor' && isMentor() ||
-         resource.data.targetRole == 'student' && !isMentor());
+      allow read: if isAuthenticated() && (
+        resource.data.targetUserId == request.auth.uid || 
+        (resource.data.targetRole == 'mentor' && isMentor()) ||
+        (resource.data.targetRole == 'student' && !isMentor())
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && 
-        (resource.data.targetUserId == request.auth.uid || isMentor());
+      allow update: if isAuthenticated() && (resource.data.targetUserId == request.auth.uid || isMentor());
       allow delete: if isMentor();
     }
   }
