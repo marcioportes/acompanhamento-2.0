@@ -20,7 +20,6 @@ service cloud.firestore {
     }
 
     function isMentor() {
-      // Garante acesso total ao seu email
       return request.auth.token.email == 'marcio.portes@me.com';
     }
 
@@ -28,13 +27,13 @@ service cloud.firestore {
     // REGRAS DE COLEÇÃO
     // ==================================================
 
-    // MAIL - Mentor pode LER para ver status dos envios
+    // MAIL
     match /mail/{mailId} {
       allow read: if isMentor();
-      allow write: if false; // Escrita apenas via Backend (Cloud Function/Extension)
+      allow write: if false; 
     }
 
-    // STUDENTS - Leitura aberta para autenticados, Escrita Mentor
+    // STUDENTS
     match /students/{studentId} {
       allow read: if isAuthenticated();
       allow write: if isMentor();
@@ -46,16 +45,14 @@ service cloud.firestore {
       allow write: if isOwner(userId) || isMentor();
     }
 
-    // TRADES - Regra Híbrida (Resolve erro de Email vs UID)
+    // TRADES
     match /trades/{tradeId} {
       allow read: if isAuthenticated() && (
         isMentor() || 
         isOwner(resource.data.studentId) || 
         isOwnerByEmail(resource.data.studentEmail)
       );
-      
       allow create: if isAuthenticated(); 
-      
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
         isOwner(resource.data.studentId) || 
@@ -63,7 +60,7 @@ service cloud.firestore {
       );
     }
 
-    // ACCOUNTS
+    // ACCOUNTS - CORRIGIDO: Adicionado suporte a Email no delete
     match /accounts/{accountId} {
       allow read: if isAuthenticated() && (
         isMentor() || 
@@ -73,7 +70,9 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
-        isOwner(resource.data.studentId)
+        isOwner(resource.data.studentId) ||
+        // LINHA NOVA:
+        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
     }
 
@@ -83,11 +82,13 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
-        isOwner(resource.data.studentId)
+        (resource.data.createdBy == request.auth.uid) ||
+        (resource.data.studentId == request.auth.uid) ||
+        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
     }
 
-    // PLANS
+    // PLANS - CORRIGIDO: Adicionado suporte a Email no delete (Aqui estava o erro)
     match /plans/{planId} {
       allow read: if isAuthenticated() && (
         isMentor() || 
@@ -97,7 +98,9 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
-        isOwner(resource.data.studentId)
+        isOwner(resource.data.studentId) ||
+        // LINHA NOVA - Isso permite que o useAccounts apague os planos órfãos:
+        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
     }
 
