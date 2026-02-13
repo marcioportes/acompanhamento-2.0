@@ -132,25 +132,25 @@ const TradesJournal = () => {
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Diário de Trades</h1>
           
-          {/* SELETOR DE CONTA NOVO */}
+          {/* SELETOR DE CONTA COM DARK MODE FORÇADO */}
           <div className="relative group inline-block">
             <select
               value={filters.accountId || 'all_demo'}
               onChange={(e) => handleAccountChange(e.target.value)}
               className="appearance-none bg-transparent text-lg lg:text-xl text-slate-400 hover:text-white font-medium outline-none cursor-pointer pr-8 transition-colors border-b border-transparent hover:border-slate-600"
             >
-              <optgroup label="Visão Geral">
-                <option value="all_real">Todas as Contas Reais</option>
-                <option value="all_demo">Todas as Contas Demo</option>
+              <optgroup label="Visão Geral" className="bg-slate-900 text-slate-400">
+                <option value="all_real" className="bg-slate-900 text-white">Todas as Contas Reais</option>
+                <option value="all_demo" className="bg-slate-900 text-white">Todas as Contas Demo</option>
               </optgroup>
               {realAccounts.length > 0 && (
-                <optgroup label="Contas Reais">
-                  {realAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                <optgroup label="Contas Reais" className="bg-slate-900 text-slate-400">
+                  {realAccounts.map(acc => <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">{acc.name}</option>)}
                 </optgroup>
               )}
               {demoAccounts.length > 0 && (
-                <optgroup label="Contas Demo">
-                  {demoAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                <optgroup label="Contas Demo" className="bg-slate-900 text-slate-400">
+                  {demoAccounts.map(acc => <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">{acc.name}</option>)}
                 </optgroup>
               )}
             </select>

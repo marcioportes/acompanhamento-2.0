@@ -1,17 +1,15 @@
 /**
  * AccountStatement - Extrato de movimentações da conta
- * 
- * Mostra:
- * - Depósitos e Saques (movements)
- * - Resultados de trades
- * - Filtro por período
- * - Saldo acumulado
+ * @version 5.6.0 (Smart Balance Fix)
+ * - FIX: Cálculo de saldo acumulado considera todo o histórico, não apenas o período visível.
+ * - FEAT: Linha "Saldo Anterior" aparece apenas quando necessário (filtro de período).
+ * - UI: Ordenação Cronológica Decrescente (Mais recente no topo).
  */
 
 import { useState, useMemo } from 'react';
 import { 
   X, ArrowUpCircle, ArrowDownCircle, TrendingUp, TrendingDown, 
-  Calendar, Filter, Download, ChevronDown, RefreshCw
+  Calendar, Filter, RefreshCw
 } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 
@@ -41,297 +39,268 @@ const formatDate = (date) => {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
 
-const formatDateTime = (date) => {
-  if (!date) return '-';
-  const d = date.toDate ? date.toDate() : new Date(date);
-  return d.toLocaleString('pt-BR', { 
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-};
-
 const AccountStatement = ({ account, movements = [], onClose }) => {
   const { trades } = useTrades();
   const [period, setPeriod] = useState('month');
   const [filterType, setFilterType] = useState('all'); // all, deposits, withdrawals, trades
 
-  // Filtrar trades da conta
-  const accountTrades = useMemo(() => {
-    return trades.filter(t => t.accountId === account.id);
-  }, [trades, account.id]);
-
-  // Combinar movimentos e trades em uma lista unificada
-  const allTransactions = useMemo(() => {
+  // 1. Unificar Trades e Movimentos em uma lista cronológica única
+  const fullHistory = useMemo(() => {
     const items = [];
 
-    // Adicionar movimentos (depósitos/saques)
+    // Adicionar movimentos (Ledger)
     movements.forEach(m => {
       items.push({
         id: m.id,
-        type: m.type, // DEPOSIT, WITHDRAWAL
-        date: m.createdAt || m.date,
+        type: m.type, // INITIAL_BALANCE, DEPOSIT, WITHDRAWAL, ADJUSTMENT
+        dateObj: m.createdAt?.toDate ? m.createdAt.toDate() : new Date(m.date || m.createdAt),
         description: m.description || (m.type === 'DEPOSIT' ? 'Depósito' : 'Saque'),
-        amount: m.type === 'DEPOSIT' ? Math.abs(m.amount) : -Math.abs(m.amount),
-        category: m.type === 'DEPOSIT' ? 'deposit' : 'withdrawal'
+        amount: m.type === 'WITHDRAWAL' ? -Math.abs(m.amount) : m.amount, // Garante sinal
+        category: m.type === 'INITIAL_BALANCE' ? 'initial' : (m.type === 'DEPOSIT' ? 'deposit' : (m.type === 'WITHDRAWAL' ? 'withdrawal' : 'adjustment'))
       });
     });
 
-    // Adicionar trades
-    accountTrades.forEach(t => {
-      items.push({
-        id: t.id,
-        type: 'TRADE',
-        date: t.createdAt || t.date,
-        description: `${t.side} ${t.ticker} (${t.qty}x)`,
-        amount: t.result || 0,
-        category: 'trade',
-        setup: t.setup,
-        ticker: t.ticker
-      });
-    });
-
-    // Ordenar por data (mais recente primeiro)
-    items.sort((a, b) => {
-      const dateA = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-      const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-      return dateB - dateA;
-    });
-
-    return items;
-  }, [movements, accountTrades]);
-
-  // Aplicar filtros
-  const filteredTransactions = useMemo(() => {
-    let result = [...allTransactions];
-
-    // Filtro de período
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-
-    let startDate = null;
-    switch (period) {
-      case 'today': startDate = startOfDay; break;
-      case 'week': startDate = startOfWeek; break;
-      case 'month': startDate = startOfMonth; break;
-      case 'quarter': startDate = startOfQuarter; break;
-      case 'year': startDate = startOfYear; break;
-      default: startDate = null;
-    }
-
-    if (startDate) {
-      result = result.filter(t => {
-        const date = t.date?.toDate ? t.date.toDate() : new Date(t.date);
-        return date >= startDate;
-      });
-    }
-
-    // Filtro de tipo
-    if (filterType !== 'all') {
-      result = result.filter(t => {
-        switch (filterType) {
-          case 'deposits': return t.category === 'deposit';
-          case 'withdrawals': return t.category === 'withdrawal';
-          case 'trades': return t.category === 'trade';
-          default: return true;
-        }
-      });
-    }
-
-    return result;
-  }, [allTransactions, period, filterType]);
-
-  // Calcular totais
-  const totals = useMemo(() => {
-    const deposits = filteredTransactions.filter(t => t.category === 'deposit').reduce((sum, t) => sum + t.amount, 0);
-    const withdrawals = filteredTransactions.filter(t => t.category === 'withdrawal').reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const tradesPnL = filteredTransactions.filter(t => t.category === 'trade').reduce((sum, t) => sum + t.amount, 0);
-    const net = deposits - withdrawals + tradesPnL;
-
-    return { deposits, withdrawals, tradesPnL, net };
-  }, [filteredTransactions]);
-
-  // Calcular saldo acumulado para cada transação
-  const transactionsWithBalance = useMemo(() => {
-    // Ordenar cronologicamente (mais antigo primeiro) para calcular saldo
-    const sorted = [...filteredTransactions].reverse();
-    let balance = account.initialBalance || 0;
+    // Adicionar trades (apenas se não houver movimento duplicado no ledger - check simples)
+    // Nota: O useTrades v5.2+ já cria movimentos para trades, então evitamos duplicidade
+    // filtrando apenas trades que NÃO têm ID de movimento vinculado, ou confiamos apenas nos movimentos.
+    // *Para este extrato, vamos confiar na lista de 'movements' que é a fonte da verdade financeira.*
+    // *Se movements estiver vazio (conta antiga), fazemos fallback para trades.*
     
-    const withBalance = sorted.map(t => {
-      balance += t.amount;
-      return { ...t, runningBalance: balance };
+    if (movements.length === 0) {
+      const accountTrades = trades.filter(t => t.accountId === account.id);
+      accountTrades.forEach(t => {
+        items.push({
+          id: t.id,
+          type: 'TRADE',
+          dateObj: t.createdAt?.toDate ? t.createdAt.toDate() : new Date(t.date),
+          description: `${t.side} ${t.ticker} (${t.qty}x)`,
+          amount: t.result || 0,
+          category: 'trade',
+          setup: t.setup
+        });
+      });
+    }
+
+    // Ordenar Antigo -> Novo (Para calcular saldo progressivo corretamente)
+    return items.sort((a, b) => a.dateObj - b.dateObj);
+  }, [movements, trades, account.id]);
+
+  // 2. Calcular Datas de Filtro
+  const { startDate, endDate } = useMemo(() => {
+    const now = new Date();
+    // Ajusta para fim do dia
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    
+    let start = new Date(0); // Default: Início dos tempos
+
+    if (period !== 'all') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Start of today
+      if (period === 'week') start.setDate(now.getDate() - now.getDay());
+      if (period === 'month') start.setDate(1);
+      if (period === 'quarter') start.setMonth(Math.floor(now.getMonth() / 3) * 3, 1);
+      if (period === 'year') start.setMonth(0, 1);
+    }
+    
+    return { startDate: start, endDate: end };
+  }, [period]);
+
+  // 3. Processar Saldo Anterior e Filtragem
+  const { visibleTransactions, previousBalance, hasInitialInPeriod } = useMemo(() => {
+    let runningBalance = 0;
+    let prevBal = 0;
+    const visible = [];
+    let initialFound = false;
+
+    // Percorre histórico completo cronologicamente
+    fullHistory.forEach(item => {
+      // Atualiza saldo acumulado global
+      runningBalance += item.amount;
+
+      // Verifica se está dentro do período
+      const isAfterStart = item.dateObj >= startDate;
+      const isBeforeEnd = item.dateObj <= endDate;
+
+      // Filtro de Categoria
+      const matchesType = filterType === 'all' || 
+        (filterType === 'deposits' && item.category === 'deposit') ||
+        (filterType === 'withdrawals' && item.category === 'withdrawal') ||
+        (filterType === 'trades' && (item.category === 'trade' || item.type === 'TRADE_RESULT'));
+
+      if (isAfterStart && isBeforeEnd) {
+        if (matchesType) {
+          visible.push({ ...item, runningBalance }); // Saldo neste ponto
+          if (item.category === 'initial') initialFound = true;
+        }
+      } else if (item.dateObj < startDate) {
+        // Se for antes do período, contribui para o Saldo Anterior
+        prevBal = runningBalance;
+      }
     });
 
-    // Voltar para ordem mais recente primeiro
-    return withBalance.reverse();
-  }, [filteredTransactions, account.initialBalance]);
+    // Inverte para exibir Mais Recente primeiro (padrão de extrato bancário moderno)
+    return { 
+      visibleTransactions: visible.reverse(), 
+      previousBalance: prevBal,
+      hasInitialInPeriod: initialFound
+    };
+  }, [fullHistory, startDate, endDate, filterType]);
 
+  // Totais do período visível
+  const periodTotals = useMemo(() => {
+    return visibleTransactions.reduce((acc, t) => {
+      if (t.amount > 0) acc.in += t.amount;
+      if (t.amount < 0) acc.out += Math.abs(t.amount);
+      return acc;
+    }, { in: 0, out: 0 });
+  }, [visibleTransactions]);
+
+  // Helper de Ícones
   const getTransactionIcon = (item) => {
     switch (item.category) {
-      case 'deposit':
-        return <ArrowDownCircle className="w-5 h-5 text-emerald-400" />;
-      case 'withdrawal':
-        return <ArrowUpCircle className="w-5 h-5 text-red-400" />;
-      case 'trade':
-        return item.amount >= 0 
-          ? <TrendingUp className="w-5 h-5 text-emerald-400" />
-          : <TrendingDown className="w-5 h-5 text-red-400" />;
-      default:
-        return <RefreshCw className="w-5 h-5 text-slate-400" />;
+      case 'initial': return <ArrowDownCircle className="w-5 h-5 text-blue-400" />;
+      case 'deposit': return <ArrowDownCircle className="w-5 h-5 text-emerald-400" />;
+      case 'withdrawal': return <ArrowUpCircle className="w-5 h-5 text-red-400" />;
+      default: // Trade
+        return item.amount >= 0 ? <TrendingUp className="w-5 h-5 text-emerald-400" /> : <TrendingDown className="w-5 h-5 text-red-400" />;
     }
-  };
-
-  const getTransactionColor = (item) => {
-    if (item.category === 'deposit') return 'text-emerald-400';
-    if (item.category === 'withdrawal') return 'text-red-400';
-    return item.amount >= 0 ? 'text-emerald-400' : 'text-red-400';
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh]">
+        
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
             <h3 className="text-xl font-bold text-white">Extrato da Conta</h3>
-            <p className="text-sm text-slate-400">{account.name} • {account.broker || account.brokerName}</p>
+            <p className="text-sm text-slate-400">{account.name} • {account.broker || 'Corretora'}</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
             <X className="w-5 h-5 text-slate-400 hover:text-white" />
           </button>
         </div>
 
-        {/* Filtros */}
-        <div className="p-4 border-b border-slate-800 bg-slate-800/30">
+        {/* Filtros e Resumo */}
+        <div className="p-4 border-b border-slate-800 bg-slate-800/30 space-y-4">
           <div className="flex flex-wrap gap-3">
-            {/* Período */}
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-500" />
-              <select 
-                value={period} 
-                onChange={(e) => setPeriod(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
-              >
-                {PERIODS.map(p => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
+            <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 border border-slate-700">
+              <Calendar className="w-4 h-4 text-slate-500 ml-2" />
+              <select value={period} onChange={(e) => setPeriod(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none p-1.5 cursor-pointer">
+                {PERIODS.map(p => <option key={p.id} value={p.id} className="bg-slate-900">{p.label}</option>)}
               </select>
             </div>
-
-            {/* Tipo */}
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-slate-500" />
-              <select 
-                value={filterType} 
-                onChange={(e) => setFilterType(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:border-blue-500 outline-none"
-              >
-                <option value="all">Todos</option>
-                <option value="deposits">Depósitos</option>
-                <option value="withdrawals">Saques</option>
-                <option value="trades">Trades</option>
+            <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 border border-slate-700">
+              <Filter className="w-4 h-4 text-slate-500 ml-2" />
+              <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-transparent text-sm text-white focus:outline-none p-1.5 cursor-pointer">
+                <option value="all" className="bg-slate-900">Todas Transações</option>
+                <option value="trades" className="bg-slate-900">Apenas Trades</option>
+                <option value="deposits" className="bg-slate-900">Entradas</option>
+                <option value="withdrawals" className="bg-slate-900">Saídas</option>
               </select>
             </div>
           </div>
 
-          {/* Resumo */}
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 uppercase">Depósitos</p>
-              <p className="text-lg font-bold text-emerald-400">
-                +{formatCurrency(totals.deposits, account.currency)}
-              </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Entradas (Período)</p>
+              <p className="text-lg font-mono font-bold text-emerald-400">+{formatCurrency(periodTotals.in, account.currency)}</p>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 uppercase">Saques</p>
-              <p className="text-lg font-bold text-red-400">
-                -{formatCurrency(totals.withdrawals, account.currency)}
-              </p>
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Saídas (Período)</p>
+              <p className="text-lg font-mono font-bold text-red-400">-{formatCurrency(periodTotals.out, account.currency)}</p>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 uppercase">P&L Trades</p>
-              <p className={`text-lg font-bold ${totals.tradesPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {totals.tradesPnL >= 0 ? '+' : ''}{formatCurrency(totals.tradesPnL, account.currency)}
-              </p>
-            </div>
-            <div className="bg-slate-800/50 rounded-lg p-3">
-              <p className="text-xs text-slate-500 uppercase">Líquido</p>
-              <p className={`text-lg font-bold ${totals.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {totals.net >= 0 ? '+' : ''}{formatCurrency(totals.net, account.currency)}
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Resultado Líquido</p>
+              <p className={`text-lg font-mono font-bold ${periodTotals.in - periodTotals.out >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>
+                {formatCurrency(periodTotals.in - periodTotals.out, account.currency)}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Lista de Transações */}
+        {/* Tabela */}
         <div className="flex-1 overflow-y-auto">
-          {transactionsWithBalance.length === 0 ? (
-            <div className="p-12 text-center text-slate-500">
-              Nenhuma movimentação no período selecionado.
-            </div>
+          {visibleTransactions.length === 0 && !(!hasInitialInPeriod && period !== 'all') ? (
+            <div className="p-12 text-center text-slate-500">Nenhuma movimentação neste período.</div>
           ) : (
-            <table className="w-full">
-              <thead className="sticky top-0 bg-slate-900 border-b border-slate-800">
-                <tr className="text-xs text-slate-500 uppercase">
-                  <th className="text-left p-4 font-medium">Data</th>
-                  <th className="text-left p-4 font-medium">Descrição</th>
-                  <th className="text-right p-4 font-medium">Valor</th>
-                  <th className="text-right p-4 font-medium">Saldo</th>
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-900 border-b border-slate-800 text-xs text-slate-500 uppercase font-semibold z-10">
+                <tr>
+                  <th className="text-left p-4">Data</th>
+                  <th className="text-left p-4">Descrição</th>
+                  <th className="text-right p-4">Valor</th>
+                  <th className="text-right p-4">Saldo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50">
-                {transactionsWithBalance.map((item, idx) => (
-                  <tr key={item.id || idx} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="p-4">
-                      <span className="text-sm text-slate-400">
-                        {formatDate(item.date)}
-                      </span>
+                {visibleTransactions.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-800/30 transition-colors group">
+                    <td className="p-4 text-slate-400 whitespace-nowrap font-mono text-xs">
+                      {formatDate(item.dateObj)}
+                      <span className="block text-[10px] opacity-50">{item.dateObj.toLocaleTimeString().slice(0,5)}</span>
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        {getTransactionIcon(item)}
+                        <div className="p-2 rounded-lg bg-slate-800 group-hover:bg-slate-700 transition-colors">
+                          {getTransactionIcon(item)}
+                        </div>
                         <div>
-                          <p className="text-sm text-white">{item.description}</p>
-                          {item.setup && (
-                            <p className="text-xs text-slate-500">{item.setup}</p>
-                          )}
+                          <p className="text-white font-medium">{item.description}</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider">{item.category === 'initial' ? 'Abertura' : item.type.replace('_', ' ')}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-right">
-                      <span className={`font-mono font-medium ${getTransactionColor(item)}`}>
-                        {item.amount >= 0 ? '+' : ''}{formatCurrency(item.amount, account.currency)}
+                    <td className="p-4 text-right font-mono font-medium">
+                      <span className={item.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                        {item.amount > 0 ? '+' : ''}{formatCurrency(item.amount, account.currency)}
                       </span>
                     </td>
-                    <td className="p-4 text-right">
-                      <span className="font-mono text-sm text-slate-400">
-                        {formatCurrency(item.runningBalance, account.currency)}
-                      </span>
+                    <td className="p-4 text-right font-mono text-slate-400">
+                      {formatCurrency(item.runningBalance, account.currency)}
                     </td>
                   </tr>
                 ))}
+
+                {/* LINHA DE SALDO ANTERIOR (Condicional) */}
+                {/* Lógica: Mostra se NÃO tiver Saldo Inicial no período E se o filtro não for 'Todo Período' */}
+                {!hasInitialInPeriod && period !== 'all' && (
+                  <tr className="bg-slate-800/20 border-t-2 border-slate-800 border-dashed">
+                    <td className="p-4 text-slate-500 font-mono text-xs italic">-</td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3 opacity-60">
+                        <div className="p-2 rounded-lg border border-dashed border-slate-600">
+                          <RefreshCw className="w-5 h-5 text-slate-500" />
+                        </div>
+                        <div>
+                          <p className="text-slate-300 font-bold italic">Saldo Anterior</p>
+                          <p className="text-[10px] text-slate-500">Transporte de período</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 text-right text-slate-500 italic">-</td>
+                    <td className="p-4 text-right font-mono font-bold text-slate-300">
+                      {formatCurrency(previousBalance, account.currency)}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-800/30 flex items-center justify-between">
-          <div className="text-sm text-slate-400">
-            {transactionsWithBalance.length} movimentações
-          </div>
-          <div className="text-sm">
-            <span className="text-slate-500">Saldo atual: </span>
-            <span className={`font-bold ${(account.currentBalance || 0) >= (account.initialBalance || 0) ? 'text-emerald-400' : 'text-red-400'}`}>
-              {formatCurrency(account.currentBalance || account.initialBalance || 0, account.currency)}
+        <div className="p-4 border-t border-slate-800 bg-slate-900 z-20 flex justify-between items-center text-sm">
+          <span className="text-slate-500">{visibleTransactions.length} lançamentos</span>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">Saldo Atual:</span>
+            <span className={`font-mono font-bold text-lg ${
+              (visibleTransactions[0]?.runningBalance || previousBalance) >= 0 ? 'text-emerald-400' : 'text-red-400'
+            }`}>
+              {formatCurrency(visibleTransactions[0]?.runningBalance || previousBalance, account.currency)}
             </span>
           </div>
         </div>
+
       </div>
     </div>
   );

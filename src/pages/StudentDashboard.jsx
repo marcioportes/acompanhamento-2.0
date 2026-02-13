@@ -1,9 +1,9 @@
 /**
  * StudentDashboard
- * @version 7.3.0 (Stable Restore)
- * @description Dashboard estável. Remove dependências de reconcileBalance que causaram problemas.
- * - KEEP: Correção de fonte (text-xl) e cálculo de Saldo do Plano.
- * - REVERT: Removida lógica de reconciliação de saldo.
+ * @version 7.3.2 (UI Consistency)
+ * @description Dashboard estável.
+ * - FIX: Tamanho da fonte do seletor de contas ajustado para igualar ao TradesJournal (text-lg).
+ * - FIX: Dropdown Options mantêm o background escuro.
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -190,13 +190,29 @@ const StudentDashboard = () => {
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 mb-2"><div className={`h-2 w-2 rounded-full ${isDemoView ? 'bg-amber-400' : 'bg-emerald-400'}`} /><span className="text-xs font-bold uppercase tracking-widest text-slate-400">{isDemoView ? 'Ambiente Simulado' : 'Ambiente Real'}</span></div>
-          <div className="relative group">
-            <select value={filters.accountId || 'all_demo'} onChange={(e) => handleAccountChange(e.target.value)} className="appearance-none bg-transparent text-xl lg:text-2xl font-display font-bold text-white outline-none cursor-pointer pr-10 hover:text-blue-400 transition-colors w-full max-w-[400px] truncate">
-              <optgroup label="Visão Geral" className="text-base bg-slate-900 text-slate-400"><option value="all_real">Todas as Contas Reais</option><option value="all_demo">Todas as Contas Demo</option></optgroup>
-              {accounts.map(acc => <option key={acc.id} value={acc.id} className="text-white bg-slate-900">{acc.name}</option>)}
+          
+          {/* SELETOR DE CONTA CORRIGIDO (v7.3.2) */}
+          <div className="relative group inline-block">
+            <select 
+              value={filters.accountId || 'all_demo'} 
+              onChange={(e) => handleAccountChange(e.target.value)} 
+              // Classes atualizadas para igualar ao TradesJournal (text-lg, text-slate-400)
+              className="appearance-none bg-transparent text-lg lg:text-xl text-slate-400 hover:text-white font-medium outline-none cursor-pointer pr-8 transition-colors border-b border-transparent hover:border-slate-600 max-w-[400px] truncate"
+            >
+              <optgroup label="Visão Geral" className="text-base bg-slate-900 text-slate-400">
+                <option value="all_real" className="bg-slate-900 text-white">Todas as Contas Reais</option>
+                <option value="all_demo" className="bg-slate-900 text-white">Todas as Contas Demo</option>
+              </optgroup>
+              {accounts.map(acc => (
+                <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">
+                  {acc.name}
+                </option>
+              ))}
             </select>
-            <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-500 pointer-events-none" />
+            {/* Ícone reduzido para acompanhar o texto menor */}
+            <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
           </div>
+
         </div>
         <div className="flex gap-3"><button onClick={() => setShowFilters(!showFilters)} className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-blue-500/20 border-blue-500/50' : ''}`}><Filter className="w-4 h-4" /> Filtros</button><button onClick={() => { setEditingTrade(null); setShowAddModal(true); }} className="btn-primary flex items-center gap-2"><PlusCircle className="w-5 h-5" /> Novo Trade</button></div>
       </div>
