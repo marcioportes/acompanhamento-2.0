@@ -1,3 +1,8 @@
+/**
+ * Sidebar
+ * @description Menu lateral com navegação e exibição de versão
+ */
+
 import { 
   LayoutDashboard, 
   Users,
@@ -14,6 +19,7 @@ import {
   Settings
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { VERSION } from '../version';
 
 const Sidebar = ({ 
   currentView, 
@@ -136,7 +142,7 @@ const Sidebar = ({
           ))}
         </nav>
 
-        {/* User Info */}
+        {/* User Info + Version */}
         <div className="p-4 border-t border-slate-800/50">
           <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center flex-shrink-0">
@@ -165,6 +171,15 @@ const Sidebar = ({
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {!collapsed && <span>Sair</span>}
           </button>
+
+          {/* Version Display - Padrão de mercado no footer */}
+          {!collapsed && (
+            <div className="mt-4 pt-4 border-t border-slate-800/30 text-center">
+              <span className="text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors cursor-default">
+                {VERSION.display}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </aside>

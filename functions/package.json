@@ -1,6 +1,6 @@
 {
-  "name": "acompanhamento-functions",
-  "description": "Firebase Cloud Functions for Acompanhamento 2.0",
+  "name": "tchio-alpha-functions",
+  "description": "Firebase Cloud Functions for Tchio-Alpha",
   "version": "1.0.0",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
