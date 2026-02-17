@@ -1,9 +1,10 @@
 /**
  * App.jsx
- * @version 2.0.0
- * @description App com suporte a View As Student
+ * @version 2.1.0
+ * @description App com suporte a View As Student + FeedbackPage
  * 
  * CHANGELOG:
+ * - 2.1.0: Adicionado FeedbackPage para alunos
  * - 2.0.0: View As Student feature
  */
 
@@ -17,6 +18,7 @@ import AccountsPage from './pages/AccountsPage';
 import SettingsPage from './pages/SettingsPage';
 import TradesJournal from './pages/TradesJournal';
 import StudentsManagement from './pages/StudentsManagement';
+import FeedbackPage from './pages/FeedbackPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -140,6 +142,7 @@ const AppContent = () => {
     
     // Páginas específicas
     if (currentView === 'accounts') return <AccountsPage />;
+    if (currentView === 'feedback' && !isMentor()) return <FeedbackPage />;
     if (currentView === 'students' && isMentor()) {
       return <StudentsManagement onViewAsStudent={handleViewAsStudent} />;
     }

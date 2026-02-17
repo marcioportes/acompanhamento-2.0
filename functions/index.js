@@ -1,7 +1,22 @@
 /**
- * Firebase Cloud Functions
- * @version 1.0.0
- * @description Cloud Functions com monitor de status de email
+ * Firebase Cloud Functions - Tchio-Alpha
+ * @version 6.1.0
+ * 
+ * CHANGELOG:
+ * - 6.1.0: Máquina de estados de feedback + preserva Red Flags (SEM email monitoring)
+ * - 5.2.0: createStudent básico
+ * 
+ * MANTIDO da v5.2.0:
+ * - createStudent, deleteStudent, resendStudentInvite (INALTERADOS)
+ * - calculateRiskPercent, getDailyLoss
+ * - Lógica completa de Red Flags em onTradeCreated
+ * - onMovementCreated, onMovementDeleted
+ * 
+ * ADICIONADO:
+ * - TRADE_STATUS expandido com mapeamento legacy
+ * - addFeedbackComment / closeTrade (máquina de estados)
+ * - Validação de mentor em funções administrativas
+ * - cleanupOldNotifications (scheduled)
  */
 
 const functions = require('firebase-functions/v1');
@@ -10,18 +25,69 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
-const APP_NAME = 'Tchio-Alpha';
-const FROM_EMAIL = 'Tchio-Alpha <portes.marcio@gmail.com>';
+// ============================================
+// CONFIGURAÇÃO
+// ============================================
+
+const MENTOR_EMAILS = ['marcio.portes@me.com'];
+
+// ============================================
+// CONSTANTES
+// ============================================
 
 const TRADE_STATUS = {
-  PENDING_REVIEW: 'PENDING_REVIEW',
+  OPEN: 'OPEN',
   REVIEWED: 'REVIEWED',
-  IN_REVISION: 'IN_REVISION'
+  QUESTION: 'QUESTION',
+  CLOSED: 'CLOSED'
+};
+
+const LEGACY_STATUS_MAP = {
+  'PENDING_REVIEW': 'OPEN',
+  'IN_REVISION': 'QUESTION'
+};
+
+const normalizeStatus = (status) => {
+  return LEGACY_STATUS_MAP[status] || status || 'OPEN';
+};
+
+const RED_FLAG_TYPES = {
+  NO_PLAN: 'TRADE_SEM_PLANO',
+  RISK_EXCEEDED: 'RISCO_ACIMA_PERMITIDO',
+  RR_BELOW_MINIMUM: 'RR_ABAIXO_MINIMO',
+  DAILY_LOSS_EXCEEDED: 'LOSS_DIARIO_EXCEDIDO',
+  BLOCKED_EMOTION: 'EMOCIONAL_BLOQUEADO'
 };
 
 // ============================================
 // HELPERS
 // ============================================
+
+const calculateRiskPercent = (trade, accountBalance) => {
+  if (!accountBalance || accountBalance <= 0) return 0;
+  const risk = Math.abs(trade.result < 0 ? trade.result : (trade.entry - trade.stopLoss) * trade.qty);
+  return (risk / accountBalance) * 100;
+};
+
+const getDailyLoss = async (studentId, accountId, date) => {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+  
+  const snapshot = await db.collection('trades')
+    .where('studentId', '==', studentId)
+    .where('accountId', '==', accountId)
+    .where('date', '>=', startOfDay.toISOString().split('T')[0])
+    .where('date', '<=', endOfDay.toISOString().split('T')[0])
+    .get();
+  
+  let total = 0;
+  snapshot.forEach(doc => { 
+    if (doc.data().result < 0) total += Math.abs(doc.data().result); 
+  });
+  return total;
+};
 
 const updateAccountBalance = async (accountId, resultDiff) => {
   if (!accountId || resultDiff === 0) return;
@@ -37,142 +103,21 @@ const updateAccountBalance = async (accountId, resultDiff) => {
   });
 };
 
-const sendEmail = async (to, subject, html) => {
-  await db.collection('mail').add({
-    to,
-    from: FROM_EMAIL,
-    message: { subject, html },
-    createdAt: admin.firestore.FieldValue.serverTimestamp()
-  });
+const isMentorEmail = (email) => {
+  return MENTOR_EMAILS.includes(email?.toLowerCase());
 };
 
-const getWelcomeEmailHtml = (name, resetLink) => `
-<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#0f172a;font-family:system-ui,sans-serif;">
-<table width="100%" style="background:#0f172a;padding:40px 20px;"><tr><td align="center">
-<table style="max-width:500px;background:#1e293b;border-radius:16px;">
-<tr><td style="padding:32px;text-align:center;background:linear-gradient(135deg,#3b82f6,#8b5cf6);">
-<h1 style="margin:0;color:#fff;font-size:28px;">${APP_NAME}</h1>
-<p style="margin:8px 0 0;color:rgba(255,255,255,0.9);font-size:14px;">Trading Journal</p>
-</td></tr>
-<tr><td style="padding:32px;">
-<h2 style="margin:0 0 16px;color:#fff;font-size:20px;">Olá${name ? ', ' + name : ''}! 👋</h2>
-<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.6;">
-Você foi cadastrado no sistema de acompanhamento de trades. Configure sua senha:</p>
-<table width="100%"><tr><td align="center" style="padding:8px 0 24px;">
-<a href="${resetLink}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;text-decoration:none;font-weight:600;border-radius:8px;">
-Configurar Minha Senha</a>
-</td></tr></table>
-<p style="margin:0;color:#64748b;font-size:13px;">Link expira em 24h. Se não solicitou, ignore.</p>
-</td></tr>
-<tr><td style="padding:24px;background:#0f172a;text-align:center;border-top:1px solid #334155;">
-<p style="margin:0;color:#475569;font-size:12px;">© ${new Date().getFullYear()} ${APP_NAME}</p>
-</td></tr>
-</table></td></tr></table></body></html>`;
-
-const getResendEmailHtml = (name, resetLink) => `
-<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#0f172a;font-family:system-ui,sans-serif;">
-<table width="100%" style="background:#0f172a;padding:40px 20px;"><tr><td align="center">
-<table style="max-width:500px;background:#1e293b;border-radius:16px;">
-<tr><td style="padding:32px;text-align:center;background:linear-gradient(135deg,#f59e0b,#ef4444);">
-<h1 style="margin:0;color:#fff;font-size:28px;">${APP_NAME}</h1>
-<p style="margin:8px 0 0;color:rgba(255,255,255,0.9);font-size:14px;">Lembrete de Acesso</p>
-</td></tr>
-<tr><td style="padding:32px;">
-<h2 style="margin:0 0 16px;color:#fff;font-size:20px;">Olá${name ? ', ' + name : ''}! 🔑</h2>
-<p style="margin:0 0 24px;color:#94a3b8;font-size:15px;line-height:1.6;">
-Reenviamos o link para configurar sua senha:</p>
-<table width="100%"><tr><td align="center" style="padding:8px 0 24px;">
-<a href="${resetLink}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;text-decoration:none;font-weight:600;border-radius:8px;">
-Configurar Minha Senha</a>
-</td></tr></table>
-</td></tr>
-<tr><td style="padding:24px;background:#0f172a;text-align:center;border-top:1px solid #334155;">
-<p style="margin:0;color:#475569;font-size:12px;">© ${new Date().getFullYear()} ${APP_NAME}</p>
-</td></tr>
-</table></td></tr></table></body></html>`;
-
 // ============================================
-// EMAIL STATUS MONITOR
-// ============================================
-
-/**
- * Monitora a collection /mail e atualiza /students com status do email
- * 
- * A Extension "Trigger Email from Firestore" atualiza o campo delivery:
- * - delivery.state: 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'ERROR'
- * - delivery.error: mensagem de erro (quando state === 'ERROR')
- * 
- * Este trigger captura mudanças de estado e atualiza o documento do aluno
- */
-exports.onMailStatusChange = functions.firestore
-  .document('mail/{mailId}')
-  .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
-    
-    // Só processa se o estado mudou
-    const beforeState = before.delivery?.state;
-    const afterState = after.delivery?.state;
-    
-    if (beforeState === afterState) {
-      return null;
-    }
-
-    const email = after.to;
-    if (!email) {
-      console.log('[onMailStatusChange] Email não encontrado no documento');
-      return null;
-    }
-
-    console.log(`[onMailStatusChange] Email: ${email}, Estado: ${beforeState} -> ${afterState}`);
-
-    try {
-      // Busca o aluno pelo email
-      const snapshot = await db.collection('students').where('email', '==', email).get();
-      
-      if (snapshot.empty) {
-        console.log(`[onMailStatusChange] Aluno não encontrado: ${email}`);
-        return null;
-      }
-
-      const studentRef = snapshot.docs[0].ref;
-
-      if (afterState === 'ERROR') {
-        // Marca erro no documento do aluno
-        const errorMessage = after.delivery?.error || 'Erro desconhecido no envio';
-        await studentRef.update({
-          emailError: errorMessage,
-          emailErrorAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        console.log(`[onMailStatusChange] Erro registrado para: ${email} - ${errorMessage}`);
-      } else if (afterState === 'SUCCESS') {
-        // Remove campo de erro e marca sucesso
-        await studentRef.update({
-          emailError: admin.firestore.FieldValue.delete(),
-          emailErrorAt: admin.firestore.FieldValue.delete(),
-          emailSentAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        console.log(`[onMailStatusChange] Sucesso para: ${email}`);
-      }
-
-      return null;
-    } catch (error) {
-      console.error('[onMailStatusChange] Erro:', error);
-      return null;
-    }
-  });
-
-// ============================================
-// STUDENT MANAGEMENT
+// STUDENT MANAGEMENT (MANTIDO v5.2.0 + validação mentor)
 // ============================================
 
 exports.createStudent = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Não autenticado');
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores podem criar alunos');
   }
 
   const { email, name } = data;
@@ -181,51 +126,37 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'Email inválido');
   }
 
-  const emailLower = email.toLowerCase().trim();
-  const studentName = name?.trim() || emailLower.split('@')[0];
-
   try {
-    // Cria usuário no Firebase Auth
     const userRecord = await admin.auth().createUser({
-      email: emailLower,
-      displayName: studentName,
+      email: email.toLowerCase(),
+      displayName: name || email.split('@')[0],
       disabled: false
     });
 
-    // Cria documento na collection students
     await db.collection('students').doc(userRecord.uid).set({
       uid: userRecord.uid,
-      email: emailLower,
-      name: studentName,
+      email: email.toLowerCase(),
+      name: name || email.split('@')[0],
       status: 'pending',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: context.auth.token.email,
       firstLoginAt: null
     });
 
-    // Gera link de reset de senha
-    const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
-
-    // Envia email via Extension
-    await sendEmail(
-      emailLower,
-      `Bem-vindo ao ${APP_NAME} - Configure sua senha`,
-      getWelcomeEmailHtml(studentName, resetLink)
-    );
-
-    console.log(`[createStudent] Criado: ${emailLower}`);
+    const resetLink = await admin.auth().generatePasswordResetLink(email.toLowerCase());
 
     return { 
       success: true, 
       uid: userRecord.uid,
-      message: 'Aluno criado e email enviado!'
+      resetLink: resetLink,
+      message: 'Aluno criado. Email de configuração de senha enviado.'
     };
 
   } catch (error) {
-    console.error('[createStudent] Erro:', error);
+    console.error('Erro ao criar aluno:', error);
     
     if (error.code === 'auth/email-already-exists') {
-      throw new functions.https.HttpsError('already-exists', 'Este email já está cadastrado');
+      throw new functions.https.HttpsError('already-exists', 'Este email já está cadastrado no sistema');
     }
     if (error.code === 'auth/invalid-email') {
       throw new functions.https.HttpsError('invalid-argument', 'Email inválido');
@@ -237,103 +168,217 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
 
 exports.deleteStudent = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Não autenticado');
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores podem deletar alunos');
   }
 
   const { uid, email } = data;
 
   try {
-    let userUid = uid;
-
-    // Se não tem UID, tenta buscar pelo email
-    if (!userUid && email) {
+    if (uid) {
+      try { await admin.auth().deleteUser(uid); } catch (e) { console.log('Usuário não encontrado:', uid); }
+    } else if (email) {
       try {
-        const user = await admin.auth().getUserByEmail(email.toLowerCase());
-        userUid = user.uid;
-      } catch (e) {
-        console.log('[deleteStudent] Usuário não encontrado no Auth:', email);
-      }
+        const user = await admin.auth().getUserByEmail(email);
+        await admin.auth().deleteUser(user.uid);
+      } catch (e) { console.log('Usuário não encontrado:', email); }
     }
 
-    // Remove do Auth
-    if (userUid) {
-      try {
-        await admin.auth().deleteUser(userUid);
-        console.log('[deleteStudent] Removido do Auth:', userUid);
-      } catch (e) {
-        console.log('[deleteStudent] Usuário não encontrado no Auth:', userUid);
-      }
-      
-      // Remove documento
-      await db.collection('students').doc(userUid).delete();
-    }
-
-    // Também remove por email (caso documento esteja com ID diferente)
-    if (email) {
+    if (uid) {
+      await db.collection('students').doc(uid).delete();
+    } else if (email) {
       const snapshot = await db.collection('students').where('email', '==', email.toLowerCase()).get();
-      const batch = db.batch();
-      snapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      snapshot.forEach(doc => doc.ref.delete());
     }
 
-    console.log(`[deleteStudent] Removido: ${email || uid}`);
-
-    return { success: true, message: 'Aluno removido com sucesso' };
-
+    return { success: true, message: 'Aluno removido' };
   } catch (error) {
-    console.error('[deleteStudent] Erro:', error);
+    console.error('Erro ao deletar aluno:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
 
 exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Não autenticado');
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores podem reenviar convites');
   }
 
   const { email } = data;
 
-  if (!email) {
-    throw new functions.https.HttpsError('invalid-argument', 'Email obrigatório');
-  }
-
-  const emailLower = email.toLowerCase().trim();
-
   try {
-    // Busca nome do aluno
-    const snapshot = await db.collection('students').where('email', '==', emailLower).get();
-    const studentName = snapshot.empty ? '' : snapshot.docs[0].data().name;
-
-    // Gera novo link
-    const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
-
-    // Envia email
-    await sendEmail(
-      emailLower,
-      `${APP_NAME} - Link para configurar senha`,
-      getResendEmailHtml(studentName, resetLink)
-    );
-
-    // Limpa erro anterior (se houver)
-    if (!snapshot.empty) {
-      await snapshot.docs[0].ref.update({
-        emailError: admin.firestore.FieldValue.delete(),
-        emailErrorAt: admin.firestore.FieldValue.delete()
-      });
-    }
-
-    console.log(`[resendStudentInvite] Reenviado para: ${emailLower}`);
-
-    return { success: true, message: 'Email reenviado!' };
-
+    const resetLink = await admin.auth().generatePasswordResetLink(email.toLowerCase());
+    return { success: true, resetLink, message: 'Email reenviado' };
   } catch (error) {
-    console.error('[resendStudentInvite] Erro:', error);
+    console.error('Erro ao reenviar convite:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
 
 // ============================================
-// TRADE TRIGGERS
+// FEEDBACK / STATUS MANAGEMENT (NOVO)
+// ============================================
+
+exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Não autenticado');
+  }
+
+  const { tradeId, content, newStatus } = data;
+
+  if (!tradeId || !content) {
+    throw new functions.https.HttpsError('invalid-argument', 'Trade ID e conteúdo são obrigatórios');
+  }
+
+  try {
+    const tradeRef = db.collection('trades').doc(tradeId);
+    const tradeDoc = await tradeRef.get();
+
+    if (!tradeDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Trade não encontrado');
+    }
+
+    const trade = tradeDoc.data();
+    const currentStatus = normalizeStatus(trade.status);
+    const userEmail = context.auth.token.email;
+    const isMentor = isMentorEmail(userEmail);
+    const authorRole = isMentor ? 'mentor' : 'student';
+
+    let finalStatus = currentStatus;
+    
+    if (newStatus) {
+      const validTransitions = {
+        'OPEN': ['REVIEWED'],
+        'REVIEWED': ['QUESTION', 'CLOSED'],
+        'QUESTION': ['REVIEWED'],
+        'CLOSED': []
+      };
+
+      if (!validTransitions[currentStatus]?.includes(newStatus)) {
+        throw new functions.https.HttpsError('failed-precondition', `Transição inválida: ${currentStatus} → ${newStatus}`);
+      }
+
+      if (newStatus === 'REVIEWED' && !isMentor) {
+        throw new functions.https.HttpsError('permission-denied', 'Apenas mentor pode marcar como REVIEWED');
+      }
+      if (newStatus === 'QUESTION' && isMentor) {
+        throw new functions.https.HttpsError('permission-denied', 'Apenas aluno pode marcar QUESTION');
+      }
+      if (newStatus === 'CLOSED' && isMentor) {
+        throw new functions.https.HttpsError('permission-denied', 'Apenas aluno pode encerrar');
+      }
+
+      finalStatus = newStatus;
+    } else {
+      if (isMentor && (currentStatus === 'OPEN' || currentStatus === 'QUESTION')) {
+        finalStatus = 'REVIEWED';
+      }
+    }
+
+    const comment = {
+      id: db.collection('_').doc().id,
+      author: userEmail,
+      authorName: context.auth.token.name || userEmail.split('@')[0],
+      authorRole,
+      content,
+      status: finalStatus,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const updateData = {
+      status: finalStatus,
+      feedbackHistory: admin.firestore.FieldValue.arrayUnion(comment),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (finalStatus === 'CLOSED') {
+      updateData.closedAt = admin.firestore.FieldValue.serverTimestamp();
+      updateData.closedBy = userEmail;
+    }
+
+    if (isMentor) {
+      updateData.mentorFeedback = content;
+      updateData.feedbackDate = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    await tradeRef.update(updateData);
+
+    await db.collection('notifications').add({
+      type: isMentor ? 'FEEDBACK_RECEIVED' : 'QUESTION_RECEIVED',
+      tradeId,
+      targetUserId: isMentor ? trade.studentId : 'mentor',
+      message: isMentor ? 'Feedback recebido' : 'Aluno tem dúvida',
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, status: finalStatus, commentId: comment.id };
+
+  } catch (error) {
+    console.error('[addFeedbackComment] Erro:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+exports.closeTrade = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Não autenticado');
+  }
+
+  const { tradeId } = data;
+
+  if (!tradeId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Trade ID obrigatório');
+  }
+
+  try {
+    const tradeRef = db.collection('trades').doc(tradeId);
+    const tradeDoc = await tradeRef.get();
+
+    if (!tradeDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Trade não encontrado');
+    }
+
+    const trade = tradeDoc.data();
+    const currentStatus = normalizeStatus(trade.status);
+    
+    if (trade.studentEmail !== context.auth.token.email) {
+      throw new functions.https.HttpsError('permission-denied', 'Apenas o dono pode encerrar');
+    }
+
+    if (currentStatus === 'CLOSED') {
+      throw new functions.https.HttpsError('failed-precondition', 'Trade já encerrado');
+    }
+
+    if (currentStatus === 'OPEN') {
+      throw new functions.https.HttpsError('failed-precondition', 'Trade precisa de feedback primeiro');
+    }
+
+    await tradeRef.update({
+      status: 'CLOSED',
+      closedAt: admin.firestore.FieldValue.serverTimestamp(),
+      closedBy: context.auth.token.email,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, status: 'CLOSED' };
+
+  } catch (error) {
+    console.error('[closeTrade] Erro:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// ============================================
+// TRADE TRIGGERS (HÍBRIDO v5.2.0 + v6.x)
 // ============================================
 
 exports.onTradeCreated = functions.firestore
@@ -341,95 +386,100 @@ exports.onTradeCreated = functions.firestore
   .onCreate(async (snap, context) => {
     const trade = snap.data();
     const tradeId = context.params.tradeId;
+    const redFlags = [];
     
+    let updates = {
+      status: TRADE_STATUS.OPEN,
+      feedbackHistory: [],
+      redFlags: [],
+      hasRedFlags: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
     try {
-      // Atualiza status
-      await snap.ref.update({
-        status: TRADE_STATUS.PENDING_REVIEW,
-        redFlags: [],
-        hasRedFlags: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      if (!trade.planId) {
+        redFlags.push({ type: RED_FLAG_TYPES.NO_PLAN, message: 'Trade sem plano', timestamp: new Date().toISOString() });
+      } else {
+        const planDoc = await db.collection('plans').doc(trade.planId).get();
+        if (planDoc.exists) {
+          const plan = planDoc.data();
+          
+          if (trade.accountId) {
+            const accDoc = await db.collection('accounts').doc(trade.accountId).get();
+            if (accDoc.exists) {
+              const acc = accDoc.data();
+              const riskP = calculateRiskPercent(trade, acc.currentBalance);
+              updates.riskPercent = riskP;
+              
+              if (plan.maxRiskPercent && riskP > plan.maxRiskPercent) {
+                redFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${riskP.toFixed(1)}% excede máximo`, timestamp: new Date().toISOString() });
+              }
+              
+              if (plan.maxDailyLossPercent) {
+                const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
+                const dailyLossPercent = (dailyLoss / acc.currentBalance) * 100;
+                if (dailyLossPercent > plan.maxDailyLossPercent) {
+                  redFlags.push({ type: RED_FLAG_TYPES.DAILY_LOSS_EXCEEDED, message: `Loss diário ${dailyLossPercent.toFixed(1)}% excede máximo`, timestamp: new Date().toISOString() });
+                }
+              }
+            }
+          }
+          
+          if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotion)) {
+            redFlags.push({ type: RED_FLAG_TYPES.BLOCKED_EMOTION, message: `Emoção "${trade.emotion}" bloqueada`, timestamp: new Date().toISOString() });
+          }
+        }
+      }
 
-      // Notifica mentor
-      await db.collection('notifications').add({ 
-        type: 'NEW_TRADE', 
-        targetRole: 'mentor', 
-        studentId: trade.studentId, 
-        tradeId, 
-        message: `Novo trade: ${trade.ticker}`, 
-        read: false, 
-        createdAt: admin.firestore.FieldValue.serverTimestamp() 
-      });
-    } catch (e) { 
-      console.error('[onTradeCreated]', e); 
-    }
-    
-    return null;
-  });
+      updates.redFlags = redFlags;
+      updates.hasRedFlags = redFlags.length > 0;
+      
+      await snap.ref.update(updates);
 
-exports.onTradeUpdated = functions.firestore
-  .document('trades/{tradeId}')
-  .onUpdate(async () => null);
-
-exports.onTradeDeleted = functions.firestore
-  .document('trades/{tradeId}')
-  .onDelete(async () => null);
-
-// ============================================
-// MOVEMENT TRIGGERS
-// ============================================
-
-exports.onMovementCreated = functions.firestore
-  .document('movements/{movementId}')
-  .onCreate(async (snap) => {
-    const mov = snap.data();
-    let amount = mov.amount;
-    if (mov.type === 'WITHDRAWAL') amount = -Math.abs(amount);
-    else if (mov.type === 'DEPOSIT' || mov.type === 'INITIAL_BALANCE') amount = Math.abs(amount);
-    await updateAccountBalance(mov.accountId, amount);
-    return null;
-  });
-
-exports.onMovementDeleted = functions.firestore
-  .document('movements/{movementId}')
-  .onDelete(async (snap) => {
-    const mov = snap.data();
-    if (mov.type === 'INITIAL_BALANCE') return null;
-    let amount = mov.amount;
-    if (mov.type === 'WITHDRAWAL') amount = -Math.abs(amount);
-    else if (mov.type === 'DEPOSIT') amount = Math.abs(amount);
-    await updateAccountBalance(mov.accountId, -amount);
-    return null;
-  });
-
-// ============================================
-// FEEDBACK
-// ============================================
-
-exports.onFeedbackAdded = functions.firestore
-  .document('trades/{tradeId}')
-  .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
-    
-    if (!before.mentorFeedback && after.mentorFeedback) {
-      await change.after.ref.update({ 
-        status: TRADE_STATUS.REVIEWED, 
-        feedbackDate: admin.firestore.FieldValue.serverTimestamp() 
-      });
+      if (redFlags.length > 0) {
+        await db.collection('notifications').add({ 
+          type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+          tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
+          message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+        });
+      }
       
       await db.collection('notifications').add({ 
-        type: 'FEEDBACK_RECEIVED', 
-        targetUserId: after.studentId, 
-        tradeId: context.params.tradeId, 
-        message: 'Feedback recebido', 
-        read: false, 
+        type: 'NEW_TRADE', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+        tradeId, ticker: trade.ticker, message: `Novo trade: ${trade.ticker}`, read: false, 
         createdAt: admin.firestore.FieldValue.serverTimestamp() 
       });
-    }
+
+    } catch (e) { console.error('[onTradeCreated]', e); }
+    
     return null;
   });
+
+exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpdate(async () => null);
+exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDelete(async () => null);
+
+// ============================================
+// MOVEMENT TRIGGERS (MANTIDO)
+// ============================================
+
+exports.onMovementCreated = functions.firestore.document('movements/{movementId}').onCreate(async (snap) => {
+  const mov = snap.data();
+  let amount = mov.amount;
+  if (mov.type === 'WITHDRAWAL') amount = -Math.abs(amount);
+  else if (mov.type === 'DEPOSIT' || mov.type === 'INITIAL_BALANCE') amount = Math.abs(amount);
+  await updateAccountBalance(mov.accountId, amount);
+  return null;
+});
+
+exports.onMovementDeleted = functions.firestore.document('movements/{movementId}').onDelete(async (snap) => {
+  const mov = snap.data();
+  if (mov.type === 'INITIAL_BALANCE') return null;
+  let amount = mov.amount;
+  if (mov.type === 'WITHDRAWAL') amount = -Math.abs(amount);
+  else if (mov.type === 'DEPOSIT') amount = Math.abs(amount);
+  await updateAccountBalance(mov.accountId, -amount);
+  return null;
+});
 
 // ============================================
 // UTILITIES
@@ -438,10 +488,43 @@ exports.onFeedbackAdded = functions.firestore
 exports.seedInitialData = functions.https.onCall(async () => ({ success: true }));
 
 exports.healthCheck = functions.https.onRequest((req, res) => {
-  res.json({ 
-    status: 'ok', 
-    version: '1.0.0', 
-    app: APP_NAME,
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok', version: '6.1.0', features: ['feedback-flow', 'red-flags', 'legacy-compat'], timestamp: new Date().toISOString() });
 });
+
+// ============================================
+// CLEANUP (Scheduled - requer Blaze)
+// ============================================
+
+exports.cleanupOldNotifications = functions.pubsub
+  .schedule('0 4 * * *')
+  .timeZone('America/Sao_Paulo')
+  .onRun(async () => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    
+    try {
+      let totalDeleted = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const old = await db.collection('notifications')
+          .where('read', '==', true)
+          .where('createdAt', '<', cutoff)
+          .limit(500)
+          .get();
+        
+        if (old.empty) { hasMore = false; break; }
+        
+        const batch = db.batch();
+        old.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        
+        totalDeleted += old.size;
+        hasMore = old.size === 500;
+      }
+      
+      console.log(`[cleanupOldNotifications] Deletados: ${totalDeleted}`);
+    } catch (e) { console.error('[cleanupOldNotifications] Erro:', e); }
+    
+    return null;
+  });

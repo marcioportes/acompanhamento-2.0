@@ -1,6 +1,10 @@
 /**
  * Sidebar
+ * @version 1.1.0
  * @description Menu lateral com navegação e exibição de versão
+ * 
+ * CHANGELOG:
+ * - 1.1.0: Adicionado item "Feedback" no menu do aluno
  */
 
 import { 
@@ -34,6 +38,7 @@ const Sidebar = ({
   // Menu do Aluno
   const studentMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     { id: 'accounts', label: 'Contas', icon: Wallet },
   ];
