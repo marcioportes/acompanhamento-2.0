@@ -1,5 +1,6 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
+ * @version 1.2.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
@@ -17,10 +18,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 1,
+  minor: 2,
   patch: 0,
   prerelease: null,
-  build: '20260215',
+  build: '20260217',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -59,15 +60,6 @@ const TRADE_STATUS = {
   REVIEWED: 'REVIEWED',
   QUESTION: 'QUESTION',
   CLOSED: 'CLOSED'
-};
-
-const LEGACY_STATUS_MAP = {
-  'PENDING_REVIEW': 'OPEN',
-  'IN_REVISION': 'QUESTION'
-};
-
-const normalizeStatus = (status) => {
-  return LEGACY_STATUS_MAP[status] || status || 'OPEN';
 };
 
 const RED_FLAG_TYPES = {
@@ -127,7 +119,7 @@ const isMentorEmail = (email) => {
 };
 
 // ============================================
-// STUDENT MANAGEMENT (MANTIDO v5.2.0 + validação mentor)
+// STUDENT MANAGEMENT
 // ============================================
 
 exports.createStudent = functions.https.onCall(async (data, context) => {
@@ -241,7 +233,7 @@ exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
 });
 
 // ============================================
-// FEEDBACK / STATUS MANAGEMENT (NOVO)
+// FEEDBACK / STATUS MANAGEMENT
 // ============================================
 
 exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
@@ -264,7 +256,7 @@ exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
     }
 
     const trade = tradeDoc.data();
-    const currentStatus = normalizeStatus(trade.status);
+    const currentStatus = trade.status || 'OPEN';
     const userEmail = context.auth.token.email;
     const isMentor = isMentorEmail(userEmail);
     const authorRole = isMentor ? 'mentor' : 'student';
@@ -307,7 +299,7 @@ exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
       authorRole,
       content,
       status: finalStatus,
-      createdAt: new Date().toISOString()  // ISO string porque arrayUnion não aceita serverTimestamp
+      createdAt: new Date().toISOString()
     };
 
     const updateData = {
@@ -366,7 +358,7 @@ exports.closeTrade = functions.https.onCall(async (data, context) => {
     }
 
     const trade = tradeDoc.data();
-    const currentStatus = normalizeStatus(trade.status);
+    const currentStatus = trade.status || 'OPEN';
     
     if (trade.studentEmail !== context.auth.token.email) {
       throw new functions.https.HttpsError('permission-denied', 'Apenas o dono pode encerrar');
@@ -397,7 +389,7 @@ exports.closeTrade = functions.https.onCall(async (data, context) => {
 });
 
 // ============================================
-// TRADE TRIGGERS (HÍBRIDO v5.2.0 + v6.x)
+// TRADE TRIGGERS
 // ============================================
 
 exports.onTradeCreated = functions.firestore
@@ -478,7 +470,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
 exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDelete(async () => null);
 
 // ============================================
-// MOVEMENT TRIGGERS (MANTIDO)
+// MOVEMENT TRIGGERS
 // ============================================
 
 exports.onMovementCreated = functions.firestore.document('movements/{movementId}').onCreate(async (snap) => {
@@ -513,13 +505,13 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     build: VERSION.build,
     display: VERSION.display,
     full: VERSION.full,
-    features: ['feedback-flow', 'red-flags', 'legacy-compat'], 
+    features: ['feedback-flow', 'red-flags', 'student-cards'],
     timestamp: new Date().toISOString() 
   });
 });
 
 // ============================================
-// CLEANUP (Scheduled - requer Blaze)
+// CLEANUP
 // ============================================
 
 exports.cleanupOldNotifications = functions.pubsub

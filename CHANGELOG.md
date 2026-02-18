@@ -5,102 +5,111 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.2.0] - 2026-02-17
+
+### Adicionado
+- **Cards de Feedback por Aluno (Mentor)**
+  - Nova visualização na aba "Aguardando Feedback" com cards resumidos
+  - Contadores clicáveis: 🕐 OPEN (Feedback) e ❓ QUESTION (Dúvidas)
+  - Clique no ícone filtra trades por aluno + status específico
+  - Ordenação por urgência (QUESTION > OPEN)
+
+- **Filtros Avançados no FeedbackPage**
+  - Mentor: filtro por aluno, período e busca
+  - Aluno: filtro por conta, período e busca
+  - Botão de limpar filtros
+
+- **Coluna de Status no TradesList**
+  - Nova prop `showStatus` para exibir/ocultar coluna
+  - Badge visual com ícone e cor por status
+  - Usado na visão geral (showStatus=true), oculto quando já filtrado
+
+- **Botão "Ver histórico" no TradeDetailModal**
+  - Link para FeedbackPage com o trade selecionado
+  - Contador de mensagens no feedbackHistory
+
+- **Script de Migração de Status**
+  - `migrate-trade-status.js` para migrar dados legados
+  - PENDING_REVIEW → OPEN
+  - IN_REVISION → QUESTION
+
+- **Helpers no useTrades**
+  - `getStudentFeedbackCounts(email)`: contagem por status
+  - `getTradesByStudentAndStatus(email, status)`: filtro combinado
+
+### Modificado
+- **useTrades.js**
+  - `getTradesAwaitingFeedback()` agora inclui OPEN + QUESTION
+  - Removido mapeamento de status legado (após migração)
+  - Status padrão para novos trades: `OPEN`
+
+- **Padronização de Versão**
+  - Todos os arquivos agora seguem a versão do projeto (1.2.0)
+  - Removidas versões individuais (3.x.x, 5.x.x, etc.)
+
+### Corrigido
+- Fix: `serverTimestamp()` dentro de `arrayUnion()` (usa ISO string)
+- Fix: Trades com status QUESTION não apareciam na fila do mentor
+
+### Arquivos Modificados
+```
+src/
+├── version.js                      # 1.2.0
+├── hooks/
+│   └── useTrades.js                # 1.2.0 (fix + novos helpers)
+├── pages/
+│   ├── FeedbackPage.jsx            # 1.2.0 (+ filtros avançados)
+│   └── MentorDashboard.jsx         # 1.2.0 (+ cards por aluno)
+└── components/
+    ├── TradeDetailModal.jsx        # 1.2.0 (+ botão "Ver histórico")
+    ├── TradesList.jsx              # 1.2.0 (+ prop showStatus)
+    └── StudentFeedbackCard.jsx     # NOVO
+
+functions/
+├── index.js                        # 1.2.0
+└── migrate-trade-status.js         # NOVO (script de migração)
+```
+
+---
+
 ## [1.1.0] - 2026-02-15
 
 ### Adicionado
 - **Máquina de Estados de Feedback**
   - Estados: OPEN → REVIEWED ↔ QUESTION → CLOSED
-  - Thread de comentários com histórico completo (idas e vindas)
+  - Thread de comentários com histórico completo
   - Validação de transições e permissões
-  - Compatibilidade com campo legado `mentorFeedback`
 
 - **Página de Feedback para Alunos**
-  - `FeedbackPage.jsx`: Lista trades com filtros por status
-  - `FeedbackThread.jsx`: Thread de comentários
-  - `TradeStatusBadge.jsx`: Badge visual de status
+  - FeedbackPage.jsx, FeedbackThread.jsx, TradeStatusBadge.jsx
   - Item "Feedback" no menu do aluno
 
 - **Análise Emocional Avançada**
-  - `emotionalAnalysis.js`: Categorização de emoções (POSITIVE, NEUTRAL, NEGATIVE, CRITICAL)
-  - KPIs por trade: Score emocional, consistência entry/exit
-  - KPIs agregados: Detecção de tilt, best/worst emotion, compliance rate
-  - `EmotionalAnalysisDashboard.jsx`: Dashboard completo
-  - `PlanEmotionalMetrics.jsx`: Métricas por plano/período
+  - emotionalAnalysis.js com categorização de emoções
+  - KPIs por trade e agregados
+  - Dashboard e métricas por plano
 
 - **Cloud Functions**
-  - `addFeedbackComment`: Adiciona comentário e gerencia transições
-  - `closeTrade`: Encerra trade (apenas aluno)
-  - `cleanupOldNotifications`: Scheduled cleanup de notificações lidas > 30 dias
+  - addFeedbackComment, closeTrade
+  - cleanupOldNotifications (scheduled)
 
 - **Melhorias de Segurança**
-  - Validação de mentor em `createStudent`, `deleteStudent`, `resendStudentInvite`
-  - Validação de ownership em `closeTrade`
-
-### Modificado
-- **TRADE_STATUS** expandido: OPEN, REVIEWED, QUESTION, CLOSED
-  - Mapeamento automático de status legado (PENDING_REVIEW → OPEN, IN_REVISION → QUESTION)
-- **App.jsx**: Adicionada rota para FeedbackPage
-- **Sidebar.jsx**: Adicionado item "Feedback" no menu do aluno
-
-### Técnico
-- Red Flags preservadas da v1.0.0
-- Compatibilidade total com dados existentes
-- `feedbackHistory` usa ISO string para timestamps (limitação do Firestore arrayUnion)
-
-### Arquivos Modificados
-```
-src/
-├── version.js                      (MODIFICADO - 1.1.0)
-├── App.jsx                         (MODIFICADO)
-├── components/
-│   ├── Sidebar.jsx                 (MODIFICADO)
-│   ├── FeedbackThread.jsx          (NOVO)
-│   ├── TradeStatusBadge.jsx        (NOVO)
-│   ├── EmotionalAnalysisDashboard.jsx (NOVO)
-│   └── PlanEmotionalMetrics.jsx    (NOVO)
-├── pages/
-│   └── FeedbackPage.jsx            (NOVO)
-├── hooks/
-│   └── useFeedback.js              (NOVO)
-└── utils/
-    └── emotionalAnalysis.js        (NOVO)
-
-functions/
-└── index.js                        (MODIFICADO - 1.1.0)
-```
+  - Validação de mentor em funções administrativas
 
 ---
 
 ## [1.0.0] - 2026-02-13
 
 ### Adicionado
-- **View As Student**: Mentor pode visualizar dashboard como se fosse o aluno
-  - Botão de visualização na lista de alunos (ícone de olho)
-  - Banner indicador no topo quando em modo visualização
-  - Acesso completo ao dashboard do aluno selecionado
-  
+- **View As Student**: Mentor visualiza dashboard como aluno
 - **Smart Balance no Extrato do Plano**
-  - Cálculo de saldo anterior (trades antes do período filtrado)
-  - Filtros de período: Hoje, Semana, Mês, Trimestre, Ano, Tudo
-  - Detecção de eventos META/STOP na linha exata
-  - Marcação de trades pós-evento (Pós-Meta, Violação)
-  - Estados de compliance: Disciplinado, Ganância, Catástrofe, Sorte
-
-- **Sistema de Versionamento**
-  - Arquivo `src/version.js` como Single Source of Truth
-  - Exibição de versão no footer do Sidebar
-  - Documento `VERSIONING.md` com padrões do projeto
+- **Sistema de Versionamento** (SemVer 2.0.0)
 
 ### Modificado
-- **Hooks com Override Parameter**
-  - `useTrades(overrideStudentId)`: Carrega trades de aluno específico
-  - `usePlans(overrideStudentId)`: Carrega planos de aluno específico
-  - `useAccounts(overrideStudentId)`: Carrega contas de aluno específico
-  - Todos mantêm retrocompatibilidade (parâmetro opcional)
+- Hooks com Override Parameter (useTrades, usePlans, useAccounts)
 
 ---
 
 ## [0.x.x] - Histórico Anterior
 
 Versões anteriores não seguiam SemVer consistente.
-A partir de 1.0.0, todas as versões seguirão este padrão.

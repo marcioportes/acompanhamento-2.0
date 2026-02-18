@@ -1,4 +1,14 @@
-import { useState, useEffect } from 'react';
+/**
+ * TradeDetailModal
+ * @version 1.2.0
+ * @description Modal de detalhes do trade com link para histórico de feedback
+ * 
+ * CHANGELOG:
+ * - 1.2.0: Adicionado botão "Ver histórico" e callback onViewFeedbackHistory
+ * - 1.1.0: Versão anterior
+ */
+
+import { useState } from 'react';
 import { 
   X, 
   TrendingUp, 
@@ -12,9 +22,32 @@ import {
   Loader2,
   Clock,
   FileText,
-  AlertTriangle
+  ExternalLink,
+  CheckCircle,
+  HelpCircle,
+  Lock
 } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate } from '../utils/calculations';
+
+// Badge de status inline
+const StatusBadge = ({ status }) => {
+  const config = {
+    OPEN: { label: 'Aguardando', icon: Clock, bg: 'bg-slate-500/20', text: 'text-slate-400' },
+    REVIEWED: { label: 'Revisado', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400' },
+    QUESTION: { label: 'Dúvida', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400' },
+    CLOSED: { label: 'Encerrado', icon: Lock, bg: 'bg-purple-500/20', text: 'text-purple-400' }
+  };
+
+  const cfg = config[status] || config.OPEN;
+  const Icon = cfg.icon;
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
+      <Icon className="w-3 h-3" />
+      {cfg.label}
+    </span>
+  );
+};
 
 const TradeDetailModal = ({ 
   isOpen, 
@@ -22,50 +55,36 @@ const TradeDetailModal = ({
   trade, 
   isMentor = false,
   onAddFeedback,
-  feedbackLoading = false
+  feedbackLoading = false,
+  onViewFeedbackHistory
 }) => {
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
-
-  // FIX #12: Resetar estado quando trade muda
-  useEffect(() => {
-    setFeedback('');
-    setShowFeedbackInput(false);
-    setSubmitError(null);
-    setFullscreenImage(null);
-  }, [trade?.id]);
 
   if (!isOpen || !trade) return null;
 
   const isWin = trade.result >= 0;
+  const feedbackCount = (trade.feedbackHistory || []).length;
 
-  // FIX #10: Melhorar handleSubmitFeedback com tratamento de erro
   const handleSubmitFeedback = async () => {
     if (!feedback.trim()) return;
-    if (!onAddFeedback) {
-      console.error('onAddFeedback não foi passado para o componente');
-      setSubmitError('Erro de configuração. Tente novamente.');
-      return;
-    }
-    
-    setSubmitError(null);
     
     try {
-      console.log('Enviando feedback para trade:', trade.id);
-      await onAddFeedback(trade.id, feedback.trim());
-      console.log('Feedback enviado com sucesso');
+      await onAddFeedback(trade.id, feedback);
       setFeedback('');
       setShowFeedbackInput(false);
     } catch (err) {
       console.error('Error adding feedback:', err);
-      setSubmitError('Erro ao enviar feedback. Tente novamente.');
     }
   };
 
-  // Verificar se tem red flags
-  const hasRedFlags = trade.hasRedFlags || (trade.redFlags && trade.redFlags.length > 0);
+  const handleViewHistory = () => {
+    if (onViewFeedbackHistory) {
+      onViewFeedbackHistory(trade);
+      onClose();
+    }
+  };
 
   return (
     <>
@@ -107,19 +126,7 @@ const TradeDetailModal = ({
                   <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded-lg">
                     {trade.exchange}
                   </span>
-                  {/* Status Badge */}
-                  {trade.status && (
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      trade.status === 'REVIEWED' 
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : trade.status === 'PENDING_REVIEW'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : 'bg-slate-500/20 text-slate-400'
-                    }`}>
-                      {trade.status === 'REVIEWED' ? 'Revisado' : 
-                       trade.status === 'PENDING_REVIEW' ? 'Aguardando' : trade.status}
-                    </span>
-                  )}
+                  <StatusBadge status={trade.status} />
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {trade.studentName || trade.studentEmail?.split('@')[0]}
@@ -152,23 +159,6 @@ const TradeDetailModal = ({
 
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            {/* Red Flags Alert */}
-            {hasRedFlags && (
-              <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                <div className="flex items-center gap-2 text-red-400 mb-2">
-                  <AlertTriangle className="w-5 h-5" />
-                  <span className="font-semibold">Red Flags Detectadas</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {trade.redFlags?.map((flag, index) => (
-                    <span key={index} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">
-                      {flag.type || flag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Detalhes Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800/30 rounded-xl p-4">
@@ -208,7 +198,7 @@ const TradeDetailModal = ({
                 </div>
                 <p className="text-white font-medium text-sm">
                   {trade.createdAt?.toDate 
-                    ? formatDate(trade.createdAt.toDate())
+                    ? formatDate(trade.createdAt.toDate(), "dd/MM HH:mm")
                     : formatDate(trade.createdAt)
                   }
                 </p>
@@ -318,24 +308,35 @@ const TradeDetailModal = ({
                 <div className="flex items-center gap-2 text-slate-400">
                   <MessageSquare className="w-4 h-4" />
                   <span className="text-sm font-medium">Feedback do Mentor</span>
+                  {feedbackCount > 0 && (
+                    <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                      {feedbackCount} {feedbackCount === 1 ? 'mensagem' : 'mensagens'}
+                    </span>
+                  )}
                 </div>
                 
-                {isMentor && !trade.mentorFeedback && !showFeedbackInput && (
-                  <button
-                    onClick={() => setShowFeedbackInput(true)}
-                    className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    + Adicionar Feedback
-                  </button>
-                )}
-              </div>
-
-              {/* Erro ao enviar */}
-              {submitError && (
-                <div className="mb-3 bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
-                  {submitError}
+                <div className="flex items-center gap-2">
+                  {/* Botão Ver Histórico */}
+                  {feedbackCount > 0 && onViewFeedbackHistory && (
+                    <button
+                      onClick={handleViewHistory}
+                      className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Ver histórico
+                    </button>
+                  )}
+                  
+                  {isMentor && !trade.mentorFeedback && !showFeedbackInput && (
+                    <button
+                      onClick={() => setShowFeedbackInput(true)}
+                      className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      + Adicionar Feedback
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
 
               {trade.mentorFeedback ? (
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
@@ -344,11 +345,19 @@ const TradeDetailModal = ({
                   </p>
                   {trade.feedbackDate && (
                     <p className="text-xs text-slate-500 mt-3">
-                      Enviado em {formatDate(
-                        trade.feedbackDate?.toDate ? trade.feedbackDate.toDate() : trade.feedbackDate
-                      )}
-                      {trade.feedbackBy && ` por ${trade.feedbackBy}`}
+                      Enviado em {formatDate(trade.feedbackDate, "dd/MM/yyyy 'às' HH:mm")}
                     </p>
+                  )}
+                  
+                  {/* Link para ver histórico completo se houver mais mensagens */}
+                  {feedbackCount > 1 && onViewFeedbackHistory && (
+                    <button
+                      onClick={handleViewHistory}
+                      className="mt-3 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Ver todas as {feedbackCount} mensagens
+                    </button>
                   )}
                 </div>
               ) : showFeedbackInput && isMentor ? (
@@ -366,7 +375,6 @@ const TradeDetailModal = ({
                       onClick={() => {
                         setShowFeedbackInput(false);
                         setFeedback('');
-                        setSubmitError(null);
                       }}
                       className="btn-secondary py-2 px-4"
                       disabled={feedbackLoading}

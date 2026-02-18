@@ -1,11 +1,12 @@
 /**
  * useTrades
- * @version 5.6.0
+ * @version 1.2.0
  * @description Hook responsável pelo gerenciamento de trades (CRUD).
  * 
  * CHANGELOG:
- * - 5.6.0: Suporte a overrideStudentId para View As Student
- * - 5.5.0: Suporte Swing Trade, cálculo de duração
+ * - 1.2.0: Fix getTradesAwaitingFeedback (OPEN + QUESTION), padronização versão
+ * - 1.1.0: Suporte a overrideStudentId para View As Student
+ * - 1.0.0: Versão inicial com suporte Swing Trade
  * 
  * @firestore-index REQUERIDO: trades (studentId ASC, date DESC)
  */
@@ -16,9 +17,12 @@ import {
   doc, getDocs, getDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, TRADE_STATUS } from '../firebase';
+import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
+
+// Status padrão para novos trades
+const DEFAULT_STATUS = 'OPEN';
 
 /**
  * @param {string|null} overrideStudentId - UID do aluno para View As Student
@@ -79,7 +83,6 @@ export const useTrades = (overrideStudentId = null) => {
           }, 
           (err) => {
             console.warn('[useTrades] Fallback override:', err.message);
-            // Fallback sem orderBy
             const fallback = query(collection(db, 'trades'), where('studentId', '==', overrideStudentId));
             onSnapshot(fallback, (snap) => {
               const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -100,7 +103,7 @@ export const useTrades = (overrideStudentId = null) => {
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             setAllTrades(data);
-            setTrades(data); // Mentor também usa trades para componentes que dependem dele
+            setTrades(data);
             setLoading(false);
           }, 
           (err) => {
@@ -209,11 +212,12 @@ export const useTrades = (overrideStudentId = null) => {
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
         studentId: user.uid,
-        status: TRADE_STATUS?.PENDING_REVIEW || 'PENDING_REVIEW',
+        status: DEFAULT_STATUS,
         accountId: derivedAccountId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         htfUrl: null, ltfUrl: null, mentorFeedback: null,
+        feedbackHistory: []
       };
 
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
@@ -366,16 +370,32 @@ export const useTrades = (overrideStudentId = null) => {
 
   const addFeedback = useCallback(async (tradeId, feedback) => {
      if (!user || !isMentor()) throw new Error('Apenas mentores');
-     await updateDoc(doc(db, 'trades', tradeId), { mentorFeedback: feedback, status: 'REVIEWED', updatedAt: serverTimestamp() });
+     await updateDoc(doc(db, 'trades', tradeId), { 
+       mentorFeedback: feedback, 
+       status: 'REVIEWED', 
+       updatedAt: serverTimestamp() 
+     });
   }, [user, isMentor]);
 
-  // HELPERS para o App.jsx
-  const getTradesByStudent = useCallback((email) => allTrades.filter(t => t.studentEmail === email), [allTrades]);
+  // ============================================
+  // HELPERS PARA MENTOR
+  // ============================================
   
+  const getTradesByStudent = useCallback((email) => {
+    return allTrades.filter(t => t.studentEmail === email);
+  }, [allTrades]);
+  
+  /**
+   * Retorna trades aguardando ação do mentor
+   * Inclui: OPEN (novos) + QUESTION (dúvidas do aluno)
+   */
   const getTradesAwaitingFeedback = useCallback(() => {
-    return allTrades.filter(t => t.status === 'PENDING_REVIEW');
+    return allTrades.filter(t => t.status === 'OPEN' || t.status === 'QUESTION');
   }, [allTrades]);
 
+  /**
+   * Agrupa trades por aluno
+   */
   const getTradesGroupedByStudent = useCallback(() => {
     const grouped = {};
     allTrades.forEach(t => {
@@ -384,6 +404,46 @@ export const useTrades = (overrideStudentId = null) => {
       grouped[key].push(t);
     });
     return grouped;
+  }, [allTrades]);
+
+  /**
+   * Retorna lista única de alunos com trades
+   */
+  const getUniqueStudents = useCallback(() => {
+    const map = {};
+    allTrades.forEach(t => {
+      if (t.studentEmail && !map[t.studentEmail]) {
+        map[t.studentEmail] = {
+          email: t.studentEmail,
+          name: t.studentName || t.studentEmail.split('@')[0],
+          studentId: t.studentId
+        };
+      }
+    });
+    return Object.values(map);
+  }, [allTrades]);
+
+  /**
+   * Retorna contagem de trades por status para um aluno específico
+   */
+  const getStudentFeedbackCounts = useCallback((studentEmail) => {
+    const studentTrades = allTrades.filter(t => t.studentEmail === studentEmail);
+    return {
+      open: studentTrades.filter(t => t.status === 'OPEN').length,
+      question: studentTrades.filter(t => t.status === 'QUESTION').length,
+      reviewed: studentTrades.filter(t => t.status === 'REVIEWED').length,
+      closed: studentTrades.filter(t => t.status === 'CLOSED').length,
+      total: studentTrades.length
+    };
+  }, [allTrades]);
+
+  /**
+   * Retorna trades filtrados por aluno e status
+   */
+  const getTradesByStudentAndStatus = useCallback((studentEmail, status) => {
+    return allTrades.filter(t => 
+      t.studentEmail === studentEmail && t.status === status
+    );
   }, [allTrades]);
   
   return { 
@@ -397,7 +457,10 @@ export const useTrades = (overrideStudentId = null) => {
     addFeedback, 
     getTradesByStudent,
     getTradesAwaitingFeedback,
-    getTradesGroupedByStudent
+    getTradesGroupedByStudent,
+    getUniqueStudents,
+    getStudentFeedbackCounts,
+    getTradesByStudentAndStatus
   };
 };
 

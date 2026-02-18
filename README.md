@@ -1,127 +1,112 @@
-# Sprint: Feedback & Emotions v3 (v6.1.0)
+# Sprint v1.2.0 - Feedback Cards & Filtros
 
-## 📋 Features
+## 📋 Resumo
 
-### 1. Máquina de Estados de Feedback
-
-```
-OPEN ──────→ REVIEWED ←──→ QUESTION
-                │
-                └──→ CLOSED (final)
-```
-
-| Estado | Descrição | Quem Transiciona |
-|--------|-----------|------------------|
-| `OPEN` | Trade criado, aguardando | Automático |
-| `REVIEWED` | Mentor comentou | Mentor |
-| `QUESTION` | Aluno tem dúvida | Aluno |
-| `CLOSED` | Encerrado | Aluno |
-
-### 2. Análise Emocional
-
-- **KPIs por Trade:** Score emocional, consistência entry/exit
-- **KPIs Agregados:** Best/worst emotion, tilt detection, compliance rate
-- **Dashboard:** Visualização completa com recomendações
-
-### 3. Melhorias de Segurança
-
-- Validação de mentor em `createStudent`, `deleteStudent`, `resendStudentInvite`
-- Validação de ownership em `closeTrade`
-- Validação de permissões em `addFeedbackComment`
+Esta versão adiciona:
+- **Cards por aluno** na aba "Aguardando Feedback" do mentor
+- **Filtros avançados** no FeedbackPage (aluno, período, busca)
+- **Coluna de status** no TradesList
+- **Script de migração** para status legados
 
 ---
 
-## 🚀 Deploy
+## 🚀 Quick Start
 
-### 1. Backend (Cloud Functions)
-
+### 1. Migrar dados
 ```bash
-# Copiar arquivo
-cp functions/index.js PROJECT/functions/
+cd functions
+node migrate-trade-status.js
+```
 
-# Deploy
-cd PROJECT/functions
-npm install
+### 2. Deploy backend
+```bash
 firebase deploy --only functions
 ```
 
-### 2. Frontend (TODOS OS ARQUIVOS INCLUÍDOS)
-
+### 3. Deploy frontend
 ```bash
-# Copiar TUDO de src/ para o projeto
-cp src/App.jsx PROJECT/src/
-cp src/Sidebar.jsx PROJECT/src/components/
-cp -r src/components/* PROJECT/src/components/
-cp -r src/pages/* PROJECT/src/pages/
-cp -r src/hooks/* PROJECT/src/hooks/
-cp -r src/utils/* PROJECT/src/utils/
+cp -r src/* PROJECT/src/
+npm run build && vercel --prod
 ```
-
-**✅ App.jsx e Sidebar.jsx já estão integrados - basta copiar!**
-
-### 3. Build e Deploy
-
-```bash
-npm run build
-vercel --prod
-```
-
----
-
-## 📊 Estrutura de Dados
-
-### Trade (campos novos)
-
-```javascript
-{
-  // ... campos existentes ...
-  
-  status: 'OPEN' | 'REVIEWED' | 'QUESTION' | 'CLOSED',
-  
-  feedbackHistory: [
-    {
-      id: 'uuid',
-      author: 'email@exemplo.com',
-      authorName: 'Nome',
-      authorRole: 'mentor' | 'student',
-      content: 'Texto',
-      status: 'REVIEWED',
-      createdAt: Timestamp
-    }
-  ],
-  
-  closedAt: Timestamp | null,
-  closedBy: 'email@exemplo.com' | null
-}
-```
-
-### Compatibilidade
-
-Trades existentes com `status: 'PENDING_REVIEW'` são mapeados automaticamente para `'OPEN'`.
-
----
-
-## 🧪 Testes
-
-1. **Criar trade** → Status deve ser `OPEN`
-2. **Mentor comenta** → Status muda para `REVIEWED`
-3. **Aluno marca dúvida** → Status muda para `QUESTION`
-4. **Mentor responde** → Status volta para `REVIEWED`
-5. **Aluno encerra** → Status muda para `CLOSED` (irreversível)
 
 ---
 
 ## 📁 Arquivos
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `functions/index.js` | Cloud Functions v6.1.0 |
-| `src/App.jsx` | App principal (v2.1.0) com FeedbackPage |
-| `src/Sidebar.jsx` | Sidebar (v1.1.0) com item Feedback |
-| `src/pages/FeedbackPage.jsx` | Página de feedback do aluno |
-| `src/components/FeedbackThread.jsx` | Thread de comentários |
-| `src/components/TradeStatusBadge.jsx` | Badge de status |
-| `src/components/EmotionalAnalysisDashboard.jsx` | Dashboard emocional |
-| `src/components/PlanEmotionalMetrics.jsx` | Métricas por plano |
-| `src/hooks/useFeedback.js` | Hook para feedback |
-| `src/utils/emotionalAnalysis.js` | Funções de análise |
+```
+sprint-v1.2.0/
+├── CHANGELOG.md
+├── MIGRATION.md
+├── README.md
+├── functions/
+│   ├── index.js                    # v1.2.0
+│   ├── package.json
+│   └── migrate-trade-status.js     # Script de migração
+└── src/
+    ├── version.js                  # 1.2.0
+    ├── hooks/
+    │   └── useTrades.js            # v1.2.0
+    ├── pages/
+    │   ├── FeedbackPage.jsx        # v1.2.0
+    │   └── MentorDashboard.jsx     # v1.2.0
+    └── components/
+        ├── TradeDetailModal.jsx    # v1.2.0
+        ├── TradesList.jsx          # v1.2.0
+        └── StudentFeedbackCard.jsx # NOVO
+```
+
+---
+
+## 🎨 Nova UI: Cards por Aluno
+
+```
+┌──────────────────────┐  ┌──────────────────────┐
+│  João Silva          │  │  Maria Santos        │
+│  joao@email.com      │  │  maria@email.com     │
+│                      │  │                      │
+│  🕐 3  Feedback      │  │  🕐 1  Feedback      │
+│  ❓ 1  Dúvidas       │  │  ❓ 2  Dúvidas       │
+│                      │  │                      │
+│  ✓ 10 revisados      │  │  ✓ 5 revisados       │
+│  🔒 8 encerrados     │  │  🔒 3 encerrados     │
+└──────────────────────┘  └──────────────────────┘
+```
+
+**Comportamento:**
+- Clique em **🕐 Feedback** → Lista trades OPEN do aluno
+- Clique em **❓ Dúvidas** → Lista trades QUESTION do aluno
+- Clique no **nome/avatar** → Abre dashboard completo do aluno
+
+---
+
+## 🔧 Correções
+
+| Issue | Descrição | Status |
+|-------|-----------|--------|
+| getTradesAwaitingFeedback | Incluir OPEN + QUESTION | ✅ |
+| serverTimestamp em array | Usar ISO string | ✅ |
+| Status legados | Migrar PENDING_REVIEW/IN_REVISION | ✅ |
+| Versões inconsistentes | Padronizar para 1.2.0 | ✅ |
+
+---
+
+## 📊 Novos Helpers em useTrades
+
+```javascript
+// Contagem por status de um aluno
+const counts = getStudentFeedbackCounts('aluno@email.com');
+// { open: 3, question: 1, reviewed: 10, closed: 8, total: 22 }
+
+// Trades filtrados por aluno + status
+const trades = getTradesByStudentAndStatus('aluno@email.com', 'OPEN');
+```
+
+---
+
+## ⚠️ Importante
+
+1. **Execute a migração ANTES do deploy** das functions
+2. **Backup do Firestore** recomendado antes de migrar
+3. **Teste em staging** se possível
+
+Ver `MIGRATION.md` para instruções detalhadas.

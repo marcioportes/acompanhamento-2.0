@@ -1,26 +1,55 @@
+/**
+ * MentorDashboard
+ * @version 1.2.0
+ * @description Dashboard do mentor com cards por aluno na aba "Aguardando Feedback"
+ * 
+ * CHANGELOG:
+ * - 1.2.0: Cards por aluno com contadores clicáveis (OPEN/QUESTION), link para FeedbackPage
+ * - 1.1.0: Versão anterior
+ */
+
 import { useState, useMemo } from 'react';
-import { Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, Trophy, Eye, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { 
+  Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
+  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle
+} from 'lucide-react';
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
+import StudentFeedbackCard from '../components/StudentFeedbackCard';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import EquityCurve from '../components/EquityCurve';
 import SetupAnalysis from '../components/SetupAnalysis';
 import EmotionAnalysis from '../components/EmotionAnalysis';
-import Filters from '../components/Filters';
 import Loading from '../components/Loading';
 import { useTrades } from '../hooks/useTrades';
-import { calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, formatCurrency, formatPercent, filterTradesByPeriod } from '../utils/calculations';
+import { 
+  calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, 
+  formatCurrency, formatPercent, filterTradesByPeriod 
+} from '../utils/calculations';
 
-const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
-  const { allTrades, loading, addFeedback, getTradesByStudent } = useTrades();
+const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
+  const { 
+    allTrades, 
+    loading, 
+    addFeedback, 
+    getTradesByStudent, 
+    getTradesGroupedByStudent, 
+    getUniqueStudents, 
+    getTradesAwaitingFeedback,
+    getStudentFeedbackCounts,
+    getTradesByStudentAndStatus
+  } = useTrades();
   
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [rankingSort, setRankingSort] = useState('totalPL');
-  const [filters, setFilters] = useState({ period: 'all', search: '' });
+  
+  // Estado para filtro de trades na aba pending (após clicar no card)
+  const [pendingFilter, setPendingFilter] = useState(null); // { studentEmail, status }
 
+  // Mapear views da sidebar para views internas
   const viewMapping = {
     'dashboard': 'overview',
     'students': 'students',
@@ -31,44 +60,54 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
   
   const activeView = viewMapping[currentView] || 'overview';
 
-  const todayTrades = filterTradesByPeriod(allTrades, 'today');
-  
-  // Extrair alunos únicos dos trades
-  const students = useMemo(() => {
-    const map = new Map();
-    allTrades.forEach(t => {
-      if (t.studentId && !map.has(t.studentId)) {
-        map.set(t.studentId, { id: t.studentId, name: t.studentName || 'Aluno', email: t.studentEmail || '' });
+  // Dados calculados
+  const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
+  const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
+  const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
+  const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
+  const studentsNeedingAttention = useMemo(() => identifyStudentsNeedingAttention(groupedTrades), [groupedTrades]);
+  const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
+
+  // Alunos com trades pendentes (OPEN ou QUESTION)
+  const studentsWithPending = useMemo(() => {
+    const studentMap = {};
+    
+    pendingFeedback.forEach(trade => {
+      const email = trade.studentEmail;
+      if (!studentMap[email]) {
+        studentMap[email] = {
+          email,
+          name: trade.studentName || email.split('@')[0],
+          studentId: trade.studentId,
+          counts: { open: 0, question: 0, reviewed: 0, closed: 0 }
+        };
+      }
+      if (trade.status === 'OPEN') studentMap[email].counts.open++;
+      if (trade.status === 'QUESTION') studentMap[email].counts.question++;
+    });
+
+    // Adiciona contagem de reviewed/closed para contexto
+    allTrades.forEach(trade => {
+      const email = trade.studentEmail;
+      if (studentMap[email]) {
+        if (trade.status === 'REVIEWED') studentMap[email].counts.reviewed++;
+        if (trade.status === 'CLOSED') studentMap[email].counts.closed++;
       }
     });
-    return Array.from(map.values());
-  }, [allTrades]);
 
-  // Agrupar trades por aluno
-  const groupedTrades = useMemo(() => {
-    const groups = {};
-    allTrades.forEach(t => {
-      const key = t.studentEmail || t.studentId || 'unknown';
-      if (!groups[key]) groups[key] = { trades: [], name: t.studentName, email: t.studentEmail };
-      groups[key].trades.push(t);
+    // Ordena: mais urgentes primeiro (QUESTION > OPEN)
+    return Object.values(studentMap).sort((a, b) => {
+      const aUrgency = a.counts.question * 10 + a.counts.open;
+      const bUrgency = b.counts.question * 10 + b.counts.open;
+      return bUrgency - aUrgency;
     });
-    return groups;
-  }, [allTrades]);
+  }, [pendingFeedback, allTrades]);
 
-  // Trades aguardando feedback
-  const pendingFeedback = useMemo(() => {
-    return allTrades.filter(t => !t.mentorFeedback);
-  }, [allTrades]);
-
-  // Alunos que precisam atenção
-  const studentsNeedingAttention = useMemo(() => {
-    return identifyStudentsNeedingAttention(Object.values(groupedTrades).map(g => ({
-      ...g,
-      stats: calculateStats(g.trades)
-    })));
-  }, [groupedTrades]);
-
-  const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
+  // Trades filtrados quando clica no card
+  const filteredPendingTrades = useMemo(() => {
+    if (!pendingFilter) return [];
+    return getTradesByStudentAndStatus(pendingFilter.studentEmail, pendingFilter.status);
+  }, [pendingFilter, getTradesByStudentAndStatus]);
 
   const overallStats = useMemo(() => {
     const allStats = calculateStats(allTrades);
@@ -76,33 +115,58 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
       ...allStats,
       studentsCount: students.length,
       todayTrades: todayTrades.length,
-      avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + (s.winRate || 0), 0) / ranking.length : 0,
+      avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0,
     };
   }, [allTrades, students, todayTrades, ranking]);
 
-  const selectedStudentTrades = selectedStudent ? (groupedTrades[selectedStudent.email]?.trades || []) : [];
+  const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
 
+  // Handlers
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
     try {
       await addFeedback(tradeId, feedback);
       if (viewingTrade) {
-        setViewingTrade({ ...viewingTrade, mentorFeedback: feedback, feedbackDate: new Date().toISOString() });
+        setViewingTrade({ ...viewingTrade, mentorFeedback: feedback, feedbackDate: new Date().toISOString(), status: 'REVIEWED' });
       }
     } finally {
       setFeedbackLoading(false);
     }
   };
 
+  const handleClickStudentOpen = (student) => {
+    setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name });
+  };
+
+  const handleClickStudentQuestion = (student) => {
+    setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name });
+  };
+
+  const handleClickStudentAll = (student) => {
+    setSelectedStudent(student);
+    setPendingFilter(null);
+  };
+
+  const handleBackFromFilter = () => {
+    setPendingFilter(null);
+  };
+
+  const handleViewFeedbackHistory = (trade) => {
+    // Navega para FeedbackPage com o trade selecionado
+    if (onNavigateToFeedback) {
+      onNavigateToFeedback(trade);
+    }
+  };
+
   if (loading) return <Loading fullScreen text="Carregando dados..." />;
 
-  // Vista de aluno específico
+  // Vista de aluno específico (vindo da lista de alunos)
   if (selectedStudent) {
     return (
       <div className="min-h-screen p-6 lg:p-8">
         <button onClick={() => setSelectedStudent(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
-          <ChevronRight className="w-4 h-4 rotate-180" /> Voltar para lista
+          <ChevronLeft className="w-4 h-4" /> Voltar para lista
         </button>
 
         <div className="flex items-center justify-between mb-8">
@@ -132,9 +196,24 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           <EmotionAnalysis trades={selectedStudentTrades} />
         </div>
 
-        <TradesList trades={selectedStudentTrades} onViewTrade={setViewingTrade} showStudent={false} />
+        <div className="glass-card">
+          <TradesList 
+            trades={selectedStudentTrades} 
+            onViewTrade={setViewingTrade} 
+            showStudent={false}
+            showStatus={true}
+          />
+        </div>
 
-        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} />
+        <TradeDetailModal 
+          isOpen={!!viewingTrade} 
+          onClose={() => setViewingTrade(null)} 
+          trade={viewingTrade} 
+          isMentor 
+          onAddFeedback={handleAddFeedback} 
+          feedbackLoading={feedbackLoading}
+          onViewFeedbackHistory={handleViewFeedbackHistory}
+        />
       </div>
     );
   }
@@ -156,7 +235,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
           { id: 'ranking', sidebarId: 'ranking', label: 'Ranking', icon: Trophy },
         ].map(tab => (
-          <button key={tab.id} onClick={() => onViewChange(tab.sidebarId)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+          <button 
+            key={tab.id} 
+            onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${
+              activeView === tab.id 
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+            }`}
+          >
             <tab.icon className="w-4 h-4" />
             {tab.label}
           </button>
@@ -178,7 +265,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
             <CalendarHeatmap trades={allTrades} />
           </div>
 
-          <TradesList trades={allTrades.slice(0, 20)} onViewTrade={setViewingTrade} showStudent itemsPerPage={10} />
+          <div className="glass-card">
+            <TradesList 
+              trades={allTrades.slice(0, 20)} 
+              onViewTrade={setViewingTrade} 
+              showStudent={true}
+              showStatus={true}
+            />
+          </div>
         </>
       )}
 
@@ -190,13 +284,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           </div>
           <div className="divide-y divide-slate-800/50">
             {students.map(student => {
-              const studentTrades = groupedTrades[student.email]?.trades || [];
+              const studentTrades = getTradesByStudent(student.email);
               const stats = calculateStats(studentTrades);
               return (
-                <div key={student.email || student.id} onClick={() => setSelectedStudent(student)} className="p-4 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer transition-colors">
+                <div key={student.email} onClick={() => setSelectedStudent(student)} className="p-4 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-                      {(student.name || 'A').charAt(0).toUpperCase()}
+                      {student.name?.charAt(0)?.toUpperCase() || '?'}
                     </div>
                     <div>
                       <p className="font-medium text-white">{student.name}</p>
@@ -217,18 +311,80 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
                 </div>
               );
             })}
-            {students.length === 0 && (
-              <div className="p-8 text-center text-slate-500">
-                Nenhum aluno com trades registrados
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* Pending Feedback */}
+      {/* Pending Feedback - NOVA IMPLEMENTAÇÃO COM CARDS */}
       {activeView === 'pending' && (
-        <TradesList trades={pendingFeedback} onViewTrade={setViewingTrade} showStudent />
+        <>
+          {pendingFilter ? (
+            // Vista filtrada: lista de trades do aluno/status selecionado
+            <div>
+              <button 
+                onClick={handleBackFromFilter} 
+                className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" /> Voltar para cards
+              </button>
+
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
+                  {pendingFilter.studentName?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">{pendingFilter.studentName}</h2>
+                  <div className="flex items-center gap-2">
+                    {pendingFilter.status === 'OPEN' ? (
+                      <span className="flex items-center gap-1 text-sm text-blue-400">
+                        <Clock className="w-4 h-4" /> Aguardando Feedback
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-sm text-amber-400">
+                        <HelpCircle className="w-4 h-4" /> Dúvidas
+                      </span>
+                    )}
+                    <span className="text-slate-500">•</span>
+                    <span className="text-sm text-slate-400">{filteredPendingTrades.length} trades</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-card">
+                <TradesList 
+                  trades={filteredPendingTrades} 
+                  onViewTrade={setViewingTrade} 
+                  showStudent={false}
+                  showStatus={false}
+                />
+              </div>
+            </div>
+          ) : (
+            // Vista padrão: cards por aluno
+            <>
+              {studentsWithPending.length === 0 ? (
+                <div className="glass-card p-8 text-center">
+                  <MessageSquare className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">Tudo em dia!</h3>
+                  <p className="text-slate-500">Nenhum trade aguardando feedback no momento.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {studentsWithPending.map(student => (
+                    <StudentFeedbackCard
+                      key={student.email}
+                      student={student}
+                      counts={student.counts}
+                      onClickOpen={() => handleClickStudentOpen(student)}
+                      onClickQuestion={() => handleClickStudentQuestion(student)}
+                      onClickAll={() => handleClickStudentAll(student)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
 
       {/* Students Needing Attention */}
@@ -247,7 +403,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
                   <div>
                     <p className="font-semibold text-white">{student.name}</p>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {(student.reasons || []).map((reason, i) => (
+                      {student.reasons.map((reason, i) => (
                         <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>
                       ))}
                     </div>
@@ -276,30 +432,33 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange }) => {
           </div>
           <div className="divide-y divide-slate-800/50">
             {ranking.map((student, index) => (
-              <div key={student.email || index} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
+              <div key={student.email} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>
                   {index + 1}
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-white">{student.name || 'Aluno'}</p>
-                  <p className="text-xs text-slate-500">{student.totalTrades || 0} trades</p>
+                  <p className="font-medium text-white">{student.name}</p>
+                  <p className="text-xs text-slate-500">{student.totalTrades} trades</p>
                 </div>
                 <div className="text-right">
-                  <p className={`font-semibold ${(student.totalPL || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(student.totalPL || 0)}</p>
-                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate || 0)}</p>
+                  <p className={`font-semibold ${student.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(student.totalPL)}</p>
+                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p>
                 </div>
               </div>
             ))}
-            {ranking.length === 0 && (
-              <div className="p-8 text-center text-slate-500">
-                Nenhum dado para ranking
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} />
+      <TradeDetailModal 
+        isOpen={!!viewingTrade} 
+        onClose={() => setViewingTrade(null)} 
+        trade={viewingTrade} 
+        isMentor 
+        onAddFeedback={handleAddFeedback} 
+        feedbackLoading={feedbackLoading}
+        onViewFeedbackHistory={handleViewFeedbackHistory}
+      />
     </div>
   );
 };
