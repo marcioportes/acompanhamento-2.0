@@ -1,7 +1,7 @@
 {
   "name": "tchio-alpha-functions",
   "description": "Firebase Cloud Functions for Tchio-Alpha",
-  "version": "1.0.0",
+  "version": "6.0.0",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",

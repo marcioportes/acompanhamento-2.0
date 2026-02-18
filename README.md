@@ -1,249 +1,127 @@
-# 📊 Acompanhamento 2.0 - Trading Journal
+# Sprint: Feedback & Emotions v3 (v6.1.0)
 
-Sistema completo de Trading Journal para mentoria, com segregação de dados entre mentor e alunos, upload de imagens HTF/LTF, e análises avançadas.
+## 📋 Features
 
-![Trading Journal](https://img.shields.io/badge/Trading-Journal-blue)
-![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react)
-![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?logo=firebase)
-![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwindcss)
-
-## ✨ Funcionalidades
-
-### Para Alunos
-- 📈 Dashboard com KPIs principais (P&L, Win Rate, Profit Factor)
-- 📅 Calendário heatmap de trades
-- 📊 Análise por Setup e Estado Emocional
-- 📸 Upload obrigatório de gráficos HTF/LTF
-- 📈 Curva de Capital (Equity Curve)
-- 🔍 Filtros avançados por período, setup, emoção, etc.
-- 💬 Visualização de feedback do mentor
-
-### Para o Mentor
-- 👥 Visão geral de todos os alunos
-- 🏆 Ranking de alunos por performance
-- ⚠️ Lista de alunos que precisam de atenção
-- 💬 Sistema de feedback em cada trade
-- 📊 Análises consolidadas da turma
-- 📋 Trades aguardando feedback
-
-## 🚀 Deploy no Vercel
-
-### Pré-requisitos
-- Conta no [Vercel](https://vercel.com)
-- Conta no [GitHub](https://github.com)
-- Projeto Firebase já configurado
-
-### Passo a Passo
-
-#### 1. Criar repositório no GitHub
-
-```bash
-# Clone ou faça upload do projeto para um novo repositório
-git init
-git add .
-git commit -m "Initial commit - Acompanhamento 2.0"
-git branch -M main
-git remote add origin https://github.com/SEU_USUARIO/acompanhamento-2.0.git
-git push -u origin main
-```
-
-#### 2. Conectar ao Vercel
-
-1. Acesse [vercel.com](https://vercel.com) e faça login
-2. Clique em **"Add New..."** → **"Project"**
-3. Selecione o repositório `acompanhamento-2.0`
-4. As configurações serão detectadas automaticamente:
-   - **Framework Preset:** Vite
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-5. Clique em **"Deploy"**
-
-#### 3. Configurar Domínio (Opcional)
-
-1. No dashboard do Vercel, vá em **Settings** → **Domains**
-2. Adicione seu domínio personalizado
-3. Configure o DNS conforme instruções
-
-## 🔧 Configuração Local
-
-### Instalar dependências
-
-```bash
-npm install
-```
-
-### Executar em desenvolvimento
-
-```bash
-npm run dev
-```
-
-O app estará disponível em `http://localhost:5173`
-
-### Build de produção
-
-```bash
-npm run build
-npm run preview
-```
-
-## 🔥 Configuração do Firebase
-
-O projeto já está configurado com as seguintes credenciais:
-
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyA4bILzUTtkZvkOLz3B_EzYKFwrw0xygfc",
-  authDomain: "acompanhamento-20.firebaseapp.com",
-  projectId: "acompanhamento-20",
-  storageBucket: "acompanhamento-20.firebasestorage.app",
-  messagingSenderId: "761679940146",
-  appId: "1:761679940146:web:1bae12ce93456c62238a2b"
-};
-```
-
-### Regras do Firestore
-
-Certifique-se de que as regras do Firestore estão configuradas:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    match /trades/{tradeId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && 
-        (resource.data.studentId == request.auth.uid || 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'mentor');
-    }
-  }
-}
-```
-
-### Regras do Storage
-
-```javascript
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /trades/{tradeId}/{allPaths=**} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
-
-## 👥 Usuários do Sistema
-
-### Mentor
-- **Email:** marcio.portes@me.com
-- **Senha:** (definida pelo usuário)
-
-### Alunos de Teste
-| Email | Senha |
-|-------|-------|
-| aluno1@teste.com | 123456 |
-| aluno2@teste.com | 123456 |
-| aluno3@teste.com | 123456 |
-
-## 📁 Estrutura do Projeto
+### 1. Máquina de Estados de Feedback
 
 ```
-acompanhamento-2.0/
-├── public/
-│   └── favicon.svg
-├── src/
-│   ├── components/
-│   │   ├── AddTradeModal.jsx
-│   │   ├── CalendarHeatmap.jsx
-│   │   ├── EmotionAnalysis.jsx
-│   │   ├── EquityCurve.jsx
-│   │   ├── Filters.jsx
-│   │   ├── Loading.jsx
-│   │   ├── SetupAnalysis.jsx
-│   │   ├── Sidebar.jsx
-│   │   ├── StatCard.jsx
-│   │   ├── TradeDetailModal.jsx
-│   │   └── TradesList.jsx
-│   ├── contexts/
-│   │   └── AuthContext.jsx
-│   ├── hooks/
-│   │   └── useTrades.js
-│   ├── pages/
-│   │   ├── LoginPage.jsx
-│   │   ├── MentorDashboard.jsx
-│   │   └── StudentDashboard.jsx
-│   ├── utils/
-│   │   └── calculations.js
-│   ├── App.jsx
-│   ├── firebase.js
-│   ├── index.css
-│   └── main.jsx
-├── .gitignore
-├── index.html
-├── package.json
-├── postcss.config.js
-├── tailwind.config.js
-├── vercel.json
-└── vite.config.js
+OPEN ──────→ REVIEWED ←──→ QUESTION
+                │
+                └──→ CLOSED (final)
 ```
 
-## 🎨 Design System
+| Estado | Descrição | Quem Transiciona |
+|--------|-----------|------------------|
+| `OPEN` | Trade criado, aguardando | Automático |
+| `REVIEWED` | Mentor comentou | Mentor |
+| `QUESTION` | Aluno tem dúvida | Aluno |
+| `CLOSED` | Encerrado | Aluno |
 
-- **Cores principais:** Slate (backgrounds), Blue/Cyan (primário), Purple (accent)
-- **Fontes:** DM Sans (body), Sora (headings), JetBrains Mono (code)
-- **Dark theme** com efeitos de glassmorphism
-- **Responsivo** para mobile e desktop
+### 2. Análise Emocional
 
-## 📊 Estrutura de Dados
+- **KPIs por Trade:** Score emocional, consistência entry/exit
+- **KPIs Agregados:** Best/worst emotion, tilt detection, compliance rate
+- **Dashboard:** Visualização completa com recomendações
 
-### Collection: trades
+### 3. Melhorias de Segurança
 
-```typescript
-{
-  id: string,
-  date: string,           // YYYY-MM-DD
-  ticker: string,
-  exchange: 'B3' | 'NASDAQ' | 'NYSE' | 'CRYPTO',
-  side: 'LONG' | 'SHORT',
-  entry: number,
-  exit: number,
-  qty: number,
-  result: number,         // Calculado automaticamente
-  resultPercent: number,  // Calculado automaticamente
-  setup: string,
-  emotion: string,
-  notes: string,
-  htfUrl: string,         // URL do Firebase Storage
-  ltfUrl: string,         // URL do Firebase Storage
-  studentEmail: string,
-  studentName: string,
-  studentId: string,
-  createdAt: Timestamp,
-  mentorFeedback?: string,
-  feedbackDate?: string
-}
-```
-
-## 🔄 Atualizações Futuras
-
-- [ ] Exportação de relatórios em PDF
-- [ ] Metas e objetivos pessoais
-- [ ] Sistema de notificações
-- [ ] Análise por horário de trade
-- [ ] Journal diário de sessão
-- [ ] Calculadora de risco integrada
-
-## 📝 Licença
-
-Este projeto é de uso exclusivo para a mentoria de trading.
+- Validação de mentor em `createStudent`, `deleteStudent`, `resendStudentInvite`
+- Validação de ownership em `closeTrade`
+- Validação de permissões em `addFeedbackComment`
 
 ---
 
-Desenvolvido com ❤️ para traders em evolução
+## 🚀 Deploy
+
+### 1. Backend (Cloud Functions)
+
+```bash
+# Copiar arquivo
+cp functions/index.js PROJECT/functions/
+
+# Deploy
+cd PROJECT/functions
+npm install
+firebase deploy --only functions
+```
+
+### 2. Frontend (TODOS OS ARQUIVOS INCLUÍDOS)
+
+```bash
+# Copiar TUDO de src/ para o projeto
+cp src/App.jsx PROJECT/src/
+cp src/Sidebar.jsx PROJECT/src/components/
+cp -r src/components/* PROJECT/src/components/
+cp -r src/pages/* PROJECT/src/pages/
+cp -r src/hooks/* PROJECT/src/hooks/
+cp -r src/utils/* PROJECT/src/utils/
+```
+
+**✅ App.jsx e Sidebar.jsx já estão integrados - basta copiar!**
+
+### 3. Build e Deploy
+
+```bash
+npm run build
+vercel --prod
+```
+
+---
+
+## 📊 Estrutura de Dados
+
+### Trade (campos novos)
+
+```javascript
+{
+  // ... campos existentes ...
+  
+  status: 'OPEN' | 'REVIEWED' | 'QUESTION' | 'CLOSED',
+  
+  feedbackHistory: [
+    {
+      id: 'uuid',
+      author: 'email@exemplo.com',
+      authorName: 'Nome',
+      authorRole: 'mentor' | 'student',
+      content: 'Texto',
+      status: 'REVIEWED',
+      createdAt: Timestamp
+    }
+  ],
+  
+  closedAt: Timestamp | null,
+  closedBy: 'email@exemplo.com' | null
+}
+```
+
+### Compatibilidade
+
+Trades existentes com `status: 'PENDING_REVIEW'` são mapeados automaticamente para `'OPEN'`.
+
+---
+
+## 🧪 Testes
+
+1. **Criar trade** → Status deve ser `OPEN`
+2. **Mentor comenta** → Status muda para `REVIEWED`
+3. **Aluno marca dúvida** → Status muda para `QUESTION`
+4. **Mentor responde** → Status volta para `REVIEWED`
+5. **Aluno encerra** → Status muda para `CLOSED` (irreversível)
+
+---
+
+## 📁 Arquivos
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `functions/index.js` | Cloud Functions v6.1.0 |
+| `src/App.jsx` | App principal (v2.1.0) com FeedbackPage |
+| `src/Sidebar.jsx` | Sidebar (v1.1.0) com item Feedback |
+| `src/pages/FeedbackPage.jsx` | Página de feedback do aluno |
+| `src/components/FeedbackThread.jsx` | Thread de comentários |
+| `src/components/TradeStatusBadge.jsx` | Badge de status |
+| `src/components/EmotionalAnalysisDashboard.jsx` | Dashboard emocional |
+| `src/components/PlanEmotionalMetrics.jsx` | Métricas por plano |
+| `src/hooks/useFeedback.js` | Hook para feedback |
+| `src/utils/emotionalAnalysis.js` | Funções de análise |

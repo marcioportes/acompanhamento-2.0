@@ -1,22 +1,8 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 6.1.0
  * 
- * CHANGELOG:
- * - 6.1.0: Máquina de estados de feedback + preserva Red Flags (SEM email monitoring)
- * - 5.2.0: createStudent básico
- * 
- * MANTIDO da v5.2.0:
- * - createStudent, deleteStudent, resendStudentInvite (INALTERADOS)
- * - calculateRiskPercent, getDailyLoss
- * - Lógica completa de Red Flags em onTradeCreated
- * - onMovementCreated, onMovementDeleted
- * 
- * ADICIONADO:
- * - TRADE_STATUS expandido com mapeamento legacy
- * - addFeedbackComment / closeTrade (máquina de estados)
- * - Validação de mentor em funções administrativas
- * - cleanupOldNotifications (scheduled)
+ * SEMANTIC VERSIONING (SemVer 2.0.0)
+ * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  */
 
 const functions = require('firebase-functions/v1');
@@ -24,6 +10,39 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// ============================================
+// VERSÃO (SemVer 2.0.0)
+// ============================================
+
+const VERSION = {
+  major: 1,
+  minor: 1,
+  patch: 0,
+  prerelease: null,
+  build: '20260215',
+  
+  get full() {
+    let v = `${this.major}.${this.minor}.${this.patch}`;
+    if (this.prerelease) v += `-${this.prerelease}`;
+    if (this.build) v += `+${this.build}`;
+    return v;
+  },
+  
+  get short() {
+    return `${this.major}.${this.minor}.${this.patch}`;
+  },
+  
+  get display() {
+    return `v${this.short}${this.prerelease ? ` ${this.prerelease.toUpperCase()}` : ''}`;
+  },
+
+  get semver() {
+    let v = `${this.major}.${this.minor}.${this.patch}`;
+    if (this.prerelease) v += `-${this.prerelease}`;
+    return v;
+  }
+};
 
 // ============================================
 // CONFIGURAÇÃO
@@ -288,7 +307,7 @@ exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
       authorRole,
       content,
       status: finalStatus,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: new Date().toISOString()  // ISO string porque arrayUnion não aceita serverTimestamp
     };
 
     const updateData = {
@@ -488,7 +507,15 @@ exports.onMovementDeleted = functions.firestore.document('movements/{movementId}
 exports.seedInitialData = functions.https.onCall(async () => ({ success: true }));
 
 exports.healthCheck = functions.https.onRequest((req, res) => {
-  res.json({ status: 'ok', version: '6.1.0', features: ['feedback-flow', 'red-flags', 'legacy-compat'], timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    version: VERSION.semver,
+    build: VERSION.build,
+    display: VERSION.display,
+    full: VERSION.full,
+    features: ['feedback-flow', 'red-flags', 'legacy-compat'], 
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // ============================================

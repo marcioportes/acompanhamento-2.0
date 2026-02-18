@@ -13,10 +13,10 @@
 
 export const VERSION = {
   major: 1,
-  minor: 0,
+  minor: 1,
   patch: 0,
   prerelease: null,  // 'alpha', 'beta', 'rc.1', ou null para stable
-  build: '20260213',
+  build: '20260215',
   
   // Getters computados
   get full() {

@@ -5,6 +5,72 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.1.0] - 2026-02-15
+
+### Adicionado
+- **Máquina de Estados de Feedback**
+  - Estados: OPEN → REVIEWED ↔ QUESTION → CLOSED
+  - Thread de comentários com histórico completo (idas e vindas)
+  - Validação de transições e permissões
+  - Compatibilidade com campo legado `mentorFeedback`
+
+- **Página de Feedback para Alunos**
+  - `FeedbackPage.jsx`: Lista trades com filtros por status
+  - `FeedbackThread.jsx`: Thread de comentários
+  - `TradeStatusBadge.jsx`: Badge visual de status
+  - Item "Feedback" no menu do aluno
+
+- **Análise Emocional Avançada**
+  - `emotionalAnalysis.js`: Categorização de emoções (POSITIVE, NEUTRAL, NEGATIVE, CRITICAL)
+  - KPIs por trade: Score emocional, consistência entry/exit
+  - KPIs agregados: Detecção de tilt, best/worst emotion, compliance rate
+  - `EmotionalAnalysisDashboard.jsx`: Dashboard completo
+  - `PlanEmotionalMetrics.jsx`: Métricas por plano/período
+
+- **Cloud Functions**
+  - `addFeedbackComment`: Adiciona comentário e gerencia transições
+  - `closeTrade`: Encerra trade (apenas aluno)
+  - `cleanupOldNotifications`: Scheduled cleanup de notificações lidas > 30 dias
+
+- **Melhorias de Segurança**
+  - Validação de mentor em `createStudent`, `deleteStudent`, `resendStudentInvite`
+  - Validação de ownership em `closeTrade`
+
+### Modificado
+- **TRADE_STATUS** expandido: OPEN, REVIEWED, QUESTION, CLOSED
+  - Mapeamento automático de status legado (PENDING_REVIEW → OPEN, IN_REVISION → QUESTION)
+- **App.jsx**: Adicionada rota para FeedbackPage
+- **Sidebar.jsx**: Adicionado item "Feedback" no menu do aluno
+
+### Técnico
+- Red Flags preservadas da v1.0.0
+- Compatibilidade total com dados existentes
+- `feedbackHistory` usa ISO string para timestamps (limitação do Firestore arrayUnion)
+
+### Arquivos Modificados
+```
+src/
+├── version.js                      (MODIFICADO - 1.1.0)
+├── App.jsx                         (MODIFICADO)
+├── components/
+│   ├── Sidebar.jsx                 (MODIFICADO)
+│   ├── FeedbackThread.jsx          (NOVO)
+│   ├── TradeStatusBadge.jsx        (NOVO)
+│   ├── EmotionalAnalysisDashboard.jsx (NOVO)
+│   └── PlanEmotionalMetrics.jsx    (NOVO)
+├── pages/
+│   └── FeedbackPage.jsx            (NOVO)
+├── hooks/
+│   └── useFeedback.js              (NOVO)
+└── utils/
+    └── emotionalAnalysis.js        (NOVO)
+
+functions/
+└── index.js                        (MODIFICADO - 1.1.0)
+```
+
+---
+
 ## [1.0.0] - 2026-02-13
 
 ### Adicionado
@@ -19,12 +85,6 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - Detecção de eventos META/STOP na linha exata
   - Marcação de trades pós-evento (Pós-Meta, Violação)
   - Estados de compliance: Disciplinado, Ganância, Catástrofe, Sorte
-  
-- **Monitor de Status de Email**
-  - Trigger `onMailStatusChange` para monitorar entrega
-  - Campo `emailError` no documento do aluno
-  - Badge visual "Erro Email" na lista de alunos
-  - Limpeza automática de erro ao reenviar/sucesso
 
 - **Sistema de Versionamento**
   - Arquivo `src/version.js` como Single Source of Truth
@@ -37,51 +97,6 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - `usePlans(overrideStudentId)`: Carrega planos de aluno específico
   - `useAccounts(overrideStudentId)`: Carrega contas de aluno específico
   - Todos mantêm retrocompatibilidade (parâmetro opcional)
-
-- **Cloud Functions**
-  - Versão unificada 1.0.0
-  - APP_NAME atualizado para "Tchio-Alpha"
-  - Templates de email otimizados
-
-### Corrigido
-- Funções `getTradesAwaitingFeedback` e `getTradesGroupedByStudent` agora exportadas em useTrades
-- Query por `studentId` com fallback para quando índice não existe
-
-### Requisitos de Deploy
-
-#### Pré-requisitos
-1. Criar índice Firestore:
-   - Collection: `trades`
-   - Fields: `studentId` (ASC), `date` (DESC)
-
-#### Ordem de Deploy
-1. `firebase deploy --only functions`
-2. Deploy do frontend (todos os arquivos juntos)
-
-### Arquivos Modificados
-```
-src/
-├── version.js              (NOVO)
-├── App.jsx                 (MODIFICADO)
-├── hooks/
-│   ├── useTrades.js        (MODIFICADO)
-│   ├── usePlans.js         (MODIFICADO)
-│   └── useAccounts.js      (MODIFICADO)
-├── pages/
-│   ├── StudentDashboard.jsx    (MODIFICADO)
-│   └── StudentsManagement.jsx  (MODIFICADO)
-└── components/
-    ├── Sidebar.jsx         (MODIFICADO)
-    └── PlanExtractModal.jsx (REESCRITO)
-
-functions/
-└── index.js                (MODIFICADO)
-```
-
-### Notas de Migração
-- Nenhuma migração de dados necessária
-- Retrocompatível com dados existentes
-- Novos campos (`emailError`, `emailErrorAt`, `emailSentAt`) são opcionais
 
 ---
 
