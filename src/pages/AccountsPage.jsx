@@ -1,11 +1,11 @@
 /**
  * AccountsPage
- * @version 4.1.0 (Audit NaN Fix & BR Date)
- * @description Correção do bug visual 'NaN' após auditoria e formatação de data brasileira forçada.
- * * CHANGE LOG 4.1.0:
- * - FIX: 'handleFixIssues' agora preserva o 'ledgerBalance' no estado para não exibir NaN após o sucesso.
- * - UI: Forçada localidade 'pt-BR' e timezone 'UTC' nas exibições de data da auditoria (dd/mm/aaaa).
- * - FIX: Função 'formatCurrency' blindada contra valores nulos/undefined.
+ * @version 1.0.6
+ * @description Centralização da lógica de saldo no Backend/Ledger.
+ * * SEMVER: Patch fix (v1.0.6)
+ * * FIX DATA: Função 'dateToInputString' reescrita para usar DATA LOCAL.
+ * - Antes usava toISOString() que convertia para UTC (causando erro de D+1 em horários noturnos no Brasil).
+ * - Agora extrai dia/mês/ano do browser do usuário.
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -33,24 +33,41 @@ const formatCurrency = (value, currency = 'BRL') => {
   return new Intl.NumberFormat(c.locale, { style: 'currency', currency: c.currency }).format(value);
 };
 
-// Helper de Data para "dd/mm/aaaa" sem voltar 1 dia
+// Helper de Data para "dd/mm/aaaa" (Display visual)
 const formatBrDate = (dateObj) => {
   if (!dateObj) return '-';
   // Usa UTC para garantir que a data seja exatamente a gravada, sem fuso do navegador
   return dateObj.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 };
 
-// Helper Seguro para Objeto de Data
+// Helper Seguro para Objeto de Data (Lógica de Fuso Horário)
 const getDateObject = (val) => {
   if (!val) return new Date();
-  if (typeof val.toDate === 'function') return val.toDate(); // Firebase Timestamp
   
-  // Se for string YYYY-MM-DD, força interpretação como UTC meio-dia para evitar problemas de fuso
+  // Se for Timestamp do Firestore
+  if (typeof val.toDate === 'function') return val.toDate(); 
+  
+  // Se for string YYYY-MM-DD
   if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    // [FIX DATA BRASIL]: Forçamos T12:00:00Z (meio dia UTC) para evitar que
+    // o fuso horário local (ex: GMT-3) faça a data voltar para o dia anterior.
     return new Date(`${val}T12:00:00Z`);
   }
   
   return new Date(val);
+};
+
+// [FIX v1.0.6] Helper para converter Data para YYYY-MM-DD (Input value)
+// Usa métodos LOCAIS (getFullYear, getMonth) em vez de UTC (toISOString)
+const dateToInputString = (dateObj) => {
+  if (!dateObj) return '';
+  
+  const year = dateObj.getFullYear();
+  // getMonth começa em 0, por isso +1
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
 };
 
 const AccountsPage = () => {
@@ -132,13 +149,15 @@ const AccountsPage = () => {
     setAuditState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null }); 
     if (account) {
       setEditingAccount(account);
+      const dateObj = account.createdAt ? getDateObject(account.createdAt) : new Date();
+      
       setFormData({
         name: account.name || '',
         broker: account.broker || account.brokerName || '',
         currency: account.currency || 'BRL',
         initialBalance: account.initialBalance || '',
-        currentBalance: account.currentBalance || '',
-        createdAt: account.createdAt ? getDateObject(account.createdAt).toISOString().split('T')[0] : '',
+        currentBalance: '', // SSOT: Não usamos currentBalance na edição
+        createdAt: dateToInputString(dateObj), // [FIX] Usa helper corrigido
         type: account.type || (account.isReal ? 'REAL' : 'DEMO')
       });
     } else {
@@ -149,7 +168,7 @@ const AccountsPage = () => {
         currency: 'BRL',
         initialBalance: '',
         currentBalance: '',
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: dateToInputString(new Date()),
         type: 'DEMO'
       });
     }
@@ -186,22 +205,20 @@ const AccountsPage = () => {
 
       const accountDate = getDateObject(formData.createdAt || editingAccount.createdAt);
       
-      // Zera hora para comparar somente YYYY-MM-DD (usando UTC para segurança)
+      // Zera hora para comparar somente YYYY-MM-DD
       const accTime = accountDate.getTime();
       const firstMovTime = earliestDate ? earliestDate.getTime() : null;
 
       let issue = 'OK';
       let msg = 'Conta saudável. Cronologia e saldos conferem.';
 
-      // Tolerância de 24h para fusos, mas se for muito antes, é erro.
-      // Se firstMovTime for MENOR que accTime (Trade antes da conta)
       if (firstMovTime && firstMovTime < accTime) {
         issue = 'CHRONOLOGY_ERROR';
         msg = `Cronologia Inválida! Existem lançamentos em ${formatBrDate(earliestDate)}, antes da abertura da conta (${formatBrDate(accountDate)}).`;
       } 
-      else if (Math.abs(ledgerTotal - (Number(formData.currentBalance) || 0)) > 0.05) {
+      else if (editingAccount.currentBalance && Math.abs(ledgerTotal - (Number(editingAccount.currentBalance) || 0)) > 0.05) {
         issue = 'BALANCE_MISMATCH';
-        msg = `Divergência de Saldo! O valor gravado (${formatCurrency(formData.currentBalance, formData.currency)}) difere da soma dos movimentos (${formatCurrency(ledgerTotal, formData.currency)}).`;
+        msg = `Divergência de Saldo! O valor gravado (${formatCurrency(editingAccount.currentBalance, formData.currency)}) difere da soma dos movimentos (${formatCurrency(ledgerTotal, formData.currency)}).`;
       }
 
       setAuditState({
@@ -253,13 +270,11 @@ const AccountsPage = () => {
         createdAt: updates.createdAt || prev.createdAt
       }));
 
-      // FIX DO NAN: Preservamos o ledgerBalance no estado
       setAuditState(prev => ({
         ...prev,
         status: 'ok',
         message: 'Correções aplicadas com sucesso!',
         issueType: 'OK',
-        // ledgerBalance já está no prev, não precisamos setar, mas garante integridade
       }));
 
     } catch (error) {
@@ -269,28 +284,39 @@ const AccountsPage = () => {
     }
   };
 
+  // --- HANDLE SUBMIT (v1.0.6) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.broker.trim()) return alert('Preencha os campos obrigatórios');
     
-    const payload = {
+    // Payload Base
+    const basePayload = {
       name: formData.name.trim(),
       broker: formData.broker.trim(),
       brokerName: formData.broker.trim(),
       currency: formData.currency,
-      initialBalance: Number(formData.initialBalance),
-      currentBalance: Number(formData.currentBalance) || Number(formData.initialBalance),
       type: formData.type,
       isReal: (formData.type === 'REAL' || formData.type === 'PROP'),
-      createdAt: formData.createdAt 
+      createdAt: formData.createdAt // String YYYY-MM-DD local
     };
 
     try {
       if (editingAccount) {
-        await updateAccount(editingAccount.id, payload);
+        const updatePayload = {
+          ...basePayload,
+          initialBalance: Number(formData.initialBalance),
+        };
+        // SSOT: Remove explicitamente currentBalance
+        delete updatePayload.currentBalance;
+
+        await updateAccount(editingAccount.id, updatePayload);
       } else {
-        payload.currentBalance = payload.initialBalance;
-        await addAccount(payload);
+        const createPayload = {
+          ...basePayload,
+          initialBalance: Number(formData.initialBalance),
+          currentBalance: Number(formData.initialBalance)
+        };
+        await addAccount(createPayload);
       }
       setIsModalOpen(false);
     } catch (err) {

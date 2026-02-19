@@ -1,8 +1,53 @@
-﻿node_modules
-dist
-.env
-.env.local
-*.log
-.DS_Store
+﻿# ==============================
+# Node / Dependencies
+# ==============================
 node_modules/
 functions/node_modules/
+
+# ==============================
+# Build / Output
+# ==============================
+dist/
+build/
+.vite/
+.vercel/
+
+# ==============================
+# Environment Variables
+# ==============================
+.env
+.env.local
+.env.development
+.env.production
+
+# ==============================
+# Logs
+# ==============================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==============================
+# OS Files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Firebase / Secrets (CRITICAL)
+# ==============================
+functions/*firebase-adminsdk*.json
+functions/.runtimeconfig.json
+
+# ==============================
+# Firebase Local Emulator
+# ==============================
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# ==============================
+# Misc
+# ==============================
+coverage/

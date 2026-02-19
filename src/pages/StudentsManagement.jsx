@@ -1,11 +1,23 @@
+/**
+ * StudentsManagement
+ * @version 2.0.0
+ * @description Gerenciamento de alunos com View As e indicador de erro email
+ * 
+ * CHANGELOG:
+ * - 2.0.0: View As Student, indicador de erro de email
+ */
+
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle } from 'lucide-react';
 
-const StudentsManagement = () => {
+/**
+ * @param {Function} onViewAsStudent - Callback para View As Student
+ */
+const StudentsManagement = ({ onViewAsStudent }) => {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -70,8 +82,19 @@ const StudentsManagement = () => {
     } catch (err) { setError('Erro: ' + err.message); }
   };
 
+  const handleViewAs = (student) => {
+    if (onViewAsStudent) {
+      onViewAsStudent({
+        uid: student.uid || student.id,
+        email: student.email,
+        name: student.name
+      });
+    }
+  };
+
   const activeCount = students.filter(s => s.status === 'active').length;
   const pendingCount = students.filter(s => s.status === 'pending').length;
+  const errorCount = students.filter(s => s.emailError).length;
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
 
@@ -84,10 +107,11 @@ const StudentsManagement = () => {
         <p className="text-slate-400 mt-1">Cadastre alunos - eles receberão email para configurar senha</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{students.length}</p><p className="text-xs text-slate-400">Total</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-emerald-400">{activeCount}</p><p className="text-xs text-slate-400">Ativos</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-yellow-400">{pendingCount}</p><p className="text-xs text-slate-400">Pendentes</p></div>
+        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-red-400">{errorCount}</p><p className="text-xs text-slate-400">Erro Email</p></div>
       </div>
 
       {success && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4" />{success}</div>}
@@ -115,17 +139,43 @@ const StudentsManagement = () => {
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${s.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
                     {(s.name || s.email).charAt(0).toUpperCase()}
                   </div>
-                  <div><p className="font-medium text-white">{s.name || '-'}</p><p className="text-sm text-slate-500">{s.email}</p></div>
+                  <div>
+                    <p className="font-medium text-white">{s.name || '-'}</p>
+                    <p className="text-sm text-slate-500">{s.email}</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Status Badge */}
                   <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                     {s.status === 'active' ? <><CheckCircle className="w-3 h-3" />Ativo</> : <><Clock className="w-3 h-3" />Pendente</>}
                   </div>
+                  
+                  {/* Erro de Email Badge */}
+                  {s.emailError && (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400" title={s.emailError}>
+                      <AlertTriangle className="w-3 h-3" />Erro Email
+                    </div>
+                  )}
+                  
+                  {/* Botão View As Student (só para ativos) */}
+                  {s.status === 'active' && onViewAsStudent && (
+                    <button 
+                      onClick={() => handleViewAs(s)} 
+                      className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" 
+                      title="Visualizar como este aluno"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  )}
+                  
+                  {/* Botão Reenviar (só para pendentes) */}
                   {s.status === 'pending' && (
                     <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
                       {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                   )}
+                  
+                  {/* Botão Remover */}
                   <button onClick={() => handleRemove(s)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg" title="Remover">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -139,6 +189,7 @@ const StudentsManagement = () => {
       <div className="mt-4 flex items-center gap-6 text-xs text-slate-500">
         <div className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-400" /><span>Já configurou senha</span></div>
         <div className="flex items-center gap-2"><Clock className="w-3 h-3 text-yellow-400" /><span>Aguardando configurar senha</span></div>
+        <div className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-red-400" /><span>Erro no envio de email</span></div>
       </div>
     </div>
   );

@@ -1,3 +1,12 @@
+/**
+ * usePlans
+ * @version 2.0.0
+ * @description Hook para gerenciamento de Planos de Trading
+ * 
+ * CHANGELOG:
+ * - 2.0.0: Suporte a overrideStudentId para View As Student
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
@@ -15,30 +24,9 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * Hook para gerenciamento de Planos de Trading
- * * MODELO DE DADOS:
- * {
- * name: string,                    // Nome do plano
- * description: string,             // "DT", "Swing", "Opções", "Position"
- * accountId: string,               // Conta vinculada
- * pl: number,                      // Patrimônio Líquido do plano
- * plPercent: number,               // % do saldo da conta (calculado)
- * riskPerOperation: number,        // Risco operacional (% máximo perda por op)
- * rrTarget: number,                // R:R mínimo
- * adjustmentCycle: string,         // Semanal | Mensal | Trimestral | Anual
- * cycleGoal: number,               // Meta do ciclo (%)
- * cycleStop: number,               // Stop do ciclo (%) - proteção PL
- * operationPeriod: string,         // Diário | Semanal | Mensal
- * periodGoal: number,              // Meta do período (%)
- * periodStop: number,              // Stop do período (%)
- * studentId: string,
- * studentEmail: string,
- * active: boolean,
- * createdAt: timestamp,
- * updatedAt: timestamp
- * }
+ * @param {string|null} overrideStudentId - UID do aluno para View As Student
  */
-export const usePlans = () => {
+export const usePlans = (overrideStudentId = null) => {
   const { user, isMentor } = useAuth();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,14 +46,23 @@ export const usePlans = () => {
     let q;
 
     try {
-      if (isMentor()) {
-        // Mentor vê todos os planos
+      if (overrideStudentId) {
+        // MODO: Mentor visualizando como aluno específico
+        console.log('[usePlans] Override mode:', overrideStudentId);
+        q = query(
+          collection(db, 'plans'),
+          where('studentId', '==', overrideStudentId)
+        );
+      } else if (isMentor()) {
+        // MODO: Mentor normal - vê TODOS os planos
+        console.log('[usePlans] Mentor mode - all plans');
         q = query(
           collection(db, 'plans'),
           orderBy('createdAt', 'desc')
         );
       } else {
-        // Aluno vê apenas seus planos
+        // MODO: Aluno - vê apenas seus planos
+        console.log('[usePlans] Student mode:', user.uid);
         q = query(
           collection(db, 'plans'),
           where('studentId', '==', user.uid)
@@ -90,7 +87,7 @@ export const usePlans = () => {
           setLoading(false);
         },
         (err) => {
-          console.error('Erro ao carregar planos:', err);
+          console.error('[usePlans] Erro:', err);
           setError(err.message);
           setLoading(false);
         }
@@ -98,11 +95,11 @@ export const usePlans = () => {
 
       return () => unsubscribe();
     } catch (err) {
-      console.error('Erro ao configurar listener de planos:', err);
+      console.error('[usePlans] Setup error:', err);
       setError(err.message);
       setLoading(false);
     }
-  }, [user, isMentor]);
+  }, [user, isMentor, overrideStudentId]);
 
   /**
    * Criar plano
@@ -112,30 +109,24 @@ export const usePlans = () => {
 
     try {
       const newPlan = {
-        // Dados básicos
         name: planData.name || 'Plano de Trading',
         description: planData.description || '',
         accountId: planData.accountId,
         
-        // Patrimônio
         pl: parseFloat(planData.pl) || 0,
         plPercent: parseFloat(planData.plPercent) || 0,
         
-        // Risco
         riskPerOperation: parseFloat(planData.riskPerOperation) || 2,
         rrTarget: parseFloat(planData.rrTarget) || 2,
         
-        // Ciclo de Ajuste
         adjustmentCycle: planData.adjustmentCycle || 'Mensal',
         cycleGoal: parseFloat(planData.cycleGoal) || 10,
         cycleStop: parseFloat(planData.cycleStop) || 5,
         
-        // Período de Operação
         operationPeriod: planData.operationPeriod || 'Diário',
         periodGoal: parseFloat(planData.periodGoal) || 2,
         periodStop: parseFloat(planData.periodStop) || 2,
         
-        // Metadados
         studentId: user.uid,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
@@ -147,7 +138,7 @@ export const usePlans = () => {
       const docRef = await addDoc(collection(db, 'plans'), newPlan);
       return docRef.id;
     } catch (err) {
-      console.error('Erro ao criar plano:', err);
+      console.error('[usePlans] Erro criar:', err);
       throw err;
     }
   }, [user]);
@@ -163,7 +154,7 @@ export const usePlans = () => {
         updatedAt: serverTimestamp()
       });
     } catch (err) {
-      console.error('Erro ao atualizar plano:', err);
+      console.error('[usePlans] Erro atualizar:', err);
       throw err;
     }
   }, []);
@@ -175,7 +166,7 @@ export const usePlans = () => {
     try {
       await deleteDoc(doc(db, 'plans', planId));
     } catch (err) {
-      console.error('Erro ao deletar plano:', err);
+      console.error('[usePlans] Erro deletar:', err);
       throw err;
     }
   }, []);
@@ -223,12 +214,10 @@ export const usePlans = () => {
   }, [plans]);
 
   /**
-   * Helper: Retorna planos ativos/em progresso (IN_PROGRESS)
-   * Útil para preencher dropdowns na boleta
+   * Helper: Retorna planos ativos/em progresso
    */
   const getActivePlans = useCallback(() => {
     return plans.filter(p => {
-       // Aceita 'IN_PROGRESS', 'ACTIVE' ou se não tiver status definido (legado) assume ativo
        const status = p.status || 'ACTIVE';
        return status === 'IN_PROGRESS' || status === 'ACTIVE';
     });
@@ -236,16 +225,12 @@ export const usePlans = () => {
 
   /**
    * Validar trade contra plano
-   * Retorna array de violações/alertas
    */
   const validateTradeAgainstPlan = useCallback((trade, plan, periodPL = 0, cyclePL = 0) => {
     const violations = [];
 
-    if (!plan) {
-      return violations;
-    }
+    if (!plan) return violations;
 
-    // Verificar stop do período
     if (plan.periodStop && periodPL < 0) {
       const periodLossPercent = Math.abs(periodPL / plan.pl) * 100;
       if (periodLossPercent >= plan.periodStop) {
@@ -257,7 +242,6 @@ export const usePlans = () => {
       }
     }
 
-    // Verificar stop do ciclo
     if (plan.cycleStop && cyclePL < 0) {
       const cycleLossPercent = Math.abs(cyclePL / plan.pl) * 100;
       if (cycleLossPercent >= plan.cycleStop) {
@@ -269,7 +253,6 @@ export const usePlans = () => {
       }
     }
 
-    // Verificar R:R mínimo
     if (plan.rrTarget && trade.riskReward) {
       if (trade.riskReward < plan.rrTarget) {
         violations.push({
@@ -280,7 +263,6 @@ export const usePlans = () => {
       }
     }
 
-    // Verificar risco operacional
     if (plan.riskPerOperation && trade.riskPercent) {
       if (trade.riskPercent > plan.riskPerOperation) {
         violations.push({
@@ -306,7 +288,7 @@ export const usePlans = () => {
     getPlanById,
     getTotalPlByAccount,
     getAvailablePl,
-    getActivePlans, // [NOVO] Exportando a função necessária
+    getActivePlans,
     validateTradeAgainstPlan
   };
 };

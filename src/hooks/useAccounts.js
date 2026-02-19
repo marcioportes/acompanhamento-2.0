@@ -1,3 +1,12 @@
+/**
+ * useAccounts
+ * @version 2.6.1
+ * @description Hook para gerenciamento de contas de trading
+ * * CHANGELOG:
+ * - 2.6.1: FIX CRÍTICO - Removida atualização manual de 'currentBalance' ao ajustar saldo inicial.
+ * Isso evita o "Double Spending" (soma duplicada) pois a Cloud Function já processa o movimento criado.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp, orderBy
@@ -6,12 +15,9 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 /**
- * Hook para gerenciamento de contas de trading
- * VERSÃO 2.5 (FIX DEFINITIVO):
- * - Resolve erro "Missing permissions" na exclusão.
- * - Estratégia: Busca trades pelo studentEmail (permitido) e seleciona os da conta via Javascript.
+ * @param {string|null} overrideStudentId - UID do aluno para View As Student
  */
-export const useAccounts = () => {
+export const useAccounts = (overrideStudentId = null) => {
   const { user, isMentor } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,10 +36,27 @@ export const useAccounts = () => {
     
     let q;
     try {
-      if (isMentor()) {
-        q = query(collection(db, 'accounts'), orderBy('createdAt', 'desc'));
+      if (overrideStudentId) {
+        // MODO: Mentor visualizando como aluno específico
+        console.log('[useAccounts] Override mode:', overrideStudentId);
+        q = query(
+          collection(db, 'accounts'), 
+          where('studentId', '==', overrideStudentId)
+        );
+      } else if (isMentor()) {
+        // MODO: Mentor normal - vê TODAS as contas
+        console.log('[useAccounts] Mentor mode - all accounts');
+        q = query(
+          collection(db, 'accounts'), 
+          orderBy('createdAt', 'desc')
+        );
       } else {
-        q = query(collection(db, 'accounts'), where('studentId', '==', user.uid));
+        // MODO: Aluno - vê apenas suas contas
+        console.log('[useAccounts] Student mode:', user.uid);
+        q = query(
+          collection(db, 'accounts'), 
+          where('studentId', '==', user.uid)
+        );
       }
       
       const unsubscribe = onSnapshot(q, 
@@ -60,7 +83,7 @@ export const useAccounts = () => {
           setLoading(false);
         },
         (err) => { 
-          console.error('Erro ao carregar contas:', err); 
+          console.error('[useAccounts] Erro:', err); 
           setError(err.message);
           setLoading(false); 
         }
@@ -68,11 +91,11 @@ export const useAccounts = () => {
       
       return () => unsubscribe();
     } catch (err) { 
-      console.error('Erro ao configurar listener:', err);
+      console.error('[useAccounts] Setup error:', err);
       setError(err.message); 
       setLoading(false); 
     }
-  }, [user, isMentor]);
+  }, [user, isMentor, overrideStudentId]);
 
   const addAccount = useCallback(async (accountData) => {
     if (!user) throw new Error('Usuário não autenticado');
@@ -119,7 +142,7 @@ export const useAccounts = () => {
       
       return accountId;
     } catch (err) {
-      console.error('Erro ao criar conta:', err);
+      console.error('[useAccounts] Erro criar:', err);
       throw err;
     }
   }, [user]);
@@ -165,22 +188,26 @@ export const useAccounts = () => {
           const balanceAfter = balanceBefore + diff;
           const adjustmentDate = new Date().toISOString().split('T')[0];
           
+          // CRIA O MOVIMENTO DE AJUSTE
+          // Isso vai disparar a Cloud Function 'onMovementCreated'
           await addDoc(collection(db, 'movements'), {
             accountId: accountId,
             type: 'ADJUSTMENT',
             amount: diff,
             balanceBefore,
             balanceAfter,
-            description: diff > 0 
-              ? `Ajuste: saldo inicial alterado de ${oldInitial} para ${newInitial}`
-              : `Ajuste: saldo inicial alterado de ${oldInitial} para ${newInitial}`,
+            description: `Ajuste: saldo inicial alterado de ${oldInitial} para ${newInitial}`,
             date: adjustmentDate,
             dateTime: new Date().toISOString(),
             createdAt: serverTimestamp(),
             createdBy: user.uid
           });
 
-          updateData.currentBalance = balanceAfter;
+          // [FIX 2.6.1]
+          // NÃO atualizamos o currentBalance aqui no Frontend.
+          // Deixamos a Cloud Function fazer a soma para evitar duplicidade.
+          // updateData.currentBalance = balanceAfter; <--- REMOVIDO
+          delete updateData.currentBalance; 
         }
       }
       
@@ -189,82 +216,77 @@ export const useAccounts = () => {
         updatedAt: serverTimestamp() 
       });
     } catch (err) { 
-      console.error('Erro ao atualizar conta:', err);
+      console.error('[useAccounts] Erro atualizar:', err);
       throw err; 
     }
   }, [user, accounts]);
 
   /**
-   * Deletar conta com CASCADE DELETE (Estratégia Segura)
+   * Deletar conta com CASCADE DELETE
    */
   const deleteAccount = useCallback(async (accountId) => {
     try {
-      console.log(`[useAccounts] Iniciando exclusão da conta ${accountId}...`);
+      console.log(`[useAccounts] Deletando conta ${accountId}...`);
 
       // ETAPA 1: MOVIMENTOS
       try {
         const movementsQuery = query(collection(db, 'movements'), where('accountId', '==', accountId));
         const movementsSnapshot = await getDocs(movementsQuery);
-        const movementDeletePromises = movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id)));
-        await Promise.all(movementDeletePromises);
+        await Promise.all(movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id))));
+        console.log(`[useAccounts] ${movementsSnapshot.size} movimentos deletados`);
       } catch (e) {
-        console.warn('Erro ao deletar movimentos:', e);
+        console.warn('[useAccounts] Erro movimentos:', e);
       }
       
       // ETAPA 2: PLANOS
       try {
         const plansQuery = query(collection(db, 'plans'), where('accountId', '==', accountId));
         const plansSnapshot = await getDocs(plansQuery);
-        const planDeletePromises = plansSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id)));
-        await Promise.all(planDeletePromises);
+        await Promise.all(plansSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id))));
+        console.log(`[useAccounts] ${plansSnapshot.size} planos deletados`);
       } catch (e) {
-        console.warn('Erro ao deletar planos:', e);
+        console.warn('[useAccounts] Erro planos:', e);
       }
 
-      // ETAPA 3: TRADES (FIX DEFINITIVO - FILTRO EM MEMÓRIA)
+      // ETAPA 3: TRADES (FIX: FILTRO EM MEMÓRIA)
       try {
         let tradesToDelete = [];
 
         if (isMentor()) {
-           // Mentor pode tudo
            const q = query(collection(db, 'trades'), where('accountId', '==', accountId));
            const snap = await getDocs(q);
            tradesToDelete = snap.docs;
         } else if (user?.email) {
-           // ALUNO:
-           // 1. Busca TUDO que é seu pelo email (Query Permitida e com Índice)
            const q = query(collection(db, 'trades'), where('studentEmail', '==', user.email));
            const snap = await getDocs(q);
-           
-           // 2. Filtra localmente os trades desta conta
            tradesToDelete = snap.docs.filter(doc => doc.data().accountId === accountId);
         }
 
-        console.log(`[useAccounts] Encontrados ${tradesToDelete.length} trades para deletar.`);
-
-        const tradesDeletePromises = tradesToDelete.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id)));
-        await Promise.all(tradesDeletePromises);
+        console.log(`[useAccounts] ${tradesToDelete.length} trades para deletar`);
+        await Promise.all(tradesToDelete.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id))));
       } catch (e) {
-        console.warn('Erro ao deletar trades (verifique permissões):', e);
+        console.warn('[useAccounts] Erro trades:', e);
       }
       
       // ETAPA 4: CONTA
       await deleteDoc(doc(db, 'accounts', accountId));
-      console.log(`[useAccounts] Conta deletada com sucesso.`);
+      console.log(`[useAccounts] Conta deletada`);
       
     } catch (err) { 
-      console.error('Erro fatal ao deletar conta:', err);
+      console.error('[useAccounts] Erro fatal:', err);
       throw err; 
     }
   }, [user, isMentor]);
 
   const getAccountsByStudent = useCallback((studentId) => accounts.filter(acc => acc.studentId === studentId), [accounts]);
+  
   const getActiveAccount = useCallback((studentId) => {
     const studentAccounts = studentId 
       ? accounts.filter(acc => acc.studentId === studentId)
       : accounts.filter(acc => acc.studentId === user?.uid);
     return studentAccounts.find(acc => acc.active) || studentAccounts[0];
   }, [accounts, user]);
+  
   const getRealAccounts = useCallback(() => accounts.filter(acc => acc.type === 'REAL' || acc.type === 'PROP' || acc.isReal === true), [accounts]);
   const getDemoAccounts = useCallback(() => accounts.filter(acc => acc.type === 'DEMO' || (acc.isReal === false || acc.isReal === undefined)), [accounts]);
 

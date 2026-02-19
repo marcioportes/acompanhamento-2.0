@@ -1,8 +1,10 @@
 /**
- * Funções de cálculo para trades - Versão 3.1 (Stable Restore)
- * * CHANGE LOG 3.1 (RESTORE):
- * - REVERT: Removida função 'reconcileBalance' e tratamentos complexos de data.
- * - KEEP: Mantidas funções vitais (analyzeBySetup, analyzeByEmotion, analyzePlanCompliance).
+ * Funções de cálculo para trades
+ * @version 1.2.1
+ * 
+ * CHANGELOG:
+ * - 1.2.1: Fix formatDate para Firestore Timestamp, fix identifyStudentsNeedingAttention
+ * - 1.2.0: Padronização de versão
  */
 
 import { format, parseISO } from 'date-fns';
@@ -163,37 +165,96 @@ export const analyzePlanCompliance = (periodTrades, stopLimitValue, goalLimitVal
 
 // --- MENTORIA ---
 
-export const calculateStudentRanking = (students) => {
-  if (!students) return [];
+export const calculateStudentRanking = (groupedTrades, sortBy = 'totalPL') => {
+  if (!groupedTrades) return [];
+  
   try {
-    const safeStudents = Array.isArray(students) ? students : Object.values(students);
-    return safeStudents.map(student => {
-      let stats = student.stats || calculateStats(student.trades);
-      if (!stats) stats = { totalPL: 0, winRate: 0, profitFactor: 0, totalTrades: 0 };
-      return { ...student, ...stats, stats };
-    }).sort((a, b) => b.totalPL - a.totalPL);
-  } catch (e) { return []; }
+    // Normaliza entrada - aceita objeto { email: [trades] } ou array
+    let students;
+    if (Array.isArray(groupedTrades)) {
+      students = groupedTrades;
+    } else {
+      students = Object.entries(groupedTrades).map(([email, trades]) => ({
+        email,
+        name: trades[0]?.studentName || email.split('@')[0],
+        trades
+      }));
+    }
+    
+    return students
+      .map(student => {
+        const trades = student.trades || [];
+        const stats = calculateStats(trades);
+        return { 
+          ...student, 
+          ...stats,
+          stats 
+        };
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'winRate': return b.winRate - a.winRate;
+          case 'profitFactor': return b.profitFactor - a.profitFactor;
+          case 'totalTrades': return b.totalTrades - a.totalTrades;
+          default: return b.totalPL - a.totalPL;
+        }
+      });
+  } catch (e) { 
+    console.error('[calculateStudentRanking]', e);
+    return []; 
+  }
 };
 
-export const identifyStudentsNeedingAttention = (students) => {
+/**
+ * Identifica alunos que precisam de atenção
+ * @param {Object|Array} groupedTrades - { email: [trades] } ou [{ email, name, trades }]
+ * @returns {Array} Lista de alunos com reasons
+ */
+export const identifyStudentsNeedingAttention = (groupedTrades) => {
   try {
-    if (!students) return [];
-    let list = Array.isArray(students) ? students : Object.values(students);
-    return list.filter(student => {
-      if (!student) return false;
-      let stats = student.stats || calculateStats(student.trades);
-      if (!stats || stats.totalTrades === 0) return false;
-      const isLosing = stats.totalPL < 0;
-      const hasHistory = stats.totalTrades >= 5;
-      const isLowWR = hasHistory && stats.winRate < 40;
-      const isLowPF = hasHistory && stats.profitFactor < 0.8;
-      student.alertReasons = [];
-      if (isLosing) student.alertReasons.push('Prejuízo');
-      if (isLowWR) student.alertReasons.push('WinRate Baixo');
-      if (isLowPF) student.alertReasons.push('Profit Factor Baixo');
-      return isLosing || isLowWR || isLowPF;
-    });
-  } catch (error) { return []; }
+    if (!groupedTrades) return [];
+    
+    // Normaliza entrada - aceita objeto { email: [trades] } ou array
+    let students;
+    if (Array.isArray(groupedTrades)) {
+      students = groupedTrades;
+    } else {
+      // Converte objeto { email: [trades] } para array
+      students = Object.entries(groupedTrades).map(([email, trades]) => ({
+        email,
+        name: trades[0]?.studentName || email.split('@')[0],
+        trades
+      }));
+    }
+    
+    return students
+      .map(student => {
+        const trades = student.trades || [];
+        if (trades.length === 0) return null;
+        
+        const stats = calculateStats(trades);
+        const reasons = [];
+        
+        // Critérios de atenção
+        if (stats.totalPL < 0) reasons.push('Prejuízo');
+        if (stats.totalTrades >= 5 && stats.winRate < 40) reasons.push('WinRate Baixo');
+        if (stats.totalTrades >= 5 && stats.profitFactor < 0.8) reasons.push('Profit Factor Baixo');
+        
+        // Sem razões = não precisa atenção
+        if (reasons.length === 0) return null;
+        
+        return {
+          email: student.email,
+          name: student.name,
+          stats,
+          reasons
+        };
+      })
+      .filter(Boolean);
+  } catch (error) { 
+    console.error('[identifyStudentsNeedingAttention]', error);
+    return []; 
+  }
 };
 
 // --- FILTROS E HELPERS ---
@@ -242,12 +303,53 @@ export const formatCurrency = (value, currency = 'BRL') => {
 
 export const formatPercent = (value) => `${(value || 0).toFixed(1)}%`;
 
+/**
+ * Formata data para exibição
+ * Suporta: Firestore Timestamp, Date, string ISO
+ * @param {any} date - Data em qualquer formato
+ * @param {string} pattern - Padrão date-fns (default: 'dd/MM/yyyy')
+ * @returns {string} Data formatada
+ */
 export const formatDate = (date, pattern = 'dd/MM/yyyy') => {
   if (!date) return '-';
+  
   try {
-    const d = typeof date === 'string' ? parseISO(date) : date;
-    return isNaN(d.getTime()) ? (date || '-') : format(d, pattern, { locale: ptBR });
-  } catch (e) { return date || '-'; }
+    let d;
+    
+    // Firestore Timestamp { seconds, nanoseconds }
+    if (date?.seconds !== undefined && date?.nanoseconds !== undefined) {
+      d = new Date(date.seconds * 1000);
+    }
+    // Firestore Timestamp com método toDate()
+    else if (typeof date?.toDate === 'function') {
+      d = date.toDate();
+    }
+    // String ISO ou data
+    else if (typeof date === 'string') {
+      d = parseISO(date);
+    }
+    // Objeto Date
+    else if (date instanceof Date) {
+      d = date;
+    }
+    // Número (timestamp em ms)
+    else if (typeof date === 'number') {
+      d = new Date(date);
+    }
+    else {
+      return String(date) || '-';
+    }
+    
+    // Verifica se é data válida
+    if (isNaN(d.getTime())) {
+      return '-';
+    }
+    
+    return format(d, pattern, { locale: ptBR });
+  } catch (e) { 
+    console.warn('[formatDate] Erro:', e, 'Input:', date);
+    return '-'; 
+  }
 };
 
 export const groupTradesByDate = (trades) => {
