@@ -1,13 +1,17 @@
 /**
  * FeedbackThread
- * @version 1.0.0
+ * @version 1.2.1
  * @description Thread de comentários de feedback entre aluno e mentor
+ * 
+ * CHANGELOG:
+ * - 1.2.1: Fix exibição de mentorFeedback legado quando há feedbackHistory
+ * - 1.2.0: Versão inicial
  */
 
 import { useState, useRef, useEffect } from 'react';
 import { 
   Send, HelpCircle, Lock, User, GraduationCap,
-  Calendar, TrendingUp, TrendingDown, Clock, AlertCircle,
+  Calendar, Clock, AlertCircle,
   Image as ImageIcon
 } from 'lucide-react';
 import TradeStatusBadge from './TradeStatusBadge';
@@ -20,7 +24,7 @@ const TRADE_STATUS = {
   CLOSED: 'CLOSED'
 };
 
-const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading }) => {
+const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor = false }) => {
   const [comment, setComment] = useState('');
   const [isQuestion, setIsQuestion] = useState(false);
   const messagesEndRef = useRef(null);
@@ -40,31 +44,47 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading }) => {
   };
 
   const canComment = trade.status !== TRADE_STATUS.CLOSED;
-  const canClose = trade.status === TRADE_STATUS.REVIEWED;
-  const canQuestion = trade.status === TRADE_STATUS.REVIEWED;
+  const canClose = trade.status === TRADE_STATUS.REVIEWED && !isMentor;
+  const canQuestion = trade.status === TRADE_STATUS.REVIEWED && !isMentor;
+  const canReply = isMentor && (trade.status === TRADE_STATUS.OPEN || trade.status === TRADE_STATUS.QUESTION);
 
   // Combina feedbackHistory com mentorFeedback legado
   const messages = [];
   
-  // Adiciona feedback legado se existir e não houver histórico
-  if (trade.mentorFeedback && (!trade.feedbackHistory || trade.feedbackHistory.length === 0)) {
-    messages.push({
-      id: 'legacy',
-      author: 'Mentor',
-      authorRole: 'mentor',
-      content: trade.mentorFeedback,
-      createdAt: trade.feedbackDate || trade.updatedAt,
-      status: TRADE_STATUS.REVIEWED
-    });
+  // SEMPRE verifica se mentorFeedback existe e não está duplicado no histórico
+  if (trade.mentorFeedback) {
+    const feedbackHistory = trade.feedbackHistory || [];
+    
+    // Verifica se já existe no histórico (evita duplicação)
+    const legacyExists = feedbackHistory.some(msg => 
+      msg.authorRole === 'mentor' && 
+      msg.content === trade.mentorFeedback
+    );
+    
+    if (!legacyExists) {
+      messages.push({
+        id: 'legacy',
+        author: 'Mentor',
+        authorRole: 'mentor',
+        content: trade.mentorFeedback,
+        createdAt: trade.feedbackDate || trade.updatedAt,
+        status: TRADE_STATUS.REVIEWED
+      });
+    }
   }
   
-  // Adiciona histórico
-  if (trade.feedbackHistory) {
-    messages.push(...trade.feedbackHistory);
+  // Adiciona histórico ordenado por data
+  if (trade.feedbackHistory && trade.feedbackHistory.length > 0) {
+    const sortedHistory = [...trade.feedbackHistory].sort((a, b) => {
+      const timeA = a.createdAt?.seconds || new Date(a.createdAt).getTime() / 1000;
+      const timeB = b.createdAt?.seconds || new Date(b.createdAt).getTime() / 1000;
+      return timeA - timeB;
+    });
+    messages.push(...sortedHistory);
   }
 
   return (
-    <div className="glass-card flex flex-col h-[calc(100vh-200px)] min-h-[500px]">
+    <div className="glass-card flex flex-col h-[calc(100vh-180px)] min-h-[500px]">
       {/* Header do Trade */}
       <div className="flex-none p-4 border-b border-slate-800">
         <div className="flex items-start justify-between mb-3">
@@ -161,36 +181,37 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading }) => {
             <Clock className="w-12 h-12 text-slate-700 mb-3" />
             <h3 className="text-slate-400 font-medium">Aguardando feedback</h3>
             <p className="text-slate-500 text-sm">
-              O mentor ainda não comentou este trade
+              {isMentor 
+                ? 'Adicione seu feedback para este trade'
+                : 'O mentor ainda não comentou este trade'
+              }
             </p>
           </div>
         ) : (
           messages.map((msg, index) => {
-            const isMentor = msg.authorRole === 'mentor';
-            const time = msg.createdAt?.toDate?.() 
-              ? msg.createdAt.toDate().toLocaleString('pt-BR')
-              : msg.createdAt;
+            const isMentorMsg = msg.authorRole === 'mentor';
+            const time = formatDate(msg.createdAt, "dd/MM/yyyy 'às' HH:mm");
             
             return (
               <div 
                 key={msg.id || index}
-                className={`flex ${isMentor ? 'justify-start' : 'justify-end'}`}
+                className={`flex ${isMentorMsg ? 'justify-start' : 'justify-end'}`}
               >
                 <div className={`max-w-[80%] ${
-                  isMentor 
+                  isMentorMsg 
                     ? 'bg-slate-800 rounded-tr-2xl rounded-br-2xl rounded-bl-2xl' 
                     : 'bg-blue-600/20 border border-blue-500/30 rounded-tl-2xl rounded-bl-2xl rounded-br-2xl'
                 } p-4`}>
                   <div className="flex items-center gap-2 mb-2">
-                    {isMentor ? (
+                    {isMentorMsg ? (
                       <GraduationCap className="w-4 h-4 text-purple-400" />
                     ) : (
                       <User className="w-4 h-4 text-blue-400" />
                     )}
                     <span className={`text-sm font-medium ${
-                      isMentor ? 'text-purple-400' : 'text-blue-400'
+                      isMentorMsg ? 'text-purple-400' : 'text-blue-400'
                     }`}>
-                      {msg.authorName || msg.author?.split('@')[0] || (isMentor ? 'Mentor' : 'Você')}
+                      {msg.authorName || msg.author?.split('@')[0] || (isMentorMsg ? 'Mentor' : 'Você')}
                     </span>
                     {msg.status === TRADE_STATUS.QUESTION && (
                       <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">
@@ -218,6 +239,7 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading }) => {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex-none p-4 border-t border-slate-800">
+          {/* Botões de ação */}
           <div className="flex gap-2 mb-3">
             {canQuestion && (
               <button
@@ -246,31 +268,34 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading }) => {
             )}
           </div>
           
+          {/* Input + Botão Enviar */}
           <div className="flex gap-2">
             <textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder={
-                trade.status === TRADE_STATUS.OPEN 
-                  ? "Aguardando feedback do mentor..."
-                  : isQuestion 
-                    ? "Descreva sua dúvida..." 
-                    : "Escreva um comentário..."
+                isMentor
+                  ? "Escreva seu feedback..."
+                  : trade.status === TRADE_STATUS.OPEN 
+                    ? "Aguardando feedback do mentor..."
+                    : isQuestion 
+                      ? "Descreva sua dúvida..." 
+                      : "Escreva um comentário..."
               }
-              disabled={trade.status === TRADE_STATUS.OPEN || loading}
+              disabled={(!isMentor && trade.status === TRADE_STATUS.OPEN) || loading}
               rows={2}
               className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!comment.trim() || trade.status === TRADE_STATUS.OPEN || loading}
-              className="px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!comment.trim() || (!isMentor && trade.status === TRADE_STATUS.OPEN) || loading}
+              className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[52px]"
             >
               <Send className="w-5 h-5" />
             </button>
           </div>
           
-          {trade.status === TRADE_STATUS.OPEN && (
+          {!isMentor && trade.status === TRADE_STATUS.OPEN && (
             <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
               Você poderá comentar após o mentor revisar o trade

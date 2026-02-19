@@ -1,14 +1,13 @@
 /**
  * TradesList
- * @version 1.2.0
+ * @version 1.2.1
  * @description Componente de apresentação (Dumb Component) responsável por listar os trades.
- * 
- * CHANGELOG:
+ * * CHANGELOG:
+ * - 1.2.1: Default de showStatus alterado para true (Status visível por padrão para todos)
  * - 1.2.0: Adicionado prop showStatus para exibir coluna de status do feedback
  * - 1.1.0: Risk Guardian (Alertas visuais de violação de regras)
  * - 1.0.0: Versão inicial
- * 
- * ARQUITETURA:
+ * * ARQUITETURA:
  * Este componente NÃO realiza cálculos matemáticos.
  * Ele segue o padrão "Single Source of Truth", exibindo o que está gravado no Firestore.
  */
@@ -71,7 +70,7 @@ const TradesList = ({
   onViewTrade, 
   onEditTrade, 
   onDeleteTrade,
-  showStatus = false,
+  showStatus = true, // AGORA É TRUE POR PADRÃO
   showStudent = false
 }) => {
 

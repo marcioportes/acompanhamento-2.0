@@ -1,9 +1,12 @@
 /**
  * App.jsx
- * @version 2.1.0
- * @description App com suporte a View As Student + FeedbackPage
+ * @version 2.3.0
+ * @description App completo com navegação para FeedbackPage em todas as rotas
  * 
  * CHANGELOG:
+ * - 2.3.0: TradesJournal também navega para FeedbackPage
+ * - 2.2.1: Fix login carregando na tela errada
+ * - 2.2.0: FeedbackPage com trade selecionado
  * - 2.1.0: Adicionado FeedbackPage para alunos
  * - 2.0.0: View As Student feature
  */
@@ -19,6 +22,7 @@ import SettingsPage from './pages/SettingsPage';
 import TradesJournal from './pages/TradesJournal';
 import StudentsManagement from './pages/StudentsManagement';
 import FeedbackPage from './pages/FeedbackPage';
+import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -54,6 +58,7 @@ const ViewAsStudentBanner = ({ student, onClose }) => {
 const AppContent = () => {
   const { user, loading, isMentor } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // SEMPRE inicia em dashboard
   const [currentView, setCurrentView] = useState('dashboard');
   const [showAddTradeModal, setShowAddTradeModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,8 +66,18 @@ const AppContent = () => {
   // Estado de View As Student
   const [viewingAsStudent, setViewingAsStudent] = useState(null);
   
-  // Hooks (sem override no App - cada página gerencia)
-  const { addTrade, getTradesAwaitingFeedback, getTradesGroupedByStudent, allTrades } = useTrades();
+  // Estado para FeedbackPage com trade específico
+  const [feedbackTrade, setFeedbackTrade] = useState(null);
+  
+  // Hooks
+  const { 
+    addTrade, 
+    getTradesAwaitingFeedback, 
+    getTradesGroupedByStudent, 
+    allTrades,
+    addFeedbackComment,
+    updateTradeStatus
+  } = useTrades();
   const { plans } = usePlans();
 
   // Contadores para badges
@@ -103,6 +118,11 @@ const AppContent = () => {
       setViewingAsStudent(null);
     }
     
+    // Sair do FeedbackPage se estava nele
+    if (feedbackTrade) {
+      setFeedbackTrade(null);
+    }
+    
     if (view === 'add-trade') {
       setShowAddTradeModal(true);
     } else {
@@ -122,6 +142,34 @@ const AppContent = () => {
     setCurrentView('students');
   };
 
+  // Handler para navegar para FeedbackPage com um trade específico
+  const handleNavigateToFeedback = (trade) => {
+    setFeedbackTrade(trade);
+  };
+
+  // Handler para voltar do FeedbackPage
+  const handleBackFromFeedback = () => {
+    setFeedbackTrade(null);
+  };
+
+  // Handler para adicionar comentário no FeedbackPage
+  const handleAddFeedbackComment = async (tradeId, content, isQuestion) => {
+    const updatedTrade = await addFeedbackComment(tradeId, content, isQuestion);
+    // Atualiza o trade local para refletir mudanças imediatas
+    setFeedbackTrade(prev => ({
+      ...prev,
+      ...updatedTrade,
+      feedbackHistory: updatedTrade.feedbackHistory,
+      status: updatedTrade.status
+    }));
+  };
+
+  // Handler para atualizar status no FeedbackPage
+  const handleUpdateTradeStatus = async (tradeId, newStatus) => {
+    await updateTradeStatus(tradeId, newStatus);
+    setFeedbackTrade(prev => ({ ...prev, status: newStatus }));
+  };
+
   // Handler de adicionar trade
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
     setIsSubmitting(true);
@@ -135,6 +183,21 @@ const AppContent = () => {
 
   // Renderização do conteúdo principal
   const renderContent = () => {
+    // Se está no FeedbackPage com um trade específico
+    if (feedbackTrade) {
+      // Busca trade atualizado do allTrades para dados em tempo real
+      const currentTrade = allTrades.find(t => t.id === feedbackTrade.id) || feedbackTrade;
+      
+      return (
+        <FeedbackPage
+          trade={currentTrade}
+          onBack={handleBackFromFeedback}
+          onAddComment={handleAddFeedbackComment}
+          onUpdateStatus={handleUpdateTradeStatus}
+        />
+      );
+    }
+    
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
       return <StudentDashboard viewAs={viewingAsStudent} />;
@@ -142,7 +205,6 @@ const AppContent = () => {
     
     // Páginas específicas
     if (currentView === 'accounts') return <AccountsPage />;
-    if (currentView === 'feedback' && !isMentor()) return <FeedbackPage />;
     if (currentView === 'students' && isMentor()) {
       return <StudentsManagement onViewAsStudent={handleViewAsStudent} />;
     }
@@ -150,13 +212,23 @@ const AppContent = () => {
 
     // Dashboard principal
     if (isMentor()) {
-      return <MentorDashboard currentView={currentView} onViewChange={handleViewChange} />;
+      return (
+        <MentorDashboard 
+          currentView={currentView} 
+          onViewChange={handleViewChange}
+          onNavigateToFeedback={handleNavigateToFeedback}
+        />
+      );
     } else {
+      // Aluno
       switch (currentView) {
-        case 'journal': return <TradesJournal />;
+        case 'journal': 
+          return <TradesJournal onNavigateToFeedback={handleNavigateToFeedback} />;
+        case 'feedback':
+          return <StudentFeedbackPage onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'dashboard':
-        case 'analytics':
-        default: return <StudentDashboard />;
+        default: 
+          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} />;
       }
     }
   };
@@ -177,7 +249,7 @@ const AppContent = () => {
 
       {/* Sidebar */}
       <Sidebar
-        currentView={viewingAsStudent ? 'viewing-student' : currentView}
+        currentView={feedbackTrade ? 'feedback' : viewingAsStudent ? 'viewing-student' : currentView}
         onViewChange={handleViewChange}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}

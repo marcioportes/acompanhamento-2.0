@@ -1,16 +1,26 @@
 /**
  * PlanEmotionalMetrics
- * @version 1.0.0
+ * @version 1.3.0
  * @description Métricas emocionais específicas por plano (período e ciclo)
+ * 
+ * CHANGELOG:
+ * - 1.3.0: Integração com nova análise emocional, detecção de padrões
+ * - 1.2.0: Versão anterior
  */
 
 import { useMemo, useState } from 'react';
 import { 
   Brain, Calendar, RefreshCw, AlertTriangle, 
-  TrendingUp, TrendingDown, Minus, Shield, Flame
+  TrendingUp, TrendingDown, Minus, Shield, Flame,
+  Target, Zap
 } from 'lucide-react';
-import { analyzePlanEmotions, EMOTION_COLORS } from '../utils/emotionalAnalysis';
+import { 
+  analyzePlanEmotions, 
+  EMOTION_COLORS,
+  getEmotionConfig 
+} from '../utils/emotionalAnalysis';
 import { filterTradesByPeriod, formatPercent } from '../utils/calculations';
+import EmotionalAlerts from './EmotionalAlerts';
 
 const SCOPE_MAP = {
   'Diário': 'today',
@@ -72,6 +82,13 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
     return 'text-red-400';
   };
 
+  const getScoreColor = (score) => {
+    if (score >= 1) return 'text-emerald-400';
+    if (score >= 0) return 'text-slate-400';
+    if (score >= -1) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
   return (
     <div className="glass-card overflow-hidden">
       {/* Header */}
@@ -113,27 +130,10 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
         </div>
       </div>
 
-      {/* Alertas */}
+      {/* Alertas de Padrões */}
       {analysis.alerts.length > 0 && (
         <div className="p-3 bg-slate-800/50 border-b border-slate-800">
-          {analysis.alerts.map((alert, i) => (
-            <div 
-              key={i} 
-              className={`flex items-center gap-2 text-sm ${
-                alert.severity === 'critical' ? 'text-red-400' :
-                alert.severity === 'high' ? 'text-amber-400' :
-                alert.severity === 'medium' ? 'text-yellow-400' :
-                'text-slate-400'
-              }`}
-            >
-              {alert.severity === 'critical' ? (
-                <Flame className="w-4 h-4" />
-              ) : (
-                <AlertTriangle className="w-4 h-4" />
-              )}
-              {alert.message}
-            </div>
-          ))}
+          <EmotionalAlerts alerts={analysis.alerts} compact />
         </div>
       )}
 
@@ -145,12 +145,12 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
           </div>
         ) : (
           <>
-            {/* Score e Tendência */}
+            {/* Score, Tendência e Trades */}
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-slate-800/50 p-3 rounded-xl text-center">
                 <p className="text-xs text-slate-500 mb-1">Score</p>
-                <p className="text-2xl font-bold text-white">
-                  {analysis.avgEmotionalScore.toFixed(0)}
+                <p className={`text-2xl font-bold ${getScoreColor(analysis.avgEmotionalScore)}`}>
+                  {analysis.avgEmotionalScore > 0 ? '+' : ''}{analysis.avgEmotionalScore.toFixed(1)}
                 </p>
               </div>
               
@@ -167,6 +167,38 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
                 <p className="text-2xl font-bold text-white">{analysis.totalTrades}</p>
               </div>
             </div>
+
+            {/* Padrões Detectados */}
+            {(analysis.patterns.tilt.detected || analysis.patterns.revenge.detected || analysis.patterns.zone.inZone) && (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {analysis.patterns.tilt.detected && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2 text-center">
+                    <Flame className="w-4 h-4 text-red-400 mx-auto mb-1" />
+                    <p className="text-xs text-red-400 font-medium">TILT</p>
+                    <p className="text-[10px] text-slate-500">{analysis.patterns.tilt.totalTiltTrades} trades</p>
+                  </div>
+                )}
+                {analysis.patterns.revenge.detected && (
+                  <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-2 text-center">
+                    <Target className="w-4 h-4 text-orange-400 mx-auto mb-1" />
+                    <p className="text-xs text-orange-400 font-medium">REVENGE</p>
+                    <p className="text-[10px] text-slate-500">{analysis.patterns.revenge.count}x</p>
+                  </div>
+                )}
+                {analysis.patterns.fomo.detected && parseFloat(analysis.patterns.fomo.percentage) > 15 && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2 text-center">
+                    <Zap className="w-4 h-4 text-amber-400 mx-auto mb-1" />
+                    <p className="text-xs text-amber-400 font-medium">FOMO</p>
+                    <p className="text-[10px] text-slate-500">{analysis.patterns.fomo.percentage}%</p>
+                  </div>
+                )}
+                {analysis.patterns.zone.inZone && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2 text-center col-span-3">
+                    <p className="text-sm text-emerald-400 font-medium">🎯 In The Zone! ({analysis.patterns.zone.confidence}%)</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Compliance e Risco */}
             <div className="grid grid-cols-2 gap-3 mb-4">
@@ -186,7 +218,7 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
                       analysis.emotionalComplianceRate >= 70 ? 'bg-emerald-500' :
                       analysis.emotionalComplianceRate >= 50 ? 'bg-amber-500' : 'bg-red-500'
                     }`}
-                    style={{ width: `${analysis.emotionalComplianceRate}%` }}
+                    style={{ width: `${Math.min(100, analysis.emotionalComplianceRate)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-slate-600 mt-1">
@@ -210,7 +242,7 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
                       analysis.periodRiskScore <= 25 ? 'bg-emerald-500' :
                       analysis.periodRiskScore <= 50 ? 'bg-amber-500' : 'bg-red-500'
                     }`}
-                    style={{ width: `${analysis.periodRiskScore}%` }}
+                    style={{ width: `${Math.min(100, analysis.periodRiskScore)}%` }}
                   />
                 </div>
                 <p className="text-[10px] text-slate-600 mt-1">
@@ -223,26 +255,31 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
             <div>
               <p className="text-xs text-slate-500 mb-2">Top Emoções do Período</p>
               <div className="space-y-2">
-                {analysis.byEmotion.slice(0, 3).map((emotion, i) => (
-                  <div 
-                    key={emotion.emotion}
-                    className="flex items-center justify-between bg-slate-800/30 px-3 py-2 rounded-lg"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: EMOTION_COLORS[emotion.emotion] || '#64748b' }}
-                      />
-                      <span className="text-sm text-white">{emotion.emotion}</span>
-                      <span className="text-xs text-slate-500">({emotion.count})</span>
+                {analysis.byEmotion.slice(0, 3).map((emotion, i) => {
+                  const config = getEmotionConfig(emotion.emotion);
+                  return (
+                    <div 
+                      key={emotion.emotion}
+                      className="flex items-center justify-between bg-slate-800/30 px-3 py-2 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{config?.emoji || '😐'}</span>
+                        <span className="text-sm text-white">{emotion.emotion}</span>
+                        <span className="text-xs text-slate-500">({emotion.count})</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs ${emotion.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          R$ {emotion.totalPL.toFixed(0)}
+                        </span>
+                        <span className={`text-sm font-mono ${
+                          emotion.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
+                          {emotion.winRate.toFixed(0)}% WR
+                        </span>
+                      </div>
                     </div>
-                    <span className={`text-sm font-mono ${
-                      emotion.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {emotion.winRate.toFixed(0)}% WR
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -253,6 +290,18 @@ const PlanEmotionalMetrics = ({ plan, trades }) => {
                 <span className="text-sm font-bold text-white">
                   {analysis.consistencyRate.toFixed(0)}%
                 </span>
+              </div>
+            </div>
+
+            {/* Melhor/Pior Emoção */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2">
+                <p className="text-[10px] text-slate-500">Melhor Performance</p>
+                <p className="text-sm text-emerald-400 font-medium">{analysis.bestEmotion}</p>
+              </div>
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2">
+                <p className="text-[10px] text-slate-500">Pior Performance</p>
+                <p className="text-sm text-red-400 font-medium">{analysis.worstEmotion}</p>
               </div>
             </div>
           </>

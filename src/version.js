@@ -1,6 +1,6 @@
 /**
  * Tchio-Alpha Version
- * @version 1.2.0
+ * @version 1.3.0
  * @description Single Source of Truth para versionamento do projeto
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
@@ -14,10 +14,10 @@
 
 export const VERSION = {
   major: 1,
-  minor: 2,
+  minor: 3,
   patch: 0,
   prerelease: null,  // 'alpha', 'beta', 'rc.1', ou null para stable
-  build: '20260217',
+  build: '20260218',
   
   // Getters computados
   get full() {

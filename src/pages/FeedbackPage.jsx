@@ -1,438 +1,456 @@
 /**
  * FeedbackPage
  * @version 1.2.0
- * @description Página de feedback com filtros avançados
+ * @description Página de feedback entre mentor e aluno
  * 
  * CHANGELOG:
- * - 1.2.0: Adicionados filtros por aluno, período e busca (para mentor)
- * - 1.1.0: Filtro de conta (para aluno)
+ * - 1.2.0: UX do aluno com 2 botões de ação separados
+ *   - "Encerrar Trade" → fecha trade (com ou sem comentário)
+ *   - "Enviar Dúvida" → manda para QUESTION (requer texto)
+ * - 1.1.0: Fix primeiro comentário do mentor
  * - 1.0.0: Versão inicial
+ * 
+ * MÁQUINA DE ESTADOS:
+ * OPEN → Mentor dá feedback → REVIEWED
+ * REVIEWED → Aluno encerra → CLOSED
+ * REVIEWED → Aluno pergunta → QUESTION  
+ * QUESTION → Mentor responde → REVIEWED
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
-  MessageSquare, CheckCircle, Clock, HelpCircle, Lock,
-  ChevronRight, Search, User, Calendar, Filter, X
+  ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
+  Calendar, TrendingUp, TrendingDown, Clock, AlertCircle,
+  BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2
 } from 'lucide-react';
-import { useTrades } from '../hooks/useTrades';
-import { useAccounts } from '../hooks/useAccounts';
-import { useFeedback } from '../hooks/useFeedback';
 import { useAuth } from '../contexts/AuthContext';
-import FeedbackThread from '../components/FeedbackThread';
-import TradeStatusBadge from '../components/TradeStatusBadge';
-import { formatCurrency, formatDate, filterTradesByPeriod } from '../utils/calculations';
 
-const TRADE_STATUS = {
+// Helpers locais
+const formatCurrency = (value) => {
+  if (value === null || value === undefined) return '-';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-';
+  try {
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    return `${day}/${month}/${year}`;
+  } catch {
+    return dateStr;
+  }
+};
+
+const STATUS = {
   OPEN: 'OPEN',
-  REVIEWED: 'REVIEWED',
+  REVIEWED: 'REVIEWED', 
   QUESTION: 'QUESTION',
   CLOSED: 'CLOSED'
 };
 
-const STATUS_FILTERS = [
-  { id: 'all', label: 'Todos', icon: MessageSquare },
-  { id: 'OPEN', label: 'Aguardando', icon: Clock },
-  { id: 'REVIEWED', label: 'Revisados', icon: CheckCircle },
-  { id: 'QUESTION', label: 'Dúvidas', icon: HelpCircle },
-  { id: 'CLOSED', label: 'Encerrados', icon: Lock }
-];
+// ============================================
+// SUB-COMPONENTS
+// ============================================
 
-const PERIOD_OPTIONS = [
-  { id: 'all', label: 'Todo período' },
-  { id: 'today', label: 'Hoje' },
-  { id: 'week', label: 'Última semana' },
-  { id: 'month', label: 'Último mês' },
-  { id: 'quarter', label: 'Último trimestre' }
-];
+const StatusBadge = ({ status }) => {
+  const config = {
+    OPEN: { label: 'Aguardando Revisão', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
+    REVIEWED: { label: 'Revisado', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+    QUESTION: { label: 'Dúvida Pendente', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+    CLOSED: { label: 'Encerrado', icon: Lock, bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' }
+  };
+  const cfg = config[status] || config.OPEN;
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium ${cfg.bg} ${cfg.text} border ${cfg.border}`}>
+      <Icon className="w-4 h-4" />{cfg.label}
+    </span>
+  );
+};
 
-const FeedbackPage = ({ preSelectedTrade = null }) => {
-  const { isMentor } = useAuth();
-  const { trades, allTrades, loading: tradesLoading, getUniqueStudents } = useTrades();
-  const { accounts, loading: accountsLoading } = useAccounts();
-  const { addComment, closeTrade, loading: feedbackLoading } = useFeedback();
+const TradeInfoCard = ({ trade, onImageClick }) => {
+  const isWin = trade.result >= 0;
+  const notes = trade.notes || trade.observation || trade.comment || trade.observacao || '';
   
-  // Filtros
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTrade, setSelectedTrade] = useState(preSelectedTrade);
-  const [showFilters, setShowFilters] = useState(false);
-  
-  // Filtros avançados (mentor)
-  const [studentFilter, setStudentFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState('all');
-  
-  // Filtro de conta (aluno)
-  const [accountFilter, setAccountFilter] = useState('all');
+  return (
+    <div className="glass-card p-6 space-y-6">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-4">
+          <div className={`p-3 rounded-xl ${isWin ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+            {isWin ? <TrendingUp className="w-6 h-6 text-emerald-400" /> : <TrendingDown className="w-6 h-6 text-red-400" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-white">{trade.ticker}</h2>
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{trade.side}</span>
+              {trade.exchange && <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded">{trade.exchange}</span>}
+            </div>
+            <p className="text-slate-400 mt-1">{trade.studentName || trade.studentEmail?.split('@')[0]}</p>
+          </div>
+        </div>
+        <p className={`text-2xl font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? '+' : ''}{formatCurrency(trade.result)}</p>
+      </div>
 
-  // Lista de alunos (para mentor)
-  const students = useMemo(() => {
-    if (!isMentor()) return [];
-    return getUniqueStudents();
-  }, [isMentor, getUniqueStudents]);
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-slate-800/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-slate-500 mb-1"><Calendar className="w-4 h-4" /><span className="text-xs">Data</span></div>
+          <p className="text-white font-medium">{formatDate(trade.date)}</p>
+        </div>
+        <div className="bg-slate-800/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-slate-500 mb-1"><BarChart3 className="w-4 h-4" /><span className="text-xs">Setup</span></div>
+          <p className="text-white font-medium">{trade.setup || '-'}</p>
+        </div>
+        <div className="bg-slate-800/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-slate-500 mb-1"><Brain className="w-4 h-4" /><span className="text-xs">Emoção Entrada</span></div>
+          <p className="text-white font-medium">{trade.emotionEntry || trade.emotion || '-'}</p>
+        </div>
+        <div className="bg-slate-800/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-slate-500 mb-1"><Brain className="w-4 h-4" /><span className="text-xs">Emoção Saída</span></div>
+          <p className="text-white font-medium">{trade.emotionExit || '-'}</p>
+        </div>
+      </div>
 
-  // Trades base (depende se é mentor ou aluno)
-  const baseTrades = isMentor() ? allTrades : trades;
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+          <span className="text-xs text-slate-500 block mb-1">Entrada</span>
+          <span className="text-white font-mono text-lg">{trade.entry}</span>
+        </div>
+        <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+          <span className="text-xs text-slate-500 block mb-1">Saída</span>
+          <span className="text-white font-mono text-lg">{trade.exit}</span>
+        </div>
+        <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+          <span className="text-xs text-slate-500 block mb-1">Quantidade</span>
+          <span className="text-white font-mono text-lg">{trade.qty}</span>
+        </div>
+      </div>
 
-  // Inicializa filtro de conta para aluno
+      {notes && (
+        <div className="bg-slate-800/30 rounded-xl p-4">
+          <span className="text-xs text-slate-500 block mb-2">Observações do Aluno</span>
+          <p className="text-slate-300 whitespace-pre-wrap">{notes}</p>
+        </div>
+      )}
+
+      {(trade.htfUrl || trade.ltfUrl) && (
+        <div>
+          <span className="text-xs text-slate-500 block mb-3">Gráficos</span>
+          <div className="grid grid-cols-2 gap-4">
+            {trade.htfUrl && (
+              <div className="relative rounded-xl overflow-hidden border border-slate-700/50 cursor-pointer group" onClick={() => onImageClick(trade.htfUrl)}>
+                <img src={trade.htfUrl} alt="HTF" className="w-full h-40 object-cover" />
+                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Maximize2 className="w-6 h-6 text-white" /></div>
+                <span className="absolute bottom-2 left-2 text-xs bg-black/50 px-2 py-1 rounded text-white">HTF</span>
+              </div>
+            )}
+            {trade.ltfUrl && (
+              <div className="relative rounded-xl overflow-hidden border border-slate-700/50 cursor-pointer group" onClick={() => onImageClick(trade.ltfUrl)}>
+                <img src={trade.ltfUrl} alt="LTF" className="w-full h-40 object-cover" />
+                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Maximize2 className="w-6 h-6 text-white" /></div>
+                <span className="absolute bottom-2 left-2 text-xs bg-black/50 px-2 py-1 rounded text-white">LTF</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ChatMessage = ({ message }) => {
+  const isFromMentor = message.authorRole === 'mentor';
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
+  };
+
+  return (
+    <div className={`flex ${isFromMentor ? 'justify-start' : 'justify-end'}`}>
+      <div className={`max-w-[80%] ${isFromMentor ? 'bg-slate-800 rounded-tr-2xl rounded-br-2xl rounded-bl-2xl' : 'bg-blue-600/20 border border-blue-500/30 rounded-tl-2xl rounded-bl-2xl rounded-br-2xl'} p-4`}>
+        <div className="flex items-center gap-2 mb-2">
+          {isFromMentor ? <GraduationCap className="w-4 h-4 text-purple-400" /> : <User className="w-4 h-4 text-blue-400" />}
+          <span className={`text-sm font-medium ${isFromMentor ? 'text-purple-400' : 'text-blue-400'}`}>{message.authorName || (isFromMentor ? 'Mentor' : 'Aluno')}</span>
+          {message.isQuestion && <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">Dúvida</span>}
+        </div>
+        <p className="text-slate-200 whitespace-pre-wrap">{message.content}</p>
+        <span className="text-xs text-slate-500 mt-2 block">{formatTime(message.createdAt)}</span>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
+const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false }) => {
+  const { user, isMentor } = useAuth();
+  const [comment, setComment] = useState('');
+  const [fullscreenImage, setFullscreenImage] = useState(null);
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef(null);
+
   useEffect(() => {
-    if (!isMentor() && !accountsLoading && accounts.length > 0 && accountFilter === 'all') {
-      // Não força nenhuma conta - mostra todos por padrão
-    }
-  }, [isMentor, accountsLoading, accounts, accountFilter]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [trade?.feedbackHistory]);
 
-  // Atualiza trade selecionado se vier de props
-  useEffect(() => {
-    if (preSelectedTrade) {
-      setSelectedTrade(preSelectedTrade);
-    }
-  }, [preSelectedTrade]);
-
-  // Filtra trades
-  const filteredTrades = useMemo(() => {
-    let result = [...baseTrades];
+  // Combina mentorFeedback legado com feedbackHistory
+  const messages = useMemo(() => {
+    const msgs = [];
+    const history = trade?.feedbackHistory || [];
+    const legacyFeedback = trade?.mentorFeedback;
     
-    // Filtro de conta (apenas para aluno)
-    if (!isMentor() && accountFilter !== 'all') {
-      result = result.filter(t => t.accountId === accountFilter);
-    }
-    
-    // Filtro por aluno (apenas para mentor)
-    if (isMentor() && studentFilter !== 'all') {
-      result = result.filter(t => t.studentEmail === studentFilter);
+    // Se existe mentorFeedback legado e o history está vazio, adiciona como primeira mensagem
+    if (legacyFeedback && history.length === 0) {
+      msgs.push({ 
+        id: 'legacy_mentor_feedback', 
+        authorName: 'Mentor', 
+        authorRole: 'mentor', 
+        content: legacyFeedback, 
+        createdAt: trade.feedbackDate || trade.updatedAt, 
+        isQuestion: false 
+      });
     }
     
-    // Filtro por período
-    if (periodFilter !== 'all') {
-      result = filterTradesByPeriod(result, periodFilter);
-    }
+    // Adiciona histórico
+    msgs.push(...history);
     
-    // Filtro por status
-    if (statusFilter !== 'all') {
-      result = result.filter(t => t.status === statusFilter);
-    }
-    
-    // Filtro por busca
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(t => 
-        t.ticker?.toLowerCase().includes(query) ||
-        t.setup?.toLowerCase().includes(query) ||
-        t.mentorFeedback?.toLowerCase().includes(query) ||
-        t.studentName?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Ordena: QUESTION primeiro (urgente), depois OPEN, REVIEWED, CLOSED
-    const statusOrder = { QUESTION: 0, OPEN: 1, REVIEWED: 2, CLOSED: 3 };
-    result.sort((a, b) => {
-      const orderDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
-      if (orderDiff !== 0) return orderDiff;
-      return (b.date || '').localeCompare(a.date || '');
+    // Ordena por data
+    msgs.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return dateA - dateB;
     });
     
-    return result;
-  }, [baseTrades, isMentor, accountFilter, studentFilter, periodFilter, statusFilter, searchQuery]);
+    return msgs;
+  }, [trade?.feedbackHistory, trade?.mentorFeedback, trade?.feedbackDate, trade?.updatedAt]);
 
-  // Contadores por status
-  const statusCounts = useMemo(() => {
-    const counts = { all: baseTrades.length, OPEN: 0, REVIEWED: 0, QUESTION: 0, CLOSED: 0 };
-    baseTrades.forEach(t => {
-      if (counts[t.status] !== undefined) counts[t.status]++;
-    });
-    return counts;
-  }, [baseTrades]);
+  const userIsMentor = isMentor();
+  const status = trade?.status || STATUS.OPEN;
 
-  // Handler para adicionar comentário/dúvida
-  const handleAddComment = async (content, markAsQuestion = false) => {
-    if (!selectedTrade) return;
-    
+  // ========== HANDLERS ==========
+
+  // Mentor envia feedback/resposta
+  const handleMentorSend = async () => {
+    if (!comment.trim() || sending) return;
+    setSending(true);
     try {
-      await addComment(selectedTrade.id, content, markAsQuestion ? TRADE_STATUS.QUESTION : null);
-      // Atualiza trade selecionado
-      setSelectedTrade(prev => ({ 
-        ...prev, 
-        status: markAsQuestion ? TRADE_STATUS.QUESTION : (isMentor() ? TRADE_STATUS.REVIEWED : prev.status)
-      }));
-    } catch (error) {
-      alert('Erro ao enviar: ' + error.message);
+      await onAddComment(trade.id, comment, false);
+      setComment('');
+    } catch (err) {
+      console.error('Erro:', err);
+    } finally {
+      setSending(false);
     }
   };
 
-  // Handler para encerrar trade
-  const handleCloseTrade = async () => {
-    if (!selectedTrade) return;
-    if (!confirm('Encerrar este trade? Esta ação não pode ser desfeita.')) return;
-    
+  // Aluno envia DÚVIDA → QUESTION
+  const handleStudentQuestion = async () => {
+    if (!comment.trim() || sending) return;
+    setSending(true);
     try {
-      await closeTrade(selectedTrade.id);
-      setSelectedTrade(prev => ({ ...prev, status: TRADE_STATUS.CLOSED }));
-    } catch (error) {
-      alert('Erro ao encerrar: ' + error.message);
+      await onAddComment(trade.id, comment, true);
+      setComment('');
+    } catch (err) {
+      console.error('Erro:', err);
+    } finally {
+      setSending(false);
     }
   };
 
-  // Limpar filtros
-  const clearFilters = () => {
-    setStatusFilter('all');
-    setSearchQuery('');
-    setStudentFilter('all');
-    setPeriodFilter('all');
-    setAccountFilter('all');
+  // Aluno ENCERRA trade (com ou sem comentário)
+  const handleStudentClose = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      // Se tem comentário, adiciona antes de fechar
+      if (comment.trim()) {
+        await onAddComment(trade.id, comment, false);
+      }
+      await onUpdateStatus(trade.id, STATUS.CLOSED);
+      setComment('');
+    } catch (err) {
+      console.error('Erro:', err);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const hasActiveFilters = statusFilter !== 'all' || searchQuery || studentFilter !== 'all' || periodFilter !== 'all' || accountFilter !== 'all';
+  // Permissões
+  const canMentorComment = userIsMentor && (status === STATUS.OPEN || status === STATUS.QUESTION);
+  const canStudentAct = !userIsMentor && status === STATUS.REVIEWED;
 
-  if (tradesLoading || accountsLoading) {
+  const getPlaceholder = () => {
+    if (status === STATUS.CLOSED) return 'Trade encerrado';
+    if (userIsMentor && status === STATUS.OPEN) return 'Escreva seu feedback...';
+    if (userIsMentor && status === STATUS.QUESTION) return 'Responda a dúvida do aluno...';
+    if (!userIsMentor && status === STATUS.REVIEWED) return 'Escreva lições aprendidas ou sua dúvida...';
+    if (!userIsMentor && status === STATUS.OPEN) return 'Aguardando revisão do mentor...';
+    if (!userIsMentor && status === STATUS.QUESTION) return 'Aguardando resposta do mentor...';
+    return '';
+  };
+
+  const getStatusMessage = () => {
+    if (status === STATUS.OPEN && !userIsMentor) return { icon: Clock, text: 'Aguardando o mentor revisar este trade', color: 'text-blue-400' };
+    if (status === STATUS.QUESTION && !userIsMentor) return { icon: HelpCircle, text: 'Sua dúvida foi enviada. Aguardando resposta', color: 'text-amber-400' };
+    if (status === STATUS.QUESTION && userIsMentor) return { icon: HelpCircle, text: 'O aluno tem uma dúvida', color: 'text-amber-400' };
+    return null;
+  };
+  const statusMessage = getStatusMessage();
+
+  if (!trade) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Clock className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="min-h-screen p-6 lg:p-8 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+          <p className="text-slate-400">Trade não encontrado</p>
+          <button onClick={onBack} className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Voltar</button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="min-h-screen p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white flex items-center gap-3">
-          <MessageSquare className="w-8 h-8 text-blue-400" />
-          Feedback dos Trades
-        </h1>
-        <p className="text-slate-400 mt-1">
-          {isMentor() 
-            ? 'Gerencie feedbacks e responda dúvidas dos alunos' 
-            : 'Acompanhe os comentários do mentor e tire suas dúvidas'
-          }
-        </p>
+      <div className="mb-6">
+        <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-4">
+          <ChevronLeft className="w-4 h-4" /> Voltar
+        </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
+              <MessageSquare className="w-6 h-6 text-blue-400" /> Feedback do Trade
+            </h1>
+            <p className="text-slate-400 mt-1">{trade.ticker} • {formatDate(trade.date)} • {trade.studentName || trade.studentEmail?.split('@')[0]}</p>
+          </div>
+          <StatusBadge status={status} />
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Lista de Trades */}
-        <div className="lg:w-1/2 xl:w-2/5">
-          {/* Barra de busca + botão filtros */}
-          <div className="glass-card p-4 mb-4">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder={isMentor() ? "Buscar por ticker, aluno, setup..." : "Buscar por ticker, setup..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`p-2 rounded-lg transition-colors ${
-                  showFilters || hasActiveFilters
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' 
-                    : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'
-                }`}
-              >
-                <Filter className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Filtros avançados (expandível) */}
-            {showFilters && (
-              <div className="border-t border-slate-700 pt-4 mb-4 space-y-3">
-                {/* Filtro de aluno (mentor) */}
-                {isMentor() && students.length > 0 && (
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Aluno</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                      <select
-                        value={studentFilter}
-                        onChange={(e) => setStudentFilter(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm appearance-none cursor-pointer"
-                      >
-                        <option value="all">Todos os alunos</option>
-                        {students.map(s => (
-                          <option key={s.email} value={s.email}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {/* Filtro de conta (aluno) */}
-                {!isMentor() && accounts.length > 0 && (
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Conta</label>
-                    <select
-                      value={accountFilter}
-                      onChange={(e) => setAccountFilter(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm appearance-none cursor-pointer"
-                    >
-                      <option value="all">Todas as contas</option>
-                      {accounts.map(acc => (
-                        <option key={acc.id} value={acc.id}>{acc.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Filtro de período */}
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">Período</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    <select
-                      value={periodFilter}
-                      onChange={(e) => setPeriodFilter(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm appearance-none cursor-pointer"
-                    >
-                      {PERIOD_OPTIONS.map(opt => (
-                        <option key={opt.id} value={opt.id}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Botão limpar filtros */}
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                    Limpar filtros
-                  </button>
-                )}
-              </div>
-            )}
-            
-            {/* Filtros de status */}
-            <div className="flex flex-wrap gap-2">
-              {STATUS_FILTERS.map(filter => {
-                const Icon = filter.icon;
-                const count = statusCounts[filter.id];
-                const isActive = statusFilter === filter.id;
-                
-                return (
-                  <button
-                    key={filter.id}
-                    onClick={() => setStatusFilter(filter.id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {filter.label}
-                    <span className={`px-1.5 py-0.5 rounded text-xs ${
-                      isActive ? 'bg-blue-500' : 'bg-slate-700'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Lista */}
-          <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto">
-            {filteredTrades.length === 0 ? (
-              <div className="glass-card p-8 text-center">
-                <MessageSquare className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-500">
-                  {hasActiveFilters 
-                    ? 'Nenhum trade encontrado com os filtros selecionados'
-                    : 'Nenhum trade encontrado'
-                  }
-                </p>
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="mt-3 text-sm text-blue-400 hover:text-blue-300"
-                  >
-                    Limpar filtros
-                  </button>
-                )}
-              </div>
-            ) : (
-              filteredTrades.map(trade => (
-                <button
-                  key={trade.id}
-                  onClick={() => setSelectedTrade(trade)}
-                  className={`w-full glass-card p-4 text-left transition-all hover:border-blue-500/50 ${
-                    selectedTrade?.id === trade.id 
-                      ? 'border-blue-500 bg-blue-500/10' 
-                      : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{trade.ticker}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          trade.side === 'LONG' 
-                            ? 'bg-emerald-500/20 text-emerald-400' 
-                            : 'bg-red-500/20 text-red-400'
-                        }`}>
-                          {trade.side}
-                        </span>
-                      </div>
-                      {/* Nome do aluno (para mentor) */}
-                      {isMentor() && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          {trade.studentName || trade.studentEmail?.split('@')[0]}
-                        </p>
-                      )}
-                    </div>
-                    <TradeStatusBadge status={trade.status} />
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">{formatDate(trade.date)}</span>
-                    <span className={trade.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                      {formatCurrency(trade.result)}
-                    </span>
-                  </div>
-                  
-                  {trade.mentorFeedback && (
-                    <p className="mt-2 text-xs text-slate-400 line-clamp-2">
-                      💬 {trade.mentorFeedback}
-                    </p>
-                  )}
-                  
-                  <div className="flex items-center justify-end mt-2 text-blue-400">
-                    <span className="text-xs">Ver detalhes</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Coluna Esquerda - Info do Trade */}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <TradeInfoCard trade={trade} onImageClick={setFullscreenImage} />
         </div>
 
-        {/* Thread de Feedback */}
-        <div className="lg:w-1/2 xl:w-3/5">
-          {selectedTrade ? (
-            <FeedbackThread
-              trade={selectedTrade}
-              onAddComment={handleAddComment}
-              onCloseTrade={handleCloseTrade}
-              loading={feedbackLoading}
-              isMentor={isMentor()}
-            />
+        {/* Coluna Direita - Chat */}
+        <div className="glass-card flex flex-col h-[calc(100vh-220px)] min-h-[500px]">
+          {/* Header do Chat */}
+          <div className="flex-none p-4 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-400" />
+              <span className="font-medium text-white">Conversa</span>
+              {messages.length > 0 && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{messages.length}</span>}
+            </div>
+          </div>
+
+          {/* Status Message */}
+          {statusMessage && (
+            <div className={`flex-none px-4 py-3 bg-slate-800/50 border-b border-slate-800 flex items-center gap-2 ${statusMessage.color}`}>
+              <statusMessage.icon className="w-4 h-4" />
+              <span className="text-sm">{statusMessage.text}</span>
+            </div>
+          )}
+
+          {/* Mensagens */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Clock className="w-12 h-12 text-slate-700 mb-3" />
+                <h3 className="text-slate-400 font-medium">Aguardando primeiro feedback</h3>
+              </div>
+            ) : (
+              messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} />)
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Área de Input */}
+          {status === STATUS.CLOSED ? (
+            <div className="flex-none p-4 border-t border-slate-800 bg-slate-800/30">
+              <div className="flex items-center justify-center gap-2 text-slate-500">
+                <Lock className="w-5 h-5" /><span>Este trade foi encerrado</span>
+              </div>
+            </div>
           ) : (
-            <div className="glass-card p-12 text-center sticky top-6">
-              <MessageSquare className="w-16 h-16 text-slate-700 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-400 mb-2">
-                Selecione um trade
-              </h3>
-              <p className="text-slate-500 text-sm">
-                Clique em um trade na lista para ver os feedbacks e interagir
-              </p>
+            <div className="flex-none p-4 border-t border-slate-800">
+              {/* Textarea */}
+              <textarea 
+                value={comment} 
+                onChange={(e) => setComment(e.target.value)} 
+                placeholder={getPlaceholder()} 
+                disabled={(!canMentorComment && !canStudentAct) || sending} 
+                rows={2}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 mb-3"
+              />
+              
+              {/* MENTOR: botão de enviar */}
+              {canMentorComment && (
+                <div className="flex justify-end">
+                  <button 
+                    onClick={handleMentorSend}
+                    disabled={!comment.trim() || sending}
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
+                  >
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder Dúvida'}
+                  </button>
+                </div>
+              )}
+              
+              {/* ALUNO em REVIEWED: 2 botões lado a lado */}
+              {canStudentAct && (
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleStudentClose}
+                    disabled={sending}
+                    className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    Encerrar Trade
+                  </button>
+                  
+                  <button 
+                    onClick={handleStudentQuestion}
+                    disabled={!comment.trim() || sending}
+                    className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <HelpCircle className="w-4 h-4" />}
+                    Enviar Dúvida
+                  </button>
+                </div>
+              )}
+              
+              {/* Mensagem quando não pode agir */}
+              {!canMentorComment && !canStudentAct && status !== STATUS.CLOSED && (
+                <p className="text-xs text-slate-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {status === STATUS.OPEN && !userIsMentor && 'Aguarde o mentor revisar'}
+                  {status === STATUS.QUESTION && !userIsMentor && 'Aguarde o mentor responder'}
+                  {status === STATUS.REVIEWED && userIsMentor && 'Aguardando ação do aluno'}
+                </p>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {/* Fullscreen Image */}
+      {fullscreenImage && (
+        <>
+          <div className="fixed inset-0 bg-slate-950/95 z-[60] cursor-pointer" onClick={() => setFullscreenImage(null)} />
+          <div className="fixed inset-4 z-[61] flex items-center justify-center pointer-events-none">
+            <img src={fullscreenImage} alt="Fullscreen" className="max-w-full max-h-full object-contain rounded-xl pointer-events-auto" />
+            <button onClick={() => setFullscreenImage(null)} className="absolute top-4 right-4 p-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-full transition-colors pointer-events-auto">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

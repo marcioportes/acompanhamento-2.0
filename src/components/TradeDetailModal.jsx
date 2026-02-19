@@ -1,11 +1,13 @@
 /**
  * TradeDetailModal
- * @version 1.2.0
- * @description Modal de detalhes do trade com link para histórico de feedback
- * 
- * CHANGELOG:
+ * @version 1.3.2
+ * @description Modal de detalhes do trade com navegação para histórico de feedback
+ * * CHANGELOG:
+ * - 1.3.2: Botão "Ver conversa completa" sempre visível para permitir início de interação
+ * - 1.3.1: Fix erro "Objects are not valid as React child" - formatDate trata Timestamp Firebase
+ * - 1.3.0: Fix visualização de mensagens, botão "Ver conversa" sempre visível quando há feedback
+ * - 1.2.1: Fix Timestamp display, modal size aumentado
  * - 1.2.0: Adicionado botão "Ver histórico" e callback onViewFeedbackHistory
- * - 1.1.0: Versão anterior
  */
 
 import { useState } from 'react';
@@ -21,18 +23,54 @@ import {
   Send,
   Loader2,
   Clock,
-  FileText,
   ExternalLink,
   CheckCircle,
   HelpCircle,
   Lock
 } from 'lucide-react';
-import { formatCurrency, formatPercent, formatDate } from '../utils/calculations';
+
+// Helpers locais para evitar dependências quebradas
+const formatCurrency = (value) => {
+  if (value === null || value === undefined) return '-';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};
+
+const formatPercent = (value) => {
+  if (value === null || value === undefined) return '-';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+};
+
+// Fix: Trata strings, objetos Timestamp do Firebase, e Date
+const formatDate = (dateInput) => {
+  if (!dateInput) return '-';
+  try {
+    // Se é objeto Timestamp do Firebase (tem seconds e nanoseconds)
+    if (dateInput && typeof dateInput === 'object' && 'seconds' in dateInput) {
+      const date = new Date(dateInput.seconds * 1000);
+      return date.toLocaleDateString('pt-BR');
+    }
+    // Se é objeto Date
+    if (dateInput instanceof Date) {
+      return dateInput.toLocaleDateString('pt-BR');
+    }
+    // Se é string no formato ISO ou YYYY-MM-DD
+    if (typeof dateInput === 'string') {
+      if (dateInput.includes('-')) {
+        const [year, month, day] = dateInput.split('T')[0].split('-');
+        return `${day}/${month}/${year}`;
+      }
+      return dateInput;
+    }
+    return String(dateInput);
+  } catch {
+    return '-';
+  }
+};
 
 // Badge de status inline
 const StatusBadge = ({ status }) => {
   const config = {
-    OPEN: { label: 'Aguardando', icon: Clock, bg: 'bg-slate-500/20', text: 'text-slate-400' },
+    OPEN: { label: 'Aguardando', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400' },
     REVIEWED: { label: 'Revisado', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400' },
     QUESTION: { label: 'Dúvida', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400' },
     CLOSED: { label: 'Encerrado', icon: Lock, bg: 'bg-purple-500/20', text: 'text-purple-400' }
@@ -65,7 +103,14 @@ const TradeDetailModal = ({
   if (!isOpen || !trade) return null;
 
   const isWin = trade.result >= 0;
-  const feedbackCount = (trade.feedbackHistory || []).length;
+  
+  // Calcula quantidade de mensagens
+  const feedbackHistoryCount = (trade.feedbackHistory || []).length;
+  const hasLegacyFeedback = !!trade.mentorFeedback;
+  const totalMessageCount = feedbackHistoryCount || (hasLegacyFeedback ? 1 : 0);
+  
+  // AVISO: hasFeedback removido da condição de exibição do botão para permitir interação inicial
+  // const hasFeedback = totalMessageCount > 0;
 
   const handleSubmitFeedback = async () => {
     if (!feedback.trim()) return;
@@ -86,19 +131,22 @@ const TradeDetailModal = ({
     }
   };
 
+  // Campo de notas/observações
+  const notes = trade.notes || trade.observation || trade.comment || trade.observacao || '';
+
   return (
     <>
       {/* Backdrop */}
       <div 
-        className="modal-backdrop"
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50"
         onClick={onClose}
       />
       
       {/* Modal */}
-      <div className="modal-content w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        <div className="glass-card">
+      <div className="fixed inset-4 md:inset-8 lg:inset-12 z-50 flex items-center justify-center pointer-events-none">
+        <div className="glass-card w-full max-w-5xl max-h-full overflow-hidden pointer-events-auto flex flex-col">
           {/* Header */}
-          <div className={`flex items-center justify-between p-6 border-b ${
+          <div className={`flex-none flex items-center justify-between p-6 border-b ${
             isWin ? 'border-emerald-500/20' : 'border-red-500/20'
           }`}>
             <div className="flex items-center gap-4">
@@ -123,9 +171,11 @@ const TradeDetailModal = ({
                   }`}>
                     {trade.side}
                   </span>
-                  <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded-lg">
-                    {trade.exchange}
-                  </span>
+                  {trade.exchange && (
+                    <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded-lg">
+                      {trade.exchange}
+                    </span>
+                  )}
                   <StatusBadge status={trade.status} />
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
@@ -144,7 +194,7 @@ const TradeDetailModal = ({
                 <p className={`text-sm ${
                   isWin ? 'text-emerald-400/70' : 'text-red-400/70'
                 }`}>
-                  {trade.resultPercent >= 0 ? '+' : ''}{formatPercent(trade.resultPercent)}
+                  {formatPercent(trade.resultPercent)}
                 </p>
               </div>
               
@@ -157,8 +207,8 @@ const TradeDetailModal = ({
             </div>
           </div>
 
-          {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          {/* Content - Scroll */}
+          <div className="flex-1 overflow-y-auto p-6">
             {/* Detalhes Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800/30 rounded-xl p-4">
@@ -174,70 +224,54 @@ const TradeDetailModal = ({
                   <BarChart3 className="w-4 h-4" />
                   <span className="text-xs">Setup</span>
                 </div>
-                <p className="text-white font-medium">{trade.setup}</p>
+                <p className="text-white font-medium">{trade.setup || '-'}</p>
               </div>
               
               <div className="bg-slate-800/30 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-slate-500 mb-1">
                   <Brain className="w-4 h-4" />
-                  <span className="text-xs">Emoção</span>
+                  <span className="text-xs">Emoção Entrada</span>
                 </div>
-                <p className={`font-medium ${
-                  trade.emotion === 'Disciplinado' ? 'text-emerald-400' :
-                  trade.emotion === 'FOMO' || trade.emotion === 'Ansioso' ? 'text-yellow-400' :
-                  'text-white'
-                }`}>
-                  {trade.emotion}
+                <p className="text-white font-medium">
+                  {trade.emotionEntry || trade.emotion || '-'}
                 </p>
               </div>
               
               <div className="bg-slate-800/30 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-slate-500 mb-1">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-xs">Registrado</span>
+                  <Brain className="w-4 h-4" />
+                  <span className="text-xs">Emoção Saída</span>
                 </div>
-                <p className="text-white font-medium text-sm">
-                  {trade.createdAt?.toDate 
-                    ? formatDate(trade.createdAt.toDate(), "dd/MM HH:mm")
-                    : formatDate(trade.createdAt)
-                  }
+                <p className="text-white font-medium">
+                  {trade.emotionExit || '-'}
                 </p>
               </div>
             </div>
 
             {/* Preços */}
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-slate-800/30 rounded-xl p-4">
-                <p className="text-xs text-slate-500 mb-1">Entrada</p>
-                <p className="text-lg font-mono font-semibold text-white">
-                  R$ {parseFloat(trade.entry).toFixed(2)}
-                </p>
+              <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+                <span className="text-xs text-slate-500 block mb-1">Entrada</span>
+                <span className="text-white font-mono text-lg">{trade.entry}</span>
               </div>
-              <div className="bg-slate-800/30 rounded-xl p-4">
-                <p className="text-xs text-slate-500 mb-1">Saída</p>
-                <p className="text-lg font-mono font-semibold text-white">
-                  R$ {parseFloat(trade.exit).toFixed(2)}
-                </p>
+              <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+                <span className="text-xs text-slate-500 block mb-1">Saída</span>
+                <span className="text-white font-mono text-lg">{trade.exit}</span>
               </div>
-              <div className="bg-slate-800/30 rounded-xl p-4">
-                <p className="text-xs text-slate-500 mb-1">Quantidade</p>
-                <p className="text-lg font-mono font-semibold text-white">
-                  {parseFloat(trade.qty).toLocaleString()}
-                </p>
+              <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+                <span className="text-xs text-slate-500 block mb-1">Quantidade</span>
+                <span className="text-white font-mono text-lg">{trade.qty}</span>
               </div>
             </div>
 
-            {/* Observações */}
-            {trade.notes && (
+            {/* Observações do Aluno */}
+            {notes && (
               <div className="mb-6">
-                <div className="flex items-center gap-2 text-slate-400 mb-2">
-                  <FileText className="w-4 h-4" />
-                  <span className="text-sm font-medium">Observações do Aluno</span>
-                </div>
+                <h4 className="text-sm font-medium text-slate-400 mb-3">
+                  Observações do Aluno
+                </h4>
                 <div className="bg-slate-800/30 rounded-xl p-4">
-                  <p className="text-slate-300 text-sm whitespace-pre-wrap">
-                    {trade.notes}
-                  </p>
+                  <p className="text-slate-300 text-sm whitespace-pre-wrap">{notes}</p>
                 </div>
               </div>
             )}
@@ -308,22 +342,22 @@ const TradeDetailModal = ({
                 <div className="flex items-center gap-2 text-slate-400">
                   <MessageSquare className="w-4 h-4" />
                   <span className="text-sm font-medium">Feedback do Mentor</span>
-                  {feedbackCount > 0 && (
+                  {totalMessageCount > 0 && (
                     <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
-                      {feedbackCount} {feedbackCount === 1 ? 'mensagem' : 'mensagens'}
+                      {totalMessageCount} {totalMessageCount === 1 ? 'mensagem' : 'mensagens'}
                     </span>
                   )}
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  {/* Botão Ver Histórico */}
-                  {feedbackCount > 0 && onViewFeedbackHistory && (
+                  {/* Botão Ver Conversa - AGORA SEMPRE VISÍVEL se onViewFeedbackHistory existir */}
+                  {onViewFeedbackHistory && (
                     <button
                       onClick={handleViewHistory}
-                      className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-colors"
                     >
                       <ExternalLink className="w-4 h-4" />
-                      Ver histórico
+                      Ver conversa completa
                     </button>
                   )}
                   
@@ -340,24 +374,20 @@ const TradeDetailModal = ({
 
               {trade.mentorFeedback ? (
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
-                  <p className="text-slate-300 text-sm whitespace-pre-wrap">
+                  <p className="text-slate-300 text-sm whitespace-pre-wrap line-clamp-3">
                     {trade.mentorFeedback}
                   </p>
                   {trade.feedbackDate && (
                     <p className="text-xs text-slate-500 mt-3">
-                      Enviado em {formatDate(trade.feedbackDate, "dd/MM/yyyy 'às' HH:mm")}
+                      Enviado em {formatDate(trade.feedbackDate)}
                     </p>
                   )}
                   
-                  {/* Link para ver histórico completo se houver mais mensagens */}
-                  {feedbackCount > 1 && onViewFeedbackHistory && (
-                    <button
-                      onClick={handleViewHistory}
-                      className="mt-3 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Ver todas as {feedbackCount} mensagens
-                    </button>
+                  {/* Aviso se há mais mensagens */}
+                  {totalMessageCount > 1 && (
+                    <p className="text-xs text-blue-400 mt-2">
+                      + {totalMessageCount - 1} mensagem(s) adicional(is) na conversa
+                    </p>
                   )}
                 </div>
               ) : showFeedbackInput && isMentor ? (
@@ -367,7 +397,7 @@ const TradeDetailModal = ({
                     onChange={(e) => setFeedback(e.target.value)}
                     placeholder="Escreva seu feedback para este trade..."
                     rows={4}
-                    className="w-full resize-none"
+                    className="w-full resize-none bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                     autoFocus
                   />
                   <div className="flex items-center justify-end gap-2">
@@ -376,24 +406,24 @@ const TradeDetailModal = ({
                         setShowFeedbackInput(false);
                         setFeedback('');
                       }}
-                      className="btn-secondary py-2 px-4"
+                      className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
                       disabled={feedbackLoading}
                     >
                       Cancelar
                     </button>
                     <button
                       onClick={handleSubmitFeedback}
-                      className="btn-primary py-2 px-4"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
                       disabled={!feedback.trim() || feedbackLoading}
                     >
                       {feedbackLoading ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          <Loader2 className="w-4 h-4 animate-spin" />
                           Enviando...
                         </>
                       ) : (
                         <>
-                          <Send className="w-4 h-4 mr-2" />
+                          <Send className="w-4 h-4" />
                           Enviar
                         </>
                       )}

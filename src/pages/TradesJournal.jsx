@@ -1,3 +1,13 @@
+/**
+ * TradesJournal
+ * @version 1.1.0
+ * @description Diário de trades com navegação para FeedbackPage
+ * 
+ * CHANGELOG:
+ * - 1.1.0: Adicionado suporte a onNavigateToFeedback para ver conversas
+ * - 1.0.0: Versão inicial
+ */
+
 import { useState, useMemo, useEffect } from 'react';
 import { PlusCircle, FlaskConical, ChevronDown, Filter } from 'lucide-react';
 import Filters from '../components/Filters';
@@ -22,7 +32,7 @@ const isDemoAccount = (acc) => {
   return acc.isReal === false || acc.isReal === undefined;
 };
 
-const TradesJournal = () => {
+const TradesJournal = ({ onNavigateToFeedback }) => {
   // Hooks
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade } = useTrades();
   const { accounts, loading: accountsLoading } = useAccounts();
@@ -109,6 +119,14 @@ const TradesJournal = () => {
 
   const resetFilters = () => {
     setFilters(prev => ({ ...prev, period: 'all', ticker: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' }));
+  };
+
+  // Handler para ver conversa de feedback
+  const handleViewFeedbackHistory = (trade) => {
+    setViewingTrade(null); // Fecha o modal
+    if (onNavigateToFeedback) {
+      onNavigateToFeedback(trade);
+    }
   };
 
   // Dados para renderização do Dropdown
@@ -205,7 +223,12 @@ const TradesJournal = () => {
         setups={setups}     
       />
       
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} />
+      <TradeDetailModal 
+        isOpen={!!viewingTrade} 
+        onClose={() => setViewingTrade(null)} 
+        trade={viewingTrade}
+        onViewFeedbackHistory={handleViewFeedbackHistory}
+      />
     </div>
   );
 };

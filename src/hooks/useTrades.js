@@ -1,12 +1,20 @@
 /**
  * useTrades
- * @version 1.2.0
- * @description Hook responsável pelo gerenciamento de trades (CRUD).
+ * @version 1.3.0
+ * @description Hook responsável pelo gerenciamento de trades (CRUD) + Sistema de Feedback
  * 
  * CHANGELOG:
- * - 1.2.0: Fix getTradesAwaitingFeedback (OPEN + QUESTION), padronização versão
+ * - 1.3.0: Sistema completo de feedback com máquina de estados
+ *   - addFeedbackComment(): Adiciona comentário ao histórico com transição de status
+ *   - updateTradeStatus(): Atualiza status do trade
+ * - 1.2.0: Fix getTradesAwaitingFeedback (OPEN + QUESTION)
  * - 1.1.0: Suporte a overrideStudentId para View As Student
- * - 1.0.0: Versão inicial com suporte Swing Trade
+ * 
+ * MÁQUINA DE ESTADOS:
+ * OPEN → Mentor dá feedback → REVIEWED
+ * REVIEWED → Aluno pergunta → QUESTION
+ * REVIEWED → Aluno encerra → CLOSED
+ * QUESTION → Mentor responde → REVIEWED
  * 
  * @firestore-index REQUERIDO: trades (studentId ASC, date DESC)
  */
@@ -14,15 +22,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, getDocs, getDoc, serverTimestamp,
+  doc, getDocs, getDoc, serverTimestamp, arrayUnion
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
 
-// Status padrão para novos trades
-const DEFAULT_STATUS = 'OPEN';
+// Status constants
+const STATUS = {
+  OPEN: 'OPEN',
+  REVIEWED: 'REVIEWED',
+  QUESTION: 'QUESTION',
+  CLOSED: 'CLOSED'
+};
+
+const DEFAULT_STATUS = STATUS.OPEN;
 
 /**
  * @param {string|null} overrideStudentId - UID do aluno para View As Student
@@ -34,21 +49,18 @@ export const useTrades = (overrideStudentId = null) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Helper: Calcula Duração em Minutos (Swing Ready)
   const calculateDuration = (entryISO, exitISO) => {
     if (!entryISO || !exitISO) return 0;
     try {
       const start = new Date(entryISO);
       const end = new Date(exitISO);
-      const diffMs = end - start;
-      return Math.floor(diffMs / 60000);
+      return Math.floor((end - start) / 60000);
     } catch (e) {
       console.error('[useTrades] Erro duração:', e);
       return 0;
     }
   };
 
-  // Efeito de Carregamento
   useEffect(() => {
     if (!user) { 
       setTrades([]); 
@@ -65,15 +77,8 @@ export const useTrades = (overrideStudentId = null) => {
 
     try {
       if (overrideStudentId) {
-        // MODO: Mentor visualizando como aluno específico
         console.log('[useTrades] Override mode:', overrideStudentId);
-        
-        const studentQuery = query(
-          collection(db, 'trades'), 
-          where('studentId', '==', overrideStudentId), 
-          orderBy('date', 'desc')
-        );
-
+        const studentQuery = query(collection(db, 'trades'), where('studentId', '==', overrideStudentId), orderBy('date', 'desc'));
         unsubscribeStudent = onSnapshot(studentQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -94,11 +99,8 @@ export const useTrades = (overrideStudentId = null) => {
           }
         );
       } else if (isMentor()) {
-        // MODO: Mentor normal (vê TODOS os trades)
         console.log('[useTrades] Mentor mode - all trades');
-        
         const allQuery = query(collection(db, 'trades'), orderBy('date', 'desc'));
-        
         unsubscribeAll = onSnapshot(allQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -119,15 +121,8 @@ export const useTrades = (overrideStudentId = null) => {
           }
         );
       } else {
-        // MODO: Aluno normal
         console.log('[useTrades] Student mode:', user.email);
-        
-        const studentQuery = query(
-          collection(db, 'trades'), 
-          where('studentEmail', '==', user.email), 
-          orderBy('date', 'desc')
-        );
-
+        const studentQuery = query(collection(db, 'trades'), where('studentEmail', '==', user.email), orderBy('date', 'desc'));
         unsubscribeStudent = onSnapshot(studentQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -152,10 +147,7 @@ export const useTrades = (overrideStudentId = null) => {
       setLoading(false);
     }
 
-    return () => { 
-      unsubscribeStudent(); 
-      unsubscribeAll(); 
-    };
+    return () => { unsubscribeStudent(); unsubscribeAll(); };
   }, [user, isMentor, overrideStudentId]);
 
   const uploadImage = async (file, tradeId, type) => {
@@ -165,13 +157,10 @@ export const useTrades = (overrideStudentId = null) => {
     return await getDownloadURL(snap.ref);
   };
 
-  // ADD TRADE
   const addTrade = useCallback(async (tradeData, htfFile, ltfFile) => {
     if (!user) throw new Error('Usuário não autenticado');
     setLoading(true); 
     setError(null);
-    
-    console.log('[useTrades] addTrade iniciando...');
 
     try {
       if (!tradeData.planId) throw new Error('Selecione um Plano.');
@@ -187,7 +176,7 @@ export const useTrades = (overrideStudentId = null) => {
       const side = tradeData.side;
       let result;
       
-      if (tradeData.tickerRule && tradeData.tickerRule.tickSize && tradeData.tickerRule.tickValue) {
+      if (tradeData.tickerRule?.tickSize && tradeData.tickerRule?.tickValue) {
         const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
         const ticks = rawDiff / tradeData.tickerRule.tickSize;
         result = ticks * tradeData.tickerRule.tickValue * qty;
@@ -202,12 +191,10 @@ export const useTrades = (overrideStudentId = null) => {
 
       const newTrade = {
         ...tradeData,
-        date: legacyDate, 
-        entryTime,
-        exitTime,
-        duration,
+        date: legacyDate, entryTime, exitTime, duration,
         ticker: tradeData.ticker?.toUpperCase() || '',
-        entry, exit, qty, result: Math.round(result * 100) / 100,
+        entry, exit, qty, 
+        result: Math.round(result * 100) / 100,
         resultPercent: calculateResultPercent(side, entry, exit),
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
@@ -221,12 +208,10 @@ export const useTrades = (overrideStudentId = null) => {
       };
 
       const docRef = await addDoc(collection(db, 'trades'), newTrade);
-      console.log('[useTrades] Trade gravado:', docRef.id);
       
       if (htfFile) { const url = await uploadImage(htfFile, docRef.id, 'htf'); await updateDoc(docRef, { htfUrl: url }); }
       if (ltfFile) { const url = await uploadImage(ltfFile, docRef.id, 'ltf'); await updateDoc(docRef, { ltfUrl: url }); }
 
-      // Cria Movimento (Ledger)
       if (derivedAccountId && result !== 0) {
         const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
         const snapMoves = await getDocs(qMoves);
@@ -234,19 +219,12 @@ export const useTrades = (overrideStudentId = null) => {
         const balanceBefore = moves[0]?.balanceAfter || 0;
 
         await addDoc(collection(db, 'movements'), {
-          accountId: derivedAccountId,
-          type: 'TRADE_RESULT',
-          amount: result,
-          balanceBefore,
-          balanceAfter: balanceBefore + result,
+          accountId: derivedAccountId, type: 'TRADE_RESULT', amount: result,
+          balanceBefore, balanceAfter: balanceBefore + result,
           description: `${tradeData.side} ${tradeData.ticker} (${tradeData.qty}x)`,
-          date: legacyDate, 
-          dateTime: exitTime || new Date().toISOString(), 
-          tradeId: docRef.id,
-          studentId: user.uid,
-          studentEmail: user.email,
-          createdBy: user.uid,
-          createdAt: serverTimestamp()
+          date: legacyDate, dateTime: exitTime || new Date().toISOString(), 
+          tradeId: docRef.id, studentId: user.uid, studentEmail: user.email,
+          createdBy: user.uid, createdAt: serverTimestamp()
         });
       }
       return { id: docRef.id, ...newTrade };
@@ -259,7 +237,6 @@ export const useTrades = (overrideStudentId = null) => {
     }
   }, [user]);
 
-  // UPDATE TRADE
   const updateTrade = useCallback(async (tradeId, updates, htfFile, ltfFile) => {
     if (!user) throw new Error('Auth required');
     setLoading(true); setError(null);
@@ -280,19 +257,18 @@ export const useTrades = (overrideStudentId = null) => {
       if (htfFile) updateData.htfUrl = await uploadImage(htfFile, tradeId, 'htf');
       if (ltfFile) updateData.ltfUrl = await uploadImage(ltfFile, tradeId, 'ltf');
 
-      const entry = parseFloat(updates.entry !== undefined ? updates.entry : currentTrade.entry);
-      const exit = parseFloat(updates.exit !== undefined ? updates.exit : currentTrade.exit);
-      const qty = parseFloat(updates.qty !== undefined ? updates.qty : currentTrade.qty);
+      const entry = parseFloat(updates.entry ?? currentTrade.entry);
+      const exit = parseFloat(updates.exit ?? currentTrade.exit);
+      const qty = parseFloat(updates.qty ?? currentTrade.qty);
       const side = updates.side || currentTrade.side;
       const tickerRule = updates.tickerRule || currentTrade.tickerRule;
 
       let newResult = currentTrade.result;
 
       if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
-        if (tickerRule && tickerRule.tickSize && tickerRule.tickValue) {
+        if (tickerRule?.tickSize && tickerRule?.tickValue) {
           const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
-          const ticks = rawDiff / tickerRule.tickSize;
-          newResult = ticks * tickerRule.tickValue * qty;
+          newResult = (rawDiff / tickerRule.tickSize) * tickerRule.tickValue * qty;
         } else {
           newResult = calculateTradeResult(side, entry, exit, qty);
         }
@@ -303,13 +279,10 @@ export const useTrades = (overrideStudentId = null) => {
 
       await updateDoc(tradeRef, updateData);
 
-      // Sincronia de Ledger
       if (currentTrade.accountId && Math.abs(newResult - currentTrade.result) > 0.01) {
         const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
         const snapMov = await getDocs(qMov);
-        if (!snapMov.empty) {
-          await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref)));
-        }
+        if (!snapMov.empty) await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref)));
 
         if (newResult !== 0) {
           const qMoves = query(collection(db, 'movements'), where('accountId', '==', currentTrade.accountId));
@@ -318,19 +291,13 @@ export const useTrades = (overrideStudentId = null) => {
           const balanceBefore = moves[0]?.balanceAfter || 0;
 
           await addDoc(collection(db, 'movements'), {
-            accountId: currentTrade.accountId,
-            type: 'TRADE_RESULT',
-            amount: newResult,
-            balanceBefore, 
-            balanceAfter: balanceBefore + newResult,
+            accountId: currentTrade.accountId, type: 'TRADE_RESULT', amount: newResult,
+            balanceBefore, balanceAfter: balanceBefore + newResult,
             description: `${side} ${updateData.ticker || currentTrade.ticker} (${qty}x) [Edit]`,
             date: updateData.date || currentTrade.date,
             dateTime: newExitTime || new Date().toISOString(),
-            tradeId: tradeId,
-            studentId: user.uid,
-            studentEmail: user.email,
-            createdBy: user.uid,
-            createdAt: serverTimestamp()
+            tradeId, studentId: user.uid, studentEmail: user.email,
+            createdBy: user.uid, createdAt: serverTimestamp()
           });
         }
       }
@@ -339,63 +306,127 @@ export const useTrades = (overrideStudentId = null) => {
     } catch (err) { console.error(err); setError(err.message); throw err; } finally { setLoading(false); }
   }, [user]);
 
-  // DELETE TRADE
   const deleteTrade = useCallback(async (tradeId) => {
-     if (!user) throw new Error('Auth required');
-     setLoading(true);
-     console.log('[useTrades] Deletando:', tradeId);
+    if (!user) throw new Error('Auth required');
+    setLoading(true);
 
-     try {
-         const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
-         const snapMov = await getDocs(qMov);
-         console.log(`[useTrades] ${snapMov.size} movimentos encontrados`);
-
-         try {
-            await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref)));
-         } catch (movErr) {
-            console.error('[useTrades] Erro movimentos:', movErr);
-         }
-
-         await deleteDoc(doc(db, 'trades', tradeId));
-         console.log('[useTrades] Trade deletado');
-         return true;
-
-     } catch(err) { 
-         console.error('[useTrades] Erro fatal:', err);
-         throw err; 
-     } finally { 
-         setLoading(false); 
-     }
+    try {
+      const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
+      const snapMov = await getDocs(qMov);
+      try { await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref))); } catch (e) { console.error(e); }
+      await deleteDoc(doc(db, 'trades', tradeId));
+      return true;
+    } catch(err) { 
+      console.error('[useTrades] Erro fatal:', err);
+      throw err; 
+    } finally { 
+      setLoading(false); 
+    }
   }, [user]);
 
+  // ============================================
+  // SISTEMA DE FEEDBACK v1.3.0
+  // ============================================
+
   const addFeedback = useCallback(async (tradeId, feedback) => {
-     if (!user || !isMentor()) throw new Error('Apenas mentores');
-     await updateDoc(doc(db, 'trades', tradeId), { 
-       mentorFeedback: feedback, 
-       status: 'REVIEWED', 
-       updatedAt: serverTimestamp() 
-     });
+    if (!user || !isMentor()) throw new Error('Apenas mentores');
+    
+    const comment = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      author: user.email,
+      authorName: user.displayName || user.email.split('@')[0],
+      authorRole: 'mentor',
+      content: feedback.trim(),
+      isQuestion: false,
+      createdAt: new Date().toISOString(),
+    };
+    
+    await updateDoc(doc(db, 'trades', tradeId), { 
+      mentorFeedback: feedback, 
+      feedbackDate: new Date().toISOString(),
+      feedbackHistory: arrayUnion(comment),
+      status: STATUS.REVIEWED, 
+      updatedAt: serverTimestamp() 
+    });
   }, [user, isMentor]);
 
-  // ============================================
-  // HELPERS PARA MENTOR
-  // ============================================
-  
-  const getTradesByStudent = useCallback((email) => {
-    return allTrades.filter(t => t.studentEmail === email);
-  }, [allTrades]);
-  
   /**
-   * Retorna trades aguardando ação do mentor
-   * Inclui: OPEN (novos) + QUESTION (dúvidas do aluno)
+   * Adiciona comentário ao histórico com transição de status automática
    */
-  const getTradesAwaitingFeedback = useCallback(() => {
-    return allTrades.filter(t => t.status === 'OPEN' || t.status === 'QUESTION');
-  }, [allTrades]);
+  const addFeedbackComment = useCallback(async (tradeId, content, isQuestion = false) => {
+    if (!user) throw new Error('Auth required');
+    
+    const tradeRef = doc(db, 'trades', tradeId);
+    const tradeSnap = await getDoc(tradeRef);
+    if (!tradeSnap.exists()) throw new Error('Trade não encontrado');
+    
+    const trade = tradeSnap.data();
+    const userIsMentor = isMentor();
+    
+    // Determina o novo status
+    let newStatus = trade.status;
+    if (userIsMentor) {
+      // Mentor: OPEN → REVIEWED, QUESTION → REVIEWED
+      if (trade.status === STATUS.OPEN || trade.status === STATUS.QUESTION) {
+        newStatus = STATUS.REVIEWED;
+      }
+    } else {
+      // Aluno: se é dúvida, REVIEWED → QUESTION
+      if (isQuestion && trade.status === STATUS.REVIEWED) {
+        newStatus = STATUS.QUESTION;
+      }
+    }
+    
+    const comment = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      author: user.email,
+      authorName: user.displayName || user.email.split('@')[0],
+      authorRole: userIsMentor ? 'mentor' : 'student',
+      content: content.trim(),
+      isQuestion,
+      createdAt: new Date().toISOString(),
+    };
+    
+    const updateData = {
+      feedbackHistory: arrayUnion(comment),
+      status: newStatus,
+      updatedAt: serverTimestamp(),
+    };
+    
+    // Primeiro feedback do mentor também atualiza campo legado
+    if (userIsMentor && trade.status === STATUS.OPEN) {
+      updateData.mentorFeedback = content.trim();
+      updateData.feedbackDate = new Date().toISOString();
+    }
+    
+    await updateDoc(tradeRef, updateData);
+    console.log(`[useTrades] Feedback: ${trade.status} → ${newStatus}`);
+    
+    return { 
+      ...trade, id: tradeId, ...updateData, 
+      feedbackHistory: [...(trade.feedbackHistory || []), comment] 
+    };
+  }, [user, isMentor]);
 
   /**
-   * Agrupa trades por aluno
+   * Atualiza apenas o status do trade
    */
+  const updateTradeStatus = useCallback(async (tradeId, newStatus) => {
+    if (!user) throw new Error('Auth required');
+    await updateDoc(doc(db, 'trades', tradeId), { status: newStatus, updatedAt: serverTimestamp() });
+    console.log(`[useTrades] Status → ${newStatus}`);
+  }, [user]);
+
+  // ============================================
+  // HELPERS
+  // ============================================
+  
+  const getTradesByStudent = useCallback((email) => allTrades.filter(t => t.studentEmail === email), [allTrades]);
+  
+  const getTradesAwaitingFeedback = useCallback(() => {
+    return allTrades.filter(t => t.status === STATUS.OPEN || t.status === STATUS.QUESTION);
+  }, [allTrades]);
+
   const getTradesGroupedByStudent = useCallback(() => {
     const grouped = {};
     allTrades.forEach(t => {
@@ -406,9 +437,6 @@ export const useTrades = (overrideStudentId = null) => {
     return grouped;
   }, [allTrades]);
 
-  /**
-   * Retorna lista única de alunos com trades
-   */
   const getUniqueStudents = useCallback(() => {
     const map = {};
     allTrades.forEach(t => {
@@ -423,44 +451,27 @@ export const useTrades = (overrideStudentId = null) => {
     return Object.values(map);
   }, [allTrades]);
 
-  /**
-   * Retorna contagem de trades por status para um aluno específico
-   */
   const getStudentFeedbackCounts = useCallback((studentEmail) => {
     const studentTrades = allTrades.filter(t => t.studentEmail === studentEmail);
     return {
-      open: studentTrades.filter(t => t.status === 'OPEN').length,
-      question: studentTrades.filter(t => t.status === 'QUESTION').length,
-      reviewed: studentTrades.filter(t => t.status === 'REVIEWED').length,
-      closed: studentTrades.filter(t => t.status === 'CLOSED').length,
+      open: studentTrades.filter(t => t.status === STATUS.OPEN).length,
+      question: studentTrades.filter(t => t.status === STATUS.QUESTION).length,
+      reviewed: studentTrades.filter(t => t.status === STATUS.REVIEWED).length,
+      closed: studentTrades.filter(t => t.status === STATUS.CLOSED).length,
       total: studentTrades.length
     };
   }, [allTrades]);
 
-  /**
-   * Retorna trades filtrados por aluno e status
-   */
   const getTradesByStudentAndStatus = useCallback((studentEmail, status) => {
-    return allTrades.filter(t => 
-      t.studentEmail === studentEmail && t.status === status
-    );
+    return allTrades.filter(t => t.studentEmail === studentEmail && t.status === status);
   }, [allTrades]);
   
   return { 
-    trades, 
-    allTrades, 
-    loading, 
-    error, 
-    addTrade, 
-    updateTrade, 
-    deleteTrade, 
-    addFeedback, 
-    getTradesByStudent,
-    getTradesAwaitingFeedback,
-    getTradesGroupedByStudent,
-    getUniqueStudents,
-    getStudentFeedbackCounts,
-    getTradesByStudentAndStatus
+    trades, allTrades, loading, error, 
+    addTrade, updateTrade, deleteTrade, 
+    addFeedback, addFeedbackComment, updateTradeStatus,
+    getTradesByStudent, getTradesAwaitingFeedback, getTradesGroupedByStudent,
+    getUniqueStudents, getStudentFeedbackCounts, getTradesByStudentAndStatus
   };
 };
 

@@ -1,11 +1,11 @@
 /**
  * StudentDashboard
- * @version 1.0.7
+ * @version 1.0.8
  * @description Dashboard com suporte a View As Student
- * * SEMVER: Patch fix (v1.0.7)
- * * BASEADO EM: v7.4.0
- * * FIX: Card de Plano exibe saldo verde se > 0 (Solvência),
- * independente se está abaixo do saldo inicial (Lucro/Prejuízo).
+ * * CHANGELOG:
+ * - 1.0.8: Fix navegação para histórico de feedback (botão "Ver conversa")
+ * - 1.0.7: Fix: Card de Plano exibe saldo verde se > 0
+ * - 1.0.6: View As Student suporte
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -102,8 +102,9 @@ const renderSentimentIcon = (pnl) => {
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
  * { uid, email, name }
+ * @param {Function} onNavigateToFeedback - Callback para navegar para a tela de feedback
  */
-const StudentDashboard = ({ viewAs = null }) => {
+const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const { user } = useAuth(); // Hooks adicionados para consistência se não vier via prop
   
   // Determina o ID do aluno alvo para override dos hooks
@@ -180,6 +181,14 @@ const StudentDashboard = ({ viewAs = null }) => {
     const loss = Math.min(0, aggregatedCurrentBalance - aggregatedInitialBalance);
     return Math.abs(loss / aggregatedInitialBalance) * 100;
   }, [aggregatedInitialBalance, aggregatedCurrentBalance]);
+
+  // Handler para navegar para histórico de feedback
+  const handleViewFeedbackHistory = (trade) => {
+    setViewingTrade(null); // Fecha o modal atual
+    if (onNavigateToFeedback) {
+      onNavigateToFeedback(trade); // Navega para a página de feedback
+    }
+  };
 
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
     setIsSubmitting(true);
@@ -453,7 +462,12 @@ const StudentDashboard = ({ viewAs = null }) => {
               <h3 className="font-bold text-white">📅 Trades de {calendarSelectedDate.split('-').reverse().join('/')}</h3>
               <button onClick={() => setCalendarSelectedDate(null)} className="text-sm text-slate-400 hover:text-white flex gap-1"><X className="w-4 h-4"/> Fechar</button>
             </div>
-            <TradesList trades={filteredTrades.filter(t => t.date === calendarSelectedDate)} onViewTrade={setViewingTrade} onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} onDeleteTrade={deleteTrade} />
+            <TradesList 
+              trades={filteredTrades.filter(t => t.date === calendarSelectedDate)} 
+              onViewTrade={setViewingTrade} 
+              onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 
+              onDeleteTrade={deleteTrade} 
+            />
           </div>
         </div>
       )}
@@ -467,7 +481,17 @@ const StudentDashboard = ({ viewAs = null }) => {
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} />
+      
+      {/* FIX 1.0.8: Passando onViewFeedbackHistory para habilitar botão de ver conversa.
+         O handler handleViewFeedbackHistory fecha o modal e chama a prop de navegação.
+      */}
+      <TradeDetailModal 
+        isOpen={!!viewingTrade} 
+        onClose={() => setViewingTrade(null)} 
+        trade={viewingTrade} 
+        onViewFeedbackHistory={handleViewFeedbackHistory}
+      />
+
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
     </div>

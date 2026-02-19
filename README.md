@@ -1,32 +1,63 @@
-# Sprint v1.2.0 - Feedback Cards & Filtros
+# Sprint v1.3.0 - Análise Emocional Avançada
 
 ## 📋 Resumo
 
-Esta versão adiciona:
-- **Cards por aluno** na aba "Aguardando Feedback" do mentor
-- **Filtros avançados** no FeedbackPage (aluno, período, busca)
-- **Coluna de status** no TradesList
-- **Script de migração** para status legados
+Este sprint inclui:
+- **v1.2.1**: Correções de 4 bugs críticos
+- **v1.3.0**: Sistema de Estados Psicológicos com 15 emoções e detecção de padrões
 
 ---
 
-## 🚀 Quick Start
+## 🐛 Bugs Corrigidos (v1.2.1)
 
-### 1. Migrar dados
-```bash
-cd functions
-node migrate-trade-status.js
-```
+| Bug | Causa | Correção |
+|-----|-------|----------|
+| Tela preta no TradeDetailModal | `formatDate` não tratava Firestore Timestamp | Adicionado suporte a `{seconds, nanoseconds}` |
+| "Precisam Atenção" inconsistente | `identifyStudentsNeedingAttention` esperava formato diferente | Normaliza entrada (objeto ou array) |
+| FeedbackThread sem histórico | mentorFeedback legado não exibido quando havia feedbackHistory | Sempre inclui legado se não duplicado |
+| Modal pequeno, botão cortado | CSS limitando altura | Modal expandido para `inset-4 md:inset-8` |
 
-### 2. Deploy backend
-```bash
-firebase deploy --only functions
-```
+---
 
-### 3. Deploy frontend
-```bash
-cp -r src/* PROJECT/src/
-npm run build && vercel --prod
+## 🧠 Sistema de Estados Psicológicos (v1.3.0)
+
+### 15 Emoções Pré-Definidas
+
+| Categoria | Emoção | Score | Emoji |
+|-----------|--------|-------|-------|
+| **POSITIVAS** | Disciplinado | +3 | 🎯 |
+| | Confiante | +2 | 💪 |
+| | Focado | +2 | 🧘 |
+| | Paciente | +1 | ⏳ |
+| **NEUTRAS** | Neutro | 0 | 😐 |
+| | Cauteloso | 0 | 🛡️ |
+| | Analítico | 0 | 🔍 |
+| **NEGATIVAS** | Ansioso | -1 | 😰 |
+| | Hesitante | -1 | 🤔 |
+| | Frustrado | -2 | 😤 |
+| | Impaciente | -2 | ⚡ |
+| **CRÍTICAS** | FOMO | -3 | 🔥 |
+| | Revenge | -3 | 👊 |
+| | Tilt | -4 | 🌀 |
+| | Pânico | -4 | 😱 |
+
+### Detecção de Padrões
+
+```javascript
+// TILT: 3+ trades consecutivos com emoção negativa + loss
+detectTilt(trades) → { detected, sequences, severity }
+
+// REVENGE: Trade após loss com qty > média * 1.5
+detectRevenge(trades) → { detected, instances, count }
+
+// FOMO: Emoção FOMO/Ansioso sem setup claro
+detectFomo(trades) → { detected, instances, percentage }
+
+// OVERTRADING: Trades/dia > limite
+detectOvertrading(trades, limit) → { detected, days }
+
+// ZONE: Últimos N trades disciplinados + win rate alto
+detectZoneState(trades) → { inZone, confidence }
 ```
 
 ---
@@ -34,79 +65,84 @@ npm run build && vercel --prod
 ## 📁 Arquivos
 
 ```
-sprint-v1.2.0/
+sprint-v1.3.0/
 ├── CHANGELOG.md
-├── MIGRATION.md
 ├── README.md
-├── functions/
-│   ├── index.js                    # v1.2.0
-│   ├── package.json
-│   └── migrate-trade-status.js     # Script de migração
 └── src/
-    ├── version.js                  # 1.2.0
-    ├── hooks/
-    │   └── useTrades.js            # v1.2.0
-    ├── pages/
-    │   ├── FeedbackPage.jsx        # v1.2.0
-    │   └── MentorDashboard.jsx     # v1.2.0
+    ├── version.js                      # 1.3.0
+    ├── utils/
+    │   ├── calculations.js             # Fix formatDate, identifyStudents
+    │   └── emotionalAnalysis.js        # NOVO - Sistema completo
     └── components/
-        ├── TradeDetailModal.jsx    # v1.2.0
-        ├── TradesList.jsx          # v1.2.0
-        └── StudentFeedbackCard.jsx # NOVO
+        ├── FeedbackThread.jsx          # Fix histórico legado
+        ├── TradeDetailModal.jsx        # Fix modal size
+        ├── EmotionSelector.jsx         # NOVO - Dropdown categorizado
+        ├── EmotionalAlerts.jsx         # NOVO - Alertas de padrões
+        └── PlanEmotionalMetrics.jsx    # Integrado com padrões
 ```
 
 ---
 
-## 🎨 Nova UI: Cards por Aluno
+## 🚀 Instalação
 
-```
-┌──────────────────────┐  ┌──────────────────────┐
-│  João Silva          │  │  Maria Santos        │
-│  joao@email.com      │  │  maria@email.com     │
-│                      │  │                      │
-│  🕐 3  Feedback      │  │  🕐 1  Feedback      │
-│  ❓ 1  Dúvidas       │  │  ❓ 2  Dúvidas       │
-│                      │  │                      │
-│  ✓ 10 revisados      │  │  ✓ 5 revisados       │
-│  🔒 8 encerrados     │  │  🔒 3 encerrados     │
-└──────────────────────┘  └──────────────────────┘
-```
+```bash
+# Copiar arquivos
+cp -r src/* PROJECT/src/
 
-**Comportamento:**
-- Clique em **🕐 Feedback** → Lista trades OPEN do aluno
-- Clique em **❓ Dúvidas** → Lista trades QUESTION do aluno
-- Clique no **nome/avatar** → Abre dashboard completo do aluno
+# Build e deploy
+npm run build && vercel --prod
+```
 
 ---
 
-## 🔧 Correções
+## 🧪 Como Testar
 
-| Issue | Descrição | Status |
-|-------|-----------|--------|
-| getTradesAwaitingFeedback | Incluir OPEN + QUESTION | ✅ |
-| serverTimestamp em array | Usar ISO string | ✅ |
-| Status legados | Migrar PENDING_REVIEW/IN_REVISION | ✅ |
-| Versões inconsistentes | Padronizar para 1.2.0 | ✅ |
+### 1. Testar Correção de Timestamp
+```
+1. Abrir MentorDashboard → Aguardando Feedback
+2. Clicar em "Dúvidas" de um aluno
+3. Clicar em "Visualizar" de um trade
+4. Modal deve abrir SEM erro no console
+```
 
----
+### 2. Testar "Precisam Atenção"
+```
+1. Sidebar → "Precisam Atenção" (se mostrar contador > 0)
+2. Deve listar alunos com reasons
+3. NÃO deve mostrar "Tudo sob controle" se contador > 0
+```
 
-## 📊 Novos Helpers em useTrades
+### 3. Testar FeedbackThread Legado
+```
+1. Trade com status QUESTION + mentorFeedback preenchido
+2. Abrir FeedbackPage e selecionar o trade
+3. Deve mostrar mensagem do mentor no histórico
+```
 
+### 4. Testar Detecção de Padrões
 ```javascript
-// Contagem por status de um aluno
-const counts = getStudentFeedbackCounts('aluno@email.com');
-// { open: 3, question: 1, reviewed: 10, closed: 8, total: 22 }
+// No console do navegador:
+import { detectTilt, detectRevenge } from './utils/emotionalAnalysis';
 
-// Trades filtrados por aluno + status
-const trades = getTradesByStudentAndStatus('aluno@email.com', 'OPEN');
+// Simular trades para teste
+const trades = [
+  { emotion: 'Frustrado', result: -100, date: '2026-02-18T10:00' },
+  { emotion: 'Revenge', result: -150, date: '2026-02-18T10:05' },
+  { emotion: 'Tilt', result: -200, date: '2026-02-18T10:10' }
+];
+
+detectTilt(trades);
+// → { detected: true, sequences: [[...]], severity: 'HIGH' }
 ```
 
 ---
 
-## ⚠️ Importante
+## 📊 Métricas Esperadas
 
-1. **Execute a migração ANTES do deploy** das functions
-2. **Backup do Firestore** recomendado antes de migrar
-3. **Teste em staging** se possível
+Após implementação, o `PlanEmotionalMetrics` deve exibir:
 
-Ver `MIGRATION.md` para instruções detalhadas.
+- **Score Emocional**: Média ponderada (-4 a +3)
+- **Tendência**: IMPROVING / STABLE / WORSENING
+- **Compliance**: % de trades com emoção positiva/neutra
+- **Risco**: Score 0-100 baseado em padrões detectados
+- **Alertas**: Badges de TILT, REVENGE, FOMO, ZONE
