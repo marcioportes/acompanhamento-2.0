@@ -14,7 +14,7 @@
 import VERSION from '../version';
 
 const DebugBadge = ({ component }) => (
-  <div className="fixed bottom-1 right-1 text-[9px] font-mono text-slate-700 opacity-30 hover:opacity-100 transition-opacity pointer-events-none z-50 select-none">
+  <div className="fixed bottom-1 right-1 text-[9px] font-mono text-slate-600 opacity-50 hover:opacity-100 transition-opacity z-50 select-none cursor-default">
     {component} • {VERSION.display}+{VERSION.build}
   </div>
 );

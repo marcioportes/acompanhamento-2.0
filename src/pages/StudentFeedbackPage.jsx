@@ -6,10 +6,9 @@
  * 
  * CHANGELOG:
  * - 1.4.0: Layout master-detail com FeedbackPage embedded
- *   - Cards clicáveis: Dúvidas, Revisados, Pendentes, Encerrados
- *   - Filtros: ticker (dropdown) + período (seletor) + busca
- *   - Painel esquerdo: lista de trades com highlight no selecionado
- *   - Painel direito: FeedbackPage embedded (reutiliza lógica de chat completa)
+ *   - Cards compactos em linha com filtros (zona de controle unificada)
+ *   - Proporção 1/3 lista + 2/3 chat para melhor uso do espaço
+ *   - FeedbackPage embedded (reutiliza lógica de chat completa)
  *   - Responsive: mobile alterna entre lista e chat
  *   - DebugBadge para identificação visual em produção
  * - 1.3.0: Lista com navegação externa para FeedbackPage
@@ -37,9 +36,9 @@ import DebugBadge from '../components/DebugBadge';
 // ============================================
 
 const STATUS_CONFIG = {
-  QUESTION: { label: 'Dúvida Pendente', shortLabel: 'Dúvidas', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', ring: 'ring-amber-500/50', priority: 1 },
+  QUESTION: { label: 'Dúvida', shortLabel: 'Dúvidas', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', ring: 'ring-amber-500/50', priority: 1 },
   REVIEWED: { label: 'Revisado', shortLabel: 'Revisados', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400', ring: 'ring-emerald-500/50', priority: 2 },
-  OPEN: { label: 'Aguardando', shortLabel: 'Pendentes', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', ring: 'ring-blue-500/50', priority: 3 },
+  OPEN: { label: 'Pendente', shortLabel: 'Pendentes', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', ring: 'ring-blue-500/50', priority: 3 },
   CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, bg: 'bg-slate-500/20', text: 'text-slate-400', ring: 'ring-slate-500/50', priority: 4 }
 };
 
@@ -99,21 +98,22 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const StatusCard = ({ statusKey, count, isActive, onClick }) => {
+/** Card de status compacto — inline com contadores */
+const StatusPill = ({ statusKey, count, isActive, onClick }) => {
   const cfg = STATUS_CONFIG[statusKey];
   const Icon = cfg.icon;
   return (
     <button
       onClick={onClick}
-      className={`glass-card p-3 text-center transition-all hover:scale-[1.02] ${
-        isActive ? `ring-1 ${cfg.ring}` : ''
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+        isActive 
+          ? `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` 
+          : 'bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800'
       }`}
     >
-      <div className="flex items-center justify-center gap-1.5 mb-1">
-        <Icon className={`w-4 h-4 ${cfg.text}`} />
-      </div>
-      <p className={`text-2xl font-bold ${cfg.text}`}>{count}</p>
-      <p className="text-[10px] text-slate-500 mt-0.5">{cfg.shortLabel}</p>
+      <Icon className="w-3.5 h-3.5" />
+      <span className={isActive ? cfg.text : ''}>{count}</span>
+      <span className="hidden sm:inline text-xs">{cfg.shortLabel}</span>
     </button>
   );
 };
@@ -177,7 +177,7 @@ const StudentFeedbackPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileShowChat, setMobileShowChat] = useState(false);
 
-  // Sincroniza trade selecionado com dados do Firestore listener
+  // Sincroniza trade selecionado com Firestore listener
   const currentTrade = useMemo(() => {
     if (!selectedTrade) return null;
     return trades.find(t => t.id === selectedTrade.id) || selectedTrade;
@@ -250,7 +250,6 @@ const StudentFeedbackPage = () => {
   // Callbacks para FeedbackPage embedded
   const handleAddComment = async (tradeId, content, isQuestion) => {
     const updated = await addFeedbackComment(tradeId, content, isQuestion);
-    // Atualiza referência local
     setSelectedTrade(prev => prev ? { ...prev, ...updated, feedbackHistory: updated.feedbackHistory, status: updated.status } : prev);
   };
 
@@ -265,31 +264,29 @@ const StudentFeedbackPage = () => {
 
   return (
     <div className="h-[calc(100vh-0px)] flex flex-col">
-      {/* Header fixo */}
-      <div className="flex-none p-4 pb-0 lg:p-6 lg:pb-0">
-        <div className="mb-4">
-          <h1 className="text-xl lg:text-2xl font-display font-bold text-white flex items-center gap-3">
-            <MessageSquare className="w-6 h-6 text-blue-400" />
+      {/* ===== BARRA DE CONTROLE: Cards + Filtros (compacta) ===== */}
+      <div className="flex-none p-4 lg:p-5 border-b border-slate-800/50">
+        {/* Linha 1: Título + Status pills */}
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg lg:text-xl font-display font-bold text-white flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-blue-400" />
             Meus Feedbacks
           </h1>
-          <p className="text-slate-500 text-sm mt-0.5">Acompanhe os feedbacks do seu mentor</p>
+          <div className="flex items-center gap-1.5">
+            {(['QUESTION', 'REVIEWED', 'OPEN', 'CLOSED']).map(key => (
+              <StatusPill
+                key={key}
+                statusKey={key}
+                count={counts[key]}
+                isActive={statusFilter === key}
+                onClick={() => handleStatusCardClick(key)}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Cards de status */}
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {(['QUESTION', 'REVIEWED', 'OPEN', 'CLOSED']).map(key => (
-            <StatusCard
-              key={key}
-              statusKey={key}
-              count={counts[key]}
-              isActive={statusFilter === key}
-              onClick={() => handleStatusCardClick(key)}
-            />
-          ))}
-        </div>
-
-        {/* Filtros */}
-        <div className="flex flex-wrap gap-2 mb-4 items-center">
+        {/* Linha 2: Filtros */}
+        <div className="flex flex-wrap gap-2 items-center">
           <select
             value={tickerFilter}
             onChange={(e) => setTickerFilter(e.target.value)}
@@ -307,7 +304,7 @@ const StudentFeedbackPage = () => {
             {PERIOD_OPTIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
 
-          <div className="relative flex-1 min-w-[150px] max-w-[250px]">
+          <div className="relative flex-1 min-w-[140px] max-w-[220px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               type="text"
@@ -321,7 +318,7 @@ const StudentFeedbackPage = () => {
           {hasActiveFilters && (
             <button
               onClick={() => { setStatusFilter('all'); setTickerFilter('all'); setPeriodFilter('all'); setSearchTerm(''); }}
-              className="px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 rounded-lg transition-colors flex items-center gap-1"
+              className="px-2.5 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 rounded-lg transition-colors flex items-center gap-1"
             >
               <X className="w-3 h-3" /> Limpar
             </button>
@@ -329,11 +326,11 @@ const StudentFeedbackPage = () => {
         </div>
       </div>
 
-      {/* Master-Detail */}
-      <div className="flex-1 flex min-h-0 px-4 pb-4 lg:px-6 lg:pb-6 gap-4">
+      {/* ===== MASTER-DETAIL: 1/3 lista + 2/3 chat ===== */}
+      <div className="flex-1 flex min-h-0 p-4 lg:p-5 gap-4">
         
-        {/* ========== PAINEL ESQUERDO - Lista ========== */}
-        <div className={`w-full lg:w-[380px] xl:w-[420px] flex-shrink-0 flex flex-col glass-card overflow-hidden ${
+        {/* PAINEL ESQUERDO - Lista (1/3) */}
+        <div className={`w-full lg:w-1/3 lg:min-w-[280px] lg:max-w-[380px] flex-shrink-0 flex flex-col glass-card overflow-hidden ${
           mobileShowChat ? 'hidden lg:flex' : 'flex'
         }`}>
           <div className="flex-none px-3 py-2 border-b border-slate-800 text-xs text-slate-500">
@@ -343,13 +340,13 @@ const StudentFeedbackPage = () => {
 
           <div className="flex-1 overflow-y-auto">
             {filteredTrades.length === 0 ? (
-              <div className="p-8 text-center">
+              <div className="p-6 text-center">
                 <MessageSquare className="w-10 h-10 text-slate-700 mx-auto mb-3" />
                 <p className="text-slate-400 text-sm font-medium">
-                  {trades.length === 0 ? 'Nenhum trade encontrado' : 'Nenhum resultado para o filtro'}
+                  {trades.length === 0 ? 'Nenhum trade encontrado' : 'Nenhum resultado'}
                 </p>
                 <p className="text-slate-600 text-xs mt-1">
-                  {trades.length === 0 ? 'Registre seus trades para receber feedback' : 'Ajuste os filtros'}
+                  {trades.length === 0 ? 'Registre trades para receber feedback' : 'Ajuste os filtros'}
                 </p>
               </div>
             ) : (
@@ -365,7 +362,7 @@ const StudentFeedbackPage = () => {
           </div>
         </div>
 
-        {/* ========== PAINEL DIREITO - FeedbackPage embedded ========== */}
+        {/* PAINEL DIREITO - FeedbackPage embedded (2/3) */}
         <div className={`flex-1 flex flex-col glass-card overflow-hidden min-w-0 ${
           !mobileShowChat ? 'hidden lg:flex' : 'flex'
         }`}>
