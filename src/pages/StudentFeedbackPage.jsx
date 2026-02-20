@@ -98,14 +98,14 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-/** Pill compacto de status — ao lado do título */
+/** Pill de status — ao lado do título, visível e clicável */
 const StatusPill = ({ statusKey, count, isActive, onClick }) => {
   const cfg = STATUS_CONFIG[statusKey];
   const Icon = cfg.icon;
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-all ${
         isActive 
           ? `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` 
           : count > 0
@@ -113,8 +113,9 @@ const StatusPill = ({ statusKey, count, isActive, onClick }) => {
             : 'bg-slate-800/40 text-slate-600'
       }`}
     >
-      <Icon className="w-3 h-3" />
+      <Icon className="w-4 h-4" />
       <span>{count}</span>
+      <span className="text-xs hidden sm:inline opacity-80">{cfg.shortLabel}</span>
     </button>
   );
 };
@@ -268,8 +269,8 @@ const StudentFeedbackPage = () => {
       <div className="flex-none p-4 lg:p-5 border-b border-slate-800/50">
         {/* Linha 1: Título grande + Status pills */}
         <div className="flex items-center gap-4 mb-3">
-          <MessageSquare className="w-7 h-7 text-blue-400 flex-shrink-0" />
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
+          <MessageSquare className="w-5 h-5 text-blue-400 flex-shrink-0" />
+          <h1 className="text-lg lg:text-xl font-display font-bold text-white">
             Meus Feedbacks
           </h1>
           <div className="flex items-center gap-1.5 ml-2">
