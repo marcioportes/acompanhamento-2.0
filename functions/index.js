@@ -18,10 +18,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 2,
+  minor: 3,
   patch: 0,
   prerelease: null,
-  build: '20260217',
+  build: '20260220',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -112,6 +112,66 @@ const updateAccountBalance = async (accountId, resultDiff) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
+};
+
+/**
+ * Atualiza PL atual do Plano via transaction
+ * @param {string} planId - ID do plano
+ * @param {number} resultDiff - Valor a somar (positivo ou negativo)
+ */
+const updatePlanPl = async (planId, resultDiff) => {
+  if (!planId || resultDiff === 0) return;
+  const planRef = db.collection('plans').doc(planId);
+  await db.runTransaction(async (t) => {
+    const doc = await t.get(planRef);
+    if (!doc.exists) return;
+    const plan = doc.data();
+    const currentPl = plan.currentPl ?? plan.pl ?? 0;
+    t.update(planRef, {
+      currentPl: currentPl + resultDiff,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  });
+};
+
+/**
+ * Calcula compliance do trade contra o plano
+ * Risco Operacional (RO) e Razão Risco-Retorno (RR)
+ * @returns {{ riskPercent, rrRatio, compliance: { roStatus, rrStatus } }}
+ */
+const calculateTradeCompliance = (trade, plan) => {
+  const result = { riskPercent: 0, rrRatio: null, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
+  
+  if (!plan || !trade) return result;
+  
+  const planPl = plan.currentPl ?? plan.pl ?? 0;
+  if (planPl <= 0) return result;
+  
+  // Risco Operacional: |resultado negativo| / PL do plano * 100
+  // Para trades com stopLoss definido, usar risco planejado
+  const riskAmount = trade.stopLoss 
+    ? Math.abs((trade.entry - trade.stopLoss) * trade.qty * (trade.tickerRule?.tickValue || 1))
+    : (trade.result < 0 ? Math.abs(trade.result) : 0);
+  
+  result.riskPercent = (riskAmount / planPl) * 100;
+  
+  if (plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
+    result.compliance.roStatus = 'FORA_DO_PLANO';
+  }
+  
+  // Razão Risco-Retorno
+  if (trade.stopLoss && trade.takeProfit && trade.entry) {
+    const risk = Math.abs(trade.entry - trade.stopLoss);
+    const reward = Math.abs(trade.takeProfit - trade.entry);
+    if (risk > 0) {
+      result.rrRatio = reward / risk;
+      if (plan.rrTarget && result.rrRatio < plan.rrTarget) {
+        result.compliance.rrStatus = 'NAO_CONFORME';
+      }
+    }
+  }
+  
+  return result;
 };
 
 const isMentorEmail = (email) => {
@@ -404,10 +464,18 @@ exports.onTradeCreated = functions.firestore
       feedbackHistory: [],
       redFlags: [],
       hasRedFlags: false,
+      compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' },
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     try {
+      // === 1. ATUALIZAR PL DO PLANO ===
+      if (trade.planId && trade.result !== undefined) {
+        await updatePlanPl(trade.planId, trade.result);
+        console.log(`[onTradeCreated] PL plano ${trade.planId} atualizado: ${trade.result > 0 ? '+' : ''}${trade.result}`);
+      }
+
+      // === 2. COMPLIANCE E RED FLAGS ===
       if (!trade.planId) {
         redFlags.push({ type: RED_FLAG_TYPES.NO_PLAN, message: 'Trade sem plano', timestamp: new Date().toISOString() });
       } else {
@@ -415,29 +483,49 @@ exports.onTradeCreated = functions.firestore
         if (planDoc.exists) {
           const plan = planDoc.data();
           
-          if (trade.accountId) {
-            const accDoc = await db.collection('accounts').doc(trade.accountId).get();
-            if (accDoc.exists) {
-              const acc = accDoc.data();
-              const riskP = calculateRiskPercent(trade, acc.currentBalance);
-              updates.riskPercent = riskP;
-              
-              if (plan.maxRiskPercent && riskP > plan.maxRiskPercent) {
-                redFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${riskP.toFixed(1)}% excede máximo`, timestamp: new Date().toISOString() });
-              }
-              
-              if (plan.maxDailyLossPercent) {
-                const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
-                const dailyLossPercent = (dailyLoss / acc.currentBalance) * 100;
-                if (dailyLossPercent > plan.maxDailyLossPercent) {
-                  redFlags.push({ type: RED_FLAG_TYPES.DAILY_LOSS_EXCEEDED, message: `Loss diário ${dailyLossPercent.toFixed(1)}% excede máximo`, timestamp: new Date().toISOString() });
-                }
+          // Compliance calculado sobre PL do plano (não saldo da conta)
+          const tradeCompliance = calculateTradeCompliance(trade, plan);
+          updates.riskPercent = tradeCompliance.riskPercent;
+          updates.rrRatio = tradeCompliance.rrRatio;
+          updates.compliance = tradeCompliance.compliance;
+          
+          // Red flag: risco operacional
+          if (tradeCompliance.compliance.roStatus === 'FORA_DO_PLANO') {
+            redFlags.push({ 
+              type: RED_FLAG_TYPES.RISK_EXCEEDED, 
+              message: `Risco ${tradeCompliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, 
+              timestamp: new Date().toISOString() 
+            });
+          }
+          
+          // Red flag: RR abaixo do mínimo
+          if (tradeCompliance.compliance.rrStatus === 'NAO_CONFORME') {
+            redFlags.push({ 
+              type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, 
+              message: `R:R ${tradeCompliance.rrRatio?.toFixed(1)} abaixo do mínimo ${plan.rrTarget}`, 
+              timestamp: new Date().toISOString() 
+            });
+          }
+          
+          // Red flag: loss diário (calculado sobre PL do plano)
+          if (plan.periodStop && trade.accountId) {
+            const planPl = plan.currentPl ?? plan.pl ?? 0;
+            if (planPl > 0) {
+              const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
+              const dailyLossPercent = (dailyLoss / planPl) * 100;
+              if (dailyLossPercent > plan.periodStop) {
+                redFlags.push({ 
+                  type: RED_FLAG_TYPES.DAILY_LOSS_EXCEEDED, 
+                  message: `Loss diário ${dailyLossPercent.toFixed(1)}% excede stop do período (${plan.periodStop}%)`, 
+                  timestamp: new Date().toISOString() 
+                });
               }
             }
           }
           
-          if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotion)) {
-            redFlags.push({ type: RED_FLAG_TYPES.BLOCKED_EMOTION, message: `Emoção "${trade.emotion}" bloqueada`, timestamp: new Date().toISOString() });
+          // Red flag: emoção bloqueada
+          if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotionEntry)) {
+            redFlags.push({ type: RED_FLAG_TYPES.BLOCKED_EMOTION, message: `Emoção "${trade.emotionEntry}" bloqueada`, timestamp: new Date().toISOString() });
           }
         }
       }
@@ -447,6 +535,7 @@ exports.onTradeCreated = functions.firestore
       
       await snap.ref.update(updates);
 
+      // === 3. NOTIFICAÇÕES ===
       if (redFlags.length > 0) {
         await db.collection('notifications').add({ 
           type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
@@ -466,8 +555,59 @@ exports.onTradeCreated = functions.firestore
     return null;
   });
 
-exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpdate(async () => null);
-exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDelete(async () => null);
+exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpdate(async (change, context) => {
+  const before = change.before.data();
+  const after = change.after.data();
+  
+  try {
+    const oldResult = before.result || 0;
+    const newResult = after.result || 0;
+    const planChanged = before.planId !== after.planId;
+    const resultChanged = Math.abs(newResult - oldResult) > 0.01;
+    
+    if (planChanged) {
+      // Trade movido para outro plano: reverter do antigo, aplicar no novo
+      if (before.planId) await updatePlanPl(before.planId, -oldResult);
+      if (after.planId) await updatePlanPl(after.planId, newResult);
+      console.log(`[onTradeUpdated] Trade movido: plano ${before.planId} → ${after.planId}`);
+    } else if (resultChanged && after.planId) {
+      // Mesmo plano, resultado mudou: aplicar diferença
+      await updatePlanPl(after.planId, newResult - oldResult);
+      console.log(`[onTradeUpdated] PL plano ${after.planId} ajustado: ${(newResult - oldResult) > 0 ? '+' : ''}${(newResult - oldResult).toFixed(2)}`);
+    }
+    
+    // Recalcular compliance se resultado ou plano mudou
+    if (resultChanged || planChanged) {
+      if (after.planId) {
+        const planDoc = await db.collection('plans').doc(after.planId).get();
+        if (planDoc.exists) {
+          const compliance = calculateTradeCompliance(after, planDoc.data());
+          await change.after.ref.update({
+            riskPercent: compliance.riskPercent,
+            rrRatio: compliance.rrRatio,
+            compliance: compliance.compliance
+          });
+        }
+      }
+    }
+  } catch (e) { console.error('[onTradeUpdated]', e); }
+  
+  return null;
+});
+
+exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDelete(async (snap, context) => {
+  const trade = snap.data();
+  
+  try {
+    // Reverter PL do plano
+    if (trade.planId && trade.result) {
+      await updatePlanPl(trade.planId, -(trade.result));
+      console.log(`[onTradeDeleted] PL plano ${trade.planId} revertido: ${-trade.result}`);
+    }
+  } catch (e) { console.error('[onTradeDeleted]', e); }
+  
+  return null;
+});
 
 // ============================================
 // MOVEMENT TRIGGERS
@@ -505,7 +645,7 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     build: VERSION.build,
     display: VERSION.display,
     full: VERSION.full,
-    features: ['feedback-flow', 'red-flags', 'student-cards'],
+    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance'],
     timestamp: new Date().toISOString() 
   });
 });
