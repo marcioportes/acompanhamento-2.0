@@ -1,20 +1,18 @@
 /**
  * StudentFeedbackPage
- * @version 2.0.0
  * @description Página master-detail de feedbacks do aluno
  *   Cards de status + filtros por ticker/período + lista/chat inline
+ * @see version.js para versão do produto
  * 
  * CHANGELOG:
- * - 2.0.0: MAJOR - Layout master-detail em tela única
+ * - 1.4.0: Layout master-detail em tela única
  *   - Cards clicáveis: Dúvidas, Revisados, Pendentes, Encerrados
  *   - Filtros: ticker (dropdown) + período (seletor) + busca
  *   - Painel esquerdo: lista de trades com highlight no selecionado
- *   - Painel direito: chat de feedback inline (sem navegação externa)
- *   - Self-contained: usa addFeedbackComment/updateTradeStatus diretamente
+ *   - Painel direito: chat de feedback inline (self-contained)
  *   - Responsive: mobile alterna entre lista e chat
- *   - data-component e data-version para debug
- * - 1.1.0: UX melhorada - filtros simplificados, layout mais limpo
- * - 1.0.0: Versão inicial (lista com navegação)
+ *   - DebugBadge para identificação visual em produção
+ * - 1.3.0: Lista com navegação externa para FeedbackPage
  * 
  * MÁQUINA DE ESTADOS:
  * OPEN → Mentor dá feedback → REVIEWED
@@ -33,12 +31,7 @@ import {
 import { useTrades } from '../hooks/useTrades';
 import { useAuth } from '../contexts/AuthContext';
 import Loading from '../components/Loading';
-
-// ============================================
-// METADATA
-// ============================================
-const COMPONENT_NAME = 'StudentFeedbackPage';
-const COMPONENT_VERSION = '2.0.0';
+import DebugBadge from '../components/DebugBadge';
 
 // ============================================
 // CONSTANTS
@@ -517,11 +510,7 @@ const StudentFeedbackPage = () => {
   const hasActiveFilters = tickerFilter !== 'all' || periodFilter !== 'all' || statusFilter !== 'all' || searchTerm;
 
   return (
-    <div 
-      data-component={COMPONENT_NAME} 
-      data-version={COMPONENT_VERSION} 
-      className="h-[calc(100vh-0px)] flex flex-col"
-    >
+    <div className="h-[calc(100vh-0px)] flex flex-col">
       {/* Header fixo */}
       <div className="flex-none p-4 pb-0 lg:p-6 lg:pb-0">
         <div className="mb-4">
@@ -738,6 +727,8 @@ const StudentFeedbackPage = () => {
           </div>
         </>
       )}
+      {/* Debug Badge */}
+      <DebugBadge component="StudentFeedbackPage" />
     </div>
   );
 };
