@@ -6,7 +6,7 @@
  * 
  * CHANGELOG:
  * - 1.4.0: Prop embedded para uso dentro de StudentFeedbackPage master-detail
- *   - embedded=true: sem padding, sem header, sem botão voltar, layout vertical
+ *   - embedded=true: sem padding, sem header, sem botão voltar, grid 2 colunas (info + chat)
  *   - embedded=false (default): comportamento original (tela cheia, 2 colunas)
  *   - DebugBadge apenas no modo standalone
  * - 1.3.0: UX do aluno com 2 botões de ação separados
@@ -317,99 +317,112 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   }
 
   // ========== MODO EMBEDDED (dentro de StudentFeedbackPage master-detail) ==========
+  // Mesmo layout 2 colunas do standalone, sem padding externo, header e botão voltar
   if (embedded) {
     return (
-      <div className="flex flex-col h-full overflow-hidden">
-        {/* Info do Trade - compacta */}
-        <div className="flex-none overflow-y-auto max-h-[40%] border-b border-slate-800">
-          <TradeInfoCard trade={trade} onImageClick={setFullscreenImage} />
-        </div>
-
-        {/* Chat */}
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Status Message */}
-          {statusMessage && (
-            <div className={`flex-none px-4 py-2 bg-slate-800/50 border-b border-slate-800 flex items-center gap-2 ${statusMessage.color}`}>
-              <statusMessage.icon className="w-4 h-4" />
-              <span className="text-xs">{statusMessage.text}</span>
-            </div>
-          )}
-
-          {/* Mensagens */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <Clock className="w-12 h-12 text-slate-700 mb-3" />
-                <h3 className="text-slate-400 font-medium">Aguardando primeiro feedback</h3>
-              </div>
-            ) : (
-              messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} />)
-            )}
-            <div ref={messagesEndRef} />
+      <div className="h-full overflow-y-auto p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
+          {/* Coluna Esquerda - Info do Trade */}
+          <div className="lg:sticky lg:top-0 lg:self-start">
+            <TradeInfoCard trade={trade} onImageClick={setFullscreenImage} />
           </div>
 
-          {/* Input */}
-          {status === STATUS.CLOSED ? (
-            <div className="flex-none p-3 border-t border-slate-800 bg-slate-800/30">
-              <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
-                <Lock className="w-4 h-4" /><span>Trade encerrado</span>
+          {/* Coluna Direita - Chat */}
+          <div className="glass-card flex flex-col h-[calc(100vh-260px)] min-h-[400px]">
+            {/* Header do Chat */}
+            <div className="flex-none p-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-blue-400" />
+                <span className="font-medium text-white text-sm">Conversa</span>
+                {messages.length > 0 && <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{messages.length}</span>}
               </div>
+              <StatusBadge status={status} />
             </div>
-          ) : (
-            <div className="flex-none p-3 border-t border-slate-800">
-              <textarea 
-                value={comment} 
-                onChange={(e) => setComment(e.target.value)} 
-                placeholder={getPlaceholder()} 
-                disabled={(!canMentorComment && !canStudentAct) || sending} 
-                rows={2}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 text-sm mb-2"
-              />
-              
-              {canMentorComment && (
-                <div className="flex justify-end">
-                  <button 
-                    onClick={handleMentorSend}
-                    disabled={!comment.trim() || sending}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder'}
-                  </button>
+
+            {/* Status Message */}
+            {statusMessage && (
+              <div className={`flex-none px-4 py-2 bg-slate-800/50 border-b border-slate-800 flex items-center gap-2 ${statusMessage.color}`}>
+                <statusMessage.icon className="w-4 h-4" />
+                <span className="text-xs">{statusMessage.text}</span>
+              </div>
+            )}
+
+            {/* Mensagens */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <Clock className="w-12 h-12 text-slate-700 mb-3" />
+                  <h3 className="text-slate-400 font-medium">Aguardando primeiro feedback</h3>
                 </div>
+              ) : (
+                messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} />)
               )}
-              
-              {canStudentAct && (
-                <div className="flex gap-2">
-                  <button 
-                    onClick={handleStudentClose}
-                    disabled={sending}
-                    className="flex-1 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                    Encerrar Trade
-                  </button>
-                  <button 
-                    onClick={handleStudentQuestion}
-                    disabled={!comment.trim() || sending}
-                    className="flex-1 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <HelpCircle className="w-4 h-4" />}
-                    Enviar Dúvida
-                  </button>
-                </div>
-              )}
-              
-              {!canMentorComment && !canStudentAct && status !== STATUS.CLOSED && (
-                <p className="text-xs text-slate-500 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  {status === STATUS.OPEN && !userIsMentor && 'Aguarde o mentor revisar'}
-                  {status === STATUS.QUESTION && !userIsMentor && 'Aguarde o mentor responder'}
-                  {status === STATUS.REVIEWED && userIsMentor && 'Aguardando ação do aluno'}
-                </p>
-              )}
+              <div ref={messagesEndRef} />
             </div>
-          )}
+
+            {/* Input */}
+            {status === STATUS.CLOSED ? (
+              <div className="flex-none p-3 border-t border-slate-800 bg-slate-800/30">
+                <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
+                  <Lock className="w-4 h-4" /><span>Trade encerrado</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-none p-3 border-t border-slate-800">
+                <textarea 
+                  value={comment} 
+                  onChange={(e) => setComment(e.target.value)} 
+                  placeholder={getPlaceholder()} 
+                  disabled={(!canMentorComment && !canStudentAct) || sending} 
+                  rows={2}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 text-sm mb-2"
+                />
+                
+                {canMentorComment && (
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={handleMentorSend}
+                      disabled={!comment.trim() || sending}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder'}
+                    </button>
+                  </div>
+                )}
+                
+                {canStudentAct && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleStudentClose}
+                      disabled={sending}
+                      className="flex-1 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Encerrar Trade
+                    </button>
+                    <button 
+                      onClick={handleStudentQuestion}
+                      disabled={!comment.trim() || sending}
+                      className="flex-1 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2 text-sm"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <HelpCircle className="w-4 h-4" />}
+                      Enviar Dúvida
+                    </button>
+                  </div>
+                )}
+                
+                {!canMentorComment && !canStudentAct && status !== STATUS.CLOSED && (
+                  <p className="text-xs text-slate-500 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {status === STATUS.OPEN && !userIsMentor && 'Aguarde o mentor revisar'}
+                    {status === STATUS.QUESTION && !userIsMentor && 'Aguarde o mentor responder'}
+                    {status === STATUS.REVIEWED && userIsMentor && 'Aguardando ação do aluno'}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Fullscreen Image (embedded) */}

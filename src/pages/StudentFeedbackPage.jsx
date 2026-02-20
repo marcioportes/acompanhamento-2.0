@@ -6,11 +6,11 @@
  * 
  * CHANGELOG:
  * - 1.4.0: Layout master-detail com FeedbackPage embedded
- *   - Cards compactos em linha com filtros (zona de controle unificada)
- *   - Proporção 1/3 lista + 2/3 chat para melhor uso do espaço
- *   - FeedbackPage embedded (reutiliza lógica de chat completa)
- *   - Responsive: mobile alterna entre lista e chat
- *   - DebugBadge para identificação visual em produção
+ *   - Status pills ao lado do título (canto superior esquerdo)
+ *   - Proporção 1/3 lista + 2/3 FeedbackPage (2 colunas: info + chat)
+ *   - FeedbackPage embedded (reutiliza lógica completa sem duplicação)
+ *   - Responsive: mobile alterna entre lista e feedback
+ *   - DebugBadge expandível para identificação em produção
  * - 1.3.0: Lista com navegação externa para FeedbackPage
  * 
  * MÁQUINA DE ESTADOS (gerenciada pelo FeedbackPage):
@@ -98,22 +98,23 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-/** Card de status compacto — inline com contadores */
+/** Pill compacto de status — ao lado do título */
 const StatusPill = ({ statusKey, count, isActive, onClick }) => {
   const cfg = STATUS_CONFIG[statusKey];
   const Icon = cfg.icon;
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
         isActive 
           ? `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` 
-          : 'bg-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800'
+          : count > 0
+            ? `bg-slate-800/60 ${cfg.text} hover:${cfg.bg}`
+            : 'bg-slate-800/40 text-slate-600'
       }`}
     >
-      <Icon className="w-3.5 h-3.5" />
-      <span className={isActive ? cfg.text : ''}>{count}</span>
-      <span className="hidden sm:inline text-xs">{cfg.shortLabel}</span>
+      <Icon className="w-3 h-3" />
+      <span>{count}</span>
     </button>
   );
 };
@@ -247,7 +248,6 @@ const StudentFeedbackPage = () => {
     setStatusFilter(prev => prev === statusKey ? 'all' : statusKey);
   };
 
-  // Callbacks para FeedbackPage embedded
   const handleAddComment = async (tradeId, content, isQuestion) => {
     const updated = await addFeedbackComment(tradeId, content, isQuestion);
     setSelectedTrade(prev => prev ? { ...prev, ...updated, feedbackHistory: updated.feedbackHistory, status: updated.status } : prev);
@@ -264,15 +264,15 @@ const StudentFeedbackPage = () => {
 
   return (
     <div className="h-[calc(100vh-0px)] flex flex-col">
-      {/* ===== BARRA DE CONTROLE: Cards + Filtros (compacta) ===== */}
+      {/* ===== HEADER: Título + Pills à esquerda, Filtros abaixo ===== */}
       <div className="flex-none p-4 lg:p-5 border-b border-slate-800/50">
-        {/* Linha 1: Título + Status pills */}
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-lg lg:text-xl font-display font-bold text-white flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-blue-400" />
+        {/* Linha 1: Título grande + Status pills */}
+        <div className="flex items-center gap-4 mb-3">
+          <MessageSquare className="w-7 h-7 text-blue-400 flex-shrink-0" />
+          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
             Meus Feedbacks
           </h1>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 ml-2">
             {(['QUESTION', 'REVIEWED', 'OPEN', 'CLOSED']).map(key => (
               <StatusPill
                 key={key}
@@ -326,7 +326,7 @@ const StudentFeedbackPage = () => {
         </div>
       </div>
 
-      {/* ===== MASTER-DETAIL: 1/3 lista + 2/3 chat ===== */}
+      {/* ===== MASTER-DETAIL: 1/3 lista + 2/3 FeedbackPage (trade info + chat) ===== */}
       <div className="flex-1 flex min-h-0 p-4 lg:p-5 gap-4">
         
         {/* PAINEL ESQUERDO - Lista (1/3) */}
@@ -362,7 +362,7 @@ const StudentFeedbackPage = () => {
           </div>
         </div>
 
-        {/* PAINEL DIREITO - FeedbackPage embedded (2/3) */}
+        {/* PAINEL DIREITO - FeedbackPage embedded 2 colunas (2/3) */}
         <div className={`flex-1 flex flex-col glass-card overflow-hidden min-w-0 ${
           !mobileShowChat ? 'hidden lg:flex' : 'flex'
         }`}>
@@ -386,7 +386,7 @@ const StudentFeedbackPage = () => {
                 </button>
               </div>
 
-              {/* FeedbackPage em modo embedded */}
+              {/* FeedbackPage em modo embedded (2 colunas: trade info + chat) */}
               <FeedbackPage
                 trade={currentTrade}
                 onBack={handleBackToList}
