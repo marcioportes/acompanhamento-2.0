@@ -1,10 +1,11 @@
 /**
  * App.jsx
- * @version 2.3.0
- * @description App completo com navegação para FeedbackPage em todas as rotas
+ * @description App principal com roteamento e estado global
+ * @see version.js para versão do produto
  * 
  * CHANGELOG:
- * - 2.3.0: TradesJournal também navega para FeedbackPage
+ * - 1.4.0: StudentFeedbackPage self-contained (master-detail interno)
+ * - 1.3.0: TradesJournal navega para FeedbackPage, View As Student
  * - 2.2.1: Fix login carregando na tela errada
  * - 2.2.0: FeedbackPage com trade selecionado
  * - 2.1.0: Adicionado FeedbackPage para alunos
@@ -225,7 +226,8 @@ const AppContent = () => {
         case 'journal': 
           return <TradesJournal onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'feedback':
-          return <StudentFeedbackPage onNavigateToFeedback={handleNavigateToFeedback} />;
+          // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
+          return <StudentFeedbackPage />;
         case 'dashboard':
         default: 
           return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} />;
