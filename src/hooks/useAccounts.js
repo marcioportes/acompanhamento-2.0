@@ -1,10 +1,11 @@
 /**
  * useAccounts
- * @version 2.6.1
+ * @see version.js para versão do produto
  * @description Hook para gerenciamento de contas de trading
- * * CHANGELOG:
- * - 2.6.1: FIX CRÍTICO - Removida atualização manual de 'currentBalance' ao ajustar saldo inicial.
- * Isso evita o "Double Spending" (soma duplicada) pois a Cloud Function já processa o movimento criado.
+ * 
+ * CHANGELOG (produto):
+ * - 1.5.0: FIX cascade delete planos - query filtrada por studentId para aluno
+ * - 1.4.0: FIX CRÍTICO - Removida atualização manual de 'currentBalance' ao ajustar saldo inicial.
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -240,10 +241,20 @@ export const useAccounts = (overrideStudentId = null) => {
       
       // ETAPA 2: PLANOS
       try {
-        const plansQuery = query(collection(db, 'plans'), where('accountId', '==', accountId));
-        const plansSnapshot = await getDocs(plansQuery);
-        await Promise.all(plansSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id))));
-        console.log(`[useAccounts] ${plansSnapshot.size} planos deletados`);
+        let plansToDelete = [];
+        if (isMentor()) {
+          const q = query(collection(db, 'plans'), where('accountId', '==', accountId));
+          const snap = await getDocs(q);
+          plansToDelete = snap.docs;
+        } else {
+          // Aluno: query por studentId + filtro em memória por accountId
+          // (evita índice composto accountId+studentId)
+          const q = query(collection(db, 'plans'), where('studentId', '==', user.uid));
+          const snap = await getDocs(q);
+          plansToDelete = snap.docs.filter(d => d.data().accountId === accountId);
+        }
+        await Promise.all(plansToDelete.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id))));
+        console.log(`[useAccounts] ${plansToDelete.length} planos deletados`);
       } catch (e) {
         console.warn('[useAccounts] Erro planos:', e);
       }

@@ -16,7 +16,7 @@
 
 export const VERSION = {
   major: 1,
-  minor: 4,
+  minor: 5,
   patch: 0,
   prerelease: null,  // 'alpha', 'beta', 'rc.1', ou null para stable
   build: '20260220',
