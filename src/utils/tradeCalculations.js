@@ -247,22 +247,6 @@ export const calculateTradeStats = (trades) => {
   };
 };
 
-export default {
-  calculateTradeResultByTick,
-  calculateTicks,
-  calculateResultInTicks,
-  calculateResultPercent,
-  calculateRiskPercent,
-  calculateRiskReward,
-  isValidTickPrice,
-  roundToTick,
-  formatCurrencyValue,
-  calculateTradeStats,
-  calculatePartialAvgPrice,
-  calculateFromPartials,
-  validatePartials
-};
-
 // ============================================
 // SISTEMA DE PARCIAIS (1 Trade → N Parciais)
 // ============================================
@@ -288,15 +272,19 @@ export const calculatePartialAvgPrice = (partials = []) => {
  * - Parciais do tipo ENTRY constroem a posição
  * - Parciais do tipo EXIT encerram a posição
  * - Resultado = soma dos resultados de cada EXIT contra o preço médio de entrada
+ * - entryTime = dateTime da primeira ENTRY
+ * - exitTime = dateTime da última EXIT
+ * - result arredondado sem centavos (inteiro)
+ * - resultInPoints = diferença de pontos bruta (sem multiplicar por tickValue)
  * 
  * @param {Object} params
  * @param {string} params.side - 'LONG' ou 'SHORT' (do trade pai)
  * @param {Array} params.partials - Lista de parciais ordenadas por seq
  * @param {Object} [params.tickerRule] - { tickSize, tickValue, pointValue }
- * @returns {Object} { result, avgEntry, avgExit, totalEntryQty, totalExitQty, entries, exits }
+ * @returns {Object} { result, resultInPoints, avgEntry, avgExit, totalEntryQty, totalExitQty, realizedQty, entryTime, exitTime, entries, exits }
  */
 export const calculateFromPartials = ({ side, partials = [], tickerRule = null }) => {
-  const empty = { result: 0, avgEntry: 0, avgExit: 0, totalEntryQty: 0, totalExitQty: 0, entries: [], exits: [] };
+  const empty = { result: 0, resultInPoints: 0, avgEntry: 0, avgExit: 0, totalEntryQty: 0, totalExitQty: 0, realizedQty: 0, entryTime: null, exitTime: null, entries: [], exits: [] };
   if (!partials.length || !side) return empty;
 
   // Separar por tipo e ordenar por seq
@@ -312,32 +300,40 @@ export const calculateFromPartials = ({ side, partials = [], tickerRule = null }
   const avgEntry = calculatePartialAvgPrice(entries);
   const avgExit = exits.length > 0 ? calculatePartialAvgPrice(exits) : 0;
 
+  // Derivar entryTime/exitTime das parciais
+  const entryTime = entries[0]?.dateTime || null;
+  const exitTime = exits.length > 0 ? exits[exits.length - 1]?.dateTime || null : null;
+
   // Calcula resultado sobre a quantidade realizada (exits)
   const realizedQty = Math.min(totalEntryQty, totalExitQty);
   let result = 0;
+  let resultInPoints = 0;
 
   if (realizedQty > 0 && avgExit > 0) {
+    // Diferença de pontos bruta
+    const pointDiff = side === 'LONG' ? avgExit - avgEntry : avgEntry - avgExit;
+    resultInPoints = Math.round(pointDiff * 100) / 100;
+
     if (tickerRule?.tickSize && tickerRule?.tickValue) {
-      const rawDiff = side === 'LONG' ? avgExit - avgEntry : avgEntry - avgExit;
-      const ticks = rawDiff / tickerRule.tickSize;
+      const ticks = pointDiff / tickerRule.tickSize;
       result = ticks * tickerRule.tickValue * realizedQty;
     } else if (tickerRule?.pointValue) {
-      const pointDiff = avgExit - avgEntry;
-      const direction = side === 'LONG' ? 1 : -1;
-      result = pointDiff * tickerRule.pointValue * realizedQty * direction;
+      result = pointDiff * tickerRule.pointValue * realizedQty;
     } else {
-      const diff = side === 'LONG' ? avgExit - avgEntry : avgEntry - avgExit;
-      result = diff * realizedQty;
+      result = pointDiff * realizedQty;
     }
   }
 
   return {
-    result: Math.round(result * 100) / 100,
+    result: Math.round(result * 100) / 100,  // 2 casas decimais
+    resultInPoints,
     avgEntry: Math.round(avgEntry * 100) / 100,
     avgExit: Math.round(avgExit * 100) / 100,
     totalEntryQty,
     totalExitQty,
     realizedQty,
+    entryTime,
+    exitTime,
     entries,
     exits
   };
@@ -379,4 +375,20 @@ export const validatePartials = (partials = [], side = 'LONG') => {
   });
 
   return { valid: errors.length === 0, errors };
+};
+
+export default {
+  calculateTradeResultByTick,
+  calculateTicks,
+  calculateResultInTicks,
+  calculateResultPercent,
+  calculateRiskPercent,
+  calculateRiskReward,
+  isValidTickPrice,
+  roundToTick,
+  formatCurrencyValue,
+  calculateTradeStats,
+  calculatePartialAvgPrice,
+  calculateFromPartials,
+  validatePartials
 };

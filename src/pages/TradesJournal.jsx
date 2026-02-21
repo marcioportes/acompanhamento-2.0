@@ -1,11 +1,11 @@
 /**
  * TradesJournal
- * @version 1.1.0
+ * @see version.js para versão do produto
  * @description Diário de trades com navegação para FeedbackPage
  * 
- * CHANGELOG:
- * - 1.1.0: Adicionado suporte a onNavigateToFeedback para ver conversas
- * - 1.0.0: Versão inicial
+ * CHANGELOG (produto):
+ * - 1.6.0: Suporte a parciais via AddTradeModal
+ * - 1.4.0: Adicionado suporte a onNavigateToFeedback
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -15,6 +15,7 @@ import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import AddTradeModal from '../components/AddTradeModal';
 import Loading from '../components/Loading';
+import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
@@ -229,6 +230,8 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         trade={viewingTrade}
         onViewFeedbackHistory={handleViewFeedbackHistory}
       />
+
+      <DebugBadge component="TradesJournal" />
     </div>
   );
 };

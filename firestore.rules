@@ -58,6 +58,13 @@ service cloud.firestore {
         isOwner(resource.data.studentId) || 
         isOwnerByEmail(resource.data.studentEmail)
       );
+
+      // PARCIAIS (subcollection de trades)
+      match /partials/{partialId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
     }
 
     // ACCOUNTS - CORRIGIDO: Adicionado suporte a Email no delete

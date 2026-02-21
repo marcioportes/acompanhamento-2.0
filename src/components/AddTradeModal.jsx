@@ -8,18 +8,26 @@ import {
   ChevronDown,
   ArrowRight,
   Calendar as CalendarIcon,
-  Clock as ClockIcon
+  Clock as ClockIcon,
+  Plus,
+  Trash2,
+  Layers
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
+import { calculateFromPartials } from '../utils/tradeCalculations';
 
 const SIDES = ['LONG', 'SHORT'];
 
 /**
- * AddTradeModal (VERSÃO 5.6.0 - BRASIL PRO FORMAT)
- * - Inputs de Texto com Máscara (DD/MM/AAAA e HH:MM)
- * - Resolve definitivamente o problema de formato US (MM/DD) e AM/PM.
- * - Ícones brancos abrem os seletores nativos (invisíveis) para apoio.
+ * AddTradeModal
+ * @see version.js para versão do produto
+ * @description Modal de criação/edição de trade com suporte a parciais
+ * 
+ * CHANGELOG (produto):
+ * - 1.6.0: Modo Parciais — toggle Simples/Parciais com grid editável
+ * - 1.5.0: Plan-centric ledger (sem mudança no modal)
+ * - 1.4.0: Brasil Pro Format - máscaras DD/MM/AAAA e HH:MM
  */
 const AddTradeModal = ({ 
   isOpen, 
@@ -75,6 +83,10 @@ const AddTradeModal = ({
   const [durationPreview, setDurationPreview] = useState(null);
   const [showPlanDropdown, setShowPlanDropdown] = useState(false);
   const [activeAssetRule, setActiveAssetRule] = useState(null);
+
+  // --- SISTEMA DE PARCIAIS (SEMPRE ATIVO) ---
+  const [partials, setPartials] = useState([]);
+  const [resultOverride, setResultOverride] = useState(null); // null = usar calculado
 
   // Refs para inputs ocultos e uploads
   const htfInputRef = useRef(null);
@@ -155,6 +167,19 @@ const AddTradeModal = ({
 
       if (editTrade.htfUrl) setHtfPreview(editTrade.htfUrl);
       if (editTrade.ltfUrl) setLtfPreview(editTrade.ltfUrl);
+      
+      // Parciais: carregar existentes ou criar a partir de entry/exit
+      if (editTrade._partials && editTrade._partials.length > 0) {
+        setPartials(editTrade._partials);
+      } else {
+        // Retrocompat: trade simples → converter para parciais
+        setPartials([
+          { type: 'ENTRY', price: editTrade.entry?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.entryTime || '', seq: 1 },
+          { type: 'EXIT', price: editTrade.exit?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.exitTime || '', seq: 2 }
+        ]);
+      }
+      // Resultado editado?
+      setResultOverride(editTrade.resultEdited ? editTrade.result?.toString() : null);
     } else {
       // Novo Trade
       const now = new Date();
@@ -185,9 +210,37 @@ const AddTradeModal = ({
       });
 
       setHtfFile(null); setLtfFile(null); setHtfPreview(null); setLtfPreview(null); setActiveAssetRule(null);
+      setResultOverride(null);
+      // Parciais: 1 ENTRY + 1 EXIT default
+      setPartials([
+        { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: 1 },
+        { type: 'EXIT', price: '', qty: '', dateTime: '', seq: 2 }
+      ]);
     }
     setErrors({});
   }, [editTrade, isOpen, plans, exchanges, setups, emotions]); 
+
+  // Recálculo de P&L quando parciais mudam
+  useEffect(() => {
+    if (partials.length === 0) return;
+    
+    const validPartials = partials.filter(p => p.price && p.qty && parseFloat(p.price) > 0 && parseFloat(p.qty) > 0);
+    if (validPartials.length === 0) { setPreviewResult(null); return; }
+    
+    const calc = calculateFromPartials({
+      side: formData.side,
+      partials: validPartials,
+      tickerRule: activeAssetRule ? {
+        tickSize: activeAssetRule.tickSize,
+        tickValue: activeAssetRule.tickValue,
+        pointValue: activeAssetRule.pointValue
+      } : null
+    });
+    
+    setPreviewResult(calc.result);
+    setResultOverride(null); // Reset override quando parciais mudam
+    if (calc.avgEntry > 0) setFormData(prev => ({ ...prev, entry: calc.avgEntry.toString(), exit: calc.avgExit.toString(), qty: calc.realizedQty.toString() }));
+  }, [partials, formData.side, activeAssetRule]);
 
   // Regra de Ativo
   useEffect(() => {
@@ -345,23 +398,44 @@ const AddTradeModal = ({
     else { setLtfFile(null); setLtfPreview(null); if (ltfInputRef.current) ltfInputRef.current.value = ''; }
   };
 
+  // --- HANDLERS DE PARCIAIS ---
+
+  const addPartialRow = () => {
+    setPartials(prev => [...prev, { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: prev.length + 1 }]);
+  };
+
+  const updatePartialRow = (index, field, value) => {
+    setPartials(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+  };
+
+  const removePartialRow = (index) => {
+    if (partials.length <= 2) return; // Mínimo 1E + 1S
+    setPartials(prev => prev.filter((_, i) => i !== index).map((p, i) => ({ ...p, seq: i + 1 })));
+  };
+
   const validate = () => {
     const newErrors = {};
-    if (!formData.entryDate) newErrors.entryDate = 'Data Entrada obrigatória';
-    if (!formData.entryTime) newErrors.entryTime = 'Hora Entrada obrigatória';
-    if (formData.exitTime) {
-      if (!formData.exitDate) newErrors.exitDate = 'Data Saída obrigatória';
-      const start = new Date(`${formData.entryDate}T${formData.entryTime}`);
-      const end = new Date(`${formData.exitDate}T${formData.exitTime}`);
-      if (end < start) newErrors.exitTime = 'Saída não pode ser anterior à entrada';
-    }
     if (!formData.ticker.trim()) newErrors.ticker = 'Ticker é obrigatório';
-    if (!formData.entry || isNaN(parseFloat(formData.entry))) newErrors.entry = 'Preço inválido';
-    if (!formData.exit || isNaN(parseFloat(formData.exit))) newErrors.exit = 'Preço inválido';
     if (!formData.planId) newErrors.planId = 'Selecione um plano';
     if (!formData.setup) newErrors.setup = 'Selecione um setup';
-    const qtyNum = parseFloat(formData.qty);
-    if (!formData.qty || isNaN(qtyNum) || qtyNum <= 0) newErrors.qty = 'Quantidade inválida';
+    
+    // Validar parciais (sempre)
+    const validPartials = partials.filter(p => p.price && p.qty);
+    if (validPartials.length === 0) newErrors.partials = 'Preencha ao menos 1 entrada e 1 saída';
+    const entries = validPartials.filter(p => p.type === 'ENTRY');
+    const exits = validPartials.filter(p => p.type === 'EXIT');
+    if (entries.length === 0) newErrors.partials = 'Adicione ao menos 1 entrada';
+    const totalEntryQty = entries.reduce((s, p) => s + (parseFloat(p.qty) || 0), 0);
+    const totalExitQty = exits.reduce((s, p) => s + (parseFloat(p.qty) || 0), 0);
+    if (totalExitQty > totalEntryQty) newErrors.partials = 'Qtd de saída excede entrada';
+    
+    // Validar horários das parciais
+    partials.forEach((p, i) => {
+      if (p.price && parseFloat(p.price) <= 0) newErrors[`partial_${i}_price`] = 'Preço inválido';
+      if (p.qty && parseFloat(p.qty) <= 0) newErrors[`partial_${i}_qty`] = 'Qtd inválida';
+      if (!p.dateTime) newErrors[`partial_${i}_dateTime`] = 'Horário obrigatório';
+    });
+    
     if (!editTrade) {
       if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
       if (!ltfFile && !ltfPreview) newErrors.ltf = 'Imagem LTF é obrigatória';
@@ -375,20 +449,33 @@ const AddTradeModal = ({
     e.preventDefault();
     if (!validate()) return;
 
-    // Constrói payload final (ISO)
-    const entryTimeISO = `${formData.entryDate}T${formData.entryTime}`;
-    const exitTimeISO = formData.exitTime ? `${formData.exitDate}T${formData.exitTime}` : null;
+    const validPartials = partials.filter(p => p.price && p.qty).map((p, i) => ({
+      seq: i + 1,
+      type: p.type,
+      price: parseFloat(p.price),
+      qty: parseFloat(p.qty),
+      dateTime: p.dateTime || new Date().toISOString()
+    }));
+
+    // Derivar entryTime/exitTime das parciais
+    const entries = validPartials.filter(p => p.type === 'ENTRY').sort((a, b) => (a.dateTime || '').localeCompare(b.dateTime || ''));
+    const exits = validPartials.filter(p => p.type === 'EXIT').sort((a, b) => (a.dateTime || '').localeCompare(b.dateTime || ''));
+    const entryTimeISO = entries[0]?.dateTime || new Date().toISOString();
+    const exitTimeISO = exits.length > 0 ? exits[exits.length - 1]?.dateTime : null;
     
     const payload = { 
       ...formData,
       entryTime: entryTimeISO,
       exitTime: exitTimeISO,
-      date: formData.entryDate, // Legado
+      date: entryTimeISO.split('T')[0],
       tickerRule: activeAssetRule ? {
         tickSize: activeAssetRule.tickSize,
         tickValue: activeAssetRule.tickValue,
         pointValue: activeAssetRule.pointValue
-      } : null
+      } : null,
+      hasPartials: validPartials.length > 0,
+      _partials: validPartials,
+      resultOverride: resultOverride
     };
 
     console.log('[MODAL] Enviando payload:', payload);
@@ -442,62 +529,6 @@ const AddTradeModal = ({
               )}
             </div>
 
-            {/* --- BLOCO TEMPORAL (MÁSCARA BR + ÍCONES BRANCOS) --- */}
-            <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Registro Temporal (BR)</label>
-                {durationPreview && (
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${durationPreview.includes('Erro') ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-blue-500/10 border-blue-500/30 text-blue-400'}`}>
-                    Duração: {durationPreview}
-                  </span>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* ABERTURA */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium"><ArrowRight className="w-4 h-4"/> Abertura</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* DATA ENTRADA */}
-                    <div className="relative">
-                      <label className="input-label">Data (dd/mm/aaaa) *</label>
-                      <input type="text" name="entryDate" value={maskedInputs.entryDate} onChange={handleMaskChange} placeholder="DD/MM/AAAA" maxLength={10} className={`input-dark w-full pr-8 ${errors.entryDate ? 'border-red-500' : ''}`} />
-                      <button type="button" onClick={() => triggerPicker(entryDatePickerRef)} className="absolute right-2 top-7 text-slate-400 hover:text-white"><CalendarIcon className="w-4 h-4" /></button>
-                      <input type="date" ref={entryDatePickerRef} onChange={(e) => handleNativePickerChange(e, 'entryDate')} className="sr-only" tabIndex={-1} />
-                    </div>
-                    {/* HORA ENTRADA */}
-                    <div className="relative">
-                      <label className="input-label">Hora (hh:mm) *</label>
-                      <input type="text" name="entryTime" value={maskedInputs.entryTime} onChange={handleMaskChange} placeholder="HH:MM" maxLength={5} className={`input-dark w-full pr-8 ${errors.entryTime ? 'border-red-500' : ''}`} />
-                      <button type="button" onClick={() => triggerPicker(entryTimePickerRef)} className="absolute right-2 top-7 text-slate-400 hover:text-white"><ClockIcon className="w-4 h-4" /></button>
-                      <input type="time" ref={entryTimePickerRef} onChange={(e) => handleNativePickerChange(e, 'entryTime')} className="sr-only" tabIndex={-1} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* FECHAMENTO */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-red-400 text-sm font-medium"><ArrowRight className="w-4 h-4"/> Fechamento</div>
-                  <div className="grid grid-cols-2 gap-2">
-                     {/* DATA SAIDA */}
-                    <div className="relative">
-                      <label className="input-label">Data (dd/mm/aaaa) *</label>
-                      <input type="text" name="exitDate" value={maskedInputs.exitDate} onChange={handleMaskChange} placeholder="DD/MM/AAAA" maxLength={10} className={`input-dark w-full pr-8 ${errors.exitDate ? 'border-red-500' : ''}`} />
-                      <button type="button" onClick={() => triggerPicker(exitDatePickerRef)} className="absolute right-2 top-7 text-slate-400 hover:text-white"><CalendarIcon className="w-4 h-4" /></button>
-                      <input type="date" ref={exitDatePickerRef} onChange={(e) => handleNativePickerChange(e, 'exitDate')} className="sr-only" tabIndex={-1} />
-                    </div>
-                    {/* HORA SAIDA */}
-                    <div className="relative">
-                      <label className="input-label">Hora (hh:mm)</label>
-                      <input type="text" name="exitTime" value={maskedInputs.exitTime} onChange={handleMaskChange} placeholder="HH:MM" maxLength={5} className={`input-dark w-full pr-8 ${errors.exitTime ? 'border-red-500' : ''}`} />
-                      <button type="button" onClick={() => triggerPicker(exitTimePickerRef)} className="absolute right-2 top-7 text-slate-400 hover:text-white"><ClockIcon className="w-4 h-4" /></button>
-                      <input type="time" ref={exitTimePickerRef} onChange={(e) => handleNativePickerChange(e, 'exitTime')} className="sr-only" tabIndex={-1} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* DADOS DO TRADE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -517,12 +548,129 @@ const AddTradeModal = ({
                 <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">{SIDES.map(side => (<button key={side} type="button" onClick={() => setFormData(prev => ({ ...prev, side }))} className={`flex-1 py-2 text-xs font-medium rounded ${formData.side === side ? (side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400') : 'text-slate-400 hover:text-white'}`}>{side}</button>))}</div>
               </div>
 
-              <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} /></div>
-              <div><label className="input-label">Preço Entrada *</label><input type="number" name="entry" step="any" value={formData.entry} onChange={handleChange} className="input-dark w-full" placeholder="0.00" /></div>
-              <div><label className="input-label">Preço Saída *</label><input type="number" name="exit" step="any" value={formData.exit} onChange={handleChange} className="input-dark w-full" placeholder="0.00" /></div>
+              <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} disabled placeholder="Calculado das parciais" /></div>
+
+              {/* GRID DE PARCIAIS (SEMPRE VISÍVEL) */}
+              <div className="md:col-span-2">
+                <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" /> Parciais
+                    </span>
+                    <button type="button" onClick={addPartialRow} className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                      <Plus className="w-3 h-3" /> Adicionar
+                    </button>
+                  </div>
+                  
+                  {/* Header */}
+                  <div className="grid grid-cols-[70px_1fr_80px_140px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
+                    <span>Ponta</span>
+                    <span>Preço</span>
+                    <span>Qtd</span>
+                    <span>Horário</span>
+                    <span></span>
+                  </div>
+                  
+                  {/* Rows */}
+                  {partials.map((p, i) => (
+                    <div key={i} className="grid grid-cols-[70px_1fr_80px_140px_28px] gap-2 items-center">
+                      <select
+                        value={p.type}
+                        onChange={(e) => updatePartialRow(i, 'type', e.target.value)}
+                        className={`input-dark text-xs py-1.5 ${p.type === 'ENTRY' ? 'text-emerald-400' : 'text-red-400'}`}
+                      >
+                        <option value="ENTRY">Entrada</option>
+                        <option value="EXIT">Saída</option>
+                      </select>
+                      <input
+                        type="number"
+                        step="any"
+                        value={p.price}
+                        onChange={(e) => updatePartialRow(i, 'price', e.target.value)}
+                        placeholder="Preço"
+                        className={`input-dark text-xs py-1.5 ${errors[`partial_${i}_price`] ? 'border-red-500' : ''}`}
+                      />
+                      <input
+                        type="number"
+                        value={p.qty}
+                        onChange={(e) => updatePartialRow(i, 'qty', e.target.value)}
+                        placeholder="Qtd"
+                        step={activeAssetRule?.minLot || 1}
+                        className={`input-dark text-xs py-1.5 ${errors[`partial_${i}_qty`] ? 'border-red-500' : ''}`}
+                      />
+                      <input
+                        type="datetime-local"
+                        value={p.dateTime ? p.dateTime.slice(0, 16) : ''}
+                        onChange={(e) => updatePartialRow(i, 'dateTime', e.target.value ? `${e.target.value}:00` : '')}
+                        className={`input-dark text-xs py-1.5 ${errors[`partial_${i}_dateTime`] ? 'border-red-500' : ''}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePartialRow(i)}
+                        disabled={partials.length <= 2}
+                        className={`p-1 transition-colors ${partials.length <= 2 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-500 hover:text-red-400'}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {errors.partials && (
+                    <div className="flex items-center gap-1 text-xs text-red-400 mt-1">
+                      <AlertCircle className="w-3 h-3" /> {errors.partials}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="md:col-span-2">
-                <div className={`input-dark w-full flex items-center justify-center font-mono font-bold ${previewResult >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}`}>{previewResult !== null ? `${previewResult >= 0 ? '+' : ''}${selectedAccount ? getCurrencySymbol(selectedAccount.currency) : 'R$'} ${previewResult.toFixed(2)}` : '---'}</div>
+                <label className="input-label flex items-center gap-2">
+                  Resultado (P&L)
+                  {resultOverride != null && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded">Editado</span>
+                  )}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    value={resultOverride != null ? resultOverride : (previewResult != null ? previewResult : '')}
+                    onChange={(e) => setResultOverride(e.target.value !== '' ? e.target.value : null)}
+                    placeholder="---"
+                    className={`input-dark w-full font-mono font-bold text-center ${
+                      (resultOverride != null ? parseFloat(resultOverride) : previewResult) >= 0 
+                        ? 'text-emerald-400 bg-emerald-500/10' 
+                        : 'text-red-400 bg-red-500/10'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = resultOverride != null ? parseFloat(resultOverride) : previewResult;
+                      if (val != null) setResultOverride(Math.round(val).toString());
+                    }}
+                    disabled={previewResult == null && resultOverride == null}
+                    title="Arredondar para inteiro"
+                    className="input-dark px-3 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors text-xs font-mono disabled:opacity-30"
+                  >
+                    ≈
+                  </button>
+                  {resultOverride != null && (
+                    <button
+                      type="button"
+                      onClick={() => setResultOverride(null)}
+                      title="Restaurar valor calculado"
+                      className="input-dark px-3 text-slate-400 hover:text-amber-400 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {previewResult != null && resultOverride != null && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Calculado: {selectedAccount ? getCurrencySymbol(selectedAccount.currency) : 'R$'} {previewResult.toFixed(2)}
+                  </div>
+                )}
               </div>
             </div>
 

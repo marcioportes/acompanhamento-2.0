@@ -179,13 +179,25 @@ export const useTrades = (overrideStudentId = null) => {
       const qty = parseFloat(tradeData.qty);
       const side = tradeData.side;
       let result;
+      let resultInPoints = 0;
       
-      if (tradeData.tickerRule?.tickSize && tradeData.tickerRule?.tickValue) {
+      if (tradeData._partials?.length > 0) {
+        // Cálculo via parciais (SEMPRE preferido)
+        const calc = calculateFromPartials({
+          side,
+          partials: tradeData._partials,
+          tickerRule: tradeData.tickerRule || null
+        });
+        result = calc.result;
+        resultInPoints = calc.resultInPoints;
+      } else if (tradeData.tickerRule?.tickSize && tradeData.tickerRule?.tickValue) {
         const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
+        resultInPoints = Math.round(rawDiff * 100) / 100;
         const ticks = rawDiff / tradeData.tickerRule.tickSize;
-        result = ticks * tradeData.tickerRule.tickValue * qty;
+        result = Math.round(ticks * tradeData.tickerRule.tickValue * qty);
       } else {
-        result = calculateTradeResult(side, entry, exit, qty);
+        result = Math.round(calculateTradeResult(side, entry, exit, qty));
+        resultInPoints = side === 'LONG' ? exit - entry : entry - exit;
       }
       
       const entryTime = tradeData.entryTime; 
@@ -198,8 +210,15 @@ export const useTrades = (overrideStudentId = null) => {
         date: legacyDate, entryTime, exitTime, duration,
         ticker: tradeData.ticker?.toUpperCase() || '',
         entry, exit, qty, 
-        result: Math.round(result * 100) / 100,
+        resultCalculated: Math.round(result * 100) / 100,
+        result: tradeData.resultOverride != null 
+          ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100 
+          : Math.round(result * 100) / 100,
+        resultInPoints,
+        resultEdited: tradeData.resultOverride != null,
         resultPercent: calculateResultPercent(side, entry, exit),
+        hasPartials: (tradeData._partials?.length || 0) > 0,
+        partialsCount: tradeData._partials?.length || 0,
         studentEmail: user.email,
         studentName: user.displayName || user.email.split('@')[0],
         studentId: user.uid,
@@ -215,6 +234,28 @@ export const useTrades = (overrideStudentId = null) => {
       
       if (htfFile) { const url = await uploadImage(htfFile, docRef.id, 'htf'); await updateDoc(docRef, { htfUrl: url }); }
       if (ltfFile) { const url = await uploadImage(ltfFile, docRef.id, 'ltf'); await updateDoc(docRef, { ltfUrl: url }); }
+
+      // Salvar parciais como subcollection
+      if (tradeData._partials && tradeData._partials.length > 0) {
+        const partialsRef = collection(db, 'trades', docRef.id, 'partials');
+        for (const partial of tradeData._partials) {
+          await addDoc(partialsRef, {
+            seq: partial.seq,
+            type: partial.type,
+            price: partial.price,
+            qty: partial.qty,
+            dateTime: partial.dateTime || new Date().toISOString(),
+            notes: partial.notes || '',
+            createdAt: serverTimestamp()
+          });
+        }
+        // Marcar trade como tendo parciais
+        await updateDoc(docRef, { 
+          hasPartials: true, 
+          partialsCount: tradeData._partials.length 
+        });
+        console.log(`[useTrades] ${tradeData._partials.length} parciais salvas`);
+      }
 
       if (derivedAccountId && result !== 0) {
         const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
@@ -475,7 +516,14 @@ export const useTrades = (overrideStudentId = null) => {
       entry: calc.avgEntry,        // retrocompat: entry = avgEntry
       exit: calc.avgExit,          // retrocompat: exit = avgExit
       qty: calc.realizedQty,       // retrocompat: qty = realizedQty
-      result: calc.result,
+      resultCalculated: calc.result,
+      result: calc.result,         // recalculate reseta o override
+      resultInPoints: calc.resultInPoints,
+      resultEdited: false,
+      // Derivar tempos das parciais
+      entryTime: calc.entryTime || trade.entryTime,
+      exitTime: calc.exitTime || trade.exitTime,
+      date: calc.entryTime ? calc.entryTime.split('T')[0] : trade.date,
       resultPercent: calc.avgEntry > 0 
         ? calculateResultPercent(trade.side, calc.avgEntry, calc.avgExit) 
         : 0,
