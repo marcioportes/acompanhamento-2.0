@@ -1,14 +1,17 @@
 /**
  * useTrades
- * @version 1.3.0
- * @description Hook responsável pelo gerenciamento de trades (CRUD) + Sistema de Feedback
+ * @see version.js para versão do produto
+ * @description Hook responsável pelo gerenciamento de trades (CRUD) + Sistema de Feedback + Parciais
  * 
- * CHANGELOG:
- * - 1.3.0: Sistema completo de feedback com máquina de estados
- *   - addFeedbackComment(): Adiciona comentário ao histórico com transição de status
- *   - updateTradeStatus(): Atualiza status do trade
- * - 1.2.0: Fix getTradesAwaitingFeedback (OPEN + QUESTION)
- * - 1.1.0: Suporte a overrideStudentId para View As Student
+ * CHANGELOG (produto):
+ * - 1.6.0: Sistema de parciais (1 Trade → N Parciais)
+ *   - addPartial(): Adiciona parcial a um trade existente
+ *   - updatePartial(): Atualiza parcial existente
+ *   - deletePartial(): Remove parcial e recalcula
+ *   - getPartials(): Busca parciais de um trade
+ *   - recalculateFromPartials(): Recalcula resultado do trade a partir das parciais
+ * - 1.5.0: Plan-centric ledger
+ * - 1.4.0: Sistema completo de feedback com máquina de estados
  * 
  * MÁQUINA DE ESTADOS:
  * OPEN → Mentor dá feedback → REVIEWED
@@ -28,6 +31,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
+import { calculateFromPartials, validatePartials } from '../utils/tradeCalculations';
 
 // Status constants
 const STATUS = {
@@ -418,6 +422,152 @@ export const useTrades = (overrideStudentId = null) => {
   }, [user]);
 
   // ============================================
+  // SISTEMA DE PARCIAIS v1.6.0
+  // ============================================
+
+  /**
+   * Busca parciais de um trade (subcollection)
+   * @param {string} tradeId
+   * @returns {Promise<Array>} Lista de parciais ordenadas por seq
+   */
+  const getPartials = useCallback(async (tradeId) => {
+    const partialsRef = collection(db, 'trades', tradeId, 'partials');
+    const q = query(partialsRef, orderBy('seq', 'asc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }, []);
+
+  /**
+   * Recalcula resultado do trade a partir das parciais e atualiza o doc
+   * @param {string} tradeId
+   * @returns {Promise<Object>} Trade atualizado
+   */
+  const recalculateFromPartials = useCallback(async (tradeId) => {
+    const tradeRef = doc(db, 'trades', tradeId);
+    const tradeSnap = await getDoc(tradeRef);
+    if (!tradeSnap.exists()) throw new Error('Trade não encontrado');
+    const trade = tradeSnap.data();
+
+    const partials = await getPartials(tradeId);
+    
+    if (partials.length === 0) {
+      // Sem parciais → reverter para trade simples
+      await updateDoc(tradeRef, {
+        hasPartials: false,
+        partialsCount: 0,
+        updatedAt: serverTimestamp()
+      });
+      return { id: tradeId, ...trade, hasPartials: false, partialsCount: 0 };
+    }
+
+    const calc = calculateFromPartials({
+      side: trade.side,
+      partials,
+      tickerRule: trade.tickerRule || null
+    });
+
+    const updateData = {
+      hasPartials: true,
+      partialsCount: partials.length,
+      avgEntry: calc.avgEntry,
+      avgExit: calc.avgExit,
+      totalQty: calc.realizedQty,
+      entry: calc.avgEntry,        // retrocompat: entry = avgEntry
+      exit: calc.avgExit,          // retrocompat: exit = avgExit
+      qty: calc.realizedQty,       // retrocompat: qty = realizedQty
+      result: calc.result,
+      resultPercent: calc.avgEntry > 0 
+        ? calculateResultPercent(trade.side, calc.avgEntry, calc.avgExit) 
+        : 0,
+      updatedAt: serverTimestamp()
+    };
+
+    await updateDoc(tradeRef, updateData);
+    console.log(`[useTrades] Trade ${tradeId} recalculado: result=${calc.result}, partials=${partials.length}`);
+
+    return { id: tradeId, ...trade, ...updateData };
+  }, [getPartials]);
+
+  /**
+   * Adiciona parcial a um trade
+   * @param {string} tradeId
+   * @param {Object} partialData - { type: 'ENTRY'|'EXIT', price, qty, dateTime?, notes? }
+   * @returns {Promise<Object>} Parcial criada
+   */
+  const addPartial = useCallback(async (tradeId, partialData) => {
+    if (!user) throw new Error('Auth required');
+
+    // Buscar parciais existentes para calcular seq
+    const existing = await getPartials(tradeId);
+    const nextSeq = existing.length > 0 
+      ? Math.max(...existing.map(p => p.seq || 0)) + 1 
+      : 1;
+
+    const partial = {
+      seq: nextSeq,
+      type: partialData.type,  // 'ENTRY' ou 'EXIT'
+      price: parseFloat(partialData.price),
+      qty: parseFloat(partialData.qty),
+      dateTime: partialData.dateTime || new Date().toISOString(),
+      notes: partialData.notes || '',
+      createdAt: serverTimestamp()
+    };
+
+    // Validar antes de salvar
+    const allPartials = [...existing, partial];
+    const tradeSnap = await getDoc(doc(db, 'trades', tradeId));
+    const validation = validatePartials(allPartials, tradeSnap.data()?.side);
+    if (!validation.valid) {
+      throw new Error(`Parcial inválida: ${validation.errors.join(', ')}`);
+    }
+
+    const partialsRef = collection(db, 'trades', tradeId, 'partials');
+    const docRef = await addDoc(partialsRef, partial);
+    console.log(`[useTrades] Parcial ${docRef.id} adicionada ao trade ${tradeId} (seq=${nextSeq})`);
+
+    // Recalcular trade
+    await recalculateFromPartials(tradeId);
+
+    return { id: docRef.id, ...partial };
+  }, [user, getPartials, recalculateFromPartials]);
+
+  /**
+   * Atualiza uma parcial existente
+   * @param {string} tradeId
+   * @param {string} partialId
+   * @param {Object} updates - { price?, qty?, type?, dateTime?, notes? }
+   */
+  const updatePartial = useCallback(async (tradeId, partialId, updates) => {
+    if (!user) throw new Error('Auth required');
+
+    const partialRef = doc(db, 'trades', tradeId, 'partials', partialId);
+    const updateData = { ...updates, updatedAt: serverTimestamp() };
+    if (updates.price !== undefined) updateData.price = parseFloat(updates.price);
+    if (updates.qty !== undefined) updateData.qty = parseFloat(updates.qty);
+
+    await updateDoc(partialRef, updateData);
+    console.log(`[useTrades] Parcial ${partialId} atualizada`);
+
+    // Recalcular trade
+    await recalculateFromPartials(tradeId);
+  }, [user, recalculateFromPartials]);
+
+  /**
+   * Remove uma parcial
+   * @param {string} tradeId
+   * @param {string} partialId
+   */
+  const deletePartial = useCallback(async (tradeId, partialId) => {
+    if (!user) throw new Error('Auth required');
+
+    await deleteDoc(doc(db, 'trades', tradeId, 'partials', partialId));
+    console.log(`[useTrades] Parcial ${partialId} deletada`);
+
+    // Recalcular trade (pode reverter para simples se 0 parciais)
+    await recalculateFromPartials(tradeId);
+  }, [user, recalculateFromPartials]);
+
+  // ============================================
   // HELPERS
   // ============================================
   
@@ -470,6 +620,9 @@ export const useTrades = (overrideStudentId = null) => {
     trades, allTrades, loading, error, 
     addTrade, updateTrade, deleteTrade, 
     addFeedback, addFeedbackComment, updateTradeStatus,
+    // Parciais
+    addPartial, updatePartial, deletePartial, getPartials, recalculateFromPartials,
+    // Helpers
     getTradesByStudent, getTradesAwaitingFeedback, getTradesGroupedByStudent,
     getUniqueStudents, getStudentFeedbackCounts, getTradesByStudentAndStatus
   };
