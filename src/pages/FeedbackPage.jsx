@@ -22,7 +22,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
   Calendar, TrendingUp, TrendingDown, Clock, AlertCircle,
-  BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2
+  BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2,
+  Layers, ArrowDownRight, ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
@@ -127,6 +128,47 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
         </div>
       </div>
 
+      {/* Parciais — exibe quando trade tem dados carregados */}
+      {trade._loadedPartials?.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 text-slate-500 mb-2">
+            <Layers className="w-4 h-4" />
+            <span className="text-xs font-medium">Parciais</span>
+            <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">{trade._loadedPartials.length}</span>
+          </div>
+          <div className="bg-slate-800/30 rounded-xl overflow-hidden">
+            <div className="grid grid-cols-[70px_1fr_60px_120px] gap-2 px-3 py-1.5 text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-700/50">
+              <span>Tipo</span><span>Preço</span><span>Qtd</span><span>Data/Hora</span>
+            </div>
+            {[...trade._loadedPartials].sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((p, i) => {
+              const label = trade.side === 'LONG'
+                ? (p.type === 'ENTRY' ? 'Compra' : 'Venda')
+                : (p.type === 'ENTRY' ? 'Venda' : 'Compra');
+              return (
+                <div key={p.id || i} className="grid grid-cols-[70px_1fr_60px_120px] gap-2 px-3 py-2 items-center border-b border-slate-700/30 last:border-0">
+                  <span className={`text-xs font-medium flex items-center gap-1 ${p.type === 'ENTRY' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {p.type === 'ENTRY' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                    {label}
+                  </span>
+                  <span className="text-white font-mono text-xs">{p.price}</span>
+                  <span className="text-white font-mono text-xs">{p.qty}</span>
+                  <span className="text-slate-400 text-[10px] font-mono">
+                    {p.dateTime ? (() => { try { const [d, t] = p.dateTime.split('T'); const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y} ${(t||'').substring(0,5)}`; } catch { return '-'; } })() : '-'}
+                  </span>
+                </div>
+              );
+            })}
+            {(trade.avgEntry != null || trade.avgExit != null) && (
+              <div className="px-3 py-2 bg-slate-800/50 border-t border-slate-700/50 flex flex-wrap gap-3 text-xs">
+                {trade.avgEntry != null && <span className="text-slate-400">Média Entrada: <strong className="text-white font-mono">{trade.avgEntry}</strong></span>}
+                {trade.avgExit != null && <span className="text-slate-400">Média Saída: <strong className="text-white font-mono">{trade.avgExit}</strong></span>}
+                {trade.resultInPoints != null && <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {notes && (
         <div className="bg-slate-800/30 rounded-xl p-4">
           <span className="text-xs text-slate-500 block mb-2">Observações do Aluno</span>
@@ -188,12 +230,35 @@ const ChatMessage = ({ message }) => {
 // MAIN COMPONENT
 // ============================================
 
-const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false, embedded = false }) => {
+const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false, embedded = false, getPartials }) => {
   const { user, isMentor } = useAuth();
   const [comment, setComment] = useState('');
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Fetch parciais quando trade muda
+  const [tradeWithPartials, setTradeWithPartials] = useState(null);
+  useEffect(() => {
+    if (!trade) { setTradeWithPartials(null); return; }
+    // Inicializa sem parciais
+    setTradeWithPartials({ ...trade, _loadedPartials: [] });
+    
+    if (trade.hasPartials && getPartials) {
+      getPartials(trade.id).then(parts => {
+        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: parts } : prev);
+      }).catch(() => {});
+    }
+  }, [trade?.id, trade?.hasPartials, getPartials]);
+
+  // Manter campos do trade atualizados (feedbackHistory, status) sem perder parciais
+  useEffect(() => {
+    if (!trade) return;
+    setTradeWithPartials(prev => {
+      if (!prev || prev.id !== trade.id) return prev;
+      return { ...trade, _loadedPartials: prev._loadedPartials || [] };
+    });
+  }, [trade?.feedbackHistory, trade?.status]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -324,7 +389,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
           {/* Coluna Esquerda - Info do Trade */}
           <div className="lg:sticky lg:top-0 lg:self-start">
-            <TradeInfoCard trade={trade} onImageClick={setFullscreenImage} />
+            <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
           </div>
 
           {/* Coluna Direita - Chat */}
@@ -463,7 +528,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna Esquerda - Info do Trade */}
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <TradeInfoCard trade={trade} onImageClick={setFullscreenImage} />
+          <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
         </div>
 
         {/* Coluna Direita - Chat */}

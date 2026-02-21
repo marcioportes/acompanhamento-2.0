@@ -1,163 +1,200 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, User, Mail, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
-
 /**
- * Componente para agrupar contas de um aluno específico
- * Usado na visualização do mentor em AccountsPage
+ * StudentAccountGroup
+ * @description Card individual por aluno — grid 3 colunas, estilo Dashboard do Mentor.
+ *   Header com avatar gradiente + nome/email.
+ *   Contas como rows compactos com ações Edit/Eye sempre visíveis.
+ * @see version.js para versão do produto
+ * 
+ * CHANGELOG:
+ * - 1.6.0: Redesign — card individual, avatar iniciais, expand com contas,
+ *          botões Edit2 + Eye sempre visíveis, DebugBadge guideline
  */
+
+import { useState } from 'react';
+import { 
+  ChevronDown, ChevronUp, User,
+  TrendingUp, TrendingDown, Edit2, Eye, Wallet,
+  CheckCircle
+} from 'lucide-react';
+
 const StudentAccountGroup = ({ 
   studentName, 
   studentEmail, 
   accounts = [],
   balancesByAccountId = {},
   onAccountClick,
+  onEditAccount,
   getAccountBadge,
   formatCurrency
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  // Calcular totais do aluno
+  // Totais
   const totalBalance = accounts.reduce((sum, acc) => {
-    const saldoAtual = balancesByAccountId[acc.id] ?? acc.currentBalance ?? acc.initialBalance ?? 0;
-    return sum + saldoAtual;
+    return sum + (balancesByAccountId[acc.id] ?? acc.currentBalance ?? acc.initialBalance ?? 0);
   }, 0);
-
   const totalInitial = accounts.reduce((sum, acc) => sum + (acc.initialBalance || 0), 0);
   const totalPL = totalBalance - totalInitial;
-  const accountCount = accounts.length;
+  const isPositive = totalPL >= 0;
+  const plPercent = totalInitial > 0 ? ((totalPL / totalInitial) * 100) : 0;
 
-  // Determinar cor do P&L
-  const plColor = totalPL >= 0 ? 'text-emerald-400' : 'text-red-400';
-  const PlIcon = totalPL >= 0 ? TrendingUp : TrendingDown;
+  // Iniciais do nome para avatar
+  const initials = (studentName || '')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('');
+
+  const getTypeConfig = (type) => {
+    switch (type) {
+      case 'REAL': return { label: 'Real', text: 'text-emerald-400', dot: 'bg-emerald-400' };
+      case 'PROP': return { label: 'Prop', text: 'text-purple-400', dot: 'bg-purple-400' };
+      default:     return { label: 'Demo', text: 'text-amber-400', dot: 'bg-amber-400' };
+    }
+  };
 
   return (
-    <div className="mb-6">
-      {/* Header do Grupo */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 
-                   rounded-xl p-4 hover:bg-slate-800/70 transition-all duration-200
-                   flex items-center justify-between group"
-      >
-        <div className="flex items-center gap-4 flex-1">
-          {/* Ícone Expand/Collapse */}
-          <div className="text-slate-400 group-hover:text-emerald-400 transition-colors">
-            {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+    <div className="glass-card p-4 transition-all hover:border-slate-600">
+      {/* Header: Avatar + Nome + Métricas resumidas */}
+      <div className="flex items-center gap-3 mb-4">
+        {/* Avatar gradiente com iniciais */}
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+          {initials || <User className="w-5 h-5" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-white truncate">{studentName}</p>
+          <p className="text-xs text-slate-500 truncate">{studentEmail}</p>
+        </div>
+      </div>
+
+      {/* Métricas em grid 2 colunas — estilo dos counters de Feedback */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        {/* Saldo Total */}
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-700/50">
+          <div className="p-1.5 rounded-lg bg-blue-500/20">
+            <Wallet className="w-4 h-4 text-blue-400" />
           </div>
-
-          {/* Info do Aluno */}
-          <div className="flex-1 text-left">
-            <div className="flex items-center gap-2 mb-1">
-              <User size={18} className="text-emerald-400" />
-              <h3 className="text-lg font-semibold text-white">{studentName}</h3>
-            </div>
-            {studentEmail && (
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <Mail size={14} />
-                <span>{studentEmail}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Métricas Resumidas */}
-          <div className="flex gap-6 items-center">
-            {/* Total de Contas */}
-            <div className="text-center">
-              <p className="text-xs text-slate-400 mb-1">Contas</p>
-              <p className="text-lg font-bold text-white">{accountCount}</p>
-            </div>
-
-            {/* Saldo Total */}
-            <div className="text-center min-w-[130px]">
-              <p className="text-xs text-slate-400 mb-1">Saldo Total</p>
-              <p className="text-lg font-bold text-white">
-                {formatCurrency(totalBalance, accounts[0]?.currency || 'BRL')}
-              </p>
-            </div>
-
-            {/* P&L Total */}
-            <div className="text-center min-w-[150px]">
-              <p className="text-xs text-slate-400 mb-1">P&L Total</p>
-              <div className={`flex items-center justify-center gap-1 text-lg font-bold ${plColor}`}>
-                <PlIcon size={18} />
-                <span>
-                  {formatCurrency(Math.abs(totalPL), accounts[0]?.currency || 'BRL')}
-                </span>
-              </div>
-            </div>
+          <div className="text-left min-w-0">
+            <p className="text-base font-bold text-white font-mono truncate">
+              {formatCurrency(totalBalance, accounts[0]?.currency || 'BRL')}
+            </p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">SALDO</p>
           </div>
         </div>
-      </button>
 
-      {/* Lista de Contas (Expandida) */}
-      {isExpanded && (
-        <div className="mt-3 space-y-3">
-          {accounts.length === 0 ? (
-            <div className="text-center py-8 text-slate-500 italic bg-slate-800/20 rounded-lg">
-              Nenhuma conta cadastrada para este aluno
-            </div>
-          ) : (
-            accounts.map((acc) => {
-              const saldoInicial = acc.initialBalance || 0;
-              const saldoAtual = balancesByAccountId[acc.id] ?? acc.currentBalance ?? saldoInicial;
-              const profit = saldoAtual - saldoInicial;
-              const isProfitable = profit >= 0;
-              const isSolvent = saldoAtual >= 0;
-              const profitColor = isProfitable ? 'text-emerald-400' : 'text-red-400';
-              const ProfitIcon = isProfitable ? TrendingUp : TrendingDown;
+        {/* P&L */}
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-slate-700/50">
+          <div className={`p-1.5 rounded-lg ${isPositive ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
+            {isPositive 
+              ? <TrendingUp className="w-4 h-4 text-emerald-400" /> 
+              : <TrendingDown className="w-4 h-4 text-red-400" />
+            }
+          </div>
+          <div className="text-left">
+            <p className={`text-base font-bold font-mono ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+              {isPositive ? '+' : ''}{plPercent.toFixed(1)}%
+            </p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider">P&L</p>
+          </div>
+        </div>
+      </div>
 
-              return (
-                <div
-                  key={acc.id}
-                  onClick={() => onAccountClick?.(acc)}
-                  className="relative bg-slate-800/30 backdrop-blur-sm border border-slate-700/30 
-                           rounded-lg p-4 hover:bg-slate-800/50 hover:border-emerald-500/30
-                           transition-all duration-200 cursor-pointer group/card"
-                >
-                  {/* Badge de Tipo */}
-                  {getAccountBadge(acc)}
-
-                  {/* Nome e Broker */}
-                  <div className="mb-3 pr-32">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Wallet className="w-4 h-4 text-blue-400" />
-                      <h4 className="text-white font-semibold group-hover/card:text-emerald-400 transition-colors">
-                        {acc.name}
-                      </h4>
-                    </div>
-                    <p className="text-sm text-slate-400 flex items-center gap-2">
-                      {acc.broker || acc.brokerName || 'Broker não informado'}
-                    </p>
-                  </div>
-
-                  {/* Saldos */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-slate-400">Saldo Inicial</span>
-                      <span className="text-white font-mono">
-                        {formatCurrency(saldoInicial, acc.currency)}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-slate-400">Saldo Atual</span>
-                      <div className="flex items-center gap-2">
-                        <ProfitIcon className={`w-4 h-4 ${profitColor}`} />
-                        <span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {formatCurrency(saldoAtual, acc.currency)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Indicador de clique */}
-                  <div className="absolute bottom-4 right-4 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                    <ChevronRight className="w-5 h-5 text-slate-500" />
-                  </div>
-                </div>
-              );
-            })
+      {/* Resumo: Contas + botão expandir */}
+      <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          <span className="flex items-center gap-1">
+            <Wallet className="w-3 h-3 text-blue-400" />
+            {accounts.length} conta{accounts.length !== 1 ? 's' : ''}
+          </span>
+          {accounts.filter(a => a.active).length > 0 && (
+            <span className="flex items-center gap-1">
+              <CheckCircle className="w-3 h-3 text-emerald-500" />
+              {accounts.find(a => a.active)?.name}
+            </span>
           )}
+        </div>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-slate-800/50"
+        >
+          {isExpanded ? (
+            <><ChevronUp className="w-3.5 h-3.5" /> Fechar</>
+          ) : (
+            <><ChevronDown className="w-3.5 h-3.5" /> Detalhes</>
+          )}
+        </button>
+      </div>
+
+      {/* Contas expandidas */}
+      {isExpanded && (
+        <div className="mt-3 pt-3 border-t border-slate-800/50 space-y-1.5">
+          {accounts.map((acc) => {
+            const saldoInicial = acc.initialBalance || 0;
+            const saldoAtual = balancesByAccountId[acc.id] ?? acc.currentBalance ?? saldoInicial;
+            const profit = saldoAtual - saldoInicial;
+            const isProfitable = profit >= 0;
+            const isSolvent = saldoAtual >= 0;
+            const typeConfig = getTypeConfig(acc.type || (acc.isReal ? 'REAL' : 'DEMO'));
+
+            return (
+              <div
+                key={acc.id}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-800/30 hover:bg-slate-800/50 transition-colors group/row"
+              >
+                {/* Tipo */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 w-[48px]">
+                  <div className={`w-1.5 h-1.5 rounded-full ${typeConfig.dot}`} />
+                  <span className={`text-[10px] font-bold uppercase ${typeConfig.text}`}>
+                    {typeConfig.label}
+                  </span>
+                </div>
+
+                {/* Nome + Broker */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-white truncate">{acc.name}</span>
+                    {acc.active && <CheckCircle className="w-3 h-3 text-emerald-500 flex-shrink-0" />}
+                  </div>
+                  <p className="text-[10px] text-slate-500 truncate">
+                    {acc.broker || acc.brokerName || 'Sem corretora'}
+                  </p>
+                </div>
+
+                {/* Saldo */}
+                <div className="text-right flex-shrink-0">
+                  <p className={`text-xs font-bold font-mono ${isSolvent ? 'text-white' : 'text-red-400'}`}>
+                    {formatCurrency(saldoAtual, acc.currency)}
+                  </p>
+                  <p className={`text-[10px] font-mono ${isProfitable ? 'text-emerald-400/80' : 'text-red-400/80'}`}>
+                    {isProfitable ? '+' : ''}{formatCurrency(profit, acc.currency)}
+                  </p>
+                </div>
+
+                {/* Ações */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  {onEditAccount && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditAccount(acc); }}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-blue-400 hover:bg-blue-500/10 group-hover/row:text-slate-400 transition-colors"
+                      title="Editar / Auditoria"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onAccountClick && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onAccountClick(acc); }}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 group-hover/row:text-slate-400 transition-colors"
+                      title="Ver extrato"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
