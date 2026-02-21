@@ -1,11 +1,12 @@
 /**
  * AccountsPage
- * @version 1.0.6
- * @description Centralização da lógica de saldo no Backend/Ledger.
- * * SEMVER: Patch fix (v1.0.6)
- * * FIX DATA: Função 'dateToInputString' reescrita para usar DATA LOCAL.
- * - Antes usava toISOString() que convertia para UTC (causando erro de D+1 em horários noturnos no Brasil).
- * - Agora extrai dia/mês/ano do browser do usuário.
+ * @see version.js para versão do produto
+ * @description Gestão de contas com auditoria de saldo e cronologia.
+ * 
+ * CHANGELOG (produto):
+ * - 1.6.0: Fix auditoria — comparação de datas por string YYYY-MM-DD (sem fuso),
+ *          dateTime do INITIAL_BALANCE corrigido com formato ISO completo
+ * - 1.0.6: Fix data Brasil (toISOString UTC → local)
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -186,37 +187,48 @@ const AccountsPage = () => {
       const snapshot = await getDocs(q);
       
       let ledgerTotal = 0;
-      let earliestDate = null;
+      let earliestDateStr = null;  // YYYY-MM-DD string
       let initialBalanceMovId = null;
+      let initialBalanceDateStr = null;
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
         ledgerTotal += (Number(data.amount) || 0);
 
-        const movDate = getDateObject(data.date || data.dateTime);
-        if (!earliestDate || movDate < earliestDate) {
-          earliestDate = movDate;
+        // Extrair data como string YYYY-MM-DD pura (sem converter para Date, sem fuso)
+        const movDateStr = data.date || (data.dateTime ? data.dateTime.split('T')[0] : null);
+        if (movDateStr && (!earliestDateStr || movDateStr < earliestDateStr)) {
+          earliestDateStr = movDateStr;
         }
 
         if (data.type === 'INITIAL_BALANCE') {
-          initialBalanceMovId = doc.id;
+          initialBalanceMovId = docSnap.id;
+          initialBalanceDateStr = movDateStr;
         }
       });
 
-      const accountDate = getDateObject(formData.createdAt || editingAccount.createdAt);
+      // Data de abertura da conta como string YYYY-MM-DD
+      const accountDateStr = formData.createdAt || (editingAccount.createdAt 
+        ? (typeof editingAccount.createdAt === 'string' 
+            ? editingAccount.createdAt.split('T')[0]
+            : dateToInputString(getDateObject(editingAccount.createdAt)))
+        : null);
       
-      // Zera hora para comparar somente YYYY-MM-DD
-      const accTime = accountDate.getTime();
-      const firstMovTime = earliestDate ? earliestDate.getTime() : null;
-
       let issue = 'OK';
       let msg = 'Conta saudável. Cronologia e saldos conferem.';
 
-      if (firstMovTime && firstMovTime < accTime) {
+      // Comparação 1: Data da conta posterior ao primeiro lançamento (strings, sem fuso)
+      if (accountDateStr && earliestDateStr && accountDateStr > earliestDateStr) {
         issue = 'CHRONOLOGY_ERROR';
-        msg = `Cronologia Inválida! Existem lançamentos em ${formatBrDate(earliestDate)}, antes da abertura da conta (${formatBrDate(accountDate)}).`;
-      } 
-      else if (editingAccount.currentBalance && Math.abs(ledgerTotal - (Number(editingAccount.currentBalance) || 0)) > 0.05) {
+        msg = `Cronologia Inválida! Existem lançamentos em ${formatBrDate(getDateObject(earliestDateStr))}, antes da abertura da conta (${formatBrDate(getDateObject(accountDateStr))}).`;
+      }
+      // Comparação 2: INITIAL_BALANCE com data posterior a outros movimentos
+      else if (initialBalanceDateStr && earliestDateStr && initialBalanceDateStr > earliestDateStr) {
+        issue = 'CHRONOLOGY_ERROR';
+        msg = `Cronologia Inválida! O saldo inicial está em ${formatBrDate(getDateObject(initialBalanceDateStr))}, mas existem lançamentos a partir de ${formatBrDate(getDateObject(earliestDateStr))}.`;
+      }
+      // Comparação 3: Divergência de saldo
+      else if (editingAccount.currentBalance !== undefined && Math.abs(ledgerTotal - (Number(editingAccount.currentBalance) || 0)) > 0.05) {
         issue = 'BALANCE_MISMATCH';
         msg = `Divergência de Saldo! O valor gravado (${formatCurrency(editingAccount.currentBalance, formData.currency)}) difere da soma dos movimentos (${formatCurrency(ledgerTotal, formData.currency)}).`;
       }
@@ -227,7 +239,7 @@ const AccountsPage = () => {
         message: msg,
         ledgerBalance: ledgerTotal,
         suggestion: {
-          newStartDate: earliestDate ? earliestDate.toISOString().split('T')[0] : formData.createdAt,
+          newStartDate: earliestDateStr || accountDateStr,
           initialMovId: initialBalanceMovId
         }
       });
@@ -257,7 +269,11 @@ const AccountsPage = () => {
 
         if (auditState.suggestion.initialMovId) {
           const movRef = doc(db, 'movements', auditState.suggestion.initialMovId);
-          batch.update(movRef, { date: newDate, dateTime: newDate });
+          // Fix: dateTime com formato ISO completo (antes era string sem T)
+          batch.update(movRef, { 
+            date: newDate, 
+            dateTime: `${newDate}T00:00:00.000Z` 
+          });
         }
       }
 

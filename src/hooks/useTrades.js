@@ -211,7 +211,7 @@ export const useTrades = (overrideStudentId = null) => {
         ticker: tradeData.ticker?.toUpperCase() || '',
         entry, exit, qty, 
         resultCalculated: Math.round(result * 100) / 100,
-        result: tradeData.resultOverride != null 
+        result: tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride))
           ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100 
           : Math.round(result * 100) / 100,
         resultInPoints,
@@ -257,15 +257,20 @@ export const useTrades = (overrideStudentId = null) => {
         console.log(`[useTrades] ${tradeData._partials.length} parciais salvas`);
       }
 
-      if (derivedAccountId && result !== 0) {
+      // Resultado efetivo para movement: usa override se válido, senão o calculado
+      const effectiveResult = (tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride)))
+        ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100
+        : Math.round(result * 100) / 100;
+
+      if (derivedAccountId && effectiveResult !== 0) {
         const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
         const snapMoves = await getDocs(qMoves);
         const moves = snapMoves.docs.map(d => d.data()).sort((a,b) => (b.dateTime||'').localeCompare(a.dateTime||''));
         const balanceBefore = moves[0]?.balanceAfter || 0;
 
         await addDoc(collection(db, 'movements'), {
-          accountId: derivedAccountId, type: 'TRADE_RESULT', amount: result,
-          balanceBefore, balanceAfter: balanceBefore + result,
+          accountId: derivedAccountId, type: 'TRADE_RESULT', amount: effectiveResult,
+          balanceBefore, balanceAfter: balanceBefore + effectiveResult,
           description: `${tradeData.side} ${tradeData.ticker} (${tradeData.qty}x)`,
           date: legacyDate, dateTime: exitTime || new Date().toISOString(), 
           tradeId: docRef.id, studentId: user.uid, studentEmail: user.email,
@@ -317,27 +322,41 @@ export const useTrades = (overrideStudentId = null) => {
         } else {
           newResult = calculateTradeResult(side, entry, exit, qty);
         }
-        updateData.result = Math.round(newResult * 100) / 100;
+        updateData.resultCalculated = Math.round(newResult * 100) / 100;
         updateData.resultPercent = calculateResultPercent(side, entry, exit);
         updateData.entry = entry; updateData.exit = exit; updateData.qty = qty;
       }
 
+      // Aplicar override se presente, garantindo número puro
+      if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
+        const overrideVal = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
+        updateData.result = overrideVal;
+        updateData.resultEdited = true;
+        newResult = overrideVal;  // movement usa o efetivo
+      } else {
+        updateData.result = Math.round(newResult * 100) / 100;
+        updateData.resultEdited = false;
+      }
+
       await updateDoc(tradeRef, updateData);
 
-      if (currentTrade.accountId && Math.abs(newResult - currentTrade.result) > 0.01) {
+      // Sanitizar newResult para uso no movement
+      const effectiveUpdateResult = Math.round(newResult * 100) / 100;
+
+      if (currentTrade.accountId && Math.abs(effectiveUpdateResult - (currentTrade.result || 0)) > 0.01) {
         const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
         const snapMov = await getDocs(qMov);
         if (!snapMov.empty) await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref)));
 
-        if (newResult !== 0) {
+        if (effectiveUpdateResult !== 0) {
           const qMoves = query(collection(db, 'movements'), where('accountId', '==', currentTrade.accountId));
           const snapMoves = await getDocs(qMoves);
           const moves = snapMoves.docs.map(d => d.data()).sort((a,b) => (b.dateTime||'').localeCompare(a.dateTime||''));
           const balanceBefore = moves[0]?.balanceAfter || 0;
 
           await addDoc(collection(db, 'movements'), {
-            accountId: currentTrade.accountId, type: 'TRADE_RESULT', amount: newResult,
-            balanceBefore, balanceAfter: balanceBefore + newResult,
+            accountId: currentTrade.accountId, type: 'TRADE_RESULT', amount: effectiveUpdateResult,
+            balanceBefore, balanceAfter: balanceBefore + effectiveUpdateResult,
             description: `${side} ${updateData.ticker || currentTrade.ticker} (${qty}x) [Edit]`,
             date: updateData.date || currentTrade.date,
             dateTime: newExitTime || new Date().toISOString(),

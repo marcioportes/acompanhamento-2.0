@@ -25,7 +25,8 @@ const SIDES = ['LONG', 'SHORT'];
  * @description Modal de criação/edição de trade com suporte a parciais
  * 
  * CHANGELOG (produto):
- * - 1.6.0: Modo Parciais — toggle Simples/Parciais com grid editável
+ * - 1.6.0: Labels Compra/Venda por side, inputs DD/MM/AAAA+HH:MM nas parciais,
+ *          formatação moeda no P&L, validação visível, sanitização result para movement
  * - 1.5.0: Plan-centric ledger (sem mudança no modal)
  * - 1.4.0: Brasil Pro Format - máscaras DD/MM/AAAA e HH:MM
  */
@@ -47,7 +48,6 @@ const AddTradeModal = ({
   } = useMasterData(); 
 
   // --- ESTADOS ---
-  // formData armazena os dados puros (ISO) para envio ao Backend
   const [formData, setFormData] = useState({
     entryDate: new Date().toISOString().split('T')[0],
     entryTime: '',
@@ -66,10 +66,9 @@ const AddTradeModal = ({
     planId: '',
   });
 
-  // maskedInputs armazena o que o usuário VÊ (Formato BR)
   const [maskedInputs, setMaskedInputs] = useState({
-    entryDate: '', // DD/MM/AAAA
-    entryTime: '', // HH:MM
+    entryDate: '',
+    entryTime: '',
     exitDate: '',
     exitTime: ''
   });
@@ -86,14 +85,12 @@ const AddTradeModal = ({
 
   // --- SISTEMA DE PARCIAIS (SEMPRE ATIVO) ---
   const [partials, setPartials] = useState([]);
-  const [resultOverride, setResultOverride] = useState(null); // null = usar calculado
+  const [resultOverride, setResultOverride] = useState(null);
 
-  // Refs para inputs ocultos e uploads
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
   const planDropdownRef = useRef(null);
   
-  // Refs para os Pickers Nativos Ocultos
   const entryDatePickerRef = useRef(null);
   const entryTimePickerRef = useRef(null);
   const exitDatePickerRef = useRef(null);
@@ -101,21 +98,18 @@ const AddTradeModal = ({
 
   // --- HELPERS DE FORMATAÇÃO ---
   
-  // ISO (YYYY-MM-DD) -> BR (DD/MM/AAAA)
   const isoToBr = (isoDate) => {
     if (!isoDate) return '';
     const [y, m, d] = isoDate.split('-');
     return `${d}/${m}/${y}`;
   };
 
-  // BR (DD/MM/AAAA) -> ISO (YYYY-MM-DD)
   const brToIso = (brDate) => {
     if (!brDate || brDate.length !== 10) return '';
     const [d, m, y] = brDate.split('/');
     return `${y}-${m}-${d}`;
   };
 
-  // Máscara de Data (DD/MM/AAAA)
   const maskDate = (value) => {
     return value
       .replace(/\D/g, '')
@@ -124,7 +118,6 @@ const AddTradeModal = ({
       .replace(/(\d{4})\d+?$/, '$1');
   };
 
-  // Máscara de Hora (HH:MM)
   const maskTime = (value) => {
     return value
       .replace(/\D/g, '')
@@ -132,14 +125,87 @@ const AddTradeModal = ({
       .replace(/(\d{2})\d+?$/, '$1');
   };
 
+  // --- HELPERS DE PARCIAIS: Labels Compra/Venda conforme side ---
+  
+  /**
+   * Mapeia ENTRY/EXIT para labels de Compra/Venda conforme o side do trade
+   * LONG: ENTRY = Compra, EXIT = Venda
+   * SHORT: ENTRY = Venda, EXIT = Compra
+   */
+  const getPartialLabel = (type) => {
+    if (formData.side === 'LONG') {
+      return type === 'ENTRY' ? 'Compra' : 'Venda';
+    } else {
+      return type === 'ENTRY' ? 'Venda' : 'Compra';
+    }
+  };
+
+  const getPartialColor = (type) => {
+    return type === 'ENTRY' ? 'text-emerald-400' : 'text-red-400';
+  };
+
+  // --- HELPERS DE PARCIAIS: Data/Hora ---
+
+  /** Extrai data DD/MM/AAAA de uma string ISO datetime */
+  const extractDateBr = (isoDateTime) => {
+    if (!isoDateTime) return '';
+    const datePart = isoDateTime.split('T')[0];
+    if (!datePart || !datePart.includes('-')) return '';
+    return isoToBr(datePart);
+  };
+
+  /** Extrai hora HH:MM de uma string ISO datetime */
+  const extractTime = (isoDateTime) => {
+    if (!isoDateTime) return '';
+    const timePart = isoDateTime.split('T')[1];
+    if (!timePart) return '';
+    return timePart.substring(0, 5);
+  };
+
+  /** Combina data BR (DD/MM/AAAA) + hora (HH:MM) em ISO string */
+  const combineDateTimeISO = (dateBr, time) => {
+    if (!dateBr || dateBr.length !== 10 || !time || time.length !== 5) return '';
+    const isoDate = brToIso(dateBr);
+    if (!isoDate) return '';
+    return `${isoDate}T${time}:00`;
+  };
+
+  // --- HELPER: Formato moeda para exibição ---
+  const formatResultDisplay = (value) => {
+    if (value == null || isNaN(value)) return '';
+    const account = selectedAccount;
+    const currency = account?.currency || 'USD';
+    const locale = currency === 'BRL' ? 'pt-BR' : 'en-US';
+    
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  /** Parse valor limpo de moeda (remove R$, $, pontos de milhar, troca vírgula por ponto) */
+  const parseResultInput = (raw) => {
+    if (raw == null || raw === '') return null;
+    // Se já é número
+    if (typeof raw === 'number') return raw;
+    // Remove símbolos de moeda e espaços
+    let cleaned = String(raw).replace(/[R$€\s]/g, '');
+    // Detecta formato BR: 1.234,56 → troca , por . e remove . de milhar
+    if (cleaned.includes(',')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    }
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+  };
+
   // --- EFEITOS ---
 
-  // Inicialização: Carrega dados e preenche as máscaras visuais
   useEffect(() => {
     if (!isOpen) return;
     
     if (editTrade) {
-      // Extração de dados existentes
       const eDate = editTrade.entryTime ? editTrade.entryTime.split('T')[0] : editTrade.date;
       const eTime = editTrade.entryTime ? editTrade.entryTime.split('T')[1]?.substring(0,5) : '09:00';
       const xDate = editTrade.exitTime ? editTrade.exitTime.split('T')[0] : eDate;
@@ -157,7 +223,6 @@ const AddTradeModal = ({
         planId: editTrade.planId || '',
       });
       
-      // Sincroniza visual
       setMaskedInputs({
         entryDate: isoToBr(eDate),
         entryTime: eTime,
@@ -170,23 +235,25 @@ const AddTradeModal = ({
       
       // Parciais: carregar existentes ou criar a partir de entry/exit
       if (editTrade._partials && editTrade._partials.length > 0) {
-        setPartials(editTrade._partials);
+        setPartials(editTrade._partials.map(p => ({
+          ...p,
+          _dateBr: extractDateBr(p.dateTime),
+          _time: extractTime(p.dateTime),
+        })));
       } else {
-        // Retrocompat: trade simples → converter para parciais
         setPartials([
-          { type: 'ENTRY', price: editTrade.entry?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.entryTime || '', seq: 1 },
-          { type: 'EXIT', price: editTrade.exit?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.exitTime || '', seq: 2 }
+          { type: 'ENTRY', price: editTrade.entry?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.entryTime || '', seq: 1, _dateBr: extractDateBr(editTrade.entryTime), _time: extractTime(editTrade.entryTime) },
+          { type: 'EXIT', price: editTrade.exit?.toString() || '', qty: editTrade.qty?.toString() || '', dateTime: editTrade.exitTime || '', seq: 2, _dateBr: extractDateBr(editTrade.exitTime), _time: extractTime(editTrade.exitTime) }
         ]);
       }
-      // Resultado editado?
       setResultOverride(editTrade.resultEdited ? editTrade.result?.toString() : null);
     } else {
-      // Novo Trade
       const now = new Date();
       const todayIso = now.toISOString().split('T')[0];
       const currentHour = String(now.getHours()).padStart(2, '0');
       const currentMin = String(now.getMinutes()).padStart(2, '0');
       const timeNow = `${currentHour}:${currentMin}`;
+      const todayBr = isoToBr(todayIso);
       
       const defaultExchange = exchanges.length > 0 ? exchanges[0].code : 'B3';
       const defaultSetup = setups.length > 0 ? setups[0].name : '';
@@ -201,20 +268,18 @@ const AddTradeModal = ({
         planId: prev.planId && plans.find(p => p.id === prev.planId) ? prev.planId : (plans[0]?.id || ''),
       }));
 
-      // Sincroniza visual
       setMaskedInputs({
-        entryDate: isoToBr(todayIso),
+        entryDate: todayBr,
         entryTime: timeNow,
-        exitDate: isoToBr(todayIso),
+        exitDate: todayBr,
         exitTime: ''
       });
 
       setHtfFile(null); setLtfFile(null); setHtfPreview(null); setLtfPreview(null); setActiveAssetRule(null);
       setResultOverride(null);
-      // Parciais: 1 ENTRY + 1 EXIT default
       setPartials([
-        { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: 1 },
-        { type: 'EXIT', price: '', qty: '', dateTime: '', seq: 2 }
+        { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: 1, _dateBr: todayBr, _time: timeNow },
+        { type: 'EXIT', price: '', qty: '', dateTime: '', seq: 2, _dateBr: todayBr, _time: '' }
       ]);
     }
     setErrors({});
@@ -238,7 +303,7 @@ const AddTradeModal = ({
     });
     
     setPreviewResult(calc.result);
-    setResultOverride(null); // Reset override quando parciais mudam
+    setResultOverride(null);
     if (calc.avgEntry > 0) setFormData(prev => ({ ...prev, entry: calc.avgEntry.toString(), exit: calc.avgExit.toString(), qty: calc.realizedQty.toString() }));
   }, [partials, formData.side, activeAssetRule]);
 
@@ -273,7 +338,7 @@ const AddTradeModal = ({
     } else { setPreviewResult(null); }
   }, [formData.entry, formData.exit, formData.qty, formData.side, activeAssetRule]);
 
-  // Duração (Calculada com base no formData ISO, que é sempre válido)
+  // Duração
   useEffect(() => {
     if (formData.entryDate && formData.entryTime && formData.exitDate && formData.exitTime) {
       const start = new Date(`${formData.entryDate}T${formData.entryTime}`);
@@ -297,23 +362,19 @@ const AddTradeModal = ({
 
   // --- HANDLERS ESPECIAIS DE DATA/HORA ---
 
-  // 1. Digitação Manual com Máscara
   const handleMaskChange = (e) => {
     const { name, value } = e.target;
     let maskedValue = value;
     
-    // Aplica máscara dependendo do campo
     if (name.includes('Date')) maskedValue = maskDate(value);
     if (name.includes('Time')) maskedValue = maskTime(value);
 
     setMaskedInputs(prev => ({ ...prev, [name]: maskedValue }));
 
-    // Se estiver completo e válido, atualiza o formData (ISO)
     if (name.includes('Date') && maskedValue.length === 10) {
       const iso = brToIso(maskedValue);
       setFormData(prev => {
         const newState = { ...prev, [name]: iso };
-        // Automação: Day Trade (copia para saída se vazio ou igual)
         if (name === 'entryDate' && (prev.entryDate === prev.exitDate || !prev.exitDate)) {
            newState.exitDate = iso;
            setMaskedInputs(m => ({ ...m, exitDate: maskedValue }));
@@ -328,20 +389,18 @@ const AddTradeModal = ({
     }
   };
 
-  // 2. Seleção via Picker Nativo (Oculto)
   const handleNativePickerChange = (e, fieldName) => {
-    const val = e.target.value; // Vem sempre ISO (YYYY-MM-DD) ou HH:MM do browser
+    const val = e.target.value;
     if (!val) return;
 
     setFormData(prev => {
       const newState = { ...prev, [fieldName]: val };
       if (fieldName === 'entryDate') {
-         newState.exitDate = val; // Auto-sync para Day Trade
+         newState.exitDate = val;
       }
       return newState;
     });
 
-    // Atualiza a máscara visual
     if (fieldName.includes('Date')) {
        setMaskedInputs(prev => ({ ...prev, [fieldName]: isoToBr(val), ...(fieldName === 'entryDate' ? { exitDate: isoToBr(val) } : {}) }));
     } else {
@@ -354,9 +413,9 @@ const AddTradeModal = ({
   const triggerPicker = (ref) => {
     if (ref.current) {
       try {
-        ref.current.showPicker(); // Moderno
+        ref.current.showPicker();
       } catch (e) {
-        ref.current.focus(); // Fallback
+        ref.current.focus();
       }
     }
   };
@@ -401,17 +460,55 @@ const AddTradeModal = ({
   // --- HANDLERS DE PARCIAIS ---
 
   const addPartialRow = () => {
-    setPartials(prev => [...prev, { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: prev.length + 1 }]);
+    // Default: copia a data da primeira parcial para conveniência
+    const defaultDateBr = partials[0]?._dateBr || isoToBr(formData.entryDate);
+    setPartials(prev => [...prev, { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: prev.length + 1, _dateBr: defaultDateBr, _time: '' }]);
   };
 
   const updatePartialRow = (index, field, value) => {
-    setPartials(prev => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
+    setPartials(prev => prev.map((p, i) => {
+      if (i !== index) return p;
+      const updated = { ...p, [field]: value };
+      
+      // Se mudou _dateBr ou _time, recombinar o dateTime ISO
+      if (field === '_dateBr' || field === '_time') {
+        const dateBr = field === '_dateBr' ? value : p._dateBr;
+        const time = field === '_time' ? value : p._time;
+        updated.dateTime = combineDateTimeISO(dateBr, time);
+      }
+      
+      return updated;
+    }));
+    // Limpar erro deste campo
+    if (errors[`partial_${index}_dateTime`] || errors[`partial_${index}_date`] || errors[`partial_${index}_time`]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[`partial_${index}_dateTime`];
+        delete next[`partial_${index}_date`];
+        delete next[`partial_${index}_time`];
+        return next;
+      });
+    }
+  };
+
+  /** Handler para campo de data da parcial com máscara DD/MM/AAAA */
+  const handlePartialDateChange = (index, rawValue) => {
+    const masked = maskDate(rawValue);
+    updatePartialRow(index, '_dateBr', masked);
+  };
+
+  /** Handler para campo de hora da parcial com máscara HH:MM */
+  const handlePartialTimeChange = (index, rawValue) => {
+    const masked = maskTime(rawValue);
+    updatePartialRow(index, '_time', masked);
   };
 
   const removePartialRow = (index) => {
-    if (partials.length <= 2) return; // Mínimo 1E + 1S
+    if (partials.length <= 2) return;
     setPartials(prev => prev.filter((_, i) => i !== index).map((p, i) => ({ ...p, seq: i + 1 })));
   };
+
+  // --- VALIDAÇÃO (Item 4: mensagens visíveis) ---
 
   const validate = () => {
     const newErrors = {};
@@ -429,12 +526,36 @@ const AddTradeModal = ({
     const totalExitQty = exits.reduce((s, p) => s + (parseFloat(p.qty) || 0), 0);
     if (totalExitQty > totalEntryQty) newErrors.partials = 'Qtd de saída excede entrada';
     
-    // Validar horários das parciais
+    // Validar data e horário de CADA parcial — Item 4: mensagem visível
+    let hasDateTimeError = false;
     partials.forEach((p, i) => {
       if (p.price && parseFloat(p.price) <= 0) newErrors[`partial_${i}_price`] = 'Preço inválido';
       if (p.qty && parseFloat(p.qty) <= 0) newErrors[`partial_${i}_qty`] = 'Qtd inválida';
-      if (!p.dateTime) newErrors[`partial_${i}_dateTime`] = 'Horário obrigatório';
+      
+      // Data obrigatória e completa
+      if (!p._dateBr || p._dateBr.length !== 10) {
+        newErrors[`partial_${i}_date`] = 'Data obrigatória (DD/MM/AAAA)';
+        hasDateTimeError = true;
+      }
+      // Hora obrigatória e completa
+      if (!p._time || p._time.length !== 5) {
+        newErrors[`partial_${i}_time`] = 'Hora obrigatória (HH:MM)';
+        hasDateTimeError = true;
+      }
+      // Se ambos estão preenchidos, o dateTime combinado deve ser válido
+      if (p._dateBr?.length === 10 && p._time?.length === 5) {
+        const combined = combineDateTimeISO(p._dateBr, p._time);
+        if (!combined) {
+          newErrors[`partial_${i}_date`] = 'Data inválida';
+          hasDateTimeError = true;
+        }
+      }
     });
+
+    // Mensagem global visível para erros de data/hora
+    if (hasDateTimeError && !newErrors.partials) {
+      newErrors.partials = 'Preencha data e horário de todas as parciais';
+    }
     
     if (!editTrade) {
       if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
@@ -445,6 +566,8 @@ const AddTradeModal = ({
     return Object.keys(newErrors).length === 0;
   };
 
+  // --- SUBMIT (Item 5: sanitização do result como número puro) ---
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
@@ -454,15 +577,18 @@ const AddTradeModal = ({
       type: p.type,
       price: parseFloat(p.price),
       qty: parseFloat(p.qty),
-      dateTime: p.dateTime || new Date().toISOString()
+      dateTime: p.dateTime || combineDateTimeISO(p._dateBr, p._time) || new Date().toISOString(),
+      notes: p.notes || ''
     }));
 
-    // Derivar entryTime/exitTime das parciais
     const entries = validPartials.filter(p => p.type === 'ENTRY').sort((a, b) => (a.dateTime || '').localeCompare(b.dateTime || ''));
     const exits = validPartials.filter(p => p.type === 'EXIT').sort((a, b) => (a.dateTime || '').localeCompare(b.dateTime || ''));
     const entryTimeISO = entries[0]?.dateTime || new Date().toISOString();
     const exitTimeISO = exits.length > 0 ? exits[exits.length - 1]?.dateTime : null;
     
+    // Item 5: SEMPRE sanitizar resultOverride como número puro
+    const sanitizedResultOverride = resultOverride != null ? parseResultInput(resultOverride) : null;
+
     const payload = { 
       ...formData,
       entryTime: entryTimeISO,
@@ -475,7 +601,7 @@ const AddTradeModal = ({
       } : null,
       hasPartials: validPartials.length > 0,
       _partials: validPartials,
-      resultOverride: resultOverride
+      resultOverride: sanitizedResultOverride
     };
 
     console.log('[MODAL] Enviando payload:', payload);
@@ -550,7 +676,7 @@ const AddTradeModal = ({
 
               <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} disabled placeholder="Calculado das parciais" /></div>
 
-              {/* GRID DE PARCIAIS (SEMPRE VISÍVEL) */}
+              {/* GRID DE PARCIAIS — Item 1: Labels Compra/Venda + Item 2: Inputs DD/MM/AAAA + HH:MM */}
               <div className="md:col-span-2">
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 space-y-2">
                   <div className="flex items-center justify-between mb-2">
@@ -562,25 +688,27 @@ const AddTradeModal = ({
                     </button>
                   </div>
                   
-                  {/* Header */}
-                  <div className="grid grid-cols-[70px_1fr_80px_140px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
-                    <span>Ponta</span>
+                  {/* Header — Item 1: "Tipo" ao invés de "Ponta" + Item 2: Data e Hora separados */}
+                  <div className="grid grid-cols-[80px_1fr_70px_100px_70px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
+                    <span>Tipo</span>
                     <span>Preço</span>
                     <span>Qtd</span>
-                    <span>Horário</span>
+                    <span>Data</span>
+                    <span>Hora</span>
                     <span></span>
                   </div>
                   
                   {/* Rows */}
                   {partials.map((p, i) => (
-                    <div key={i} className="grid grid-cols-[70px_1fr_80px_140px_28px] gap-2 items-center">
+                    <div key={i} className="grid grid-cols-[80px_1fr_70px_100px_70px_28px] gap-2 items-center">
+                      {/* Item 1: Select com labels Compra/Venda conforme side */}
                       <select
                         value={p.type}
                         onChange={(e) => updatePartialRow(i, 'type', e.target.value)}
-                        className={`input-dark text-xs py-1.5 ${p.type === 'ENTRY' ? 'text-emerald-400' : 'text-red-400'}`}
+                        className={`input-dark text-xs py-1.5 ${getPartialColor(p.type)}`}
                       >
-                        <option value="ENTRY">Entrada</option>
-                        <option value="EXIT">Saída</option>
+                        <option value="ENTRY">{formData.side === 'LONG' ? 'Compra' : 'Venda'}</option>
+                        <option value="EXIT">{formData.side === 'LONG' ? 'Venda' : 'Compra'}</option>
                       </select>
                       <input
                         type="number"
@@ -598,11 +726,25 @@ const AddTradeModal = ({
                         step={activeAssetRule?.minLot || 1}
                         className={`input-dark text-xs py-1.5 ${errors[`partial_${i}_qty`] ? 'border-red-500' : ''}`}
                       />
+                      {/* Item 2: Input Data DD/MM/AAAA com máscara */}
                       <input
-                        type="datetime-local"
-                        value={p.dateTime ? p.dateTime.slice(0, 16) : ''}
-                        onChange={(e) => updatePartialRow(i, 'dateTime', e.target.value ? `${e.target.value}:00` : '')}
-                        className={`input-dark text-xs py-1.5 ${errors[`partial_${i}_dateTime`] ? 'border-red-500' : ''}`}
+                        type="text"
+                        inputMode="numeric"
+                        value={p._dateBr || ''}
+                        onChange={(e) => handlePartialDateChange(i, e.target.value)}
+                        placeholder="DD/MM/AAAA"
+                        maxLength={10}
+                        className={`input-dark text-xs py-1.5 text-center font-mono ${errors[`partial_${i}_date`] ? 'border-red-500' : ''}`}
+                      />
+                      {/* Item 2: Input Hora HH:MM com máscara, formato 24h */}
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={p._time || ''}
+                        onChange={(e) => handlePartialTimeChange(i, e.target.value)}
+                        placeholder="HH:MM"
+                        maxLength={5}
+                        className={`input-dark text-xs py-1.5 text-center font-mono ${errors[`partial_${i}_time`] ? 'border-red-500' : ''}`}
                       />
                       <button
                         type="button"
@@ -615,14 +757,16 @@ const AddTradeModal = ({
                     </div>
                   ))}
                   
+                  {/* Item 4: Erro visível nas parciais */}
                   {errors.partials && (
-                    <div className="flex items-center gap-1 text-xs text-red-400 mt-1">
-                      <AlertCircle className="w-3 h-3" /> {errors.partials}
+                    <div className="flex items-center gap-1.5 text-xs text-red-400 mt-1 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {errors.partials}
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* Item 3: Resultado (P&L) com formatação de moeda */}
               <div className="md:col-span-2">
                 <label className="input-label flex items-center gap-2">
                   Resultado (P&L)
@@ -631,14 +775,32 @@ const AddTradeModal = ({
                   )}
                 </label>
                 <div className="flex gap-2">
+                  {/* Input: exibe formatado em moeda, edita como número */}
                   <input
-                    type="number"
-                    step="any"
-                    value={resultOverride != null ? resultOverride : (previewResult != null ? previewResult : '')}
-                    onChange={(e) => setResultOverride(e.target.value !== '' ? e.target.value : null)}
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      resultOverride != null 
+                        ? resultOverride
+                        : (previewResult != null ? formatResultDisplay(previewResult) : '')
+                    }
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      // Permite digitação livre — sanitiza no submit
+                      setResultOverride(raw !== '' ? raw : null);
+                    }}
+                    onBlur={() => {
+                      // Ao sair do campo, formatar como moeda se houver override válido
+                      if (resultOverride != null) {
+                        const parsed = parseResultInput(resultOverride);
+                        if (parsed != null) {
+                          setResultOverride(parsed.toString());
+                        }
+                      }
+                    }}
                     placeholder="---"
-                    className={`input-dark w-full font-mono font-bold text-center ${
-                      (resultOverride != null ? parseFloat(resultOverride) : previewResult) >= 0 
+                    className={`input-dark w-full font-mono font-bold text-center text-base ${
+                      (resultOverride != null ? parseResultInput(resultOverride) : previewResult) >= 0 
                         ? 'text-emerald-400 bg-emerald-500/10' 
                         : 'text-red-400 bg-red-500/10'
                     }`}
@@ -646,7 +808,7 @@ const AddTradeModal = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const val = resultOverride != null ? parseFloat(resultOverride) : previewResult;
+                      const val = resultOverride != null ? parseResultInput(resultOverride) : previewResult;
                       if (val != null) setResultOverride(Math.round(val).toString());
                     }}
                     disabled={previewResult == null && resultOverride == null}
@@ -668,7 +830,12 @@ const AddTradeModal = ({
                 </div>
                 {previewResult != null && resultOverride != null && (
                   <div className="text-[10px] text-slate-500 mt-1">
-                    Calculado: {selectedAccount ? getCurrencySymbol(selectedAccount.currency) : 'R$'} {previewResult.toFixed(2)}
+                    Calculado: {formatResultDisplay(previewResult)}
+                  </div>
+                )}
+                {previewResult != null && resultOverride == null && (
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    {getCurrencySymbol(selectedAccount?.currency)} Valor calculado automaticamente
                   </div>
                 )}
               </div>

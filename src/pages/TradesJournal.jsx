@@ -35,7 +35,7 @@ const isDemoAccount = (acc) => {
 
 const TradesJournal = ({ onNavigateToFeedback }) => {
   // Hooks
-  const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade } = useTrades();
+  const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, getPartials } = useTrades();
   const { accounts, loading: accountsLoading } = useAccounts();
   const { plans, loading: plansLoading } = usePlans();
   const { setups, loading: setupsLoading } = useSetups();
@@ -229,6 +229,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         onClose={() => setViewingTrade(null)} 
         trade={viewingTrade}
         onViewFeedbackHistory={handleViewFeedbackHistory}
+        getPartials={getPartials}
       />
 
       <DebugBadge component="TradesJournal" />
