@@ -4,6 +4,7 @@
  * @description Hook para gerenciamento de contas de trading
  * 
  * CHANGELOG (produto):
+ * - 1.6.0: FIX INITIAL_BALANCE usa data de abertura da conta (createdAt), não today
  * - 1.5.0: FIX cascade delete planos - query filtrada por studentId para aluno
  * - 1.4.0: FIX CRÍTICO - Removida atualização manual de 'currentBalance' ao ajustar saldo inicial.
  */
@@ -126,7 +127,10 @@ export const useAccounts = (overrideStudentId = null) => {
       const accountId = docRef.id;
       
       if (initialAmount > 0) {
-        const movementDate = new Date().toISOString().split('T')[0];
+        // Data do movement = data de abertura da conta, não today
+        const movementDate = accountData.createdAt 
+          ? (typeof accountData.createdAt === 'string' ? accountData.createdAt.split('T')[0] : new Date().toISOString().split('T')[0])
+          : new Date().toISOString().split('T')[0];
         await addDoc(collection(db, 'movements'), {
           accountId: accountId,
           type: 'INITIAL_BALANCE',

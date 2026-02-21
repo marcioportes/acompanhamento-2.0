@@ -170,7 +170,7 @@ const TradeListItem = ({ trade, isSelected, onClick }) => {
 
 const StudentFeedbackPage = () => {
   const { user } = useAuth();
-  const { trades, allTrades, addFeedbackComment, updateTradeStatus, loading } = useTrades();
+  const { trades, allTrades, addFeedbackComment, updateTradeStatus, loading, getPartials } = useTrades();
   
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -394,6 +394,7 @@ const StudentFeedbackPage = () => {
                 onAddComment={handleAddComment}
                 onUpdateStatus={handleUpdateStatus}
                 embedded={true}
+                getPartials={getPartials}
               />
             </>
           )}
