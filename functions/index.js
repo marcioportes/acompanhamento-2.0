@@ -1,9 +1,15 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.2.0
+ * @version 1.4.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+ * 
+ * CHANGELOG v1.4.0:
+ *   - createStudent agora escreve na coleção /mail (Trigger Email Extension)
+ *   - resendStudentInvite também escreve na coleção /mail
+ *   - Adicionado helper sendWelcomeEmail() e getWelcomeEmailHtml()
+ *   - Template HTML de boas-vindas com link de reset de senha
  */
 
 const functions = require('firebase-functions/v1');
@@ -18,10 +24,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 3,
+  minor: 4,
   patch: 0,
   prerelease: null,
-  build: '20260220',
+  build: '20260222',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -50,6 +56,8 @@ const VERSION = {
 // ============================================
 
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
+const APP_NAME = 'Tchio-Alpha - Acompanhamento 2.0';
+const APP_URL = 'https://marcioportes.com.br'; // Ajuste se necessário
 
 // ============================================
 // CONSTANTES
@@ -68,6 +76,119 @@ const RED_FLAG_TYPES = {
   RR_BELOW_MINIMUM: 'RR_ABAIXO_MINIMO',
   DAILY_LOSS_EXCEEDED: 'LOSS_DIARIO_EXCEDIDO',
   BLOCKED_EMOTION: 'EMOCIONAL_BLOQUEADO'
+};
+
+// ============================================
+// EMAIL HELPERS
+// ============================================
+
+/**
+ * Escreve na coleção /mail para a extension "Trigger Email from Firestore" processar
+ * @param {string} to - Email destinatário
+ * @param {string} subject - Assunto
+ * @param {string} html - Corpo HTML
+ */
+const FROM_EMAIL = 'Tchio-Alpha <marcio.portes@me.com>';
+
+const sendEmail = async (to, subject, html) => {
+  await db.collection('mail').add({
+    to,
+    from: FROM_EMAIL,
+    message: {
+      subject,
+      html
+    },
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  console.log(`[sendEmail] Email enfileirado para: ${to} | From: ${FROM_EMAIL} | Assunto: ${subject}`);
+};
+
+/**
+ * Gera HTML do email de boas-vindas com link de reset de senha
+ */
+const getWelcomeEmailHtml = (studentName, resetLink) => {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a; padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#1e293b; border-radius:12px; overflow:hidden;">
+          
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding:30px 40px; text-align:center;">
+              <h1 style="color:#ffffff; margin:0; font-size:24px; font-weight:700;">
+                ${APP_NAME}
+              </h1>
+              <p style="color:rgba(255,255,255,0.8); margin:8px 0 0; font-size:14px;">
+                Plataforma de Mentoria em Trading
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px;">
+              <h2 style="color:#f1f5f9; margin:0 0 16px; font-size:20px;">
+                Olá, ${studentName}! 👋
+              </h2>
+              <p style="color:#94a3b8; font-size:15px; line-height:1.6; margin:0 0 24px;">
+                Você foi convidado para participar do <strong style="color:#f1f5f9;">${APP_NAME}</strong>. 
+                Para começar, configure sua senha clicando no botão abaixo:
+              </p>
+              
+              <!-- CTA Button -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:8px 0 32px;">
+                    <a href="${resetLink}" 
+                       style="display:inline-block; background:linear-gradient(135deg, #3b82f6, #8b5cf6); 
+                              color:#ffffff; text-decoration:none; padding:14px 40px; border-radius:8px; 
+                              font-size:16px; font-weight:600;">
+                      Configurar Minha Senha
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="color:#64748b; font-size:13px; line-height:1.5; margin:0 0 16px;">
+                Se o botão não funcionar, copie e cole este link no seu navegador:
+              </p>
+              <p style="color:#3b82f6; font-size:12px; word-break:break-all; margin:0 0 24px; 
+                        background:#0f172a; padding:12px; border-radius:6px;">
+                ${resetLink}
+              </p>
+              
+              <hr style="border:none; border-top:1px solid #334155; margin:24px 0;">
+              
+              <p style="color:#64748b; font-size:13px; line-height:1.5; margin:0;">
+                Após configurar sua senha, acesse a plataforma em:<br>
+                <a href="${APP_URL}" style="color:#3b82f6; text-decoration:none;">${APP_URL}</a>
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#0f172a; padding:20px 40px; text-align:center;">
+              <p style="color:#475569; font-size:12px; margin:0;">
+                Este email foi enviado automaticamente. Não responda a esta mensagem.
+              </p>
+            </td>
+          </tr>
+          
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 };
 
 // ============================================
@@ -148,7 +269,6 @@ const calculateTradeCompliance = (trade, plan) => {
   if (planPl <= 0) return result;
   
   // Risco Operacional: |resultado negativo| / PL do plano * 100
-  // Para trades com stopLoss definido, usar risco planejado
   const riskAmount = trade.stopLoss 
     ? Math.abs((trade.entry - trade.stopLoss) * trade.qty * (trade.tickerRule?.tickValue || 1))
     : (trade.result < 0 ? Math.abs(trade.result) : 0);
@@ -197,34 +317,55 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'Email inválido');
   }
 
+  const emailLower = email.toLowerCase().trim();
+  const studentName = name || emailLower.split('@')[0];
+
   try {
+    // 1. Criar usuário no Firebase Auth
     const userRecord = await admin.auth().createUser({
-      email: email.toLowerCase(),
-      displayName: name || email.split('@')[0],
+      email: emailLower,
+      displayName: studentName,
       disabled: false
     });
 
+    console.log(`[createStudent] Usuário criado no Auth: ${userRecord.uid}`);
+
+    // 2. Criar documento em /students
     await db.collection('students').doc(userRecord.uid).set({
       uid: userRecord.uid,
-      email: email.toLowerCase(),
-      name: name || email.split('@')[0],
+      email: emailLower,
+      name: studentName,
       status: 'pending',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: context.auth.token.email,
       firstLoginAt: null
     });
 
-    const resetLink = await admin.auth().generatePasswordResetLink(email.toLowerCase());
+    console.log(`[createStudent] Doc /students/${userRecord.uid} criado`);
+
+    // 3. Gerar link de reset de senha
+    const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
+
+    console.log(`[createStudent] Reset link gerado para: ${emailLower}`);
+
+    // 4. Escrever na coleção /mail → Trigger Email Extension envia automaticamente
+    await sendEmail(
+      emailLower,
+      `Bem-vindo ao ${APP_NAME} - Configure sua senha`,
+      getWelcomeEmailHtml(studentName, resetLink)
+    );
+
+    console.log(`[createStudent] Email enfileirado via /mail para: ${emailLower}`);
 
     return { 
       success: true, 
       uid: userRecord.uid,
       resetLink: resetLink,
-      message: 'Aluno criado. Email de configuração de senha enviado.'
+      message: 'Aluno criado e email de configuração enviado!'
     };
 
   } catch (error) {
-    console.error('Erro ao criar aluno:', error);
+    console.error('[createStudent] Erro:', error);
     
     if (error.code === 'auth/email-already-exists') {
       throw new functions.https.HttpsError('already-exists', 'Este email já está cadastrado no sistema');
@@ -283,11 +424,38 @@ exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
 
   const { email } = data;
 
+  if (!email) {
+    throw new functions.https.HttpsError('invalid-argument', 'Email é obrigatório');
+  }
+
+  const emailLower = email.toLowerCase().trim();
+
   try {
-    const resetLink = await admin.auth().generatePasswordResetLink(email.toLowerCase());
-    return { success: true, resetLink, message: 'Email reenviado' };
+    // Buscar nome do aluno
+    const snapshot = await db.collection('students')
+      .where('email', '==', emailLower)
+      .limit(1)
+      .get();
+    
+    const studentName = snapshot.empty 
+      ? emailLower.split('@')[0] 
+      : snapshot.docs[0].data().name || emailLower.split('@')[0];
+
+    // Gerar novo link de reset
+    const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
+
+    // Escrever na coleção /mail → Extension envia
+    await sendEmail(
+      emailLower,
+      `${APP_NAME} - Reenvio do link de acesso`,
+      getWelcomeEmailHtml(studentName, resetLink)
+    );
+
+    console.log(`[resendStudentInvite] Email reenviado para: ${emailLower}`);
+
+    return { success: true, resetLink, message: 'Convite reenviado com sucesso!' };
   } catch (error) {
-    console.error('Erro ao reenviar convite:', error);
+    console.error('[resendStudentInvite] Erro:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
@@ -645,7 +813,7 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     build: VERSION.build,
     display: VERSION.display,
     full: VERSION.full,
-    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance'],
+    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance', 'email-trigger'],
     timestamp: new Date().toISOString() 
   });
 });
