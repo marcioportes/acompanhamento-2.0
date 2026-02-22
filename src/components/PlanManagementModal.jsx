@@ -1,11 +1,11 @@
 /**
  * PlanManagementModal
- * @version 5.1.0 (Hotfix Wizard)
+ * @version 5.2.0
  * @description Wizard com navegação blindada e prevenção de submit acidental.
- * * CHANGE LOG 5.1.0:
- * - FIX: Prevenção de 'Enter' submetendo o form nas etapas 1 e 2.
- * - FIX: Validação numérica robusta (check de isNaN).
- * - UI: Feedback visual de erro melhorado.
+ * 
+ * CHANGELOG:
+ * - 5.2.0: Aceita defaultAccountId para pré-selecionar conta quando filtro individual ativo
+ * - 5.1.0: Prevenção de 'Enter' submetendo o form nas etapas 1 e 2
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -27,7 +27,8 @@ const PlanManagementModal = ({
   onClose, 
   onSubmit, 
   editingPlan = null, 
-  isSubmitting = false 
+  isSubmitting = false,
+  defaultAccountId = null
 }) => {
   const { accounts } = useAccounts();
   const { getAvailablePl } = usePlans();
@@ -77,7 +78,7 @@ const PlanManagementModal = ({
         setFormData({
           name: '',
           type: 'Day Trade',
-          accountId: accounts.length > 0 ? accounts[0].id : '',
+          accountId: defaultAccountId || (accounts.length > 0 ? accounts[0].id : ''),
           pl: '',
           adjustmentCycle: 'Mensal',
           cycleGoal: 10.0,
@@ -92,7 +93,7 @@ const PlanManagementModal = ({
       setErrors({});
       setTouched(false);
     }
-  }, [isOpen, editingPlan, accounts]);
+  }, [isOpen, editingPlan, accounts, defaultAccountId]);
 
   const selectedAccount = useMemo(() => 
     accounts.find(a => a.id === formData.accountId), 
@@ -257,7 +258,7 @@ const PlanManagementModal = ({
                   <div>
                     <label className="input-label">Conta Vinculada</label>
                     <select name="accountId" value={formData.accountId} onChange={handleChange} className={`input-dark w-full ${errors.accountId ? 'border-red-500' : ''}`} disabled={!!editingPlan}>
-                      {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name} ({acc.isReal ? 'Real' : 'Demo'})</option>))}
+                      {accounts.map(acc => (<option key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'REAL' || acc.type === 'PROP' ? 'Real' : acc.type === 'DEMO' ? 'Demo' : acc.isReal ? 'Real' : 'Demo'})</option>))}
                     </select>
                   </div>
 

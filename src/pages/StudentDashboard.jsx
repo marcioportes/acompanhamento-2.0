@@ -1,8 +1,10 @@
 /**
  * StudentDashboard
- * @version 1.0.8
- * @description Dashboard com suporte a View As Student
- * * CHANGELOG:
+ * @version 1.1.0
+ * @description Dashboard com filtro master de conta e suporte a View As Student
+ * 
+ * CHANGELOG:
+ * - 1.1.0: Filtro master de conta (AccountFilterBar) — tipo + individual, cascata para planos/trades/saldo
  * - 1.0.8: Fix navegação para histórico de feedback (botão "Ver conversa")
  * - 1.0.7: Fix: Card de Plano exibe saldo verde se > 0
  * - 1.0.6: View As Student suporte
@@ -26,10 +28,12 @@ import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
 import Filters from '../components/Filters';
 import AccountSetupWizard from '../components/AccountSetupWizard';
+import AccountFilterBar from '../components/AccountFilterBar';
 import Loading from '../components/Loading';
 import SwotAnalysis from '../components/SwotAnalysis';
 import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
+import DebugBadge from '../components/DebugBadge';
 
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
@@ -169,12 +173,36 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
   const aggregatedInitialBalance = useMemo(() => {
+    // Se plano selecionado, usa a conta vinculada ao plano
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan) {
+        const acc = accounts.find(a => a.id === plan.accountId);
+        return acc ? (acc.initialBalance || 0) : 0;
+      }
+    }
+    if (filters.accountId !== 'all') {
+      const acc = accounts.find(a => a.id === filters.accountId);
+      return acc ? (acc.initialBalance || 0) : 0;
+    }
     return filteredAccountsByType.reduce((sum, acc) => sum + (acc.initialBalance || 0), 0);
-  }, [filteredAccountsByType]);
+  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const aggregatedCurrentBalance = useMemo(() => {
+    // Se plano selecionado, usa a conta vinculada ao plano
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan) {
+        const acc = accounts.find(a => a.id === plan.accountId);
+        return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
+      }
+    }
+    if (filters.accountId !== 'all') {
+      const acc = accounts.find(a => a.id === filters.accountId);
+      return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
+    }
     return filteredAccountsByType.reduce((sum, acc) => sum + (acc.currentBalance || acc.initialBalance || 0), 0);
-  }, [filteredAccountsByType]);
+  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const drawdown = useMemo(() => {
     if (aggregatedInitialBalance <= 0) return 0;
@@ -287,25 +315,59 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
-            {viewAs ? `Dashboard de ${viewAs.name || viewAs.email}` : 'Meu Dashboard'}
-          </h1>
-          <p className="text-slate-400 mt-1">
-            {viewAs ? 'Visualização do mentor' : 'Acompanhe sua performance de trading'}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={() => setShowFilters(!showFilters)} className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-blue-500/20 border-blue-500/50' : ''}`}>
-            <Filter className="w-4 h-4" /> Filtros
-          </button>
-          {!viewAs && (
-            <button onClick={() => { setEditingTrade(null); setShowAddModal(true); }} className="btn-primary flex items-center gap-2">
-              <PlusCircle className="w-5 h-5" /> Novo Trade
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
+              {viewAs ? `Dashboard de ${viewAs.name || viewAs.email}` : 'Meu Dashboard'}
+            </h1>
+            <p className="text-slate-400 mt-1">
+              {viewAs ? 'Visualização do mentor' : 'Acompanhe sua performance de trading'}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setShowFilters(!showFilters)} className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-blue-500/20 border-blue-500/50' : ''}`}>
+              <Filter className="w-4 h-4" /> Filtros
             </button>
-          )}
+            {!viewAs && (
+              <button onClick={() => { setEditingTrade(null); setShowAddModal(true); }} className="btn-primary flex items-center gap-2">
+                <PlusCircle className="w-5 h-5" /> Novo Trade
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Filtro Master de Conta */}
+        <AccountFilterBar
+          accounts={accounts}
+          accountTypeFilter={accountTypeFilter}
+          onAccountTypeChange={setAccountTypeFilter}
+          selectedAccountId={filters.accountId}
+          onAccountSelect={(id) => {
+            setFilters(prev => ({ ...prev, accountId: id }));
+            setSelectedPlanId(null); // Reseta plano ao mudar conta
+          }}
+        />
+
+        {/* Card informativo: contas incluídas na seleção */}
+        {filters.accountId === 'all' && filteredAccountsByType.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/40 rounded-xl border border-slate-700/30 text-xs text-slate-400 flex-wrap">
+            <Wallet className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+            <span className="text-slate-500 font-medium">
+              {accountTypeFilter === 'real' ? 'Reais:' : accountTypeFilter === 'demo' ? 'Demo:' : 'Contas:'}
+            </span>
+            {filteredAccountsByType.map((acc, i) => (
+              <span key={acc.id} className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${isRealAccount(acc) ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                <span className="text-slate-300">{acc.name}</span>
+                {i < filteredAccountsByType.length - 1 && <span className="text-slate-600">·</span>}
+              </span>
+            ))}
+            <span className="ml-auto font-mono text-slate-300">
+              {formatCurrency(aggregatedCurrentBalance)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Cards de Planos */}
@@ -492,8 +554,10 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         onViewFeedbackHistory={handleViewFeedbackHistory}
       />
 
-      <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} />
+      <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
+
+      <DebugBadge component="StudentDashboard" />
     </div>
   );
 };
