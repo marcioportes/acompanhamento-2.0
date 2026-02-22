@@ -56,8 +56,8 @@ const VERSION = {
 // ============================================
 
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
-const APP_NAME = 'Acompanhamento 2.0';
-const APP_URL = 'https://acompanhamento-20.web.app'; // Ajuste se necessário
+const APP_NAME = 'Tchio-Alpha - Acompanhamento 2.0';
+const APP_URL = 'https://marcioportes.com.br'; // Ajuste se necessário
 
 // ============================================
 // CONSTANTES
@@ -88,16 +88,19 @@ const RED_FLAG_TYPES = {
  * @param {string} subject - Assunto
  * @param {string} html - Corpo HTML
  */
+const FROM_EMAIL = 'Tchio-Alpha <marcio.portes@me.com>';
+
 const sendEmail = async (to, subject, html) => {
   await db.collection('mail').add({
     to,
+    from: FROM_EMAIL,
     message: {
       subject,
       html
     },
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
-  console.log(`[sendEmail] Email enfileirado para: ${to} | Assunto: ${subject}`);
+  console.log(`[sendEmail] Email enfileirado para: ${to} | From: ${FROM_EMAIL} | Assunto: ${subject}`);
 };
 
 /**

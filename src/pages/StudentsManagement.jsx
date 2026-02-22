@@ -23,8 +23,6 @@ import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle } from 'lucide-react';
 
-const PAGE_VERSION = '2.1.0';
-
 /**
  * @param {Function} onViewAsStudent - Callback para View As Student
  */
@@ -131,7 +129,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-      <DebugBadge page="StudentsManagement" version={PAGE_VERSION} />
+      <DebugBadge component="StudentsManagement" />
 
       <div className="mb-8">
         <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
