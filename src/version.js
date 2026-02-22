@@ -14,3 +14,5 @@ export const VERSION = {
   display: 'v1.7.0',
   date: '2026-02-22'
 };
+
+export default VERSION;
