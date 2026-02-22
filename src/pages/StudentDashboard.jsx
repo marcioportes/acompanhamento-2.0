@@ -173,20 +173,36 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
   const aggregatedInitialBalance = useMemo(() => {
+    // Se plano selecionado, usa a conta vinculada ao plano
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan) {
+        const acc = accounts.find(a => a.id === plan.accountId);
+        return acc ? (acc.initialBalance || 0) : 0;
+      }
+    }
     if (filters.accountId !== 'all') {
       const acc = accounts.find(a => a.id === filters.accountId);
       return acc ? (acc.initialBalance || 0) : 0;
     }
     return filteredAccountsByType.reduce((sum, acc) => sum + (acc.initialBalance || 0), 0);
-  }, [filteredAccountsByType, filters.accountId, accounts]);
+  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const aggregatedCurrentBalance = useMemo(() => {
+    // Se plano selecionado, usa a conta vinculada ao plano
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan) {
+        const acc = accounts.find(a => a.id === plan.accountId);
+        return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
+      }
+    }
     if (filters.accountId !== 'all') {
       const acc = accounts.find(a => a.id === filters.accountId);
       return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
     }
     return filteredAccountsByType.reduce((sum, acc) => sum + (acc.currentBalance || acc.initialBalance || 0), 0);
-  }, [filteredAccountsByType, filters.accountId, accounts]);
+  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const drawdown = useMemo(() => {
     if (aggregatedInitialBalance <= 0) return 0;
@@ -332,6 +348,26 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
             setSelectedPlanId(null); // Reseta plano ao mudar conta
           }}
         />
+
+        {/* Card informativo: contas incluídas na seleção */}
+        {filters.accountId === 'all' && filteredAccountsByType.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/40 rounded-xl border border-slate-700/30 text-xs text-slate-400 flex-wrap">
+            <Wallet className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+            <span className="text-slate-500 font-medium">
+              {accountTypeFilter === 'real' ? 'Reais:' : accountTypeFilter === 'demo' ? 'Demo:' : 'Contas:'}
+            </span>
+            {filteredAccountsByType.map((acc, i) => (
+              <span key={acc.id} className="flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${isRealAccount(acc) ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                <span className="text-slate-300">{acc.name}</span>
+                {i < filteredAccountsByType.length - 1 && <span className="text-slate-600">·</span>}
+              </span>
+            ))}
+            <span className="ml-auto font-mono text-slate-300">
+              {formatCurrency(aggregatedCurrentBalance)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Cards de Planos */}

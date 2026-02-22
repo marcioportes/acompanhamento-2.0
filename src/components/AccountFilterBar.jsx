@@ -55,8 +55,10 @@ const AccountFilterBar = ({
   }, [selectedAccount, accountTypeFilter, accounts.length, realAccounts.length, demoAccounts.length]);
 
   const handleTypeChange = (type) => {
-    onAccountTypeChange(type);
-    onAccountSelect('all'); // Reseta seleção individual ao mudar tipo
+    // Toggle: clicar no mesmo tipo volta para 'all'
+    const newType = (accountTypeFilter === type) ? 'all' : type;
+    onAccountTypeChange(newType);
+    onAccountSelect('all');
   };
 
   const handleSelectAccount = (accountId) => {
@@ -100,7 +102,7 @@ const AccountFilterBar = ({
             key={opt.id}
             onClick={() => handleTypeChange(opt.id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              accountTypeFilter === opt.id && selectedAccountId === 'all'
+              accountTypeFilter === opt.id
                 ? 'bg-blue-500/20 text-blue-400 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
@@ -150,30 +152,42 @@ const AccountFilterBar = ({
             {visibleAccounts.map(acc => {
               const color = getTypeColor(acc.type);
               const isSelected = selectedAccountId === acc.id;
+              const currSymbol = acc.currency === 'USD' ? '$' : acc.currency === 'EUR' ? '€' : 'R$';
+              const balance = acc.currentBalance ?? acc.initialBalance ?? 0;
 
               return (
                 <button
                   key={acc.id}
                   onClick={() => handleSelectAccount(acc.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                     isSelected ? 'bg-blue-500/15' : 'hover:bg-slate-700/50'
                   }`}
                 >
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center bg-${color}-500/20`}>
-                    <Wallet className={`w-3.5 h-3.5 text-${color}-400`} />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    color === 'emerald' ? 'bg-emerald-500/20' : 'bg-blue-500/20'
+                  }`}>
+                    <Wallet className={`w-4 h-4 ${color === 'emerald' ? 'text-emerald-400' : 'text-blue-400'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white truncate">{acc.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded bg-${color}-500/20 text-${color}-400`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        color === 'emerald' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'
+                      }`}>
                         {acc.type === 'REAL' ? 'Real' : acc.type === 'PROP' ? 'Prop' : 'Demo'}
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-500">{acc.broker}</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] text-slate-500">{acc.broker}</span>
+                      <span className="text-[11px] text-slate-600">·</span>
+                      <span className="text-[11px] text-slate-500">{acc.currency || 'BRL'}</span>
+                    </div>
                   </div>
-                  <span className="text-xs font-mono text-slate-400">
-                    {(acc.currentBalance ?? acc.initialBalance ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: acc.currency || 'BRL' })}
-                  </span>
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-xs font-mono text-slate-300 block">
+                      {currSymbol} {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                   {isSelected && <CheckCircle className="w-4 h-4 text-blue-400 flex-shrink-0" />}
                 </button>
               );
