@@ -1,6 +1,10 @@
 /**
  * SettingsPage - Configurações Unificadas (apenas Mentor)
- * VERSÃO 3.0 - Tab Tickers com UI hierárquica, filtro por bolsa, importar populares
+ * VERSÃO 4.0 - Tab Compliance (Sistema Emocional v2), DebugBadge
+ * 
+ * CHANGELOG:
+ * - 4.0: Tab Compliance (ComplianceConfigPage embedded), DebugBadge
+ * - 3.0: Tab Tickers com UI hierárquica, filtro por bolsa, importar populares
  */
 import { useState, useMemo } from 'react';
 import { 
@@ -13,6 +17,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMasterData } from '../hooks/useMasterData';
 import { useTrades } from '../hooks/useTrades';
 import { runSeed, forceSeed, updateTickers } from '../utils/seedData';
+import ComplianceConfigPage from './ComplianceConfigPage';
+import DebugBadge from '../components/DebugBadge';
 
 const TABS = [
   { id: 'setups', label: 'Setups', icon: TrendingUp, color: 'blue' },
@@ -21,6 +27,7 @@ const TABS = [
   { id: 'brokers', label: 'Corretoras', icon: Building2, color: 'purple' },
   { id: 'currencies', label: 'Moedas', icon: DollarSign, color: 'amber' },
   { id: 'emotions', label: 'Emoções', icon: Heart, color: 'rose' },
+  { id: 'compliance', label: 'Compliance', icon: Shield, color: 'cyan' },
   { id: 'admin', label: 'Admin', icon: Database, color: 'slate' },
 ];
 
@@ -508,8 +515,10 @@ const SettingsPage = () => {
         ))}
       </div>
 
-      {/* ====== ADMIN PANEL ====== */}
-      {activeTab === 'admin' ? (
+      {/* ====== COMPLIANCE CONFIG ====== */}
+      {activeTab === 'compliance' ? (
+        <ComplianceConfigPage embedded={true} />
+      ) : activeTab === 'admin' ? (
         <div className="max-w-2xl space-y-4">
           {adminResult && (
             <div className={`p-4 rounded-xl border ${adminResult.success ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
@@ -865,6 +874,8 @@ const SettingsPage = () => {
           </div>
         </div>
       )}
+
+      <DebugBadge component="SettingsPage" />
     </div>
   );
 };
