@@ -1,9 +1,10 @@
 /**
  * StudentDashboard
- * @version 1.1.0
- * @description Dashboard com filtro master de conta e suporte a View As Student
+ * @version 1.2.0
+ * @description Dashboard com filtro master de conta, View As Student, extrato emocional
  * 
  * CHANGELOG:
+ * - 1.2.0: PlanLedgerExtract (extrato emocional) substituindo PlanExtractModal no ícone — Fase 1.5.0
  * - 1.1.0: Filtro master de conta (AccountFilterBar) — tipo + individual, cascata para planos/trades/saldo
  * - 1.0.8: Fix navegação para histórico de feedback (botão "Ver conversa")
  * - 1.0.7: Fix: Card de Plano exibe saldo verde se > 0
@@ -33,6 +34,7 @@ import Loading from '../components/Loading';
 import SwotAnalysis from '../components/SwotAnalysis';
 import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
+import PlanLedgerExtract from '../components/PlanLedgerExtract';
 import DebugBadge from '../components/DebugBadge';
 
 import { useTrades } from '../hooks/useTrades';
@@ -128,6 +130,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const [editingPlan, setEditingPlan] = useState(null);
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [extractPlan, setExtractPlan] = useState(null);
+  const [ledgerPlan, setLedgerPlan] = useState(null); // Extrato emocional (Fase 1.5.0)
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardComplete, setWizardComplete] = useState(false);
@@ -412,7 +415,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
             <div key={plan.id} onClick={() => setSelectedPlanId(isSelected ? null : plan.id)} className={`relative cursor-pointer transition-all duration-300 overflow-hidden rounded-2xl border group ${isSelected ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-600'}`}>
               <div className="absolute top-2 left-2 z-30">{getComplianceBadge()}</div>
               <div className="absolute top-2 right-2 flex gap-1 z-20">
-                <button onClick={(e) => { e.stopPropagation(); setExtractPlan(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Ver Extrato"><ScrollText className="w-4 h-4" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setLedgerPlan(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-purple-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Extrato Emocional"><ScrollText className="w-4 h-4" /></button>
                 {!viewAs && (
                   <>
                     <button onClick={(e) => { e.stopPropagation(); setEditingPlan(plan); setShowPlanModal(true); }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100"><Settings className="w-4 h-4" /></button>
@@ -556,6 +559,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
 
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
+      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} />)}
 
       <DebugBadge component="StudentDashboard" />
     </div>

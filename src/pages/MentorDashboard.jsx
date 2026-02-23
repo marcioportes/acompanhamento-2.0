@@ -1,9 +1,10 @@
 /**
  * MentorDashboard
- * @version 1.4.0
- * @description Dashboard do mentor com navegação, perfil emocional por aluno, DebugBadge
+ * @version 1.5.0
+ * @description Dashboard do mentor com alertas emocionais, perfil por aluno, DebugBadge
  * 
  * CHANGELOG:
+ * - 1.5.0: MentorAlerts na overview — Fase 1.5.0
  * - 1.4.0: Integração Sistema Emocional v2 — StudentEmotionalCard + EmotionalProfileDetail
  * - 1.3.0: Integração com FeedbackPage, botões funcionais para feedback
  * - 1.2.0: Cards por aluno com contadores clicáveis (OPEN/QUESTION)
@@ -24,6 +25,7 @@ import SetupAnalysis from '../components/SetupAnalysis';
 import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
+import MentorAlerts from '../components/MentorAlerts';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
@@ -212,6 +214,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             <EquityCurve trades={allTrades} />
             <CalendarHeatmap trades={allTrades} />
+          </div>
+          {/* Alertas Emocionais (Fase 1.5.0) */}
+          <div className="mb-8">
+            <MentorAlerts 
+              students={students} 
+              getTradesByStudent={getTradesByStudent} 
+              onViewStudent={setSelectedStudent} 
+            />
           </div>
           <div className="glass-card">
             <TradesList trades={allTrades.slice(0, 20)} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
