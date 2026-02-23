@@ -39,6 +39,7 @@ Thumbs.db
 # ==============================
 functions/*firebase-adminsdk*.json
 functions/.runtimeconfig.json
+functions/serviceAccountKey.json
 
 # ==============================
 # Firebase Local Emulator

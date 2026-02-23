@@ -1,3 +1,12 @@
+/**
+ * useMasterData
+ * @version 4.1.0
+ * @description Hook central para dados mestres (CRUD + helpers V2 emocional)
+ * 
+ * CHANGELOG:
+ * - 4.1.0: Adicionado getEmotionConfig(), getEmotionScore(), getCriticalEmotions() — Fase 1.4.0
+ * - 4.0.0: Tickers hierárquicos com cascade delete — v1.6.0
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
@@ -441,6 +450,46 @@ export const useMasterData = () => {
   const getNegativeEmotions = useCallback(() => emotions.filter(e => e.category === 'negative'), [emotions]);
   const getNeutralEmotions = useCallback(() => emotions.filter(e => e.category === 'neutral'), [emotions]);
 
+  // ── Helpers V2 — Sistema Emocional v2.0 (Fase 1.3.1+) ──────────
+  
+  /**
+   * Retorna configuração completa da emoção (campos v2) com fallback seguro.
+   * Aceita nome ou ID. Se não encontrada, retorna objeto NEUTRAL.
+   * 
+   * @param {string} nameOrId - Nome da emoção (ex: 'Disciplinado') ou Firestore ID
+   * @returns {Object} { id, name, emoji, category, score, analysisCategory, behavioralPattern, riskLevel, ... }
+   */
+  const getEmotionConfig = useCallback((nameOrId) => {
+    if (!nameOrId) {
+      return { id: 'UNKNOWN', name: 'Não Informado', emoji: '❓', category: 'neutral', score: 0, analysisCategory: 'NEUTRAL', behavioralPattern: 'OTHER', riskLevel: 'MEDIUM' };
+    }
+    const found = emotions.find(e => e.name === nameOrId || e.id === nameOrId);
+    if (found) {
+      return {
+        ...found,
+        score: found.score ?? 0,
+        analysisCategory: found.analysisCategory ?? 'NEUTRAL',
+        behavioralPattern: found.behavioralPattern ?? 'OTHER',
+        riskLevel: found.riskLevel ?? 'MEDIUM'
+      };
+    }
+    return { id: 'UNKNOWN', name: nameOrId, emoji: '❓', category: 'neutral', score: 0, analysisCategory: 'NEUTRAL', behavioralPattern: 'OTHER', riskLevel: 'MEDIUM' };
+  }, [emotions]);
+
+  /**
+   * Retorna score numérico da emoção (-4 a +3), com fallback 0
+   */
+  const getEmotionScore = useCallback((nameOrId) => {
+    return getEmotionConfig(nameOrId).score;
+  }, [getEmotionConfig]);
+
+  /**
+   * Retorna emoções CRITICAL (riskLevel === 'CRITICAL')
+   */
+  const getCriticalEmotions = useCallback(() => {
+    return emotions.filter(e => e.riskLevel === 'CRITICAL' || e.analysisCategory === 'CRITICAL');
+  }, [emotions]);
+
   // Tickers helpers
   const getTickerBySymbol = useCallback((symbol) => tickers.find(t => t.symbol === symbol), [tickers]);
   const getTickersByExchange = useCallback((exchangeCode) => {
@@ -474,6 +523,7 @@ export const useMasterData = () => {
     getSetupById, getSetupByName, getExchangeByCode, getBrokerById,
     getBrokerByName, getCurrencyByCode, getEmotionById, getEmotionByName,
     getPositiveEmotions, getNegativeEmotions, getNeutralEmotions,
+    getEmotionConfig, getEmotionScore, getCriticalEmotions,
     getTickerBySymbol, getTickersByExchange,
   };
 };

@@ -1,9 +1,10 @@
 /**
  * MentorDashboard
- * @version 1.3.0
- * @description Dashboard do mentor com navegação para FeedbackPage
+ * @version 1.4.0
+ * @description Dashboard do mentor com navegação, perfil emocional por aluno, DebugBadge
  * 
  * CHANGELOG:
+ * - 1.4.0: Integração Sistema Emocional v2 — StudentEmotionalCard + EmotionalProfileDetail
  * - 1.3.0: Integração com FeedbackPage, botões funcionais para feedback
  * - 1.2.0: Cards por aluno com contadores clicáveis (OPEN/QUESTION)
  */
@@ -11,7 +12,7 @@
 import { useState, useMemo } from 'react';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle
+  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
@@ -21,8 +22,13 @@ import CalendarHeatmap from '../components/CalendarHeatmap';
 import EquityCurve from '../components/EquityCurve';
 import SetupAnalysis from '../components/SetupAnalysis';
 import EmotionAnalysis from '../components/EmotionAnalysis';
+import StudentEmotionalCard from '../components/StudentEmotionalCard';
+import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
 import Loading from '../components/Loading';
+import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
+import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
+import { useComplianceRules } from '../hooks/useComplianceRules';
 import { 
   calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, 
   formatCurrency, formatPercent, filterTradesByPeriod 
@@ -40,6 +46,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
+  const [showEmotionalDetail, setShowEmotionalDetail] = useState(null); // studentEmail or null
+
+  // Compliance rules do mentor (para detecção configurável)
+  const { detectionConfig, statusThresholds } = useComplianceRules();
 
   const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking' };
   const activeView = viewMapping[currentView] || 'overview';
@@ -83,6 +93,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
+
+  // Perfil emocional do aluno selecionado
+  const selectedStudentEmotional = useEmotionalProfile({
+    trades: selectedStudentTrades,
+    detectionConfig,
+    statusThresholds
+  });
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -142,6 +159,18 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <SetupAnalysis trades={selectedStudentTrades} />
           <EmotionAnalysis trades={selectedStudentTrades} />
         </div>
+        {/* Perfil Emocional v2 */}
+        {selectedStudentEmotional.isReady && (
+          <div className="mb-8">
+            <EmotionalProfileDetail
+              analysis={selectedStudentEmotional.analysis}
+              status={selectedStudentEmotional.status}
+              metrics={selectedStudentEmotional.metrics}
+              alerts={selectedStudentEmotional.alerts}
+              dailyScores={selectedStudentEmotional.dailyScores}
+            />
+          </div>
+        )}
         <div className="glass-card">
           <TradesList trades={selectedStudentTrades} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
@@ -198,16 +227,28 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               const studentTrades = getTradesByStudent(student.email);
               const stats = calculateStats(studentTrades);
               return (
-                <div key={student.email} onClick={() => setSelectedStudent(student)} className="p-4 flex items-center justify-between hover:bg-slate-800/30 cursor-pointer transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
-                    <div><p className="font-medium text-white">{student.name}</p><p className="text-sm text-slate-500">{student.email}</p></div>
+                <div key={student.email} className="p-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
+                  <div onClick={() => setSelectedStudent(student)} className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
+                      <div><p className="font-medium text-white">{student.name}</p><p className="text-sm text-slate-500">{student.email}</p></div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right"><p className={`font-semibold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(stats.totalPL)}</p><p className="text-xs text-slate-500">{stats.totalTrades} trades</p></div>
+                      <div className="text-right"><p className={`font-semibold ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{formatPercent(stats.winRate)}</p><p className="text-xs text-slate-500">Win Rate</p></div>
+                      <ChevronRight className="w-5 h-5 text-slate-500" />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right"><p className={`font-semibold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(stats.totalPL)}</p><p className="text-xs text-slate-500">{stats.totalTrades} trades</p></div>
-                    <div className="text-right"><p className={`font-semibold ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{formatPercent(stats.winRate)}</p><p className="text-xs text-slate-500">Win Rate</p></div>
-                    <ChevronRight className="w-5 h-5 text-slate-500" />
-                  </div>
+                  {/* Emotional mini-card (só mostra se tem trades) */}
+                  {studentTrades.length > 0 && (
+                    <StudentEmotionalCardWrapper 
+                      trades={studentTrades} 
+                      studentName={student.name}
+                      detectionConfig={detectionConfig}
+                      statusThresholds={statusThresholds}
+                      onClick={() => setSelectedStudent(student)} 
+                    />
+                  )}
                 </div>
               );
             })}
@@ -325,6 +366,33 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       )}
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+      <DebugBadge component="MentorDashboard" />
+    </div>
+  );
+};
+
+/**
+ * Wrapper que usa useEmotionalProfile para cada aluno na lista
+ * Isolado para que cada instância tenha seu próprio hook
+ */
+const StudentEmotionalCardWrapper = ({ trades, studentName, detectionConfig, statusThresholds, onClick }) => {
+  const { metrics, status, alerts, isReady } = useEmotionalProfile({
+    trades,
+    detectionConfig,
+    statusThresholds
+  });
+
+  if (!isReady) return null;
+
+  return (
+    <div className="mt-2 ml-14">
+      <StudentEmotionalCard
+        metrics={metrics}
+        status={status}
+        alerts={alerts}
+        studentName={studentName}
+        onClick={onClick}
+      />
     </div>
   );
 };

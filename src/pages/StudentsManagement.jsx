@@ -1,27 +1,23 @@
 /**
  * StudentsManagement
  * @version 2.1.0
- * @description Gerenciamento de alunos com View As e indicador de erro email
+ * @description Gerenciamento de alunos com View As, indicador erro email, perfil emocional
  * 
  * CHANGELOG:
- * - 2.1.0: DebugBadge, cooldown 60s no reenvio (anti-spam SMTP),
- *          anti-double-click no cadastro e remoção
+ * - 2.1.0: StudentEmotionalCard por aluno ativo (Fase 1.4.0)
  * - 2.0.0: View As Student, indicador de erro de email
- * 
- * ANTI-LOOP SAFETY:
- * - onSnapshot em /students é READ-ONLY (nunca escreve em /mail)
- * - createStudent e resendStudentInvite são onCall (invocação manual)
- * - Cooldown de 60s por email impede reenvios repetidos via SMTP
- * - Botões desabilitados durante request ativo
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import DebugBadge from '../components/DebugBadge';
 import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle } from 'lucide-react';
+import StudentEmotionalCard from '../components/StudentEmotionalCard';
+import DebugBadge from '../components/DebugBadge';
+import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
+import { useComplianceRules } from '../hooks/useComplianceRules';
 
 /**
  * @param {Function} onViewAsStudent - Callback para View As Student
@@ -36,12 +32,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [success, setSuccess] = useState('');
   const [adding, setAdding] = useState(false);
   const [resending, setResending] = useState(null);
-  const [deleting, setDeleting] = useState(null);
-
-  // Anti-spam: cooldown de 60s por email para reenvio
-  const resendCooldowns = useRef(new Map());
+  const [studentTrades, setStudentTrades] = useState({}); // { email: trades[] }
 
   const functions = getFunctions();
+  const { detectionConfig, statusThresholds } = useComplianceRules();
 
   useEffect(() => {
     const q = query(collection(db, 'students'));
@@ -54,10 +48,24 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return () => unsubscribe();
   }, []);
 
+  // Carregar trades dos alunos ativos para perfil emocional
+  useEffect(() => {
+    const activeStudents = students.filter(s => s.status === 'active');
+    if (activeStudents.length === 0) return;
+
+    const unsubscribes = activeStudents.map(s => {
+      const q = query(collection(db, 'trades'), where('studentEmail', '==', s.email));
+      return onSnapshot(q, (snap) => {
+        const trades = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setStudentTrades(prev => ({ ...prev, [s.email]: trades }));
+      });
+    });
+
+    return () => unsubscribes.forEach(u => u());
+  }, [students]);
+
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (adding) return; // Anti-double-click
-
     setError(''); setSuccess('');
     const email = newEmail.trim().toLowerCase();
     const name = newName.trim();
@@ -68,9 +76,9 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     setAdding(true);
     try {
       const createStudent = httpsCallable(functions, 'createStudent');
-      const result = await createStudent({ email, name });
+      await createStudent({ email, name });
       setNewEmail(''); setNewName('');
-      setSuccess(result.data?.message || 'Aluno criado! Email de configuração enviado.');
+      setSuccess('Aluno criado! Email de configuração enviado.');
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       setError(err.message || 'Erro ao criar aluno');
@@ -78,20 +86,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   };
 
   const handleResendInvite = async (email) => {
-    // Anti-spam: verificar cooldown de 60s
-    const lastSent = resendCooldowns.current.get(email);
-    if (lastSent && Date.now() - lastSent < 60000) {
-      const remaining = Math.ceil((60000 - (Date.now() - lastSent)) / 1000);
-      setError(`Aguarde ${remaining}s para reenviar para ${email}`);
-      setTimeout(() => setError(''), 3000);
-      return;
-    }
-
     setResending(email);
     try {
       const resendInvite = httpsCallable(functions, 'resendStudentInvite');
       await resendInvite({ email });
-      resendCooldowns.current.set(email, Date.now());
       setSuccess('Email reenviado!');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -100,15 +98,11 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   };
 
   const handleRemove = async (student) => {
-    if (deleting) return; // Anti-double-click
     if (!confirm('Remover ' + student.email + '?\n\nIsso também remove o acesso ao sistema.')) return;
-
-    setDeleting(student.id);
     try {
       const deleteStudent = httpsCallable(functions, 'deleteStudent');
       await deleteStudent({ uid: student.uid || student.id, email: student.email });
     } catch (err) { setError('Erro: ' + err.message); }
-    finally { setDeleting(null); }
   };
 
   const handleViewAs = (student) => {
@@ -129,8 +123,6 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-      <DebugBadge component="StudentsManagement" />
-
       <div className="mb-8">
         <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
           <Users className="w-7 h-7 text-blue-400" />Gerenciar Alunos
@@ -165,7 +157,8 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         ) : (
           <div className="divide-y divide-slate-800/50">
             {students.map(s => (
-              <div key={s.id} className={`p-4 flex items-center justify-between hover:bg-slate-800/30 ${deleting === s.id ? 'opacity-50' : ''}`}>
+              <div key={s.id} className="p-4 hover:bg-slate-800/30">
+                <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${s.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
                     {(s.name || s.email).charAt(0).toUpperCase()}
@@ -199,18 +192,28 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                     </button>
                   )}
                   
-                  {/* Botão Reenviar (pendentes ou com erro) */}
-                  {(s.status === 'pending' || s.emailError) && (
-                    <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed" title="Reenviar email">
+                  {/* Botão Reenviar (só para pendentes) */}
+                  {s.status === 'pending' && (
+                    <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
                       {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                   )}
                   
                   {/* Botão Remover */}
-                  <button onClick={() => handleRemove(s)} disabled={deleting === s.id} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed" title="Remover">
-                    {deleting === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  <button onClick={() => handleRemove(s)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg" title="Remover">
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+                </div>
+                {/* Card Emocional — só alunos ativos com trades */}
+                {s.status === 'active' && studentTrades[s.email]?.length > 0 && (
+                  <StudentEmotionalCardInline
+                    trades={studentTrades[s.email]}
+                    studentName={s.name}
+                    detectionConfig={detectionConfig}
+                    statusThresholds={statusThresholds}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -222,6 +225,20 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         <div className="flex items-center gap-2"><Clock className="w-3 h-3 text-yellow-400" /><span>Aguardando configurar senha</span></div>
         <div className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-red-400" /><span>Erro no envio de email</span></div>
       </div>
+      <DebugBadge component="StudentsManagement" />
+    </div>
+  );
+};
+
+/** Wrapper isolado para hook useEmotionalProfile por aluno */
+const StudentEmotionalCardInline = ({ trades, studentName, detectionConfig, statusThresholds }) => {
+  const { metrics, status, alerts, isReady } = useEmotionalProfile({
+    trades, detectionConfig, statusThresholds
+  });
+  if (!isReady) return null;
+  return (
+    <div className="mt-2 ml-14">
+      <StudentEmotionalCard metrics={metrics} status={status} alerts={alerts} studentName={studentName} />
     </div>
   );
 };

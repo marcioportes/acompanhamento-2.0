@@ -1,9 +1,13 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.4.0
+ * @version 1.5.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+ * 
+ * CHANGELOG v1.5.0:
+ *   - Notificação emocional: alerta mentor quando aluno tem emoção CRITICAL
+ *   - healthCheck atualizado com feature emotional-alerts
  * 
  * CHANGELOG v1.4.0:
  *   - createStudent agora escreve na coleção /mail (Trigger Email Extension)
@@ -24,7 +28,7 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 4,
+  minor: 5,
   patch: 0,
   prerelease: null,
   build: '20260222',
@@ -718,6 +722,40 @@ exports.onTradeCreated = functions.firestore
         createdAt: admin.firestore.FieldValue.serverTimestamp() 
       });
 
+      // === 4. ALERTA EMOCIONAL (Fase 1.4.0) ===
+      // Notifica mentor se emoção de entrada é CRITICAL (Revanche, FOMO, Ganância)
+      if (trade.emotionEntry) {
+        try {
+          const emotionSnap = await db.collection('emotions')
+            .where('name', '==', trade.emotionEntry)
+            .limit(1)
+            .get();
+          
+          if (!emotionSnap.empty) {
+            const emotionData = emotionSnap.docs[0].data();
+            if (emotionData.analysisCategory === 'CRITICAL' || emotionData.riskLevel === 'CRITICAL') {
+              await db.collection('notifications').add({
+                type: 'EMOTIONAL_ALERT',
+                targetRole: 'mentor',
+                studentId: trade.studentId,
+                studentEmail: trade.studentEmail,
+                tradeId,
+                ticker: trade.ticker,
+                emotion: trade.emotionEntry,
+                emotionEmoji: emotionData.emoji || '',
+                severity: 'CRITICAL',
+                message: `⚠️ ${trade.studentEmail?.split('@')[0]} operou com "${trade.emotionEntry}" (${emotionData.emoji})`,
+                read: false,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              console.log(`[onTradeCreated] Alerta emocional CRITICAL: ${trade.emotionEntry} — aluno ${trade.studentEmail}`);
+            }
+          }
+        } catch (emotionErr) {
+          console.error('[onTradeCreated] Erro ao verificar emoção:', emotionErr);
+        }
+      }
+
     } catch (e) { console.error('[onTradeCreated]', e); }
     
     return null;
@@ -813,7 +851,7 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     build: VERSION.build,
     display: VERSION.display,
     full: VERSION.full,
-    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance', 'email-trigger'],
+    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance', 'email-trigger', 'emotional-alerts'],
     timestamp: new Date().toISOString() 
   });
 });

@@ -3,6 +3,7 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.8.0: Sistema Emocional v2 — Fase 1.4.0 (Perfil Emocional do Aluno)
  * - 1.7.1: Hotfix: Filtro master de conta no dashboard aluno (AccountFilterBar)
  * - 1.7.0: Sistema Emocional v2 — Fase 1.3.1 (engine + hooks) + Fase 1.3.2 (ComplianceConfig)
  * - 1.6.0: Trade Partials, Auditoria Saldo, Feedback Parciais, Mentor Accounts UX
@@ -12,8 +13,8 @@
  */
 export const VERSION = {
   major: 1,
-  minor: 7,
-  patch: 1,
+  minor: 8,
+  patch: 0,
   prerelease: null,
   build: '20260222',
 
