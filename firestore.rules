@@ -36,7 +36,24 @@ service cloud.firestore {
     // STUDENTS
     match /students/{studentId} {
       allow read: if isAuthenticated();
-      allow write: if isMentor();
+      allow create, delete: if isMentor();
+      // Mentor pode tudo; aluno pode ativar apenas seu próprio doc
+      allow update: if isMentor() || (
+        isOwner(studentId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'firstLoginAt'])
+      );
+
+      // PERFIL EMOCIONAL (subcollection) — Fase 1.4.0
+      match /emotionalProfile/{docId} {
+        allow read: if isAuthenticated() && (isMentor() || isOwner(studentId));
+        allow write: if isMentor() || isOwner(studentId);
+      }
+    }
+
+    // MENTOR CONFIG (compliance rules) — Fase 1.3.2
+    match /mentorConfig/{mentorId} {
+      allow read: if isAuthenticated();
+      allow write: if isMentor() && isOwner(mentorId);
     }
 
     // USERS
