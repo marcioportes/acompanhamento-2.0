@@ -1,9 +1,10 @@
 /**
  * Sidebar
- * @version 1.1.0
- * @description Menu lateral com navegação e exibição de versão
+ * @version 1.2.0
+ * @description Menu lateral com navegação, versão, badge alertas emocionais
  * 
  * CHANGELOG:
+ * - 1.2.0: Badge de alertas emocionais no menu mentor — Fase 1.5.0
  * - 1.1.0: Adicionado item "Feedback" no menu do aluno
  */
 
@@ -20,7 +21,8 @@ import {
   Wallet,
   BookOpen,
   LineChart,
-  Settings
+  Settings,
+  Brain
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -31,7 +33,8 @@ const Sidebar = ({
   collapsed = false, 
   onToggle,
   pendingFeedback = 0,
-  studentsNeedingAttention = 0
+  studentsNeedingAttention = 0,
+  emotionalAlerts = 0
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -45,7 +48,13 @@ const Sidebar = ({
 
   // Menu do Mentor
   const mentorMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { 
+      id: 'dashboard', 
+      label: 'Dashboard', 
+      icon: LayoutDashboard,
+      badge: emotionalAlerts > 0 ? emotionalAlerts : null,
+      badgeColor: 'purple'
+    },
     { id: 'students', label: 'Alunos', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },
     { 
@@ -131,6 +140,8 @@ const Sidebar = ({
                     <span className={`min-w-[20px] h-5 flex items-center justify-center text-xs font-semibold rounded-full ${
                       item.badgeColor === 'red' 
                         ? 'bg-red-500/20 text-red-400' 
+                        : item.badgeColor === 'purple'
+                        ? 'bg-purple-500/20 text-purple-400'
                         : 'bg-blue-500/20 text-blue-400'
                     }`}>
                       {item.badge}
