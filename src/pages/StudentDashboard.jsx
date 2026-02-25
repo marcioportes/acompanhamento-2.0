@@ -529,6 +529,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
             </div>
             <TradesList 
               trades={filteredTrades.filter(t => t.date === calendarSelectedDate)} 
+              plans={plans}
               onViewTrade={setViewingTrade} 
               onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 
               onDeleteTrade={deleteTrade} 
@@ -554,6 +555,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         isOpen={!!viewingTrade} 
         onClose={() => setViewingTrade(null)} 
         trade={viewingTrade} 
+        plans={plans} 
         onViewFeedbackHistory={handleViewFeedbackHistory}
       />
 

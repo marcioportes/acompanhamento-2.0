@@ -277,6 +277,12 @@ const TradeDetailModal = ({
                   isWin ? 'text-emerald-400/50' : 'text-red-400/50'
                 }`}>
                   {(() => {
+                    // Futuros: risco em pontos
+                    if (trade.tickerRule && trade.stopLoss && trade.entry) {
+                      const riskPts = Math.abs(trade.entry - trade.stopLoss);
+                      return `Stop: ${riskPts} pts`;
+                    }
+                    // Ações/papéis: % sobre PL
                     const plan = trade.planId && plans.length > 0 ? plans.find(p => p.id === trade.planId) : null;
                     const planPl = plan?.pl;
                     if (planPl && planPl > 0) {

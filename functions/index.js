@@ -1,10 +1,13 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.6.0
+ * @version 1.6.1
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
+ * CHANGELOG v1.6.1:
+ *   - Fix calculateTradeCompliance: tickSize na fórmula de riskAmount e RR
+ *
  * CHANGELOG v1.6.0:
  *   - Red flag NO_STOP: trade sem stop loss gera red flag + notificação mentor
  *   - calculateTradeCompliance: sem stop → riskPercent=100%, RR via resultado efetivo
@@ -34,7 +37,7 @@ const db = admin.firestore();
 const VERSION = {
   major: 1,
   minor: 6,
-  patch: 0,
+  patch: 1,
   prerelease: null,
   build: '20260225',
   
@@ -284,9 +287,11 @@ const calculateTradeCompliance = (trade, plan) => {
   
   // Risco Operacional
   if (trade.stopLoss && trade.entry) {
-    // Com stop: risco = distância stop × qty × tickValue
+    // Com stop: risco = (distância / tickSize) * tickValue * qty
+    const tickSize = trade.tickerRule?.tickSize || 1;
     const tickValue = trade.tickerRule?.tickValue || 1;
-    const riskAmount = Math.abs(trade.entry - trade.stopLoss) * trade.qty * tickValue;
+    const distanceInPoints = Math.abs(trade.entry - trade.stopLoss);
+    const riskAmount = (distanceInPoints / tickSize) * tickValue * trade.qty;
     result.riskPercent = (riskAmount / planPl) * 100;
   } else {
     // Sem stop: 100% do PL em risco (pior cenário)
@@ -306,10 +311,11 @@ const calculateTradeCompliance = (trade, plan) => {
         const reward = Math.abs(trade.takeProfit - trade.entry);
         result.rrRatio = reward / risk;
       } else if (trade.result > 0) {
-        // Via resultado efetivo (realizado)
+        // Via resultado efetivo (realizado) — converter result R$ para pontos
+        const tickSize = trade.tickerRule?.tickSize || 1;
         const tickValue = trade.tickerRule?.tickValue || 1;
-        const riskAmount = risk * trade.qty * tickValue;
-        result.rrRatio = riskAmount > 0 ? trade.result / riskAmount : null;
+        const resultInPoints = (trade.result / (tickValue * trade.qty)) * tickSize;
+        result.rrRatio = resultInPoints / risk;
       }
       
       if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {

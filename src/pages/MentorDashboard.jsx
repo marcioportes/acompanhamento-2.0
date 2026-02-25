@@ -29,6 +29,7 @@ import MentorAlerts from '../components/MentorAlerts';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
+import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 import { 
@@ -42,6 +43,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
     getTradesAwaitingFeedback, getTradesByStudentAndStatus
   } = useTrades();
+  const { plans } = usePlans();
   
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
@@ -174,9 +176,9 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           </div>
         )}
         <div className="glass-card">
-          <TradesList trades={selectedStudentTrades} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
+          <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
-        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       </div>
     );
   }
@@ -224,7 +226,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             />
           </div>
           <div className="glass-card">
-            <TradesList trades={allTrades.slice(0, 20)} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
+            <TradesList trades={allTrades.slice(0, 20)} plans={plans} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
           </div>
         </>
       )}
@@ -375,7 +377,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <DebugBadge component="MentorDashboard" />
     </div>
   );
