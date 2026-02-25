@@ -16,7 +16,7 @@
 import { useMemo } from 'react';
 import { 
   X, ScrollText, Trophy, Skull, AlertTriangle, Flame, Zap, 
-  TrendingUp, TrendingDown, Brain, Shield, ShieldAlert, ShieldX, Scale
+  TrendingUp, TrendingDown, Brain, Shield, ShieldAlert, ShieldOff, Scale
 } from 'lucide-react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -150,7 +150,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
       case 'TILT': return <Flame className="w-3.5 h-3.5 text-orange-400" />;
       case 'REVENGE': return <Zap className="w-3.5 h-3.5 text-red-400" />;
       case 'STATUS_CRITICAL': return <AlertTriangle className="w-3.5 h-3.5 text-red-400" />;
-      case 'RO_FORA': return <ShieldX className="w-3.5 h-3.5 text-amber-400" />;
+      case 'RO_FORA': return <ShieldOff className="w-3.5 h-3.5 text-amber-400" />;
       case 'RR_FORA': return <Scale className="w-3.5 h-3.5 text-amber-400" />;
       case 'NO_STOP': return <ShieldAlert className="w-3.5 h-3.5 text-red-400" />;
       default: return <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />;
@@ -299,7 +299,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
                         )}
                         {row.complianceFlags?.includes('RO_FORA') && (
                           <span className="text-amber-400 text-[10px] font-bold flex items-center gap-0.5" title="Risco operacional fora do plano">
-                            <ShieldX className="w-3 h-3" /> RO
+                            <ShieldOff className="w-3 h-3" /> RO
                           </span>
                         )}
                         {row.complianceFlags?.includes('RR_FORA') && (
