@@ -4,6 +4,7 @@
  * @description Modal de detalhes do trade com navegação para histórico de feedback e exibição de parciais
  * 
  * CHANGELOG (produto):
+ * - 1.10.0: resultPercent exibe % sobre PL do plano (nova prop plans[]). Sem plano → não exibe %
  * - 1.6.0: Exibição de parciais (Compra/Venda), médias ponderadas, resultInPoints, formatação moeda
  * - 1.5.0: Botão "Ver conversa completa" sempre visível para permitir início de interação
  * - 1.4.0: Fix erro "Objects are not valid as React child" - formatDate trata Timestamp Firebase
@@ -121,6 +122,7 @@ const TradeDetailModal = ({
   isOpen, 
   onClose, 
   trade, 
+  plans = [],
   isMentor = false,
   onAddFeedback,
   feedbackLoading = false,
@@ -274,7 +276,14 @@ const TradeDetailModal = ({
                 <p className={`text-xs ${
                   isWin ? 'text-emerald-400/50' : 'text-red-400/50'
                 }`}>
-                  {formatPercent(trade.resultPercent)}
+                  {(() => {
+                    const plan = trade.planId && plans.length > 0 ? plans.find(p => p.id === trade.planId) : null;
+                    const planPl = plan?.pl;
+                    if (planPl && planPl > 0) {
+                      return formatPercent((trade.result / planPl) * 100);
+                    }
+                    return '';
+                  })()}
                 </p>
               </div>
               

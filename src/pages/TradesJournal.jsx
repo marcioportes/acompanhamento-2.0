@@ -4,6 +4,7 @@
  * @description Diário de trades com navegação para FeedbackPage
  * 
  * CHANGELOG (produto):
+ * - 1.10.0: Ordenação crescente (mais antigo primeiro), plans passado para TradesList
  * - 1.6.0: Suporte a parciais via AddTradeModal
  * - 1.4.0: Adicionado suporte a onNavigateToFeedback
  */
@@ -93,6 +94,13 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
     else if (filters.result === 'losses') result = result.filter(t => t.result < 0);
     if (filters.search) result = searchTrades(result, filters.search);
     
+    // Ordenação crescente: mais antigo primeiro
+    result.sort((a, b) => {
+      const dateCompare = (a.date || '').localeCompare(b.date || '');
+      if (dateCompare !== 0) return dateCompare;
+      return (a.entryTime || '').localeCompare(b.entryTime || '');
+    });
+
     return result;
   }, [trades, filters, selectedAccounts]);
 
@@ -204,6 +212,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
       <div className="glass-card">
         <TradesList 
           trades={filteredTrades} 
+          plans={plans}
           onViewTrade={setViewingTrade} 
           onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 
           onDeleteTrade={async (trade) => { try { await deleteTrade(trade.id, trade.htfUrl, trade.ltfUrl); } catch (err) { console.error(err); } }} 
@@ -228,6 +237,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         isOpen={!!viewingTrade} 
         onClose={() => setViewingTrade(null)} 
         trade={viewingTrade}
+        plans={plans}
         onViewFeedbackHistory={handleViewFeedbackHistory}
         getPartials={getPartials}
       />

@@ -3,6 +3,7 @@
  * @version 1.2.1
  * @description Componente de apresentação (Dumb Component) responsável por listar os trades.
  * * CHANGELOG:
+ * - 1.10.0: resultPercent exibe % sobre PL do plano (não variação de preço). Nova prop plans[].
  * - 1.2.1: Default de showStatus alterado para true (Status visível por padrão para todos)
  * - 1.2.0: Adicionado prop showStatus para exibir coluna de status do feedback
  * - 1.1.0: Risk Guardian (Alertas visuais de violação de regras)
@@ -67,12 +68,20 @@ const StatusBadge = ({ status }) => {
 
 const TradesList = ({ 
   trades = [], 
+  plans = [],
   onViewTrade, 
   onEditTrade, 
   onDeleteTrade,
   showStatus = true, // AGORA É TRUE POR PADRÃO
   showStudent = false
 }) => {
+
+  // Helper: resolve PL do plano para calcular % sobre PL
+  const getPlanPl = (trade) => {
+    if (!trade.planId || plans.length === 0) return null;
+    const plan = plans.find(p => p.id === trade.planId);
+    return plan?.pl || null;
+  };
 
   // Helper de Estilo: Cores para LONG/SHORT
   const getSideColor = (side) => {
@@ -114,7 +123,9 @@ const TradesList = ({
         <tbody className="divide-y divide-slate-800/50 text-sm">
           {trades.map((trade) => {
             const result = Number(trade.result) || 0;
-            const percent = Number(trade.resultPercent) || 0;
+            // % sobre PL do plano (não variação de preço)
+            const planPl = getPlanPl(trade);
+            const resultPercentPl = planPl && planPl > 0 ? (result / planPl) * 100 : null;
             
             // Lógica do Risk Guardian
             const hasViolations = trade.hasRedFlags || (Array.isArray(trade.redFlags) && trade.redFlags.length > 0);
@@ -200,7 +211,10 @@ const TradesList = ({
                       </span>
                     </div>
                     <div className={`text-xs ${getResultColor(result)} opacity-80`}>
-                      {result > 0 ? '+' : ''}{formatPercent(percent)}
+                      {resultPercentPl != null 
+                        ? `${result > 0 ? '+' : ''}${formatPercent(resultPercentPl)}`
+                        : ''
+                      }
                     </div>
                   </div>
                 </td>

@@ -4,6 +4,7 @@
  * @description Hook responsável pelo gerenciamento de trades (CRUD) + Sistema de Feedback + Parciais
  * 
  * CHANGELOG (produto):
+ * - 1.10.0: stopLoss field — persiste no addTrade e updateTrade
  * - 1.6.0: Sistema de parciais (1 Trade → N Parciais)
  *   - addPartial(): Adiciona parcial a um trade existente
  *   - updatePartial(): Atualiza parcial existente
@@ -210,6 +211,7 @@ export const useTrades = (overrideStudentId = null) => {
         date: legacyDate, entryTime, exitTime, duration,
         ticker: tradeData.ticker?.toUpperCase() || '',
         entry, exit, qty, 
+        stopLoss: tradeData.stopLoss != null ? parseFloat(tradeData.stopLoss) : null,
         resultCalculated: Math.round(result * 100) / 100,
         result: tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride))
           ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100 
@@ -312,6 +314,11 @@ export const useTrades = (overrideStudentId = null) => {
       const qty = parseFloat(updates.qty ?? currentTrade.qty);
       const side = updates.side || currentTrade.side;
       const tickerRule = updates.tickerRule || currentTrade.tickerRule;
+
+      // Propagar stopLoss se presente no update
+      if (updates.stopLoss !== undefined) {
+        updateData.stopLoss = updates.stopLoss != null ? parseFloat(updates.stopLoss) : null;
+      }
 
       let newResult = currentTrade.result;
 
