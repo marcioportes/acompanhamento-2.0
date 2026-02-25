@@ -11,7 +11,8 @@ import {
   Clock as ClockIcon,
   Plus,
   Trash2,
-  Layers
+  Layers,
+  ShieldAlert
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
@@ -25,6 +26,8 @@ const SIDES = ['LONG', 'SHORT'];
  * @description Modal de criação/edição de trade com suporte a parciais
  * 
  * CHANGELOG (produto):
+ * - 1.10.0: Campo Stop Loss (entre Side e Qty), HH:MM:SS nas parciais,
+ *           validação coerência stop vs side, grid 3 colunas
  * - 1.6.0: Labels Compra/Venda por side, inputs DD/MM/AAAA+HH:MM nas parciais,
  *          formatação moeda no P&L, validação visível, sanitização result para movement
  * - 1.5.0: Plan-centric ledger (sem mudança no modal)
@@ -58,6 +61,7 @@ const AddTradeModal = ({
     side: 'LONG',
     entry: '',
     exit: '',
+    stopLoss: '',
     qty: '',
     setup: '',
     emotionEntry: '',
@@ -122,6 +126,7 @@ const AddTradeModal = ({
     return value
       .replace(/\D/g, '')
       .replace(/(\d{2})(\d)/, '$1:$2')
+      .replace(/(\d{2})(\d)/, '$1:$2')
       .replace(/(\d{2})\d+?$/, '$1');
   };
 
@@ -154,20 +159,25 @@ const AddTradeModal = ({
     return isoToBr(datePart);
   };
 
-  /** Extrai hora HH:MM de uma string ISO datetime */
+  /** Extrai hora HH:MM ou HH:MM:SS de uma string ISO datetime */
   const extractTime = (isoDateTime) => {
     if (!isoDateTime) return '';
     const timePart = isoDateTime.split('T')[1];
     if (!timePart) return '';
+    // Return HH:MM:SS if seconds exist and are non-zero, otherwise HH:MM
+    const full = timePart.substring(0, 8);
+    if (full.length === 8 && full.substring(6) !== '00') return full;
     return timePart.substring(0, 5);
   };
 
-  /** Combina data BR (DD/MM/AAAA) + hora (HH:MM) em ISO string */
+  /** Combina data BR (DD/MM/AAAA) + hora (HH:MM ou HH:MM:SS) em ISO string */
   const combineDateTimeISO = (dateBr, time) => {
-    if (!dateBr || dateBr.length !== 10 || !time || time.length !== 5) return '';
+    if (!dateBr || dateBr.length !== 10 || !time || time.length < 5) return '';
     const isoDate = brToIso(dateBr);
     if (!isoDate) return '';
-    return `${isoDate}T${time}:00`;
+    // Se já tem segundos (HH:MM:SS), usar direto; senão, adicionar :00
+    const timePart = time.length >= 8 ? time : `${time}:00`;
+    return `${isoDate}T${timePart}`;
   };
 
   // --- HELPER: Formato moeda para exibição ---
@@ -216,6 +226,7 @@ const AddTradeModal = ({
         exitDate: xDate, exitTime: xTime,
         ticker: editTrade.ticker, exchange: editTrade.exchange, side: editTrade.side,
         entry: editTrade.entry.toString(), exit: editTrade.exit.toString(), qty: editTrade.qty.toString(),
+        stopLoss: editTrade.stopLoss != null ? editTrade.stopLoss.toString() : '',
         setup: editTrade.setup,
         emotionEntry: editTrade.emotionEntry || editTrade.emotion || '',
         emotionExit: editTrade.emotionExit || editTrade.emotion || '',
@@ -263,6 +274,7 @@ const AddTradeModal = ({
         entryDate: todayIso, entryTime: timeNow,
         exitDate: todayIso, exitTime: '',
         ticker: '', exchange: defaultExchange, side: 'LONG', entry: '', exit: '', qty: '',
+        stopLoss: '',
         setup: defaultSetup, emotionEntry: defaultEmotion, emotionExit: defaultEmotion,
         notes: '',
         planId: prev.planId && plans.find(p => p.id === prev.planId) ? prev.planId : (plans[0]?.id || ''),
@@ -383,7 +395,7 @@ const AddTradeModal = ({
       });
       if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
     } 
-    else if (name.includes('Time') && maskedValue.length === 5) {
+    else if (name.includes('Time') && (maskedValue.length === 5 || maskedValue.length === 8)) {
       setFormData(prev => ({ ...prev, [name]: maskedValue }));
       if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
     }
@@ -516,6 +528,23 @@ const AddTradeModal = ({
     if (!formData.planId) newErrors.planId = 'Selecione um plano';
     if (!formData.setup) newErrors.setup = 'Selecione um setup';
     
+    // Validar stop loss (opcional, mas se informado deve ser coerente)
+    if (formData.stopLoss) {
+      const stopVal = parseFloat(formData.stopLoss);
+      const entryVal = parseFloat(formData.entry);
+      if (isNaN(stopVal) || stopVal <= 0) {
+        newErrors.stopLoss = 'Preço do stop inválido';
+      } else if (entryVal && !isNaN(entryVal)) {
+        if (stopVal === entryVal) {
+          newErrors.stopLoss = 'Stop não pode ser igual à entrada';
+        } else if (formData.side === 'LONG' && stopVal >= entryVal) {
+          newErrors.stopLoss = 'LONG: stop deve ser abaixo da entrada';
+        } else if (formData.side === 'SHORT' && stopVal <= entryVal) {
+          newErrors.stopLoss = 'SHORT: stop deve ser acima da entrada';
+        }
+      }
+    }
+    
     // Validar parciais (sempre)
     const validPartials = partials.filter(p => p.price && p.qty);
     if (validPartials.length === 0) newErrors.partials = 'Preencha ao menos 1 entrada e 1 saída';
@@ -537,13 +566,13 @@ const AddTradeModal = ({
         newErrors[`partial_${i}_date`] = 'Data obrigatória (DD/MM/AAAA)';
         hasDateTimeError = true;
       }
-      // Hora obrigatória e completa
-      if (!p._time || p._time.length !== 5) {
-        newErrors[`partial_${i}_time`] = 'Hora obrigatória (HH:MM)';
+      // Hora obrigatória e completa (HH:MM ou HH:MM:SS)
+      if (!p._time || (p._time.length !== 5 && p._time.length !== 8)) {
+        newErrors[`partial_${i}_time`] = 'Hora obrigatória (HH:MM ou HH:MM:SS)';
         hasDateTimeError = true;
       }
       // Se ambos estão preenchidos, o dateTime combinado deve ser válido
-      if (p._dateBr?.length === 10 && p._time?.length === 5) {
+      if (p._dateBr?.length === 10 && (p._time?.length === 5 || p._time?.length === 8)) {
         const combined = combineDateTimeISO(p._dateBr, p._time);
         if (!combined) {
           newErrors[`partial_${i}_date`] = 'Data inválida';
@@ -594,6 +623,7 @@ const AddTradeModal = ({
       entryTime: entryTimeISO,
       exitTime: exitTimeISO,
       date: entryTimeISO.split('T')[0],
+      stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : null,
       tickerRule: activeAssetRule ? {
         tickSize: activeAssetRule.tickSize,
         tickValue: activeAssetRule.tickValue,
@@ -656,7 +686,7 @@ const AddTradeModal = ({
             </div>
 
             {/* DADOS DO TRADE */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="input-label">Bolsa</label>
                 <select name="exchange" value={formData.exchange} onChange={(e) => { setFormData(prev => ({ ...prev, exchange: e.target.value, ticker: '' })); setActiveAssetRule(null); }} className="input-dark w-full">{exchanges.map(ex => <option key={ex.id} value={ex.code}>{ex.code}</option>)}</select>
@@ -674,10 +704,31 @@ const AddTradeModal = ({
                 <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">{SIDES.map(side => (<button key={side} type="button" onClick={() => setFormData(prev => ({ ...prev, side }))} className={`flex-1 py-2 text-xs font-medium rounded ${formData.side === side ? (side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400') : 'text-slate-400 hover:text-white'}`}>{side}</button>))}</div>
               </div>
 
+              <div>
+                <label className="input-label flex items-center gap-1">
+                  Stop Loss
+                  {!formData.stopLoss && formData.entry && (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <ShieldAlert className="w-2.5 h-2.5" /> Sem stop
+                    </span>
+                  )}
+                </label>
+                <input 
+                  type="number" 
+                  name="stopLoss" 
+                  step="any"
+                  value={formData.stopLoss} 
+                  onChange={handleChange} 
+                  className={`input-dark w-full ${errors.stopLoss ? 'border-red-500' : ''}`} 
+                  placeholder="Preço do stop"
+                />
+                {errors.stopLoss && <span className="text-[10px] text-red-400 mt-0.5 block">{errors.stopLoss}</span>}
+              </div>
+
               <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} disabled placeholder="Calculado das parciais" /></div>
 
-              {/* GRID DE PARCIAIS — Item 1: Labels Compra/Venda + Item 2: Inputs DD/MM/AAAA + HH:MM */}
-              <div className="md:col-span-2">
+              {/* GRID DE PARCIAIS — Item 1: Labels Compra/Venda + Item 2: Inputs DD/MM/AAAA + HH:MM:SS */}
+              <div className="md:col-span-2 lg:col-span-3">
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 space-y-2">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -689,7 +740,7 @@ const AddTradeModal = ({
                   </div>
                   
                   {/* Header — Item 1: "Tipo" ao invés de "Ponta" + Item 2: Data e Hora separados */}
-                  <div className="grid grid-cols-[80px_1fr_70px_100px_70px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
+                  <div className="grid grid-cols-[80px_1fr_70px_100px_80px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
                     <span>Tipo</span>
                     <span>Preço</span>
                     <span>Qtd</span>
@@ -700,7 +751,7 @@ const AddTradeModal = ({
                   
                   {/* Rows */}
                   {partials.map((p, i) => (
-                    <div key={i} className="grid grid-cols-[80px_1fr_70px_100px_70px_28px] gap-2 items-center">
+                    <div key={i} className="grid grid-cols-[80px_1fr_70px_100px_80px_28px] gap-2 items-center">
                       {/* Item 1: Select com labels Compra/Venda conforme side */}
                       <select
                         value={p.type}
@@ -736,14 +787,14 @@ const AddTradeModal = ({
                         maxLength={10}
                         className={`input-dark text-xs py-1.5 text-center font-mono ${errors[`partial_${i}_date`] ? 'border-red-500' : ''}`}
                       />
-                      {/* Item 2: Input Hora HH:MM com máscara, formato 24h */}
+                      {/* Item 2: Input Hora HH:MM:SS com máscara, formato 24h */}
                       <input
                         type="text"
                         inputMode="numeric"
                         value={p._time || ''}
                         onChange={(e) => handlePartialTimeChange(i, e.target.value)}
-                        placeholder="HH:MM"
-                        maxLength={5}
+                        placeholder="HH:MM:SS"
+                        maxLength={8}
                         className={`input-dark text-xs py-1.5 text-center font-mono ${errors[`partial_${i}_time`] ? 'border-red-500' : ''}`}
                       />
                       <button
@@ -767,7 +818,7 @@ const AddTradeModal = ({
               </div>
 
               {/* Item 3: Resultado (P&L) com formatação de moeda */}
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 lg:col-span-3">
                 <label className="input-label flex items-center gap-2">
                   Resultado (P&L)
                   {resultOverride != null && (

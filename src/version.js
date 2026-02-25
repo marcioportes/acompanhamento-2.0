@@ -3,6 +3,7 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.10.0: Issue #41 — Campo Stop Loss, HH:MM:SS parciais, red flag NO_STOP, compliance RR via resultado
  * - 1.9.0: Sistema Emocional v2 — Fase 1.5.0 (UI Completa: Extrato Ledger + Alertas Mentor)
  * - 1.8.0: Sistema Emocional v2 — Fase 1.4.0 (Perfil Emocional do Aluno)
  * - 1.7.1: Hotfix: Filtro master de conta no dashboard aluno (AccountFilterBar)
@@ -14,10 +15,10 @@
  */
 export const VERSION = {
   major: 1,
-  minor: 9,
+  minor: 10,
   patch: 0,
   prerelease: null,
-  build: '20260223',
+  build: '20260225',
 
   get number() {
     return `${this.major}.${this.minor}.${this.patch}`;
@@ -40,7 +41,7 @@ export const VERSION = {
   },
 
   get date() {
-    return '2026-02-23';
+    return '2026-02-25';
   }
 };
 

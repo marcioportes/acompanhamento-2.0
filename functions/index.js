@@ -1,9 +1,14 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.5.0
+ * @version 1.6.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
+ * 
+ * CHANGELOG v1.6.0:
+ *   - Red flag NO_STOP: trade sem stop loss gera red flag + notificação mentor
+ *   - calculateTradeCompliance: sem stop → riskPercent=100%, RR via resultado efetivo
+ *   - healthCheck atualizado com feature no-stop-detection
  * 
  * CHANGELOG v1.5.0:
  *   - Notificação emocional: alerta mentor quando aluno tem emoção CRITICAL
@@ -28,10 +33,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 5,
+  minor: 6,
   patch: 0,
   prerelease: null,
-  build: '20260222',
+  build: '20260225',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -76,6 +81,7 @@ const TRADE_STATUS = {
 
 const RED_FLAG_TYPES = {
   NO_PLAN: 'TRADE_SEM_PLANO',
+  NO_STOP: 'TRADE_SEM_STOP',
   RISK_EXCEEDED: 'RISCO_ACIMA_PERMITIDO',
   RR_BELOW_MINIMUM: 'RR_ABAIXO_MINIMO',
   DAILY_LOSS_EXCEEDED: 'LOSS_DIARIO_EXCEDIDO',
@@ -262,6 +268,10 @@ const updatePlanPl = async (planId, resultDiff) => {
 /**
  * Calcula compliance do trade contra o plano
  * Risco Operacional (RO) e Razão Risco-Retorno (RR)
+ * 
+ * Sem stopLoss → riskPercent = 100 (todo o PL em risco)
+ * RR: prefere takeProfit se disponível, fallback para resultado efetivo
+ * 
  * @returns {{ riskPercent, rrRatio, compliance: { roStatus, rrStatus } }}
  */
 const calculateTradeCompliance = (trade, plan) => {
@@ -272,24 +282,37 @@ const calculateTradeCompliance = (trade, plan) => {
   const planPl = plan.currentPl ?? plan.pl ?? 0;
   if (planPl <= 0) return result;
   
-  // Risco Operacional: |resultado negativo| / PL do plano * 100
-  const riskAmount = trade.stopLoss 
-    ? Math.abs((trade.entry - trade.stopLoss) * trade.qty * (trade.tickerRule?.tickValue || 1))
-    : (trade.result < 0 ? Math.abs(trade.result) : 0);
-  
-  result.riskPercent = (riskAmount / planPl) * 100;
+  // Risco Operacional
+  if (trade.stopLoss && trade.entry) {
+    // Com stop: risco = distância stop × qty × tickValue
+    const tickValue = trade.tickerRule?.tickValue || 1;
+    const riskAmount = Math.abs(trade.entry - trade.stopLoss) * trade.qty * tickValue;
+    result.riskPercent = (riskAmount / planPl) * 100;
+  } else {
+    // Sem stop: 100% do PL em risco (pior cenário)
+    result.riskPercent = 100;
+  }
   
   if (plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   
   // Razão Risco-Retorno
-  if (trade.stopLoss && trade.takeProfit && trade.entry) {
+  if (trade.stopLoss && trade.entry) {
     const risk = Math.abs(trade.entry - trade.stopLoss);
-    const reward = Math.abs(trade.takeProfit - trade.entry);
     if (risk > 0) {
-      result.rrRatio = reward / risk;
-      if (plan.rrTarget && result.rrRatio < plan.rrTarget) {
+      if (trade.takeProfit) {
+        // Via takeProfit (planejado)
+        const reward = Math.abs(trade.takeProfit - trade.entry);
+        result.rrRatio = reward / risk;
+      } else if (trade.result > 0) {
+        // Via resultado efetivo (realizado)
+        const tickValue = trade.tickerRule?.tickValue || 1;
+        const riskAmount = risk * trade.qty * tickValue;
+        result.rrRatio = riskAmount > 0 ? trade.result / riskAmount : null;
+      }
+      
+      if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
         result.compliance.rrStatus = 'NAO_CONFORME';
       }
     }
@@ -648,6 +671,15 @@ exports.onTradeCreated = functions.firestore
       }
 
       // === 2. COMPLIANCE E RED FLAGS ===
+      // Red flag: trade sem stop loss
+      if (!trade.stopLoss) {
+        redFlags.push({ 
+          type: RED_FLAG_TYPES.NO_STOP, 
+          message: 'Trade sem stop loss definido — risco ilimitado', 
+          timestamp: new Date().toISOString() 
+        });
+      }
+
       if (!trade.planId) {
         redFlags.push({ type: RED_FLAG_TYPES.NO_PLAN, message: 'Trade sem plano', timestamp: new Date().toISOString() });
       } else {
@@ -851,7 +883,7 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
     build: VERSION.build,
     display: VERSION.display,
     full: VERSION.full,
-    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance', 'email-trigger', 'emotional-alerts'],
+    features: ['feedback-flow', 'red-flags', 'student-cards', 'plan-centric-pl', 'trade-compliance', 'email-trigger', 'emotional-alerts', 'no-stop-detection'],
     timestamp: new Date().toISOString() 
   });
 });
