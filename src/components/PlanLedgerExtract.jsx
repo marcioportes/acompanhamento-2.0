@@ -1,8 +1,9 @@
 /**
  * PlanLedgerExtract
- * @version 1.0.0 (Fase 1.5.0)
- * @description Extrato Ledger emocional — combina auditoria financeira + perfil emocional.
+ * @version 1.1.0 (v1.10.0)
+ * @description Extrato Ledger emocional — combina auditoria financeira + perfil emocional + compliance.
  *   Adiciona coluna Emoção ao extrato, markers de TILT/REVENGE, score do ciclo.
+ *   v1.1.0: Exibe RO_FORA, RR_FORA, NO_STOP na coluna Evento e no painel de eventos.
  * 
  * DIFERENÇA DO PlanExtractModal:
  * - PlanExtractModal: compliance financeiro puro (META/STOP)
@@ -15,7 +16,7 @@
 import { useMemo } from 'react';
 import { 
   X, ScrollText, Trophy, Skull, AlertTriangle, Flame, Zap, 
-  TrendingUp, TrendingDown, Brain, Shield
+  TrendingUp, TrendingDown, Brain, Shield, ShieldAlert, ShieldX, Scale
 } from 'lucide-react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -73,6 +74,25 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
         event = 'POST_STOP';
       }
 
+      // Compliance flags por trade (do Firestore, calculado pela CF)
+      const complianceFlags = [];
+      if (t.compliance?.roStatus === 'FORA_DO_PLANO') complianceFlags.push('RO_FORA');
+      if (t.compliance?.rrStatus === 'NAO_CONFORME') complianceFlags.push('RR_FORA');
+      const hasNoStop = Array.isArray(t.redFlags) && t.redFlags.some(f => 
+        (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
+      );
+      if (hasNoStop) complianceFlags.push('NO_STOP');
+
+      // Push compliance events
+      complianceFlags.forEach(flag => {
+        const msgs = {
+          RO_FORA: `RO fora do plano: ${t.ticker} (${(t.riskPercent || 0).toFixed(1)}%)`,
+          RR_FORA: `RR não conforme: ${t.ticker} (${(t.rrRatio || 0).toFixed(1)}x)`,
+          NO_STOP: `Trade sem stop: ${t.ticker}`
+        };
+        evts.push({ type: flag, date: t.date, time: fmtTime(t.entryTime), message: msgs[flag] });
+      });
+
       return {
         ...t,
         idx: i + 1,
@@ -81,7 +101,8 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
         emoji,
         emotionName,
         emotionCategory: category,
-        event
+        event,
+        complianceFlags
       };
     });
 
@@ -129,6 +150,9 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
       case 'TILT': return <Flame className="w-3.5 h-3.5 text-orange-400" />;
       case 'REVENGE': return <Zap className="w-3.5 h-3.5 text-red-400" />;
       case 'STATUS_CRITICAL': return <AlertTriangle className="w-3.5 h-3.5 text-red-400" />;
+      case 'RO_FORA': return <ShieldX className="w-3.5 h-3.5 text-amber-400" />;
+      case 'RR_FORA': return <Scale className="w-3.5 h-3.5 text-amber-400" />;
+      case 'NO_STOP': return <ShieldAlert className="w-3.5 h-3.5 text-red-400" />;
       default: return <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />;
     }
   };
@@ -136,9 +160,10 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
   const getEventStyle = (type) => {
     switch (type) {
       case 'GOAL_HIT': return 'border-emerald-500/30 bg-emerald-500/5';
-      case 'STOP_HIT': case 'STATUS_CRITICAL': return 'border-red-500/30 bg-red-500/5';
+      case 'STOP_HIT': case 'STATUS_CRITICAL': case 'NO_STOP': return 'border-red-500/30 bg-red-500/5';
       case 'TILT': return 'border-orange-500/30 bg-orange-500/5';
       case 'REVENGE': return 'border-red-500/30 bg-red-500/5';
+      case 'RO_FORA': case 'RR_FORA': return 'border-amber-500/30 bg-amber-500/5';
       default: return 'border-yellow-500/30 bg-yellow-500/5';
     }
   };
@@ -227,7 +252,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
                 <th className="p-3">Emoção</th>
                 <th className="p-3 text-right">Resultado</th>
                 <th className="p-3 text-right bg-slate-800/50">Acumulado</th>
-                <th className="p-3 text-center w-28">Evento</th>
+                <th className="p-3 text-center w-32">Evento</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
@@ -262,11 +287,28 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
                       row.runningBalance >= 0 ? 'text-emerald-300' : 'text-red-300'
                     }`}>{fmt(row.runningBalance)}</td>
                     <td className="p-3 text-center">
-                      {row.event === 'GOAL_HIT' && <span className="text-emerald-400 font-bold text-xs flex justify-center items-center gap-1"><Trophy className="w-3 h-3" /> META!</span>}
-                      {row.event === 'STOP_HIT' && <span className="text-red-400 font-bold text-xs flex justify-center items-center gap-1"><Skull className="w-3 h-3" /> STOP!</span>}
-                      {row.event === 'POST_GOAL' && <span className="text-yellow-500/70 text-[10px] uppercase font-bold">Pós-Meta</span>}
-                      {row.event === 'POST_STOP' && <span className="text-red-500/70 text-[10px] uppercase font-bold">Violação</span>}
-                      {!row.event && <span className="text-slate-600 text-xs">-</span>}
+                      <div className="flex flex-col items-center gap-0.5">
+                        {row.event === 'GOAL_HIT' && <span className="text-emerald-400 font-bold text-xs flex justify-center items-center gap-1"><Trophy className="w-3 h-3" /> META!</span>}
+                        {row.event === 'STOP_HIT' && <span className="text-red-400 font-bold text-xs flex justify-center items-center gap-1"><Skull className="w-3 h-3" /> STOP!</span>}
+                        {row.event === 'POST_GOAL' && <span className="text-yellow-500/70 text-[10px] uppercase font-bold">Pós-Meta</span>}
+                        {row.event === 'POST_STOP' && <span className="text-red-500/70 text-[10px] uppercase font-bold">Violação</span>}
+                        {row.complianceFlags?.includes('NO_STOP') && (
+                          <span className="text-red-400 text-[10px] font-bold flex items-center gap-0.5" title="Trade sem stop loss">
+                            <ShieldAlert className="w-3 h-3" /> S/STOP
+                          </span>
+                        )}
+                        {row.complianceFlags?.includes('RO_FORA') && (
+                          <span className="text-amber-400 text-[10px] font-bold flex items-center gap-0.5" title="Risco operacional fora do plano">
+                            <ShieldX className="w-3 h-3" /> RO
+                          </span>
+                        )}
+                        {row.complianceFlags?.includes('RR_FORA') && (
+                          <span className="text-amber-400 text-[10px] font-bold flex items-center gap-0.5" title="Razão risco-retorno não conforme">
+                            <Scale className="w-3 h-3" /> RR
+                          </span>
+                        )}
+                        {!row.event && (!row.complianceFlags || row.complianceFlags.length === 0) && <span className="text-slate-600 text-xs">-</span>}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -472,9 +472,10 @@ const AddTradeModal = ({
   // --- HANDLERS DE PARCIAIS ---
 
   const addPartialRow = () => {
-    // Default: copia a data da primeira parcial para conveniência
+    // Default: copia a data da primeira parcial e hora da última parcial preenchida
     const defaultDateBr = partials[0]?._dateBr || isoToBr(formData.entryDate);
-    setPartials(prev => [...prev, { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: prev.length + 1, _dateBr: defaultDateBr, _time: '' }]);
+    const lastFilledTime = [...partials].reverse().find(p => p._time)?._time || '';
+    setPartials(prev => [...prev, { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: prev.length + 1, _dateBr: defaultDateBr, _time: lastFilledTime }]);
   };
 
   const updatePartialRow = (index, field, value) => {
@@ -740,7 +741,7 @@ const AddTradeModal = ({
                   </div>
                   
                   {/* Header — Item 1: "Tipo" ao invés de "Ponta" + Item 2: Data e Hora separados */}
-                  <div className="grid grid-cols-[80px_1fr_70px_100px_80px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
+                  <div className="grid grid-cols-[80px_1fr_70px_100px_95px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
                     <span>Tipo</span>
                     <span>Preço</span>
                     <span>Qtd</span>
@@ -751,7 +752,7 @@ const AddTradeModal = ({
                   
                   {/* Rows */}
                   {partials.map((p, i) => (
-                    <div key={i} className="grid grid-cols-[80px_1fr_70px_100px_80px_28px] gap-2 items-center">
+                    <div key={i} className="grid grid-cols-[80px_1fr_70px_100px_95px_28px] gap-2 items-center">
                       {/* Item 1: Select com labels Compra/Venda conforme side */}
                       <select
                         value={p.type}
