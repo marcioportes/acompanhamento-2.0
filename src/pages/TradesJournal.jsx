@@ -10,11 +10,12 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { PlusCircle, FlaskConical, ChevronDown, Filter } from 'lucide-react';
+import { PlusCircle, FlaskConical, Filter } from 'lucide-react';
 import Filters from '../components/Filters';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import AddTradeModal from '../components/AddTradeModal';
+import AccountFilterBar from '../components/AccountFilterBar';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
@@ -48,40 +49,36 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   
+  // Filtro de contas — mesmo padrão do StudentDashboard via AccountFilterBar
+  const [accountTypeFilter, setAccountTypeFilter] = useState('real');
+  
   // Filtros
   const [filters, setFilters] = useState({ 
-    period: 'all', ticker: 'all', accountId: null, setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' 
+    period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' 
   });
 
-  // Inicializa conta
-  useEffect(() => {
-    if (!accountsLoading && accounts.length > 0 && !filters.accountId) {
-      const hasReal = accounts.some(isRealAccount);
-      const hasDemo = accounts.some(isDemoAccount);
-      if (hasDemo) setFilters(prev => ({ ...prev, accountId: 'all_demo' }));
-      else if (hasReal) setFilters(prev => ({ ...prev, accountId: 'all_real' }));
-      else setFilters(prev => ({ ...prev, accountId: accounts[0]?.id || 'all_demo' }));
-    }
-  }, [accountsLoading, accounts, filters.accountId]);
+  // Contas filtradas por tipo (all/real/demo)
+  const filteredAccountsByType = useMemo(() => {
+    if (accountTypeFilter === 'real') return accounts.filter(isRealAccount);
+    if (accountTypeFilter === 'demo') return accounts.filter(isDemoAccount);
+    return accounts;
+  }, [accounts, accountTypeFilter]);
 
-  const selectedAccounts = useMemo(() => {
-    if (!filters.accountId) return [];
-    if (filters.accountId === 'all_real') return accounts.filter(isRealAccount);
-    if (filters.accountId === 'all_demo') return accounts.filter(isDemoAccount);
-    return accounts.filter(a => a.id === filters.accountId);
-  }, [accounts, filters.accountId]);
+  // IDs das contas selecionadas
+  const selectedAccountIds = useMemo(() => {
+    if (filters.accountId === 'all') return filteredAccountsByType.map(a => a.id);
+    return [filters.accountId];
+  }, [filteredAccountsByType, filters.accountId]);
 
   const availableTickers = useMemo(() => {
-    const validAccountIds = selectedAccounts.map(a => a.id);
-    const accountTrades = trades.filter(t => validAccountIds.includes(t.accountId));
+    const accountTrades = trades.filter(t => selectedAccountIds.includes(t.accountId));
     const unique = new Set(accountTrades.map(t => t.ticker).filter(Boolean));
     return Array.from(unique).sort();
-  }, [trades, selectedAccounts]);
+  }, [trades, selectedAccountIds]);
 
   const filteredTrades = useMemo(() => {
-    if (selectedAccounts.length === 0) return [];
-    const validAccountIds = selectedAccounts.map(a => a.id);
-    let result = trades.filter(t => validAccountIds.includes(t.accountId));
+    if (selectedAccountIds.length === 0) return [];
+    let result = trades.filter(t => selectedAccountIds.includes(t.accountId));
     
     if (filters.period !== 'all' && filters.period !== 'custom') result = filterTradesByPeriod(result, filters.period);
     else if (filters.period === 'custom') result = filterTradesByDateRange(result, filters.startDate, filters.endDate);
@@ -98,23 +95,26 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
     result.sort((a, b) => {
       const dateCompare = (a.date || '').localeCompare(b.date || '');
       if (dateCompare !== 0) return dateCompare;
-      return (a.entryTime || '').localeCompare(b.entryTime || '');
+      const timeCompare = (a.entryTime || '').localeCompare(b.entryTime || '');
+      if (timeCompare !== 0) return timeCompare;
+      // Fallback: createdAt (Firestore timestamp)
+      const aTs = a.createdAt?.seconds || a.createdAt?.toMillis?.() || 0;
+      const bTs = b.createdAt?.seconds || b.createdAt?.toMillis?.() || 0;
+      return aTs - bTs;
     });
 
     return result;
-  }, [trades, filters, selectedAccounts]);
+  }, [trades, filters, selectedAccountIds]);
 
   const isDemoView = useMemo(() => {
-    if (filters.accountId === 'all_demo') return true;
-    if (filters.accountId === 'all_real') return false;
-    if (selectedAccounts.length === 1) return isDemoAccount(selectedAccounts[0]);
-    return selectedAccounts.every(isDemoAccount);
-  }, [filters.accountId, selectedAccounts]);
-
-  // Handlers
-  const handleAccountChange = (newAccountId) => {
-    setFilters(prev => ({ ...prev, accountId: newAccountId }));
-  };
+    if (accountTypeFilter === 'demo') return true;
+    if (accountTypeFilter === 'real') return false;
+    if (filters.accountId !== 'all') {
+      const acc = accounts.find(a => a.id === filters.accountId);
+      return acc ? isDemoAccount(acc) : false;
+    }
+    return accounts.every(isDemoAccount);
+  }, [accountTypeFilter, filters.accountId, accounts]);
 
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
     setIsSubmitting(true);
@@ -138,10 +138,6 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
     }
   };
 
-  // Dados para renderização do Dropdown
-  const realAccounts = accounts.filter(isRealAccount);
-  const demoAccounts = accounts.filter(isDemoAccount);
-
   if (tradesLoading || accountsLoading || plansLoading || setupsLoading) {
     return <Loading fullScreen text="Carregando trades..." />;
   }
@@ -154,35 +150,17 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         </div>
       )}
 
-      {/* HEADER ADAPTADO - NOVO SELETOR */}
+      {/* HEADER — AccountFilterBar (mesmo padrão do StudentDashboard) */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Diário de Trades</h1>
-          
-          {/* SELETOR DE CONTA COM DARK MODE FORÇADO */}
-          <div className="relative group inline-block">
-            <select
-              value={filters.accountId || 'all_demo'}
-              onChange={(e) => handleAccountChange(e.target.value)}
-              className="appearance-none bg-transparent text-lg lg:text-xl text-slate-400 hover:text-white font-medium outline-none cursor-pointer pr-8 transition-colors border-b border-transparent hover:border-slate-600"
-            >
-              <optgroup label="Visão Geral" className="bg-slate-900 text-slate-400">
-                <option value="all_real" className="bg-slate-900 text-white">Todas as Contas Reais</option>
-                <option value="all_demo" className="bg-slate-900 text-white">Todas as Contas Demo</option>
-              </optgroup>
-              {realAccounts.length > 0 && (
-                <optgroup label="Contas Reais" className="bg-slate-900 text-slate-400">
-                  {realAccounts.map(acc => <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">{acc.name}</option>)}
-                </optgroup>
-              )}
-              {demoAccounts.length > 0 && (
-                <optgroup label="Contas Demo" className="bg-slate-900 text-slate-400">
-                  {demoAccounts.map(acc => <option key={acc.id} value={acc.id} className="bg-slate-900 text-white">{acc.name}</option>)}
-                </optgroup>
-              )}
-            </select>
-            <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
-          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">Diário de Trades</h1>
+          <AccountFilterBar
+            accounts={accounts}
+            accountTypeFilter={accountTypeFilter}
+            onAccountTypeChange={setAccountTypeFilter}
+            selectedAccountId={filters.accountId}
+            onAccountSelect={(id) => setFilters(prev => ({ ...prev, accountId: id }))}
+          />
         </div>
         
         <div className="flex gap-3">

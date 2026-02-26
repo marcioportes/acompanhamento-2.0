@@ -135,9 +135,14 @@ const TradesList = ({
 
             return (
               <tr key={trade.id} className="group hover:bg-slate-800/30 transition-colors">
-                {/* DATA */}
+                {/* DATA + HORA */}
                 <td className="p-4 font-medium text-slate-300 whitespace-nowrap">
-                  {trade.date ? trade.date.split('-').reverse().join('/') : '-'}
+                  <div>{trade.date ? trade.date.split('-').reverse().join('/') : '-'}</div>
+                  {trade.entryTime && (
+                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                      {(() => { try { const t = trade.entryTime.split('T')[1]; return t ? t.substring(0, 5) : ''; } catch { return ''; } })()}
+                    </div>
+                  )}
                 </td>
 
                 {/* ALUNO (opcional) */}
@@ -211,10 +216,18 @@ const TradesList = ({
                       </span>
                     </div>
                     <div className={`text-xs ${getResultColor(result)} opacity-80`}>
-                      {resultPercentPl != null 
-                        ? `${result > 0 ? '+' : ''}${formatPercent(resultPercentPl)}`
-                        : ''
-                      }
+                      {(() => {
+                        // Futuros: mostrar risco em pontos se tem stop
+                        if (trade.tickerRule && trade.stopLoss && trade.entry) {
+                          const riskPts = Math.abs(trade.entry - trade.stopLoss);
+                          return `Stop: ${riskPts} pts`;
+                        }
+                        // Ações/papéis: mostrar % sobre PL
+                        if (resultPercentPl != null) {
+                          return `${result > 0 ? '+' : ''}${formatPercent(resultPercentPl)}`;
+                        }
+                        return '';
+                      })()}
                     </div>
                   </div>
                 </td>
@@ -272,3 +285,4 @@ const TradesList = ({
 };
 
 export default TradesList;
+// hotfix-v1.10.1

@@ -130,6 +130,19 @@ const AddTradeModal = ({
       .replace(/(\d{2})\d+?$/, '$1');
   };
 
+  /** Valida range HH:MM ou HH:MM:SS — retorna mensagem de erro ou null */
+  const validateTimeRange = (time) => {
+    if (!time) return null;
+    const parts = time.split(':');
+    const hh = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10);
+    const ss = parts[2] !== undefined ? parseInt(parts[2], 10) : 0;
+    if (isNaN(hh) || hh < 0 || hh > 23) return 'Hora inválida (00-23)';
+    if (isNaN(mm) || mm < 0 || mm > 59) return 'Minuto inválido (00-59)';
+    if (isNaN(ss) || ss < 0 || ss > 59) return 'Segundo inválido (00-59)';
+    return null;
+  };
+
   // --- HELPERS DE PARCIAIS: Labels Compra/Venda conforme side ---
   
   /**
@@ -571,6 +584,12 @@ const AddTradeModal = ({
       if (!p._time || (p._time.length !== 5 && p._time.length !== 8)) {
         newErrors[`partial_${i}_time`] = 'Hora obrigatória (HH:MM ou HH:MM:SS)';
         hasDateTimeError = true;
+      } else {
+        const timeRangeErr = validateTimeRange(p._time);
+        if (timeRangeErr) {
+          newErrors[`partial_${i}_time`] = timeRangeErr;
+          hasDateTimeError = true;
+        }
       }
       // Se ambos estão preenchidos, o dateTime combinado deve ser válido
       if (p._dateBr?.length === 10 && (p._time?.length === 5 || p._time?.length === 8)) {
@@ -584,7 +603,13 @@ const AddTradeModal = ({
 
     // Mensagem global visível para erros de data/hora
     if (hasDateTimeError && !newErrors.partials) {
-      newErrors.partials = 'Preencha data e horário de todas as parciais';
+      // Detectar se é erro de range (segundos/minutos inválidos) vs preenchimento
+      const hasRangeError = Object.entries(newErrors).some(([k, v]) => 
+        k.startsWith('partial_') && (v.includes('inválid') || v.includes('Hora inválida'))
+      );
+      newErrors.partials = hasRangeError 
+        ? 'Corrija os valores de horário das parciais' 
+        : 'Preencha data e horário de todas as parciais';
     }
     
     if (!editTrade) {

@@ -106,13 +106,16 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
       };
     });
 
-    // Adicionar eventos TILT/REVENGE dos alertas
+    // Adicionar eventos TILT/REVENGE dos alertas emocionais
     if (emotional.isReady && emotional.alerts) {
       emotional.alerts.forEach(a => {
         if (a.type === 'TILT' || a.type === 'REVENGE' || a.type === 'STATUS_CRITICAL') {
+          // Associar ao trade mais próximo pela data/hora do alerta
+          const alertDate = a.date || a.tradeDate || (rows.length > 0 ? rows[rows.length - 1].date : null);
+          if (!alertDate) return; // Skip se sem data válida
           evts.push({
             type: a.type,
-            date: a.date || '-',
+            date: alertDate,
             time: a.time || '',
             message: a.message
           });

@@ -3,6 +3,7 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.10.1: Hotfix — RO/RR com tickSize, validação HH:MM:SS range, data+hora em listas, risco pts vs %
  * - 1.10.0: Issue #41 — Campo Stop Loss, HH:MM:SS parciais, red flag NO_STOP, compliance RR via resultado
  * - 1.9.0: Sistema Emocional v2 — Fase 1.5.0 (UI Completa: Extrato Ledger + Alertas Mentor)
  * - 1.8.0: Sistema Emocional v2 — Fase 1.4.0 (Perfil Emocional do Aluno)
@@ -16,7 +17,7 @@
 export const VERSION = {
   major: 1,
   minor: 10,
-  patch: 0,
+  patch: 1,
   prerelease: null,
   build: '20260225',
 
@@ -45,4 +46,4 @@ export const VERSION = {
   }
 };
 
-export default VERSION;
+export default VERSION;// hotfix-v1.10.1

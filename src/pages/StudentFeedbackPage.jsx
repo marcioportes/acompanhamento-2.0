@@ -144,6 +144,11 @@ const TradeListItem = ({ trade, isSelected, onClick }) => {
         </div>
         <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500">
           <span>{formatDateShort(trade.date)}</span>
+          {trade.entryTime && (
+            <span className="font-mono text-slate-600">
+              {(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5) || ''; } catch { return ''; } })()}
+            </span>
+          )}
           <span>•</span>
           <span className="truncate">{trade.setup || 'Sem setup'}</span>
           {messageCount > 0 && (
@@ -230,7 +235,14 @@ const StudentFeedbackPage = () => {
       const pA = STATUS_CONFIG[a.status || 'OPEN']?.priority || 99;
       const pB = STATUS_CONFIG[b.status || 'OPEN']?.priority || 99;
       if (pA !== pB) return pA - pB;
-      return (b.date || '').localeCompare(a.date || '');
+      // Crescente: mais antigo primeiro
+      const dateCompare = (a.date || '').localeCompare(b.date || '');
+      if (dateCompare !== 0) return dateCompare;
+      const timeCompare = (a.entryTime || '').localeCompare(b.entryTime || '');
+      if (timeCompare !== 0) return timeCompare;
+      const aTs = a.createdAt?.seconds || a.createdAt?.toMillis?.() || 0;
+      const bTs = b.createdAt?.seconds || b.createdAt?.toMillis?.() || 0;
+      return aTs - bTs;
     });
     return result;
   }, [trades, statusFilter, tickerFilter, periodFilter, searchTerm]);
