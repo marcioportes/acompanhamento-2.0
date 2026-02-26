@@ -238,7 +238,11 @@ const StudentFeedbackPage = () => {
       // Crescente: mais antigo primeiro
       const dateCompare = (a.date || '').localeCompare(b.date || '');
       if (dateCompare !== 0) return dateCompare;
-      return (a.entryTime || '').localeCompare(b.entryTime || '');
+      const timeCompare = (a.entryTime || '').localeCompare(b.entryTime || '');
+      if (timeCompare !== 0) return timeCompare;
+      const aTs = a.createdAt?.seconds || a.createdAt?.toMillis?.() || 0;
+      const bTs = b.createdAt?.seconds || b.createdAt?.toMillis?.() || 0;
+      return aTs - bTs;
     });
     return result;
   }, [trades, statusFilter, tickerFilter, periodFilter, searchTerm]);

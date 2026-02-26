@@ -645,4 +645,4 @@ const TradeDetailModal = ({
   );
 };
 
-export default TradeDetailModal;
+export default TradeDetailModal;// hotfix-v1.10.1

@@ -603,7 +603,13 @@ const AddTradeModal = ({
 
     // Mensagem global visível para erros de data/hora
     if (hasDateTimeError && !newErrors.partials) {
-      newErrors.partials = 'Preencha data e horário de todas as parciais';
+      // Detectar se é erro de range (segundos/minutos inválidos) vs preenchimento
+      const hasRangeError = Object.entries(newErrors).some(([k, v]) => 
+        k.startsWith('partial_') && (v.includes('inválid') || v.includes('Hora inválida'))
+      );
+      newErrors.partials = hasRangeError 
+        ? 'Corrija os valores de horário das parciais' 
+        : 'Preencha data e horário de todas as parciais';
     }
     
     if (!editTrade) {

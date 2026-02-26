@@ -285,3 +285,4 @@ const TradesList = ({
 };
 
 export default TradesList;
+// hotfix-v1.10.1
