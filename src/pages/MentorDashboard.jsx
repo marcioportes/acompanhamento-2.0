@@ -87,7 +87,19 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const filteredPendingTrades = useMemo(() => {
     if (!pendingFilter) return [];
-    return getTradesByStudentAndStatus(pendingFilter.studentEmail, pendingFilter.status);
+    const trades = getTradesByStudentAndStatus(pendingFilter.studentEmail, pendingFilter.status);
+    // Sort crescente: mais antigo primeiro (date → entryTime → createdAt)
+    return [...trades].sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const timeA = a.entryTime || '';
+      const timeB = b.entryTime || '';
+      if (timeA && timeB) return timeA.localeCompare(timeB);
+      const tsA = a.createdAt?.seconds || 0;
+      const tsB = b.createdAt?.seconds || 0;
+      return tsA - tsB;
+    });
   }, [pendingFilter, getTradesByStudentAndStatus]);
 
   const overallStats = useMemo(() => {
@@ -298,7 +310,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                           <span className="font-bold text-white">{trade.ticker}</span>
                           <span className={`text-xs px-2 py-0.5 rounded ${trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{trade.side}</span>
                         </div>
-                        <p className="text-sm text-slate-500">{trade.date?.split('-').reverse().join('/')} • {trade.setup || 'Sem setup'}</p>
+                        <p className="text-sm text-slate-500">
+                          {trade.date?.split('-').reverse().join('/')}
+                          {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
+                          {' • '}{trade.setup || 'Sem setup'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">

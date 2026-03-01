@@ -5,6 +5,7 @@
  * @see version.js para versão do produto
  * 
  * CHANGELOG:
+ * - 1.10.2: TradeInfoCard exibe Stop Loss, RR, Resultado % sobre PL, Red Flags (RO% removido — redundante com RR)
  * - 1.4.0: Prop embedded para uso dentro de StudentFeedbackPage master-detail
  *   - embedded=true: sem padding, sem header, sem botão voltar, grid 2 colunas (info + chat)
  *   - embedded=false (default): comportamento original (tela cheia, 2 colunas)
@@ -21,7 +22,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
-  Calendar, TrendingUp, TrendingDown, Clock, AlertCircle,
+  Calendar, TrendingUp, TrendingDown, Clock, AlertCircle, AlertTriangle,
   BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2,
   Layers, ArrowDownRight, ArrowUpRight
 } from 'lucide-react';
@@ -127,6 +128,77 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           <span className="text-white font-mono text-lg">{trade.qty}</span>
         </div>
       </div>
+
+      {/* Métricas de Risco — Stop, RR, Resultado % PL */}
+      {(() => {
+        const entry = Number(trade.entry) || 0;
+        const exit = Number(trade.exit) || 0;
+        const stopLoss = trade.stopLoss != null ? Number(trade.stopLoss) : null;
+        const result = Number(trade.result) || 0;
+        const tickerRule = trade.tickerRule;
+        
+        // Calcula risco em pontos/preço
+        const riskPts = stopLoss != null && entry ? Math.abs(entry - stopLoss) : null;
+        
+        // RR Ratio — usa rrRatio salvo, ou calcula via movement/risk
+        let rrCalc = null;
+        if (stopLoss != null && riskPts > 0) {
+          const movePts = trade.side === 'LONG' ? exit - entry : entry - exit;
+          rrCalc = movePts / riskPts;
+        }
+        const rrRatio = trade.rrRatio || trade.rr || rrCalc;
+        
+        // Resultado % sobre PL (usa planPl se disponível via _planPl prop)
+        const planPl = Number(trade._planPl) || 0;
+        const resultPercentPl = planPl > 0 ? (result / planPl) * 100 : null;
+        
+        // Verifica se há dados para exibir
+        const hasData = stopLoss != null || rrRatio != null || resultPercentPl != null;
+        if (!hasData) return null;
+        
+        return (
+          <div className="grid grid-cols-3 gap-3">
+            {stopLoss != null && (
+              <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3 text-center">
+                <span className="text-[10px] text-red-400/70 uppercase tracking-wider block mb-1">Stop Loss</span>
+                <span className="text-red-400 font-mono font-bold">{stopLoss}</span>
+                {riskPts != null && (
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    {tickerRule ? `${riskPts.toFixed(tickerRule.tickSize < 1 ? 2 : 0)} pts` : `${riskPts.toFixed(2)}`}
+                  </span>
+                )}
+              </div>
+            )}
+            {rrRatio != null && (
+              <div className={`${rrRatio >= 1 ? 'bg-blue-500/5 border-blue-500/20' : 'bg-amber-500/5 border-amber-500/20'} border rounded-xl p-3 text-center`}>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">RR</span>
+                <span className={`font-mono font-bold ${rrRatio >= 1 ? 'text-blue-400' : 'text-amber-400'}`}>{Number(rrRatio).toFixed(2)}:1</span>
+              </div>
+            )}
+            {resultPercentPl != null && (
+              <div className={`${resultPercentPl >= 0 ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20'} border rounded-xl p-3 text-center`}>
+                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">% s/ PL</span>
+                <span className={`font-mono font-bold ${resultPercentPl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{resultPercentPl >= 0 ? '+' : ''}{resultPercentPl.toFixed(2)}%</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Red Flags */}
+      {trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
+          <div className="flex items-center gap-2 text-amber-400 mb-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span className="text-xs font-bold uppercase tracking-wider">Violações ({trade.redFlags.length})</span>
+          </div>
+          <div className="space-y-1">
+            {trade.redFlags.map((flag, i) => (
+              <p key={i} className="text-xs text-amber-300/80">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Parciais — exibe quando trade tem dados carregados */}
       {trade._loadedPartials?.length > 0 && (

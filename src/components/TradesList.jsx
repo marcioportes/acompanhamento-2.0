@@ -3,6 +3,7 @@
  * @version 1.2.1
  * @description Componente de apresentação (Dumb Component) responsável por listar os trades.
  * * CHANGELOG:
+ * - 1.10.2: Sort interno ASC (data + entryTime + createdAt fallback). Garante ordem em todo caller.
  * - 1.10.0: resultPercent exibe % sobre PL do plano (não variação de preço). Nova prop plans[].
  * - 1.2.1: Default de showStatus alterado para true (Status visível por padrão para todos)
  * - 1.2.0: Adicionado prop showStatus para exibir coluna de status do feedback
@@ -97,6 +98,20 @@ const TradesList = ({
     return 'text-slate-400';
   };
 
+  // Sort interno: ASC por data, depois entryTime, fallback createdAt
+  const sortedTrades = [...trades].sort((a, b) => {
+    const dateA = a.date || '';
+    const dateB = b.date || '';
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    const timeA = a.entryTime || '';
+    const timeB = b.entryTime || '';
+    if (timeA && timeB) return timeA.localeCompare(timeB);
+    // Fallback: createdAt (Firestore timestamp ou ISO string)
+    const caA = a.createdAt?.toDate?.()?.toISOString?.() || a.createdAt || '';
+    const caB = b.createdAt?.toDate?.()?.toISOString?.() || b.createdAt || '';
+    return caA.toString().localeCompare(caB.toString());
+  });
+
   // Calcula número de colunas dinâmicas
   const baseColumns = 6; // Data, Ticker, Setup, Lado, Imagens, Resultado, Ações
   const extraColumns = (showStatus ? 1 : 0) + (showStudent ? 1 : 0);
@@ -121,7 +136,7 @@ const TradesList = ({
 
         {/* CORPO DA TABELA */}
         <tbody className="divide-y divide-slate-800/50 text-sm">
-          {trades.map((trade) => {
+          {sortedTrades.map((trade) => {
             const result = Number(trade.result) || 0;
             // % sobre PL do plano (não variação de preço)
             const planPl = getPlanPl(trade);
