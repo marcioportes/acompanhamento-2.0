@@ -77,7 +77,8 @@ const AppContent = () => {
     getTradesGroupedByStudent, 
     allTrades,
     addFeedbackComment,
-    updateTradeStatus
+    updateTradeStatus,
+    getPartials
   } = useTrades();
   const { plans } = usePlans();
 
@@ -189,12 +190,17 @@ const AppContent = () => {
       // Busca trade atualizado do allTrades para dados em tempo real
       const currentTrade = allTrades.find(t => t.id === feedbackTrade.id) || feedbackTrade;
       
+      // Enriquece com PL do plano para cálculo de resultado % sobre PL
+      const tradePlan = currentTrade.planId ? plans.find(p => p.id === currentTrade.planId) : null;
+      const enrichedTrade = tradePlan ? { ...currentTrade, _planPl: tradePlan.pl } : currentTrade;
+      
       return (
         <FeedbackPage
-          trade={currentTrade}
+          trade={enrichedTrade}
           onBack={handleBackFromFeedback}
           onAddComment={handleAddFeedbackComment}
           onUpdateStatus={handleUpdateTradeStatus}
+          getPartials={getPartials}
         />
       );
     }

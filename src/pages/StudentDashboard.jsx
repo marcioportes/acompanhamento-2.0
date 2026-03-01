@@ -1,9 +1,11 @@
 /**
  * StudentDashboard
- * @version 1.2.0
+ * @version 1.3.0
  * @description Dashboard com filtro master de conta, View As Student, extrato emocional
  * 
  * CHANGELOG:
+ * - 1.10.2: Max Drawdown peak-to-trough, WR Planejado vs Clássico, Taxa de Conformidade
+ *   - Fix: delete trade no calendário (trade.id extraction)
  * - 1.2.0: PlanLedgerExtract (extrato emocional) substituindo PlanExtractModal no ícone — Fase 1.5.0
  * - 1.1.0: Filtro master de conta (AccountFilterBar) — tipo + individual, cascata para planos/trades/saldo
  * - 1.0.8: Fix navegação para histórico de feedback (botão "Ver conversa")
@@ -197,14 +199,14 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
       const plan = plans.find(p => p.id === selectedPlanId);
       if (plan) {
         const acc = accounts.find(a => a.id === plan.accountId);
-        return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
+        return acc ? (acc.currentBalance ?? acc.initialBalance ?? 0) : 0;
       }
     }
     if (filters.accountId !== 'all') {
       const acc = accounts.find(a => a.id === filters.accountId);
-      return acc ? (acc.currentBalance || acc.initialBalance || 0) : 0;
+      return acc ? (acc.currentBalance ?? acc.initialBalance ?? 0) : 0;
     }
-    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.currentBalance || acc.initialBalance || 0), 0);
+    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.currentBalance ?? acc.initialBalance ?? 0), 0);
   }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const drawdown = useMemo(() => {
@@ -212,6 +214,80 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
     const loss = Math.min(0, aggregatedCurrentBalance - aggregatedInitialBalance);
     return Math.abs(loss / aggregatedInitialBalance) * 100;
   }, [aggregatedInitialBalance, aggregatedCurrentBalance]);
+
+  // Max Drawdown: peak-to-trough na série histórica de PL acumulado
+  const maxDrawdownData = useMemo(() => {
+    if (filteredTrades.length === 0) return { maxDD: 0, maxDDPercent: 0, maxDDDate: null };
+    
+    // Ordenar por data ASC
+    const sorted = [...filteredTrades].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    
+    let cumPnL = 0;
+    let peak = 0;
+    let maxDD = 0;
+    let maxDDDate = null;
+    
+    for (const trade of sorted) {
+      cumPnL += Number(trade.result) || 0;
+      if (cumPnL > peak) peak = cumPnL;
+      const dd = peak - cumPnL;
+      if (dd > maxDD) {
+        maxDD = dd;
+        maxDDDate = trade.date;
+      }
+    }
+    
+    const maxDDPercent = aggregatedInitialBalance > 0 ? (maxDD / aggregatedInitialBalance) * 100 : 0;
+    return { maxDD, maxDDPercent, maxDDDate };
+  }, [filteredTrades, aggregatedInitialBalance]);
+
+  // WR Planejado: trade vencedor somente se rrRatio >= plan.rrTarget
+  const winRatePlanned = useMemo(() => {
+    if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
+    
+    const plansMap = {};
+    plansToShow.forEach(p => { plansMap[p.id] = p; });
+    
+    let eligible = 0;
+    let disciplinedWins = 0;
+    
+    for (const trade of filteredTrades) {
+      const plan = plansMap[trade.planId];
+      if (!plan || !plan.rrTarget) continue;
+      eligible++;
+      
+      // Trade vencedor apenas se alcançou o RR target do plano
+      const rrAchieved = Number(trade.rrRatio || trade.rr || 0);
+      if (trade.result > 0 && rrAchieved >= Number(plan.rrTarget)) {
+        disciplinedWins++;
+      }
+    }
+    
+    if (eligible === 0) return null;
+    return {
+      rate: (disciplinedWins / eligible) * 100,
+      eligible,
+      disciplinedWins,
+      gap: stats.winRate - ((disciplinedWins / eligible) * 100)
+    };
+  }, [filteredTrades, plansToShow, stats.winRate]);
+
+  // Taxa de conformidade: % trades sem red flags
+  const complianceRate = useMemo(() => {
+    if (filteredTrades.length === 0) return null;
+    
+    const withFlags = filteredTrades.filter(t => 
+      t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0)
+    ).length;
+    
+    const compliant = filteredTrades.length - withFlags;
+    return {
+      rate: (compliant / filteredTrades.length) * 100,
+      compliant,
+      total: filteredTrades.length,
+      violations: withFlags
+    };
+  }, [filteredTrades]);
 
   // Handler para navegar para histórico de feedback
   const handleViewFeedbackHistory = (trade) => {
@@ -487,16 +563,42 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.winRate >= 50 ? 'bg-blue-500/20' : 'bg-amber-500/20'}`}><Target className={`w-5 h-5 ${stats.winRate >= 50 ? 'text-blue-400' : 'text-amber-400'}`} /></div>
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Win Rate</p>
           <p className="text-xl lg:text-2xl font-bold text-white">{formatPercent(stats.winRate)}</p>
+          {winRatePlanned && (
+            <div className="mt-1.5 flex items-center gap-1.5" title={`WR Planejado: ${winRatePlanned.rate.toFixed(1)}% (${winRatePlanned.disciplinedWins}/${winRatePlanned.eligible} trades atingiram RR target)`}>
+              <span className="text-[11px] text-slate-500">Planejado:</span>
+              <span className={`text-xs font-bold font-mono ${winRatePlanned.rate >= stats.winRate ? 'text-emerald-400' : 'text-amber-400'}`}>{winRatePlanned.rate.toFixed(1)}%</span>
+              {winRatePlanned.gap > 0 && <span className="text-[11px] text-amber-400/70">↓{winRatePlanned.gap.toFixed(0)}%</span>}
+            </div>
+          )}
         </div>
         <div className="glass-card p-5 relative overflow-hidden">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.profitFactor >= 1 ? 'bg-purple-500/20' : 'bg-red-500/20'}`}><Activity className={`w-5 h-5 ${stats.profitFactor >= 1 ? 'text-purple-400' : 'text-red-400'}`} /></div>
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Profit Factor</p>
           <p className="text-xl lg:text-2xl font-bold text-white">{stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2)}</p>
+          {complianceRate && (
+            <div className="mt-1.5 flex items-center gap-1.5" title={`${complianceRate.compliant}/${complianceRate.total} trades sem violações`}>
+              <span className="text-[11px] text-slate-500">Conformidade:</span>
+              <span className={`text-xs font-bold font-mono ${complianceRate.rate >= 80 ? 'text-emerald-400' : complianceRate.rate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{complianceRate.rate.toFixed(0)}%</span>
+              {complianceRate.violations > 0 && <span className="text-[11px] text-red-400/70">({complianceRate.violations} ⚠️)</span>}
+            </div>
+          )}
         </div>
         <div className="glass-card p-5 relative overflow-hidden">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${drawdown < 5 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}><TrendingDown className={`w-5 h-5 ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`} /></div>
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Drawdown</p>
           <p className={`text-xl lg:text-2xl font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>-{drawdown.toFixed(1)}%</p>
+          {maxDrawdownData.maxDD > 0 && (
+            <div className="mt-1.5 space-y-0.5" title={maxDrawdownData.maxDDDate ? `Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}` : ''}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500">Max DD:</span>
+                <span className="text-xs font-bold font-mono text-red-400">-{maxDrawdownData.maxDDPercent.toFixed(1)}%</span>
+                <span className="text-[11px] text-red-400/70">({formatCurrency(-maxDrawdownData.maxDD)})</span>
+              </div>
+              {maxDrawdownData.maxDDDate && (
+                <span className="text-[11px] text-slate-600 font-mono">{maxDrawdownData.maxDDDate.split('-').reverse().join('/')}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -532,7 +634,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
               plans={plans}
               onViewTrade={setViewingTrade} 
               onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 
-              onDeleteTrade={deleteTrade} 
+              onDeleteTrade={(trade) => deleteTrade(trade.id || trade)} 
             />
           </div>
         </div>

@@ -12,7 +12,8 @@ import {
   Plus,
   Trash2,
   Layers,
-  ShieldAlert
+  ShieldAlert,
+  Lock
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
@@ -700,11 +701,18 @@ const AddTradeModal = ({
             {/* PLANO */}
             <div className="relative" ref={planDropdownRef}>
               <label className="input-label">Plano *</label>
+              {editTrade ? (
+                <div className="input-dark w-full flex justify-between opacity-60 cursor-not-allowed" title="Para mudar o plano, exclua e recrie o trade">
+                  <div className="flex items-center gap-3"><Wallet className="w-4 h-4 text-blue-400"/><span>{selectedPlan ? selectedPlan.name : 'Plano não encontrado'}</span></div>
+                  <Lock className="w-4 h-4 text-slate-500"/>
+                </div>
+              ) : (
               <button type="button" onClick={() => setShowPlanDropdown(!showPlanDropdown)} className={`input-dark w-full flex justify-between ${errors.planId ? 'border-red-500' : ''}`}>
                 <div className="flex items-center gap-3"><Wallet className="w-4 h-4 text-blue-400"/><span>{selectedPlan ? selectedPlan.name : 'Selecione...'}</span></div>
                 <ChevronDown className="w-4 h-4 text-slate-500"/>
               </button>
-              {showPlanDropdown && (
+              )}
+              {!editTrade && showPlanDropdown && (
                 <div className="absolute top-full w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto">
                   {plans.map(p => <button key={p.id} type="button" onClick={() => handlePlanSelect(p.id)} className="w-full text-left px-4 py-3 hover:bg-slate-700 text-sm text-white border-b border-slate-700/50">{p.name}</button>)}
                 </div>
