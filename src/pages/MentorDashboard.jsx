@@ -1,9 +1,10 @@
 /**
  * MentorDashboard
- * @version 1.5.0
- * @description Dashboard do mentor com alertas emocionais, perfil por aluno, DebugBadge
+ * @version 1.6.0
+ * @description Dashboard do mentor com alertas emocionais, perfil por aluno, feedback em massa
  * 
  * CHANGELOG:
+ * - 1.6.0: Issue #9 — Feedback em massa (seleção múltipla, batch write, modal confirmação)
  * - 1.5.0: MentorAlerts na overview — Fase 1.5.0
  * - 1.4.0: Integração Sistema Emocional v2 — StudentEmotionalCard + EmotionalProfileDetail
  * - 1.3.0: Integração com FeedbackPage, botões funcionais para feedback
@@ -13,7 +14,8 @@
 import { useState, useMemo } from 'react';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain
+  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  CheckSquare, Square, Loader2, X
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
@@ -41,7 +43,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const { 
     allTrades, loading, addFeedback, 
     getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
-    getTradesAwaitingFeedback, getTradesByStudentAndStatus
+    getTradesAwaitingFeedback, getTradesByStudentAndStatus,
+    addBulkFeedback
   } = useTrades();
   const { plans } = usePlans();
   
@@ -51,6 +54,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
   const [showEmotionalDetail, setShowEmotionalDetail] = useState(null); // studentEmail or null
+
+  // === Bulk Feedback State ===
+  const [selectedTradeIds, setSelectedTradeIds] = useState(new Set());
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkComment, setBulkComment] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkConfirmed, setBulkConfirmed] = useState(false);
 
   // Compliance rules do mentor (para detecção configurável)
   const { detectionConfig, statusThresholds } = useComplianceRules();
@@ -125,10 +135,56 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     } finally { setFeedbackLoading(false); }
   };
 
-  const handleClickStudentOpen = (student) => setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name });
-  const handleClickStudentQuestion = (student) => setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name });
-  const handleClickStudentAll = (student) => { setSelectedStudent(student); setPendingFilter(null); };
-  const handleBackFromFilter = () => setPendingFilter(null);
+  const handleClickStudentOpen = (student) => { setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name }); setSelectedTradeIds(new Set()); };
+  const handleClickStudentQuestion = (student) => { setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name }); setSelectedTradeIds(new Set()); };
+  const handleClickStudentAll = (student) => { setSelectedStudent(student); setPendingFilter(null); setSelectedTradeIds(new Set()); };
+  const handleBackFromFilter = () => { setPendingFilter(null); setSelectedTradeIds(new Set()); };
+
+  // === Bulk Feedback Handlers ===
+  const handleToggleTradeSelection = (tradeId) => {
+    setSelectedTradeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tradeId)) next.delete(tradeId);
+      else next.add(tradeId);
+      return next;
+    });
+  };
+
+  const handleSelectAllOpen = () => {
+    const openTrades = filteredPendingTrades.filter(t => t.status === 'OPEN');
+    if (selectedTradeIds.size === openTrades.length) {
+      setSelectedTradeIds(new Set());
+    } else {
+      setSelectedTradeIds(new Set(openTrades.map(t => t.id)));
+    }
+  };
+
+  const handleOpenBulkModal = () => {
+    setBulkComment('');
+    setBulkConfirmed(false);
+    setShowBulkModal(true);
+  };
+
+  const handleCloseBulkModal = () => {
+    setShowBulkModal(false);
+    setBulkComment('');
+    setBulkConfirmed(false);
+  };
+
+  const handleApplyBulkFeedback = async () => {
+    if (!bulkComment.trim() || !bulkConfirmed || bulkLoading) return;
+    setBulkLoading(true);
+    try {
+      await addBulkFeedback(Array.from(selectedTradeIds), bulkComment);
+      setSelectedTradeIds(new Set());
+      handleCloseBulkModal();
+    } catch (err) {
+      console.error('[MentorDashboard] Bulk feedback error:', err);
+      alert('Erro ao aplicar feedback: ' + err.message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   // Handler para navegar para FeedbackPage
   const handleViewFeedbackHistory = (trade) => {
@@ -299,9 +355,31 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                 </div>
               </div>
               <div className="space-y-3">
+                {/* Select All (só para OPEN) */}
+                {pendingFilter.status === 'OPEN' && filteredPendingTrades.length > 1 && (
+                  <div className="flex items-center gap-3 px-1">
+                    <button onClick={handleSelectAllOpen} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
+                      {selectedTradeIds.size === filteredPendingTrades.filter(t => t.status === 'OPEN').length
+                        ? <CheckSquare className="w-4 h-4 text-blue-400" />
+                        : <Square className="w-4 h-4" />
+                      }
+                      {selectedTradeIds.size > 0 ? `${selectedTradeIds.size} selecionado(s)` : 'Selecionar todos'}
+                    </button>
+                  </div>
+                )}
+
                 {filteredPendingTrades.map(trade => (
                   <div key={trade.id} className="glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
                     <div className="flex items-center gap-4">
+                      {/* Checkbox — só para OPEN */}
+                      {pendingFilter.status === 'OPEN' && (
+                        <button onClick={() => handleToggleTradeSelection(trade.id)} className="flex-shrink-0 text-slate-400 hover:text-blue-400 transition-colors">
+                          {selectedTradeIds.has(trade.id)
+                            ? <CheckSquare className="w-5 h-5 text-blue-400" />
+                            : <Square className="w-5 h-5" />
+                          }
+                        </button>
+                      )}
                       <div className={`p-2 rounded-lg ${trade.result >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
                         <TrendingUp className={`w-5 h-5 ${trade.result >= 0 ? 'text-emerald-400' : 'text-red-400 rotate-180'}`} />
                       </div>
@@ -325,6 +403,87 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                     </div>
                   </div>
                 ))}
+
+                {/* Floating Action Bar — Bulk Feedback */}
+                {selectedTradeIds.size > 0 && (
+                  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl px-6 py-4 shadow-2xl flex items-center gap-4">
+                    <span className="text-white font-medium">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''} selecionado{selectedTradeIds.size > 1 ? 's' : ''}</span>
+                    <button onClick={handleOpenBulkModal} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4" />Feedback em Massa
+                    </button>
+                    <button onClick={() => setSelectedTradeIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-2">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Bulk Feedback Modal */}
+                {showBulkModal && (
+                  <>
+                    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50" onClick={handleCloseBulkModal} />
+                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg">
+                      <div className="glass-card border border-slate-700/50 p-6 space-y-5">
+                        <div>
+                          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <MessageSquare className="w-5 h-5 text-blue-400" />
+                            Feedback em Massa
+                          </h3>
+                          <p className="text-sm text-slate-400 mt-1">
+                            Aplicar para {selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''} de {pendingFilter.studentName}
+                          </p>
+                        </div>
+
+                        {/* Resumo dos trades */}
+                        <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-800/30 rounded-xl p-3">
+                          {filteredPendingTrades.filter(t => selectedTradeIds.has(t.id)).map(t => (
+                            <div key={t.id} className="flex items-center justify-between text-sm">
+                              <span className="text-slate-300">{t.ticker} <span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span></span>
+                              <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrency(t.result)}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                          value={bulkComment}
+                          onChange={(e) => setBulkComment(e.target.value)}
+                          placeholder="Escreva o feedback que será aplicado a todos os trades selecionados..."
+                          rows={4}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none"
+                          autoFocus
+                        />
+
+                        {/* Confirmação */}
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <button onClick={() => setBulkConfirmed(!bulkConfirmed)} className="flex-shrink-0 mt-0.5">
+                            {bulkConfirmed
+                              ? <CheckSquare className="w-5 h-5 text-blue-400" />
+                              : <Square className="w-5 h-5 text-slate-500 group-hover:text-slate-300" />
+                            }
+                          </button>
+                          <span className="text-sm text-slate-400">
+                            Confirmo aplicar este feedback para <strong className="text-white">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''}</strong>. O texto será adicionado ao histórico de cada trade.
+                          </span>
+                        </label>
+
+                        {/* Botões */}
+                        <div className="flex gap-3 justify-end">
+                          <button onClick={handleCloseBulkModal} className="px-4 py-2.5 text-slate-400 hover:text-white transition-colors">
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={handleApplyBulkFeedback}
+                            disabled={!bulkComment.trim() || !bulkConfirmed || bulkLoading}
+                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                          >
+                            {bulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+                            {bulkLoading ? 'Aplicando...' : `Aplicar para ${selectedTradeIds.size} trade${selectedTradeIds.size > 1 ? 's' : ''}`}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -425,4 +584,4 @@ const StudentEmotionalCardWrapper = ({ trades, studentName, detectionConfig, sta
   );
 };
 
-export default MentorDashboard;// hotfix-v1.10.1
+export default MentorDashboard;

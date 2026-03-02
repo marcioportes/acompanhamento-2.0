@@ -3,6 +3,13 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.12.0: Issue #9 — Feedback em massa para múltiplos trades
+ *   - addBulkFeedback no useTrades (Firestore writeBatch)
+ *   - UI de seleção múltipla no MentorDashboard (checkboxes, select all)
+ *   - Modal de confirmação com resumo dos trades
+ *   - Barra flutuante de ação
+ *   - Flag isBulk no comment para auditoria
+ *   - Validação: validateBulkFeedback (src/utils/bulkFeedback.js)
  * - 1.11.0: Issue #22 Phase 1 — Testes automatizados + CI/CD pipeline
  *   - vitest.config.js, setup, mocks, GitHub Actions CI
  *   - Extração: compliance.js, movements.js, dashboardMetrics.js
@@ -24,10 +31,10 @@
  */
 export const VERSION = {
   major: 1,
-  minor: 11,
+  minor: 12,
   patch: 0,
   prerelease: null,
-  build: '20260301',
+  build: '20260302',
 
   get number() {
     return `${this.major}.${this.minor}.${this.patch}`;
@@ -50,7 +57,7 @@ export const VERSION = {
   },
 
   get date() {
-    return '2026-03-01';
+    return '2026-03-02';
   }
 };
 
