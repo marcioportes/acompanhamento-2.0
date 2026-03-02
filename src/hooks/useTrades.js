@@ -26,7 +26,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, getDocs, getDoc, serverTimestamp, arrayUnion
+  doc, getDocs, getDoc, serverTimestamp, arrayUnion, writeBatch
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
@@ -488,6 +488,49 @@ export const useTrades = (overrideStudentId = null) => {
     console.log(`[useTrades] Status → ${newStatus}`);
   }, [user]);
 
+  /**
+   * Aplica feedback em massa para múltiplos trades via Firestore batch write.
+   * Todos os trades recebem o mesmo comentário e transitam OPEN → REVIEWED.
+   * 
+   * @param {string[]} tradeIds - IDs dos trades (todos devem ser OPEN e do mesmo aluno)
+   * @param {string} content - Texto do feedback
+   * @returns {Promise<{success: boolean, count: number}>}
+   */
+  const addBulkFeedback = useCallback(async (tradeIds, content) => {
+    if (!user || !isMentor()) throw new Error('Apenas mentores');
+    if (!tradeIds?.length || !content?.trim()) throw new Error('IDs e conteúdo obrigatórios');
+
+    const batch = writeBatch(db);
+    const now = new Date().toISOString();
+
+    for (const tradeId of tradeIds) {
+      const tradeRef = doc(db, 'trades', tradeId);
+      const comment = {
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        author: user.email,
+        authorName: user.displayName || user.email.split('@')[0],
+        authorRole: 'mentor',
+        content: content.trim(),
+        isQuestion: false,
+        isBulk: true,
+        bulkCount: tradeIds.length,
+        createdAt: now,
+      };
+
+      batch.update(tradeRef, {
+        feedbackHistory: arrayUnion(comment),
+        mentorFeedback: content.trim(),
+        feedbackDate: now,
+        status: STATUS.REVIEWED,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+    console.log(`[useTrades] Bulk feedback: ${tradeIds.length} trades → REVIEWED`);
+    return { success: true, count: tradeIds.length };
+  }, [user, isMentor]);
+
   // ============================================
   // SISTEMA DE PARCIAIS v1.6.0
   // ============================================
@@ -693,7 +736,7 @@ export const useTrades = (overrideStudentId = null) => {
   return { 
     trades, allTrades, loading, error, 
     addTrade, updateTrade, deleteTrade, 
-    addFeedback, addFeedbackComment, updateTradeStatus,
+    addFeedback, addFeedbackComment, updateTradeStatus, addBulkFeedback,
     // Parciais
     addPartial, updatePartial, deletePartial, getPartials, recalculateFromPartials,
     // Helpers
