@@ -3,6 +3,14 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.11.0: Issue #22 Phase 1 — Testes automatizados + CI/CD pipeline
+ *   - vitest.config.js, setup, mocks, GitHub Actions CI
+ *   - Extração: compliance.js, movements.js, dashboardMetrics.js
+ *   - 74 testes unitários (compliance, maxDD, WR planejado, movements)
+ *   - Cleanup: removida pasta tests/ legada
+ * - 1.10.2: Hotfix — TradesList sort ASC, planId lock em edit, delete trade fix,
+ *   Max Drawdown peak-to-trough, WR Planejado vs Clássico, Taxa de Conformidade,
+ *   FeedbackPage tríade risco (RO% removido), Red Flags lista, MentorDashboard horário+sort
  * - 1.10.1: Hotfix — RO/RR com tickSize, validação HH:MM:SS range, data+hora em listas, risco pts vs %
  * - 1.10.0: Issue #41 — Campo Stop Loss, HH:MM:SS parciais, red flag NO_STOP, compliance RR via resultado
  * - 1.9.0: Sistema Emocional v2 — Fase 1.5.0 (UI Completa: Extrato Ledger + Alertas Mentor)
@@ -16,10 +24,10 @@
  */
 export const VERSION = {
   major: 1,
-  minor: 10,
-  patch: 1,
+  minor: 11,
+  patch: 0,
   prerelease: null,
-  build: '20260225',
+  build: '20260301',
 
   get number() {
     return `${this.major}.${this.minor}.${this.patch}`;
@@ -42,8 +50,8 @@ export const VERSION = {
   },
 
   get date() {
-    return '2026-02-25';
+    return '2026-03-01';
   }
 };
 
-export default VERSION;// hotfix-v1.10.1
+export default VERSION;
