@@ -3,6 +3,12 @@
  * @description SemVer 2.0.0 — MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
  * CHANGELOG:
+ * - 1.13.0: Issue #60 — Imagem no feedback via copy/paste (mentor only)
+ *   - Paste handler no textarea do FeedbackPage
+ *   - Upload para Firebase Storage (feedback/{tradeId}/)
+ *   - imageUrl no feedbackHistory comment
+ *   - ChatMessage renderiza imagem inline com fullscreen
+ *   - uploadFeedbackImage no useTrades
  * - 1.12.0: Issue #9 — Feedback em massa para múltiplos trades
  *   - addBulkFeedback no useTrades (Firestore writeBatch)
  *   - UI de seleção múltipla no MentorDashboard (checkboxes, select all)
@@ -31,7 +37,7 @@
  */
 export const VERSION = {
   major: 1,
-  minor: 12,
+  minor: 13,
   patch: 0,
   prerelease: null,
   build: '20260302',

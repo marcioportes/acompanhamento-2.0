@@ -98,17 +98,17 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const filteredPendingTrades = useMemo(() => {
     if (!pendingFilter) return [];
     const trades = getTradesByStudentAndStatus(pendingFilter.studentEmail, pendingFilter.status);
-    // Sort crescente: mais antigo primeiro (date → entryTime → createdAt)
+    // Sort decrescente: mais recente primeiro (date → entryTime → createdAt)
     return [...trades].sort((a, b) => {
       const dateA = a.date || '';
       const dateB = b.date || '';
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
       const timeA = a.entryTime || '';
       const timeB = b.entryTime || '';
-      if (timeA && timeB) return timeA.localeCompare(timeB);
+      if (timeA && timeB) return timeB.localeCompare(timeA);
       const tsA = a.createdAt?.seconds || 0;
       const tsB = b.createdAt?.seconds || 0;
-      return tsA - tsB;
+      return tsB - tsA;
     });
   }, [pendingFilter, getTradesByStudentAndStatus]);
 
@@ -437,7 +437,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                         <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-800/30 rounded-xl p-3">
                           {filteredPendingTrades.filter(t => selectedTradeIds.has(t.id)).map(t => (
                             <div key={t.id} className="flex items-center justify-between text-sm">
-                              <span className="text-slate-300">{t.ticker} <span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span></span>
+                              <span className="text-slate-300">
+                                {t.ticker}
+                                {' '}<span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span>
+                                {t.entryTime && <span className="text-slate-600 font-mono ml-1">{(() => { try { return t.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
+                              </span>
                               <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrency(t.result)}</span>
                             </div>
                           ))}
@@ -454,17 +458,17 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                         />
 
                         {/* Confirmação */}
-                        <label className="flex items-start gap-3 cursor-pointer group">
-                          <button onClick={() => setBulkConfirmed(!bulkConfirmed)} className="flex-shrink-0 mt-0.5">
+                        <div className="flex items-start gap-3 cursor-pointer group" onClick={() => setBulkConfirmed(!bulkConfirmed)}>
+                          <div className="flex-shrink-0 mt-0.5">
                             {bulkConfirmed
                               ? <CheckSquare className="w-5 h-5 text-blue-400" />
                               : <Square className="w-5 h-5 text-slate-500 group-hover:text-slate-300" />
                             }
-                          </button>
+                          </div>
                           <span className="text-sm text-slate-400">
                             Confirmo aplicar este feedback para <strong className="text-white">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''}</strong>. O texto será adicionado ao histórico de cada trade.
                           </span>
-                        </label>
+                        </div>
 
                         {/* Botões */}
                         <div className="flex gap-3 justify-end">

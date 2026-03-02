@@ -78,7 +78,8 @@ const AppContent = () => {
     allTrades,
     addFeedbackComment,
     updateTradeStatus,
-    getPartials
+    getPartials,
+    uploadFeedbackImage
   } = useTrades();
   const { plans } = usePlans();
 
@@ -155,8 +156,8 @@ const AppContent = () => {
   };
 
   // Handler para adicionar comentário no FeedbackPage
-  const handleAddFeedbackComment = async (tradeId, content, isQuestion) => {
-    const updatedTrade = await addFeedbackComment(tradeId, content, isQuestion);
+  const handleAddFeedbackComment = async (tradeId, content, isQuestion, imageUrl = null) => {
+    const updatedTrade = await addFeedbackComment(tradeId, content, isQuestion, imageUrl);
     // Atualiza o trade local para refletir mudanças imediatas
     setFeedbackTrade(prev => ({
       ...prev,
@@ -201,6 +202,7 @@ const AppContent = () => {
           onAddComment={handleAddFeedbackComment}
           onUpdateStatus={handleUpdateTradeStatus}
           getPartials={getPartials}
+          uploadFeedbackImage={uploadFeedbackImage}
         />
       );
     }

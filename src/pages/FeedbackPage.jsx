@@ -5,6 +5,12 @@
  * @see version.js para versão do produto
  * 
  * CHANGELOG:
+ * - 1.13.0: Issue #60 — Imagem no feedback via copy/paste (mentor only)
+ *   - Paste handler no textarea intercepta imagem do clipboard
+ *   - Preview inline com botão remover
+ *   - Upload para Firebase Storage (feedback/{tradeId}/)
+ *   - imageUrl salvo no comment do feedbackHistory
+ *   - ChatMessage renderiza imagem inline com fullscreen
  * - 1.10.2: TradeInfoCard exibe Stop Loss, RR, Resultado % sobre PL, Red Flags (RO% removido — redundante com RR)
  * - 1.4.0: Prop embedded para uso dentro de StudentFeedbackPage master-detail
  *   - embedded=true: sem padding, sem header, sem botão voltar, grid 2 colunas (info + chat)
@@ -24,7 +30,7 @@ import {
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
   Calendar, TrendingUp, TrendingDown, Clock, AlertCircle, AlertTriangle,
   BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2,
-  Layers, ArrowDownRight, ArrowUpRight
+  Layers, ArrowDownRight, ArrowUpRight, ImageIcon
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
@@ -273,7 +279,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
   );
 };
 
-const ChatMessage = ({ message }) => {
+const ChatMessage = ({ message, onImageClick }) => {
   const isFromMentor = message.authorRole === 'mentor';
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
@@ -290,8 +296,17 @@ const ChatMessage = ({ message }) => {
           {isFromMentor ? <GraduationCap className="w-4 h-4 text-purple-400" /> : <User className="w-4 h-4 text-blue-400" />}
           <span className={`text-sm font-medium ${isFromMentor ? 'text-purple-400' : 'text-blue-400'}`}>{message.authorName || (isFromMentor ? 'Mentor' : 'Aluno')}</span>
           {message.isQuestion && <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">Dúvida</span>}
+          {message.isBulk && <span className="px-2 py-0.5 bg-slate-700 text-slate-400 text-xs rounded-full">Em massa</span>}
         </div>
-        <p className="text-slate-200 whitespace-pre-wrap">{message.content}</p>
+        {message.content && <p className="text-slate-200 whitespace-pre-wrap">{message.content}</p>}
+        {message.imageUrl && (
+          <div className="mt-2 relative rounded-xl overflow-hidden border border-slate-700/50 cursor-pointer group" onClick={() => onImageClick?.(message.imageUrl)}>
+            <img src={message.imageUrl} alt="Feedback" className="max-w-full max-h-64 object-contain rounded-xl" />
+            <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <Maximize2 className="w-6 h-6 text-white" />
+            </div>
+          </div>
+        )}
         <span className="text-xs text-slate-500 mt-2 block">{formatTime(message.createdAt)}</span>
       </div>
     </div>
@@ -302,12 +317,16 @@ const ChatMessage = ({ message }) => {
 // MAIN COMPONENT
 // ============================================
 
-const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false, embedded = false, getPartials }) => {
+const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false, embedded = false, getPartials, uploadFeedbackImage }) => {
   const { user, isMentor } = useAuth();
   const [comment, setComment] = useState('');
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // === Image Paste State (mentor only) ===
+  const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
+  const textareaRef = useRef(null);
 
   // Fetch parciais quando trade muda
   const [tradeWithPartials, setTradeWithPartials] = useState(null);
@@ -372,15 +391,61 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
 
   // ========== HANDLERS ==========
 
-  // Mentor envia feedback/resposta
+  // Paste handler — intercepta imagem colada no textarea (mentor only)
+  const handlePaste = (e) => {
+    if (!isMentor()) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        
+        // Limite 5MB
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Imagem muito grande. Máximo 5MB.');
+          return;
+        }
+
+        const preview = URL.createObjectURL(file);
+        setPastedImage({ file, preview });
+        return;
+      }
+    }
+  };
+
+  // Limpa preview ao descartar
+  const handleRemoveImage = () => {
+    if (pastedImage?.preview) URL.revokeObjectURL(pastedImage.preview);
+    setPastedImage(null);
+  };
+
+  // Mentor envia feedback/resposta (com imagem opcional)
   const handleMentorSend = async () => {
-    if (!comment.trim() || sending) return;
+    const hasText = comment.trim().length > 0;
+    const hasImage = !!pastedImage?.file;
+    if ((!hasText && !hasImage) || sending) return;
+    
     setSending(true);
     try {
-      await onAddComment(trade.id, comment, false);
+      let imageUrl = null;
+      if (hasImage && uploadFeedbackImage) {
+        try {
+          imageUrl = await uploadFeedbackImage(pastedImage.file, trade.id);
+        } catch (uploadErr) {
+          console.error('[FeedbackPage] Upload error:', uploadErr);
+          alert('Erro ao enviar imagem. Tente novamente.');
+          setSending(false);
+          return;
+        }
+      }
+      await onAddComment(trade.id, comment || '', false, imageUrl);
       setComment('');
+      handleRemoveImage();
     } catch (err) {
-      console.error('Erro:', err);
+      console.error('[FeedbackPage] Send error:', err);
     } finally {
       setSending(false);
     }
@@ -492,7 +557,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   <h3 className="text-slate-400 font-medium">Aguardando primeiro feedback</h3>
                 </div>
               ) : (
-                messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} />)
+                messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} onImageClick={setFullscreenImage} />)
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -506,10 +571,21 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               </div>
             ) : (
               <div className="flex-none p-3 border-t border-slate-800">
+                {/* Image Preview (mentor only, embedded) */}
+                {pastedImage && canMentorComment && (
+                  <div className="mb-2 relative inline-block">
+                    <img src={pastedImage.preview} alt="Preview" className="max-h-24 rounded-lg border border-slate-700" />
+                    <button onClick={handleRemoveImage} className="absolute -top-2 -right-2 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
                 <textarea 
                   value={comment} 
                   onChange={(e) => setComment(e.target.value)} 
-                  placeholder={getPlaceholder()} 
+                  onPaste={handlePaste}
+                  placeholder={canMentorComment ? `${getPlaceholder()} (Ctrl+V para colar imagem)` : getPlaceholder()} 
                   disabled={(!canMentorComment && !canStudentAct) || sending} 
                   rows={2}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 text-sm mb-2"
@@ -519,11 +595,12 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   <div className="flex justify-end">
                     <button 
                       onClick={handleMentorSend}
-                      disabled={!comment.trim() || sending}
+                      disabled={(!comment.trim() && !pastedImage?.file) || sending}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
                     >
-                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                       {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder'}
+                      {pastedImage && ' + Img'}
                     </button>
                   </div>
                 )}
@@ -630,7 +707,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 <h3 className="text-slate-400 font-medium">Aguardando primeiro feedback</h3>
               </div>
             ) : (
-              messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} />)
+              messages.map((msg, idx) => <ChatMessage key={msg.id || idx} message={msg} onImageClick={setFullscreenImage} />)
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -644,11 +721,23 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             </div>
           ) : (
             <div className="flex-none p-4 border-t border-slate-800">
+              {/* Image Preview (mentor only) */}
+              {pastedImage && canMentorComment && (
+                <div className="mb-3 relative inline-block">
+                  <img src={pastedImage.preview} alt="Preview" className="max-h-32 rounded-lg border border-slate-700" />
+                  <button onClick={handleRemoveImage} className="absolute -top-2 -right-2 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
               {/* Textarea */}
               <textarea 
+                ref={textareaRef}
                 value={comment} 
                 onChange={(e) => setComment(e.target.value)} 
-                placeholder={getPlaceholder()} 
+                onPaste={handlePaste}
+                placeholder={canMentorComment ? `${getPlaceholder()} (Ctrl+V para colar imagem)` : getPlaceholder()} 
                 disabled={(!canMentorComment && !canStudentAct) || sending} 
                 rows={2}
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 mb-3"
@@ -659,11 +748,12 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 <div className="flex justify-end">
                   <button 
                     onClick={handleMentorSend}
-                    disabled={!comment.trim() || sending}
+                    disabled={(!comment.trim() && !pastedImage?.file) || sending}
                     className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
                   >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                     {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder Dúvida'}
+                    {pastedImage && ' + Imagem'}
                   </button>
                 </div>
               )}
