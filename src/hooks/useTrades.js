@@ -424,7 +424,7 @@ export const useTrades = (overrideStudentId = null) => {
   /**
    * Adiciona comentário ao histórico com transição de status automática
    */
-  const addFeedbackComment = useCallback(async (tradeId, content, isQuestion = false) => {
+  const addFeedbackComment = useCallback(async (tradeId, content, isQuestion = false, imageUrl = null) => {
     if (!user) throw new Error('Auth required');
     
     const tradeRef = doc(db, 'trades', tradeId);
@@ -457,6 +457,11 @@ export const useTrades = (overrideStudentId = null) => {
       isQuestion,
       createdAt: new Date().toISOString(),
     };
+
+    // Inclui imageUrl no comment se presente
+    if (imageUrl) {
+      comment.imageUrl = imageUrl;
+    }
     
     const updateData = {
       feedbackHistory: arrayUnion(comment),
@@ -471,7 +476,7 @@ export const useTrades = (overrideStudentId = null) => {
     }
     
     await updateDoc(tradeRef, updateData);
-    console.log(`[useTrades] Feedback: ${trade.status} → ${newStatus}`);
+    console.log(`[useTrades] Feedback: ${trade.status} → ${newStatus}${imageUrl ? ' (com imagem)' : ''}`);
     
     return { 
       ...trade, id: tradeId, ...updateData, 
@@ -530,6 +535,25 @@ export const useTrades = (overrideStudentId = null) => {
     console.log(`[useTrades] Bulk feedback: ${tradeIds.length} trades → REVIEWED`);
     return { success: true, count: tradeIds.length };
   }, [user, isMentor]);
+
+  /**
+   * Faz upload de imagem de feedback para Firebase Storage
+   * @param {File} file - Arquivo de imagem
+   * @param {string} tradeId - ID do trade para organizar no Storage
+   * @returns {Promise<string>} URL da imagem
+   */
+  const uploadFeedbackImage = useCallback(async (file, tradeId) => {
+    if (!user) throw new Error('Auth required');
+    if (!file) throw new Error('Arquivo obrigatório');
+
+    const ext = file.name?.split('.').pop() || 'png';
+    const path = `feedback/${tradeId}/${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
+    const storageRef = ref(storage, path);
+    const snap = await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(snap.ref);
+    console.log(`[useTrades] Feedback image uploaded: ${path}`);
+    return url;
+  }, [user]);
 
   // ============================================
   // SISTEMA DE PARCIAIS v1.6.0
@@ -736,7 +760,7 @@ export const useTrades = (overrideStudentId = null) => {
   return { 
     trades, allTrades, loading, error, 
     addTrade, updateTrade, deleteTrade, 
-    addFeedback, addFeedbackComment, updateTradeStatus, addBulkFeedback,
+    addFeedback, addFeedbackComment, updateTradeStatus, addBulkFeedback, uploadFeedbackImage,
     // Parciais
     addPartial, updatePartial, deletePartial, getPartials, recalculateFromPartials,
     // Helpers
