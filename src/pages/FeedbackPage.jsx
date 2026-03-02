@@ -424,18 +424,28 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
 
   // Mentor envia feedback/resposta (com imagem opcional)
   const handleMentorSend = async () => {
-    if ((!comment.trim() && !pastedImage) || sending) return;
+    const hasText = comment.trim().length > 0;
+    const hasImage = !!pastedImage?.file;
+    if ((!hasText && !hasImage) || sending) return;
+    
     setSending(true);
     try {
       let imageUrl = null;
-      if (pastedImage?.file && uploadFeedbackImage) {
-        imageUrl = await uploadFeedbackImage(pastedImage.file, trade.id);
+      if (hasImage && uploadFeedbackImage) {
+        try {
+          imageUrl = await uploadFeedbackImage(pastedImage.file, trade.id);
+        } catch (uploadErr) {
+          console.error('[FeedbackPage] Upload error:', uploadErr);
+          alert('Erro ao enviar imagem. Tente novamente.');
+          setSending(false);
+          return;
+        }
       }
       await onAddComment(trade.id, comment || '', false, imageUrl);
       setComment('');
       handleRemoveImage();
     } catch (err) {
-      console.error('Erro:', err);
+      console.error('[FeedbackPage] Send error:', err);
     } finally {
       setSending(false);
     }
@@ -585,7 +595,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   <div className="flex justify-end">
                     <button 
                       onClick={handleMentorSend}
-                      disabled={(!comment.trim() && !pastedImage) || sending}
+                      disabled={(!comment.trim() && !pastedImage?.file) || sending}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
                     >
                       {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
@@ -738,7 +748,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 <div className="flex justify-end">
                   <button 
                     onClick={handleMentorSend}
-                    disabled={(!comment.trim() && !pastedImage) || sending}
+                    disabled={(!comment.trim() && !pastedImage?.file) || sending}
                     className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
                   >
                     {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
