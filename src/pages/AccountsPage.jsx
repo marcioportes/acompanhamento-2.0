@@ -17,6 +17,7 @@ import {
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
+import { usePlans } from '../hooks/usePlans';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
 import DebugBadge from '../components/DebugBadge';
@@ -76,12 +77,14 @@ const AccountsPage = () => {
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
   const { isMentor } = useAuth();
+  const { plans, updatePlan } = usePlans();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [showBrokerSuggestions, setShowBrokerSuggestions] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [planSubmitting, setPlanSubmitting] = useState(false);
   
   const [auditState, setAuditState] = useState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null });
   const [isFixing, setIsFixing] = useState(false);
@@ -345,6 +348,16 @@ const AccountsPage = () => {
     if (window.confirm("Deseja excluir esta conta? O histórico será perdido.")) await deleteAccount(id);
   };
 
+  // Handler: Mentor atualiza plano do aluno (com audit trail)
+  const handleMentorUpdatePlan = async (planId, planData, auditInfo) => {
+    setPlanSubmitting(true);
+    try {
+      await updatePlan(planId, planData, auditInfo);
+    } finally {
+      setPlanSubmitting(false);
+    }
+  };
+
   const getAccountBadge = (acc) => {
     const type = acc.type || (acc.isReal ? 'REAL' : 'DEMO');
     switch (type) {
@@ -358,7 +371,7 @@ const AccountsPage = () => {
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
-    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} />;
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} planSubmitting={planSubmitting} />;
   }
 
   return (

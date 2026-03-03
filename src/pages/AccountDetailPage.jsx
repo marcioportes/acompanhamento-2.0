@@ -1,19 +1,27 @@
 /**
  * AccountDetailPage
- * @version 6.1.1 (UI Tweaks)
- * @description Extrato com cálculo reverso (Reverse Ledger).
- * * CHANGE LOG 6.1.1:
- * - UI: Aumentado espaçamento da coluna 'Tipo' (w-32 -> w-40) para evitar quebra de linha em 'Resultado Trade'.
- * - MANUTENÇÃO: Mantida toda a lógica de cálculo reverso, tradução e formatação da v6.1.0.
+ * @version 7.0.0 (Plans View + Mentor Edit)
+ * @description Extrato com cálculo reverso (Reverse Ledger) + Planos vinculados.
+ * 
+ * CHANGELOG:
+ * - 7.0.0: Issue #43 — Seção "Planos Vinculados" com indicadores estratégicos
+ *   - Mentor vê e edita planos do aluno
+ *   - Indicadores: PL, RO, Stop Período, Stop Ciclo, Meta
+ *   - Audit trail: edições do mentor registradas no editHistory
+ * - 6.1.1: UI: Aumentado espaçamento da coluna 'Tipo' (w-32 -> w-40)
  */
 
 import { useState, useMemo } from 'react';
 import {
   ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
-  Wallet, Loader2, X, History, Filter
+  Wallet, Loader2, X, History, Filter,
+  Target, ShieldAlert, Settings, AlertTriangle, GraduationCap
 } from 'lucide-react';
 import { useMovements } from '../hooks/useMovements';
+import { useAuth } from '../contexts/AuthContext';
+import PlanManagementModal from '../components/PlanManagementModal';
+import DebugBadge from '../components/DebugBadge';
 
 // --- Helpers de Formatação ---
 
@@ -39,8 +47,9 @@ const translateType = (type) => {
   return map[type] || type;
 };
 
-const AccountDetailPage = ({ account, onBack }) => {
+const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubmitting = false }) => {
   const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
+  const { user, isMentor } = useAuth();
   
   // Filtros
   const [period, setPeriod] = useState('month');
@@ -55,6 +64,15 @@ const AccountDetailPage = ({ account, onBack }) => {
   const [txAmount, setTxAmount] = useState('');
   const [txDesc, setTxDesc] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Modal Plano (mentor edit)
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+
+  // Planos desta conta
+  const accountPlans = useMemo(() => {
+    return plans.filter(p => p.accountId === account?.id);
+  }, [plans, account]);
 
   /**
    * 1. ENGINE DE CÁLCULO REVERSO (Reverse Ledger)
@@ -171,6 +189,32 @@ const AccountDetailPage = ({ account, onBack }) => {
     return amount >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />;
   };
 
+  // Handler: Mentor salva edição do plano com audit trail
+  const handleMentorSavePlan = async (planData) => {
+    if (!editingPlan || !onUpdatePlan) return;
+    
+    // Detecta quais campos mudaram
+    const changedFields = [];
+    const compareFields = ['pl', 'riskPerOperation', 'rrTarget', 'periodGoal', 'periodStop', 'cycleGoal', 'cycleStop', 'adjustmentCycle', 'operationPeriod', 'name'];
+    compareFields.forEach(f => {
+      if (String(editingPlan[f]) !== String(planData[f])) changedFields.push(f);
+    });
+
+    const auditInfo = {
+      editedBy: 'mentor',
+      email: user?.email,
+      changedFields
+    };
+
+    try {
+      await onUpdatePlan(editingPlan.id, planData, auditInfo);
+      setShowPlanModal(false);
+      setEditingPlan(null);
+    } catch (err) {
+      alert('Erro ao salvar plano: ' + err.message);
+    }
+  };
+
   if (!account) return null;
 
   return (
@@ -193,6 +237,77 @@ const AccountDetailPage = ({ account, onBack }) => {
           </div>
         </div>
       </div>
+
+      {/* === PLANOS VINCULADOS (Issue #43) === */}
+      {accountPlans.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+            <Target className="w-5 h-5 text-blue-400" /> Planos Vinculados
+            <span className="text-sm font-normal text-slate-500">({accountPlans.length})</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {accountPlans.map(plan => {
+              const plInitial = plan.pl || 0;
+              const plCurrent = plan.currentPl ?? plInitial;
+              const plPnL = plCurrent - plInitial;
+              const plPnLPercent = plInitial > 0 ? ((plPnL / plInitial) * 100) : 0;
+              const roValue = plInitial > 0 ? (plInitial * (plan.riskPerOperation || 0) / 100) : 0;
+              const periodStopValue = plInitial > 0 ? (plInitial * (plan.periodStop || 0) / 100) : 0;
+              const cycleStopValue = plInitial > 0 ? (plInitial * (plan.cycleStop || 0) / 100) : 0;
+              const periodGoalValue = plInitial > 0 ? (plInitial * (plan.periodGoal || 0) / 100) : 0;
+              const cycleGoalValue = plInitial > 0 ? (plInitial * (plan.cycleGoal || 0) / 100) : 0;
+              const isPositive = plPnL >= 0;
+              const wasMentorEdited = plan.lastEditedBy === 'mentor';
+
+              return (
+                <div key={plan.id} className="glass-card p-5 relative group">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-bold text-white text-base">{plan.name}</h3>
+                      <p className="text-xs text-slate-500">{plan.type || plan.description} • {plan.operationPeriod}</p>
+                      {wasMentorEdited && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                          <GraduationCap className="w-3 h-3" /> Ajustado pelo Mentor
+                        </span>
+                      )}
+                    </div>
+                    {isMentor() && onUpdatePlan && (
+                      <button
+                        onClick={() => { setEditingPlan(plan); setShowPlanModal(true); }}
+                        className="p-2 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Editar plano"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-800/50 rounded-xl p-3 mb-4 border border-slate-700/30">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold block mb-1">Saldo do Plano (PL)</span>
+                    <div className="flex items-baseline gap-2">
+                      <span className={`text-xl font-mono font-bold ${plCurrent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatCurrency(plCurrent, account.currency)}
+                      </span>
+                      <span className={`text-xs font-mono ${isPositive ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                        {isPositive ? '+' : ''}{plPnLPercent.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">RO/Trade</span><span className="text-white font-mono text-xs font-medium">{plan.riskPerOperation}% ({formatCurrency(roValue, account.currency)})</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">RR Alvo</span><span className="text-blue-400 font-mono text-xs font-medium">1:{plan.rrTarget}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">Stop {plan.operationPeriod}</span><span className="text-red-400 font-mono text-xs font-medium">-{plan.periodStop}% ({formatCurrency(periodStopValue, account.currency)})</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">Meta {plan.operationPeriod}</span><span className="text-emerald-400 font-mono text-xs font-medium">+{plan.periodGoal}% ({formatCurrency(periodGoalValue, account.currency)})</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">Stop {plan.adjustmentCycle}</span><span className="text-red-400 font-mono text-xs font-medium">-{plan.cycleStop}% ({formatCurrency(cycleStopValue, account.currency)})</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500 text-xs">Meta {plan.adjustmentCycle}</span><span className="text-emerald-400 font-mono text-xs font-medium">+{plan.cycleGoal}% ({formatCurrency(cycleGoalValue, account.currency)})</span></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* EXTRATO CARD */}
       <div className="glass-card">
@@ -361,6 +476,17 @@ const AccountDetailPage = ({ account, onBack }) => {
           </div>
         </div>
       )}
+      {/* MODAL PLANO (Mentor Edit) */}
+      {isMentor() && (
+        <PlanManagementModal
+          isOpen={showPlanModal}
+          onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
+          onSubmit={handleMentorSavePlan}
+          editingPlan={editingPlan}
+          isSubmitting={planSubmitting}
+        />
+      )}
+      <DebugBadge component="AccountDetailPage" />
     </div>
   );
 };

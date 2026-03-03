@@ -21,7 +21,8 @@ import {
   doc,
   getDocs,
   serverTimestamp,
-  orderBy
+  orderBy,
+  arrayUnion
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -149,14 +150,43 @@ export const usePlans = (overrideStudentId = null) => {
 
   /**
    * Atualizar plano
+   * @param {string} planId
+   * @param {object} planData
+   * @param {object} [auditInfo] - { editedBy: 'mentor'|'student', email, changedFields }
    */
-  const updatePlan = useCallback(async (planId, planData) => {
+  const updatePlan = useCallback(async (planId, planData, auditInfo = null) => {
     try {
       const planRef = doc(db, 'plans', planId);
-      await updateDoc(planRef, {
+      const updateData = {
         ...planData,
         updatedAt: serverTimestamp()
-      });
+      };
+
+      // Audit trail para edições do mentor
+      if (auditInfo && auditInfo.editedBy === 'mentor') {
+        updateData.lastEditedBy = 'mentor';
+        updateData.lastEditedByEmail = auditInfo.email;
+        updateData.lastEditedAt = serverTimestamp();
+
+        // Append no editHistory (arrayUnion não funciona com objetos complexos no mesmo update,
+        // então usamos merge approach — o campo é gerenciado no caller via arrayUnion separado)
+      }
+
+      await updateDoc(planRef, updateData);
+
+      // Se mentor, registra no editHistory via arrayUnion separado
+      if (auditInfo && auditInfo.editedBy === 'mentor') {
+        const historyEntry = {
+          by: 'mentor',
+          email: auditInfo.email,
+          fields: auditInfo.changedFields || [],
+          timestamp: new Date().toISOString()
+        };
+        await updateDoc(planRef, {
+          editHistory: arrayUnion(historyEntry)
+        });
+        console.log(`[usePlans] Mentor edit audit: ${auditInfo.email} → ${planId}`);
+      }
     } catch (err) {
       console.error('[usePlans] Erro atualizar:', err);
       throw err;
