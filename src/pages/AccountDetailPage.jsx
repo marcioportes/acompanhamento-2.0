@@ -22,6 +22,7 @@ import { useMovements } from '../hooks/useMovements';
 import { useAuth } from '../contexts/AuthContext';
 import PlanManagementModal from '../components/PlanManagementModal';
 import DebugBadge from '../components/DebugBadge';
+import { buildAuditInfo } from '../utils/mentorPlanAudit';
 
 // --- Helpers de Formatação ---
 
@@ -193,18 +194,7 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubm
   const handleMentorSavePlan = async (planData) => {
     if (!editingPlan || !onUpdatePlan) return;
     
-    // Detecta quais campos mudaram
-    const changedFields = [];
-    const compareFields = ['pl', 'riskPerOperation', 'rrTarget', 'periodGoal', 'periodStop', 'cycleGoal', 'cycleStop', 'adjustmentCycle', 'operationPeriod', 'name'];
-    compareFields.forEach(f => {
-      if (String(editingPlan[f]) !== String(planData[f])) changedFields.push(f);
-    });
-
-    const auditInfo = {
-      editedBy: 'mentor',
-      email: user?.email,
-      changedFields
-    };
+    const auditInfo = buildAuditInfo(user?.email, editingPlan, planData);
 
     try {
       await onUpdatePlan(editingPlan.id, planData, auditInfo);

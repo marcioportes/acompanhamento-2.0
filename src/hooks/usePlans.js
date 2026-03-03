@@ -1,3 +1,4 @@
+// v1.14.0 — Issue #43: mentor audit trail
 /**
  * usePlans
  * @see version.js para versão do produto
