@@ -9,6 +9,7 @@ import { PlusCircle, Filter, Wallet } from 'lucide-react';
 import AccountFilterBar from '../AccountFilterBar';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { isRealAccount } from '../../utils/planCalculations';
+import DebugBadge from '../DebugBadge';
 
 /**
  * @param {Object} props
@@ -97,6 +98,7 @@ const DashboardHeader = ({
           </span>
         </div>
       )}
+      <DebugBadge component="DashboardHeader" />
     </div>
   );
 };

@@ -9,6 +9,7 @@
 import { DollarSign, Target, TrendingDown, Wallet, Activity } from 'lucide-react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import DebugBadge from '../DebugBadge';
 
 /**
  * @param {Object} stats - Retorno de calculateStats
@@ -112,6 +113,7 @@ const MetricsCards = ({
           </div>
         )}
       </div>
+      <DebugBadge component="MetricsCards" />
     </div>
   );
 };
