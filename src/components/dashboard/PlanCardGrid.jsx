@@ -13,6 +13,7 @@ import {
 import { filterTradesByPeriod, analyzePlanCompliance } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
+import DebugBadge from '../DebugBadge';
 
 const MiniProgressBar = ({ current, target, isLoss }) => {
   const percent = target > 0 ? Math.min(Math.abs(current) / target * 100, 100) : 0;
@@ -145,6 +146,7 @@ const PlanCardGrid = ({
           </div>
         );
       })}
+      <DebugBadge component="PlanCardGrid" />
     </div>
   );
 };

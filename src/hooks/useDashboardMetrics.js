@@ -69,14 +69,14 @@ const useDashboardMetrics = ({
       const plan = plans.find(p => p.id === selectedPlanId);
       if (plan) {
         const acc = accounts.find(a => a.id === plan.accountId);
-        return acc ? (acc.initialBalance || 0) : 0;
+        return acc ? (acc.initialBalance ?? 0) : 0;
       }
     }
     if (filters.accountId !== 'all') {
       const acc = accounts.find(a => a.id === filters.accountId);
-      return acc ? (acc.initialBalance || 0) : 0;
+      return acc ? (acc.initialBalance ?? 0) : 0;
     }
-    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.initialBalance || 0), 0);
+    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.initialBalance ?? 0), 0);
   }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
 
   const aggregatedCurrentBalance = useMemo(() => {

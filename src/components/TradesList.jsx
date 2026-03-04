@@ -30,9 +30,11 @@ import {
 /**
  * Formatadores Visuais (Helpers)
  */
-const formatCurrency = (value) => {
+const formatCurrency = (value, currency = 'BRL') => {
   const safeValue = Number(value) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeValue);
+  const localeMap = { BRL: 'pt-BR', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB', ARS: 'es-AR' };
+  const locale = localeMap[currency] || 'pt-BR';
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(safeValue);
 };
 
 const formatPercent = (value) => {
@@ -227,7 +229,7 @@ const TradesList = ({
                         />
                       )}
                       <span>
-                        {result > 0 ? '+' : ''}{formatCurrency(result)}
+                        {result > 0 ? '+' : ''}{formatCurrency(result, trade.currency)}
                       </span>
                     </div>
                     <div className={`text-xs ${getResultColor(result)} opacity-80`}>

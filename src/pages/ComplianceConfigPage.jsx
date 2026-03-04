@@ -456,7 +456,7 @@ const ComplianceConfigPage = ({ embedded = false }) => {
         </div>
       </div>
 
-      <DebugBadge component="ComplianceConfigPage" />
+      {!embedded && <DebugBadge component="ComplianceConfigPage" />}
     </div>
   );
 };
