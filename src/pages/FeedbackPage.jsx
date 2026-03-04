@@ -36,9 +36,17 @@ import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 
 // Helpers locais
-const formatCurrency = (value) => {
+const formatCurrency = (value, currency = 'BRL') => {
   if (value === null || value === undefined) return '-';
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  const config = {
+    BRL: { locale: 'pt-BR', currency: 'BRL' },
+    USD: { locale: 'en-US', currency: 'USD' },
+    EUR: { locale: 'de-DE', currency: 'EUR' },
+    GBP: { locale: 'en-GB', currency: 'GBP' },
+    ARS: { locale: 'es-AR', currency: 'ARS' }
+  };
+  const cfg = config[currency] || config.BRL;
+  return new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 };
 
 const formatDate = (dateStr) => {
@@ -98,7 +106,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
             <p className="text-slate-400 mt-1">{trade.studentName || trade.studentEmail?.split('@')[0]}</p>
           </div>
         </div>
-        <p className={`text-2xl font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? '+' : ''}{formatCurrency(trade.result)}</p>
+        <p className={`text-2xl font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? '+' : ''}{formatCurrency(trade.result, trade.currency)}</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

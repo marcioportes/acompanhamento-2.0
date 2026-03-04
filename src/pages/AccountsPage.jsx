@@ -385,7 +385,7 @@ const AccountsPage = () => {
       </div>
 
       {isMentor() ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {
@@ -468,4 +468,4 @@ const AccountsPage = () => {
   );
 };
 
-export default AccountsPage;
+export default AccountsPage;
