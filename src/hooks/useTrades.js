@@ -175,6 +175,11 @@ export const useTrades = (overrideStudentId = null) => {
       const derivedAccountId = planSnap.data().accountId;
       if (!derivedAccountId) throw new Error('Plano sem conta vinculada.');
 
+      // Busca moeda da conta para persistir no trade
+      const accountRef = doc(db, 'accounts', derivedAccountId);
+      const accountSnap = await getDoc(accountRef);
+      const derivedCurrency = accountSnap.exists() ? (accountSnap.data().currency || 'BRL') : 'BRL';
+
       const entry = parseFloat(tradeData.entry);
       const exit = parseFloat(tradeData.exit);
       const qty = parseFloat(tradeData.qty);
@@ -226,6 +231,7 @@ export const useTrades = (overrideStudentId = null) => {
         studentId: user.uid,
         status: DEFAULT_STATUS,
         accountId: derivedAccountId,
+        currency: derivedCurrency,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         htfUrl: null, ltfUrl: null, mentorFeedback: null,

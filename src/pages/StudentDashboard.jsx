@@ -275,7 +275,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         </div>
       </div>
 
-      {/* Trades do dia selecionado — v1.15.0: totalização */}
+      {/* Trades do dia selecionado — totalização */}
       {calendarSelectedDate && (() => {
         const dayTrades = filteredTrades.filter(t => t.date === calendarSelectedDate);
         const dayGain = dayTrades.filter(t => (t.result || 0) > 0).reduce((s, t) => s + t.result, 0);
