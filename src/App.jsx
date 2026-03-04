@@ -209,7 +209,7 @@ const AppContent = () => {
     
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
-      return <StudentDashboard viewAs={viewingAsStudent} />;
+      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} />;
     }
     
     // Páginas específicas

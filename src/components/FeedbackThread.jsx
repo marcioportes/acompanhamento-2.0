@@ -1,9 +1,10 @@
 /**
  * FeedbackThread
- * @version 1.2.1
+ * @version 1.3.0
  * @description Thread de comentários de feedback entre aluno e mentor
  * 
  * CHANGELOG:
+ * - 1.3.0: Multi-moeda — prop currency, formatCurrencyDynamic
  * - 1.2.1: Fix exibição de mentorFeedback legado quando há feedbackHistory
  * - 1.2.0: Versão inicial
  */
@@ -15,7 +16,8 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import TradeStatusBadge from './TradeStatusBadge';
-import { formatCurrency, formatDate } from '../utils/calculations';
+import { formatDate } from '../utils/calculations';
+import { formatCurrencyDynamic } from '../utils/currency';
 
 const TRADE_STATUS = {
   OPEN: 'OPEN',
@@ -24,7 +26,7 @@ const TRADE_STATUS = {
   CLOSED: 'CLOSED'
 };
 
-const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor = false }) => {
+const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor = false, currency = 'BRL' }) => {
   const [comment, setComment] = useState('');
   const [isQuestion, setIsQuestion] = useState(false);
   const messagesEndRef = useRef(null);
@@ -106,7 +108,7 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor =
             <p className={`text-xl font-bold ${
               trade.result >= 0 ? 'text-emerald-400' : 'text-red-400'
             }`}>
-              {formatCurrency(trade.result)}
+              {formatCurrencyDynamic(trade.result, currency)}
             </p>
             <p className="text-slate-500 text-sm flex items-center justify-end gap-1">
               <Calendar className="w-3 h-3" />
