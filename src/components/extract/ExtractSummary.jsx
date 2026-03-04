@@ -17,6 +17,14 @@ const scoreColor = (score) => {
   return 'text-red-400';
 };
 
+/** Formato compacto: 1.6k, 20k, 1.2M */
+const fmtCompact = (val) => {
+  const abs = Math.abs(val || 0);
+  if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${(abs / 1_000).toFixed(abs % 1_000 === 0 ? 0 : 1)}k`;
+  return abs.toFixed(0);
+};
+
 const BADGE_ICONS = {
   Check, Trophy, TrendingUp, TrendingDown, Skull, AlertTriangle, Activity,
 };
@@ -114,10 +122,10 @@ const ExtractSummary = ({ periodState, cycleSummary, isCycleView, startPL, emoti
         </div>
         <div>
           <span className="text-[10px] text-slate-500 uppercase block">Meta / Stop</span>
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-emerald-400/70">{fmt(goalVal)}</span>
+          <div className="flex items-center gap-1 text-xs font-mono">
+            <span className="text-emerald-400/70">{fmtCompact(goalVal)}</span>
             <span className="text-slate-600">/</span>
-            <span className="text-red-400/70">-{fmt(stopVal)}</span>
+            <span className="text-red-400/70">-{fmtCompact(stopVal)}</span>
           </div>
         </div>
       </div>

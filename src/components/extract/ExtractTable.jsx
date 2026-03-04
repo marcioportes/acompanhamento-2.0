@@ -41,10 +41,11 @@ const getRowBg = (periodEvent, isEventTrade) => {
  * @param {Array} rows - Rows da state machine (cada row tem .trade, .periodEvent, .cumPnL, .result)
  * @param {Function} fmt - formatCurrencyDynamic parcial
  * @param {Function} getEmotionConfig - De useMasterData
+ * @param {number} carryOver - Saldo transportado de períodos anteriores (0 na visão ciclo)
  */
-const ExtractTable = ({ rows, fmt, getEmotionConfig }) => {
-  // Inverter para mais recentes no topo
-  const displayRows = [...rows].reverse();
+const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0 }) => {
+  // Ordem cronológica (mais antigo no topo) — acumulado funciona como saldo
+  const displayRows = rows;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -63,6 +64,17 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig }) => {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/50">
+          {/* Saldo anterior — primeira linha quando há carry-over */}
+          {carryOver !== 0 && displayRows.length > 0 && (
+            <tr className="bg-slate-800/20 border-b-2 border-slate-700 border-dashed">
+              <td className="p-3 text-center text-slate-600 font-mono text-xs">—</td>
+              <td colSpan="6" className="p-3 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
+              <td className={`p-3 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+                {fmt(carryOver)}
+              </td>
+              <td className="p-3"></td>
+            </tr>
+          )}
           {displayRows.map((row) => {
             const trade = row.trade;
             const isGhost = row.periodEvent === PERIOD_STATES.POST_GOAL || row.periodEvent === PERIOD_STATES.POST_STOP;

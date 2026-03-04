@@ -73,19 +73,41 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
     return planState.cycleState.periods.get(selectedPeriod) || null;
   }, [planState, selectedPeriod]);
 
-  // Rows para a tabela
-  const tableRows = useMemo(() => {
-    if (!planState) return [];
+  // Rows para a tabela + saldo anterior (carry-over entre períodos)
+  const { tableRows, carryOver } = useMemo(() => {
+    if (!planState) return { tableRows: [], carryOver: 0 };
+
     if (selectedPeriod === null) {
-      // Ciclo inteiro: concatenar rows de todos os períodos
+      // Ciclo inteiro: concatenar rows com acumulado contínuo
       const allRows = [];
+      let runningTotal = 0;
       for (const periodKey of planState.availablePeriods) {
         const period = planState.cycleState.periods.get(periodKey);
-        if (period) allRows.push(...period.rows);
+        if (!period) continue;
+        for (const row of period.rows) {
+          runningTotal += row.result;
+          allRows.push({ ...row, cumPnL: runningTotal });
+        }
       }
-      return allRows;
+      return { tableRows: allRows, carryOver: 0 };
     }
-    return currentPeriodState?.rows || [];
+
+    // Período individual: calcular carry-over dos períodos anteriores
+    let carry = 0;
+    for (const periodKey of planState.availablePeriods) {
+      if (periodKey === selectedPeriod) break;
+      const period = planState.cycleState.periods.get(periodKey);
+      if (period) carry += period.summary.totalPnL;
+    }
+
+    // Ajustar cumPnL dos rows com o carry-over
+    const periodRows = currentPeriodState?.rows || [];
+    const adjustedRows = periodRows.map(row => ({
+      ...row,
+      cumPnL: carry + row.cumPnL,
+    }));
+
+    return { tableRows: adjustedRows, carryOver: carry };
   }, [planState, selectedPeriod, currentPeriodState]);
 
   // Eventos consolidados
@@ -231,6 +253,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
           rows={tableRows}
           fmt={fmt}
           getEmotionConfig={getEmotionConfig}
+          carryOver={carryOver}
         />
 
         <ExtractEvents events={allEvents} />
