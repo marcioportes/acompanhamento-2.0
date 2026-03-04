@@ -1,8 +1,8 @@
 /**
  * PlanLedgerExtract
- * @version 1.1.0 (v1.10.0)
+ * @version 2.0.0 (v1.15.0)
  * @description Extrato Ledger emocional — combina auditoria financeira + perfil emocional + compliance.
- *   Adiciona coluna Emoção ao extrato, markers de TILT/REVENGE, score do ciclo.
+ *   v2.0.0: Multi-moeda — recebe `currency` via prop, elimina fmt() hardcoded BRL.
  *   v1.1.0: Exibe RO_FORA, RR_FORA, NO_STOP na coluna Evento e no painel de eventos.
  * 
  * DIFERENÇA DO PlanExtractModal:
@@ -10,7 +10,7 @@
  * - PlanLedgerExtract: compliance + camada emocional (emoção por trade, eventos, score)
  * 
  * USAGE:
- * <PlanLedgerExtract plan={plan} trades={planTrades} onClose={fn} />
+ * <PlanLedgerExtract plan={plan} trades={planTrades} onClose={fn} currency="USD" />
  */
 
 import { useMemo } from 'react';
@@ -21,16 +21,33 @@ import {
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import { formatCurrencyDynamic } from '../utils/currency';
 import DebugBadge from '../components/DebugBadge';
 
-const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
 const fmtTime = (iso) => { if (!iso) return ''; try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 
-const PlanLedgerExtract = ({ plan, trades, onClose }) => {
+const scoreColor = (score) => {
+  if (score >= 70) return 'text-emerald-400';
+  if (score >= 40) return 'text-amber-400';
+  return 'text-red-400';
+};
+
+const getEmotionColor = (category) => {
+  switch (category) {
+    case 'POSITIVE': return 'text-emerald-400';
+    case 'NEGATIVE': return 'text-red-400';
+    default: return 'text-slate-400';
+  }
+};
+
+const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
   const { getEmotionConfig } = useMasterData();
   const { detectionConfig, statusThresholds } = useComplianceRules();
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
+
+  // Wrapper de formatação com moeda do plano
+  const fmt = (v) => formatCurrencyDynamic(v, currency);
 
   const { ledger, events, summary } = useMemo(() => {
     if (!plan || !trades) return { ledger: [], events: [], summary: null };
@@ -110,9 +127,8 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
     if (emotional.isReady && emotional.alerts) {
       emotional.alerts.forEach(a => {
         if (a.type === 'TILT' || a.type === 'REVENGE' || a.type === 'STATUS_CRITICAL') {
-          // Associar ao trade mais próximo pela data/hora do alerta
           const alertDate = a.date || a.tradeDate || (rows.length > 0 ? rows[rows.length - 1].date : null);
-          if (!alertDate) return; // Skip se sem data válida
+          if (!alertDate) return;
           evts.push({
             type: a.type,
             date: alertDate,
@@ -162,28 +178,19 @@ const PlanLedgerExtract = ({ plan, trades, onClose }) => {
 
   const getEventStyle = (type) => {
     switch (type) {
-      case 'GOAL_HIT': return 'border-emerald-500/30 bg-emerald-500/5';
-      case 'STOP_HIT': case 'STATUS_CRITICAL': case 'NO_STOP': return 'border-red-500/30 bg-red-500/5';
-      case 'TILT': return 'border-orange-500/30 bg-orange-500/5';
-      case 'REVENGE': return 'border-red-500/30 bg-red-500/5';
-      case 'RO_FORA': case 'RR_FORA': return 'border-amber-500/30 bg-amber-500/5';
-      default: return 'border-yellow-500/30 bg-yellow-500/5';
+      case 'GOAL_HIT': return 'bg-emerald-500/10 border-emerald-500/30';
+      case 'STOP_HIT': return 'bg-red-500/10 border-red-500/30';
+      case 'TILT': return 'bg-orange-500/10 border-orange-500/30';
+      case 'REVENGE': return 'bg-red-500/10 border-red-500/30';
+      case 'STATUS_CRITICAL': return 'bg-red-500/10 border-red-500/30';
+      case 'RO_FORA': case 'RR_FORA': return 'bg-amber-500/10 border-amber-500/30';
+      case 'NO_STOP': return 'bg-red-500/10 border-red-500/30';
+      default: return 'bg-yellow-500/10 border-yellow-500/30';
     }
   };
-
-  const getEmotionColor = (cat) => {
-    switch (cat) {
-      case 'POSITIVE': return 'text-emerald-400';
-      case 'NEGATIVE': return 'text-red-400';
-      case 'CRITICAL': return 'text-red-500 font-bold';
-      default: return 'text-slate-400';
-    }
-  };
-
-  const scoreColor = (s) => s >= 70 ? 'text-emerald-400' : s >= 50 ? 'text-yellow-400' : s >= 30 ? 'text-orange-400' : 'text-red-400';
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
         
         {/* Header */}
