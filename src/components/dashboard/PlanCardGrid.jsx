@@ -1,62 +1,80 @@
 /**
  * PlanCardGrid
- * @version 1.0.0 (v1.15.0)
+ * @version 2.0.0 (v1.16.0)
  * @description Grid de cards de planos operacionais.
- *   Extraído do StudentDashboard para modularização.
- *   Inclui: MiniProgressBar, renderSentimentIcon, getComplianceBadge.
+ *   v2.0.0: Integra planStateMachine para badges e sentiment icons.
+ *   v1.0.0: Extraído do StudentDashboard (v1.15.0).
+ *
+ * MUDANÇAS v2:
+ * - getComplianceBadge() → classifyPeriodBadge() (da state machine)
+ * - renderSentimentIcon() → getSentimentFromState() (da state machine)
+ * - Novos badges: POST_GOAL_GAIN, POST_GOAL_LOSS, GOAL_TO_STOP, LOSS_TO_GOAL
+ * - Ícones evoluídos: Trophy, Skull em vez de apenas Smile/Frown/Meh
  */
 
-import { 
+import {
   PlusCircle, Check, Settings, Trash2, RefreshCw, Calendar, ScrollText,
-  Skull, Trophy, TrendingUp, TrendingDown, Smile, Frown, Meh
+  Skull, Trophy, TrendingUp, TrendingDown, Smile, Frown, Meh,
+  AlertTriangle, Activity
 } from 'lucide-react';
-import { filterTradesByPeriod, analyzePlanCompliance } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
+import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
 import DebugBadge from '../DebugBadge';
 
 const MiniProgressBar = ({ current, target, isLoss }) => {
   const percent = target > 0 ? Math.min(Math.abs(current) / target * 100, 100) : 0;
   return (
     <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-      <div 
-        className={`h-full rounded-full transition-all duration-500 ${isLoss ? 'bg-red-500' : 'bg-emerald-500'}`} 
-        style={{ width: `${percent}%` }} 
+      <div
+        className={`h-full rounded-full transition-all duration-500 ${isLoss ? 'bg-red-500' : 'bg-emerald-500'}`}
+        style={{ width: `${percent}%` }}
       />
     </div>
   );
 };
 
-const renderSentimentIcon = (pnl) => {
-  if (pnl > 0) return <Smile className="w-5 h-5 text-emerald-400" />;
-  if (pnl < 0) return <Frown className="w-5 h-5 text-red-400" />;
-  return <Meh className="w-5 h-5 text-slate-400" />;
+// Icon map for dynamic rendering from state machine
+const ICON_MAP = {
+  Smile, Frown, Meh, Trophy, Skull, TrendingUp, TrendingDown, AlertTriangle, Activity, Check,
 };
 
-const getComplianceBadge = (compliance) => {
-  const { status } = compliance;
-  const baseClass = "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-sm shadow-sm";
-  if (status === 'LOSS_TO_GOAL') return <div className={`${baseClass} bg-amber-500/10 text-amber-400 border-amber-500/30`} title="Sorte"><Trophy className="w-3 h-3"/> Meta (Sorte)</div>;
-  if (status === 'GOAL_IMPROVED') return <div className={`${baseClass} bg-amber-500/10 text-amber-400 border-amber-500/30`} title="Risco"><TrendingUp className="w-3 h-3"/> Overtrading</div>;
-  if (status === 'GOAL_GAVE_BACK') return <div className={`${baseClass} bg-amber-500/10 text-amber-400 border-amber-500/30`} title="Ganância"><TrendingDown className="w-3 h-3"/> Devolveu Meta</div>;
-  if (status === 'GOAL_TO_STOP') return <div className={`${baseClass} bg-red-500/10 text-red-400 border-red-500/30 animate-pulse`} title="Catástrofe"><Skull className="w-3 h-3"/> Catástrofe</div>;
-  if (status === 'STOP_WORSENED' || status === 'STOP_RECOVERED') return <div className={`${baseClass} bg-red-500/10 text-red-400 border-red-500/30 animate-pulse`} title="Disciplina"><Skull className="w-3 h-3"/> Stop Violado</div>;
-  if (status === 'GOAL_DISCIPLINED') return <div className={`${baseClass} bg-emerald-500/10 text-emerald-400 border-emerald-500/30`} title="Parabéns"><Check className="w-3 h-3"/> Meta Batida</div>;
-  return null;
+const COLOR_MAP = {
+  emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
+  red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
+  amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
+  slate: { bg: 'bg-slate-500/10', text: 'text-slate-400', border: 'border-slate-500/30' },
 };
 
 /**
- * @param {Array} availablePlans - Planos ativos filtrados
- * @param {Array} accounts - Todas as contas
- * @param {Array} trades - Todos os trades (não filtrados, para PnL por plano)
- * @param {string|null} selectedPlanId - ID do plano selecionado
- * @param {boolean} viewAs - Se é visualização de mentor
- * @param {Function} onSelectPlan - (planId) => void
- * @param {Function} onOpenLedger - (plan) => void
- * @param {Function} onEditPlan - (plan) => void
- * @param {Function} onDeletePlan - (e, planId) => void
- * @param {Function} onCreatePlan - () => void
+ * Renderiza badge de compliance baseado na state machine.
  */
+const renderStateBadge = (badge) => {
+  if (!badge || badge.badge === 'IN_PROGRESS' || badge.badge === 'UNKNOWN') return null;
+
+  const colors = COLOR_MAP[badge.colorClass] || COLOR_MAP.slate;
+  const Icon = ICON_MAP[badge.icon] || Activity;
+  const baseClass = "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-sm shadow-sm";
+
+  return (
+    <div
+      className={`${baseClass} ${colors.bg} ${colors.text} ${colors.border} ${badge.animate ? 'animate-pulse' : ''}`}
+      title={badge.label}
+    >
+      <Icon className="w-3 h-3" />
+      {badge.label}
+    </div>
+  );
+};
+
+/**
+ * Renderiza ícone de sentimento baseado na state machine.
+ */
+const renderSentimentFromState = (sentiment) => {
+  const Icon = ICON_MAP[sentiment.icon] || Meh;
+  return <Icon className={`w-5 h-5 ${sentiment.colorClass}`} />;
+};
+
 const PlanCardGrid = ({
   availablePlans,
   accounts,
@@ -93,12 +111,32 @@ const PlanCardGrid = ({
         const periodGoalVal = (plan.pl * (plan.periodGoal / 100));
         const cycleGoalVal = (plan.pl * (plan.cycleGoal / 100));
         const cycleStopVal = (plan.pl * (plan.cycleStop / 100));
-        const currentPeriodTrades = filterTradesByPeriod(planTrades, plan.operationPeriod);
-        const compliance = analyzePlanCompliance(currentPeriodTrades, periodStopVal, periodGoalVal);
+
+        // State machine: computar estado do período atual
+        const planState = computePlanState(planTrades, {
+          pl: planInitialPL,
+          periodGoal: Number(plan.periodGoal) || 0,
+          periodStop: Number(plan.periodStop) || 0,
+          cycleGoal: Number(plan.cycleGoal) || 0,
+          cycleStop: Number(plan.cycleStop) || 0,
+          operationPeriod: plan.operationPeriod || 'Diário',
+          adjustmentCycle: plan.adjustmentCycle || 'Mensal',
+        });
+
+        // Badge do período atual
+        const currentPeriodKey = planState?.currentPeriodKey;
+        const currentPeriodState = currentPeriodKey
+          ? planState.cycleState.periods.get(currentPeriodKey)
+          : null;
+        const badge = currentPeriodState ? classifyPeriodBadge(currentPeriodState) : null;
+
+        // Sentiment icon do período atual
+        const periodStatus = currentPeriodState?.status || null;
+        const sentiment = getSentimentFromState(periodStatus, periodPnL);
 
         return (
           <div key={plan.id} onClick={() => onSelectPlan(isSelected ? null : plan.id)} className={`relative cursor-pointer transition-all duration-300 overflow-hidden rounded-2xl border group ${isSelected ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-600'}`}>
-            <div className="absolute top-2 left-2 z-30">{getComplianceBadge(compliance)}</div>
+            <div className="absolute top-2 left-2 z-30">{renderStateBadge(badge)}</div>
             <div className="absolute top-2 right-2 flex gap-1 z-20">
               <button onClick={(e) => { e.stopPropagation(); onOpenLedger(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-purple-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Extrato Emocional"><ScrollText className="w-4 h-4" /></button>
               {!viewAs && (
@@ -113,7 +151,7 @@ const PlanCardGrid = ({
               <div>
                 <div className="flex justify-between items-start mb-2 pl-8 mt-6">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center border border-slate-600/50 shadow-inner ml-auto">
-                    <div className={!plan.active ? 'opacity-50 grayscale' : ''}>{renderSentimentIcon(periodPnL)}</div>
+                    <div className={!plan.active ? 'opacity-50 grayscale' : ''}>{renderSentimentFromState(sentiment)}</div>
                   </div>
                 </div>
                 <h3 className={`font-bold truncate mb-1 pr-6 ${isSelected ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
