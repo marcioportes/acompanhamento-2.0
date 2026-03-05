@@ -425,6 +425,56 @@ export const computePlanState = (trades, planConfig, options = {}) => {
 };
 
 // ============================================
+// HELPERS — Cycle Navigation
+// ============================================
+
+/**
+ * Retorna a lista de ciclos disponíveis com base nos trades.
+ * Cada ciclo tem { key, label, start, end, tradesCount }.
+ * Ordenado do mais antigo ao mais recente.
+ *
+ * @param {Array} trades - Todos os trades do plano
+ * @param {string} adjustmentCycle - 'Mensal' | 'Trimestral'
+ * @returns {Array<{ key: string, label: string, start: Date, end: Date, tradesCount: number }>}
+ */
+export const getAvailableCycles = (trades, adjustmentCycle = 'Mensal') => {
+  if (!trades || trades.length === 0) return [];
+
+  const cycleMap = new Map();
+
+  for (const trade of trades) {
+    if (!trade.date) continue;
+    const d = new Date(trade.date + 'T12:00:00');
+    const start = getCycleStartDate(adjustmentCycle, d);
+    const end = getCycleEndDate(adjustmentCycle, d);
+    const key = formatDateKey(start);
+
+    if (!cycleMap.has(key)) {
+      const label = adjustmentCycle === 'Trimestral'
+        ? formatCycleLabel_Trimestral(start)
+        : formatCycleLabel_Mensal(start);
+      cycleMap.set(key, { key, label, start, end, tradesCount: 0 });
+    }
+    cycleMap.get(key).tradesCount++;
+  }
+
+  return [...cycleMap.values()].sort((a, b) => a.key.localeCompare(b.key));
+};
+
+/** Label legível para ciclo mensal: "Mar/2026" */
+const MONTH_NAMES_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+const formatCycleLabel_Mensal = (start) => {
+  return `${MONTH_NAMES_PT[start.getMonth()]}/${start.getFullYear()}`;
+};
+
+/** Label legível para ciclo trimestral: "Q1/2026" */
+const formatCycleLabel_Trimestral = (start) => {
+  const q = Math.floor(start.getMonth() / 3) + 1;
+  return `Q${q}/${start.getFullYear()}`;
+};
+
+// ============================================
 // HELPERS — Badge Classification
 // ============================================
 
@@ -465,8 +515,8 @@ export const classifyPeriodBadge = (periodState) => {
 
     case PERIOD_STATES.POST_STOP:
       if (totalPnL >= 0) {
-        // Recuperou do stop — sorte/habilidade
-        return { badge: 'LOSS_TO_GOAL', label: 'Recuperação', icon: 'Trophy', colorClass: 'amber', animate: false };
+        // Recuperou do stop — mas violou: o correto era parar
+        return { badge: 'LOSS_TO_GOAL', label: 'Violação (Recuperou)', icon: 'AlertTriangle', colorClass: 'amber', animate: true };
       }
       // Piorou após stop
       return { badge: 'STOP_WORSENED', label: 'Stop Violado', icon: 'Skull', colorClass: 'red', animate: true };

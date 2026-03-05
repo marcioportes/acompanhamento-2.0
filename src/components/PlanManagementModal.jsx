@@ -346,10 +346,51 @@ const PlanManagementModal = ({
                   </div>
                 </div>
                 <div className="mt-8 pt-6 border-t border-slate-800">
-                  <h4 className="text-xs uppercase tracking-widest text-slate-500 mb-4 font-bold">Resumo</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm bg-slate-800/30 p-4 rounded-lg">
-                    <div className="flex justify-between"><span className="text-slate-400">Capital:</span><span className="text-white font-mono font-bold">{formatCurrency(formData.pl)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Stop Ciclo:</span><span className="text-red-400 font-mono font-bold">-{formatCurrency(calcValue(formData.cycleStop))}</span></div>
+                  <h4 className="text-xs uppercase tracking-widest text-slate-500 mb-4 font-bold">Resumo do Plano</h4>
+                  <div className="space-y-3 text-sm bg-slate-800/30 p-4 rounded-lg">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Capital (PL):</span>
+                      <span className="text-white font-mono font-bold">{formatCurrency(formData.pl)}</span>
+                    </div>
+                    <div className="border-t border-slate-700/50 pt-2 mt-2">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Período ({formData.operationPeriod})</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex justify-between">
+                          <span className="text-emerald-400/70 text-xs">Meta:</span>
+                          <span className="text-emerald-400 font-mono text-xs">{formData.periodGoal}% · {formatCurrency(calcValue(formData.periodGoal))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-red-400/70 text-xs">Stop:</span>
+                          <span className="text-red-400 font-mono text-xs">{formData.periodStop}% · -{formatCurrency(calcValue(formData.periodStop))}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-700/50 pt-2">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Ciclo ({formData.adjustmentCycle})</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex justify-between">
+                          <span className="text-emerald-400/70 text-xs">Meta:</span>
+                          <span className="text-emerald-400 font-mono text-xs">{formData.cycleGoal}% · {formatCurrency(calcValue(formData.cycleGoal))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-red-400/70 text-xs">Stop:</span>
+                          <span className="text-red-400 font-mono text-xs">{formData.cycleStop}% · -{formatCurrency(calcValue(formData.cycleStop))}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-700/50 pt-2">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Risco por Trade</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex justify-between">
+                          <span className="text-amber-400/70 text-xs">RO Máx:</span>
+                          <span className="text-amber-400 font-mono text-xs">{formData.riskPerOperation}% · {formatCurrency(calcValue(formData.riskPerOperation))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-400/70 text-xs">RR Mín:</span>
+                          <span className="text-blue-400 font-mono text-xs">1:{formData.rrTarget}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

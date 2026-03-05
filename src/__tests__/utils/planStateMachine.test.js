@@ -1,9 +1,10 @@
 /**
  * planStateMachine.test.js
- * @version 1.0.0 (v1.16.0)
+ * @version 2.0.0 (v1.17.0)
  * @description Testes da máquina de estados do plano.
  *   Cobre: períodos, ciclos, transições, POST_GOAL/POST_STOP,
- *   agrupamento diário/semanal, boundary de ciclo, badges.
+ *   agrupamento diário/semanal, boundary de ciclo, badges,
+ *   cycle navigation, getAvailableCycles.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -16,6 +17,7 @@ import {
   getCycleEndDate,
   classifyPeriodBadge,
   getSentimentFromState,
+  getAvailableCycles,
 } from '../../utils/planStateMachine';
 
 // ============================================
@@ -406,7 +408,7 @@ describe('classifyPeriodBadge', () => {
     expect(badge.colorClass).toBe('red');
   });
 
-  it('POST_STOP que recuperou → LOSS_TO_GOAL', () => {
+  it('POST_STOP que recuperou → LOSS_TO_GOAL (Violação)', () => {
     const trades = [
       makeTrade({ result: -500, entryTime: '2026-03-04T10:00:00' }),
       makeTrade({ result: 600, entryTime: '2026-03-04T11:00:00' }),
@@ -414,7 +416,8 @@ describe('classifyPeriodBadge', () => {
     const state = computePeriodState(trades, 400, 400);
     const badge = classifyPeriodBadge(state);
     expect(badge.badge).toBe('LOSS_TO_GOAL');
-    expect(badge.label).toBe('Recuperação');
+    expect(badge.label).toBe('Violação (Recuperou)');
+    expect(badge.animate).toBe(true);
   });
 
   it('POST_STOP que piorou → STOP_WORSENED', () => {
@@ -468,5 +471,106 @@ describe('getSentimentFromState', () => {
     expect(getSentimentFromState(null, 100).icon).toBe('Smile');
     expect(getSentimentFromState(null, -100).icon).toBe('Frown');
     expect(getSentimentFromState(null, 0).icon).toBe('Meh');
+  });
+});
+
+// ============================================
+// getAvailableCycles (v1.17.0)
+// ============================================
+
+describe('getAvailableCycles', () => {
+  it('retorna vazio para array vazio', () => {
+    expect(getAvailableCycles([], 'Mensal')).toHaveLength(0);
+  });
+
+  it('retorna 1 ciclo quando todos trades são do mesmo mês', () => {
+    const trades = [
+      makeTrade({ date: '2026-03-03' }),
+      makeTrade({ date: '2026-03-15' }),
+      makeTrade({ date: '2026-03-28' }),
+    ];
+    const cycles = getAvailableCycles(trades, 'Mensal');
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].key).toBe('2026-03-01');
+    expect(cycles[0].label).toBe('Mar/2026');
+    expect(cycles[0].tradesCount).toBe(3);
+  });
+
+  it('retorna múltiplos ciclos mensais em ordem cronológica', () => {
+    const trades = [
+      makeTrade({ date: '2026-01-10' }),
+      makeTrade({ date: '2026-03-05' }),
+      makeTrade({ date: '2026-02-20' }),
+      makeTrade({ date: '2026-03-15' }),
+    ];
+    const cycles = getAvailableCycles(trades, 'Mensal');
+    expect(cycles).toHaveLength(3);
+    expect(cycles[0].label).toBe('Jan/2026');
+    expect(cycles[0].tradesCount).toBe(1);
+    expect(cycles[1].label).toBe('Fev/2026');
+    expect(cycles[2].label).toBe('Mar/2026');
+    expect(cycles[2].tradesCount).toBe(2);
+  });
+
+  it('agrupa trimestralmente', () => {
+    const trades = [
+      makeTrade({ date: '2026-01-10' }),
+      makeTrade({ date: '2026-02-15' }),
+      makeTrade({ date: '2026-04-05' }),
+    ];
+    const cycles = getAvailableCycles(trades, 'Trimestral');
+    expect(cycles).toHaveLength(2);
+    expect(cycles[0].label).toBe('Q1/2026');
+    expect(cycles[0].tradesCount).toBe(2);
+    expect(cycles[1].label).toBe('Q2/2026');
+    expect(cycles[1].tradesCount).toBe(1);
+  });
+
+  it('ignora trades sem date', () => {
+    const trades = [
+      makeTrade({ date: '2026-03-04' }),
+      makeTrade({ date: undefined }),
+      makeTrade({ date: '' }),
+    ];
+    const cycles = getAvailableCycles(trades, 'Mensal');
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0].tradesCount).toBe(1);
+  });
+});
+
+// ============================================
+// computePlanState — targetCycle option (v1.17.0)
+// ============================================
+
+describe('computePlanState — targetCycle navigation', () => {
+  it('filtra trades para ciclo específico passado via targetCycle', () => {
+    const trades = [
+      makeTrade({ date: '2026-02-10', result: 100 }),
+      makeTrade({ date: '2026-02-20', result: 200 }),
+      makeTrade({ date: '2026-03-05', result: 500 }),
+    ];
+    const config = makePlanConfig();
+
+    // Ciclo de fevereiro
+    const febState = computePlanState(trades, config, {
+      targetDate: new Date('2026-02-15T12:00:00'),
+      targetCycle: {
+        start: new Date('2026-02-01'),
+        end: new Date('2026-02-28T23:59:59.999'),
+      },
+    });
+    expect(febState.cycleState.summary.tradesCount).toBe(2);
+    expect(febState.cycleState.summary.totalPnL).toBe(300);
+
+    // Ciclo de março
+    const marState = computePlanState(trades, config, {
+      targetDate: new Date('2026-03-05T12:00:00'),
+      targetCycle: {
+        start: new Date('2026-03-01'),
+        end: new Date('2026-03-31T23:59:59.999'),
+      },
+    });
+    expect(marState.cycleState.summary.tradesCount).toBe(1);
+    expect(marState.cycleState.summary.totalPnL).toBe(500);
   });
 });

@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useMasterData } from '../hooks/useMasterData';
 import { useTrades } from '../hooks/useTrades';
 import { runSeed, forceSeed, updateTickers } from '../utils/seedData';
+import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import ComplianceConfigPage from './ComplianceConfigPage';
 import DebugBadge from '../components/DebugBadge';
 
@@ -304,7 +305,13 @@ const SettingsPage = () => {
     setAdminLoading(action);
     setAdminResult(null);
     try {
-      const actions = { seed: runSeed, force: forceSeed, tickers: updateTickers };
+      const actions = {
+        seed: runSeed,
+        force: forceSeed,
+        tickers: updateTickers,
+        seedTest: () => seedTestExtract(user?.uid),
+        cleanupTest: cleanupTestExtract,
+      };
       const res = await actions[action]();
       setAdminResult(res);
     } catch (err) {
@@ -558,6 +565,28 @@ const SettingsPage = () => {
               </div>
               <button onClick={() => handleAdminAction('tickers')} disabled={adminLoading} className="btn-primary py-2 px-4">
                 {adminLoading === 'tickers' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><RefreshCw className="w-4 h-4 mr-2" />Atualizar</>}
+              </button>
+            </div>
+          </div>
+          <div className="glass-card p-6 border-purple-500/30">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-purple-400 mb-1">Seed Teste Extrato</h3>
+                <p className="text-sm text-slate-400">Cria aluno fictício com 10 planos (todos os cenários de badge)</p>
+              </div>
+              <button onClick={() => handleAdminAction('seedTest')} disabled={adminLoading} className="btn-secondary py-2 px-4 border-purple-500/50 text-purple-400">
+                {adminLoading === 'seedTest' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Database className="w-4 h-4 mr-2" />Criar</>}
+              </button>
+            </div>
+          </div>
+          <div className="glass-card p-6 border-amber-500/30">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-amber-400 mb-1">Limpar Teste Extrato</h3>
+                <p className="text-sm text-slate-400">Remove aluno fictício e todos os dados de teste</p>
+              </div>
+              <button onClick={() => handleAdminAction('cleanupTest')} disabled={adminLoading} className="btn-secondary py-2 px-4 border-amber-500/50 text-amber-400">
+                {adminLoading === 'cleanupTest' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Zap className="w-4 h-4 mr-2" />Limpar</>}
               </button>
             </div>
           </div>
