@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { runSeed, forceSeed, updateTickers } from '../utils/seedData';
+import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import TickerManager from './admin/TickerManager'; // Certifique-se de criar a pasta admin
 
 const AdminPage = () => {
@@ -133,6 +134,32 @@ const AdminPage = () => {
                       className="btn-primary bg-red-600 hover:bg-red-700 w-full border-none"
                     >
                       {sysLoading === 'force' ? 'Resetando...' : 'Forçar Reset'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Teste de Extrato */}
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="glass-card p-6 border-purple-500/20">
+                    <h3 className="text-lg font-bold text-purple-400 mb-2">Seed Teste Extrato</h3>
+                    <p className="text-sm text-slate-400 mb-4">Cria aluno fictício com 10 planos cobrindo todos os cenários de badge e extrato.</p>
+                    <button
+                      onClick={() => handleSystemAction('seedTest', seedTestExtract)}
+                      disabled={sysLoading !== null}
+                      className="btn-secondary w-full border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                    >
+                      {sysLoading === 'seedTest' ? 'Criando...' : 'Criar Dados de Teste'}
+                    </button>
+                  </div>
+                  <div className="glass-card p-6 border-amber-500/20">
+                    <h3 className="text-lg font-bold text-amber-400 mb-2">Limpar Teste Extrato</h3>
+                    <p className="text-sm text-slate-400 mb-4">Remove todos os dados criados pelo seed de teste.</p>
+                    <button
+                      onClick={() => handleSystemAction('cleanupTest', cleanupTestExtract)}
+                      disabled={sysLoading !== null}
+                      className="btn-secondary w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                    >
+                      {sysLoading === 'cleanupTest' ? 'Removendo...' : 'Limpar Dados de Teste'}
                     </button>
                   </div>
                 </div>

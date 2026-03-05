@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { 
   ChevronDown, ChevronUp, User,
   TrendingUp, TrendingDown, Edit2, Eye, Wallet,
-  CheckCircle, Target, Trophy, Skull, Activity
+  CheckCircle, Target, Trophy, Skull, Activity, Settings
 } from 'lucide-react';
 
 const StudentAccountGroup = ({ 
@@ -27,6 +27,7 @@ const StudentAccountGroup = ({
   balancesByAccountId = {},
   onAccountClick,
   onEditAccount,
+  onEditPlan,
   getAccountBadge,
   formatCurrency
 }) => {
@@ -274,6 +275,17 @@ const StudentAccountGroup = ({
                           <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${statusBadge.bg} ${statusBadge.color}`}>
                             {statusBadge.label}
                           </span>
+
+                          {/* Editar plano (mentor) */}
+                          {onEditPlan && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onEditPlan(plan); }}
+                              className="p-1 rounded-lg text-slate-600 hover:text-blue-400 hover:bg-blue-500/10 transition-colors"
+                              title="Editar plano"
+                            >
+                              <Settings className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}

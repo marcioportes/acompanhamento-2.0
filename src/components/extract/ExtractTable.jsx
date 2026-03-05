@@ -1,13 +1,17 @@
 /**
  * ExtractTable
- * @version 1.0.0 (v1.16.0)
+ * @version 2.0.0 (v1.17.0)
  * @description Tabela do extrato com colunas de sanity check (RO, RR, Emoção)
  *   e marcação visual para POST_GOAL/POST_STOP.
- *   Ordem: mais recentes no topo (invertida).
+ *   v2.0.0: Coluna Evento agora mostra eventos emocionais e compliance inline
+ *           (TILT, REVENGE, NO_STOP, RO_FORA, RR_FORA) além dos eventos de state machine.
+ *   v1.0.0: Apenas eventos de state machine (GOAL_HIT, STOP_HIT, POST_GOAL, POST_STOP).
+ *   Ordem: cronológica (mais antigo no topo).
  */
 
 import {
-  Trophy, Skull, ShieldAlert, ShieldOff, Scale
+  Trophy, Skull, ShieldAlert, ShieldOff, Scale,
+  Flame, Zap, AlertTriangle
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 
@@ -27,9 +31,7 @@ const getEmotionColor = (category) => {
   }
 };
 
-/**
- * Faixa de fundo para trades pós-evento.
- */
+/** Faixa de fundo para trades pós-evento. */
 const getRowBg = (periodEvent, isEventTrade) => {
   if (isEventTrade) return 'bg-slate-800/60';
   if (periodEvent === PERIOD_STATES.POST_GOAL) return 'bg-amber-500/5 border-l-2 border-l-amber-500/40';
@@ -38,13 +40,85 @@ const getRowBg = (periodEvent, isEventTrade) => {
 };
 
 /**
+ * Coleta eventos inline para um trade específico.
+ * Combina: state machine + compliance + flags emocionais passados via emotionalEvents.
+ */
+const getTradeInlineEvents = (row, emotionalEvents) => {
+  const events = [];
+  const trade = row.trade;
+
+  // 1. State machine events (período)
+  if (row.periodEvent === PERIOD_STATES.GOAL_HIT) {
+    events.push({ icon: Trophy, color: 'text-emerald-400', label: 'META!', sublabel: 'Período' });
+  } else if (row.periodEvent === PERIOD_STATES.STOP_HIT) {
+    events.push({ icon: Skull, color: 'text-red-400', label: 'STOP!', sublabel: 'Período' });
+  } else if (row.periodEvent === PERIOD_STATES.POST_GOAL) {
+    events.push({ icon: null, color: 'text-amber-500/70', label: 'Pós-Meta', small: true });
+  } else if (row.periodEvent === PERIOD_STATES.POST_STOP) {
+    events.push({ icon: null, color: 'text-red-500/70', label: 'Violação', small: true });
+  }
+
+  // 1b. Cycle events (se este trade causou cycle goal/stop)
+  if (row.cycleEvent === 'CYCLE_GOAL_HIT') {
+    events.push({ icon: Trophy, color: 'text-emerald-300', label: 'META!', sublabel: 'Ciclo' });
+  } else if (row.cycleEvent === 'CYCLE_STOP_HIT') {
+    events.push({ icon: Skull, color: 'text-red-300', label: 'STOP!', sublabel: 'Ciclo' });
+  }
+
+  // 2. Compliance events
+  const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
+    (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
+  );
+  if (hasNoStop) {
+    events.push({ icon: ShieldAlert, color: 'text-red-400', label: 'S/Stop', small: true });
+  }
+  if (trade.compliance?.roStatus === 'FORA_DO_PLANO') {
+    events.push({ icon: ShieldOff, color: 'text-amber-400', label: 'RO', small: true });
+  }
+  if (trade.compliance?.rrStatus === 'NAO_CONFORME') {
+    events.push({ icon: Scale, color: 'text-amber-400', label: 'RR', small: true });
+  }
+
+  // 3. Emotional events (TILT, REVENGE matched by tradeId or proximity)
+  if (emotionalEvents) {
+    const tradeEmotionalEvents = emotionalEvents.filter(e => {
+      // Match por tradeId direto se disponível
+      if (e.tradeId && e.tradeId === trade.id) return true;
+      // Match por data/hora (TILT/REVENGE detectados próximos ao trade)
+      if (e.date === trade.date) return true;
+      return false;
+    });
+    for (const ee of tradeEmotionalEvents) {
+      if (ee.type === 'TILT_DETECTED' || ee.type === 'TILT') {
+        // Evitar duplicata se já adicionado
+        if (!events.some(ev => ev.label === 'TILT')) {
+          events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
+        }
+      }
+      if (ee.type === 'REVENGE_DETECTED' || ee.type === 'REVENGE') {
+        if (!events.some(ev => ev.label === 'REVENGE')) {
+          events.push({ icon: Zap, color: 'text-red-400', label: 'REVENGE', small: true });
+        }
+      }
+      if (ee.type === 'STATUS_CRITICAL') {
+        if (!events.some(ev => ev.label === 'CRÍTICO')) {
+          events.push({ icon: AlertTriangle, color: 'text-red-500', label: 'CRÍTICO', small: true });
+        }
+      }
+    }
+  }
+
+  return events;
+};
+
+/**
  * @param {Array} rows - Rows da state machine (cada row tem .trade, .periodEvent, .cumPnL, .result)
  * @param {Function} fmt - formatCurrencyDynamic parcial
  * @param {Function} getEmotionConfig - De useMasterData
  * @param {number} carryOver - Saldo transportado de períodos anteriores (0 na visão ciclo)
+ * @param {Array} [emotionalEvents] - Eventos emocionais (TILT, REVENGE) para matching inline
  */
-const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0 }) => {
-  // Ordem cronológica (mais antigo no topo) — acumulado funciona como saldo
+const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [] }) => {
   const displayRows = rows;
 
   return (
@@ -60,7 +134,7 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0 }) => {
             <th className="p-3 text-right">RR</th>
             <th className="p-3 text-right">Resultado</th>
             <th className="p-3 text-right bg-slate-800/50">Acumulado</th>
-            <th className="p-3 text-center w-28">Evento</th>
+            <th className="p-3 text-center w-32">Evento</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/50">
@@ -98,6 +172,9 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0 }) => {
             );
             const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO';
             const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME';
+
+            // Inline events
+            const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
 
             return (
               <tr
@@ -163,26 +240,32 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0 }) => {
                   {fmt(row.cumPnL)}
                 </td>
 
-                {/* Evento */}
+                {/* Evento — agora mostra TUDO inline */}
                 <td className="p-3 text-center">
-                  {row.periodEvent === PERIOD_STATES.GOAL_HIT && (
-                    <span className="text-emerald-400 font-bold text-xs flex justify-center items-center gap-1">
-                      <Trophy className="w-3 h-3" /> META!
-                    </span>
-                  )}
-                  {row.periodEvent === PERIOD_STATES.STOP_HIT && (
-                    <span className="text-red-400 font-bold text-xs flex justify-center items-center gap-1">
-                      <Skull className="w-3 h-3" /> STOP!
-                    </span>
-                  )}
-                  {row.periodEvent === PERIOD_STATES.POST_GOAL && (
-                    <span className="text-amber-500/70 text-[10px] uppercase font-bold">Pós-Meta</span>
-                  )}
-                  {row.periodEvent === PERIOD_STATES.POST_STOP && (
-                    <span className="text-red-500/70 text-[10px] uppercase font-bold">Violação</span>
-                  )}
-                  {row.periodEvent === PERIOD_STATES.IN_PROGRESS && (
+                  {inlineEvents.length === 0 && (
                     <span className="text-slate-600 text-xs">-</span>
+                  )}
+                  {inlineEvents.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {inlineEvents.map((evt, idx) => {
+                        const Icon = evt.icon;
+                        return (
+                          <span
+                            key={idx}
+                            className={`${evt.color} ${evt.small ? 'text-[9px]' : 'text-xs'} font-bold flex items-center gap-0.5 ${evt.small ? 'uppercase' : ''}`}
+                            title={evt.sublabel ? `${evt.label} (${evt.sublabel})` : evt.label}
+                          >
+                            {Icon && <Icon className="w-3 h-3" />}
+                            {evt.sublabel ? (
+                              <span className="flex flex-col items-center leading-none">
+                                <span>{evt.label}</span>
+                                <span className="text-[7px] opacity-60">{evt.sublabel}</span>
+                              </span>
+                            ) : evt.label}
+                          </span>
+                        );
+                      })}
+                    </div>
                   )}
                 </td>
               </tr>

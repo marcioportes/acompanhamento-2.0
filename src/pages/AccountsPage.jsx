@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePlans } from '../hooks/usePlans';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
+import PlanManagementModal from '../components/PlanManagementModal';
 import DebugBadge from '../components/DebugBadge';
 import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -76,7 +77,7 @@ const dateToInputString = (dateObj) => {
 const AccountsPage = () => {
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
-  const { isMentor } = useAuth();
+  const { user, isMentor } = useAuth();
   const { plans, updatePlan } = usePlans();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,6 +86,8 @@ const AccountsPage = () => {
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [planSubmitting, setPlanSubmitting] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
   
   const [auditState, setAuditState] = useState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null });
   const [isFixing, setIsFixing] = useState(false);
@@ -358,6 +361,33 @@ const AccountsPage = () => {
     }
   };
 
+  // Handler: Mentor salva plano via PlanManagementModal (chamado do accordion)
+  const handleMentorSavePlan = async (planData) => {
+    if (!editingPlan) return;
+    setPlanSubmitting(true);
+    try {
+      await updatePlan(editingPlan.id, planData, {
+        editedBy: 'mentor',
+        email: user?.email || 'unknown',
+        editedAt: new Date().toISOString(),
+        source: 'AccountsPage',
+      });
+      setShowPlanModal(false);
+      setEditingPlan(null);
+    } catch (error) {
+      console.error('Erro ao salvar plano:', error);
+      alert('Erro: ' + error.message);
+    } finally {
+      setPlanSubmitting(false);
+    }
+  };
+
+  // Callback para StudentAccountGroup
+  const handleOpenEditPlan = (plan) => {
+    setEditingPlan(plan);
+    setShowPlanModal(true);
+  };
+
   const getAccountBadge = (acc) => {
     const type = acc.type || (acc.isReal ? 'REAL' : 'DEMO');
     switch (type) {
@@ -385,7 +415,7 @@ const AccountsPage = () => {
       </div>
 
       {isMentor() ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {
@@ -463,6 +493,16 @@ const AccountsPage = () => {
         </div>
       )}
       <style>{`.badge-account { position: absolute; top: 1rem; right: 1rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.625rem; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 0.25rem; border-width: 1px; } .input-label { display: block; font-size: 0.75rem; color: rgb(148 163 184); margin-bottom: 0.5rem; font-weight: 500; } .input-dark { background: rgb(15 23 42); border: 1px solid rgb(51 65 85); padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: white; outline: none; transition: border-color 0.2s; } .input-dark:focus { border-color: rgb(59 130 246); }`}</style>
+      {/* Modal edição de plano pelo mentor (via accordion) */}
+      {isMentor() && showPlanModal && (
+        <PlanManagementModal
+          isOpen={showPlanModal}
+          onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
+          onSubmit={handleMentorSavePlan}
+          editingPlan={editingPlan}
+          isSubmitting={planSubmitting}
+        />
+      )}
       <DebugBadge component="AccountsPage" />
     </div>
   );

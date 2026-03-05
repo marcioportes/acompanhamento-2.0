@@ -1,42 +1,37 @@
 /**
  * PlanLedgerExtract
- * @version 3.0.0 (v1.16.0)
+ * @version 4.0.0 (v1.17.0)
  * @description Extrato Ledger emocional — orquestrador.
+ *   v4.0.0: Navegação entre ciclos, ExtractCycleCard com gauges, click-to-filter.
  *   v3.0.0: Integra planStateMachine, seletor temporal, sub-componentes extraídos.
  *   v2.0.0: Multi-moeda via currency prop.
  *   v1.1.0: Compliance events (RO/RR/NO_STOP).
  *
  * ARQUITETURA:
  *   PlanLedgerExtract (orquestrador)
- *     ├─ ExtractPeriodSelector (seletor temporal)
+ *     ├─ ExtractPeriodSelector (seletor temporal + navegação ciclos)
+ *     ├─ ExtractCycleCard (barra progresso + breakdown por período — lateral)
  *     ├─ ExtractSummary (resumo com estado + separação pré/pós)
- *     ├─ ExtractTable (tabela com RO/RR/Emoção + marcação POST_GOAL/POST_STOP)
- *     └─ ExtractEvents (painel de eventos)
+ *     └─ ExtractTable (tabela com RO/RR/Emoção + eventos inline)
  *
  * USAGE:
  *   <PlanLedgerExtract plan={plan} trades={planTrades} onClose={fn} currency="USD" />
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { X, ScrollText } from 'lucide-react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 import { formatCurrencyDynamic } from '../utils/currency';
-import { computePlanState } from '../utils/planStateMachine';
+import { computePlanState, getAvailableCycles, getCycleStartDate, getCycleEndDate } from '../utils/planStateMachine';
 import DebugBadge from './DebugBadge';
 
-// Sub-componentes extraídos
+// Sub-componentes
 import ExtractPeriodSelector from './extract/ExtractPeriodSelector';
+import ExtractCycleCard from './extract/ExtractCycleCard';
 import ExtractSummary from './extract/ExtractSummary';
 import ExtractTable from './extract/ExtractTable';
-import ExtractEvents from './extract/ExtractEvents';
-
-const fmtTime = (iso) => {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
-  catch { return ''; }
-};
 
 const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
   const { getEmotionConfig } = useMasterData();
@@ -47,12 +42,53 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
   const [selectedPeriod, setSelectedPeriod] = useState(null);
 
   // Currency formatter parcial
-  const fmt = (v) => formatCurrencyDynamic(v, currency);
+  const fmt = useCallback((v) => formatCurrencyDynamic(v, currency), [currency]);
+
+  // ==================== CYCLE NAVIGATION ====================
+
+  const adjustmentCycle = plan?.adjustmentCycle || 'Mensal';
+
+  const availableCycles = useMemo(() => {
+    if (!trades || trades.length === 0) return [];
+    return getAvailableCycles(trades, adjustmentCycle);
+  }, [trades, adjustmentCycle]);
+
+  // Ciclo selecionado (default = ciclo atual)
+  const [selectedCycleKey, setSelectedCycleKey] = useState(() => {
+    if (!trades || trades.length === 0) return null;
+    const now = new Date();
+    const currentCycleStart = getCycleStartDate(adjustmentCycle, now);
+    const currentKey = `${currentCycleStart.getFullYear()}-${String(currentCycleStart.getMonth() + 1).padStart(2, '0')}-${String(currentCycleStart.getDate()).padStart(2, '0')}`;
+    // Se o ciclo atual tem trades, usar ele. Senão, usar o último com trades.
+    const cycles = getAvailableCycles(trades, adjustmentCycle);
+    const hasCurrent = cycles.some(c => c.key === currentKey);
+    if (hasCurrent) return currentKey;
+    return cycles.length > 0 ? cycles[cycles.length - 1].key : null;
+  });
+
+  const handleSelectCycle = useCallback((cycleKey) => {
+    setSelectedCycleKey(cycleKey);
+    setSelectedPeriod(null); // Reset período ao trocar ciclo
+  }, []);
+
+  // Resolver start/end do ciclo selecionado
+  const selectedCycleRange = useMemo(() => {
+    if (!selectedCycleKey) return null;
+    const d = new Date(selectedCycleKey + 'T12:00:00');
+    return {
+      start: getCycleStartDate(adjustmentCycle, d),
+      end: getCycleEndDate(adjustmentCycle, d),
+    };
+  }, [selectedCycleKey, adjustmentCycle]);
 
   // ==================== STATE MACHINE ====================
 
   const planState = useMemo(() => {
     if (!plan || !trades || trades.length === 0) return null;
+
+    const options = selectedCycleRange
+      ? { targetCycle: selectedCycleRange, targetDate: selectedCycleRange.start }
+      : {};
 
     return computePlanState(trades, {
       pl: Number(plan.pl) || 0,
@@ -61,9 +97,9 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
       cycleGoal: Number(plan.cycleGoal) || 0,
       cycleStop: Number(plan.cycleStop) || 0,
       operationPeriod: plan.operationPeriod || 'Diário',
-      adjustmentCycle: plan.adjustmentCycle || 'Mensal',
-    });
-  }, [plan, trades]);
+      adjustmentCycle: adjustmentCycle,
+    }, options);
+  }, [plan, trades, selectedCycleRange, adjustmentCycle]);
 
   // ==================== DADOS DERIVADOS ====================
 
@@ -74,25 +110,47 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
   }, [planState, selectedPeriod]);
 
   // Rows para a tabela + saldo anterior (carry-over entre períodos)
+  // Também marca cycleEvent quando um trade causa CYCLE_GOAL_HIT ou CYCLE_STOP_HIT
   const { tableRows, carryOver } = useMemo(() => {
     if (!planState) return { tableRows: [], carryOver: 0 };
 
+    // Pré-computar: qual periodKey causou cycle event
+    const cycleEventByPeriod = {};
+    planState.cycleState.events?.forEach(e => {
+      cycleEventByPeriod[e.periodKey] = e.type;
+    });
+
+    // Computar acumulado do ciclo para cada trade (para detectar exatamente qual trade cruzou)
+    const cycleGoalVal = planState.cycleState.summary.goalVal;
+    const cycleStopVal = planState.cycleState.summary.stopVal;
+
     if (selectedPeriod === null) {
-      // Ciclo inteiro: concatenar rows com acumulado contínuo
+      // Ciclo inteiro
       const allRows = [];
       let runningTotal = 0;
+      let cycleTriggered = false;
       for (const periodKey of planState.availablePeriods) {
         const period = planState.cycleState.periods.get(periodKey);
         if (!period) continue;
         for (const row of period.rows) {
           runningTotal += row.result;
-          allRows.push({ ...row, cumPnL: runningTotal });
+          let cycleEvent = null;
+          if (!cycleTriggered) {
+            if (cycleGoalVal > 0 && runningTotal >= cycleGoalVal) {
+              cycleEvent = 'CYCLE_GOAL_HIT';
+              cycleTriggered = true;
+            } else if (cycleStopVal > 0 && runningTotal <= -cycleStopVal) {
+              cycleEvent = 'CYCLE_STOP_HIT';
+              cycleTriggered = true;
+            }
+          }
+          allRows.push({ ...row, cumPnL: runningTotal, cycleEvent });
         }
       }
       return { tableRows: allRows, carryOver: 0 };
     }
 
-    // Período individual: calcular carry-over dos períodos anteriores
+    // Período individual
     let carry = 0;
     for (const periodKey of planState.availablePeriods) {
       if (periodKey === selectedPeriod) break;
@@ -100,93 +158,15 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
       if (period) carry += period.summary.totalPnL;
     }
 
-    // Ajustar cumPnL dos rows com o carry-over
     const periodRows = currentPeriodState?.rows || [];
     const adjustedRows = periodRows.map(row => ({
       ...row,
       cumPnL: carry + row.cumPnL,
+      cycleEvent: null,
     }));
 
     return { tableRows: adjustedRows, carryOver: carry };
   }, [planState, selectedPeriod, currentPeriodState]);
-
-  // Eventos consolidados
-  const allEvents = useMemo(() => {
-    if (!planState) return [];
-    const evts = [];
-
-    // Eventos da state machine (por período)
-    for (const periodKey of planState.availablePeriods) {
-      const period = planState.cycleState.periods.get(periodKey);
-      if (period?.events) {
-        period.events.forEach(e => {
-          evts.push({
-            type: e.type,
-            date: e.timestamp?.split?.('T')?.[0] || periodKey,
-            time: fmtTime(e.timestamp),
-            message: e.type === 'GOAL_HIT'
-              ? `META atingida: ${fmt(e.cumPnL)}`
-              : `STOP atingido: ${fmt(e.cumPnL)}`
-          });
-        });
-      }
-    }
-
-    // Eventos do ciclo
-    planState.cycleState.events?.forEach(e => {
-      evts.push({
-        type: e.type,
-        date: e.periodKey,
-        time: '',
-        message: e.type === 'CYCLE_GOAL_HIT'
-          ? `Meta do Ciclo atingida: ${fmt(e.cycleCumPnL)}`
-          : `Stop do Ciclo atingido: ${fmt(e.cycleCumPnL)}`
-      });
-    });
-
-    // Compliance events
-    for (const row of tableRows) {
-      const trade = row.trade;
-      if (trade.compliance?.roStatus === 'FORA_DO_PLANO') {
-        evts.push({
-          type: 'RO_FORA', date: trade.date, time: fmtTime(trade.entryTime),
-          message: `RO fora do plano: ${trade.ticker} (${(trade.riskPercent || 0).toFixed(1)}%)`
-        });
-      }
-      if (trade.compliance?.rrStatus === 'NAO_CONFORME') {
-        evts.push({
-          type: 'RR_FORA', date: trade.date, time: fmtTime(trade.entryTime),
-          message: `RR não conforme: ${trade.ticker} (${(trade.rrRatio || 0).toFixed(1)}x)`
-        });
-      }
-      const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
-        (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
-      );
-      if (hasNoStop) {
-        evts.push({
-          type: 'NO_STOP', date: trade.date, time: fmtTime(trade.entryTime),
-          message: `Trade sem stop: ${trade.ticker}`
-        });
-      }
-    }
-
-    // Alertas emocionais
-    if (emotional.isReady && emotional.alerts) {
-      emotional.alerts.forEach(a => {
-        if (['TILT_DETECTED', 'REVENGE_DETECTED', 'STATUS_CRITICAL'].includes(a.type)) {
-          evts.push({
-            type: a.type,
-            date: a.timestamp?.split?.('T')?.[0] || '',
-            time: fmtTime(a.timestamp),
-            message: a.message
-          });
-        }
-      });
-    }
-
-    evts.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    return evts;
-  }, [planState, tableRows, emotional, fmt]);
 
   // Dados emocionais para o summary
   const emotionalData = useMemo(() => {
@@ -195,6 +175,19 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
       score: emotional.metrics?.score ?? null,
       statusLabel: emotional.status?.label || '-'
     };
+  }, [emotional]);
+
+  // Eventos emocionais para matching inline na tabela
+  const emotionalEvents = useMemo(() => {
+    if (!emotional.isReady || !emotional.alerts) return [];
+    return emotional.alerts
+      .filter(a => ['TILT_DETECTED', 'REVENGE_DETECTED', 'STATUS_CRITICAL'].includes(a.type))
+      .map(a => ({
+        type: a.type,
+        date: a.timestamp?.split?.('T')?.[0] || '',
+        tradeId: a.tradeId || null,
+        message: a.message,
+      }));
   }, [emotional]);
 
   // ==================== RENDER ====================
@@ -206,7 +199,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
+      <div className="bg-slate-900 border border-slate-800 w-full max-w-7xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
 
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex justify-between items-start">
@@ -226,7 +219,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
           </button>
         </div>
 
-        {/* Period Selector */}
+        {/* Period Selector + Cycle Navigation */}
         {planState && (
           <div className="px-5 py-3 border-b border-slate-800/50 bg-slate-800/10">
             <ExtractPeriodSelector
@@ -235,28 +228,51 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
               onSelectPeriod={setSelectedPeriod}
               operationPeriod={plan.operationPeriod || 'Diário'}
               currentPeriodKey={planState.currentPeriodKey}
+              availableCycles={availableCycles}
+              selectedCycleKey={selectedCycleKey}
+              onSelectCycle={handleSelectCycle}
             />
           </div>
         )}
 
-        <ExtractSummary
-          periodState={currentPeriodState}
-          startPL={startPL}
-          fmt={fmt}
-          emotionalData={emotionalData}
-          isCycleView={isCycleView}
-          cycleSummary={planState?.cycleState?.summary || null}
-          cycleStatus={planState?.cycleState?.status || 'IN_PROGRESS'}
-        />
+        {/* Main content: Cycle Card (lateral) + Summary + Table */}
+        <div className="flex-1 flex overflow-hidden">
 
-        <ExtractTable
-          rows={tableRows}
-          fmt={fmt}
-          getEmotionConfig={getEmotionConfig}
-          carryOver={carryOver}
-        />
+          {/* Cycle Card — lateral esquerda */}
+          {planState && (
+            <div className="w-72 min-w-[288px] border-r border-slate-800/50 bg-slate-900/50 overflow-y-auto hidden lg:flex lg:flex-col">
+              <ExtractCycleCard
+                planState={planState}
+                startPL={startPL}
+                fmt={fmt}
+                selectedPeriod={selectedPeriod}
+                onSelectPeriod={setSelectedPeriod}
+                operationPeriod={plan.operationPeriod || 'Diário'}
+              />
+            </div>
+          )}
 
-        <ExtractEvents events={allEvents} />
+          {/* Conteúdo principal */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <ExtractSummary
+              periodState={currentPeriodState}
+              startPL={startPL}
+              fmt={fmt}
+              emotionalData={emotionalData}
+              isCycleView={isCycleView}
+              cycleSummary={planState?.cycleState?.summary || null}
+              cycleStatus={planState?.cycleState?.status || 'IN_PROGRESS'}
+            />
+
+            <ExtractTable
+              rows={tableRows}
+              fmt={fmt}
+              getEmotionConfig={getEmotionConfig}
+              carryOver={carryOver}
+              emotionalEvents={emotionalEvents}
+            />
+          </div>
+        </div>
 
       </div>
       <DebugBadge component="PlanLedgerExtract" />
