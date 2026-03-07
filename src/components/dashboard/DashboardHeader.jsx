@@ -5,7 +5,7 @@
  *   Extraído do StudentDashboard para modularização.
  */
 
-import { PlusCircle, Filter, Wallet } from 'lucide-react';
+import { PlusCircle, Filter, Wallet, Upload } from 'lucide-react';
 import AccountFilterBar from '../AccountFilterBar';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { isRealAccount } from '../../utils/planCalculations';
@@ -32,6 +32,7 @@ const DashboardHeader = ({
   showFilters,
   onToggleFilters,
   onNewTrade,
+  onCsvImport,
   accounts,
   accountTypeFilter,
   onAccountTypeChange,
@@ -58,9 +59,14 @@ const DashboardHeader = ({
             <Filter className="w-4 h-4" /> Filtros
           </button>
           {!viewAs && (
-            <button onClick={onNewTrade} className="btn-primary flex items-center gap-2">
-              <PlusCircle className="w-5 h-5" /> Novo Trade
-            </button>
+            <>
+              <button onClick={onCsvImport} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:border-amber-500/50 hover:bg-amber-500/20 text-xs font-bold text-amber-400 hover:text-amber-300 transition-all">
+                <Upload className="w-3.5 h-3.5" /> Importar CSV
+              </button>
+              <button onClick={onNewTrade} className="btn-primary flex items-center gap-2">
+                <PlusCircle className="w-5 h-5" /> Novo Trade
+              </button>
+            </>
           )}
         </div>
       </div>
