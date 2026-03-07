@@ -89,14 +89,6 @@ const PlanCardGrid = ({
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      {!viewAs && (
-        <button onClick={onCreatePlan} className="group relative cursor-pointer min-h-[140px] flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-700 hover:border-blue-500 hover:bg-slate-800/30 transition-all">
-          <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition-colors mb-2">
-            <PlusCircle className="w-6 h-6 text-slate-400 group-hover:text-white" />
-          </div>
-          <span className="text-sm font-bold text-slate-400 group-hover:text-white">Criar Novo Plano</span>
-        </button>
-      )}
       {availablePlans.map(plan => {
         const isSelected = selectedPlanId === plan.id;
         const planAccount = accounts.find(a => a.id === plan.accountId);

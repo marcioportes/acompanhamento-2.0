@@ -145,19 +145,31 @@ const CsvImportManager = ({
       alert('Nenhum trade selecionado está completo (precisa emotionEntry + emotionExit + setup).');
       return;
     }
-    if (!confirm(`Ativar ${readyIds.length} trade(s)? Eles serão movidos para o sistema (trades + movements + compliance).`)) return;
-    setProcessing(true);
-    setProgress({ current: 0, total: readyIds.length, label: 'Ativando...' });
+    if (!confirm(`Ativar ${readyIds.length} trade(s)? O painel será fechado durante o processamento.`)) return;
+
+    // Fechar modal ANTES de processar — evita piscar por re-renders do listener
+    setSelectedIds(new Set());
+    onClose();
+
     try {
-      const result = await onActivateBatch(readyIds, (current, total, stats) => {
-        setProgress({ current, total, label: `Ativando... ${stats.success} ok, ${stats.failed} falhas` });
-      });
-      setSelectedIds(new Set());
+      const result = await onActivateBatch(readyIds);
       if (result.failed.length > 0) {
-        alert(`${result.success.length} ativados, ${result.failed.length} falhas:\n${result.failed.map(f => f.error).join('\n')}`);
+        setTimeout(() => alert(`${result.success.length} ativados, ${result.failed.length} falhas:\n${result.failed.map(f => f.error).join('\n')}`), 300);
       }
-    } catch (err) { alert('Erro: ' + err.message); }
-    finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
+    } catch (err) {
+      setTimeout(() => alert('Erro ao ativar: ' + err.message), 300);
+    }
+  };
+
+  /** Ativar trade individual — fecha modal, processa, sem piscar */
+  const handleActivateSingle = async (trade) => {
+    if (!confirm(`Ativar trade ${trade.ticker} ${trade.side}? O painel será fechado durante o processamento.`)) return;
+    onClose();
+    try {
+      await onActivateTrade(trade);
+    } catch (err) {
+      setTimeout(() => alert('Erro ao ativar: ' + err.message), 300);
+    }
   };
 
   // Contadores globais
@@ -295,7 +307,7 @@ const CsvImportManager = ({
                             </span>
                             {isComplete && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); onActivateTrade(trade); }}
+                                onClick={(e) => { e.stopPropagation(); handleActivateSingle(trade); }}
                                 disabled={processing}
                                 className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-emerald-400 hover:bg-emerald-500/10 rounded border border-emerald-500/20 font-bold"
                                 title="Ativar este trade"

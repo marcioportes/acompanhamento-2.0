@@ -249,6 +249,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         onToggleFilters={() => setShowFilters(!showFilters)}
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
         onCsvImport={() => setShowCsvWizard(true)}
+        onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
         accounts={accounts}
         accountTypeFilter={accountTypeFilter}
         onAccountTypeChange={setAccountTypeFilter}
