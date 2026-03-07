@@ -129,6 +129,33 @@ service cloud.firestore {
     }
 
     // ==================================================
+    // CSV IMPORT — STAGING + TEMPLATES (v1.18.0, Issue #23)
+    // ==================================================
+
+    // CSV STAGING TRADES — trades importados aguardando ativação
+    match /csvStagingTrades/{tradeId} {
+      allow read: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId)
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId)
+      );
+    }
+
+    // CSV TEMPLATES — templates de mapeamento CSV (compartilhados)
+    match /csvTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.createdBy)
+      );
+    }
+
+    // ==================================================
     // DADOS MESTRES
     // ==================================================
 

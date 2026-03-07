@@ -10,7 +10,7 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { PlusCircle, FlaskConical, Filter } from 'lucide-react';
+import { PlusCircle, FlaskConical, Filter, Upload } from 'lucide-react';
 import Filters from '../components/Filters';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -18,10 +18,15 @@ import AddTradeModal from '../components/AddTradeModal';
 import AccountFilterBar from '../components/AccountFilterBar';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import CsvImportWizard from '../components/csv/CsvImportWizard';
+import CsvImportCard from '../components/csv/CsvImportCard';
+import CsvImportManager from '../components/csv/CsvImportManager';
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { useSetups } from '../hooks/useSetups';
+import useCsvStaging from '../hooks/useCsvStaging';
+import useMasterData from '../hooks/useMasterData';
 import { filterTradesByPeriod, filterTradesByDateRange, searchTrades } from '../utils/calculations';
 
 // Helpers
@@ -41,6 +46,12 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const { accounts, loading: accountsLoading } = useAccounts();
   const { plans, loading: plansLoading } = usePlans();
   const { setups, loading: setupsLoading } = useSetups();
+  const { emotions, tickers: masterTickers } = useMasterData();
+  const {
+    stagingTrades, pendingCount, readyCount,
+    addStagingBatch, updateStagingTrade, deleteStagingTrade, deleteStagingBatch,
+    activateTrade: activateStagingTrade, activateBatch: activateStagingBatch, getBatches,
+  } = useCsvStaging();
 
   // Estados
   const [showAddModal, setShowAddModal] = useState(false);
@@ -48,6 +59,8 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const [viewingTrade, setViewingTrade] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  const [showCsvWizard, setShowCsvWizard] = useState(false);
+  const [showCsvManager, setShowCsvManager] = useState(false);
   
   // Filtro de contas — mesmo padrão do StudentDashboard via AccountFilterBar
   const [accountTypeFilter, setAccountTypeFilter] = useState('real');
@@ -173,6 +186,15 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
           <button onClick={() => { setEditingTrade(null); setShowAddModal(true); }} className="btn-primary flex items-center gap-2">
             <PlusCircle className="w-5 h-5" /> Novo Trade
           </button>
+          <button onClick={() => setShowCsvWizard(true)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:border-amber-500/50 hover:bg-amber-500/20 text-xs font-bold text-amber-400 hover:text-amber-300 transition-all">
+            <Upload className="w-4 h-4" /> Importar CSV
+          </button>
+          <CsvImportCard
+            totalCount={stagingTrades.length}
+            pendingCount={pendingCount}
+            readyCount={readyCount}
+            onClick={() => setShowCsvManager(true)}
+          />
         </div>
       </div>
 
@@ -218,6 +240,30 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         plans={plans}
         onViewFeedbackHistory={handleViewFeedbackHistory}
         getPartials={getPartials}
+      />
+
+      {/* CSV Import Modais */}
+      {showCsvWizard && (
+        <CsvImportWizard
+          plans={plans.filter(p => p.active !== false)}
+          accounts={accounts}
+          masterTickers={masterTickers}
+          addStagingBatch={addStagingBatch}
+          onClose={() => setShowCsvWizard(false)}
+        />
+      )}
+      <CsvImportManager
+        isOpen={showCsvManager}
+        onClose={() => setShowCsvManager(false)}
+        stagingTrades={stagingTrades}
+        emotions={emotions}
+        setups={setups}
+        onUpdateStagingTrade={updateStagingTrade}
+        onDeleteStagingTrade={deleteStagingTrade}
+        onDeleteStagingBatch={deleteStagingBatch}
+        onActivateTrade={async (t) => { try { await activateStagingTrade(t, addTrade); } catch (err) { alert('Erro: ' + err.message); } }}
+        onActivateBatch={async (ids, onProgress) => activateStagingBatch(ids, addTrade, onProgress)}
+        getBatches={getBatches}
       />
 
       <DebugBadge component="TradesJournal" />

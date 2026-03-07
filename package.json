@@ -31,6 +31,7 @@
     "date-fns": "^4.1.0",
     "firebase": "^12.8.0",
     "lucide-react": "^0.263.1",
+    "papaparse": "^5.5.3",
     "react": "^18.2.0",
     "react-d3-speedometer": "^2.2.1",
     "react-dom": "^18.2.0",

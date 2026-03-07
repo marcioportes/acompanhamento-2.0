@@ -5,7 +5,7 @@
  *   Extraído do StudentDashboard para modularização.
  */
 
-import { PlusCircle, Filter, Wallet } from 'lucide-react';
+import { PlusCircle, Filter, Wallet, Upload, FolderPlus } from 'lucide-react';
 import AccountFilterBar from '../AccountFilterBar';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { isRealAccount } from '../../utils/planCalculations';
@@ -32,6 +32,8 @@ const DashboardHeader = ({
   showFilters,
   onToggleFilters,
   onNewTrade,
+  onCsvImport,
+  onCreatePlan,
   accounts,
   accountTypeFilter,
   onAccountTypeChange,
@@ -58,9 +60,14 @@ const DashboardHeader = ({
             <Filter className="w-4 h-4" /> Filtros
           </button>
           {!viewAs && (
-            <button onClick={onNewTrade} className="btn-primary flex items-center gap-2">
-              <PlusCircle className="w-5 h-5" /> Novo Trade
-            </button>
+            <>
+              <button onClick={onCsvImport} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:border-amber-500/50 hover:bg-amber-500/20 text-xs font-bold text-amber-400 hover:text-amber-300 transition-all">
+                <Upload className="w-3.5 h-3.5" /> Importar CSV
+              </button>
+              <button onClick={onNewTrade} className="btn-primary flex items-center gap-2">
+                <PlusCircle className="w-5 h-5" /> Novo Trade
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -76,6 +83,11 @@ const DashboardHeader = ({
       {/* Card informativo: contas incluídas na seleção — v1.15.0: multi-moeda */}
       {selectedAccountId === 'all' && filteredAccountsByType.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/40 rounded-xl border border-slate-700/30 text-xs text-slate-400 flex-wrap">
+          {!viewAs && (
+            <button onClick={onCreatePlan} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:border-blue-500/50 hover:bg-blue-500/20 text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-all mr-1">
+              <FolderPlus className="w-3 h-3" /> Novo Plano
+            </button>
+          )}
           <Wallet className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
           <span className="text-slate-500 font-medium">
             {accountTypeFilter === 'real' ? 'Reais:' : accountTypeFilter === 'demo' ? 'Demo:' : 'Contas:'}

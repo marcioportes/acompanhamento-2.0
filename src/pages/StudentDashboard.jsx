@@ -17,7 +17,7 @@
  */
 
 import { useState } from 'react';
-import { Wallet, X, Activity } from 'lucide-react';
+import { Wallet, X, Activity, Upload } from 'lucide-react';
 
 // Componentes extraídos
 import DashboardHeader from '../components/dashboard/DashboardHeader';
@@ -41,12 +41,20 @@ import PlanExtractModal from '../components/PlanExtractModal';
 import PlanLedgerExtract from '../components/PlanLedgerExtract';
 import DebugBadge from '../components/DebugBadge';
 
+// CSV Import v2 (staging)
+import CsvImportWizard from '../components/csv/CsvImportWizard';
+import CsvImportCard from '../components/csv/CsvImportCard';
+import CsvImportManager from '../components/csv/CsvImportManager';
+
 // Hooks
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { useAuth } from '../contexts/AuthContext';
 import useDashboardMetrics from '../hooks/useDashboardMetrics';
+import useCsvStaging from '../hooks/useCsvStaging';
+import useMasterData from '../hooks/useMasterData';
+import { useSetups } from '../hooks/useSetups';
 
 // Utils
 import { searchTrades } from '../utils/calculations';
@@ -65,6 +73,18 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const { accounts, loading: accountsLoading, addAccount } = useAccounts(overrideStudentId);
   const { plans, loading: plansLoading, addPlan, updatePlan, deletePlan } = usePlans(overrideStudentId);
 
+  // Master data (emotions, tickers) + setups
+  const { emotions, tickers: masterTickers } = useMasterData();
+  const { setups } = useSetups();
+
+  // CSV Staging
+  const {
+    stagingTrades, pendingCount, readyCount,
+    addStagingBatch, updateStagingTrade, deleteStagingTrade, deleteStagingBatch,
+    activateTrade: activateStagingTrade, activateBatch: activateStagingBatch, getBatches,
+    loading: stagingLoading,
+  } = useCsvStaging(overrideStudentId);
+
   // === UI State ===
   const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -80,6 +100,8 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardComplete, setWizardComplete] = useState(false);
   const [accountTypeFilter, setAccountTypeFilter] = useState('all');
+  const [showCsvWizard, setShowCsvWizard] = useState(false);
+  const [showCsvManager, setShowCsvManager] = useState(false);
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
@@ -114,6 +136,20 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const handleViewFeedbackHistory = (trade) => {
     setViewingTrade(null);
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
+  };
+
+  /** Wrapper para activateTrade que injeta addTrade */
+  const handleActivateStagingTrade = async (stagingTrade) => {
+    try {
+      await activateStagingTrade(stagingTrade, addTrade);
+    } catch (err) {
+      alert('Erro ao ativar trade: ' + err.message);
+    }
+  };
+
+  /** Wrapper para activateBatch que injeta addTrade */
+  const handleActivateStagingBatch = async (tradeIds, onProgress) => {
+    return activateStagingBatch(tradeIds, addTrade, onProgress);
   };
 
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
@@ -212,6 +248,8 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters(!showFilters)}
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
+        onCsvImport={() => setShowCsvWizard(true)}
+        onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
         accounts={accounts}
         accountTypeFilter={accountTypeFilter}
         onAccountTypeChange={setAccountTypeFilter}
@@ -222,6 +260,18 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         dominantCurrency={dominantCurrency}
         balancesByCurrency={balancesByCurrency}
       />
+
+      {/* CSV Import — Card de staging */}
+      {stagingTrades.length > 0 && (
+        <div className="flex items-center">
+          <CsvImportCard
+            totalCount={stagingTrades.length}
+            pendingCount={pendingCount}
+            readyCount={readyCount}
+            onClick={() => setShowCsvManager(true)}
+          />
+        </div>
+      )}
 
       {/* Cards de Planos */}
       <PlanCardGrid
@@ -331,6 +381,30 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
       {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} />)}
+
+      {/* CSV Import Modais */}
+      {showCsvWizard && (
+        <CsvImportWizard
+          plans={plans.filter(p => p.active !== false)}
+          accounts={accounts}
+          masterTickers={masterTickers}
+          addStagingBatch={addStagingBatch}
+          onClose={() => setShowCsvWizard(false)}
+        />
+      )}
+      <CsvImportManager
+        isOpen={showCsvManager}
+        onClose={() => setShowCsvManager(false)}
+        stagingTrades={stagingTrades}
+        emotions={emotions}
+        setups={setups}
+        onUpdateStagingTrade={updateStagingTrade}
+        onDeleteStagingTrade={deleteStagingTrade}
+        onDeleteStagingBatch={deleteStagingBatch}
+        onActivateTrade={handleActivateStagingTrade}
+        onActivateBatch={handleActivateStagingBatch}
+        getBatches={getBatches}
+      />
 
       <DebugBadge component="StudentDashboard" />
     </div>
