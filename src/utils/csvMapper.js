@@ -235,7 +235,7 @@ export const SYSTEM_FIELDS = [
   { key: 'exitTime', label: 'Data/Hora Fechamento', required: false, type: 'datetime' },
   { key: 'buyTimestamp', label: 'Timestamp Compra (para inferência)', required: false, type: 'datetime', group: 'inference' },
   { key: 'sellTimestamp', label: 'Timestamp Venda (para inferência)', required: false, type: 'datetime', group: 'inference' },
-  { key: 'result', label: 'Resultado (R$)', required: false, type: 'number' },
+  { key: 'result', label: 'Resultado', required: false, type: 'number' },
   { key: 'stopLoss', label: 'Stop Loss', required: false, type: 'number' },
 ];
 
