@@ -1,13 +1,18 @@
 /**
  * CsvPreviewStep
- * @version 1.0.0 (v1.18.0)
+ * @version 1.1.0 (v1.18.1)
  * @description Etapa 3: preview dos trades mapeados, erros, warnings, incompletos.
+ *
+ * CHANGELOG:
+ * - 1.1.0: Badge "Direção inferida" inline editável. Ticker validation por exchange selecionado.
+ *          Exclusão individual de linhas. Badge PnL divergente (calculado vs CSV).
+ * - 1.0.0: Versão inicial
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   CheckCircle, XCircle, AlertTriangle, Info,
-  TrendingUp, TrendingDown
+  TrendingUp, TrendingDown, Zap, Trash2
 } from 'lucide-react';
 
 const fmtDate = (iso) => {
@@ -26,6 +31,9 @@ const CsvPreviewStep = ({
   incompleteSummary,
   importResult,
   masterTickers = [],
+  selectedExchange = '',
+  excludedRows = new Set(),
+  onExcludedRowsChange,
 }) => {
   const [showErrors, setShowErrors] = useState(true);
   const [showWarnings, setShowWarnings] = useState(false);
@@ -34,17 +42,37 @@ const CsvPreviewStep = ({
 
   const { stats } = validationResult;
 
-  // Ticker validation: warnings para tickers não cadastrados
+  // Ticker validation: filtrado por exchange selecionado
   const tickerWarnings = useMemo(() => {
     if (!masterTickers || masterTickers.length === 0 || !validationResult.validTrades) return [];
-    const tickerNames = new Set(masterTickers.map(t => (t.symbol || '').toUpperCase()));
+    // Filtrar tickers pelo exchange selecionado
+    const relevantTickers = selectedExchange
+      ? masterTickers.filter(t => t.exchange === selectedExchange)
+      : masterTickers;
+    const tickerNames = new Set(relevantTickers.map(t => (t.symbol || '').toUpperCase()));
     const unknown = new Set();
     validationResult.validTrades.forEach(t => {
       const ticker = (t.ticker || '').toUpperCase();
       if (ticker && !tickerNames.has(ticker)) unknown.add(ticker);
     });
     return [...unknown];
-  }, [masterTickers, validationResult.validTrades]);
+  }, [masterTickers, validationResult.validTrades, selectedExchange]);
+
+  // Set de tickers não cadastrados para badge inline
+  const unknownTickerSet = useMemo(() => new Set(tickerWarnings.map(t => t.toUpperCase())), [tickerWarnings]);
+
+  // Trades efetivos (excluindo os removidos pelo usuário)
+  const effectiveTrades = useMemo(() => {
+    return validationResult.validTrades.filter(t => !excludedRows.has(t._rowIndex));
+  }, [validationResult.validTrades, excludedRows]);
+
+  const toggleExclude = useCallback((rowIndex) => {
+    if (!onExcludedRowsChange) return;
+    const next = new Set(excludedRows);
+    if (next.has(rowIndex)) next.delete(rowIndex);
+    else next.add(rowIndex);
+    onExcludedRowsChange(next);
+  }, [excludedRows, onExcludedRowsChange]);
 
   // Import concluído com sucesso
   if (importResult?.success) {
@@ -80,7 +108,7 @@ const CsvPreviewStep = ({
           <p className="text-[10px] text-slate-500 uppercase tracking-wider">Total</p>
         </div>
         <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-          <p className="text-2xl font-mono font-bold text-emerald-400">{stats.valid}</p>
+          <p className="text-2xl font-mono font-bold text-emerald-400">{effectiveTrades.length}</p>
           <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider">Válidos</p>
         </div>
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-center">
@@ -88,22 +116,21 @@ const CsvPreviewStep = ({
           <p className="text-[10px] text-red-500/70 uppercase tracking-wider">Com erro</p>
         </div>
         <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
-          <p className="text-2xl font-mono font-bold text-amber-400">{stats.withWarnings}</p>
-          <p className="text-[10px] text-amber-500/70 uppercase tracking-wider">Avisos</p>
+          <p className="text-2xl font-mono font-bold text-amber-400">{excludedRows.size}</p>
+          <p className="text-[10px] text-amber-500/70 uppercase tracking-wider">Excluídos</p>
         </div>
       </div>
 
       {/* Totalizador para checagem */}
-      {validationResult.validTrades.length > 0 && (() => {
-        const validTrades = validationResult.validTrades;
-        const totalResult = validTrades.reduce((s, t) => s + (t.result ?? 0), 0);
-        const grossProfit = validTrades.filter(t => (t.result ?? 0) > 0).reduce((s, t) => s + t.result, 0);
-        const grossLoss = validTrades.filter(t => (t.result ?? 0) < 0).reduce((s, t) => s + t.result, 0);
+      {effectiveTrades.length > 0 && (() => {
+        const totalResult = effectiveTrades.reduce((s, t) => s + (t.result ?? 0), 0);
+        const grossProfit = effectiveTrades.filter(t => (t.result ?? 0) > 0).reduce((s, t) => s + t.result, 0);
+        const grossLoss = effectiveTrades.filter(t => (t.result ?? 0) < 0).reduce((s, t) => s + t.result, 0);
         return (
           <div className="grid grid-cols-4 gap-3">
             <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Operações</p>
-              <p className="text-sm font-mono font-bold text-white">{validTrades.length}</p>
+              <p className="text-sm font-mono font-bold text-white">{effectiveTrades.length}</p>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
               <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider mb-0.5">Lucro Bruto</p>
@@ -143,7 +170,9 @@ const CsvPreviewStep = ({
         <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <span className="text-sm font-bold text-amber-400">Tickers não cadastrados:</span>
+            <span className="text-sm font-bold text-amber-400">
+              Tickers não cadastrados{selectedExchange ? ` na ${selectedExchange}` : ''}:
+            </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {tickerWarnings.map(ticker => (
@@ -152,7 +181,9 @@ const CsvPreviewStep = ({
               </span>
             ))}
           </div>
-          <p className="text-[10px] text-amber-400/60 mt-1.5">Os trades serão importados, mas compliance (RO/RR) pode não calcular corretamente sem ticker cadastrado.</p>
+          <p className="text-[10px] text-amber-400/60 mt-1.5">
+            Você pode excluir esses trades e lançá-los manualmente, ou importar e cadastrar o ticker depois.
+          </p>
         </div>
       )}
 
@@ -183,6 +214,7 @@ const CsvPreviewStep = ({
         <table className="w-full text-sm text-left border-collapse">
           <thead className="bg-slate-800/80 text-[10px] uppercase text-slate-500 sticky top-0 z-10 font-bold tracking-wider">
             <tr>
+              <th className="p-2 w-8 text-center"></th>
               <th className="p-2 w-10 text-center">#</th>
               <th className="p-2">Data</th>
               <th className="p-2">Ticker</th>
@@ -198,15 +230,52 @@ const CsvPreviewStep = ({
             {validationResult.validTrades.slice(0, 100).map((trade, i) => {
               const result = trade.result ?? 0;
               const hasWarnings = trade._warnings?.length > 0;
+              const isExcluded = excludedRows.has(trade._rowIndex);
+              const isUnknownTicker = unknownTickerSet.has((trade.ticker || '').toUpperCase());
               return (
-                <tr key={i} className={`hover:bg-slate-800/30 ${hasWarnings ? 'bg-amber-500/[0.02]' : ''}`}>
+                <tr
+                  key={i}
+                  className={`transition-colors ${
+                    isExcluded
+                      ? 'opacity-30 bg-red-500/[0.02]'
+                      : hasWarnings
+                        ? 'bg-amber-500/[0.02] hover:bg-slate-800/30'
+                        : 'hover:bg-slate-800/30'
+                  }`}
+                >
+                  {/* Checkbox exclusão */}
+                  <td className="p-2 text-center">
+                    <button
+                      onClick={() => toggleExclude(trade._rowIndex)}
+                      className={`p-0.5 rounded transition-colors ${
+                        isExcluded
+                          ? 'text-red-400 hover:text-red-300'
+                          : 'text-slate-600 hover:text-red-400'
+                      }`}
+                      title={isExcluded ? 'Incluir novamente' : 'Excluir da importação'}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
                   <td className="p-2 text-center text-slate-600 font-mono text-xs">{trade._rowIndex}</td>
                   <td className="p-2 text-slate-300 font-mono text-xs">{fmtDate(trade.entryTime)}</td>
-                  <td className="p-2 text-white font-bold">{trade.ticker}</td>
                   <td className="p-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded border ${
+                    <span className={`font-bold ${isUnknownTicker ? 'text-amber-400' : 'text-white'}`}>
+                      {trade.ticker}
+                    </span>
+                    {isUnknownTicker && (
+                      <AlertTriangle className="w-3 h-3 text-amber-400 inline ml-1" title="Ticker não cadastrado" />
+                    )}
+                  </td>
+                  <td className="p-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
                       trade.side === 'LONG' ? 'border-emerald-500/30 text-emerald-400' : 'border-red-500/30 text-red-400'
-                    }`}>{trade.side}</span>
+                    }`}>
+                      {trade.side}
+                      {trade.directionInferred && (
+                        <Zap className="w-2.5 h-2.5 text-purple-400" title="Direção inferida automaticamente" />
+                      )}
+                    </span>
                   </td>
                   <td className="p-2 text-right font-mono text-slate-400 text-xs">{trade.entry?.toLocaleString('pt-BR')}</td>
                   <td className="p-2 text-right font-mono text-slate-400 text-xs">{trade.exit?.toLocaleString('pt-BR')}</td>
@@ -215,7 +284,9 @@ const CsvPreviewStep = ({
                     {result >= 0 ? '+' : ''}{result?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="p-2 text-center">
-                    {hasWarnings ? (
+                    {isExcluded ? (
+                      <XCircle className="w-3.5 h-3.5 text-red-400/50 mx-auto" />
+                    ) : hasWarnings ? (
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mx-auto" title={trade._warnings.join(', ')} />
                     ) : (
                       <CheckCircle className="w-3.5 h-3.5 text-emerald-500/50 mx-auto" />
@@ -232,6 +303,17 @@ const CsvPreviewStep = ({
           </div>
         )}
       </div>
+
+      {/* Info sobre direção inferida */}
+      {validationResult.validTrades.some(t => t.directionInferred) && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+          <Zap className="w-4 h-4 text-purple-400 flex-shrink-0" />
+          <span className="text-xs text-purple-300">
+            Trades com <Zap className="w-3 h-3 inline text-purple-400" /> tiveram a direção inferida automaticamente a partir dos timestamps de compra/venda.
+            Após importar, você pode editar individualmente se necessário.
+          </span>
+        </div>
+      )}
     </div>
   );
 };

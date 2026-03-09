@@ -69,6 +69,8 @@ const useCsvStaging = (overrideStudentId = null) => {
       );
     }
 
+    let fallbackUnsub = null;
+
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -83,20 +85,32 @@ const useCsvStaging = (overrideStudentId = null) => {
           ? query(collection(db, COLLECTION), where('studentId', '==', targetId))
           : query(collection(db, COLLECTION));
 
-        onSnapshot(fallbackQ, (snap) => {
-          const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          data.sort((a, b) => {
-            const aTime = a.createdAt?.seconds ?? 0;
-            const bTime = b.createdAt?.seconds ?? 0;
-            return bTime - aTime;
-          });
-          setStagingTrades(data);
-          setLoading(false);
-        });
+        fallbackUnsub = onSnapshot(
+          fallbackQ,
+          (snap) => {
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            data.sort((a, b) => {
+              const aTime = a.createdAt?.seconds ?? 0;
+              const bTime = b.createdAt?.seconds ?? 0;
+              return bTime - aTime;
+            });
+            setStagingTrades(data);
+            setLoading(false);
+          },
+          (fallbackErr) => {
+            console.error('[useCsvStaging] Fallback error:', fallbackErr);
+            setStagingTrades([]);
+            setLoading(false);
+            setError(fallbackErr.message);
+          }
+        );
       }
     );
 
-    return () => unsub();
+    return () => {
+      unsub();
+      if (fallbackUnsub) fallbackUnsub();
+    };
   }, [user, isMentor, overrideStudentId]);
 
   // ============================================
@@ -139,6 +153,7 @@ const useCsvStaging = (overrideStudentId = null) => {
           resultOverride: trade.resultOverride ?? null,
           stopLoss: trade.stopLoss ?? null,
           exchange: trade.exchange ?? null,
+          directionInferred: trade.directionInferred ?? false,
 
           // Complemento do aluno (preenchido depois)
           emotionEntry: trade.emotionEntry ?? null,
@@ -218,28 +233,27 @@ const useCsvStaging = (overrideStudentId = null) => {
   const deleteStagingBatch = useCallback(async (batchId) => {
     if (!user) throw new Error('Autenticação necessária');
 
-    const q = query(
-      collection(db, COLLECTION),
-      where('importBatchId', '==', batchId)
-    );
-    const snap = await getDocs(q);
+    // Usar trades já em memória (do listener) em vez de query
+    // Isso evita necessidade de índice composto e satisfaz security rules
+    // (deleteDoc individual usa get, não list)
+    const batchTrades = stagingTrades.filter(t => t.importBatchId === batchId);
 
-    if (snap.empty) return 0;
+    if (batchTrades.length === 0) return 0;
 
     const BATCH_SIZE = 450;
     let deleted = 0;
 
-    for (let i = 0; i < snap.docs.length; i += BATCH_SIZE) {
-      const chunk = snap.docs.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < batchTrades.length; i += BATCH_SIZE) {
+      const chunk = batchTrades.slice(i, i + BATCH_SIZE);
       const batch = writeBatch(db);
-      chunk.forEach(d => batch.delete(d.ref));
+      chunk.forEach(t => batch.delete(doc(db, COLLECTION, t.id)));
       await batch.commit();
       deleted += chunk.length;
     }
 
     console.log(`[useCsvStaging] Batch ${batchId}: ${deleted} trades deletados do staging`);
     return deleted;
-  }, [user]);
+  }, [user, stagingTrades]);
 
   // ============================================
   // ACTIVATE — move trade do staging para trades via addTrade

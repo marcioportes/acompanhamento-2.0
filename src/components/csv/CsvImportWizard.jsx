@@ -1,12 +1,16 @@
 /**
  * CsvImportWizard
- * @version 2.0.0 (v1.18.0)
+ * @version 2.1.0 (v1.18.1)
  * @description Wizard de importação de CSV em 3 etapas.
  *   Etapa 1: Upload + seleção de plano + template
  *   Etapa 2: Mapeamento de colunas + valueMap + salvar template
  *   Etapa 3: Preview + validação + confirmação → grava em csvStagingTrades
  *
  * CHANGELOG:
+ * - 2.1.0: canAdvance relaxado para modo inferência (side + entryTime opcionais).
+ *          Carrega exchanges do Firestore internamente.
+ *          Exchange default vazio (obrigatório selecionar).
+ *          Passa exchanges para CsvMappingStep.
  * - 2.0.0: Grava em csvStagingTrades (staging) em vez de trades. Zero interação com useTrades/CFs.
  * - 1.0.0: Versão inicial (descartada — gravava na collection trades)
  *
@@ -20,7 +24,9 @@
  *   />
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { X, Upload, Link2, Eye, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import useCsvTemplates from '../../hooks/useCsvTemplates';
 import { parseCSV } from '../../utils/csvParser';
@@ -44,6 +50,24 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
 
+  // === STATE: Exchanges (carregado internamente) ===
+  const [exchanges, setExchanges] = useState([]);
+
+  useEffect(() => {
+    const loadExchanges = async () => {
+      try {
+        const q = query(collection(db, 'exchanges'), where('active', '==', true));
+        const snap = await getDocs(q);
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+        setExchanges(list);
+      } catch (err) {
+        console.error('[CsvImportWizard] Erro ao carregar exchanges:', err);
+      }
+    };
+    loadExchanges();
+  }, []);
+
   // === STATE: Etapa 1 (Upload) ===
   const [csvData, setCsvData] = useState(null);
   const [selectedPlanId, setSelectedPlanId] = useState('');
@@ -53,11 +77,14 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   // === STATE: Etapa 2 (Mapeamento) ===
   const [mapping, setMapping] = useState({});
   const [valueMap, setValueMap] = useState({ side: { 'C': 'LONG', 'V': 'SHORT', 'Compra': 'LONG', 'Venda': 'SHORT' } });
-  const [defaults, setDefaults] = useState({ exchange: 'B3' });
+  const [defaults, setDefaults] = useState({ exchange: '' });
   const [dateFormat, setDateFormat] = useState('');
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templatePlatform, setTemplatePlatform] = useState('');
+
+  // === STATE: Etapa 3 (Preview) — linhas excluídas pelo usuário ===
+  const [excludedRows, setExcludedRows] = useState(new Set());
 
   // === STATE: Etapa 3 (Preview) ===
   const mappedResult = useMemo(() => {
@@ -74,6 +101,21 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     if (!validationResult) return [];
     return getIncompleteSummary(validationResult.validTrades);
   }, [validationResult]);
+
+  // Validar tickers contra o exchange selecionado — bloqueia envio para staging
+  const hasInvalidTickers = useMemo(() => {
+    if (!validationResult?.validTrades?.length || !defaults.exchange) return false;
+    if (!masterTickers || masterTickers.length === 0) return false;
+    const relevantTickers = masterTickers.filter(t => t.exchange === defaults.exchange);
+    const tickerNames = new Set(relevantTickers.map(t => (t.symbol || '').toUpperCase()));
+    // Considerar apenas trades NÃO excluídos
+    return validationResult.validTrades
+      .filter(t => !excludedRows.has(t._rowIndex))
+      .some(t => {
+        const ticker = (t.ticker || '').toUpperCase();
+        return ticker && !tickerNames.has(ticker);
+      });
+  }, [validationResult, masterTickers, defaults.exchange, excludedRows]);
 
   // === HANDLERS ===
 
@@ -92,7 +134,7 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     if (!tpl) return;
     setMapping(tpl.mapping || {});
     setValueMap(tpl.valueMap || { side: { 'C': 'LONG', 'V': 'SHORT' } });
-    setDefaults(tpl.defaults || { exchange: 'B3' });
+    setDefaults(tpl.defaults || { exchange: '' });
     setDateFormat(tpl.dateFormat || '');
   };
 
@@ -104,7 +146,7 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     } else {
       setMapping({});
       setValueMap({ side: { 'C': 'LONG', 'V': 'SHORT', 'Compra': 'LONG', 'Venda': 'SHORT' } });
-      setDefaults({ exchange: 'B3' });
+      setDefaults({ exchange: '' });
     }
   };
 
@@ -136,21 +178,23 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     setImportResult(null);
 
     try {
-      const tradesToStage = validationResult.validTrades.map(t => {
-        const { _rowIndex, _hasErrors, _errors, _warnings, ...cleanTrade } = t;
-        return {
-          ...cleanTrade,
-          resultOverride: cleanTrade.result ?? null,
-        };
-      });
+      const tradesToStage = validationResult.validTrades
+        .filter(t => !excludedRows.has(t._rowIndex))
+        .map(t => {
+          const { _rowIndex, _hasErrors, _errors, _warnings, ...cleanTrade } = t;
+          return {
+            ...cleanTrade,
+            resultOverride: cleanTrade.result ?? null,
+          };
+        });
 
-      const templateName = selectedTemplateId
+      const templateNameForMeta = selectedTemplateId
         ? (templates.find(tpl => tpl.id === selectedTemplateId)?.name || 'Manual')
         : 'Manual';
 
       const batchId = await addStagingBatch(tradesToStage, {
         planId: selectedPlanId,
-        importTemplateName: templateName,
+        importTemplateName: templateNameForMeta,
         importSource: 'csv',
       });
 
@@ -163,11 +207,30 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   };
 
   // === VALIDAÇÃO DE STEP ===
+  /**
+   * canAdvance v2: suporta modo inferência.
+   * Modo padrão: ticker + side + qty + entryTime + (buyPrice/sellPrice OU entry/exit)
+   * Modo inferência: ticker + qty + buyPrice + sellPrice + buyTimestamp + sellTimestamp (side/entryTime inferidos)
+   * Ambos: exchange obrigatório
+   */
   const canAdvance = () => {
     if (currentStep === 0) return csvData && csvData.rowCount > 0 && selectedPlanId;
     if (currentStep === 1) {
-      const coreRequired = ['ticker', 'side', 'qty', 'entryTime'];
-      if (!coreRequired.every(f => mapping[f])) return false;
+      // Exchange obrigatório
+      if (!defaults.exchange) return false;
+
+      // Ticker e qty sempre obrigatórios
+      if (!mapping.ticker || !mapping.qty) return false;
+
+      // Modo inferência: side não mapeado, mas campos de inferência sim
+      const hasInference = !mapping.side &&
+        mapping.buyTimestamp && mapping.sellTimestamp &&
+        mapping.buyPrice && mapping.sellPrice;
+
+      if (hasInference) return true;
+
+      // Modo padrão: side + entryTime + (buyPrice/sellPrice OU entry/exit)
+      if (!mapping.side || !mapping.entryTime) return false;
       const hasBuySell = mapping.buyPrice && mapping.sellPrice;
       const hasEntryExit = mapping.entry && mapping.exit;
       return hasBuySell || hasEntryExit;
@@ -243,6 +306,7 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
               valueMap={valueMap}
               defaults={defaults}
               dateFormat={dateFormat}
+              exchanges={exchanges}
               onMappingChange={setMapping}
               onValueMapChange={setValueMap}
               onDefaultsChange={setDefaults}
@@ -262,6 +326,9 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
               incompleteSummary={incompleteSummary}
               importResult={importResult}
               masterTickers={masterTickers}
+              selectedExchange={defaults.exchange}
+              excludedRows={excludedRows}
+              onExcludedRowsChange={setExcludedRows}
             />
           )}
         </div>
@@ -289,11 +356,12 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
           ) : (
             <button
               onClick={handleImport}
-              disabled={importing || !validationResult?.validTrades?.length}
+              disabled={importing || !validationResult?.validTrades?.length || hasInvalidTickers}
               className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-bold disabled:opacity-30"
+              title={hasInvalidTickers ? 'Exclua trades com tickers não cadastrados antes de enviar' : ''}
             >
               {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {importing ? 'Gravando...' : `Enviar ${validationResult?.stats?.valid || 0} para staging`}
+              {importing ? 'Gravando...' : hasInvalidTickers ? 'Tickers inválidos — exclua ou cadastre' : `Enviar ${(validationResult?.stats?.valid || 0) - excludedRows.size} para staging`}
             </button>
           )}
         </div>

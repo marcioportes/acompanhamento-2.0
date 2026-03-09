@@ -73,6 +73,9 @@ trades (write)
 ### INV-07: Autorização Antes de Codificar
 **Antes de codificar qualquer feature nova ou mudança arquitetural — especialmente qualquer coisa que toque Firestore collections, campos de status, ou Cloud Functions — a proposta deve ser apresentada ao Marcio para autorização explícita.**
 
+### INV-08: CHANGELOG Obrigatório
+**Toda versão (major, minor, patch) DEVE ter entrada no `/docs/CHANGELOG.md` antes do merge.** O CHANGELOG segue formato [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/) com seções: Adicionado, Modificado, Corrigido, Removido, Testes. Claude deve propor a entrada do CHANGELOG como parte da fase de documentação de cada issue.
+
 ---
 
 ## 3. Mapa de Dependências Críticas
@@ -195,17 +198,42 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 
 ---
 
+### DEC-003: Inferência Genérica de Direção no CSV Import (08/03/2026)
+
+**Contexto:** CSV da Tradovate (Performance tab) não traz coluna de direção (side). Traz `buyPrice`, `sellPrice`, `boughtTimestamp`, `soldTimestamp` separados.
+
+**Proposta Haiku (REJEITADA):** Criar transformer específico `csvTransformTradovate.js` com detecção de formato por nome de broker.
+
+**Problema:** Abordagem não escalável. Cada broker novo exigiria um transformer dedicado. Naming acoplado a vendor. O problema é genérico: qualquer CSV sem coluna de direção.
+
+**Decisão (APROVADA):** Inferência genérica no `csvMapper.js`. Quando o usuário não mapeia `side` mas mapeia `buyTimestamp` + `sellTimestamp` + `buyPrice` + `sellPrice`, o sistema ativa modo inferência automaticamente:
+- Heurística cronológica: `buyTimestamp < sellTimestamp` → LONG, vice-versa → SHORT
+- Flag `directionInferred: true` no trade para rastreabilidade
+- `entryTime`/`exitTime` calculados a partir do timestamp mais antigo/recente
+- `parseNumericValue` com suporte a PnL em formato US com parênteses: `$(93.00)` → -93.00
+
+**Mudanças em SYSTEM_FIELDS:** `side` mudou de `required: true` para `required: false` (inferível). Novos campos `buyTimestamp`, `sellTimestamp` (opcionais, grupo `inference`). `canAdvance` do wizard relaxado para aceitar modo inferência.
+
+**Validação:** 14/14 linhas do Performance.csv Tradovate processadas corretamente. 62 novos testes. Zero regressão nos 253 existentes.
+
+**Zero impacto em:** Cloud Functions, `useTrades`, `addTrade`, collections de produção. Inferência acontece 100% pré-staging.
+
+**Lição:** Quando o problema parece vendor-specific, provavelmente é genérico. Identificar a abstração correta (ausência de direção) vs o sintoma (formato Tradovate) evita proliferação de código.
+
+---
+
 ## 6. Dívidas Técnicas Ativas
 
 | ID | Descrição | Prioridade | Origem |
 |----|-----------|-----------|--------|
-| DT-001 | PL do plano "Clear-DT" poluído por trades IMPORTED antes do guard na CF | CRÍTICA | Issue #23 v1 |
+| DT-001 | PL do plano "Clear-DT" poluído por trades IMPORTED antes do guard na CF | CRÍTICA | Issue #23 v1 — **RESOLVIDO** 07/03 (PL corrigido manualmente) |
 | DT-002 | Cycle transitions sem fechamento formal precisam registrar PL de entrada do novo ciclo | ALTA | v1.17.0 |
-| DT-003 | Trades IMPORTED ainda visíveis em TradingCalendar, FeedbackPage, PlanLedgerExtract, MentorDashboard | ALTA | Issue #23 v1 |
+| DT-003 | Trades IMPORTED ainda visíveis em TradingCalendar, FeedbackPage, PlanLedgerExtract, MentorDashboard | ALTA | Issue #23 v1 — **RESOLVIDO** 07/03 (trades limpos do Firestore) |
 | DT-004 | AccountStatement week filter usa convenção US (fix: `day === 0 ? 6 : day - 1`) | MÉDIA | v1.18.0 |
 | DT-005 | `useSetups` deve tratar `isGlobal === undefined` como `true` | MÉDIA | v1.18.0 |
 | DT-006 | Ticker alias auto-matching (WIN[A-Z]\d{2} → WINFUT) | BAIXA | v1.18.0 |
 | DT-007 | Fix DebugBadge duplo no ComplianceConfigPage embedded | BAIXA | Backlog |
+| DT-008 | formatCurrency hardcoded R$ em MentorDashboard e labels SYSTEM_FIELDS | BAIXA | v1.18.1 — label corrigido em csvMapper |
 
 ---
 
@@ -234,6 +262,7 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 
 | Versão | Data | Destaques |
 |--------|------|-----------|
+| v1.18.1 | Mar/2026 | Inferência genérica de direção (DEC-003), parseNumericValue com formato US/parênteses, Step 2 redesign (Exchange dropdown, formato data no topo, badges), ticker validation por exchange, exclusão de linhas no preview |
 | v1.18.0 | Mar/2026 | CSV Import Wizard (v1 → v2 refactor), AddTradeModal paste/drop images |
 | v1.17.0 | Mar/2026 | Cycle navigation, gauge charts, period selectors, META!/STOP! labels, test seed |
 | v1.15-16 | Mar/2026 | Multi-currency, StudentDashboard partition (698→340 lines), state machine |
@@ -241,6 +270,31 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | v1.9-10 | Fev/2026 | Sistema Emocional v2.0, TILT/REVENGE detection, PlanLedgerExtract |
 | v1.5-8 | Fev/2026 | Trade partials, ticker management, futures pricing, student security |
 | v1.0-4 | Jan-Fev/2026 | Scaffolding, 42 issues, arquitetura base, emotional control framework |
+
+---
+
+## 9. Roadmap — Features Futuras Documentadas
+
+> **Features discutidas, especificadas ou parcialmente desenhadas mas NÃO implementadas.** Servem de referência para sessões futuras.
+
+### ROAD-01: Order Matching Engine — Importação de Ordens (v1.19.0+)
+
+**Contexto (08/03/2026):** O módulo CSV Import v1.18.x suporta CSVs com trades consolidados (1 linha = 1 operação fechada). Brokers como Tradovate (aba Orders) e ProfitChart-Pro exportam **ordens individuais** (múltiplas linhas = 1 operação). Ex: 3 compras de 2 contratos + 1 venda de 6 = 4 linhas → 1 trade com 3 parciais.
+
+**Solução aprovada (design):** Duas entradas no wizard: "Importar Trades (Performance)" e "Importar Ordens". O modo ordens usa um algoritmo FIFO de matching por símbolo:
+1. Ordena execuções cronologicamente por símbolo
+2. Acumula posição: BUY +qty, SELL -qty
+3. Quando posição = 0 → fecha o trade, calcula preço médio ponderado
+4. Cada grupo de execuções de entrada vira um `partial` na subcollection (infraestrutura já existe, Issue #13 v1.5.0)
+5. Resultado vai para staging via `addTrade` com partials (INV-01/INV-02 respeitadas)
+
+**Referência:** TradesViz usa FIFO com opções de split por flat-position ou por símbolo. TradeZella exige export pela aba Orders com coluna B/S.
+
+**Estimativa:** ~8-12h (4 camadas: matching engine puro JS ~3h, order CSV parsers ~2h, wizard integration ~3h, partials mapping ~2h).
+
+**Benefício:** Resolve qualquer broker que exporte ordens. Gera parciais automaticamente. ProfitChart-Pro, NinjaTrader Orders, Tradovate Orders ficam todos cobertos.
+
+**Pré-requisito:** v1.18.1 mergeada (inferência de direção + redesign wizard).
 
 ---
 

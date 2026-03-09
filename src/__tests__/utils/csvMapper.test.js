@@ -13,7 +13,9 @@ import {
   buildTradeFromRow,
   applyMapping,
   getMissingFields,
+  parseNumericValue,
   REQUIRED_FIELDS,
+  REQUIRED_FIELDS_INFERRED,
 } from '../../utils/csvMapper';
 
 // ============================================
