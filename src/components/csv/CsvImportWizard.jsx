@@ -83,6 +83,9 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   const [templateName, setTemplateName] = useState('');
   const [templatePlatform, setTemplatePlatform] = useState('');
 
+  // === STATE: Etapa 3 (Preview) — linhas excluídas pelo usuário ===
+  const [excludedRows, setExcludedRows] = useState(new Set());
+
   // === STATE: Etapa 3 (Preview) ===
   const mappedResult = useMemo(() => {
     if (!csvData || !mapping || Object.keys(mapping).length === 0) return null;
@@ -98,6 +101,21 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     if (!validationResult) return [];
     return getIncompleteSummary(validationResult.validTrades);
   }, [validationResult]);
+
+  // Validar tickers contra o exchange selecionado — bloqueia envio para staging
+  const hasInvalidTickers = useMemo(() => {
+    if (!validationResult?.validTrades?.length || !defaults.exchange) return false;
+    if (!masterTickers || masterTickers.length === 0) return false;
+    const relevantTickers = masterTickers.filter(t => t.exchange === defaults.exchange);
+    const tickerNames = new Set(relevantTickers.map(t => (t.symbol || '').toUpperCase()));
+    // Considerar apenas trades NÃO excluídos
+    return validationResult.validTrades
+      .filter(t => !excludedRows.has(t._rowIndex))
+      .some(t => {
+        const ticker = (t.ticker || '').toUpperCase();
+        return ticker && !tickerNames.has(ticker);
+      });
+  }, [validationResult, masterTickers, defaults.exchange, excludedRows]);
 
   // === HANDLERS ===
 
@@ -160,13 +178,15 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     setImportResult(null);
 
     try {
-      const tradesToStage = validationResult.validTrades.map(t => {
-        const { _rowIndex, _hasErrors, _errors, _warnings, ...cleanTrade } = t;
-        return {
-          ...cleanTrade,
-          resultOverride: cleanTrade.result ?? null,
-        };
-      });
+      const tradesToStage = validationResult.validTrades
+        .filter(t => !excludedRows.has(t._rowIndex))
+        .map(t => {
+          const { _rowIndex, _hasErrors, _errors, _warnings, ...cleanTrade } = t;
+          return {
+            ...cleanTrade,
+            resultOverride: cleanTrade.result ?? null,
+          };
+        });
 
       const templateNameForMeta = selectedTemplateId
         ? (templates.find(tpl => tpl.id === selectedTemplateId)?.name || 'Manual')
@@ -307,6 +327,8 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
               importResult={importResult}
               masterTickers={masterTickers}
               selectedExchange={defaults.exchange}
+              excludedRows={excludedRows}
+              onExcludedRowsChange={setExcludedRows}
             />
           )}
         </div>
@@ -334,11 +356,12 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
           ) : (
             <button
               onClick={handleImport}
-              disabled={importing || !validationResult?.validTrades?.length}
+              disabled={importing || !validationResult?.validTrades?.length || hasInvalidTickers}
               className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg shadow-lg flex items-center gap-2 text-sm font-bold disabled:opacity-30"
+              title={hasInvalidTickers ? 'Exclua trades com tickers não cadastrados antes de enviar' : ''}
             >
               {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {importing ? 'Gravando...' : `Enviar ${validationResult?.stats?.valid || 0} para staging`}
+              {importing ? 'Gravando...' : hasInvalidTickers ? 'Tickers inválidos — exclua ou cadastre' : `Enviar ${(validationResult?.stats?.valid || 0) - excludedRows.size} para staging`}
             </button>
           )}
         </div>

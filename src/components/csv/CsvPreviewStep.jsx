@@ -32,11 +32,11 @@ const CsvPreviewStep = ({
   importResult,
   masterTickers = [],
   selectedExchange = '',
-  onExcludeTrades,
+  excludedRows = new Set(),
+  onExcludedRowsChange,
 }) => {
   const [showErrors, setShowErrors] = useState(true);
   const [showWarnings, setShowWarnings] = useState(false);
-  const [excludedRows, setExcludedRows] = useState(new Set());
 
   if (!mappedResult || !validationResult) return null;
 
@@ -67,13 +67,12 @@ const CsvPreviewStep = ({
   }, [validationResult.validTrades, excludedRows]);
 
   const toggleExclude = useCallback((rowIndex) => {
-    setExcludedRows(prev => {
-      const next = new Set(prev);
-      if (next.has(rowIndex)) next.delete(rowIndex);
-      else next.add(rowIndex);
-      return next;
-    });
-  }, []);
+    if (!onExcludedRowsChange) return;
+    const next = new Set(excludedRows);
+    if (next.has(rowIndex)) next.delete(rowIndex);
+    else next.add(rowIndex);
+    onExcludedRowsChange(next);
+  }, [excludedRows, onExcludedRowsChange]);
 
   // Import concluído com sucesso
   if (importResult?.success) {
