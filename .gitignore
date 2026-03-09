@@ -52,3 +52,5 @@ ui-debug.log
 # Misc
 # ==============================
 coverage/
+
+Temp/

@@ -43,8 +43,8 @@ const formatCurrency = (value, currency = 'USD') => {
   if (value === null || value === undefined) return '-';
   const config = {
     BRL: { locale: 'pt-BR', currency: 'BRL' },
-    USD: { locale: 'en-US', currency: 'USD' },
-    EUR: { locale: 'de-DE', currency: 'EUR' }
+    USD: { locale: 'pt-BR', currency: 'USD' },
+    EUR: { locale: 'pt-BR', currency: 'EUR' }
   };
   const cfg = config[currency] || config.USD;
   return new Intl.NumberFormat(cfg.locale, {

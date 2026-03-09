@@ -296,8 +296,7 @@ export const searchTrades = (trades, query) => {
 
 export const formatCurrency = (value, currency = 'BRL') => {
   try {
-    const c = { BRL: { l: 'pt-BR', c: 'BRL' }, USD: { l: 'en-US', c: 'USD' }, EUR: { l: 'de-DE', c: 'EUR' } }[currency] || { l: 'pt-BR', c: 'BRL' };
-    return new Intl.NumberFormat(c.l, { style: 'currency', currency: c.c }).format(value || 0);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: currency || 'BRL' }).format(value || 0);
   } catch (e) { return "R$ 0,00"; }
 };
 

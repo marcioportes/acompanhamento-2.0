@@ -187,8 +187,8 @@ export const roundToTick = (price, tickSize) => {
 export const formatCurrencyValue = (value, currency = 'BRL') => {
   const currencyMap = {
     BRL: { locale: 'pt-BR', currency: 'BRL' },
-    USD: { locale: 'en-US', currency: 'USD' },
-    EUR: { locale: 'de-DE', currency: 'EUR' }
+    USD: { locale: 'pt-BR', currency: 'USD' },
+    EUR: { locale: 'pt-BR', currency: 'EUR' }
   };
   
   const config = currencyMap[currency] || currencyMap.BRL;
