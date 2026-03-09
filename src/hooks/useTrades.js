@@ -23,7 +23,7 @@
  * @firestore-index REQUERIDO: trades (studentId ASC, date DESC)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   collection, query, where, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
   doc, getDocs, getDoc, serverTimestamp, arrayUnion, writeBatch
@@ -53,6 +53,26 @@ export const useTrades = (overrideStudentId = null) => {
   const [allTrades, setAllTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Flag para suspender processamento de snapshots durante batch operations
+  // Usa useRef para não causar re-render e para ser visível dentro do callback do listener
+  const suspendedRef = useRef(false);
+  const pendingSnapshotRef = useRef(null);
+
+  const setSuspendListener = useCallback((suspended) => {
+    suspendedRef.current = suspended;
+    // Quando reativa, processar snapshot pendente se houver
+    if (!suspended && pendingSnapshotRef.current) {
+      const { data, isAll } = pendingSnapshotRef.current;
+      pendingSnapshotRef.current = null;
+      if (isAll) {
+        setAllTrades(data);
+        setTrades(data);
+      } else {
+        setTrades(data);
+      }
+    }
+  }, []);
 
   const calculateDuration = (entryISO, exitISO) => {
     if (!entryISO || !exitISO) return 0;
@@ -87,6 +107,10 @@ export const useTrades = (overrideStudentId = null) => {
         unsubscribeStudent = onSnapshot(studentQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (suspendedRef.current) {
+              pendingSnapshotRef.current = { data, isAll: true };
+              return;
+            }
             setTrades(data);
             setAllTrades(data);
             setLoading(false);
@@ -109,6 +133,10 @@ export const useTrades = (overrideStudentId = null) => {
         unsubscribeAll = onSnapshot(allQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (suspendedRef.current) {
+              pendingSnapshotRef.current = { data, isAll: true };
+              return;
+            }
             setAllTrades(data);
             setTrades(data);
             setLoading(false);
@@ -131,6 +159,10 @@ export const useTrades = (overrideStudentId = null) => {
         unsubscribeStudent = onSnapshot(studentQuery, 
           (snapshot) => {
             const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (suspendedRef.current) {
+              pendingSnapshotRef.current = { data, isAll: false };
+              return;
+            }
             setTrades(data);
             setLoading(false);
           }, 
@@ -765,7 +797,7 @@ export const useTrades = (overrideStudentId = null) => {
   
   return { 
     trades, allTrades, loading, error, 
-    addTrade, updateTrade, deleteTrade, 
+    addTrade, updateTrade, deleteTrade, setSuspendListener,
     addFeedback, addFeedbackComment, updateTradeStatus, addBulkFeedback, uploadFeedbackImage,
     // Parciais
     addPartial, updatePartial, deletePartial, getPartials, recalculateFromPartials,

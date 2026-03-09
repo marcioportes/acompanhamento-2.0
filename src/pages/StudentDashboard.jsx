@@ -69,7 +69,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const overrideStudentId = viewAs?.uid || null;
 
   // === Data hooks ===
-  const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade } = useTrades(overrideStudentId);
+  const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, setSuspendListener } = useTrades(overrideStudentId);
   const { accounts, loading: accountsLoading, addAccount } = useAccounts(overrideStudentId);
   const { plans, loading: plansLoading, addPlan, updatePlan, deletePlan } = usePlans(overrideStudentId);
 
@@ -147,9 +147,14 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
     }
   };
 
-  /** Wrapper para activateBatch que injeta addTrade */
+  /** Wrapper para activateBatch que injeta addTrade e suspende listener durante batch */
   const handleActivateStagingBatch = async (tradeIds, onProgress) => {
-    return activateStagingBatch(tradeIds, addTrade, onProgress);
+    setSuspendListener(true);
+    try {
+      return await activateStagingBatch(tradeIds, addTrade, onProgress);
+    } finally {
+      setSuspendListener(false);
+    }
   };
 
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
