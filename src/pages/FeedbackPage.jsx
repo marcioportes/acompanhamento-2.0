@@ -40,10 +40,10 @@ const formatCurrency = (value, currency = 'BRL') => {
   if (value === null || value === undefined) return '-';
   const config = {
     BRL: { locale: 'pt-BR', currency: 'BRL' },
-    USD: { locale: 'en-US', currency: 'USD' },
-    EUR: { locale: 'de-DE', currency: 'EUR' },
-    GBP: { locale: 'en-GB', currency: 'GBP' },
-    ARS: { locale: 'es-AR', currency: 'ARS' }
+    USD: { locale: 'pt-BR', currency: 'USD' },
+    EUR: { locale: 'pt-BR', currency: 'EUR' },
+    GBP: { locale: 'pt-BR', currency: 'GBP' },
+    ARS: { locale: 'pt-BR', currency: 'ARS' }
   };
   const cfg = config[currency] || config.BRL;
   return new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency, minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);

@@ -1,22 +1,27 @@
 /**
  * currency.js
- * @version 1.0.0 (v1.15.0)
+ * @version 1.1.0 (v1.19.0)
  * @description Utilitários de formatação e agrupamento multi-moeda.
  * 
- * NOTA: calculations.js já possui formatCurrency(value, currency) mas vários
- * componentes chamam sem o segundo parâmetro. Este módulo adiciona helpers
- * de agrupamento e validação sem alterar calculations.js.
+ * DEC-004 (09/03/2026): Locale SEMPRE pt-BR para qualquer moeda.
+ * Usuário brasileiro deve ver separador de milhar com ponto e decimal com vírgula,
+ * independente da moeda (R$ 10.000,50 / US$ 10.000,50 / € 10.000,50).
+ * 
+ * NOTA: calculations.js e TradesList.jsx possuíam formatCurrency locais duplicados.
+ * Ambos devem usar formatCurrencyDynamic deste módulo (single source of truth).
  * 
  * USAGE:
  * import { formatCurrencyDynamic, groupByCurrency, isSameCurrency, getCurrencySymbol } from '../utils/currency';
  */
 
+const LOCALE_BR = 'pt-BR';
+
 const CURRENCY_CONFIG = {
-  BRL: { locale: 'pt-BR', currency: 'BRL', symbol: 'R$' },
-  USD: { locale: 'en-US', currency: 'USD', symbol: '$' },
-  EUR: { locale: 'de-DE', currency: 'EUR', symbol: '€' },
-  GBP: { locale: 'en-GB', currency: 'GBP', symbol: '£' },
-  ARS: { locale: 'es-AR', currency: 'ARS', symbol: 'ARS$' },
+  BRL: { locale: LOCALE_BR, currency: 'BRL', symbol: 'R$' },
+  USD: { locale: LOCALE_BR, currency: 'USD', symbol: 'US$' },
+  EUR: { locale: LOCALE_BR, currency: 'EUR', symbol: '€' },
+  GBP: { locale: LOCALE_BR, currency: 'GBP', symbol: '£' },
+  ARS: { locale: LOCALE_BR, currency: 'ARS', symbol: 'ARS$' },
 };
 
 const DEFAULT_CURRENCY = 'BRL';

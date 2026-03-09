@@ -134,8 +134,8 @@ export const isMentorEmail = (email) => {
 export const formatCurrency = (value, currency = 'BRL') => {
   const config = {
     BRL: { locale: 'pt-BR', currency: 'BRL' },
-    USD: { locale: 'en-US', currency: 'USD' },
-    EUR: { locale: 'de-DE', currency: 'EUR' }
+    USD: { locale: 'pt-BR', currency: 'USD' },
+    EUR: { locale: 'pt-BR', currency: 'EUR' }
   };
   
   const { locale, currency: curr } = config[currency] || config.BRL;

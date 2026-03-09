@@ -26,16 +26,12 @@ import {
   HelpCircle,
   Lock
 } from 'lucide-react';
+import { formatCurrencyDynamic } from '../utils/currency';
 
 /**
  * Formatadores Visuais (Helpers)
  */
-const formatCurrency = (value, currency = 'BRL') => {
-  const safeValue = Number(value) || 0;
-  const localeMap = { BRL: 'pt-BR', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB', ARS: 'es-AR' };
-  const locale = localeMap[currency] || 'pt-BR';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(safeValue);
-};
+const formatCurrency = (value, currency = 'BRL') => formatCurrencyDynamic(value, currency);
 
 const formatPercent = (value) => {
   const safeValue = Number(value) || 0;

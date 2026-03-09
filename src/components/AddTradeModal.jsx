@@ -199,9 +199,8 @@ const AddTradeModal = ({
     if (value == null || isNaN(value)) return '';
     const account = selectedAccount;
     const currency = account?.currency || 'USD';
-    const locale = currency === 'BRL' ? 'pt-BR' : 'en-US';
     
-    return new Intl.NumberFormat(locale, {
+    return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: currency,
       minimumFractionDigits: 2,
