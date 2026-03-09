@@ -54,10 +54,11 @@ describe('formatCurrencyDynamic', () => {
     expect(result).toContain('R$');
   });
 
-  it('formata USD corretamente', () => {
+  it('formata USD corretamente (DEC-004: locale pt-BR)', () => {
     const result = formatCurrencyDynamic(1234.56, 'USD');
-    expect(result).toContain('1,234.56');
-    expect(result).toContain('$');
+    // DEC-004: todas as moedas usam locale pt-BR (ponto milhar, vírgula decimal)
+    expect(result).toContain('1.234,56');
+    expect(result).toContain('US$');
   });
 
   it('formata EUR corretamente', () => {
@@ -73,7 +74,8 @@ describe('formatCurrencyDynamic', () => {
 
   it('trata null/undefined/0 como zero', () => {
     expect(formatCurrencyDynamic(null, 'BRL')).toContain('0,00');
-    expect(formatCurrencyDynamic(undefined, 'USD')).toContain('0.00');
+    // DEC-004: USD também usa locale pt-BR → vírgula decimal
+    expect(formatCurrencyDynamic(undefined, 'USD')).toContain('0,00');
     expect(formatCurrencyDynamic(0, 'BRL')).toContain('0,00');
   });
 
@@ -115,7 +117,8 @@ describe('formatCurrencyCompact', () => {
 describe('getCurrencySymbol', () => {
   it('retorna símbolo correto para moedas conhecidas', () => {
     expect(getCurrencySymbol('BRL')).toBe('R$');
-    expect(getCurrencySymbol('USD')).toBe('$');
+    // DEC-004: símbolo USD alterado de '$' para 'US$' para clareza no contexto BR
+    expect(getCurrencySymbol('USD')).toBe('US$');
     expect(getCurrencySymbol('EUR')).toBe('€');
     expect(getCurrencySymbol('GBP')).toBe('£');
   });
