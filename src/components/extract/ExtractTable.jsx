@@ -1,8 +1,9 @@
 /**
  * ExtractTable
- * @version 2.0.0 (v1.17.0)
+ * @version 3.0.0 (v1.19.0)
  * @description Tabela do extrato com colunas de sanity check (RO, RR, Emoção)
  *   e marcação visual para POST_GOAL/POST_STOP.
+ *   v3.0.0: RR assumido com badge "(assumido)", botão feedback por trade (B4 — Issue #71/#73).
  *   v2.0.0: Coluna Evento agora mostra eventos emocionais e compliance inline
  *           (TILT, REVENGE, NO_STOP, RO_FORA, RR_FORA) além dos eventos de state machine.
  *   v1.0.0: Apenas eventos de state machine (GOAL_HIT, STOP_HIT, POST_GOAL, POST_STOP).
@@ -11,9 +12,10 @@
 
 import {
   Trophy, Skull, ShieldAlert, ShieldOff, Scale,
-  Flame, Zap, AlertTriangle
+  Flame, Zap, AlertTriangle, MessageSquare
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
+import { calculateAssumedRR } from '../../utils/tradeCalculations';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
 const fmtTime = (iso) => {
@@ -117,8 +119,10 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
  * @param {Function} getEmotionConfig - De useMasterData
  * @param {number} carryOver - Saldo transportado de períodos anteriores (0 na visão ciclo)
  * @param {Array} [emotionalEvents] - Eventos emocionais (TILT, REVENGE) para matching inline
+ * @param {Object|null} [planRiskInfo] - { pl, riskPerOperation, rrTarget } do plano (B4)
+ * @param {Function|null} [onNavigateToFeedback] - Callback para navegar ao feedback do trade (B4)
  */
-const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [] }) => {
+const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [], planRiskInfo = null, onNavigateToFeedback = null }) => {
   const displayRows = rows;
 
   return (
@@ -135,6 +139,7 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             <th className="p-3 text-right">Resultado</th>
             <th className="p-3 text-right bg-slate-800/50">Acumulado</th>
             <th className="p-3 text-center w-32">Evento</th>
+            {onNavigateToFeedback && <th className="p-3 text-center w-10"></th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/50">
@@ -142,11 +147,11 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
           {carryOver !== 0 && displayRows.length > 0 && (
             <tr className="bg-slate-800/20 border-b-2 border-slate-700 border-dashed">
               <td className="p-3 text-center text-slate-600 font-mono text-xs">—</td>
-              <td colSpan="6" className="p-3 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
+              <td colSpan={onNavigateToFeedback ? 7 : 6} className="p-3 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
               <td className={`p-3 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
                 {fmt(carryOver)}
               </td>
-              <td className="p-3"></td>
+              {onNavigateToFeedback && <td className="p-3"></td>}
             </tr>
           )}
           {displayRows.map((row) => {
@@ -166,12 +171,32 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
 
             // Compliance
             const riskPercent = trade.riskPercent != null ? `${Number(trade.riskPercent).toFixed(1)}%` : '-';
-            const rrRatio = trade.rrRatio != null ? `${Number(trade.rrRatio).toFixed(1)}:1` : '-';
             const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
               (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
             );
             const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO';
             const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME';
+
+            // RR: real (do trade) ou assumido (calculado via B2)
+            let rrDisplay = '-';
+            let rrIsAssumed = false;
+            let rrAssumedNonCompliant = false;
+            if (trade.rrRatio != null) {
+              rrDisplay = `${Number(trade.rrRatio).toFixed(1)}:1`;
+            } else if (planRiskInfo && !trade.stopLoss) {
+              // Sem stop → calcular RR assumido via DEC-005
+              const assumed = calculateAssumedRR({
+                result: trade.result ?? 0,
+                planPl: planRiskInfo.pl,
+                planRiskPerOperation: planRiskInfo.riskPerOperation,
+                planRrTarget: planRiskInfo.rrTarget,
+              });
+              if (assumed) {
+                rrIsAssumed = true;
+                rrDisplay = `${assumed.rrRatio.toFixed(1)}:1`;
+                rrAssumedNonCompliant = !assumed.isCompliant;
+              }
+            }
 
             // Inline events
             const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
@@ -220,11 +245,14 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   </div>
                 </td>
 
-                {/* RR */}
-                <td className={`p-3 text-right font-mono text-xs ${rrFora ? 'text-amber-400' : 'text-slate-400'}`}>
+                {/* RR — real ou assumido (B4) */}
+                <td className={`p-3 text-right font-mono text-xs ${rrFora || rrAssumedNonCompliant ? 'text-amber-400' : 'text-slate-400'}`}>
                   <div className="flex items-center justify-end gap-1">
-                    {rrFora && <Scale className="w-3 h-3 text-amber-400" />}
-                    {rrRatio}
+                    {(rrFora || rrAssumedNonCompliant) && <Scale className="w-3 h-3 text-amber-400" />}
+                    {rrDisplay}
+                    {rrIsAssumed && (
+                      <span className="text-[8px] text-purple-400/70 ml-0.5" title="RR calculado sem stop loss, baseado no RO% do plano">(est.)</span>
+                    )}
                   </div>
                 </td>
 
@@ -268,11 +296,24 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                     </div>
                   )}
                 </td>
+
+                {/* Feedback navigation (B4 — Issue #73) */}
+                {onNavigateToFeedback && (
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => onNavigateToFeedback(trade)}
+                      className="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-blue-400 transition-colors"
+                      title="Ir para feedback"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}
           {displayRows.length === 0 && (
-            <tr><td colSpan="9" className="p-12 text-center text-slate-500">Nenhum trade neste período.</td></tr>
+            <tr><td colSpan={onNavigateToFeedback ? 10 : 9} className="p-12 text-center text-slate-500">Nenhum trade neste período.</td></tr>
           )}
         </tbody>
       </table>

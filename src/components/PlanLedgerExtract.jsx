@@ -1,7 +1,8 @@
 /**
  * PlanLedgerExtract
- * @version 4.0.0 (v1.17.0)
+ * @version 5.0.0 (v1.19.0)
  * @description Extrato Ledger emocional — orquestrador.
+ *   v5.0.0: RO/RR no header, RR assumido no grid, navegação feedback (B4 — Issue #71/#73).
  *   v4.0.0: Navegação entre ciclos, ExtractCycleCard com gauges, click-to-filter.
  *   v3.0.0: Integra planStateMachine, seletor temporal, sub-componentes extraídos.
  *   v2.0.0: Multi-moeda via currency prop.
@@ -11,11 +12,11 @@
  *   PlanLedgerExtract (orquestrador)
  *     ├─ ExtractPeriodSelector (seletor temporal + navegação ciclos)
  *     ├─ ExtractCycleCard (barra progresso + breakdown por período — lateral)
- *     ├─ ExtractSummary (resumo com estado + separação pré/pós)
- *     └─ ExtractTable (tabela com RO/RR/Emoção + eventos inline)
+ *     ├─ ExtractSummary (resumo com estado + separação pré/pós + RO/RR do plano)
+ *     └─ ExtractTable (tabela com RO/RR/Emoção + RR assumido + feedback nav)
  *
  * USAGE:
- *   <PlanLedgerExtract plan={plan} trades={planTrades} onClose={fn} currency="USD" />
+ *   <PlanLedgerExtract plan={plan} trades={planTrades} onClose={fn} currency="USD" onNavigateToFeedback={fn} />
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -33,7 +34,7 @@ import ExtractCycleCard from './extract/ExtractCycleCard';
 import ExtractSummary from './extract/ExtractSummary';
 import ExtractTable from './extract/ExtractTable';
 
-const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
+const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigateToFeedback = null }) => {
   const { getEmotionConfig } = useMasterData();
   const { detectionConfig, statusThresholds } = useComplianceRules();
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
@@ -197,6 +198,21 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
   const startPL = Number(plan.pl) || 0;
   const isCycleView = selectedPeriod === null;
 
+  // B4: Info de risco do plano para ExtractSummary e ExtractTable
+  const planRiskInfo = useMemo(() => ({
+    pl: startPL,
+    riskPerOperation: Number(plan.riskPerOperation) || 0,
+    rrTarget: Number(plan.rrTarget) || 0,
+  }), [startPL, plan.riskPerOperation, plan.rrTarget]);
+
+  // B4: Handler de navegação para feedback — fecha o modal e navega
+  const handleNavigateToFeedback = useCallback((trade) => {
+    if (onNavigateToFeedback) {
+      onClose(); // Fecha o extrato
+      onNavigateToFeedback(trade);
+    }
+  }, [onClose, onNavigateToFeedback]);
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 border border-slate-800 w-full max-w-7xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
@@ -262,6 +278,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
               isCycleView={isCycleView}
               cycleSummary={planState?.cycleState?.summary || null}
               cycleStatus={planState?.cycleState?.status || 'IN_PROGRESS'}
+              planRiskInfo={planRiskInfo}
             />
 
             <ExtractTable
@@ -270,6 +287,8 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL' }) => {
               getEmotionConfig={getEmotionConfig}
               carryOver={carryOver}
               emotionalEvents={emotionalEvents}
+              planRiskInfo={planRiskInfo}
+              onNavigateToFeedback={onNavigateToFeedback ? handleNavigateToFeedback : null}
             />
           </div>
         </div>
