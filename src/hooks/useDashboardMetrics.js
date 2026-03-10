@@ -1,20 +1,31 @@
 /**
  * useDashboardMetrics
- * @version 1.0.0 (v1.15.0)
+ * @version 2.0.0 (v1.19.0)
  * @description Hook customizado que encapsula TODA a lógica de cálculo de métricas do Dashboard.
  *   Extraído do StudentDashboard para reduzir o arquivo principal e facilitar testes.
+ *   v2.0.0: P&L contextual — label dinâmico indicando contexto do P&L exibido (B5 — Issue #71).
  * 
  * Retorna:
  *   - filteredAccountsByType, selectedAccountIds, allAccountTrades, plansToShow, availablePlans
  *   - filteredTrades, stats
  *   - aggregatedInitialBalance, aggregatedCurrentBalance, balancesByCurrency, dominantCurrency
  *   - drawdown, maxDrawdownData, winRatePlanned, complianceRate
+ *   - plContext { label, type }
  */
 
 import { useMemo } from 'react';
 import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
+
+/** Labels de período para display */
+const PERIOD_LABELS = {
+  today: 'Hoje',
+  week: 'Esta Semana',
+  month: 'Este Mês',
+  quarter: 'Este Trimestre',
+  year: 'Este Ano',
+};
 
 const useDashboardMetrics = ({
   accounts,
@@ -179,6 +190,34 @@ const useDashboardMetrics = ({
     };
   }, [filteredTrades]);
 
+  // === P&L Contextual (B5 — Issue #71) ===
+  const plContext = useMemo(() => {
+    // Prioridade 1: filtro de período ativo
+    if (filters.period !== 'all') {
+      return {
+        label: `P&L ${PERIOD_LABELS[filters.period] || filters.period}`,
+        type: 'filtered',
+      };
+    }
+
+    // Prioridade 2: plano selecionado → P&L do plano
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan) {
+        return {
+          label: `P&L Plano: ${plan.name}`,
+          type: 'plan',
+        };
+      }
+    }
+
+    // Prioridade 3: sem filtro, sem plano → total
+    return {
+      label: 'P&L Total',
+      type: 'total',
+    };
+  }, [filters.period, selectedPlanId, plans]);
+
   return {
     // Filtros
     filteredAccountsByType,
@@ -199,6 +238,8 @@ const useDashboardMetrics = ({
     maxDrawdownData,
     winRatePlanned,
     complianceRate,
+    // Contexto P&L (B5)
+    plContext,
   };
 };
 

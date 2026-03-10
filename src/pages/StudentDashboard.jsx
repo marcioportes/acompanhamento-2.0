@@ -130,6 +130,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
     maxDrawdownData,
     winRatePlanned,
     complianceRate,
+    plContext,
   } = metrics;
 
   // === Handlers ===
@@ -309,6 +310,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         maxDrawdownData={maxDrawdownData}
         winRatePlanned={winRatePlanned}
         complianceRate={complianceRate}
+        plContext={plContext}
       />
 
       {/* Gráficos */}
