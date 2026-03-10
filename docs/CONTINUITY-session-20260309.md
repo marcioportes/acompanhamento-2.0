@@ -1,7 +1,7 @@
 # CONTINUITY PROMPT — Sessão 10/03/2026
-## Gerado: 2026-03-09 ~23:00 BRT
-## Status: v1.19.0 na branch feature/v1.19.0-recalc-cascade-pl-context, pendente PR/merge
-## Próximo: Bugs consolidados (Issue #XX), B1 (Recálculo Cascata), B3 (Acesso Mentor Emocional)
+## Gerado: 2026-03-10 ~02:10 BRT
+## Status: v1.19.0 COMPLETA na branch feature/v1.19.0-recalc-cascade-pl-context, pendente PR/merge
+## Próximo: Issue de bugs consolidados, deploy CF, botão auditoria na UI
 
 ---
 
@@ -37,8 +37,9 @@
 - version.js → v1.19.0
 
 ### NÃO FEITO nesta sessão
-- B1: Recálculo em Cascata (CF + hooks) — adiado, precisa de functions/index.js
-- B3: Acesso Mentor ao Emocional — adiado, UI-only menor risco
+- Botão de auditoria na UI (PlanCardGrid ou PlanManagementModal) — `auditPlan` está no hook mas sem UI
+- Deploy de `functions/index.js` (alerta emocional no onTradeUpdated) — requer `firebase deploy --only functions`
+- B3 focusTab: `App.jsx` precisa consumir `viewAs.focusTab` para abrir na aba emocional
 
 ---
 
@@ -70,9 +71,10 @@
 ```
 Branch: feature/v1.19.0-recalc-cascade-pl-context
 Último commit main: c8d60972 (v1.18.2)
-Commits pendentes na branch: B2+B4+B5 (a serem commitados)
-Version: v1.19.0 (no version.js)
-Testes: 329 passando (14 novos)
+Commits na branch: B2+B4+B5+docs+B1+B3 (todos commitados)
+Version: v1.19.0
+Testes: 344 passando (29 novos nesta sessão)
+CF pendente deploy: functions/index.js (alerta emocional onTradeUpdated)
 ```
 
 ---
@@ -115,22 +117,50 @@ Testes: 329 passando (14 novos)
 
 ---
 
-## 6. INVARIANTES (SEMPRE APLICAR)
+## 6. INVARIANTES (SEMPRE APLICAR — SEM EXCEÇÃO)
 
-1-14: Sem mudanças — ver sessão anterior.
+> **DIRETRIZ CRÍTICA:** Claude NUNCA entrega código (ZIP, arquivo, snippet) sem antes verificar TODOS os itens abaixo. Marcio NÃO deve precisar lembrar. Se Claude falhar em qualquer invariante, é uma falha de processo que deve ser corrigida antes da entrega, não depois.
+
+### 6.1 Invariantes Arquiteturais
+
+1. **INV-01:** Dados externos NUNCA em collections de produção. Staging + addTrade.
+2. **INV-02:** Toda escrita em `trades` via `addTrade`.
+3. **INV-03:** Pipeline trades → CF → PL/compliance é inquebrável. Análise de impacto obrigatória.
+4. **INV-04:** DebugBadge em TUDO — telas, modais, cards. z-[51] em modais. Componentes embedded: `{!embedded && <DebugBadge>}`.
+5. **INV-05:** Testes obrigatórios: análise de impacto + regressão + bug-first. Vitest + jsdom. NUNCA entregar lógica nova sem teste.
+6. **INV-06:** Datas BR (DD/MM/YYYY), semana começa segunda.
+7. **INV-07:** Autorização ANTES de codificar. Proposta → aprovação → código.
+8. **INV-08:** CHANGELOG obrigatório antes do merge. Claude propõe entrada.
+9. **Git:** commit single-line (PowerShell), ZIPs project-relative.
+10. **Falsy zero:** `??` não `||`.
+11. **Trade completo:** emotionEntry + emotionExit + setup (stopLoss opcional).
+12. **Ticker field:** `symbol`, não `name`.
+13. **Docs:** `/docs/ARCHITECTURE.md` é documento vivo — atualizar ao final de cada sessão.
+
+### 6.2 Checklist Pré-Entrega (OBRIGATÓRIO antes de cada ZIP)
+
+Claude DEVE verificar e confirmar explicitamente CADA item antes de apresentar qualquer entrega:
+
+- [ ] **version.js** atualizado com a versão correta?
+- [ ] **CHANGELOG.md** com entrada da versão?
+- [ ] **Testes** criados para TODA lógica nova? (funções puras, cálculos, detecção de campos)
+- [ ] **DebugBadge** presente em todos os componentes UI novos ou tocados?
+- [ ] **CONTINUITY** gerado/atualizado ao final da sessão?
+- [ ] **ARCHITECTURE.md** atualizado com decisões/dívidas novas?
+- [ ] **Análise de impacto** feita para mudanças em collections/CF/hooks?
+
+### 6.3 Lição da Sessão 09/03/2026
+
+Claude entregou B2, B4, B5 e B1/B3 sem testes, sem verificar version.js, e precisou ser cobrado por Marcio em invariantes que já estavam documentadas. Isso desperdiçou tempo do Marcio e gerou retrabalho. A autocrítica está registrada. A correção é o checklist 6.2 — executar ANTES de cada entrega, não depois de ser lembrado.
 
 ---
 
 ## 7. PRÓXIMA SESSÃO — RECOMENDAÇÃO
 
-**Prioridade 1:** Criar issue consolidada de bugs (#1-#8) e atacar o Bug #1 (tickerRule) primeiro — é o mais impactante.
+**Prioridade 1:** Deploy CF (`firebase deploy --only functions`) + testar cascata localmente + PR/merge da v1.19.0.
 
-**Prioridade 2:** B1 (Recálculo Cascata) — precisa de functions/index.js atualizado.
+**Prioridade 2:** Criar issue consolidada de bugs (#1-#8) e atacar Bug #1 (tickerRule no CSV) primeiro — é o mais impactante.
 
-**Prioridade 3:** B3 (Acesso Mentor Emocional) — UI-only, menor risco.
+**Prioridade 3:** Botão de auditoria na UI (chama `auditPlan`) + consumir `focusTab` no App.jsx.
 
-**Para fechar v1.19.0:**
-1. Commitar B2+B4+B5 na branch
-2. PR + merge
-3. Fechar Issue #73 como absorvida pelo B4
-4. Manter Issues #71 aberta (B1/B3 pendentes)
+**Bug crítico identificado ao final da sessão:** CF `onTradeUpdated` sobrescreve `rrRatio` com `null` em trades sem stop, apagando o RR assumido que o frontend gravou. Fix: CF deve respeitar `rrAssumed: true` e não sobrescrever, ou replicar `calculateAssumedRR` no backend.
