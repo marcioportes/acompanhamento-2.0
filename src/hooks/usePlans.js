@@ -25,8 +25,12 @@ import {
   orderBy,
   arrayUnion
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+
+/** Campos do plano que afetam compliance — mudança dispara recálculo */
+const RISK_FIELDS = ['riskPerOperation', 'rrTarget', 'periodStop', 'cycleStop'];
 
 /**
  * @param {string|null} overrideStudentId - UID do aluno para View As Student
@@ -151,6 +155,7 @@ export const usePlans = (overrideStudentId = null) => {
 
   /**
    * Atualizar plano
+   * B1 (v1.19.0): Se campos de risco mudam, dispara recálculo de compliance em cascata.
    * @param {string} planId
    * @param {object} planData
    * @param {object} [auditInfo] - { editedBy: 'mentor'|'student', email, changedFields }
@@ -168,9 +173,6 @@ export const usePlans = (overrideStudentId = null) => {
         updateData.lastEditedBy = 'mentor';
         updateData.lastEditedByEmail = auditInfo.email;
         updateData.lastEditedAt = serverTimestamp();
-
-        // Append no editHistory (arrayUnion não funciona com objetos complexos no mesmo update,
-        // então usamos merge approach — o campo é gerenciado no caller via arrayUnion separado)
       }
 
       await updateDoc(planRef, updateData);
@@ -187,6 +189,21 @@ export const usePlans = (overrideStudentId = null) => {
           editHistory: arrayUnion(historyEntry)
         });
         console.log(`[usePlans] Mentor edit audit: ${auditInfo.email} → ${planId}`);
+      }
+
+      // B1: Se campos de risco foram alterados, recalcular compliance em cascata
+      const changedFields = auditInfo?.changedFields || Object.keys(planData);
+      const riskChanged = changedFields.some(f => RISK_FIELDS.includes(f));
+      if (riskChanged) {
+        try {
+          const functions = getFunctions();
+          const recalc = httpsCallable(functions, 'recalculateCompliance');
+          const result = await recalc({ planId });
+          console.log(`[usePlans] Compliance recalculado em cascata: ${result.data.updated} trades (planId=${planId})`);
+        } catch (recalcErr) {
+          console.error('[usePlans] Erro no recálculo em cascata:', recalcErr);
+          // Não throw — o plano já foi salvo, o recálculo é best-effort
+        }
       }
     } catch (err) {
       console.error('[usePlans] Erro atualizar:', err);
@@ -289,6 +306,70 @@ export const usePlans = (overrideStudentId = null) => {
   }, [plans]);
 
   /**
+   * B1 (v1.19.0): Auditoria de plano
+   * (a) Recalcula currentPL somando result de todos os trades do plano
+   * (b) Recalcula compliance de todos os trades em cascata via callable
+   * 
+   * @param {string} planId
+   * @param {Function} [onProgress] - callback({ step, message })
+   * @returns {{ plRecalculated, complianceUpdated, oldPl, newPl }}
+   */
+  const auditPlan = useCallback(async (planId, onProgress) => {
+    if (!planId) throw new Error('planId obrigatório');
+
+    const report = { oldPl: 0, newPl: 0, plRecalculated: false, complianceUpdated: 0 };
+
+    try {
+      // (a) Recalcular currentPL a partir dos trades
+      onProgress?.({ step: 1, message: 'Buscando trades do plano...' });
+
+      const planRef = doc(db, 'plans', planId);
+      const tradesSnap = await getDocs(
+        query(collection(db, 'trades'), where('planId', '==', planId))
+      );
+
+      const totalResult = tradesSnap.docs.reduce((sum, d) => {
+        return sum + (Number(d.data().result) || 0);
+      }, 0);
+
+      // Buscar PL base (inicial) do plano
+      const plan = plans.find(p => p.id === planId);
+      if (!plan) throw new Error('Plano não encontrado no cache local');
+
+      const basePl = Number(plan.pl) || 0;
+      const newCurrentPl = Math.round((basePl + totalResult) * 100) / 100;
+      report.oldPl = Number(plan.currentPl ?? plan.pl) || 0;
+      report.newPl = newCurrentPl;
+
+      onProgress?.({ step: 2, message: `PL: ${report.oldPl.toFixed(2)} → ${newCurrentPl.toFixed(2)} (${tradesSnap.size} trades)` });
+
+      await updateDoc(planRef, {
+        currentPl: newCurrentPl,
+        updatedAt: serverTimestamp(),
+      });
+      report.plRecalculated = true;
+
+      // (b) Recalcular compliance em cascata
+      onProgress?.({ step: 3, message: 'Recalculando compliance...' });
+
+      const functions = getFunctions();
+      const recalc = httpsCallable(functions, 'recalculateCompliance');
+      const result = await recalc({ planId });
+      report.complianceUpdated = result.data.updated || 0;
+
+      onProgress?.({ step: 4, message: `Auditoria concluída: ${report.complianceUpdated} trades recalculados` });
+
+      console.log(`[usePlans] auditPlan ${planId}: PL ${report.oldPl} → ${report.newPl}, compliance ${report.complianceUpdated} trades`);
+
+    } catch (err) {
+      console.error('[usePlans] Erro auditPlan:', err);
+      throw err;
+    }
+
+    return report;
+  }, [plans]);
+
+  /**
    * Validar trade contra plano
    */
   const validateTradeAgainstPlan = useCallback((trade, plan, periodPL = 0, cyclePL = 0) => {
@@ -348,6 +429,7 @@ export const usePlans = (overrideStudentId = null) => {
     addPlan,
     updatePlan,
     deletePlan,
+    auditPlan,
     getPlansByAccount,
     getPlansByStudent,
     getPlanById,
