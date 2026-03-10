@@ -1,8 +1,9 @@
 /**
  * MetricsCards
- * @version 1.0.0 (v1.15.0)
+ * @version 2.0.0 (v1.19.0)
  * @description Cards de métricas do StudentDashboard (Saldo, P&L, WR, PF, DD).
- *   Extraído do StudentDashboard para modularização.
+ *   v2.0.0: P&L contextual — label dinâmico (B5 — Issue #71).
+ *   v1.0.0: Extraído do StudentDashboard para modularização.
  *   Suporta multi-moeda: quando dominantCurrency é null, exibe breakdown por moeda.
  */
 
@@ -20,6 +21,7 @@ import DebugBadge from '../DebugBadge';
  * @param {Object} maxDrawdownData - {maxDD, maxDDPercent, maxDDDate}
  * @param {Object|null} winRatePlanned - {rate, eligible, disciplinedWins, gap}
  * @param {Object|null} complianceRate - {rate, compliant, total, violations}
+ * @param {Object} plContext - { label, type } do P&L contextual (B5)
  */
 const MetricsCards = ({
   stats,
@@ -30,6 +32,7 @@ const MetricsCards = ({
   maxDrawdownData,
   winRatePlanned,
   complianceRate,
+  plContext,
 }) => {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -53,7 +56,7 @@ const MetricsCards = ({
       {/* P&L Acumulado */}
       <div className="glass-card p-5 relative overflow-hidden">
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.totalPL >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}><DollarSign className={`w-5 h-5 ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`} /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">P&L Acumulado</p>
+        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{plContext?.label || 'P&L Acumulado'}</p>
         {dominantCurrency ? (
           <p className={`text-xl lg:text-2xl font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
         ) : (

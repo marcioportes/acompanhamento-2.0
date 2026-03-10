@@ -32,7 +32,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
-import { calculateFromPartials, validatePartials } from '../utils/tradeCalculations';
+import { calculateFromPartials, validatePartials, calculateAssumedRR } from '../utils/tradeCalculations';
 
 // Status constants
 const STATUS = {
@@ -243,19 +243,48 @@ export const useTrades = (overrideStudentId = null) => {
       const duration = calculateDuration(entryTime, exitTime);
       const legacyDate = entryTime ? entryTime.split('T')[0] : new Date().toISOString().split('T')[0];
 
+      // B2/B5: Calcular RR — real (com stop) ou assumido (sem stop)
+      const stopLoss = tradeData.stopLoss != null ? parseFloat(tradeData.stopLoss) : null;
+      const effectiveResult = (tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride)))
+        ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100
+        : Math.round(result * 100) / 100;
+
+      let rrRatio = null;
+      let rrAssumed = false;
+      if (stopLoss != null && stopLoss !== 0 && entry) {
+        // RR real: baseado no stop loss efetivo
+        const risk = Math.abs(entry - stopLoss);
+        if (risk > 0) {
+          rrRatio = Math.round((effectiveResult / (risk * (tradeData.tickerRule?.pointValue || 1) * qty)) * 100) / 100;
+        }
+      } else {
+        // RR assumido: baseado no RO$ do plano (DEC-005)
+        const planData = planSnap.data();
+        const assumed = calculateAssumedRR({
+          result: effectiveResult,
+          planPl: Number(planData.currentPl ?? planData.pl) || 0,
+          planRiskPerOperation: Number(planData.riskPerOperation) || 0,
+          planRrTarget: Number(planData.rrTarget) || 0,
+        });
+        if (assumed) {
+          rrRatio = assumed.rrRatio;
+          rrAssumed = true;
+        }
+      }
+
       const newTrade = {
         ...tradeData,
         date: legacyDate, entryTime, exitTime, duration,
         ticker: tradeData.ticker?.toUpperCase() || '',
         entry, exit, qty, 
-        stopLoss: tradeData.stopLoss != null ? parseFloat(tradeData.stopLoss) : null,
+        stopLoss,
         resultCalculated: Math.round(result * 100) / 100,
-        result: tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride))
-          ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100 
-          : Math.round(result * 100) / 100,
+        result: effectiveResult,
         resultInPoints,
         resultEdited: tradeData.resultOverride != null,
         resultPercent: calculateResultPercent(side, entry, exit),
+        rrRatio,
+        rrAssumed,
         hasPartials: (tradeData._partials?.length || 0) > 0,
         partialsCount: tradeData._partials?.length || 0,
         studentEmail: user.email,
@@ -297,11 +326,7 @@ export const useTrades = (overrideStudentId = null) => {
         console.log(`[useTrades] ${tradeData._partials.length} parciais salvas`);
       }
 
-      // Resultado efetivo para movement: usa override se válido, senão o calculado
-      const effectiveResult = (tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride)))
-        ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100
-        : Math.round(result * 100) / 100;
-
+      // effectiveResult já calculado acima (B5)
       if (derivedAccountId && effectiveResult !== 0) {
         const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
         const snapMoves = await getDocs(qMoves);

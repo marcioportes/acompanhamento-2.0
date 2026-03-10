@@ -13,7 +13,7 @@ import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestor
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle } from 'lucide-react';
+import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain } from 'lucide-react';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import DebugBadge from '../components/DebugBadge';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -105,12 +105,13 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     } catch (err) { setError('Erro: ' + err.message); }
   };
 
-  const handleViewAs = (student) => {
+  const handleViewAs = (student, focusTab = null) => {
     if (onViewAsStudent) {
       onViewAsStudent({
         uid: student.uid || student.id,
         email: student.email,
-        name: student.name
+        name: student.name,
+        focusTab, // B3: 'emotional' para abrir perfil emocional diretamente
       });
     }
   };
@@ -189,6 +190,17 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       title="Visualizar como este aluno"
                     >
                       <Eye className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* B3: Botão Perfil Emocional (só para ativos com trades) */}
+                  {s.status === 'active' && studentTrades[s.email]?.length > 0 && onViewAsStudent && (
+                    <button 
+                      onClick={() => handleViewAs(s, 'emotional')} 
+                      className="p-2 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg" 
+                      title="Ver perfil emocional do aluno"
+                    >
+                      <Brain className="w-4 h-4" />
                     </button>
                   )}
                   

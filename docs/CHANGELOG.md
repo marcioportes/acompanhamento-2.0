@@ -5,6 +5,53 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.19.0] - 2026-03-09
+
+### Adicionado
+- **RR Assumido (B2 — Issue #71):** Nova função `calculateAssumedRR` — quando trade não tem stop loss, calcula RR baseado no risco planejado (RO$ = PL × RO%). Currency-agnostic. Persistido no documento do trade via `addTrade` com campos `rrRatio` + `rrAssumed: true`
+- **PlanLedgerExtract RO/RR no header (B4 — Issue #71/#73):** Linha de referência no resumo do extrato exibindo RO$ (valor absoluto), RO%, RR Alvo e resultado esperado do plano
+- **RR estimado no grid do extrato (B4):** Trades sem stop mostram RR calculado com badge "(est.)" na coluna RR. Trades com RR abaixo do alvo mostram ícone de non-compliance
+- **Navegação feedback no extrato (B4 — Issue #73):** Ícone de chat em cada trade do grid permite navegar diretamente para a tela de feedback sem perder contexto
+- **P&L Contextual no Dashboard (B5 — Issue #71):** Card de P&L exibe label dinâmico conforme contexto — "P&L Hoje", "P&L Esta Semana", "P&L Plano: [nome]" ou "P&L Total"
+- **Documentação:** Framework Evolutivo de Classificação Comportamental (4D) e mockup MentorDashboard v2
+
+### Modificado
+- `tradeCalculations.js` v1.19.0: Nova função exportada `calculateAssumedRR`
+- `useTrades.js`: `addTrade` agora calcula e persiste `rrRatio`/`rrAssumed` (real com stop, assumido sem stop)
+- `useDashboardMetrics.js` v2.0.0: Novo retorno `plContext` com label e tipo do P&L contextual
+- `PlanLedgerExtract.jsx` v5.0.0: Recebe e propaga `planRiskInfo` e `onNavigateToFeedback`
+- `ExtractSummary.jsx` v2.0.0: Linha RO$/RR Alvo com resultado esperado
+- `ExtractTable.jsx` v3.0.0: Coluna RR com badge "(est.)" + coluna feedback
+- `MetricsCards.jsx` v2.0.0: Label P&L contextual via prop `plContext`
+- `StudentDashboard.jsx`: Propaga `plContext` e `onNavigateToFeedback`
+
+### Testes
+- 14 novos testes para `calculateAssumedRR` (329 total)
+- Cenários: win/loss/breakeven, com/sem stop, USD, RO% fracionário, edge cases
+- Zero regressão nos 315 testes existentes
+
+---
+
+## [1.18.2] - 2026-03-09
+
+### Corrigido
+- **Locale pt-BR sistêmico (DEC-004):** Forçado locale `pt-BR` para formatação de TODAS as moedas (BRL, USD, EUR, GBP, ARS). Antes, contas em USD usavam `en-US` gerando `$10,000.50` — agora exibe `US$ 10.000,50` (formato brasileiro)
+- Eliminado `formatCurrency` local duplicado no `TradesList.jsx` — agora usa `formatCurrencyDynamic` centralizado
+
+### Modificado
+- `currency.js` v1.1.0: `CURRENCY_CONFIG` — todas as locales agora `pt-BR`
+- `calculations.js`: `formatCurrency` — hardcoded `pt-BR`
+- `tradeCalculations.js`: `formatCurrencyValue` — locales `pt-BR`
+- `constants/index.js`: `formatCurrency` — locales `pt-BR`
+- `TradesList.jsx`: Import centralizado de `formatCurrencyDynamic`
+- `TradeDetailModal.jsx`, `AddTradeModal.jsx`, `AccountStatement.jsx`, `AccountsPage.jsx`, `FeedbackPage.jsx`: locales corrigidos
+
+### Testes
+- 3 testes de `currency.test.js` atualizados para refletir DEC-004 (USD → formato BR)
+- 315 testes passando, zero regressão
+
+---
+
 ## [1.18.1] - 2026-03-08
 
 ### Adicionado

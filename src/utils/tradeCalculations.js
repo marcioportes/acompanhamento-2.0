@@ -377,6 +377,60 @@ export const validatePartials = (partials = [], side = 'LONG') => {
   return { valid: errors.length === 0, errors };
 };
 
+// ============================================
+// RR ASSUMIDO (B2 — Issue #71, v1.19.0)
+// ============================================
+
+/**
+ * Calcula Risk:Reward assumido quando o trade NÃO tem stop loss.
+ * 
+ * Lógica (DEC-005):
+ *   RO$ = planPl × (planRiskPerOperation / 100)
+ *   rrRatio = |result| / RO$  (para wins; para losses: negativo)
+ *   expectedResult = planRrTarget × RO$
+ *   isCompliant = result >= expectedResult
+ * 
+ * Funciona para qualquer moeda — a comparação é puramente sobre valor absoluto.
+ * Independe de ticker, pointValue, tickSize.
+ * 
+ * @param {Object} params
+ * @param {number} params.result - Resultado financeiro do trade (positivo = gain, negativo = loss)
+ * @param {number} params.planPl - PL (capital) do plano no momento do trade
+ * @param {number} params.planRiskPerOperation - RO% do plano (ex: 1 para 1%)
+ * @param {number} params.planRrTarget - RR alvo do plano (ex: 2 para 2:1)
+ * @returns {Object|null} null se não puder calcular (dados insuficientes)
+ *   { rrAssumed: true, rrRatio, roAmount, expectedResult, isCompliant }
+ */
+export const calculateAssumedRR = ({ result, planPl, planRiskPerOperation, planRrTarget }) => {
+  // Validação: precisa de PL e RO% para calcular
+  if (!planPl || planPl <= 0 || !planRiskPerOperation || planRiskPerOperation <= 0) {
+    return null;
+  }
+
+  // RO$ = capital * risco percentual
+  const roAmount = planPl * (planRiskPerOperation / 100);
+
+  // RR realizado = resultado / risco planejado
+  // Para wins: positivo (ex: ganhou 200 com risco de 100 = 2:1)
+  // Para losses: negativo (ex: perdeu 150 com risco de 100 = -1.5:1)
+  const rrRatio = roAmount > 0 ? (result ?? 0) / roAmount : 0;
+
+  // Resultado esperado pelo plano = RR alvo × RO$
+  const expectedResult = (planRrTarget ?? 0) * roAmount;
+
+  // Compliance: trade win atingiu o resultado esperado?
+  // Losses são automaticamente não-conformes (result < expectedResult)
+  const isCompliant = planRrTarget > 0 ? (result ?? 0) >= expectedResult : true;
+
+  return {
+    rrAssumed: true,
+    rrRatio: Math.round(rrRatio * 100) / 100,
+    roAmount: Math.round(roAmount * 100) / 100,
+    expectedResult: Math.round(expectedResult * 100) / 100,
+    isCompliant,
+  };
+};
+
 export default {
   calculateTradeResultByTick,
   calculateTicks,
@@ -390,5 +444,6 @@ export default {
   calculateTradeStats,
   calculatePartialAvgPrice,
   calculateFromPartials,
-  validatePartials
+  validatePartials,
+  calculateAssumedRR
 };

@@ -871,6 +871,40 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         console.log(`[onTradeUpdated] Compliance recalculado: RO=${compliance.riskPercent.toFixed(2)}%, RR=${compliance.rrRatio ?? 'N/A'}, flags=${newFlags.length}`);
       }
     }
+
+    // === B1 (v1.19.0): Re-check alerta emocional se emotionEntry mudou ===
+    if (before.emotionEntry !== after.emotionEntry && after.emotionEntry) {
+      try {
+        const emotionSnap = await db.collection('emotions')
+          .where('name', '==', after.emotionEntry)
+          .limit(1)
+          .get();
+        
+        if (!emotionSnap.empty) {
+          const emotionData = emotionSnap.docs[0].data();
+          if (emotionData.analysisCategory === 'CRITICAL' || emotionData.riskLevel === 'CRITICAL') {
+            await db.collection('notifications').add({
+              type: 'EMOTIONAL_ALERT',
+              targetRole: 'mentor',
+              studentId: after.studentId,
+              studentEmail: after.studentEmail,
+              tradeId: context.params.tradeId,
+              ticker: after.ticker,
+              emotion: after.emotionEntry,
+              emotionEmoji: emotionData.emoji || '',
+              severity: 'CRITICAL',
+              message: `⚠️ ${after.studentEmail?.split('@')[0]} editou trade com "${after.emotionEntry}" (${emotionData.emoji})`,
+              read: false,
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`[onTradeUpdated] Alerta emocional CRITICAL: ${after.emotionEntry}`);
+          }
+        }
+      } catch (emotionErr) {
+        console.error('[onTradeUpdated] Erro ao verificar emoção:', emotionErr);
+      }
+    }
+
   } catch (e) { console.error('[onTradeUpdated]', e); }
   
   return null;
