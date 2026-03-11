@@ -1,4 +1,4 @@
-﻿# ==============================
+# ==============================
 # Node / Dependencies
 # ==============================
 node_modules/
@@ -54,3 +54,4 @@ ui-debug.log
 coverage/
 
 Temp/
+docs/CONTINUITY-*
