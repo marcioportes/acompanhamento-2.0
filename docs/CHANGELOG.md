@@ -5,6 +5,36 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.19.1] - 2026-03-10
+
+### Corrigido
+- **DEC-006: Compliance sem stop loss (Issue #78):** Trades sem stop não marcam mais RO=100% incorretamente. Nova lógica: loss → risco retroativo (`|result| / planPl`), win → N/A (riskPercent null), breakeven → 0%. Aplicado no frontend (`compliance.js` v2.0.0) e em TODAS as Cloud Functions (`onTradeCreated`, `onTradeUpdated`, `recalculateCompliance`)
+- **C4: Guard rrAssumed em Cloud Functions:** `onTradeCreated`, `onTradeUpdated` e `recalculateCompliance` não sobrescrevem mais `rrRatio` com null quando o frontend já calculou RR assumido (`rrAssumed: true`). Resolve DT-013
+- **C2: CSV Import tickerRule lookup:** `activateTrade` agora busca `tickerRule` (tickSize, tickValue, pointValue) do master data (collection `tickers`) via exchange+symbol quando o staging não possui tickerRule. Resolve DT-010
+- **Red flags contextualizados:** Mensagem NO_STOP não afirma mais "risco ilimitado". Loss mostra risco retroativo %, win mostra "risco não mensurado". Flag RISK_EXCEEDED só gerada quando riskPercent é numérico
+
+### Adicionado
+- **Botão de Auditoria na UI:** Ícone ShieldCheck no hover do PlanCard (PlanCardGrid v2.1.0), posicionado após delete. Abre `PlanAuditModal` com diagnóstico bidirecional
+- **PlanAuditModal (diagnóstico bidirecional):** Modal que verifica integridade do plano antes de agir. Ida: compara PL atual vs PL calculado (soma trades). Volta: compara compliance dos trades vs parâmetros do plano. Se saudável → "Plano saudável". Se divergente → mostra detalhes + botão "Corrigir Divergências". Resolve DT-014
+- **`diagnosePlan` em usePlans:** Função de leitura pura que executa o diagnóstico bidirecional sem escritas. 10 testes unitários
+
+### Modificado
+- `compliance.js` v2.0.0: `calculateTradeCompliance` retorna `riskPercent: null` (não 0) nos defaults e em wins sem stop. `generateComplianceRedFlags` com mensagens contextualizadas
+- `functions/index.js` v1.8.0: DEC-006 + guard rrAssumed em 3 pontos (onCreate, onUpdate, recalculate)
+- `useCsvStaging.js` v1.1.0: `activateTrade` com lookup Firestore de tickerRule
+- `usePlans.js`: novo `diagnosePlan` (leitura pura) + import `calculateTradeCompliance`
+- `PlanCardGrid.jsx` v2.1.0: prop `onAuditPlan`, botão ShieldCheck após delete
+- `StudentDashboard.jsx`: `PlanAuditModal` + `diagnosePlan`/`auditPlan` handlers, state `auditPlanId`
+- `version.js`: v1.19.1+20260310
+- `ARCHITECTURE.md`: INV-09 (Gate Obrigatório), AP-04 (Invariant Drift), DEC-004/005/006, DT-009 a DT-016
+
+### Testes
+- 34 testes compliance (12 novos para DEC-006: loss retroativo, win N/A, breakeven, red flags contextualizados, moeda diferente)
+- 10 testes diagnosePlan (ida PL, volta compliance, rrAssumed guard, combinações)
+- 366 testes totais, zero regressão
+
+---
+
 ## [1.19.0] - 2026-03-09
 
 ### Adicionado

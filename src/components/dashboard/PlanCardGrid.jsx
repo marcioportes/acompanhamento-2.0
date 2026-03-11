@@ -1,7 +1,8 @@
 /**
  * PlanCardGrid
- * @version 2.0.0 (v1.16.0)
+ * @version 2.1.0 (v1.19.1)
  * @description Grid de cards de planos operacionais.
+ *   v2.1.0: Botão de auditoria (ShieldCheck) — recalcula PL + compliance cascata.
  *   v2.0.0: Integra planStateMachine para badges e sentiment icons.
  *   v1.0.0: Extraído do StudentDashboard (v1.15.0).
  *
@@ -15,7 +16,7 @@
 import {
   PlusCircle, Check, Settings, Trash2, RefreshCw, Calendar, ScrollText,
   Skull, Trophy, TrendingUp, TrendingDown, Smile, Frown, Meh,
-  AlertTriangle, Activity
+  AlertTriangle, Activity, ShieldCheck
 } from 'lucide-react';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
@@ -86,6 +87,7 @@ const PlanCardGrid = ({
   onEditPlan,
   onDeletePlan,
   onCreatePlan,
+  onAuditPlan,
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -133,8 +135,11 @@ const PlanCardGrid = ({
               <button onClick={(e) => { e.stopPropagation(); onOpenLedger(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-purple-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Extrato Emocional"><ScrollText className="w-4 h-4" /></button>
               {!viewAs && (
                 <>
-                  <button onClick={(e) => { e.stopPropagation(); onEditPlan(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100"><Settings className="w-4 h-4" /></button>
-                  <button onClick={(e) => onDeletePlan(e, plan.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100"><Trash2 className="w-4 h-4" /></button>
+                  <button onClick={(e) => { e.stopPropagation(); onEditPlan(plan); }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Editar Plano"><Settings className="w-4 h-4" /></button>
+                  <button onClick={(e) => onDeletePlan(e, plan.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Excluir Plano"><Trash2 className="w-4 h-4" /></button>
+                  {onAuditPlan && (
+                    <button onClick={(e) => { e.stopPropagation(); onAuditPlan(plan.id); }} className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-700 transition-colors opacity-0 group-hover:opacity-100" title="Auditoria & Saúde"><ShieldCheck className="w-4 h-4" /></button>
+                  )}
                 </>
               )}
             </div>

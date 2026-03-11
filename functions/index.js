@@ -1040,22 +1040,47 @@ exports.cleanupOldNotifications = functions.pubsub
   });
 
 /**
- * Recalcula compliance de todos os trades de um plano (ou de um trade específico).
+ * Recalcula PL + compliance de todos os trades de um plano (ou de um trade específico).
  * Callable — invocado do frontend via httpsCallable.
+ * v1.19.1: Inclui recálculo de PL (admin SDK, bypassa rules).
  * 
  * @param {string} planId - ID do plano (obrigatório)
  * @param {string} [tradeId] - ID de trade específico (opcional)
+ * @param {boolean} [recalcPl] - Se true, recalcula currentPl do plano (default: true)
  */
 exports.recalculateCompliance = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login necessário');
   
-  const { planId, tradeId } = data;
+  const { planId, tradeId, recalcPl = true } = data;
   if (!planId) throw new functions.https.HttpsError('invalid-argument', 'planId obrigatório');
   
-  const planDoc = await db.collection('plans').doc(planId).get();
+  const planRef = db.collection('plans').doc(planId);
+  const planDoc = await planRef.get();
   if (!planDoc.exists) throw new functions.https.HttpsError('not-found', 'Plano não encontrado');
   const plan = planDoc.data();
   
+  // === Ida: Recálculo de PL (basePl + soma trades) ===
+  let oldPl = plan.currentPl ?? plan.pl ?? 0;
+  let newPl = oldPl;
+  let plRecalculated = false;
+  
+  if (recalcPl && !tradeId) {
+    const allTradesSnap = await db.collection('trades').where('planId', '==', planId).get();
+    const basePl = Number(plan.pl) || 0;
+    const totalResult = allTradesSnap.docs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
+    newPl = Math.round((basePl + totalResult) * 100) / 100;
+    
+    if (Math.abs(oldPl - newPl) > 0.01) {
+      await planRef.update({ currentPl: newPl, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      plRecalculated = true;
+      console.log('[recalculateCompliance] PL recalculado: ' + oldPl + ' -> ' + newPl);
+    }
+    
+    // Usar PL atualizado para compliance
+    plan.currentPl = newPl;
+  }
+  
+  // === Volta: Recálculo de compliance dos trades ===
   let tradeDocs;
   if (tradeId) {
     const tradeDoc = await db.collection('trades').doc(tradeId).get();
@@ -1110,6 +1135,6 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     updated++;
   }
   
-  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados');
-  return { success: true, updated, planId };
+  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
+  return { success: true, updated, planId, oldPl, newPl, plRecalculated };
 });

@@ -159,15 +159,31 @@ const PlanAuditModal = ({
     setProgressMsg('Corrigindo divergências...');
     try {
       const report = await onFix();
-      // Re-diagnose to show updated state
+      if (!report) throw new Error('auditPlan não retornou relatório');
+      // Forçar estado FIXED — não re-diagnosticar porque o listener
+      // do useTrades pode não ter propagado ainda os novos valores
       setData({
         pl: { current: report.newPl, calculated: report.newPl, divergent: false },
-        trades: { total: data?.trades?.total ?? 0, divergent: 0, details: [] },
+        trades: {
+          total: data?.trades?.total ?? 0,
+          divergent: 0,
+          details: [],
+        },
+        fixReport: {
+          oldPl: report.oldPl,
+          newPl: report.newPl,
+          complianceUpdated: report.complianceUpdated,
+        },
       });
       setState(STATES.FIXED);
     } catch (err) {
       console.error('[PlanAuditModal] Erro correção:', err);
-      setState(STATES.DIVERGENT); // volta ao estado divergente
+      setProgressMsg(`Erro ao corrigir: ${err.message}`);
+      // Manter no estado FIXING por 2s para mostrar o erro, depois volta
+      setTimeout(() => {
+        setProgressMsg('');
+        setState(STATES.DIVERGENT);
+      }, 3000);
     }
   };
 
@@ -246,7 +262,14 @@ const PlanAuditModal = ({
               <>
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                  <p className="text-sm text-emerald-300">Divergências corrigidas. Plano saudável.</p>
+                  <div>
+                    <p className="text-sm text-emerald-300">Divergências corrigidas. Plano saudável.</p>
+                    {data.fixReport && (
+                      <p className="text-xs text-emerald-400/60 mt-0.5">
+                        {data.fixReport.complianceUpdated} trade(s) recalculados
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <PLComparison pl={data.pl} currency={currency} />
                 <TradesDiagnostic trades={data.trades} currency={currency} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
@@ -275,7 +298,9 @@ const PlanAuditModal = ({
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-700/50">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-700/50">
+            <DebugBadge component="PlanAuditModal" />
+            <div className="flex gap-2">
             {state === STATES.IDLE && (
               <>
                 <button onClick={handleClose} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-slate-300 hover:bg-slate-700/50 transition-colors">
@@ -305,9 +330,8 @@ const PlanAuditModal = ({
                 </button>
               </>
             )}
+            </div>
           </div>
-
-          <DebugBadge component="PlanAuditModal" />
         </div>
       </div>
     </>
