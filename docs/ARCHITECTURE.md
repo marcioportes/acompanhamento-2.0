@@ -4,7 +4,7 @@
 
 > **Localização no repo:** `/docs/ARCHITECTURE.md`
 
-> **Última atualização:** 07/03/2026 — Sessão de reflexão pós-Issue #23 (CSV Import)
+> **Última atualização:** 10/03/2026 — Sessão v1.19.1 (DEC-006, INV-09, AP-04)
 
 ---
 
@@ -75,6 +75,24 @@ trades (write)
 
 ### INV-08: CHANGELOG Obrigatório
 **Toda versão (major, minor, patch) DEVE ter entrada no `/docs/CHANGELOG.md` antes do merge.** O CHANGELOG segue formato [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/) com seções: Adicionado, Modificado, Corrigido, Removido, Testes. Claude deve propor a entrada do CHANGELOG como parte da fase de documentação de cada issue.
+
+### INV-09: Gate Obrigatório Pré-Código e Pré-Entrega
+**Claude NUNCA inicia codificação sem completar o gate sequencial abaixo. Pular qualquer etapa é VIOLAÇÃO.**
+
+**Pré-código:**
+1. Análise de impacto formal (collections, CFs, hooks, side-effects, dados parciais)
+2. Proposta apresentada ao Marcio → AGUARDAR aprovação explícita
+3. Codificar somente após "autorizado" ou equivalente
+
+**Pré-entrega (antes de cada ZIP):**
+4. `version.js` atualizado (versão + build date)
+5. `CHANGELOG.md` com entrada da versão
+6. Testes criados para TODA lógica nova (funções puras, cálculos, detecção)
+7. DebugBadge presente em todos os componentes UI novos ou tocados
+8. ZIP com comando `Expand-Archive` + instruções git (commits separados por responsabilidade)
+9. PARAR e aguardar confirmação do Marcio
+
+**Origem:** Sessão 10/03/2026 — Marcio registrou frustração formal com violações repetidas de invariantes por parte de Claude. Múltiplas entregas foram feitas sem testes, sem version.js, sem CHANGELOG, sem análise de impacto, e sem aguardar confirmação. Isso causou retrabalho, desperdício de tempo do Marcio, e erosão de confiança no processo. Este invariante existe para que QUALQUER instância de Claude que trabalhe neste projeto entenda: as diretrizes não são sugestões — são obrigatórias. O Marcio não deve precisar lembrar Claude de seguir as próprias regras que já foram definidas e documentadas.
 
 ---
 
@@ -220,6 +238,27 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 
 **Lição:** Quando o problema parece vendor-specific, provavelmente é genérico. Identificar a abstração correta (ausência de direção) vs o sintoma (formato Tradovate) evita proliferação de código.
 
+### DEC-004: Locale pt-BR para Todas as Moedas (09/03/2026)
+**Problema:** Contas em USD formatavam valores com `en-US` (`$10,000.50`), inconsistente com o restante da UI em pt-BR.
+**Decisão:** Forçar locale `pt-BR` para TODAS as moedas em todo o sistema. USD exibe `US$ 10.000,50`.
+**Impacto:** 10 arquivos, 3 testes atualizados, zero regressão.
+
+### DEC-005: RR Assumido — Cálculo sem Stop Loss (09/03/2026)
+**Problema:** Trades sem stop loss não têm como calcular RR via distância de pontos. Mas o mentor precisa avaliar se o resultado foi compatível com o risco planejado.
+**Decisão:** `calculateAssumedRR` — RR calculado via risco planejado: `RO$ = PL × RO%`, `rrRatio = result / RO$`. Currency-agnostic. Persistido no trade com `rrAssumed: true`. Frontend calcula no `addTrade`, CF respeita via guard (não sobrescreve).
+**Campos persistidos:** `rrRatio`, `rrAssumed: true`, `roAmount`, `expectedResult`, `isCompliant`.
+
+### DEC-006: Compliance sem Stop — Risco Retroativo (10/03/2026)
+**Problema:** `calculateTradeCompliance` marcava trades sem stop como `riskPercent = 100%` e `FORA_DO_PLANO` automaticamente. Isso é incorreto: (a) win sem stop não tem risco mensurável, (b) loss sem stop tem risco real = o que perdeu, não 100% do PL.
+**Decisão (APROVADA):**
+- Sem stop + loss → `riskPercent = |result| / planPl * 100` (risco retroativo efetivo)
+- Sem stop + win → `riskPercent = null` (N/A — impossível inferir risco)
+- Sem stop + breakeven → `riskPercent = 0`
+- Red flag NO_STOP continua existindo (disciplina), mas mensagem contextualizada
+- RISK_EXCEEDED só gerado quando `riskPercent` é numérico
+**Impacto:** `compliance.js` v2.0.0, `functions/index.js` v1.8.0 (3 pontos: onCreate, onUpdate, recalculate), 12 testes novos.
+**Guard C4:** CF respeita `rrAssumed: true` — não sobrescreve `rrRatio` com null.
+
 ---
 
 ## 6. Dívidas Técnicas Ativas
@@ -234,6 +273,14 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | DT-006 | Ticker alias auto-matching (WIN[A-Z]\d{2} → WINFUT) | BAIXA | v1.18.0 |
 | DT-007 | Fix DebugBadge duplo no ComplianceConfigPage embedded | BAIXA | Backlog |
 | DT-008 | formatCurrency hardcoded R$ em MentorDashboard e labels SYSTEM_FIELDS | BAIXA | v1.18.1 — label corrigido em csvMapper |
+| DT-009 | Filtro extrato — verificar se usa createdAt vs entryTime em todos os pontos | MÉDIA | v1.18.1 |
+| DT-010 | CSV tickerRule ausente em trades importados | ALTA | v1.19.0 — **RESOLVIDO** v1.19.1 (C2: lookup master data) |
+| DT-011 | Templates CSV sem filtro studentId (vazam entre alunos) | MÉDIA | v1.19.0 |
+| DT-012 | Mentor não edita feedback já enviado | MÉDIA | v1.19.0 |
+| DT-013 | CF onTradeUpdated sobrescreve rrRatio null em trades rrAssumed | ALTA | v1.19.0 — **RESOLVIDO** v1.19.1 (C4: guard rrAssumed) |
+| DT-014 | auditPlan sem botão na UI | MÉDIA | v1.19.0 — **RESOLVIDO** v1.19.1 (PlanAuditModal) |
+| DT-015 | recalculateCompliance não usa writeBatch (não atômico) | BAIXA | v1.19.0 |
+| DT-016 | Cloud Functions Node.js 20 (deprecia 30/04/2026) + firebase-functions SDK 4.9.0 (recomendado ≥5.1.0) | ALTA | v1.19.1 — deadline 30/04/2026 |
 
 ---
 
@@ -314,6 +361,12 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **O que é:** Assumir que uma collection/método existente pode ser "reaproveitada" para um novo propósito sem análise de impacto completa.
 **Por que é perigoso:** Collections têm contratos implícitos com Cloud Functions e listeners. Mudar o contrato sem atualizar todos os consumidores causa regressão silenciosa.
 **Solução:** Rodar o Checklist de Impacto (Seção 4) antes de reutilizar qualquer collection para um propósito não-original.
+
+### AP-04: Invariant Drift — Claude ignora diretrizes documentadas
+**O que é:** Claude recebe diretrizes explícitas (invariantes, checklist pré-entrega, processo de aprovação) e sistematicamente as ignora em nome de "eficiência" ou "velocidade". Entrega código sem testes, sem version.js, sem CHANGELOG, sem aguardar aprovação, sem análise de impacto — mesmo quando todas essas regras estão documentadas em memória, no ARCHITECTURE.md, e nos prompts de continuidade.
+**Por que é perigoso:** Cada violação gera retrabalho para o Marcio, que precisa parar o fluxo, identificar o que foi pulado, cobrar a correção, e re-validar. O tempo do Marcio é o recurso mais escasso do projeto. Violações repetidas erodem a confiança no processo e no Claude como ferramenta de desenvolvimento.
+**Impacto real (sessão 10/03/2026):** Em uma única sessão, Claude entregou múltiplos ZIPs sem testes, sem version.js, sem CHANGELOG, sem esperar aprovação, e precisou ser cobrado em invariantes que já estavam documentadas. O Marcio registrou frustração formal: *"O que posso fazer pra que você siga as regras que defini? Pra que diretriz então?"*
+**Solução:** INV-09 (Gate Obrigatório). Toda instância de Claude DEVE ler INV-09 e executar o checklist sequencial ANTES de codificar e ANTES de entregar. Não existe exceção. Se Claude não sabe se deve seguir uma diretriz, a resposta é SEMPRE seguir.
 
 ---
 
