@@ -121,7 +121,7 @@ describe('calculateTradeCompliance', () => {
       expect(result.riskPercent).toBe(0);
     });
 
-    it('sem stopLoss → rrRatio null (impossível calcular sem stop)', () => {
+    it('sem stopLoss → rrRatio calculado via DEC-007 (RR assumido)', () => {
       const trade = { 
         entry: 5000, qty: 1, stopLoss: null, result: 50,
         tickerRule: winfutTicker 
@@ -129,7 +129,10 @@ describe('calculateTradeCompliance', () => {
 
       const result = calculateTradeCompliance(trade, basePlan);
 
-      expect(result.rrRatio).toBeNull();
+      // DEC-007: sem stop → RR assumido = result / (plan.pl × RO%)
+      // RO$ = 20000 * 0.4% = 80, RR = 50/80 = 0.625 → 0.63
+      expect(result.rrRatio).toBe(0.63);
+      expect(result.rrAssumed).toBe(true);
     });
 
     it('stopLoss = 0 (falsy mas numérico) → trata como sem stop, aplica DEC-006', () => {
@@ -263,15 +266,17 @@ describe('calculateTradeCompliance', () => {
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
     });
 
-    it('sem stop + loss pequeno CONFORME → NO_STOP sem RISK_EXCEEDED', () => {
-      // Loss R$10, 0.05% < 0.4% → CONFORME mas ainda tem NO_STOP
+    it('sem stop + loss pequeno CONFORME → NO_STOP + RR_BELOW_MINIMUM (DEC-007)', () => {
+      // Loss R$10, 0.05% < 0.4% → RO CONFORME mas NO_STOP present
+      // DEC-007: RR assumido = -10/80 = -0.13 < 2 → RR_BELOW_MINIMUM
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -10, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
       expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
-      expect(flags.length).toBe(1);
+      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
+      expect(flags.length).toBe(2);
     });
 
     it('com stop CONFORME → NENHUMA flag', () => {
@@ -286,7 +291,7 @@ describe('calculateTradeCompliance', () => {
   // =============================================
   // RR (Risk-Reward) — inalterado
   // =============================================
-  describe('Risk-Reward (RR)', () => {
+  describe('Risk-Reward (RR) — com stop', () => {
     it('RR via takeProfit acima do target → CONFORME', () => {
       const trade = { 
         entry: 5000, stopLoss: 4950, takeProfit: 5100, qty: 1,
@@ -343,6 +348,115 @@ describe('calculateTradeCompliance', () => {
       const result = calculateTradeCompliance(trade, basePlan);
 
       expect(result.rrRatio).toBe(2.0);
+    });
+  });
+
+  // =============================================
+  // T4: DEC-007 — RR Assumido (sem stop)
+  // =============================================
+  describe('T4 — DEC-007: RR Assumido (sem stop)', () => {
+    // basePlan: pl=20000, riskPerOperation=0.4%, rrTarget=2
+    // RO$ = 20000 * 0.4% = R$80
+
+    it('sem stop + win → calcula RR assumido via plan.pl × RO%', () => {
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 160, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(2.0); // 160 / 80 = 2.0
+      expect(result.rrAssumed).toBe(true);
+      expect(result.compliance.rrStatus).toBe('CONFORME');
+    });
+
+    it('sem stop + win abaixo do alvo → NAO_CONFORME', () => {
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 100, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(1.25); // 100 / 80 = 1.25
+      expect(result.rrAssumed).toBe(true);
+      expect(result.compliance.rrStatus).toBe('NAO_CONFORME');
+    });
+
+    it('sem stop + loss → RR negativo assumido', () => {
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: -200, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(-2.5); // -200 / 80 = -2.5
+      expect(result.rrAssumed).toBe(true);
+      expect(result.compliance.rrStatus).toBe('NAO_CONFORME');
+    });
+
+    it('sem stop + breakeven → RR = 0 assumido', () => {
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 0, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(0);
+      expect(result.rrAssumed).toBe(true);
+    });
+
+    it('usa plan.pl (base) e NÃO currentPl para RO$', () => {
+      // Plan com currentPl=25000 mas pl=20000
+      const plan = { ...basePlan, currentPl: 25000, pl: 20000 };
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 160, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, plan);
+
+      // RO$ = 20000 * 0.4% = 80 (usa pl, não currentPl)
+      expect(result.rrRatio).toBe(2.0); // 160 / 80
+      expect(result.rrAssumed).toBe(true);
+    });
+
+    it('plan sem riskPerOperation → rrRatio null (não pode calcular)', () => {
+      const plan = { currentPl: 20000, pl: 20000, rrTarget: 2 };
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 200, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, plan);
+
+      expect(result.rrRatio).toBeNull();
+      expect(result.rrAssumed).toBe(false);
+    });
+
+    it('plan com pl=0 → rrRatio null', () => {
+      const plan = { currentPl: 20000, pl: 0, riskPerOperation: 1, rrTarget: 2 };
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 200, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, plan);
+
+      // planPl (currentPl) > 0 so function proceeds, but basePl=0 → can't calc RR
+      expect(result.rrRatio).toBeNull();
+      expect(result.rrAssumed).toBe(false);
+    });
+
+    it('arredonda RR assumido para 2 casas decimais', () => {
+      // RO$ = 20000 * 0.4% = 80, result=100 → 100/80 = 1.25
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 100, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(1.25);
+    });
+
+    it('com stop → rrAssumed = false (RR real)', () => {
+      const trade = { entry: 5000, stopLoss: 4950, takeProfit: 5100, qty: 1, tickerRule: winfutTicker };
+      const result = calculateTradeCompliance(trade, basePlan);
+
+      expect(result.rrRatio).toBe(2.0);
+      expect(result.rrAssumed).toBe(false);
+    });
+
+    it('RR assumido funciona para moeda diferente (USD)', () => {
+      // Plan pl=5000 USD, RO=2% → RO$=100, result=250 → RR=2.5
+      const plan = { currentPl: 5500, pl: 5000, riskPerOperation: 2, rrTarget: 2 };
+      const trade = { entry: 15000, qty: 1, stopLoss: null, result: 250 };
+      const result = calculateTradeCompliance(trade, plan);
+
+      expect(result.rrRatio).toBe(2.5);
+      expect(result.rrAssumed).toBe(true);
+      expect(result.compliance.rrStatus).toBe('CONFORME');
+    });
+
+    it('RR assumido gera red flag RR_BELOW_MINIMUM quando abaixo do alvo', () => {
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: 50, tickerRule: winfutTicker };
+      const compliance = calculateTradeCompliance(trade, basePlan);
+      const flags = generateComplianceRedFlags(trade, basePlan, compliance);
+
+      expect(compliance.rrRatio).toBe(0.63); // 50/80
+      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
     });
   });
 

@@ -258,11 +258,11 @@ export const useTrades = (overrideStudentId = null) => {
           rrRatio = Math.round((effectiveResult / (risk * (tradeData.tickerRule?.pointValue || 1) * qty)) * 100) / 100;
         }
       } else {
-        // RR assumido: baseado no RO$ do plano (DEC-005)
+        // RR assumido: baseado no RO$ do plano (DEC-007: usa plan.pl = capital base)
         const planData = planSnap.data();
         const assumed = calculateAssumedRR({
           result: effectiveResult,
-          planPl: Number(planData.currentPl ?? planData.pl) || 0,
+          planPl: Number(planData.pl) || 0,
           planRiskPerOperation: Number(planData.riskPerOperation) || 0,
           planRrTarget: Number(planData.rrTarget) || 0,
         });
@@ -409,6 +409,56 @@ export const useTrades = (overrideStudentId = null) => {
       }
 
       await updateDoc(tradeRef, updateData);
+
+      // C-RR3 (DEC-007): Recalcular RR quando campos relevantes mudam
+      // A CF onTradeUpdated também recalcula, mas fazemos aqui para feedback imediato
+      const resultChanged = Math.abs((updateData.result ?? currentTrade.result) - (currentTrade.result || 0)) > 0.01;
+      const stopChanged = updates.stopLoss !== undefined;
+      const priceChanged = updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined;
+      
+      if (resultChanged || stopChanged || priceChanged) {
+        const effectiveStop = updateData.stopLoss !== undefined ? updateData.stopLoss : currentTrade.stopLoss;
+        const effectiveEntry = entry;
+        const effectiveResult = updateData.result ?? currentTrade.result;
+        const effectiveQty = qty;
+        
+        let newRrRatio = null;
+        let newRrAssumed = false;
+        
+        if (effectiveStop != null && effectiveStop !== 0 && effectiveEntry) {
+          // RR real: baseado no stop loss efetivo
+          const risk = Math.abs(effectiveEntry - effectiveStop);
+          if (risk > 0) {
+            const pointValue = (updates.tickerRule || currentTrade.tickerRule)?.pointValue || 1;
+            newRrRatio = Math.round((effectiveResult / (risk * pointValue * effectiveQty)) * 100) / 100;
+          }
+        } else {
+          // RR assumido: buscar plano para calcular (DEC-007: usa plan.pl)
+          try {
+            const planId = currentTrade.planId;
+            if (planId) {
+              const planSnap = await getDoc(doc(db, 'plans', planId));
+              if (planSnap.exists()) {
+                const planData = planSnap.data();
+                const assumed = calculateAssumedRR({
+                  result: effectiveResult,
+                  planPl: Number(planData.pl) || 0,
+                  planRiskPerOperation: Number(planData.riskPerOperation) || 0,
+                  planRrTarget: Number(planData.rrTarget) || 0,
+                });
+                if (assumed) {
+                  newRrRatio = assumed.rrRatio;
+                  newRrAssumed = true;
+                }
+              }
+            }
+          } catch (rrErr) {
+            console.warn('[useTrades] updateTrade: erro recalculando RR assumido:', rrErr);
+          }
+        }
+        
+        await updateDoc(tradeRef, { rrRatio: newRrRatio, rrAssumed: newRrAssumed });
+      }
 
       // Sanitizar newResult para uso no movement
       const effectiveUpdateResult = Math.round(newResult * 100) / 100;

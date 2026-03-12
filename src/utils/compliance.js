@@ -1,6 +1,6 @@
 /**
  * Trade Compliance — Cálculos puros
- * @version 2.0.0 (v1.19.1)
+ * @version 3.0.0 (v1.19.2)
  * 
  * Lógica extraída de functions/index.js (calculateTradeCompliance)
  * para permitir testes unitários no frontend.
@@ -9,6 +9,9 @@
  * TODO: Fase futura — unificar em módulo shared.
  * 
  * CHANGELOG:
+ * - 3.0.0 (v1.19.2): DEC-007 — RR assumido integrado no calculateTradeCompliance.
+ *   Trades sem stop agora calculam rrRatio via plan.pl (capital base) × RO%.
+ *   Guard C4 removido — CF e frontend recalculam RR assumido em todos os pontos.
  * - 2.0.0 (v1.19.1): DEC-006 — RO sem stop: loss → risco retroativo, win → N/A, breakeven → 0
  * - 1.0.0 (v1.17.0): Extração inicial, sem stop = 100% (substituído por DEC-006)
  */
@@ -35,14 +38,21 @@ export const RED_FLAG_TYPES = {
  * - Sem stop + win:  riskPercent = null (N/A — impossível inferir risco)
  * - Sem stop + breakeven (result = 0): riskPercent = 0
  * 
+ * === DEC-007 (v1.19.2): RR assumido para trades sem stop ===
+ * Quando trade não tem stop, calcula RR assumido:
+ *   RO$ = plan.pl (capital base) × plan.riskPerOperation / 100
+ *   rrRatio = result / RO$
+ * Usa plan.pl (não currentPl) porque o risco é definido sobre o capital alocado ao ciclo.
+ * 
  * @param {Object} trade - { entry, stopLoss, takeProfit, qty, result, tickerRule: { tickSize, tickValue } }
  * @param {Object} plan - { currentPl, pl, riskPerOperation, rrTarget }
- * @returns {{ riskPercent: number|null, rrRatio: number|null, compliance: { roStatus: string, rrStatus: string } }}
+ * @returns {{ riskPercent: number|null, rrRatio: number|null, rrAssumed: boolean, compliance: { roStatus: string, rrStatus: string } }}
  */
 export const calculateTradeCompliance = (trade, plan) => {
   const result = { 
     riskPercent: null, 
-    rrRatio: null, 
+    rrRatio: null,
+    rrAssumed: false,
     compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } 
   };
   
@@ -81,6 +91,7 @@ export const calculateTradeCompliance = (trade, plan) => {
   
   // === Razão Risco-Retorno (RR) ===
   if (trade.stopLoss && trade.entry) {
+    // COM stop: RR real baseado na distância do stop
     const risk = Math.abs(trade.entry - trade.stopLoss);
     if (risk > 0) {
       if (trade.takeProfit) {
@@ -94,11 +105,22 @@ export const calculateTradeCompliance = (trade, plan) => {
         const resultInPoints = (trade.result / (tickValue * (trade.qty ?? 1))) * tickSize;
         result.rrRatio = resultInPoints / risk;
       }
-      
-      if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
-        result.compliance.rrStatus = 'NAO_CONFORME';
-      }
     }
+  } else {
+    // DEC-007: SEM stop — RR assumido via plan.pl (capital base) × RO%
+    const basePl = Number(plan.pl) || 0;
+    const roPercent = Number(plan.riskPerOperation) || 0;
+    if (basePl > 0 && roPercent > 0) {
+      const roAmount = basePl * (roPercent / 100);
+      const tradeResult = trade.result ?? 0;
+      result.rrRatio = Math.round((tradeResult / roAmount) * 100) / 100;
+      result.rrAssumed = true;
+    }
+  }
+
+  // RR compliance: avalia se rrRatio é numérico
+  if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
+    result.compliance.rrStatus = 'NAO_CONFORME';
   }
   
   return result;

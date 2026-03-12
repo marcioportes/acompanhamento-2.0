@@ -1,14 +1,20 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.8.0
+ * @version 1.9.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
+ * CHANGELOG v1.9.0 (alinhado com produto v1.19.2):
+ *   - DEC-007: RR assumido integrado em calculateTradeCompliance para trades sem stop
+ *     RR = result / (plan.pl × RO%). Usa plan.pl (capital base), não currentPl.
+ *   - Guard C4 REMOVIDO — calculateTradeCompliance agora retorna RR para todos os trades.
+ *     onTradeCreated, onTradeUpdated, recalculateCompliance gravam rrRatio + rrAssumed diretamente.
+ *   - Cascata updatePlan → recalculateCompliance agora recalcula RR assumido corretamente.
+ *
  * CHANGELOG v1.8.0 (alinhado com produto v1.19.1):
  *   - DEC-006: calculateTradeCompliance sem stop → risco retroativo (loss), N/A (win), 0 (breakeven)
- *   - C4: Guard rrAssumed — onTradeCreated/Updated/recalculateCompliance não sobrescrevem rrRatio
- *     quando frontend já calculou RR assumido (rrAssumed: true)
+ *   - C4: Guard rrAssumed (REMOVIDO em v1.9.0)
  *   - Red flags contextualizados: NO_STOP não afirma mais "risco ilimitado"
  *   - RISK_EXCEEDED só gerado quando riskPercent é numérico
  *
@@ -49,10 +55,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 7,
+  minor: 9,
   patch: 0,
   prerelease: null,
-  build: '20260225',
+  build: '20260311',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -286,12 +292,12 @@ const updatePlanPl = async (planId, resultDiff) => {
  * Risco Operacional (RO) e Razão Risco-Retorno (RR)
  * 
  * DEC-006 (v1.19.1): Sem stop → risco retroativo (loss), N/A (win), 0 (breakeven)
- * RR: prefere takeProfit se disponível, fallback para resultado efetivo
+ * DEC-007 (v1.19.2): RR assumido para trades sem stop via plan.pl (capital base) × RO%
  * 
- * @returns {{ riskPercent: number|null, rrRatio, compliance: { roStatus, rrStatus } }}
+ * @returns {{ riskPercent: number|null, rrRatio: number|null, rrAssumed: boolean, compliance: { roStatus, rrStatus } }}
  */
 const calculateTradeCompliance = (trade, plan) => {
-  const result = { riskPercent: null, rrRatio: null, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
+  const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
   
   if (!plan || !trade) return result;
   
@@ -300,30 +306,27 @@ const calculateTradeCompliance = (trade, plan) => {
   
   // === Risco Operacional — DEC-006 (v1.19.1) ===
   if (trade.stopLoss && trade.entry) {
-    // Com stop: risco = (distância / tickSize) * tickValue * qty
     const tickSize = trade.tickerRule?.tickSize || 1;
     const tickValue = trade.tickerRule?.tickValue || 1;
     const distanceInPoints = Math.abs(trade.entry - trade.stopLoss);
     const riskAmount = (distanceInPoints / tickSize) * tickValue * (trade.qty ?? 1);
     result.riskPercent = (riskAmount / planPl) * 100;
   } else {
-    // DEC-006: Sem stop — risco retroativo baseado no resultado
     const tradeResult = trade.result ?? 0;
     if (tradeResult < 0) {
       result.riskPercent = (Math.abs(tradeResult) / planPl) * 100;
     } else if (tradeResult === 0) {
       result.riskPercent = 0;
     } else {
-      result.riskPercent = null; // Win sem stop → N/A
+      result.riskPercent = null;
     }
   }
   
-  // RO compliance: só avalia se riskPercent é numérico
   if (result.riskPercent != null && plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   
-  // === Razão Risco-Retorno ===
+  // === Razão Risco-Retorno — DEC-007 (v1.19.2) ===
   if (trade.stopLoss && trade.entry) {
     const risk = Math.abs(trade.entry - trade.stopLoss);
     if (risk > 0) {
@@ -336,11 +339,21 @@ const calculateTradeCompliance = (trade, plan) => {
         const resultInPoints = (trade.result / (tickValue * (trade.qty ?? 1))) * tickSize;
         result.rrRatio = resultInPoints / risk;
       }
-      
-      if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
-        result.compliance.rrStatus = 'NAO_CONFORME';
-      }
     }
+  } else {
+    // DEC-007: SEM stop — RR assumido via plan.pl (capital base) × RO%
+    const basePl = Number(plan.pl) || 0;
+    const roPercent = Number(plan.riskPerOperation) || 0;
+    if (basePl > 0 && roPercent > 0) {
+      const roAmount = basePl * (roPercent / 100);
+      const tradeResult = trade.result ?? 0;
+      result.rrRatio = Math.round((tradeResult / roAmount) * 100) / 100;
+      result.rrAssumed = true;
+    }
+  }
+
+  if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
+    result.compliance.rrStatus = 'NAO_CONFORME';
   }
   
   return result;
@@ -722,13 +735,9 @@ exports.onTradeCreated = functions.firestore
           // Compliance calculado sobre PL do plano (não saldo da conta)
           const tradeCompliance = calculateTradeCompliance(trade, plan);
           updates.riskPercent = tradeCompliance.riskPercent;
-          // C4: Respeitar rrAssumed do frontend — não sobrescrever com null
-          if (trade.rrAssumed && tradeCompliance.rrRatio == null) {
-            // Frontend já calculou RR assumido, manter o valor existente
-            updates.rrRatio = trade.rrRatio ?? null;
-          } else {
-            updates.rrRatio = tradeCompliance.rrRatio;
-          }
+          // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades (com/sem stop)
+          updates.rrRatio = tradeCompliance.rrRatio;
+          updates.rrAssumed = tradeCompliance.rrAssumed;
           updates.compliance = tradeCompliance.compliance;
           
           // Red flag: risco operacional — só quando riskPercent é numérico (DEC-006)
@@ -891,20 +900,17 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
           newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: `RR ${compliance.rrRatio.toFixed(1)}x abaixo do mínimo (${plan.rrTarget}x)`, timestamp: new Date().toISOString() });
         }
         
-        // C4: Respeitar rrAssumed — não sobrescrever com null
-        const effectiveRrRatio = (after.rrAssumed && compliance.rrRatio == null)
-          ? (after.rrRatio ?? null)
-          : compliance.rrRatio;
-        
+        // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades
         await change.after.ref.update({
           riskPercent: compliance.riskPercent,
-          rrRatio: effectiveRrRatio,
+          rrRatio: compliance.rrRatio,
+          rrAssumed: compliance.rrAssumed,
           compliance: compliance.compliance,
           redFlags: newFlags,
           hasRedFlags: newFlags.length > 0
         });
         const roDisplay = compliance.riskPercent != null ? compliance.riskPercent.toFixed(2) + '%' : 'N/A';
-        console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${effectiveRrRatio ?? 'N/A'}, flags=${newFlags.length}`);
+        console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
       }
     }
 
@@ -1099,6 +1105,7 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     const updateData = {
       riskPercent: compliance.riskPercent,
       rrRatio: compliance.rrRatio,
+      rrAssumed: compliance.rrAssumed,
       compliance: compliance.compliance
     };
     
@@ -1121,11 +1128,6 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     }
     if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
       newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: 'RR ' + compliance.rrRatio.toFixed(1) + 'x abaixo do minimo (' + plan.rrTarget + 'x)', timestamp: new Date().toISOString() });
-    }
-    
-    // C4: Respeitar rrAssumed — não sobrescrever com null
-    if (trade.rrAssumed && compliance.rrRatio == null) {
-      updateData.rrRatio = trade.rrRatio ?? null;
     }
     
     updateData.redFlags = newFlags;

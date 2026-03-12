@@ -341,9 +341,9 @@ export const usePlans = (overrideStudentId = null) => {
         || currentRisk != null && newRisk == null
         || (currentRisk != null && newRisk != null && Math.abs(currentRisk - newRisk) > 0.01);
 
-      // Comparar rrRatio (null-safe, respeita rrAssumed)
+      // Comparar rrRatio (null-safe — DEC-007: calculateTradeCompliance now returns RR for all trades)
       const currentRR = trade.rrRatio;
-      const newRR = (trade.rrAssumed && fresh.rrRatio == null) ? currentRR : fresh.rrRatio;
+      const newRR = fresh.rrRatio;
       const rrChanged = currentRR == null && newRR != null
         || currentRR != null && newRR == null
         || (currentRR != null && newRR != null && Math.abs(currentRR - newRR) > 0.01);
@@ -364,6 +364,8 @@ export const usePlans = (overrideStudentId = null) => {
         let reason = 'Compliance recalculado';
         if (!trade.stopLoss && currentRisk === 100) {
           reason = 'DEC-006: risco retroativo';
+        } else if (rrChanged && fresh.rrAssumed) {
+          reason = 'DEC-007: RR assumido recalculado';
         } else if (riskChanged) {
           reason = 'RO% recalculado';
         } else if (rrChanged) {

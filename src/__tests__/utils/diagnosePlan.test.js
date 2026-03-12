@@ -39,7 +39,7 @@ const diagnosePlanPure = (plan, planTrades) => {
       || (currentRisk != null && newRisk != null && Math.abs(currentRisk - newRisk) > 0.01);
 
     const currentRR = trade.rrRatio;
-    const newRR = (trade.rrAssumed && fresh.rrRatio == null) ? currentRR : fresh.rrRatio;
+    const newRR = fresh.rrRatio;
     const rrChanged = currentRR == null && newRR != null
       || currentRR != null && newRR == null
       || (currentRR != null && newRR != null && Math.abs(currentRR - newRR) > 0.01);
@@ -180,22 +180,43 @@ describe('diagnosePlan — diagnóstico bidirecional', () => {
       expect(result.trades.details[0].newRisk).toBe('N/A');
     });
 
-    it('trade com rrAssumed → respeita guard, não marca como divergente', () => {
+    it('trade com rrAssumed → DEC-007 recalcula, detecta divergência se valor mudou', () => {
       const plan = { ...basePlan, currentPl: 10200 };
+      // RO$ = 10000 * 1% = 100, result=200 → RR assumido = 200/100 = 2.0
       const trades = [{
         id: 't1', planId: 'plan1', result: 200,
         entry: 5000, stopLoss: null, qty: 1,
         tickerRule: winfutTicker,
         riskPercent: null, // correto DEC-006 win
-        rrRatio: 2.0,
+        rrRatio: 2.0,      // matches recalculated value
         rrAssumed: true,
         compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' },
       }];
 
       const result = diagnosePlanPure(plan, trades);
 
-      // rrAssumed trade: CF guard preserva rrRatio, não diverge
+      // RR recalculado = 200 / (10000 * 1%) = 2.0 — matches, no divergence
       expect(result.trades.divergent).toBe(0);
+    });
+
+    it('trade com rrAssumed stale → DEC-007 detecta divergência', () => {
+      const plan = { ...basePlan, currentPl: 10200 };
+      // RO$ = 10000 * 1% = 100, result=200 → RR assumido correto = 2.0
+      // Mas trade gravou -3.14 (valor stale de PL antigo)
+      const trades = [{
+        id: 't1', planId: 'plan1', result: 200,
+        entry: 5000, stopLoss: null, qty: 1,
+        tickerRule: winfutTicker,
+        riskPercent: null,
+        rrRatio: -3.14,    // STALE — was calculated with wrong planPl
+        rrAssumed: true,
+        compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' },
+      }];
+
+      const result = diagnosePlanPure(plan, trades);
+
+      // RR recalculado = 200 / 100 = 2.0, gravado = -3.14 → divergente!
+      expect(result.trades.divergent).toBe(1);
     });
   });
 
