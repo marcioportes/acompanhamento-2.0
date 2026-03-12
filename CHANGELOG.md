@@ -13,13 +13,17 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - **RR compliance só avalia wins:** Loss com RR negativo não é violação — perder 1R é o risco planejado. RR target (2:1) é critério de gain. Trades com takeProfit continuam avaliados independente do resultado
 - **updateTrade recalcula RR:** Edição de resultado, stop, entry, exit ou qty agora recalcula rrRatio (real com stop, assumido sem stop). Antes o rrRatio ficava congelado do addTrade original
 - **updateTrade recalcula resultInPoints:** Edição de entry/exit/qty/side agora recalcula pontos. Antes resultInPoints ficava stale (Issue #78/C5)
+- **updateTrade atualiza parciais (B3):** Quando trade é editado via modal com parciais, subcollection é substituída e trade recalculado via `calculateFromPartials`. Sem histórico — editou, sobrescreveu
 - **diagnosePlan detecta rrAssumed stale:** Auditoria agora identifica trades com RR assumido incorreto como divergentes
 
 ### Modificado
 - `compliance.js` v3.0.0: `calculateTradeCompliance` retorna `rrAssumed: boolean`. Trades sem stop: RR = result / (plan.pl × RO%). rrStatus NAO_CONFORME só para wins ou trades com takeProfit
 - `functions/index.js` v1.9.0: `calculateTradeCompliance` com DEC-007 + RR compliance wins-only. Guards C4 removidos
-- `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR + resultInPoints
+- `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR + resultInPoints + parciais (subcollection)
 - `usePlans.js`: `diagnosePlan` comparação direta de rrRatio (sem guard C4)
+- `FeedbackPage.jsx`: Badge "(est.)" quando `rrAssumed=true` no card de risco
+- `ExtractTable.jsx`: RR usa `trade.rrAssumed` para badge "(est.)". Eventos inline removem compliance redundante (S/Stop, RO, RR) — mantém apenas state machine (META/STOP) + emocional (TILT/REVENGE/CRÍTICO). Cores ciclo diferenciadas (yellow/orange vs emerald/red período)
+- `ExtractCycleCard.jsx`: Gauge segue período selecionado — mostra PnL/Meta/Stop do período ativo em vez do ciclo. Header label dinâmico
 - `version.js`: v1.19.2+20260311
 
 ### Testes

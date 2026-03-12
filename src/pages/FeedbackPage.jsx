@@ -161,6 +161,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           rrCalc = movePts / riskPts;
         }
         const rrRatio = trade.rrRatio || trade.rr || rrCalc;
+        const isRrAssumed = trade.rrAssumed === true;
         
         // Resultado % sobre PL (usa planPl se disponível via _planPl prop)
         const planPl = Number(trade._planPl) || 0;
@@ -187,6 +188,9 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
               <div className={`${rrRatio >= 1 ? 'bg-blue-500/5 border-blue-500/20' : 'bg-amber-500/5 border-amber-500/20'} border rounded-xl p-3 text-center`}>
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">RR</span>
                 <span className={`font-mono font-bold ${rrRatio >= 1 ? 'text-blue-400' : 'text-amber-400'}`}>{Number(rrRatio).toFixed(2)}:1</span>
+                {isRrAssumed && (
+                  <span className="text-[9px] text-purple-400/70 block mt-0.5" title="RR calculado sem stop loss, baseado no RO% do plano">(est.)</span>
+                )}
               </div>
             )}
             {resultPercentPl != null && (

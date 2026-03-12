@@ -60,28 +60,14 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
     events.push({ icon: null, color: 'text-red-500/70', label: 'Violação', small: true });
   }
 
-  // 1b. Cycle events (se este trade causou cycle goal/stop)
+  // 1b. Cycle events (se este trade causou cycle goal/stop) — cor diferenciada
   if (row.cycleEvent === 'CYCLE_GOAL_HIT') {
-    events.push({ icon: Trophy, color: 'text-emerald-300', label: 'META!', sublabel: 'Ciclo' });
+    events.push({ icon: Trophy, color: 'text-yellow-400', label: 'META!', sublabel: 'Ciclo' });
   } else if (row.cycleEvent === 'CYCLE_STOP_HIT') {
-    events.push({ icon: Skull, color: 'text-red-300', label: 'STOP!', sublabel: 'Ciclo' });
+    events.push({ icon: Skull, color: 'text-orange-400', label: 'STOP!', sublabel: 'Ciclo' });
   }
 
-  // 2. Compliance events
-  const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
-    (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
-  );
-  if (hasNoStop) {
-    events.push({ icon: ShieldAlert, color: 'text-red-400', label: 'S/Stop', small: true });
-  }
-  if (trade.compliance?.roStatus === 'FORA_DO_PLANO') {
-    events.push({ icon: ShieldOff, color: 'text-amber-400', label: 'RO', small: true });
-  }
-  if (trade.compliance?.rrStatus === 'NAO_CONFORME') {
-    events.push({ icon: Scale, color: 'text-amber-400', label: 'RR', small: true });
-  }
-
-  // 3. Emotional events (TILT, REVENGE matched by tradeId or proximity)
+  // 2. Emotional events (TILT, REVENGE matched by tradeId or proximity)
   if (emotionalEvents) {
     const tradeEmotionalEvents = emotionalEvents.filter(e => {
       // Match por tradeId direto se disponível
@@ -177,14 +163,13 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO';
             const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME';
 
-            // RR: real (do trade) ou assumido (calculado via B2)
+            // RR: real (do trade) ou assumido (DEC-007: gravado no trade pela CF)
             let rrDisplay = '-';
-            let rrIsAssumed = false;
-            let rrAssumedNonCompliant = false;
+            let rrIsAssumed = trade.rrAssumed === true;
             if (trade.rrRatio != null) {
               rrDisplay = `${Number(trade.rrRatio).toFixed(1)}:1`;
             } else if (planRiskInfo && !trade.stopLoss) {
-              // Sem stop → calcular RR assumido via DEC-005
+              // Fallback: trades antigos sem rrRatio gravado
               const assumed = calculateAssumedRR({
                 result: trade.result ?? 0,
                 planPl: planRiskInfo.pl,
@@ -194,9 +179,10 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
               if (assumed) {
                 rrIsAssumed = true;
                 rrDisplay = `${assumed.rrRatio.toFixed(1)}:1`;
-                rrAssumedNonCompliant = !assumed.isCompliant;
               }
             }
+            // RR compliance: loss não é violação (B1)
+            const rrNonCompliant = trade.compliance?.rrStatus === 'NAO_CONFORME';
 
             // Inline events
             const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
@@ -246,9 +232,9 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                 </td>
 
                 {/* RR — real ou assumido (B4) */}
-                <td className={`p-3 text-right font-mono text-xs ${rrFora || rrAssumedNonCompliant ? 'text-amber-400' : 'text-slate-400'}`}>
+                <td className={`p-3 text-right font-mono text-xs ${rrFora || rrNonCompliant ? 'text-amber-400' : 'text-slate-400'}`}>
                   <div className="flex items-center justify-end gap-1">
-                    {(rrFora || rrAssumedNonCompliant) && <Scale className="w-3 h-3 text-amber-400" />}
+                    {(rrFora || rrNonCompliant) && <Scale className="w-3 h-3 text-amber-400" />}
                     {rrDisplay}
                     {rrIsAssumed && (
                       <span className="text-[8px] text-purple-400/70 ml-0.5" title="RR calculado sem stop loss, baseado no RO% do plano">(est.)</span>
