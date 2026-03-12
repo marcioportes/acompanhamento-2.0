@@ -27,8 +27,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - `version.js`: v1.19.2+20260311
 
 ### Testes
-- 13 novos testes: 12 para DEC-007 RR assumido (win/loss/breakeven, plan.pl vs currentPl, moeda diferente, red flags, loss não viola RR), 1 para diagnosePlan stale detection
-- 379 testes totais, zero regressão
+- 20 novos testes: 12 DEC-007 RR assumido, 1 diagnosePlan stale, 7 calculateFromPartials (B3 regressão): 12 para DEC-007 RR assumido (win/loss/breakeven, plan.pl vs currentPl, moeda diferente, red flags, loss não viola RR), 1 para diagnosePlan stale detection
+- 386 testes totais, zero regressão
 
 ---
 

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { calculateAssumedRR } from '../../utils/tradeCalculations';
+import { calculateAssumedRR, calculateFromPartials } from '../../utils/tradeCalculations';
 
 describe('calculateAssumedRR', () => {
 
@@ -213,5 +213,106 @@ describe('calculateAssumedRR', () => {
       planRrTarget: 2,
     });
     expect(result.rrRatio).toBe(0.33);
+  });
+});
+
+// ============================================
+// B3: calculateFromPartials — regressão para updateTrade com parciais
+// Simula o fluxo: parciais editadas → recálculo → campos derivados
+// ============================================
+
+describe('calculateFromPartials — B3 regressão', () => {
+
+  it('trade simples LONG: 1 entry + 1 exit → result correto', () => {
+    const partials = [
+      { seq: 1, type: 'ENTRY', price: 1000, qty: 5, dateTime: '2026-03-11T22:50:00' },
+      { seq: 2, type: 'EXIT', price: 1200, qty: 5, dateTime: '2026-03-11T22:51:00' },
+    ];
+    const result = calculateFromPartials({ side: 'LONG', partials });
+
+    expect(result.avgEntry).toBe(1000);
+    expect(result.avgExit).toBe(1200);
+    expect(result.result).toBe(1000); // (1200-1000) * 5
+    expect(result.resultInPoints).toBe(200); // 1200-1000
+    expect(result.realizedQty).toBe(5);
+  });
+
+  it('trade simples SHORT: 1 entry + 1 exit → result correto', () => {
+    const partials = [
+      { seq: 1, type: 'ENTRY', price: 5000, qty: 2, dateTime: '2026-03-11T10:00:00' },
+      { seq: 2, type: 'EXIT', price: 4900, qty: 2, dateTime: '2026-03-11T10:05:00' },
+    ];
+    const result = calculateFromPartials({ side: 'SHORT', partials });
+
+    expect(result.avgEntry).toBe(5000);
+    expect(result.avgExit).toBe(4900);
+    expect(result.result).toBe(200); // (5000-4900) * 2
+    expect(result.resultInPoints).toBe(100); // 5000-4900
+  });
+
+  it('múltiplas entries: preço médio ponderado', () => {
+    const partials = [
+      { seq: 1, type: 'ENTRY', price: 1000, qty: 1 },
+      { seq: 2, type: 'ENTRY', price: 1100, qty: 1 },
+      { seq: 3, type: 'EXIT', price: 1300, qty: 2 },
+    ];
+    const result = calculateFromPartials({ side: 'LONG', partials });
+
+    expect(result.avgEntry).toBe(1050); // (1000*1 + 1100*1) / 2
+    expect(result.avgExit).toBe(1300);
+    expect(result.result).toBe(500); // (1300-1050) * 2
+    expect(result.realizedQty).toBe(2);
+  });
+
+  it('parciais editadas (preço mudou) → recálculo reflete novo valor', () => {
+    // Cenário B3: usuário editou preço de saída de 840 para 900
+    const partialsOriginal = [
+      { seq: 1, type: 'ENTRY', price: 1000, qty: 5 },
+      { seq: 2, type: 'EXIT', price: 840, qty: 5 },
+    ];
+    const partialsEditadas = [
+      { seq: 1, type: 'ENTRY', price: 1000, qty: 5 },
+      { seq: 2, type: 'EXIT', price: 900, qty: 5 },
+    ];
+
+    const original = calculateFromPartials({ side: 'LONG', partials: partialsOriginal });
+    const editado = calculateFromPartials({ side: 'LONG', partials: partialsEditadas });
+
+    expect(original.result).toBe(-800); // (840-1000) * 5
+    expect(editado.result).toBe(-500);  // (900-1000) * 5
+    expect(editado.avgExit).toBe(900);
+    expect(editado.resultInPoints).toBe(-100); // 900-1000
+  });
+
+  it('com tickerRule: resultado usa tickSize/tickValue', () => {
+    const winfutTicker = { tickSize: 5, tickValue: 1, pointValue: 0.2 };
+    const partials = [
+      { seq: 1, type: 'ENTRY', price: 130000, qty: 1 },
+      { seq: 2, type: 'EXIT', price: 130100, qty: 1 },
+    ];
+    const result = calculateFromPartials({ side: 'LONG', partials, tickerRule: winfutTicker });
+
+    // 100pts / 5 tickSize = 20 ticks * 1 tickValue * 1 qty = R$20
+    expect(result.result).toBe(20);
+    expect(result.resultInPoints).toBe(100);
+  });
+
+  it('sem parciais → resultado vazio', () => {
+    const result = calculateFromPartials({ side: 'LONG', partials: [] });
+
+    expect(result.result).toBe(0);
+    expect(result.avgEntry).toBe(0);
+    expect(result.avgExit).toBe(0);
+  });
+
+  it('entryTime/exitTime derivados das parciais', () => {
+    const partials = [
+      { seq: 1, type: 'ENTRY', price: 1000, qty: 5, dateTime: '2026-03-11T22:50:00' },
+      { seq: 2, type: 'EXIT', price: 1200, qty: 5, dateTime: '2026-03-11T22:55:00' },
+    ];
+    const result = calculateFromPartials({ side: 'LONG', partials });
+
+    expect(result.entryTime).toBe('2026-03-11T22:50:00');
+    expect(result.exitTime).toBe('2026-03-11T22:55:00');
   });
 });
