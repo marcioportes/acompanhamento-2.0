@@ -389,31 +389,16 @@ export const useTrades = (overrideStudentId = null) => {
       // === PARCIAIS SÃO A FONTE DA VERDADE ===
       // Quando _partials existe, TODO o recálculo vem delas. Campos entry/exit/qty/result são derivados.
       if (_partials && _partials.length > 0) {
-        // 1. Substituir subcollection
-        const oldPartials = await getDocs(collection(db, 'trades', tradeId, 'partials'));
-        await Promise.all(oldPartials.docs.map(d => deleteDoc(d.ref)));
-
-        const partialsRef = collection(db, 'trades', tradeId, 'partials');
-        for (const partial of _partials) {
-          await addDoc(partialsRef, {
-            seq: partial.seq,
-            type: partial.type,
-            price: parseFloat(partial.price),
-            qty: parseFloat(partial.qty),
-            dateTime: partial.dateTime || new Date().toISOString(),
-            notes: partial.notes || '',
-            createdAt: serverTimestamp()
-          });
-        }
-
-        // 2. Recalcular tudo a partir das parciais
+        // Recalcular a partir das parciais
+        const parsedPartials = _partials.map(p => ({ ...p, price: parseFloat(p.price), qty: parseFloat(p.qty) }));
         const calc = calculateFromPartials({
           side,
-          partials: _partials.map(p => ({ ...p, price: parseFloat(p.price), qty: parseFloat(p.qty) })),
+          partials: parsedPartials,
           tickerRule: tickerRule || null
         });
 
-        // 3. Campos derivados — única fonte
+        // Gravar parciais e campos derivados no documento
+        updateData._partials = parsedPartials;
         updateData.hasPartials = true;
         updateData.partialsCount = _partials.length;
         updateData.avgEntry = calc.avgEntry;
@@ -429,7 +414,6 @@ export const useTrades = (overrideStudentId = null) => {
         updateData.date = calc.entryTime ? calc.entryTime.split('T')[0] : currentTrade.date;
         updateData.resultPercent = calc.avgEntry > 0 ? calculateResultPercent(side, calc.avgEntry, calc.avgExit) : 0;
 
-        // Override de resultado (se presente)
         if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
           updateData.result = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
           updateData.resultEdited = true;

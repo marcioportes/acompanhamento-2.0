@@ -13,7 +13,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - **RR compliance só avalia wins:** Loss com RR negativo não é violação — perder 1R é o risco planejado. RR target (2:1) é critério de gain. Trades com takeProfit continuam avaliados independente do resultado
 - **updateTrade recalcula RR:** Edição de resultado, stop, entry, exit ou qty agora recalcula rrRatio (real com stop, assumido sem stop). Antes o rrRatio ficava congelado do addTrade original
 - **updateTrade recalcula resultInPoints:** Edição de entry/exit/qty/side agora recalcula pontos. Antes resultInPoints ficava stale (Issue #78/C5)
-- **updateTrade reestruturado (B3):** Quando parciais existem, são a ÚNICA fonte de verdade. `calculateFromPartials` deriva entry/exit/qty/result/resultInPoints. Write único no trade pai. Caminho legado (sem parciais) mantido como fallback. Modal de edição agora carrega parciais da subcollection via `getPartials` antes de abrir
+- **updateTrade corrige edição de parciais (B3):** `_partials` é campo array no documento do trade — não subcollection. updateTrade agora grava `_partials` no documento e recalcula campos derivados via `calculateFromPartials`. TradesJournal lê `_partials` do documento ao abrir modal de edição
 - **diagnosePlan detecta rrAssumed stale:** Auditoria agora identifica trades com RR assumido incorreto como divergentes
 
 ### Modificado

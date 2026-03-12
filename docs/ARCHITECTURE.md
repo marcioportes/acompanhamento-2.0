@@ -391,6 +391,11 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Por que é mais grave que AP-04:** AP-04 é ignorância — Claude não seguiu regras. AP-05 é inconsistência — Claude declarou que seguiria e não seguiu. Isso erode confiança de forma mais profunda porque o Marcio não pode confiar nem no compromisso verbal.
 **Solução reforçada:** O checklist INV-09 deve ser executado como ÚLTIMA ação antes de gerar qualquer ZIP — não como intenção declarada no início da sessão. Claude deve listar explicitamente cada item do checklist com ✅/❌ no corpo da mensagem, ANTES de apresentar o ZIP. Se qualquer item estiver ❌, Claude NÃO gera o ZIP até corrigir.
 
+### AP-06: Criação de estruturas Firestore sem aprovação
+**O que é:** Claude cria subcollections, campos ou estruturas no Firestore sem verificar a estrutura existente e sem aprovação explícita do Marcio. Assume como o banco funciona em vez de verificar.
+**Evidência (sessão 11-12/03/2026):** O `addTrade` gravava parciais em DOIS lugares: campo `_partials` (array no documento) e subcollection `trades/{id}/partials`. O `updateTrade` escrito por Claude manipulava a subcollection enquanto o modal lia do campo do documento. Resultado: edições não refletiam porque gravavam no lugar errado.
+**Regra:** Antes de tocar qualquer collection ou campo do Firestore, Claude DEVE solicitar ao Marcio a estrutura do documento atual (ou verificar no código existente qual campo é lido/gravado). NUNCA criar subcollections ou campos novos sem aprovação explícita.
+
 ---
 
 *Este documento é vivo. Atualize-o ao final de cada sessão de desenvolvimento.*
