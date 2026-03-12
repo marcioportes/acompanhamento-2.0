@@ -352,7 +352,11 @@ const calculateTradeCompliance = (trade, plan) => {
     }
   }
 
-  if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
+  // RR compliance: skip realized losses without takeProfit (perder 1R é o risco planejado)
+  const tradeResultForRR = trade.result ?? 0;
+  const hasPlannedRR = !!(trade.takeProfit);
+  const shouldEvaluateRR = hasPlannedRR || tradeResultForRR > 0;
+  if (result.rrRatio != null && plan.rrTarget && shouldEvaluateRR && result.rrRatio < plan.rrTarget) {
     result.compliance.rrStatus = 'NAO_CONFORME';
   }
   

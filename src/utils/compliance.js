@@ -118,8 +118,14 @@ export const calculateTradeCompliance = (trade, plan) => {
     }
   }
 
-  // RR compliance: avalia se rrRatio é numérico
-  if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
+  // RR compliance: 
+  // - Com takeProfit: sempre avalia (métrica planejada, independe do resultado)
+  // - Sem takeProfit + win (result > 0): avalia (win que não atingiu alvo)
+  // - Sem takeProfit + loss/breakeven (result <= 0): NÃO avalia (perder 1R é o risco planejado)
+  const tradeResultForRR = trade.result ?? 0;
+  const hasPlannedRR = !!(trade.takeProfit || trade.stopLoss && trade.takeProfit);
+  const shouldEvaluateRR = hasPlannedRR || tradeResultForRR > 0;
+  if (result.rrRatio != null && plan.rrTarget && shouldEvaluateRR && result.rrRatio < plan.rrTarget) {
     result.compliance.rrStatus = 'NAO_CONFORME';
   }
   

@@ -386,14 +386,15 @@ export const useTrades = (overrideStudentId = null) => {
       let newResult = currentTrade.result;
 
       if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
+        const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
         if (tickerRule?.tickSize && tickerRule?.tickValue) {
-          const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
           newResult = (rawDiff / tickerRule.tickSize) * tickerRule.tickValue * qty;
         } else {
           newResult = calculateTradeResult(side, entry, exit, qty);
         }
         updateData.resultCalculated = Math.round(newResult * 100) / 100;
         updateData.resultPercent = calculateResultPercent(side, entry, exit);
+        updateData.resultInPoints = Math.round(rawDiff * 100) / 100;
         updateData.entry = entry; updateData.exit = exit; updateData.qty = qty;
       }
 

@@ -266,17 +266,18 @@ describe('calculateTradeCompliance', () => {
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
     });
 
-    it('sem stop + loss pequeno CONFORME → NO_STOP + RR_BELOW_MINIMUM (DEC-007)', () => {
-      // Loss R$10, 0.05% < 0.4% → RO CONFORME mas NO_STOP present
-      // DEC-007: RR assumido = -10/80 = -0.13 < 2 → RR_BELOW_MINIMUM
+    it('sem stop + loss pequeno CONFORME → NO_STOP only (loss não viola RR)', () => {
+      // Loss R$10, 0.05% < 0.4% → RO CONFORME
+      // DEC-007: RR assumido = -10/80 = -0.13, mas loss → rrStatus CONFORME (não avalia RR em loss)
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -10, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
+      expect(compliance.compliance.rrStatus).toBe('CONFORME');
       expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
-      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
-      expect(flags.length).toBe(2);
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
+      expect(flags.length).toBe(1);
     });
 
     it('com stop CONFORME → NENHUMA flag', () => {
@@ -376,13 +377,13 @@ describe('calculateTradeCompliance', () => {
       expect(result.compliance.rrStatus).toBe('NAO_CONFORME');
     });
 
-    it('sem stop + loss → RR negativo assumido', () => {
+    it('sem stop + loss → RR negativo assumido, CONFORME (loss não viola RR)', () => {
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -200, tickerRule: winfutTicker };
       const result = calculateTradeCompliance(trade, basePlan);
 
       expect(result.rrRatio).toBe(-2.5); // -200 / 80 = -2.5
       expect(result.rrAssumed).toBe(true);
-      expect(result.compliance.rrStatus).toBe('NAO_CONFORME');
+      expect(result.compliance.rrStatus).toBe('CONFORME'); // loss → não avalia RR
     });
 
     it('sem stop + breakeven → RR = 0 assumido', () => {
@@ -457,6 +458,19 @@ describe('calculateTradeCompliance', () => {
 
       expect(compliance.rrRatio).toBe(0.63); // 50/80
       expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
+    });
+
+    it('RR assumido em loss NÃO gera red flag RR_BELOW_MINIMUM (B1)', () => {
+      // Loss de R$100, RR = -1.25 — mas loss não é violação de RR
+      const trade = { entry: 5000, qty: 1, stopLoss: null, result: -100, tickerRule: winfutTicker };
+      const compliance = calculateTradeCompliance(trade, basePlan);
+      const flags = generateComplianceRedFlags(trade, basePlan, compliance);
+
+      expect(compliance.rrRatio).toBe(-1.25); // -100/80
+      expect(compliance.compliance.rrStatus).toBe('CONFORME');
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
+      // Deve ter apenas NO_STOP + RISK_EXCEEDED (100/20000=0.5% > 0.4%)
+      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
     });
   });
 
