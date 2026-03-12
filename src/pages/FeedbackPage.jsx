@@ -203,8 +203,13 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
         );
       })()}
 
-      {/* Red Flags */}
-      {trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 && (
+      {/* Red Flags — ou indicador de processamento se CF ainda não respondeu */}
+      {trade.compliance === undefined && trade.riskPercent === undefined ? (
+        <div className="bg-slate-800/50 border border-slate-700/30 rounded-xl p-3 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+          <span className="text-xs text-slate-400">Processando compliance...</span>
+        </div>
+      ) : trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 ? (
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
           <div className="flex items-center gap-2 text-amber-400 mb-2">
             <AlertTriangle className="w-4 h-4" />
@@ -216,7 +221,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Parciais — exibe quando trade tem dados carregados */}
       {trade._loadedPartials?.length > 0 && (

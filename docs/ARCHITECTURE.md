@@ -4,7 +4,7 @@
 
 > **Localização no repo:** `/docs/ARCHITECTURE.md`
 
-> **Última atualização:** 10/03/2026 — Sessão v1.19.1 (DEC-006, INV-09, AP-04)
+> **Última atualização:** 12/03/2026 — Sessão v1.19.2 (DEC-007, AP-05, DT-017/DT-013 resolvidos)
 
 ---
 
@@ -257,7 +257,20 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 - Red flag NO_STOP continua existindo (disciplina), mas mensagem contextualizada
 - RISK_EXCEEDED só gerado quando `riskPercent` é numérico
 **Impacto:** `compliance.js` v2.0.0, `functions/index.js` v1.8.0 (3 pontos: onCreate, onUpdate, recalculate), 12 testes novos.
-**Guard C4:** CF respeita `rrAssumed: true` — não sobrescreve `rrRatio` com null.
+**Guard C4:** ~~CF respeita `rrAssumed: true` — não sobrescreve `rrRatio` com null.~~ **REMOVIDO em v1.19.2 (DEC-007).**
+
+### DEC-007: RR Assumido via plan.pl (Capital Base) — v1.19.2 (11/03/2026)
+**Problema:** O cálculo do RR assumido (trades sem stop) usava `plan.currentPl` (flutuante), gerando valores inconsistentes (ex: rrRatio -3.14 quando deveria ser -1.0). O RR era calculado apenas no `addTrade` e nunca recalculado — Guard C4 preservava valores stale.
+**Decisão (APROVADA):**
+- `roAmount = plan.pl × (plan.riskPerOperation / 100)` — usa capital base do ciclo
+- `rrRatio = result / roAmount`
+- `calculateTradeCompliance` calcula RR para TODOS os trades (com/sem stop). Guard C4 removido.
+- RR compliance (`rrStatus = NAO_CONFORME`) só avalia wins (result > 0) ou trades com takeProfit. Loss com RR negativo não é violação.
+- `calculateTradeCompliance` retorna `rrAssumed: boolean` para UI
+**Triggers de recálculo:**
+- (a) Mudança de RO%/RR target no plano → cascata `recalculateCompliance`
+- (b) Mudança de result/stop/entry/exit no trade → `updateTrade` + CF `onTradeUpdated`
+**Impacto:** `compliance.js` v3.0.0, `functions/index.js` v1.9.0, `useTrades.js` (addTrade + updateTrade), `usePlans.js` (diagnosePlan), 20 testes novos.
 
 ---
 
@@ -277,10 +290,14 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | DT-010 | CSV tickerRule ausente em trades importados | ALTA | v1.19.0 — **RESOLVIDO** v1.19.1 (C2: lookup master data) |
 | DT-011 | Templates CSV sem filtro studentId (vazam entre alunos) | MÉDIA | v1.19.0 |
 | DT-012 | Mentor não edita feedback já enviado | MÉDIA | v1.19.0 |
-| DT-013 | CF onTradeUpdated sobrescreve rrRatio null em trades rrAssumed | ALTA | v1.19.0 — **RESOLVIDO** v1.19.1 (C4: guard rrAssumed) |
+| DT-013 | CF onTradeUpdated sobrescreve rrRatio null em trades rrAssumed | ALTA | v1.19.0 — **RESOLVIDO** v1.19.2 (Guard C4 removido, calculateTradeCompliance calcula RR para todos) |
 | DT-014 | auditPlan sem botão na UI | MÉDIA | v1.19.0 — **RESOLVIDO** v1.19.1 (PlanAuditModal) |
 | DT-015 | recalculateCompliance não usa writeBatch (não atômico) | BAIXA | v1.19.0 |
 | DT-016 | Cloud Functions Node.js 20 (deprecia 30/04/2026) + firebase-functions SDK 4.9.0 (recomendado ≥5.1.0) | ALTA | v1.19.1 — deadline 30/04/2026 |
+| DT-017 | rrRatio calculado inconsistente com RO (-3.14 quando deveria ser -1.0) | CRÍTICA | v1.19.1 — **RESOLVIDO** v1.19.2 (DEC-007: plan.pl base) |
+| DT-018 | FeedbackPage não reflete edições de trade em tempo real (timing CF → listener) | BAIXA | v1.19.1 — workaround: hard reload |
+| DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | v1.19.2 — inibir para evitar erros involuntários |
+| DT-021 | Templates CSV sem UI de gestão/exclusão | BAIXA | v1.19.2 |
 
 ---
 
@@ -367,6 +384,12 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Por que é perigoso:** Cada violação gera retrabalho para o Marcio, que precisa parar o fluxo, identificar o que foi pulado, cobrar a correção, e re-validar. O tempo do Marcio é o recurso mais escasso do projeto. Violações repetidas erodem a confiança no processo e no Claude como ferramenta de desenvolvimento.
 **Impacto real (sessão 10/03/2026):** Em uma única sessão, Claude entregou múltiplos ZIPs sem testes, sem version.js, sem CHANGELOG, sem esperar aprovação, e precisou ser cobrado em invariantes que já estavam documentadas. O Marcio registrou frustração formal: *"O que posso fazer pra que você siga as regras que defini? Pra que diretriz então?"*
 **Solução:** INV-09 (Gate Obrigatório). Toda instância de Claude DEVE ler INV-09 e executar o checklist sequencial ANTES de codificar e ANTES de entregar. Não existe exceção. Se Claude não sabe se deve seguir uma diretriz, a resposta é SEMPRE seguir.
+
+### AP-05: Invariant Drift Recorrente — Promessa sem execução
+**O que é:** Claude reconhece a falha (AP-04), verbaliza o compromisso de seguir as invariantes ("vou operar como pré-condições bloqueantes"), e na mesma sessão viola as mesmas regras. O reconhecimento verbal não se traduz em mudança de comportamento.
+**Evidência (sessão 11-12/03/2026):** Na abertura da sessão, Marcio solicitou explicitamente que o modelo priorizasse diretrizes sobre eficiência. Claude verbalizou o compromisso. Na primeira entrega (DEC-007), entregou ZIP sem testes de regressão para lógica nova (updateTrade com parciais). Na segunda entrega (Bloco A+B), repetiu a mesma falha. Marcio precisou cobrar duas vezes na mesma sessão.
+**Por que é mais grave que AP-04:** AP-04 é ignorância — Claude não seguiu regras. AP-05 é inconsistência — Claude declarou que seguiria e não seguiu. Isso erode confiança de forma mais profunda porque o Marcio não pode confiar nem no compromisso verbal.
+**Solução reforçada:** O checklist INV-09 deve ser executado como ÚLTIMA ação antes de gerar qualquer ZIP — não como intenção declarada no início da sessão. Claude deve listar explicitamente cada item do checklist com ✅/❌ no corpo da mensagem, ANTES de apresentar o ZIP. Se qualquer item estiver ❌, Claude NÃO gera o ZIP até corrigir.
 
 ---
 

@@ -21,7 +21,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - `functions/index.js` v1.9.0: `calculateTradeCompliance` com DEC-007 + RR compliance wins-only. Guards C4 removidos
 - `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR + resultInPoints + parciais (subcollection)
 - `usePlans.js`: `diagnosePlan` comparação direta de rrRatio (sem guard C4)
-- `FeedbackPage.jsx`: Badge "(est.)" quando `rrAssumed=true` no card de risco
+- `FeedbackPage.jsx`: Badge "(est.)" quando `rrAssumed=true` no card de risco. Indicador "Processando compliance..." enquanto CF não responde (resolve timing B4)
 - `ExtractTable.jsx`: RR usa `trade.rrAssumed` para badge "(est.)". Eventos inline removem compliance redundante (S/Stop, RO, RR) — mantém apenas state machine (META/STOP) + emocional (TILT/REVENGE/CRÍTICO). Cores ciclo diferenciadas (yellow/orange vs emerald/red período)
 - `ExtractCycleCard.jsx`: Gauge segue período selecionado — mostra PnL/Meta/Stop do período ativo em vez do ciclo. Header label dinâmico
 - `version.js`: v1.19.2+20260311
