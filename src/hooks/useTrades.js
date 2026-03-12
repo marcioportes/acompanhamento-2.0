@@ -386,56 +386,112 @@ export const useTrades = (overrideStudentId = null) => {
 
       let newResult = currentTrade.result;
 
-      if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
-        const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
-        if (tickerRule?.tickSize && tickerRule?.tickValue) {
-          newResult = (rawDiff / tickerRule.tickSize) * tickerRule.tickValue * qty;
-        } else {
-          newResult = calculateTradeResult(side, entry, exit, qty);
+      // === PARCIAIS SÃO A FONTE DA VERDADE ===
+      // Quando _partials existe, TODO o recálculo vem delas. Campos entry/exit/qty/result são derivados.
+      if (_partials && _partials.length > 0) {
+        // 1. Substituir subcollection
+        const oldPartials = await getDocs(collection(db, 'trades', tradeId, 'partials'));
+        await Promise.all(oldPartials.docs.map(d => deleteDoc(d.ref)));
+
+        const partialsRef = collection(db, 'trades', tradeId, 'partials');
+        for (const partial of _partials) {
+          await addDoc(partialsRef, {
+            seq: partial.seq,
+            type: partial.type,
+            price: parseFloat(partial.price),
+            qty: parseFloat(partial.qty),
+            dateTime: partial.dateTime || new Date().toISOString(),
+            notes: partial.notes || '',
+            createdAt: serverTimestamp()
+          });
         }
-        updateData.resultCalculated = Math.round(newResult * 100) / 100;
-        updateData.resultPercent = calculateResultPercent(side, entry, exit);
-        updateData.resultInPoints = Math.round(rawDiff * 100) / 100;
-        updateData.entry = entry; updateData.exit = exit; updateData.qty = qty;
-      }
 
-      // Aplicar override se presente, garantindo número puro
-      if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
-        const overrideVal = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
-        updateData.result = overrideVal;
-        updateData.resultEdited = true;
-        newResult = overrideVal;  // movement usa o efetivo
+        // 2. Recalcular tudo a partir das parciais
+        const calc = calculateFromPartials({
+          side,
+          partials: _partials.map(p => ({ ...p, price: parseFloat(p.price), qty: parseFloat(p.qty) })),
+          tickerRule: tickerRule || null
+        });
+
+        // 3. Campos derivados — única fonte
+        updateData.hasPartials = true;
+        updateData.partialsCount = _partials.length;
+        updateData.avgEntry = calc.avgEntry;
+        updateData.avgExit = calc.avgExit;
+        updateData.entry = calc.avgEntry;
+        updateData.exit = calc.avgExit;
+        updateData.qty = calc.realizedQty;
+        updateData.totalQty = calc.realizedQty;
+        updateData.resultCalculated = calc.result;
+        updateData.resultInPoints = calc.resultInPoints;
+        updateData.entryTime = calc.entryTime || currentTrade.entryTime;
+        updateData.exitTime = calc.exitTime || currentTrade.exitTime;
+        updateData.date = calc.entryTime ? calc.entryTime.split('T')[0] : currentTrade.date;
+        updateData.resultPercent = calc.avgEntry > 0 ? calculateResultPercent(side, calc.avgEntry, calc.avgExit) : 0;
+
+        // Override de resultado (se presente)
+        if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
+          updateData.result = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
+          updateData.resultEdited = true;
+        } else {
+          updateData.result = calc.result;
+          updateData.resultEdited = false;
+        }
+
+        newResult = updateData.result;
+        console.log(`[useTrades] updateTrade via parciais: ${_partials.length} legs, result=${calc.result}`);
+
       } else {
-        updateData.result = Math.round(newResult * 100) / 100;
-        updateData.resultEdited = false;
+        // Caminho legado: sem parciais, recálculo direto dos campos
+        if (updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || updates.side !== undefined) {
+          const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
+          if (tickerRule?.tickSize && tickerRule?.tickValue) {
+            newResult = (rawDiff / tickerRule.tickSize) * tickerRule.tickValue * qty;
+          } else {
+            newResult = calculateTradeResult(side, entry, exit, qty);
+          }
+          updateData.resultCalculated = Math.round(newResult * 100) / 100;
+          updateData.resultPercent = calculateResultPercent(side, entry, exit);
+          updateData.resultInPoints = Math.round(rawDiff * 100) / 100;
+          updateData.entry = entry; updateData.exit = exit; updateData.qty = qty;
+        }
+
+        // Aplicar override se presente
+        if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
+          const overrideVal = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
+          updateData.result = overrideVal;
+          updateData.resultEdited = true;
+          newResult = overrideVal;
+        } else {
+          updateData.result = Math.round(newResult * 100) / 100;
+          updateData.resultEdited = false;
+        }
       }
 
+      // Write único do trade pai
       await updateDoc(tradeRef, updateData);
 
-      // C-RR3 (DEC-007): Recalcular RR quando campos relevantes mudam
-      // A CF onTradeUpdated também recalcula, mas fazemos aqui para feedback imediato
+      // C-RR3 (DEC-007): Recalcular RR
       const resultChanged = Math.abs((updateData.result ?? currentTrade.result) - (currentTrade.result || 0)) > 0.01;
       const stopChanged = updates.stopLoss !== undefined;
-      const priceChanged = updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined;
+      const priceChanged = updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || _partials?.length > 0;
       
       if (resultChanged || stopChanged || priceChanged) {
         const effectiveStop = updateData.stopLoss !== undefined ? updateData.stopLoss : currentTrade.stopLoss;
-        const effectiveEntry = entry;
+        const effectiveEntry = parseFloat(updateData.entry ?? currentTrade.entry);
         const effectiveResult = updateData.result ?? currentTrade.result;
-        const effectiveQty = qty;
+        const effectiveQty = parseFloat(updateData.qty ?? currentTrade.qty);
         
         let newRrRatio = null;
         let newRrAssumed = false;
         
         if (effectiveStop != null && effectiveStop !== 0 && effectiveEntry) {
-          // RR real: baseado no stop loss efetivo
           const risk = Math.abs(effectiveEntry - effectiveStop);
           if (risk > 0) {
             const pointValue = (updates.tickerRule || currentTrade.tickerRule)?.pointValue || 1;
             newRrRatio = Math.round((effectiveResult / (risk * pointValue * effectiveQty)) * 100) / 100;
           }
         } else {
-          // RR assumido: buscar plano para calcular (DEC-007: usa plan.pl)
           try {
             const planId = currentTrade.planId;
             if (planId) {
@@ -460,69 +516,6 @@ export const useTrades = (overrideStudentId = null) => {
         }
         
         await updateDoc(tradeRef, { rrRatio: newRrRatio, rrAssumed: newRrAssumed });
-      }
-
-      // B3: Se parciais foram enviadas, substituir subcollection e recalcular
-      if (updates._partials && updates._partials.length > 0) {
-        // Deletar parciais antigas
-        const oldPartials = await getDocs(collection(db, 'trades', tradeId, 'partials'));
-        await Promise.all(oldPartials.docs.map(d => deleteDoc(d.ref)));
-
-        // Gravar novas parciais
-        const partialsRef = collection(db, 'trades', tradeId, 'partials');
-        for (const partial of updates._partials) {
-          await addDoc(partialsRef, {
-            seq: partial.seq,
-            type: partial.type,
-            price: parseFloat(partial.price),
-            qty: parseFloat(partial.qty),
-            dateTime: partial.dateTime || new Date().toISOString(),
-            notes: partial.notes || '',
-            createdAt: serverTimestamp()
-          });
-        }
-
-        // Recalcular trade a partir das novas parciais
-        const calc = calculateFromPartials({
-          side,
-          partials: updates._partials.map(p => ({ ...p, price: parseFloat(p.price), qty: parseFloat(p.qty) })),
-          tickerRule: tickerRule || null
-        });
-
-        // Sobrescrever campos derivados
-        const recalcData = {
-          hasPartials: true,
-          partialsCount: updates._partials.length,
-          avgEntry: calc.avgEntry,
-          avgExit: calc.avgExit,
-          entry: calc.avgEntry,
-          exit: calc.avgExit,
-          qty: calc.realizedQty,
-          totalQty: calc.realizedQty,
-          resultCalculated: calc.result,
-          result: calc.result,
-          resultInPoints: calc.resultInPoints,
-          resultEdited: false,
-          entryTime: calc.entryTime || currentTrade.entryTime,
-          exitTime: calc.exitTime || currentTrade.exitTime,
-          date: calc.entryTime ? calc.entryTime.split('T')[0] : currentTrade.date,
-          resultPercent: calc.avgEntry > 0 ? calculateResultPercent(side, calc.avgEntry, calc.avgExit) : 0,
-          updatedAt: serverTimestamp()
-        };
-
-        // Aplicar override se presente
-        if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
-          recalcData.result = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
-          recalcData.resultEdited = true;
-        }
-
-        await updateDoc(tradeRef, recalcData);
-        newResult = recalcData.result;
-
-        // Atualizar para RR e movement
-        Object.assign(updateData, recalcData);
-
-        console.log(`[useTrades] updateTrade: ${updates._partials.length} parciais substituídas, result=${calc.result}`);
       }
 
       // Sanitizar newResult para uso no movement
