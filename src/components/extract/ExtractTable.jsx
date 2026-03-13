@@ -1,18 +1,18 @@
 /**
  * ExtractTable
- * @version 3.0.0 (v1.19.0)
- * @description Tabela do extrato com colunas de sanity check (RO, RR, Emoção)
- *   e marcação visual para POST_GOAL/POST_STOP.
+ * @version 4.1.0 (v1.19.3)
+ * @description Tabela compacta do extrato — redesenhada para caber em telas de mentoria.
+ *   v4.1.0: Grid compactado — emoção só emoji (tooltip nome), status+feedback fundidos,
+ *           padding reduzido, side como superscript, RO sem texto "S/Stop" (só ícone).
+ *   v4.0.0: Coluna Status Feedback (OPEN/REVIEWED/QUESTION/CLOSED), RR com 2 casas decimais (C3).
  *   v3.0.0: RR assumido com badge "(assumido)", botão feedback por trade (B4 — Issue #71/#73).
- *   v2.0.0: Coluna Evento agora mostra eventos emocionais e compliance inline
- *           (TILT, REVENGE, NO_STOP, RO_FORA, RR_FORA) além dos eventos de state machine.
- *   v1.0.0: Apenas eventos de state machine (GOAL_HIT, STOP_HIT, POST_GOAL, POST_STOP).
  *   Ordem: cronológica (mais antigo no topo).
  */
 
 import {
   Trophy, Skull, ShieldAlert, ShieldOff, Scale,
-  Flame, Zap, AlertTriangle, MessageSquare
+  Flame, Zap, AlertTriangle,
+  CircleDot, CheckCircle2, HelpCircle, CheckCheck
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
@@ -60,39 +60,22 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
     events.push({ icon: null, color: 'text-red-500/70', label: 'Violação', small: true });
   }
 
-  // 1b. Cycle events (se este trade causou cycle goal/stop)
+  // 1b. Cycle events
   if (row.cycleEvent === 'CYCLE_GOAL_HIT') {
-    events.push({ icon: Trophy, color: 'text-emerald-300', label: 'META!', sublabel: 'Ciclo' });
+    events.push({ icon: Trophy, color: 'text-yellow-400', label: 'META!', sublabel: 'Ciclo' });
   } else if (row.cycleEvent === 'CYCLE_STOP_HIT') {
-    events.push({ icon: Skull, color: 'text-red-300', label: 'STOP!', sublabel: 'Ciclo' });
+    events.push({ icon: Skull, color: 'text-orange-400', label: 'STOP!', sublabel: 'Ciclo' });
   }
 
-  // 2. Compliance events
-  const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
-    (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
-  );
-  if (hasNoStop) {
-    events.push({ icon: ShieldAlert, color: 'text-red-400', label: 'S/Stop', small: true });
-  }
-  if (trade.compliance?.roStatus === 'FORA_DO_PLANO') {
-    events.push({ icon: ShieldOff, color: 'text-amber-400', label: 'RO', small: true });
-  }
-  if (trade.compliance?.rrStatus === 'NAO_CONFORME') {
-    events.push({ icon: Scale, color: 'text-amber-400', label: 'RR', small: true });
-  }
-
-  // 3. Emotional events (TILT, REVENGE matched by tradeId or proximity)
+  // 2. Emotional events (TILT, REVENGE matched by tradeId or proximity)
   if (emotionalEvents) {
     const tradeEmotionalEvents = emotionalEvents.filter(e => {
-      // Match por tradeId direto se disponível
       if (e.tradeId && e.tradeId === trade.id) return true;
-      // Match por data/hora (TILT/REVENGE detectados próximos ao trade)
       if (e.date === trade.date) return true;
       return false;
     });
     for (const ee of tradeEmotionalEvents) {
       if (ee.type === 'TILT_DETECTED' || ee.type === 'TILT') {
-        // Evitar duplicata se já adicionado
         if (!events.some(ev => ev.label === 'TILT')) {
           events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
         }
@@ -113,6 +96,21 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
   return events;
 };
 
+/** Badge de status do feedback do trade. */
+const getFeedbackStatusConfig = (status) => {
+  switch (status) {
+    case 'REVIEWED':
+      return { icon: CheckCircle2, color: 'text-emerald-400', label: 'Revisado', bg: 'bg-emerald-500/10' };
+    case 'QUESTION':
+      return { icon: HelpCircle, color: 'text-amber-400', label: 'Dúvida', bg: 'bg-amber-500/10' };
+    case 'CLOSED':
+      return { icon: CheckCheck, color: 'text-slate-500', label: 'Fechado', bg: 'bg-slate-500/10' };
+    case 'OPEN':
+    default:
+      return { icon: CircleDot, color: 'text-slate-500', label: 'Pendente', bg: 'bg-slate-500/5' };
+  }
+};
+
 /**
  * @param {Array} rows - Rows da state machine (cada row tem .trade, .periodEvent, .cumPnL, .result)
  * @param {Function} fmt - formatCurrencyDynamic parcial
@@ -124,34 +122,35 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
  */
 const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [], planRiskInfo = null, onNavigateToFeedback = null }) => {
   const displayRows = rows;
+  // Colunas fixas: #, Data, Ativo, Emo, RO, RR, Resultado, Acumulado, Evento, Status = 10
+  const totalCols = 10;
 
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full text-sm text-left border-collapse">
         <thead className="bg-slate-800/80 text-[10px] uppercase text-slate-500 sticky top-0 z-10 font-bold tracking-wider">
           <tr>
-            <th className="p-3 w-10 text-center">#</th>
-            <th className="p-3">Data</th>
-            <th className="p-3">Ativo</th>
-            <th className="p-3">Emoção</th>
-            <th className="p-3 text-right">RO %</th>
-            <th className="p-3 text-right">RR</th>
-            <th className="p-3 text-right">Resultado</th>
-            <th className="p-3 text-right bg-slate-800/50">Acumulado</th>
-            <th className="p-3 text-center w-32">Evento</th>
-            {onNavigateToFeedback && <th className="p-3 text-center w-10"></th>}
+            <th className="px-2 py-2 w-8 text-center">#</th>
+            <th className="px-2 py-2">Data</th>
+            <th className="px-2 py-2">Ativo</th>
+            <th className="px-2 py-2 text-center w-14">Emo</th>
+            <th className="px-2 py-2 text-right">RO</th>
+            <th className="px-2 py-2 text-right">RR</th>
+            <th className="px-2 py-2 text-right">Resultado</th>
+            <th className="px-2 py-2 text-right bg-slate-800/50">Acum.</th>
+            <th className="px-2 py-2 text-center">Evento</th>
+            <th className="px-2 py-2 text-center w-20">Status</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/50">
           {/* Saldo anterior — primeira linha quando há carry-over */}
           {carryOver !== 0 && displayRows.length > 0 && (
             <tr className="bg-slate-800/20 border-b-2 border-slate-700 border-dashed">
-              <td className="p-3 text-center text-slate-600 font-mono text-xs">—</td>
-              <td colSpan={onNavigateToFeedback ? 7 : 6} className="p-3 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
-              <td className={`p-3 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+              <td className="px-2 py-2 text-center text-slate-600 font-mono text-xs">—</td>
+              <td colSpan={totalCols - 2} className="px-2 py-2 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
+              <td className={`px-2 py-2 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
                 {fmt(carryOver)}
               </td>
-              {onNavigateToFeedback && <td className="p-3"></td>}
             </tr>
           )}
           {displayRows.map((row) => {
@@ -162,12 +161,13 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             // Emoção
             const emotionCfg = getEmotionConfig ? getEmotionConfig(trade.emotionEntry) : null;
             const emoji = emotionCfg?.emoji || '❓';
-            const emotionName = emotionCfg?.name || trade.emotionEntry || '-';
+            const emotionName = emotionCfg?.name || emotionCfg?.label || trade.emotionEntry || '-';
             const emotionCategory = emotionCfg?.analysisCategory || 'NEUTRAL';
 
             // Emoção de saída
             const exitCfg = getEmotionConfig ? getEmotionConfig(trade.emotionExit) : null;
             const exitEmoji = exitCfg?.emoji || '';
+            const exitName = exitCfg?.name || exitCfg?.label || trade.emotionExit || '';
 
             // Compliance
             const riskPercent = trade.riskPercent != null ? `${Number(trade.riskPercent).toFixed(1)}%` : '-';
@@ -177,14 +177,12 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO';
             const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME';
 
-            // RR: real (do trade) ou assumido (calculado via B2)
+            // RR: real (do trade) ou assumido (DEC-007: gravado no trade pela CF)
             let rrDisplay = '-';
-            let rrIsAssumed = false;
-            let rrAssumedNonCompliant = false;
+            let rrIsAssumed = trade.rrAssumed === true;
             if (trade.rrRatio != null) {
-              rrDisplay = `${Number(trade.rrRatio).toFixed(1)}:1`;
+              rrDisplay = `${Number(trade.rrRatio).toFixed(2)}:1`;
             } else if (planRiskInfo && !trade.stopLoss) {
-              // Sem stop → calcular RR assumido via DEC-005
               const assumed = calculateAssumedRR({
                 result: trade.result ?? 0,
                 planPl: planRiskInfo.pl,
@@ -193,13 +191,17 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
               });
               if (assumed) {
                 rrIsAssumed = true;
-                rrDisplay = `${assumed.rrRatio.toFixed(1)}:1`;
-                rrAssumedNonCompliant = !assumed.isCompliant;
+                rrDisplay = `${assumed.rrRatio.toFixed(2)}:1`;
               }
             }
+            const rrNonCompliant = trade.compliance?.rrStatus === 'NAO_CONFORME';
 
             // Inline events
             const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
+
+            // Feedback status
+            const fbCfg = getFeedbackStatusConfig(trade.status);
+            const FbIcon = fbCfg.icon;
 
             return (
               <tr
@@ -209,85 +211,89 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                 }`}
               >
                 {/* # */}
-                <td className="p-3 text-center text-slate-600 font-mono text-xs">{row.tradeIndex + 1}</td>
+                <td className="px-2 py-1.5 text-center text-slate-600 font-mono text-xs">{row.tradeIndex + 1}</td>
 
                 {/* Data + Hora */}
-                <td className="p-3 text-slate-300">
-                  <span className="font-medium">{fmtDate(trade.date)}</span>
-                  <span className="text-[10px] text-slate-500 ml-1">{fmtTime(trade.entryTime)}</span>
+                <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap">
+                  <span className="font-medium text-xs">{fmtDate(trade.date)}</span>
+                  <span className="text-[9px] text-slate-500 ml-1">{fmtTime(trade.entryTime)}</span>
                 </td>
 
-                {/* Ativo + Side */}
-                <td className="p-3">
-                  <span className="text-white font-bold">{trade.ticker}</span>
-                  <span className={`text-[10px] ml-1.5 px-1 py-0.5 rounded border ${
-                    trade.side === 'LONG' ? 'border-emerald-500/30 text-emerald-500' : 'border-red-500/30 text-red-500'
-                  }`}>{trade.side}</span>
+                {/* Ativo + Side (superscript compacto) */}
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <span className="text-white font-bold text-xs">{trade.ticker}</span>
+                  <sup className={`text-[8px] ml-0.5 font-bold ${
+                    trade.side === 'LONG' ? 'text-emerald-500' : 'text-red-500'
+                  }`}>{trade.side === 'LONG' ? 'L' : 'S'}</sup>
                 </td>
 
-                {/* Emoção In → Out */}
-                <td className="p-3">
-                  <span className={`text-xs ${getEmotionColor(emotionCategory)}`}>
-                    {emoji} {emotionName}
+                {/* Emoção — só emojis, tooltip com nomes completos */}
+                <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                  <span
+                    className={`cursor-default ${getEmotionColor(emotionCategory)}`}
+                    title={`Entrada: ${emotionName}${exitName ? ` → Saída: ${exitName}` : ''}`}
+                  >
+                    {emoji}{exitEmoji && <span className="text-[10px] text-slate-500">→{exitEmoji}</span>}
                   </span>
-                  {exitEmoji && (
-                    <span className="text-slate-500 text-[10px] ml-1">→ {exitEmoji}</span>
-                  )}
                 </td>
 
-                {/* RO % */}
-                <td className={`p-3 text-right font-mono text-xs ${roFora ? 'text-amber-400' : 'text-slate-400'}`}>
-                  <div className="flex items-center justify-end gap-1">
-                    {roFora && <ShieldOff className="w-3 h-3 text-amber-400" />}
+                {/* RO % — compacto, sem stop = só ícone (tooltip) */}
+                <td className={`px-2 py-1.5 text-right font-mono text-xs ${roFora ? 'text-amber-400' : 'text-slate-400'}`}>
+                  <div className="flex items-center justify-end gap-0.5">
+                    {roFora && <ShieldOff className="w-3 h-3 text-amber-400 flex-shrink-0" />}
                     {hasNoStop ? (
-                      <span className="text-red-400 flex items-center gap-0.5"><ShieldAlert className="w-3 h-3" /> S/Stop</span>
+                      <ShieldAlert className="w-3.5 h-3.5 text-red-400 flex-shrink-0" title="Trade sem stop loss" />
                     ) : riskPercent}
                   </div>
                 </td>
 
-                {/* RR — real ou assumido (B4) */}
-                <td className={`p-3 text-right font-mono text-xs ${rrFora || rrAssumedNonCompliant ? 'text-amber-400' : 'text-slate-400'}`}>
-                  <div className="flex items-center justify-end gap-1">
-                    {(rrFora || rrAssumedNonCompliant) && <Scale className="w-3 h-3 text-amber-400" />}
-                    {rrDisplay}
+                {/* RR — real ou assumido. Azul se compliant, amber se non-compliant */}
+                <td className={`px-2 py-1.5 text-right font-mono text-xs ${
+                  rrFora || rrNonCompliant ? 'text-amber-400' 
+                  : (trade.rrRatio != null && trade.result > 0 && !rrNonCompliant) ? 'text-blue-400' 
+                  : 'text-slate-400'
+                }`}>
+                  <div className="flex items-center justify-end gap-0.5">
+                    {(rrFora || rrNonCompliant) && <Scale className="w-3 h-3 text-amber-400 flex-shrink-0" />}
+                    <span>{rrDisplay}</span>
                     {rrIsAssumed && (
-                      <span className="text-[8px] text-purple-400/70 ml-0.5" title="RR calculado sem stop loss, baseado no RO% do plano">(est.)</span>
+                      <span className="text-[7px] text-purple-400/70" title="RR estimado sem stop loss (baseado no RO% do plano)">*</span>
                     )}
                   </div>
                 </td>
 
                 {/* Resultado */}
-                <td className={`p-3 text-right font-mono font-bold ${row.result >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <td className={`px-2 py-1.5 text-right font-mono font-bold text-xs ${row.result >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   {row.result > 0 ? '+' : ''}{fmt(row.result)}
                 </td>
 
                 {/* Acumulado */}
-                <td className={`p-3 text-right font-mono font-bold bg-slate-800/30 border-l border-slate-800 ${
+                <td className={`px-2 py-1.5 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${
                   row.cumPnL >= 0 ? 'text-emerald-300' : 'text-red-300'
                 }`}>
                   {fmt(row.cumPnL)}
                 </td>
 
-                {/* Evento — agora mostra TUDO inline */}
-                <td className="p-3 text-center">
+                {/* Evento — inline events */}
+                <td className="px-2 py-1.5 text-center">
                   {inlineEvents.length === 0 && (
-                    <span className="text-slate-600 text-xs">-</span>
+                    <span className="text-slate-600 text-[10px]">-</span>
                   )}
                   {inlineEvents.length > 0 && (
-                    <div className="flex flex-wrap justify-center gap-1">
+                    <div className="flex flex-wrap justify-center gap-0.5">
                       {inlineEvents.map((evt, idx) => {
                         const Icon = evt.icon;
                         return (
                           <span
                             key={idx}
-                            className={`${evt.color} ${evt.small ? 'text-[9px]' : 'text-xs'} font-bold flex items-center gap-0.5 ${evt.small ? 'uppercase' : ''}`}
+                            className={`${evt.color} ${evt.small ? 'text-[8px]' : 'text-[10px]'} font-bold flex items-center gap-0.5 ${evt.small ? 'uppercase' : ''}`}
                             title={evt.sublabel ? `${evt.label} (${evt.sublabel})` : evt.label}
                           >
                             {Icon && <Icon className="w-3 h-3" />}
                             {evt.sublabel ? (
                               <span className="flex flex-col items-center leading-none">
                                 <span>{evt.label}</span>
-                                <span className="text-[7px] opacity-60">{evt.sublabel}</span>
+                                <span className="text-[6px] opacity-60">{evt.sublabel}</span>
                               </span>
                             ) : evt.label}
                           </span>
@@ -297,23 +303,32 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   )}
                 </td>
 
-                {/* Feedback navigation (B4 — Issue #73) */}
-                {onNavigateToFeedback && (
-                  <td className="p-3 text-center">
+                {/* Status Feedback — badge clicável se onNavigateToFeedback */}
+                <td className="px-2 py-1.5 text-center">
+                  {onNavigateToFeedback ? (
                     <button
                       onClick={() => onNavigateToFeedback(trade)}
-                      className="p-1 rounded hover:bg-slate-700/50 text-slate-500 hover:text-blue-400 transition-colors"
-                      title="Ir para feedback"
+                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${fbCfg.color} ${fbCfg.bg} hover:brightness-125 transition-all cursor-pointer`}
+                      title={`${fbCfg.label} — clique para feedback`}
                     >
-                      <MessageSquare className="w-3.5 h-3.5" />
+                      <FbIcon className="w-3 h-3" />
+                      {fbCfg.label}
                     </button>
-                  </td>
-                )}
+                  ) : (
+                    <span
+                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium ${fbCfg.color} ${fbCfg.bg}`}
+                      title={fbCfg.label}
+                    >
+                      <FbIcon className="w-3 h-3" />
+                      {fbCfg.label}
+                    </span>
+                  )}
+                </td>
               </tr>
             );
           })}
           {displayRows.length === 0 && (
-            <tr><td colSpan={onNavigateToFeedback ? 10 : 9} className="p-12 text-center text-slate-500">Nenhum trade neste período.</td></tr>
+            <tr><td colSpan={totalCols} className="p-12 text-center text-slate-500">Nenhum trade neste período.</td></tr>
           )}
         </tbody>
       </table>

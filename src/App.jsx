@@ -69,6 +69,8 @@ const AppContent = () => {
   
   // Estado para FeedbackPage com trade específico
   const [feedbackTrade, setFeedbackTrade] = useState(null);
+  // Contexto de retorno: planId do extrato que estava aberto (só quando veio do extrato)
+  const [feedbackReturnPlanId, setFeedbackReturnPlanId] = useState(null);
   
   // Hooks
   const { 
@@ -147,12 +149,15 @@ const AppContent = () => {
 
   // Handler para navegar para FeedbackPage com um trade específico
   const handleNavigateToFeedback = (trade) => {
+    // Só guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
+    setFeedbackReturnPlanId(trade._fromLedgerPlanId || null);
     setFeedbackTrade(trade);
   };
 
   // Handler para voltar do FeedbackPage
   const handleBackFromFeedback = () => {
     setFeedbackTrade(null);
+    // feedbackReturnPlanId permanece para StudentDashboard consumir
   };
 
   // Handler para adicionar comentário no FeedbackPage
@@ -209,7 +214,7 @@ const AppContent = () => {
     
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
-      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} />;
+      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
     }
     
     // Páginas específicas
@@ -238,7 +243,7 @@ const AppContent = () => {
           return <StudentFeedbackPage />;
         case 'dashboard':
         default: 
-          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} />;
+          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
       }
     }
   };

@@ -65,6 +65,14 @@ const ExtractCycleCard = ({
   const resultPct = startPL > 0 ? (cycleSummary.totalPnL / startPL) * 100 : 0;
   const critical = isCriticalStatus(cycleState.status);
 
+  // B9: Gauge mostra dados do período selecionado, ou ciclo se nenhum selecionado
+  const selectedPeriodState = selectedPeriod && selectedPeriod !== 'CICLO'
+    ? cycleState.periods.get(selectedPeriod)
+    : null;
+  const gaugeSummary = selectedPeriodState ? selectedPeriodState.summary : cycleSummary;
+  const gaugeStatus = selectedPeriodState ? selectedPeriodState.status : cycleState.status;
+  const gaugeLabel = selectedPeriodState ? fmtPeriodLabel(selectedPeriod, operationPeriod) : 'Ciclo';
+
   return (
     <div className="flex flex-col h-full">
       {/* Header + resultado */}
@@ -72,7 +80,7 @@ const ExtractCycleCard = ({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ciclo</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{gaugeLabel}</span>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
             <span>{cycleSummary.tradesCount}t</span>
@@ -91,12 +99,12 @@ const ExtractCycleCard = ({
           </div>
         )}
 
-        {/* Velocímetro */}
+        {/* Velocímetro — segue o período selecionado */}
         <GaugeChart
-          pnl={cycleSummary.totalPnL}
-          goalVal={cycleSummary.goalVal}
-          stopVal={cycleSummary.stopVal}
-          status={cycleState.status}
+          pnl={gaugeSummary.totalPnL}
+          goalVal={gaugeSummary.goalVal}
+          stopVal={gaugeSummary.stopVal}
+          status={gaugeStatus}
           fmt={fmt}
         />
       </div>

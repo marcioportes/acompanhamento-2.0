@@ -1,10 +1,23 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.6.1
+ * @version 1.9.0
  * 
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
  * 
+ * CHANGELOG v1.9.0 (alinhado com produto v1.19.2):
+ *   - DEC-007: RR assumido integrado em calculateTradeCompliance para trades sem stop
+ *     RR = result / (plan.pl × RO%). Usa plan.pl (capital base), não currentPl.
+ *   - Guard C4 REMOVIDO — calculateTradeCompliance agora retorna RR para todos os trades.
+ *     onTradeCreated, onTradeUpdated, recalculateCompliance gravam rrRatio + rrAssumed diretamente.
+ *   - Cascata updatePlan → recalculateCompliance agora recalcula RR assumido corretamente.
+ *
+ * CHANGELOG v1.8.0 (alinhado com produto v1.19.1):
+ *   - DEC-006: calculateTradeCompliance sem stop → risco retroativo (loss), N/A (win), 0 (breakeven)
+ *   - C4: Guard rrAssumed (REMOVIDO em v1.9.0)
+ *   - Red flags contextualizados: NO_STOP não afirma mais "risco ilimitado"
+ *   - RISK_EXCEEDED só gerado quando riskPercent é numérico
+ *
  * CHANGELOG v1.7.0:
  *   - Fix onTradeUpdated: recalcula compliance em qualquer mudança de entry/exit/stop/qty/side
  *   - Fix onTradeUpdated: reconstrói red flags por completo (remove+recria)
@@ -42,10 +55,10 @@ const db = admin.firestore();
 
 const VERSION = {
   major: 1,
-  minor: 7,
+  minor: 9,
   patch: 0,
   prerelease: null,
-  build: '20260225',
+  build: '20260311',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -278,56 +291,73 @@ const updatePlanPl = async (planId, resultDiff) => {
  * Calcula compliance do trade contra o plano
  * Risco Operacional (RO) e Razão Risco-Retorno (RR)
  * 
- * Sem stopLoss → riskPercent = 100 (todo o PL em risco)
- * RR: prefere takeProfit se disponível, fallback para resultado efetivo
+ * DEC-006 (v1.19.1): Sem stop → risco retroativo (loss), N/A (win), 0 (breakeven)
+ * DEC-007 (v1.19.2): RR assumido para trades sem stop via plan.pl (capital base) × RO%
  * 
- * @returns {{ riskPercent, rrRatio, compliance: { roStatus, rrStatus } }}
+ * @returns {{ riskPercent: number|null, rrRatio: number|null, rrAssumed: boolean, compliance: { roStatus, rrStatus } }}
  */
 const calculateTradeCompliance = (trade, plan) => {
-  const result = { riskPercent: 0, rrRatio: null, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
+  const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
   
   if (!plan || !trade) return result;
   
   const planPl = plan.currentPl ?? plan.pl ?? 0;
   if (planPl <= 0) return result;
   
-  // Risco Operacional
+  // === Risco Operacional — DEC-006 (v1.19.1) ===
   if (trade.stopLoss && trade.entry) {
-    // Com stop: risco = (distância / tickSize) * tickValue * qty
     const tickSize = trade.tickerRule?.tickSize || 1;
     const tickValue = trade.tickerRule?.tickValue || 1;
     const distanceInPoints = Math.abs(trade.entry - trade.stopLoss);
-    const riskAmount = (distanceInPoints / tickSize) * tickValue * trade.qty;
+    const riskAmount = (distanceInPoints / tickSize) * tickValue * (trade.qty ?? 1);
     result.riskPercent = (riskAmount / planPl) * 100;
   } else {
-    // Sem stop: 100% do PL em risco (pior cenário)
-    result.riskPercent = 100;
+    const tradeResult = trade.result ?? 0;
+    if (tradeResult < 0) {
+      result.riskPercent = (Math.abs(tradeResult) / planPl) * 100;
+    } else if (tradeResult === 0) {
+      result.riskPercent = 0;
+    } else {
+      result.riskPercent = null;
+    }
   }
   
-  if (plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
+  if (result.riskPercent != null && plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   
-  // Razão Risco-Retorno
+  // === Razão Risco-Retorno — DEC-007 (v1.19.2) ===
   if (trade.stopLoss && trade.entry) {
     const risk = Math.abs(trade.entry - trade.stopLoss);
     if (risk > 0) {
       if (trade.takeProfit) {
-        // Via takeProfit (planejado)
         const reward = Math.abs(trade.takeProfit - trade.entry);
         result.rrRatio = reward / risk;
       } else if (trade.result > 0) {
-        // Via resultado efetivo (realizado) — converter result R$ para pontos
         const tickSize = trade.tickerRule?.tickSize || 1;
         const tickValue = trade.tickerRule?.tickValue || 1;
-        const resultInPoints = (trade.result / (tickValue * trade.qty)) * tickSize;
+        const resultInPoints = (trade.result / (tickValue * (trade.qty ?? 1))) * tickSize;
         result.rrRatio = resultInPoints / risk;
       }
-      
-      if (result.rrRatio != null && plan.rrTarget && result.rrRatio < plan.rrTarget) {
-        result.compliance.rrStatus = 'NAO_CONFORME';
-      }
     }
+  } else {
+    // DEC-007: SEM stop — RR assumido via plan.pl (capital base) × RO%
+    const basePl = Number(plan.pl) || 0;
+    const roPercent = Number(plan.riskPerOperation) || 0;
+    if (basePl > 0 && roPercent > 0) {
+      const roAmount = basePl * (roPercent / 100);
+      const tradeResult = trade.result ?? 0;
+      result.rrRatio = Math.round((tradeResult / roAmount) * 100) / 100;
+      result.rrAssumed = true;
+    }
+  }
+
+  // RR compliance: skip realized losses without takeProfit (perder 1R é o risco planejado)
+  const tradeResultForRR = trade.result ?? 0;
+  const hasPlannedRR = !!(trade.takeProfit);
+  const shouldEvaluateRR = hasPlannedRR || tradeResultForRR > 0;
+  if (result.rrRatio != null && plan.rrTarget && shouldEvaluateRR && result.rrRatio < plan.rrTarget) {
+    result.compliance.rrStatus = 'NAO_CONFORME';
   }
   
   return result;
@@ -683,11 +713,18 @@ exports.onTradeCreated = functions.firestore
       }
 
       // === 2. COMPLIANCE E RED FLAGS ===
-      // Red flag: trade sem stop loss
+      // DEC-006: Red flag NO_STOP contextualizada
       if (!trade.stopLoss) {
+        const tradeResult = trade.result ?? 0;
+        let noStopMsg = 'Trade sem stop loss definido';
+        if (tradeResult < 0) {
+          noStopMsg += ` — risco retroativo`;
+        } else if (tradeResult > 0) {
+          noStopMsg += ' — risco não mensurado (win sem stop)';
+        }
         redFlags.push({ 
           type: RED_FLAG_TYPES.NO_STOP, 
-          message: 'Trade sem stop loss definido — risco ilimitado', 
+          message: noStopMsg, 
           timestamp: new Date().toISOString() 
         });
       }
@@ -702,11 +739,13 @@ exports.onTradeCreated = functions.firestore
           // Compliance calculado sobre PL do plano (não saldo da conta)
           const tradeCompliance = calculateTradeCompliance(trade, plan);
           updates.riskPercent = tradeCompliance.riskPercent;
+          // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades (com/sem stop)
           updates.rrRatio = tradeCompliance.rrRatio;
+          updates.rrAssumed = tradeCompliance.rrAssumed;
           updates.compliance = tradeCompliance.compliance;
           
-          // Red flag: risco operacional
-          if (tradeCompliance.compliance.roStatus === 'FORA_DO_PLANO') {
+          // Red flag: risco operacional — só quando riskPercent é numérico (DEC-006)
+          if (tradeCompliance.riskPercent != null && tradeCompliance.compliance.roStatus === 'FORA_DO_PLANO') {
             redFlags.push({ 
               type: RED_FLAG_TYPES.RISK_EXCEEDED, 
               message: `Risco ${tradeCompliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, 
@@ -852,23 +891,30 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         });
         
         if (!after.stopLoss) {
-          newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: 'Trade sem stop loss', timestamp: new Date().toISOString() });
+          const tradeResult = after.result ?? 0;
+          let noStopMsg = 'Trade sem stop loss definido';
+          if (tradeResult < 0) noStopMsg += ' — risco retroativo';
+          else if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
+          newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
         }
-        if (compliance.compliance.roStatus === 'FORA_DO_PLANO') {
+        if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
           newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${compliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, timestamp: new Date().toISOString() });
         }
         if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
           newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: `RR ${compliance.rrRatio.toFixed(1)}x abaixo do mínimo (${plan.rrTarget}x)`, timestamp: new Date().toISOString() });
         }
         
+        // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades
         await change.after.ref.update({
           riskPercent: compliance.riskPercent,
           rrRatio: compliance.rrRatio,
+          rrAssumed: compliance.rrAssumed,
           compliance: compliance.compliance,
           redFlags: newFlags,
           hasRedFlags: newFlags.length > 0
         });
-        console.log(`[onTradeUpdated] Compliance recalculado: RO=${compliance.riskPercent.toFixed(2)}%, RR=${compliance.rrRatio ?? 'N/A'}, flags=${newFlags.length}`);
+        const roDisplay = compliance.riskPercent != null ? compliance.riskPercent.toFixed(2) + '%' : 'N/A';
+        console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
       }
     }
 
@@ -1004,22 +1050,47 @@ exports.cleanupOldNotifications = functions.pubsub
   });
 
 /**
- * Recalcula compliance de todos os trades de um plano (ou de um trade específico).
+ * Recalcula PL + compliance de todos os trades de um plano (ou de um trade específico).
  * Callable — invocado do frontend via httpsCallable.
+ * v1.19.1: Inclui recálculo de PL (admin SDK, bypassa rules).
  * 
  * @param {string} planId - ID do plano (obrigatório)
  * @param {string} [tradeId] - ID de trade específico (opcional)
+ * @param {boolean} [recalcPl] - Se true, recalcula currentPl do plano (default: true)
  */
 exports.recalculateCompliance = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Login necessário');
   
-  const { planId, tradeId } = data;
+  const { planId, tradeId, recalcPl = true } = data;
   if (!planId) throw new functions.https.HttpsError('invalid-argument', 'planId obrigatório');
   
-  const planDoc = await db.collection('plans').doc(planId).get();
+  const planRef = db.collection('plans').doc(planId);
+  const planDoc = await planRef.get();
   if (!planDoc.exists) throw new functions.https.HttpsError('not-found', 'Plano não encontrado');
   const plan = planDoc.data();
   
+  // === Ida: Recálculo de PL (basePl + soma trades) ===
+  let oldPl = plan.currentPl ?? plan.pl ?? 0;
+  let newPl = oldPl;
+  let plRecalculated = false;
+  
+  if (recalcPl && !tradeId) {
+    const allTradesSnap = await db.collection('trades').where('planId', '==', planId).get();
+    const basePl = Number(plan.pl) || 0;
+    const totalResult = allTradesSnap.docs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
+    newPl = Math.round((basePl + totalResult) * 100) / 100;
+    
+    if (Math.abs(oldPl - newPl) > 0.01) {
+      await planRef.update({ currentPl: newPl, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      plRecalculated = true;
+      console.log('[recalculateCompliance] PL recalculado: ' + oldPl + ' -> ' + newPl);
+    }
+    
+    // Usar PL atualizado para compliance
+    plan.currentPl = newPl;
+  }
+  
+  // === Volta: Recálculo de compliance dos trades ===
   let tradeDocs;
   if (tradeId) {
     const tradeDoc = await db.collection('trades').doc(tradeId).get();
@@ -1038,6 +1109,7 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     const updateData = {
       riskPercent: compliance.riskPercent,
       rrRatio: compliance.rrRatio,
+      rrAssumed: compliance.rrAssumed,
       compliance: compliance.compliance
     };
     
@@ -1049,9 +1121,13 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     });
     
     if (!trade.stopLoss) {
-      newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: 'Trade sem stop loss', timestamp: new Date().toISOString() });
+      const tradeResult = trade.result ?? 0;
+      let noStopMsg = 'Trade sem stop loss definido';
+      if (tradeResult < 0) noStopMsg += ' — risco retroativo';
+      else if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
+      newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
     }
-    if (compliance.compliance.roStatus === 'FORA_DO_PLANO') {
+    if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
       newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: 'Risco ' + compliance.riskPercent.toFixed(1) + '% excede maximo (' + plan.riskPerOperation + '%)', timestamp: new Date().toISOString() });
     }
     if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
@@ -1065,6 +1141,6 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     updated++;
   }
   
-  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados');
-  return { success: true, updated, planId };
+  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
+  return { success: true, updated, planId, oldPl, newPl, plRecalculated };
 });

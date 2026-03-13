@@ -5,6 +5,85 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.19.3] - 2026-03-12
+
+### Corrigido
+- **C3: RR exibido com 2 casas decimais:** ExtractTable agora mostra `1.99:1` em vez de `2.0:1`. Red flags de RR também usam 2 casas. Resolve visual enganoso onde 1.99 arredondava para 2.0 parecendo compliant com alvo 2:1
+- **C5: resultInPoints null quando há resultOverride:** Trades com resultado editado manualmente agora gravam `resultInPoints: null`. UI exibe "pts: editado" no TradeDetailModal e FeedbackPage
+- **Navegação feedback ida/volta contextual:** Ao clicar feedback no extrato e voltar, o extrato reabre no plano correto. Feedback chamado do dashboard volta ao dashboard normalmente. Mecanismo: `_fromLedgerPlanId` enriquecido no trade pelo StudentDashboard, `feedbackReturnPlanId` no App.jsx
+
+### Adicionado
+- **Coluna Status Feedback no ExtractTable (QA #14):** Badge visual por trade — Pendente (OPEN), Revisado (REVIEWED), Dúvida (QUESTION), Fechado (CLOSED). Badge clicável quando `onNavigateToFeedback` presente
+- **RR compliant em azul:** Trades com resultado positivo e RR dentro do alvo exibem RR em `text-blue-400` (antes era cinza)
+
+### Modificado
+- `ExtractTable.jsx` v4.1.0: Grid compactado — emoção só emoji (tooltip nome), side como superscript L/S, S/Stop só ícone (tooltip), RR assumido asterisco `*`, padding reduzido (px-2 py-1.5), status+feedback fundidos em coluna única clicável
+- `compliance.js`: Red flag RR_BELOW_MINIMUM com 2 casas decimais na mensagem
+- `useTrades.js`: `addTrade` e `updateTrade` (parciais e legado) setam `resultInPoints: null` quando `resultOverride`
+- `TradeDetailModal.jsx`: Exibe "pts: editado" quando `resultInPoints` null e `resultEdited` true
+- `FeedbackPage.jsx`: Mesmo tratamento de "Pontos: editado"
+- `StudentDashboard.jsx`: Props `returnToPlanId`/`onReturnConsumed`, `useEffect` reabre extrato, `_fromLedgerPlanId` no callback do PlanLedgerExtract
+- `App.jsx`: `feedbackReturnPlanId` state, só guarda quando `_fromLedgerPlanId` presente
+- `version.js`: v1.19.3+20260312
+
+### Testes
+- 8 novos testes: `resultInPointsOverride.test.js` — override zera pontos, sem override mantém, override zero válido, override negativo, string numérica, resultEdited flag
+- 394 testes totais (17 suites), zero regressão
+
+---
+
+## [1.19.2] - 2026-03-11
+
+### Corrigido
+- **DEC-007: RR assumido integrado em calculateTradeCompliance:** Trades sem stop agora calculam RR dentro do motor de compliance (não mais como cálculo isolado no addTrade). Usa `plan.pl` (capital base do ciclo) em vez de `currentPl` (flutuante). Resolve DT-017 (rrRatio -3.14 inconsistente)
+- **Guard C4 removido:** `onTradeCreated`, `onTradeUpdated`, `recalculateCompliance` e `diagnosePlan` não preservam mais valores stale de rrRatio. O `calculateTradeCompliance` agora retorna RR correto para todos os cenários (com/sem stop)
+- **updateTrade recalcula RR:** Edição de resultado, stop, entry, exit ou qty agora recalcula rrRatio (real com stop, assumido sem stop). Antes o rrRatio ficava congelado do addTrade original
+- **diagnosePlan detecta rrAssumed stale:** Auditoria agora identifica trades com RR assumido incorreto (ex: calculado com PL antigo) como divergentes
+
+### Modificado
+- `compliance.js` v3.0.0: `calculateTradeCompliance` retorna `rrAssumed: boolean`. Trades sem stop: RR = result / (plan.pl × RO%). RR compliance (rrStatus) agora avaliado para todos os trades
+- `functions/index.js` v1.9.0: `calculateTradeCompliance` com DEC-007. Guards C4 removidos em `onTradeCreated`, `onTradeUpdated`, `recalculateCompliance`. Persiste `rrAssumed` no documento do trade
+- `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR quando campos relevantes mudam
+- `usePlans.js`: `diagnosePlan` comparação direta de rrRatio (sem guard C4)
+- `version.js`: v1.19.2+20260311
+
+### Testes
+- 12 novos testes: 11 para DEC-007 RR assumido no compliance (win/loss/breakeven, plan.pl vs currentPl, moeda diferente, red flags), 1 para diagnosePlan rrAssumed stale detection
+- 1 teste atualizado: loss sem stop agora gera 2 flags (NO_STOP + RR_BELOW_MINIMUM)
+- 378 testes totais, zero regressão
+
+---
+
+## [1.19.1] - 2026-03-10
+
+### Corrigido
+- **DEC-006: Compliance sem stop loss (Issue #78):** Trades sem stop não marcam mais RO=100% incorretamente. Nova lógica: loss → risco retroativo (`|result| / planPl`), win → N/A (riskPercent null), breakeven → 0%. Aplicado no frontend (`compliance.js` v2.0.0) e em TODAS as Cloud Functions (`onTradeCreated`, `onTradeUpdated`, `recalculateCompliance`)
+- **C4: Guard rrAssumed em Cloud Functions:** `onTradeCreated`, `onTradeUpdated` e `recalculateCompliance` não sobrescrevem mais `rrRatio` com null quando o frontend já calculou RR assumido (`rrAssumed: true`). Resolve DT-013
+- **C2: CSV Import tickerRule lookup:** `activateTrade` agora busca `tickerRule` (tickSize, tickValue, pointValue) do master data (collection `tickers`) via exchange+symbol quando o staging não possui tickerRule. Resolve DT-010
+- **Red flags contextualizados:** Mensagem NO_STOP não afirma mais "risco ilimitado". Loss mostra risco retroativo %, win mostra "risco não mensurado". Flag RISK_EXCEEDED só gerada quando riskPercent é numérico
+
+### Adicionado
+- **Botão de Auditoria na UI:** Ícone ShieldCheck no hover do PlanCard (PlanCardGrid v2.1.0), posicionado após delete. Abre `PlanAuditModal` com diagnóstico bidirecional
+- **PlanAuditModal (diagnóstico bidirecional):** Modal que verifica integridade do plano antes de agir. Ida: compara PL atual vs PL calculado (soma trades). Volta: compara compliance dos trades vs parâmetros do plano. Se saudável → "Plano saudável". Se divergente → mostra detalhes + botão "Corrigir Divergências". Resolve DT-014
+- **`diagnosePlan` em usePlans:** Função de leitura pura que executa o diagnóstico bidirecional sem escritas. 10 testes unitários
+
+### Modificado
+- `compliance.js` v2.0.0: `calculateTradeCompliance` retorna `riskPercent: null` (não 0) nos defaults e em wins sem stop. `generateComplianceRedFlags` com mensagens contextualizadas
+- `functions/index.js` v1.8.0: DEC-006 + guard rrAssumed em 3 pontos (onCreate, onUpdate, recalculate)
+- `useCsvStaging.js` v1.1.0: `activateTrade` com lookup Firestore de tickerRule
+- `usePlans.js`: novo `diagnosePlan` (leitura pura) + import `calculateTradeCompliance`
+- `PlanCardGrid.jsx` v2.1.0: prop `onAuditPlan`, botão ShieldCheck após delete
+- `StudentDashboard.jsx`: `PlanAuditModal` + `diagnosePlan`/`auditPlan` handlers, state `auditPlanId`
+- `version.js`: v1.19.1+20260310
+- `ARCHITECTURE.md`: INV-09 (Gate Obrigatório), AP-04 (Invariant Drift), DEC-004/005/006, DT-009 a DT-016
+
+### Testes
+- 34 testes compliance (12 novos para DEC-006: loss retroativo, win N/A, breakeven, red flags contextualizados, moeda diferente)
+- 10 testes diagnosePlan (ida PL, volta compliance, rrAssumed guard, combinações)
+- 366 testes totais, zero regressão
+
+---
+
 ## [1.19.0] - 2026-03-09
 
 ### Adicionado

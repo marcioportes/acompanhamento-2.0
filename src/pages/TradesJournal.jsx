@@ -214,7 +214,18 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
           trades={filteredTrades} 
           plans={plans}
           onViewTrade={setViewingTrade} 
-          onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 
+          onEditTrade={(t) => { 
+            // _partials já está no documento do trade (campo array)
+            // Se não existir, criar parciais a partir de entry/exit
+            if (!t._partials || t._partials.length === 0) {
+              t = { ...t, _partials: [
+                { type: 'ENTRY', price: t.entry, qty: t.qty, dateTime: t.entryTime, seq: 1 },
+                { type: 'EXIT', price: t.exit, qty: t.qty, dateTime: t.exitTime, seq: 2 }
+              ]};
+            }
+            setEditingTrade(t); 
+            setShowAddModal(true); 
+          }} 
           onDeleteTrade={async (trade) => { try { await deleteTrade(trade.id, trade.htfUrl, trade.ltfUrl); } catch (err) { console.error(err); } }} 
         />
         {filteredTrades.length === 0 && (

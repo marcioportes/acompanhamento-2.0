@@ -266,12 +266,14 @@ const TradeDetailModal = ({
                 }`}>
                   {isWin ? '+' : ''}{formatCurrency(trade.result, tradeCurrency)}
                 </p>
-                {trade.resultInPoints != null && (
+                {trade.resultInPoints != null ? (
                   <p className={`text-sm font-mono ${
                     isWin ? 'text-emerald-400/70' : 'text-red-400/70'
                   }`}>
                     {trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints} pts
                   </p>
+                ) : trade.resultEdited && (
+                  <p className="text-sm font-mono text-slate-500 italic">pts: editado</p>
                 )}
                 <p className={`text-xs ${
                   isWin ? 'text-emerald-400/50' : 'text-red-400/50'
@@ -425,8 +427,10 @@ const TradeDetailModal = ({
                         {trade.avgExit != null && (
                           <span className="text-slate-400">Média Saída: <strong className="text-white font-mono">{trade.avgExit}</strong></span>
                         )}
-                        {trade.resultInPoints != null && (
+                        {trade.resultInPoints != null ? (
                           <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span>
+                        ) : trade.resultEdited && (
+                          <span className="text-slate-500 italic">Pontos: editado</span>
                         )}
                         <span className="text-slate-400">Resultado: <strong className={`font-mono ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(trade.result, tradeCurrency)}</strong></span>
                       </div>

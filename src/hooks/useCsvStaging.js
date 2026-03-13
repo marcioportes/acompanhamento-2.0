@@ -1,9 +1,13 @@
 /**
  * useCsvStaging
- * @version 1.0.0 (v1.18.0)
+ * @version 1.1.0 (v1.19.1)
  * @description Hook para gerenciar trades em staging (collection csvStagingTrades).
  *   Trades importados via CSV ficam aqui até serem "ativados" — momento em que
  *   são passados para addTrade (useTrades) e deletados do staging.
+ *
+ * CHANGELOG:
+ * - 1.1.0: C2 (v1.19.1) — activateTrade busca tickerRule do master data (tickers collection)
+ *   quando staging não possui tickerRule, usando exchange+symbol lookup.
  *
  * PRINCÍPIO: csvStagingTrades é 100% isolada de trades/movements/CFs.
  *   Nenhuma Cloud Function observa esta collection.
@@ -271,6 +275,33 @@ const useCsvStaging = (overrideStudentId = null) => {
     if (!stagingTrade?.planId) throw new Error('Trade sem plano associado');
     if (!addTradeFn) throw new Error('addTrade function não fornecida');
 
+    // C2 (v1.19.1): Buscar tickerRule do master data se não presente no staging
+    let tickerRule = stagingTrade.tickerRule ?? null;
+    if (!tickerRule && stagingTrade.ticker && stagingTrade.exchange) {
+      try {
+        const tickerSnap = await getDocs(
+          query(
+            collection(db, 'tickers'),
+            where('symbol', '==', stagingTrade.ticker),
+            where('exchange', '==', stagingTrade.exchange)
+          )
+        );
+        if (!tickerSnap.empty) {
+          const tickerDoc = tickerSnap.docs[0].data();
+          if (tickerDoc.tickSize && tickerDoc.tickValue) {
+            tickerRule = {
+              tickSize: tickerDoc.tickSize,
+              tickValue: tickerDoc.tickValue,
+              pointValue: tickerDoc.pointValue ?? null,
+            };
+            console.log(`[useCsvStaging] tickerRule resolvido via master data: ${stagingTrade.ticker}@${stagingTrade.exchange}`, tickerRule);
+          }
+        }
+      } catch (err) {
+        console.warn(`[useCsvStaging] Falha ao buscar tickerRule: ${err.message}`);
+      }
+    }
+
     // Montar tradeData no formato que addTrade espera
     const tradeData = {
       planId: stagingTrade.planId,
@@ -290,8 +321,8 @@ const useCsvStaging = (overrideStudentId = null) => {
       // Metadados de origem
       importSource: stagingTrade.importSource ?? 'csv',
       importBatchId: stagingTrade.importBatchId ?? null,
-      // tickerRule se disponível
-      tickerRule: stagingTrade.tickerRule ?? null,
+      // C2: tickerRule resolvido (staging ou master data lookup)
+      tickerRule,
     };
 
     // Chamar addTrade legado — ele resolve planId→accountId, calcula result,

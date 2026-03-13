@@ -16,7 +16,7 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 
 // Componentes extraídos
@@ -38,6 +38,7 @@ import Loading from '../components/Loading';
 import SwotAnalysis from '../components/SwotAnalysis';
 import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
+import PlanAuditModal from '../components/dashboard/PlanAuditModal';
 import PlanLedgerExtract from '../components/PlanLedgerExtract';
 import DebugBadge from '../components/DebugBadge';
 
@@ -63,15 +64,17 @@ import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
  * @param {Function} onNavigateToFeedback - Callback para navegar para a tela de feedback
+ * @param {string|null} returnToPlanId - PlanId do extrato a reabrir ao voltar do feedback (só quando veio do extrato)
+ * @param {Function} onReturnConsumed - Callback para limpar o returnToPlanId após consumir
  */
-const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
+const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId = null, onReturnConsumed }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
 
   // === Data hooks ===
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, setSuspendListener } = useTrades(overrideStudentId);
   const { accounts, loading: accountsLoading, addAccount } = useAccounts(overrideStudentId);
-  const { plans, loading: plansLoading, addPlan, updatePlan, deletePlan } = usePlans(overrideStudentId);
+  const { plans, loading: plansLoading, addPlan, updatePlan, deletePlan, auditPlan, diagnosePlan } = usePlans(overrideStudentId);
 
   // Master data (emotions, tickers) + setups
   const { emotions, tickers: masterTickers } = useMasterData();
@@ -96,12 +99,22 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [extractPlan, setExtractPlan] = useState(null);
   const [ledgerPlan, setLedgerPlan] = useState(null);
+  const [auditPlanId, setAuditPlanId] = useState(null);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardComplete, setWizardComplete] = useState(false);
   const [accountTypeFilter, setAccountTypeFilter] = useState('all');
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
+
+  // Reabrir extrato ao voltar do feedback (só quando veio do extrato — _fromLedgerPlanId)
+  useEffect(() => {
+    if (returnToPlanId && !plansLoading && plans.length > 0) {
+      const plan = plans.find(p => p.id === returnToPlanId);
+      if (plan) setLedgerPlan(plan);
+      onReturnConsumed?.();
+    }
+  }, [returnToPlanId, plansLoading, plans]);
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
@@ -226,6 +239,22 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
     }
   };
 
+  const handleAuditPlan = (planId) => {
+    setAuditPlanId(planId);
+  };
+
+  const handleDiagnosePlan = () => {
+    if (!auditPlanId) return null;
+    return diagnosePlan(auditPlanId, trades);
+  };
+
+  const handleFixPlan = async () => {
+    if (!auditPlanId) return null;
+    return await auditPlan(auditPlanId, (progress) => {
+      console.log(`[Audit] Step ${progress.step}: ${progress.message}`);
+    });
+  };
+
   // === Loading / Empty states ===
   if (isLoading) return <Loading fullScreen text="Carregando..." />;
 
@@ -291,6 +320,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
         onEditPlan={(plan) => { setEditingPlan(plan); setShowPlanModal(true); }}
         onDeletePlan={handleDeletePlan}
         onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
+        onAuditPlan={handleAuditPlan}
       />
 
       {/* Filtros */}
@@ -387,7 +417,26 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
-      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ? (trade) => { setLedgerPlan(null); onNavigateToFeedback(trade); } : null} />)}
+      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ? (trade) => onNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id }) : null} />)}
+
+      {/* Auditoria de Plano */}
+      {auditPlanId && (() => {
+        const auditPlanObj = plans.find(p => p.id === auditPlanId);
+        const auditCurrency = auditPlanObj ? getPlanCurrency(auditPlanObj, accounts) : 'BRL';
+        const auditPlanName = auditPlanObj
+          ? `${auditPlanObj.name} · ${auditPlanObj.operationPeriod || 'Diário'} · ${auditPlanObj.adjustmentCycle || 'Mensal'}`
+          : '';
+        return (
+          <PlanAuditModal
+            isOpen={!!auditPlanId}
+            onClose={() => setAuditPlanId(null)}
+            planName={auditPlanName}
+            currency={auditCurrency}
+            onDiagnose={handleDiagnosePlan}
+            onFix={handleFixPlan}
+          />
+        );
+      })()}
 
       {/* CSV Import Modais */}
       {showCsvWizard && (

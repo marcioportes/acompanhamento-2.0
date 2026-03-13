@@ -28,6 +28,7 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { calculateTradeCompliance } from '../utils/compliance';
 
 /** Campos do plano que afetam compliance — mudança dispara recálculo */
 const RISK_FIELDS = ['riskPerOperation', 'rrTarget', 'periodStop', 'cycleStop'];
@@ -306,9 +307,92 @@ export const usePlans = (overrideStudentId = null) => {
   }, [plans]);
 
   /**
-   * B1 (v1.19.0): Auditoria de plano
-   * (a) Recalcula currentPL somando result de todos os trades do plano
-   * (b) Recalcula compliance de todos os trades em cascata via callable
+   * v1.19.1: Diagnóstico bidirecional de plano (leitura, sem escrita)
+   * Ida:   PL do plano ← soma dos trades (detecta PL divergente)
+   * Volta: Compliance dos trades ← parâmetros do plano (detecta trades desatualizados)
+   * 
+   * @param {string} planId
+   * @param {Array} localTrades - trades já carregados no hook (evita query extra)
+   * @returns {{ pl: { current, calculated, divergent }, trades: { total, divergent, details[] } }}
+   */
+  const diagnosePlan = useCallback((planId, localTrades = []) => {
+    const plan = plans.find(p => p.id === planId);
+    if (!plan) throw new Error('Plano não encontrado no cache local');
+
+    const planTrades = localTrades.filter(t => t.planId === planId);
+    const basePl = Number(plan.pl) || 0;
+    const currentPl = Number(plan.currentPl ?? plan.pl) || 0;
+
+    // === Ida: PL calculado a partir dos trades ===
+    const totalResult = planTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
+    const calculatedPl = Math.round((basePl + totalResult) * 100) / 100;
+    const plDivergent = Math.abs(currentPl - calculatedPl) > 0.01; // tolerância centavo
+
+    // === Volta: Compliance dos trades vs parâmetros do plano ===
+    const divergentTrades = [];
+
+    for (const trade of planTrades) {
+      const fresh = calculateTradeCompliance(trade, plan);
+      const currentRisk = trade.riskPercent;
+      const newRisk = fresh.riskPercent;
+
+      // Comparar riskPercent (null-safe)
+      const riskChanged = currentRisk == null && newRisk != null
+        || currentRisk != null && newRisk == null
+        || (currentRisk != null && newRisk != null && Math.abs(currentRisk - newRisk) > 0.01);
+
+      // Comparar rrRatio (null-safe — DEC-007: calculateTradeCompliance now returns RR for all trades)
+      const currentRR = trade.rrRatio;
+      const newRR = fresh.rrRatio;
+      const rrChanged = currentRR == null && newRR != null
+        || currentRR != null && newRR == null
+        || (currentRR != null && newRR != null && Math.abs(currentRR - newRR) > 0.01);
+
+      // Comparar compliance status
+      const roChanged = (trade.compliance?.roStatus ?? 'CONFORME') !== fresh.compliance.roStatus;
+      const rrStatusChanged = (trade.compliance?.rrStatus ?? 'CONFORME') !== fresh.compliance.rrStatus;
+
+      if (riskChanged || rrChanged || roChanged || rrStatusChanged) {
+        // Formatar data do trade
+        let dateStr = '-';
+        if (trade.entryTime) {
+          const d = trade.entryTime?.toDate ? trade.entryTime.toDate() : new Date(trade.entryTime);
+          dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        }
+
+        // Determinar motivo
+        let reason = 'Compliance recalculado';
+        if (!trade.stopLoss && currentRisk === 100) {
+          reason = 'DEC-006: risco retroativo';
+        } else if (rrChanged && fresh.rrAssumed) {
+          reason = 'DEC-007: RR assumido recalculado';
+        } else if (riskChanged) {
+          reason = 'RO% recalculado';
+        } else if (rrChanged) {
+          reason = 'RR recalculado';
+        }
+
+        divergentTrades.push({
+          id: trade.id,
+          date: dateStr,
+          ticker: trade.ticker || '-',
+          oldRisk: currentRisk != null ? `${currentRisk.toFixed(1)}%` : 'N/A',
+          newRisk: newRisk != null ? `${newRisk.toFixed(1)}%` : 'N/A',
+          reason,
+        });
+      }
+    }
+
+    return {
+      pl: { current: currentPl, calculated: calculatedPl, divergent: plDivergent },
+      trades: { total: planTrades.length, divergent: divergentTrades.length, details: divergentTrades },
+    };
+  }, [plans]);
+
+  /**
+   * v1.19.1: Auditoria de plano — delega tudo à callable recalculateCompliance (admin SDK)
+   * A callable agora faz: (a) recálculo de PL + (b) recálculo de compliance
+   * Sem escrita direta do frontend — bypassa Firestore Rules.
    * 
    * @param {string} planId
    * @param {Function} [onProgress] - callback({ step, message })
@@ -317,57 +401,30 @@ export const usePlans = (overrideStudentId = null) => {
   const auditPlan = useCallback(async (planId, onProgress) => {
     if (!planId) throw new Error('planId obrigatório');
 
-    const report = { oldPl: 0, newPl: 0, plRecalculated: false, complianceUpdated: 0 };
-
     try {
-      // (a) Recalcular currentPL a partir dos trades
-      onProgress?.({ step: 1, message: 'Buscando trades do plano...' });
-
-      const planRef = doc(db, 'plans', planId);
-      const tradesSnap = await getDocs(
-        query(collection(db, 'trades'), where('planId', '==', planId))
-      );
-
-      const totalResult = tradesSnap.docs.reduce((sum, d) => {
-        return sum + (Number(d.data().result) || 0);
-      }, 0);
-
-      // Buscar PL base (inicial) do plano
-      const plan = plans.find(p => p.id === planId);
-      if (!plan) throw new Error('Plano não encontrado no cache local');
-
-      const basePl = Number(plan.pl) || 0;
-      const newCurrentPl = Math.round((basePl + totalResult) * 100) / 100;
-      report.oldPl = Number(plan.currentPl ?? plan.pl) || 0;
-      report.newPl = newCurrentPl;
-
-      onProgress?.({ step: 2, message: `PL: ${report.oldPl.toFixed(2)} → ${newCurrentPl.toFixed(2)} (${tradesSnap.size} trades)` });
-
-      await updateDoc(planRef, {
-        currentPl: newCurrentPl,
-        updatedAt: serverTimestamp(),
-      });
-      report.plRecalculated = true;
-
-      // (b) Recalcular compliance em cascata
-      onProgress?.({ step: 3, message: 'Recalculando compliance...' });
+      onProgress?.({ step: 1, message: 'Recalculando PL e compliance via servidor...' });
 
       const functions = getFunctions();
       const recalc = httpsCallable(functions, 'recalculateCompliance');
-      const result = await recalc({ planId });
-      report.complianceUpdated = result.data.updated || 0;
+      const result = await recalc({ planId, recalcPl: true });
 
-      onProgress?.({ step: 4, message: `Auditoria concluída: ${report.complianceUpdated} trades recalculados` });
+      const report = {
+        oldPl: result.data.oldPl ?? 0,
+        newPl: result.data.newPl ?? 0,
+        plRecalculated: result.data.plRecalculated ?? false,
+        complianceUpdated: result.data.updated ?? 0,
+      };
+
+      onProgress?.({ step: 2, message: `Auditoria concluída: PL ${report.oldPl.toFixed(2)} → ${report.newPl.toFixed(2)}, ${report.complianceUpdated} trades` });
 
       console.log(`[usePlans] auditPlan ${planId}: PL ${report.oldPl} → ${report.newPl}, compliance ${report.complianceUpdated} trades`);
 
+      return report;
     } catch (err) {
       console.error('[usePlans] Erro auditPlan:', err);
       throw err;
     }
-
-    return report;
-  }, [plans]);
+  }, []);
 
   /**
    * Validar trade contra plano
@@ -430,6 +487,7 @@ export const usePlans = (overrideStudentId = null) => {
     updatePlan,
     deletePlan,
     auditPlan,
+    diagnosePlan,
     getPlansByAccount,
     getPlansByStudent,
     getPlanById,

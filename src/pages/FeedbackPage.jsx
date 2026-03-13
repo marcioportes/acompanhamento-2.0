@@ -161,6 +161,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           rrCalc = movePts / riskPts;
         }
         const rrRatio = trade.rrRatio || trade.rr || rrCalc;
+        const isRrAssumed = trade.rrAssumed === true;
         
         // Resultado % sobre PL (usa planPl se disponível via _planPl prop)
         const planPl = Number(trade._planPl) || 0;
@@ -187,6 +188,9 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
               <div className={`${rrRatio >= 1 ? 'bg-blue-500/5 border-blue-500/20' : 'bg-amber-500/5 border-amber-500/20'} border rounded-xl p-3 text-center`}>
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">RR</span>
                 <span className={`font-mono font-bold ${rrRatio >= 1 ? 'text-blue-400' : 'text-amber-400'}`}>{Number(rrRatio).toFixed(2)}:1</span>
+                {isRrAssumed && (
+                  <span className="text-[9px] text-purple-400/70 block mt-0.5" title="RR calculado sem stop loss, baseado no RO% do plano">(est.)</span>
+                )}
               </div>
             )}
             {resultPercentPl != null && (
@@ -199,8 +203,13 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
         );
       })()}
 
-      {/* Red Flags */}
-      {trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 && (
+      {/* Red Flags — ou indicador de processamento se CF ainda não respondeu */}
+      {trade.compliance === undefined && trade.riskPercent === undefined ? (
+        <div className="bg-slate-800/50 border border-slate-700/30 rounded-xl p-3 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+          <span className="text-xs text-slate-400">Processando compliance...</span>
+        </div>
+      ) : trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 ? (
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
           <div className="flex items-center gap-2 text-amber-400 mb-2">
             <AlertTriangle className="w-4 h-4" />
@@ -212,7 +221,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Parciais — exibe quando trade tem dados carregados */}
       {trade._loadedPartials?.length > 0 && (
@@ -248,7 +257,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
               <div className="px-3 py-2 bg-slate-800/50 border-t border-slate-700/50 flex flex-wrap gap-3 text-xs">
                 {trade.avgEntry != null && <span className="text-slate-400">Média Entrada: <strong className="text-white font-mono">{trade.avgEntry}</strong></span>}
                 {trade.avgExit != null && <span className="text-slate-400">Média Saída: <strong className="text-white font-mono">{trade.avgExit}</strong></span>}
-                {trade.resultInPoints != null && <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span>}
+                {trade.resultInPoints != null ? <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span> : trade.resultEdited && <span className="text-slate-500 italic">Pontos: editado</span>}
               </div>
             )}
           </div>
