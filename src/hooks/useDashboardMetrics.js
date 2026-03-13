@@ -190,6 +190,13 @@ const useDashboardMetrics = ({
     };
   }, [filteredTrades]);
 
+  // === Risk Asymmetry (v1.19.4) ===
+  const riskAsymmetry = useMemo(() => {
+    if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
+    const { calculateRiskAsymmetry } = require('../utils/dashboardMetrics');
+    return calculateRiskAsymmetry(filteredTrades, plansToShow);
+  }, [filteredTrades, plansToShow]);
+
   // === P&L Contextual (B5 — Issue #71) ===
   const plContext = useMemo(() => {
     // Prioridade 1: filtro de período ativo
@@ -238,6 +245,7 @@ const useDashboardMetrics = ({
     maxDrawdownData,
     winRatePlanned,
     complianceRate,
+    riskAsymmetry,
     // Contexto P&L (B5)
     plContext,
   };

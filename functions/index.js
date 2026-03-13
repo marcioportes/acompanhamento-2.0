@@ -301,7 +301,8 @@ const calculateTradeCompliance = (trade, plan) => {
   
   if (!plan || !trade) return result;
   
-  const planPl = plan.currentPl ?? plan.pl ?? 0;
+  // DEC-009 (v1.19.4): usa plan.pl (capital base), não currentPl
+  const planPl = plan.pl ?? plan.currentPl ?? 0;
   if (planPl <= 0) return result;
   
   // === Risco Operacional — DEC-006 (v1.19.1) ===
@@ -762,9 +763,9 @@ exports.onTradeCreated = functions.firestore
             });
           }
           
-          // Red flag: loss diário (calculado sobre PL do plano)
+          // Red flag: loss diário (calculado sobre capital base — DEC-009)
           if (plan.periodStop && trade.accountId) {
-            const planPl = plan.currentPl ?? plan.pl ?? 0;
+            const planPl = plan.pl ?? plan.currentPl ?? 0;
             if (planPl > 0) {
               const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
               const dailyLossPercent = (dailyLoss / planPl) * 100;

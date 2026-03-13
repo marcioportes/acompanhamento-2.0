@@ -30,6 +30,7 @@
   "dependencies": {
     "date-fns": "^4.1.0",
     "firebase": "^12.8.0",
+    "jq": "^1.7.2",
     "lucide-react": "^0.263.1",
     "papaparse": "^5.5.3",
     "react": "^18.2.0",
