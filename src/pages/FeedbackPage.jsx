@@ -257,7 +257,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
               <div className="px-3 py-2 bg-slate-800/50 border-t border-slate-700/50 flex flex-wrap gap-3 text-xs">
                 {trade.avgEntry != null && <span className="text-slate-400">Média Entrada: <strong className="text-white font-mono">{trade.avgEntry}</strong></span>}
                 {trade.avgExit != null && <span className="text-slate-400">Média Saída: <strong className="text-white font-mono">{trade.avgExit}</strong></span>}
-                {trade.resultInPoints != null && <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span>}
+                {trade.resultInPoints != null ? <span className="text-slate-400">Pontos: <strong className={`font-mono ${trade.resultInPoints >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.resultInPoints >= 0 ? '+' : ''}{trade.resultInPoints}</strong></span> : trade.resultEdited && <span className="text-slate-500 italic">Pontos: editado</span>}
               </div>
             )}
           </div>

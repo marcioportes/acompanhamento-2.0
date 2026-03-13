@@ -280,7 +280,7 @@ export const useTrades = (overrideStudentId = null) => {
         stopLoss,
         resultCalculated: Math.round(result * 100) / 100,
         result: effectiveResult,
-        resultInPoints,
+        resultInPoints: (tradeData.resultOverride != null) ? null : resultInPoints,
         resultEdited: tradeData.resultOverride != null,
         resultPercent: calculateResultPercent(side, entry, exit),
         rrRatio,
@@ -417,6 +417,7 @@ export const useTrades = (overrideStudentId = null) => {
         if (updates.resultOverride != null && !isNaN(parseFloat(updates.resultOverride))) {
           updateData.result = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
           updateData.resultEdited = true;
+          updateData.resultInPoints = null; // C5: pontos não representam o override
         } else {
           updateData.result = calc.result;
           updateData.resultEdited = false;
@@ -445,6 +446,7 @@ export const useTrades = (overrideStudentId = null) => {
           const overrideVal = Math.round(parseFloat(updates.resultOverride) * 100) / 100;
           updateData.result = overrideVal;
           updateData.resultEdited = true;
+          updateData.resultInPoints = null; // C5: pontos não representam o override
           newResult = overrideVal;
         } else {
           updateData.result = Math.round(newResult * 100) / 100;

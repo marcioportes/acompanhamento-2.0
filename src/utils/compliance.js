@@ -177,7 +177,7 @@ export const generateComplianceRedFlags = (trade, plan, complianceResult) => {
   if (complianceResult.compliance.rrStatus === 'NAO_CONFORME' && complianceResult.rrRatio != null) {
     flags.push({ 
       type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, 
-      message: `RR ${complianceResult.rrRatio.toFixed(1)}x abaixo do mínimo (${plan.rrTarget}x)`, 
+      message: `RR ${complianceResult.rrRatio.toFixed(2)}x abaixo do mínimo (${plan.rrTarget}x)`, 
       timestamp: new Date().toISOString() 
     });
   }
