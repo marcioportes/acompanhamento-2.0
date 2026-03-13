@@ -69,7 +69,7 @@ const AppContent = () => {
   
   // Estado para FeedbackPage com trade específico
   const [feedbackTrade, setFeedbackTrade] = useState(null);
-  // Contexto de retorno: planId do extrato aberto ao navegar para feedback
+  // Contexto de retorno: planId do extrato que estava aberto (só quando veio do extrato)
   const [feedbackReturnPlanId, setFeedbackReturnPlanId] = useState(null);
   
   // Hooks
@@ -149,15 +149,15 @@ const AppContent = () => {
 
   // Handler para navegar para FeedbackPage com um trade específico
   const handleNavigateToFeedback = (trade) => {
-    // Guardar planId para voltar ao extrato correto
-    if (trade.planId) setFeedbackReturnPlanId(trade.planId);
+    // Só guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
+    setFeedbackReturnPlanId(trade._fromLedgerPlanId || null);
     setFeedbackTrade(trade);
   };
 
   // Handler para voltar do FeedbackPage
   const handleBackFromFeedback = () => {
     setFeedbackTrade(null);
-    // feedbackReturnPlanId permanece — StudentDashboard vai consumir e limpar
+    // feedbackReturnPlanId permanece para StudentDashboard consumir
   };
 
   // Handler para adicionar comentário no FeedbackPage
