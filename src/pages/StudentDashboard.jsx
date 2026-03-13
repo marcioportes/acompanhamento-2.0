@@ -16,7 +16,7 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 
 // Componentes extraídos
@@ -64,8 +64,10 @@ import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
  * @param {Function} onNavigateToFeedback - Callback para navegar para a tela de feedback
+ * @param {string|null} returnToPlanId - PlanId do extrato a reabrir ao voltar do feedback
+ * @param {Function} onReturnConsumed - Callback para limpar o returnToPlanId após consumir
  */
-const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
+const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId = null, onReturnConsumed }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
 
@@ -103,6 +105,17 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
   const [wizardComplete, setWizardComplete] = useState(false);
   const [accountTypeFilter, setAccountTypeFilter] = useState('all');
   const [showCsvWizard, setShowCsvWizard] = useState(false);
+
+  // Reabrir extrato ao voltar do feedback
+  useEffect(() => {
+    if (returnToPlanId && !plansLoading && plans.length > 0) {
+      const plan = plans.find(p => p.id === returnToPlanId);
+      if (plan) {
+        setLedgerPlan(plan);
+      }
+      onReturnConsumed?.();
+    }
+  }, [returnToPlanId, plansLoading, plans]);
   const [showCsvManager, setShowCsvManager] = useState(false);
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
@@ -406,7 +419,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback }) => {
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
-      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ? (trade) => { setLedgerPlan(null); onNavigateToFeedback(trade); } : null} />)}
+      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ?? null} />)}
 
       {/* Auditoria de Plano */}
       {auditPlanId && (() => {

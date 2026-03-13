@@ -247,8 +247,12 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   </div>
                 </td>
 
-                {/* RR — real ou assumido */}
-                <td className={`px-2 py-1.5 text-right font-mono text-xs ${rrFora || rrNonCompliant ? 'text-amber-400' : 'text-slate-400'}`}>
+                {/* RR — real ou assumido. Azul se compliant, amber se non-compliant */}
+                <td className={`px-2 py-1.5 text-right font-mono text-xs ${
+                  rrFora || rrNonCompliant ? 'text-amber-400' 
+                  : (trade.rrRatio != null && trade.result > 0 && !rrNonCompliant) ? 'text-blue-400' 
+                  : 'text-slate-400'
+                }`}>
                   <div className="flex items-center justify-end gap-0.5">
                     {(rrFora || rrNonCompliant) && <Scale className="w-3 h-3 text-amber-400 flex-shrink-0" />}
                     <span>{rrDisplay}</span>
