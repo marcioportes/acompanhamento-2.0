@@ -144,6 +144,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
     winRatePlanned,
     complianceRate,
     riskAsymmetry,
+    evLeakage,
     plContext,
   } = metrics;
 
@@ -342,6 +343,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         winRatePlanned={winRatePlanned}
         complianceRate={complianceRate}
         riskAsymmetry={riskAsymmetry}
+        evLeakage={evLeakage}
         plContext={plContext}
       />
 

@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
+import { calculateRiskAsymmetry, calculateEVLeakage } from '../utils/dashboardMetrics';
 
 /** Labels de período para display */
 const PERIOD_LABELS = {
@@ -193,8 +194,13 @@ const useDashboardMetrics = ({
   // === Risk Asymmetry (v1.19.4) ===
   const riskAsymmetry = useMemo(() => {
     if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
-    const { calculateRiskAsymmetry } = require('../utils/dashboardMetrics');
     return calculateRiskAsymmetry(filteredTrades, plansToShow);
+  }, [filteredTrades, plansToShow]);
+
+  // === EV Leakage (v1.19.4) ===
+  const evLeakage = useMemo(() => {
+    if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
+    return calculateEVLeakage(filteredTrades, plansToShow);
   }, [filteredTrades, plansToShow]);
 
   // === P&L Contextual (B5 — Issue #71) ===
@@ -246,6 +252,7 @@ const useDashboardMetrics = ({
     winRatePlanned,
     complianceRate,
     riskAsymmetry,
+    evLeakage,
     // Contexto P&L (B5)
     plContext,
   };
