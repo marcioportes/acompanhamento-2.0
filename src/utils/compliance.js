@@ -1,6 +1,6 @@
 /**
  * Trade Compliance — Cálculos puros
- * @version 3.0.0 (v1.19.2)
+ * @version 3.1.0 (v1.19.4)
  * 
  * Lógica extraída de functions/index.js (calculateTradeCompliance)
  * para permitir testes unitários no frontend.
@@ -9,6 +9,8 @@
  * TODO: Fase futura — unificar em módulo shared.
  * 
  * CHANGELOG:
+ * - 3.1.0 (v1.19.4): DEC-009 — riskPercent usa plan.pl (capital base) como denominador.
+ *   Corrige bug onde currentPl (flutuante) distorcia o cálculo de RO%.
  * - 3.0.0 (v1.19.2): DEC-007 — RR assumido integrado no calculateTradeCompliance.
  *   Trades sem stop agora calculam rrRatio via plan.pl (capital base) × RO%.
  *   Guard C4 removido — CF e frontend recalculam RR assumido em todos os pontos.
@@ -58,7 +60,10 @@ export const calculateTradeCompliance = (trade, plan) => {
   
   if (!plan || !trade) return result;
   
-  const planPl = plan.currentPl ?? plan.pl ?? 0;
+  // DEC-009 (v1.19.4): riskPercent usa plan.pl (capital base do ciclo), não currentPl.
+  // Consistente com DEC-007 (RR assumido já usava plan.pl).
+  // Fallback para currentPl apenas se plan.pl não existir (planos legados).
+  const planPl = plan.pl ?? plan.currentPl ?? 0;
   if (planPl <= 0) return result;
   
   // === Risco Operacional (RO) ===
