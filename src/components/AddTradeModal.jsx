@@ -482,6 +482,46 @@ const AddTradeModal = ({
     else { setLtfFile(null); setLtfPreview(null); if (ltfInputRef.current) ltfInputRef.current.value = ''; }
   };
 
+  /**
+   * Paste handler — intercepta imagem do clipboard (Ctrl+V) na area de upload.
+   * @param {ClipboardEvent} e
+   * @param {string} [targetType] - 'htf' ou 'ltf'. Se nao informado, preenche o primeiro vazio.
+   */
+  const handlePasteImage = (e, targetType) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+          alert('Imagem muito grande. Maximo 5MB.');
+          return;
+        }
+
+        // Determina qual campo preencher
+        let type = targetType;
+        if (!type) {
+          if (!htfPreview) type = 'htf';
+          else if (!ltfPreview) type = 'ltf';
+          else type = 'htf'; // ambos preenchidos, sobrescreve htf
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (type === 'htf') { setHtfFile(file); setHtfPreview(reader.result); }
+          else { setLtfFile(file); setLtfPreview(reader.result); }
+        };
+        reader.readAsDataURL(file);
+        setErrors(prev => ({ ...prev, [type]: null }));
+        return;
+      }
+    }
+  };
+
   // --- HANDLERS DE PARCIAIS ---
 
   const addPartialRow = () => {
@@ -931,16 +971,16 @@ const AddTradeModal = ({
               <div><label className="input-label">Emoção Saída</label><select name="emotionExit" value={formData.emotionExit} onChange={handleChange} className="input-dark w-full"><option value="">Selecione...</option>{emotions.map(e => <option key={e.id} value={e.name}>{e.emoji} {e.name}</option>)}</select></div>
             </div>
 
-            <div><label className="input-label">Observações</label><textarea name="notes" rows="2" value={formData.notes} onChange={handleChange} className="input-dark w-full resize-none" placeholder="Racional do trade..." /></div>
+            <div><label className="input-label">Observações</label><textarea name="notes" rows="2" value={formData.notes} onChange={handleChange} onPaste={(e) => handlePasteImage(e)} className="input-dark w-full resize-none" placeholder="Racional do trade... (Ctrl+V para colar imagem)" /></div>
 
             <div className="grid grid-cols-2 gap-4">
                {['htf', 'ltf'].map(type => (
-                 <div key={type}>
+                 <div key={type} onPaste={(e) => handlePasteImage(e, type)} tabIndex={0} className="outline-none focus:ring-1 focus:ring-blue-500/30 rounded-lg">
                    <label className="input-label mb-2 uppercase flex items-center gap-1">{type} Image <span className="text-red-400">*</span></label>
                    {(type === 'htf' ? htfPreview : ltfPreview) ? (
                      <div className="relative group h-24 rounded-lg overflow-hidden border border-slate-700"><img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImage(type)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white"><X/></button></div>
                    ) : (
-                     <label className={`flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:bg-slate-800 ${errors[type] ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700'}`}><Upload className={`w-5 h-5 ${errors[type] ? 'text-red-400' : 'text-slate-500'}`} /><input ref={type === 'htf' ? htfInputRef : ltfInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, type)} /></label>
+                     <label className={`flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:bg-slate-800 ${errors[type] ? 'border-red-500/50 bg-red-500/5' : 'border-slate-700'}`}><Upload className={`w-5 h-5 ${errors[type] ? 'text-red-400' : 'text-slate-500'}`} /><span className="text-[10px] text-slate-600 mt-1">Upload ou Ctrl+V</span><input ref={type === 'htf' ? htfInputRef : ltfInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, type)} /></label>
                    )}
                    {errors[type] && <span className="text-[10px] text-red-400 mt-1 block">{errors[type]}</span>}
                  </div>
