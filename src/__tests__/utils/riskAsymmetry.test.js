@@ -108,17 +108,19 @@ describe('calculateRiskAsymmetry', () => {
     expect(result.asymmetryRatio).toBeNull();  // avgRiskLosses = 0, divisao por zero
   });
 
-  it('trades sem riskPercent sao ignorados', () => {
+  it('trades sem riskPercent assumem RO$ do plano', () => {
     const trades = [
-      { planId: 'plan1', result: 2000, riskPercent: 0.5 },    // incluido
-      { planId: 'plan1', result: 1000, riskPercent: null },    // ignorado (win sem stop)
-      { planId: 'plan1', result: -500, riskPercent: 0.25 },    // incluido
+      { planId: 'plan1', result: 2000, riskPercent: 0.5 },    // win, risco R$1000
+      { planId: 'plan1', result: 1000, riskPercent: null },    // win sem stop -> assume RO$ = R$1000
+      { planId: 'plan1', result: -500, riskPercent: 0.25 },    // loss, risco R$500
     ];
 
     const result = calculateRiskAsymmetry(trades, [basePlan]);
 
-    expect(result.winsCount).toBe(1);   // so 1 win com riskPercent
+    expect(result.winsCount).toBe(2);   // ambos wins incluidos
     expect(result.lossesCount).toBe(1);
+    // avgRiskWins = (1000 + 1000) / 2 = 1000
+    expect(result.avgRiskWins).toBe(1000);
   });
 
   it('trades sem planId valido sao ignorados', () => {

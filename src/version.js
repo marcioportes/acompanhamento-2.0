@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.19.5: Layout agrupado 3 paineis (Financeiro/Desempenho/Plano vs Resultado), tooltips diagnosticos, NaN guards
  * - 1.19.4: DEC-009 — riskPercent usa plan.pl (capital base) como denominador, não currentPl
  * - 1.19.3: C3 (RR 2 casas decimais), C5 (resultInPoints null em override), coluna Status Feedback no ExtractTable
  * - 1.19.2: DEC-007 RR assumido integrado em calculateTradeCompliance (plan.pl base), guard C4 removido, updateTrade recalcula RR, diagnosePlan detecta rrAssumed stale
@@ -16,10 +17,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.19.4',
-  build: '20260313',
-  display: 'v1.19.4',
-  full: '1.19.4+20260313',
+  version: '1.19.5',
+  build: '20260315',
+  display: 'v1.19.5',
+  full: '1.19.5+20260315',
 };
 export default VERSION;
 export { VERSION };
