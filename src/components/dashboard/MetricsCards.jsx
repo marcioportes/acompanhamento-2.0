@@ -1,95 +1,67 @@
 /**
  * MetricsCards
- * @version 3.0.0 (v1.19.4)
- * @description Cards de métricas do StudentDashboard (Saldo, P&L, WR, PF, DD, Eficiência do Risco).
- *   v3.0.0: Card "Eficiência do Risco" — Risk Asymmetry W/L + RO Efficiency.
- *   v2.0.0: P&L contextual — label dinâmico (B5 — Issue #71).
- *   v1.0.0: Extraído do StudentDashboard para modularização.
- *   Suporta multi-moeda: quando dominantCurrency é null, exibe breakdown por moeda.
+ * @version 4.1.0 (v1.19.5)
+ * @description Paineis agrupados de metricas do StudentDashboard.
+ *   v4.1.0: 3 paineis em linha unica, tooltips nativos restaurados, EV com explicacao semantica.
+ *   v4.0.0: Layout 3 paineis + tooltips diagnosticos + NaN guards.
+ *   v3.0.0: Cards Risk Asymmetry + EV Leakage (7 cards).
+ *   v2.0.0: P&L contextual (B5 - Issue #71).
+ *   v1.0.0: Extraido do StudentDashboard.
  */
 
-import { DollarSign, Target, TrendingDown, Wallet, Activity, Shield, Info } from 'lucide-react';
-import { useState } from 'react';
+import { DollarSign, Target, BarChart3, Info } from 'lucide-react';
+import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import { getFinancialInsights, getPerformanceInsights, getPlanVsResultInsights } from '../../utils/metricsInsights';
 import DebugBadge from '../DebugBadge';
 
-/**
- * Classifica o Risk Asymmetry ratio em faixas de severidade.
- * @param {number|null} ratio
- * @returns {{ label: string, color: string, bgColor: string }}
- */
+const safe = (v, d = 0) => (v != null && !isNaN(v) && isFinite(v)) ? v.toFixed(d) : '-';
+
 const getAsymmetryLevel = (ratio) => {
-  if (ratio == null) return { label: '-', color: 'text-slate-400', bgColor: 'bg-slate-500/20' };
-  if (ratio >= 0.9 && ratio <= 1.1) return { label: 'Excelente', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' };
-  if (ratio >= 0.7) return { label: 'Bom', color: 'text-blue-400', bgColor: 'bg-blue-500/20' };
-  if (ratio >= 0.4) return { label: 'Atenção', color: 'text-amber-400', bgColor: 'bg-amber-500/20' };
-  return { label: 'Crítico', color: 'text-red-400', bgColor: 'bg-red-500/20' };
+  if (ratio == null || isNaN(ratio)) return { label: '-', color: 'text-slate-400' };
+  if (ratio >= 0.9 && ratio <= 1.1) return { label: 'Excelente', color: 'text-emerald-400' };
+  if (ratio >= 0.7) return { label: 'Bom', color: 'text-blue-400' };
+  if (ratio >= 0.4) return { label: 'Atencao', color: 'text-amber-400' };
+  return { label: 'Critico', color: 'text-red-400' };
 };
 
-/**
- * Tooltip de referência para Risk Asymmetry.
- */
-const RiskAsymmetryTooltip = ({ onClose }) => (
-  <div className="absolute top-full right-0 mt-2 w-72 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-xl z-50">
+const getLeakageLevel = (leakage) => {
+  if (leakage == null || isNaN(leakage)) return { label: '-', color: 'text-slate-400' };
+  if (leakage < 0) return { label: 'Superando', color: 'text-emerald-400' };
+  if (leakage <= 10) return { label: 'Excelente', color: 'text-emerald-400' };
+  if (leakage <= 30) return { label: 'Bom', color: 'text-blue-400' };
+  if (leakage <= 60) return { label: 'Atencao', color: 'text-amber-400' };
+  return { label: 'Critico', color: 'text-red-400' };
+};
+
+const sevDot = (s) => ({ success: 'bg-emerald-400', warning: 'bg-amber-400', danger: 'bg-red-400' }[s] || 'bg-slate-500');
+const sevText = (s) => ({ success: 'text-emerald-400', warning: 'text-amber-400', danger: 'text-red-400' }[s] || 'text-slate-400');
+
+const DiagnosticTooltip = ({ title, insights, onClose }) => (
+  <div className="absolute top-full right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-xl z-50">
     <div className="absolute -top-1.5 right-4 w-3 h-3 bg-slate-800 border-t border-l border-slate-700 rotate-45" />
-    <div className="flex justify-between items-start mb-2">
-      <p className="text-sm font-medium text-white">Risk asymmetry (W/L)</p>
-      <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xs">✕</button>
+    <div className="flex justify-between items-start mb-3">
+      <p className="text-sm font-medium text-white">{title}</p>
+      <button onClick={onClose} className="text-slate-500 hover:text-slate-300 text-xs ml-2">&#x2715;</button>
     </div>
-    <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-      Razão entre risco médio nos wins vs losses. Valores abaixo de 1.0 indicam que o aluno
-      arrisca menos quando acerta — corroendo o edge mesmo com WR e RR conformes.
-    </p>
-    <div className="space-y-1.5">
-      {[
-        { range: '0.9 – 1.1', label: 'Excelente', color: 'bg-emerald-400' },
-        { range: '0.7 – 0.9', label: 'Bom', color: 'bg-blue-400' },
-        { range: '0.4 – 0.7', label: 'Atenção', color: 'bg-amber-400' },
-        { range: '< 0.4', label: 'Crítico', color: 'bg-red-400' },
-      ].map(({ range, label, color }) => (
-        <div key={label} className="flex items-center gap-2 text-xs">
-          <div className={`w-2 h-2 rounded-full ${color}`} />
-          <span className="text-slate-500 w-16">{range}</span>
-          <span className="text-slate-300">{label}</span>
+    <div className="space-y-2">
+      {insights.map((ins, i) => (
+        <div key={i} className="flex items-start gap-2">
+          <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${sevDot(ins.severity)}`} />
+          <p className={`text-xs leading-relaxed ${sevText(ins.severity)}`}>{ins.text}</p>
         </div>
       ))}
-    </div>
-    <div className="mt-3 pt-3 border-t border-slate-700">
-      <p className="text-[10px] text-slate-500 leading-relaxed">
-        RO Eficiência: % médio do risco permitido efetivamente utilizado. 100% = usa todo o RO do plano em cada trade.
-      </p>
     </div>
   </div>
 );
 
-/**
- * Classifica o Eficiência do Plano em faixas de severidade.
- * @param {number|null} leakage - percentual (0-100+)
- * @returns {{ label: string, color: string, bgColor: string }}
- */
-const getLeakageLevel = (leakage) => {
-  if (leakage == null) return { label: '-', color: 'text-slate-400', bgColor: 'bg-slate-500/20' };
-  if (leakage < 0) return { label: 'Superando', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' };
-  if (leakage <= 10) return { label: 'Excelente', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' };
-  if (leakage <= 30) return { label: 'Bom', color: 'text-blue-400', bgColor: 'bg-blue-500/20' };
-  if (leakage <= 60) return { label: 'Atenção', color: 'text-amber-400', bgColor: 'bg-amber-500/20' };
-  return { label: 'Crítico', color: 'text-red-400', bgColor: 'bg-red-500/20' };
-};
+const InfoBtn = ({ name, openTooltip, toggle }) => (
+  <button onClick={() => toggle(name)} className="text-slate-600 hover:text-slate-400 transition-colors">
+    <Info className="w-4 h-4" />
+  </button>
+);
 
-/**
- * @param {Object} stats - Retorno de calculateStats
- * @param {number} aggregatedCurrentBalance
- * @param {string|null} dominantCurrency - null = moedas mistas
- * @param {Map} balancesByCurrency - Map<currency, {current, pnl, ...}>
- * @param {number} drawdown
- * @param {Object} maxDrawdownData - {maxDD, maxDDPercent, maxDDDate}
- * @param {Object|null} winRatePlanned - {rate, eligible, disciplinedWins, gap}
- * @param {Object|null} complianceRate - {rate, compliant, total, violations}
- * @param {Object|null} riskAsymmetry - {asymmetryRatio, avgRiskWins, avgRiskLosses, avgRoEfficiency, ...}
- * @param {Object|null} evLeakage - {evTheoretical, evReal, leakage, leakageAmount, totalLeakage, tradeCount}
- * @param {Object} plContext - { label, type } do P&L contextual (B5)
- */
 const MetricsCards = ({
   stats,
   aggregatedCurrentBalance,
@@ -103,256 +75,239 @@ const MetricsCards = ({
   evLeakage,
   plContext,
 }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [showEvTooltip, setShowEvTooltip] = useState(false);
+  const [openTooltip, setOpenTooltip] = useState(null);
+  const toggle = (name) => setOpenTooltip(prev => prev === name ? null : name);
+
+  const cur = dominantCurrency || 'BRL';
   const asymLevel = getAsymmetryLevel(riskAsymmetry?.asymmetryRatio);
   const leakLevel = getLeakageLevel(evLeakage?.leakage);
 
+  const financialInsights = useMemo(() => getFinancialInsights({
+    stats, drawdown, maxDrawdownData, evLeakage, currency: cur
+  }), [stats, drawdown, maxDrawdownData, evLeakage, cur]);
+
+  const performanceInsights = useMemo(() => getPerformanceInsights({
+    stats, winRatePlanned, riskAsymmetry, complianceRate
+  }), [stats, winRatePlanned, riskAsymmetry, complianceRate]);
+
+  const planInsights = useMemo(() => getPlanVsResultInsights({
+    evLeakage, riskAsymmetry, winRatePlanned, stats, currency: cur
+  }), [evLeakage, riskAsymmetry, winRatePlanned, stats, cur]);
+
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
-      {/* Saldo Total */}
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-2 bg-blue-500/20"><Wallet className="w-5 h-5 text-blue-400" /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Saldo Total</p>
-        {dominantCurrency ? (
-          <p className="text-xl lg:text-2xl font-bold text-white">{formatCurrencyDynamic(aggregatedCurrentBalance, dominantCurrency)}</p>
-        ) : (
-          <div className="space-y-1">
-            {[...balancesByCurrency.entries()].map(([cur, data]) => (
-              <p key={cur} className="text-lg font-bold text-white font-mono">
-                {formatCurrencyDynamic(data.current, cur)}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="space-y-4 mb-6">
 
-      {/* P&L Acumulado */}
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.totalPL >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}><DollarSign className={`w-5 h-5 ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`} /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{plContext?.label || 'P&L Acumulado'}</p>
-        {dominantCurrency ? (
-          <p className={`text-xl lg:text-2xl font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
-        ) : (
-          <div className="space-y-1">
-            {[...balancesByCurrency.entries()].map(([cur, data]) => (
-              <p key={cur} className={`text-lg font-bold font-mono ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {data.pnl >= 0 ? '+' : ''}{formatCurrencyDynamic(data.pnl, cur)}
-              </p>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* === 3 paineis em linha === */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-      {/* Win Rate */}
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.winRate >= 50 ? 'bg-blue-500/20' : 'bg-amber-500/20'}`}><Target className={`w-5 h-5 ${stats.winRate >= 50 ? 'text-blue-400' : 'text-amber-400'}`} /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Win Rate</p>
-        <p className="text-xl lg:text-2xl font-bold text-white">{formatPercent(stats.winRate)}</p>
-        {winRatePlanned && (
-          <div className="mt-1.5 flex items-center gap-1.5" title={`WR Planejado: ${winRatePlanned.rate.toFixed(1)}% (${winRatePlanned.disciplinedWins}/${winRatePlanned.eligible} trades atingiram RR target)`}>
-            <span className="text-[11px] text-slate-500">Planejado:</span>
-            <span className={`text-xs font-bold font-mono ${winRatePlanned.rate >= stats.winRate ? 'text-emerald-400' : 'text-amber-400'}`}>{winRatePlanned.rate.toFixed(1)}%</span>
-            {winRatePlanned.gap > 0 && <span className="text-[11px] text-amber-400/70">↓{winRatePlanned.gap.toFixed(0)}%</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Profit Factor */}
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${stats.profitFactor >= 1 ? 'bg-purple-500/20' : 'bg-red-500/20'}`}><Activity className={`w-5 h-5 ${stats.profitFactor >= 1 ? 'text-purple-400' : 'text-red-400'}`} /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Profit Factor</p>
-        <p className="text-xl lg:text-2xl font-bold text-white">{stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2)}</p>
-        {complianceRate && (
-          <div className="mt-1.5 flex items-center gap-1.5" title={`${complianceRate.compliant}/${complianceRate.total} trades sem violações`}>
-            <span className="text-[11px] text-slate-500">Conformidade:</span>
-            <span className={`text-xs font-bold font-mono ${complianceRate.rate >= 80 ? 'text-emerald-400' : complianceRate.rate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{complianceRate.rate.toFixed(0)}%</span>
-            {complianceRate.violations > 0 && <span className="text-[11px] text-red-400/70">({complianceRate.violations} ⚠️)</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Drawdown */}
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${drawdown < 5 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}><TrendingDown className={`w-5 h-5 ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`} /></div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Drawdown</p>
-        <p className={`text-xl lg:text-2xl font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>-{drawdown.toFixed(1)}%</p>
-        {maxDrawdownData.maxDD > 0 && (
-          <div className="mt-1.5 space-y-0.5" title={maxDrawdownData.maxDDDate ? `Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}` : ''}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-500">Max DD:</span>
-              <span className="text-xs font-bold font-mono text-red-400">-{maxDrawdownData.maxDDPercent.toFixed(1)}%</span>
-              <span className="text-[11px] text-red-400/70">({formatCurrencyDynamic(-maxDrawdownData.maxDD, dominantCurrency || 'BRL')})</span>
+        {/* FINANCEIRO */}
+        <div className="glass-card p-5 relative">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-blue-400" />
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Financeiro</span>
             </div>
-            {maxDrawdownData.maxDDDate && (
-              <span className="text-[11px] text-slate-600 font-mono">{maxDrawdownData.maxDDDate.split('-').reverse().join('/')}</span>
-            )}
+            <div className="relative">
+              <InfoBtn name="fin" openTooltip={openTooltip} toggle={toggle} />
+              {openTooltip === 'fin' && (
+                <DiagnosticTooltip title="Diagnostico financeiro" insights={financialInsights} onClose={() => setOpenTooltip(null)} />
+              )}
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Eficiência do Risco — v1.19.4 */}
-      <div className={`glass-card p-5 relative border ${riskAsymmetry ? (asymLevel.color === 'text-red-400' ? 'border-red-500/30' : asymLevel.color === 'text-amber-400' ? 'border-amber-500/30' : 'border-slate-700/50') : 'border-slate-700/50'}`}>
-        <div className="flex items-start justify-between">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${asymLevel.bgColor}`}>
-            <Shield className={`w-5 h-5 ${asymLevel.color}`} />
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowTooltip(!showTooltip)}
-              className="text-slate-600 hover:text-slate-400 transition-colors"
-            >
-              <Info className="w-4 h-4" />
-            </button>
-            {showTooltip && <RiskAsymmetryTooltip onClose={() => setShowTooltip(false)} />}
-          </div>
-        </div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Eficiência do Risco</p>
-        {riskAsymmetry ? (
-          <>
-            {riskAsymmetry.winsCount === 0 ? (
-              <>
-                <p className="text-xl lg:text-2xl font-bold text-slate-500">N/D</p>
-                <p className="text-[11px] text-slate-600 mt-1">Wins sem risco mensurável (sem stop loss)</p>
-                <div className="mt-1.5 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500">RO médio:</span>
-                    <span className={`text-xs font-bold font-mono ${riskAsymmetry.avgRoEfficiency >= 60 ? 'text-emerald-400' : riskAsymmetry.avgRoEfficiency >= 30 ? 'text-amber-400' : 'text-red-400'}`}>
-                      {riskAsymmetry.avgRoEfficiency.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <span className="text-slate-600">L:</span>
-                    <span className="font-mono text-red-400/80">{formatCurrencyDynamic(riskAsymmetry.avgRiskLosses, dominantCurrency || 'BRL')}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className={`text-xl lg:text-2xl font-bold ${asymLevel.color}`}>
-                  {riskAsymmetry.asymmetryRatio != null ? `${riskAsymmetry.asymmetryRatio.toFixed(2)}x` : '-'}
-                </p>
-                <div className="mt-1.5 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500">RO médio:</span>
-                    <span className={`text-xs font-bold font-mono ${riskAsymmetry.avgRoEfficiency >= 60 ? 'text-emerald-400' : riskAsymmetry.avgRoEfficiency >= 30 ? 'text-amber-400' : 'text-red-400'}`}>
-                      {riskAsymmetry.avgRoEfficiency.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <span className="text-slate-600">W:</span>
-                    <span className="font-mono text-slate-400">{formatCurrencyDynamic(riskAsymmetry.avgRiskWins, dominantCurrency || 'BRL')}</span>
-                    <span className="text-slate-600">L:</span>
-                    <span className="font-mono text-red-400/80">{formatCurrencyDynamic(riskAsymmetry.avgRiskLosses, dominantCurrency || 'BRL')}</span>
-                  </div>
-                  {/* Barra de severidade */}
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <div className="flex-1 h-1 rounded-full bg-slate-700/50 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${asymLevel.color === 'text-emerald-400' ? 'bg-emerald-400' : asymLevel.color === 'text-blue-400' ? 'bg-blue-400' : asymLevel.color === 'text-amber-400' ? 'bg-amber-400' : 'bg-red-400'}`}
-                        style={{ width: `${Math.min(100, (riskAsymmetry.asymmetryRatio ?? 0) * 100)}%` }}
-                      />
-                    </div>
-                    <span className={`text-[9px] ${asymLevel.color}`}>{asymLevel.label}</span>
-                  </div>
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <p className="text-xl font-bold text-slate-600">-</p>
-        )}
-      </div>
-
-      {/* Eficiência do Plano — v1.19.4 */}
-      <div className={`glass-card p-5 relative border ${evLeakage && evLeakage.leakage != null ? (leakLevel.color === 'text-red-400' ? 'border-red-500/30' : leakLevel.color === 'text-amber-400' ? 'border-amber-500/30' : 'border-slate-700/50') : 'border-slate-700/50'}`}>
-        <div className="flex items-start justify-between">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-2 ${leakLevel.bgColor}`}>
-            <TrendingDown className={`w-5 h-5 ${leakLevel.color}`} />
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowEvTooltip(!showEvTooltip)}
-              className="text-slate-600 hover:text-slate-400 transition-colors"
-            >
-              <Info className="w-4 h-4" />
-            </button>
-            {showEvTooltip && (
-              <div className="absolute top-full right-0 mt-2 w-72 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-xl z-50">
-                <div className="absolute -top-1.5 right-4 w-3 h-3 bg-slate-800 border-t border-l border-slate-700 rotate-45" />
-                <div className="flex justify-between items-start mb-2">
-                  <p className="text-sm font-medium text-white">Eficiência do Plano</p>
-                  <button onClick={() => setShowEvTooltip(false)} className="text-slate-500 hover:text-slate-300 text-xs">✕</button>
-                </div>
-                <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-                  Quanto do edge esperado pelo plano se perde na execucao. Compara o EV teorico
-                  (baseado no WR real x RR alvo x RO do plano) com o resultado medio real.
-                </p>
-                <div className="space-y-1.5">
-                  {[
-                    { range: '< 0%', label: 'Superando', color: 'bg-emerald-400' },
-                    { range: '0 – 10%', label: 'Excelente', color: 'bg-emerald-400' },
-                    { range: '10 – 30%', label: 'Bom', color: 'bg-blue-400' },
-                    { range: '30 – 60%', label: 'Atencao', color: 'bg-amber-400' },
-                    { range: '> 60%', label: 'Critico', color: 'bg-red-400' },
-                  ].map(({ range, label, color }) => (
-                    <div key={label} className="flex items-center gap-2 text-xs">
-                      <div className={`w-2 h-2 rounded-full ${color}`} />
-                      <span className="text-slate-500 w-16">{range}</span>
-                      <span className="text-slate-300">{label}</span>
-                    </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {/* Saldo */}
+            <div>
+              <p className="text-[11px] text-slate-600 mb-1">Saldo</p>
+              {dominantCurrency ? (
+                <p className="text-lg font-bold text-white">{formatCurrencyDynamic(aggregatedCurrentBalance, dominantCurrency)}</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {[...balancesByCurrency.entries()].map(([c, data]) => (
+                    <p key={c} className="text-base font-bold text-white font-mono">{formatCurrencyDynamic(data.current, c)}</p>
                   ))}
                 </div>
-                <div className="mt-3 pt-3 border-t border-slate-700">
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                    EV Teorico = RO$ x (WR x RR_alvo - LossRate). Valores negativos indicam que o plano nao tem edge com o WR atual.
-                  </p>
+              )}
+            </div>
+
+            {/* P&L */}
+            <div>
+              <p className="text-[11px] text-slate-600 mb-1">{plContext?.label || 'P&L acumulado'}</p>
+              {dominantCurrency ? (
+                <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {[...balancesByCurrency.entries()].map(([c, data]) => (
+                    <p key={c} className={`text-base font-bold font-mono ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {data.pnl >= 0 ? '+' : ''}{formatCurrencyDynamic(data.pnl, c)}
+                    </p>
+                  ))}
                 </div>
-              </div>
-            )}
+              )}
+              {evLeakage?.evReal != null && !isNaN(evLeakage.evReal) && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Expect: <span className={`font-mono ${evLeakage.evReal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(evLeakage.evReal, cur)}/trade</span>
+                </p>
+              )}
+            </div>
+
+            {/* Drawdown */}
+            <div title={maxDrawdownData?.maxDDDate ? `Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}` : ''}>
+              <p className="text-[11px] text-slate-600 mb-1">Drawdown</p>
+              <p className={`text-lg font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>-{drawdown.toFixed(1)}%</p>
+              {maxDrawdownData.maxDD > 0 && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Max: <span className="font-mono text-red-400">-{safe(maxDrawdownData.maxDDPercent, 1)}%</span>
+                  <span className="text-slate-600 ml-1">({formatCurrencyDynamic(-maxDrawdownData.maxDD, cur)})</span>
+                </p>
+              )}
+            </div>
+
+            {/* Profit Factor */}
+            <div title={complianceRate ? `${complianceRate.compliant}/${complianceRate.total} trades sem violacoes` : ''}>
+              <p className="text-[11px] text-slate-600 mb-1">Profit factor</p>
+              <p className="text-lg font-bold text-white">{stats.profitFactor === Infinity ? '\u221E' : safe(stats.profitFactor, 2)}</p>
+              {complianceRate && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Conformidade: <span className={`font-mono ${complianceRate.rate >= 80 ? 'text-emerald-400' : complianceRate.rate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{safe(complianceRate.rate, 0)}%</span>
+                  {complianceRate.violations > 0 && <span className="text-red-400/70 ml-1">({complianceRate.violations})</span>}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Eficiência do Plano</p>
-        {evLeakage && evLeakage.leakage != null ? (
-          <>
-            <p className={`text-xl lg:text-2xl font-bold ${leakLevel.color}`}>
-              {evLeakage.leakage <= 0 ? '+' : ''}{evLeakage.leakage <= 0 ? Math.abs(evLeakage.leakage).toFixed(0) : evLeakage.leakage.toFixed(0)}%
-            </p>
-            <div className="mt-1.5 space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500">EV plan:</span>
-                <span className="text-xs font-bold font-mono text-slate-300">
-                  {formatCurrencyDynamic(evLeakage.evTheoretical, dominantCurrency || 'BRL')}/trade
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500">EV real:</span>
-                <span className={`text-xs font-bold font-mono ${evLeakage.evReal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {formatCurrencyDynamic(evLeakage.evReal, dominantCurrency || 'BRL')}/trade
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500">Perda total:</span>
-                <span className={`text-xs font-bold font-mono ${evLeakage.totalLeakage > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {formatCurrencyDynamic(-evLeakage.totalLeakage, dominantCurrency || 'BRL')}
-                </span>
-              </div>
-              {/* Barra de severidade */}
-              <div className="flex items-center gap-1.5 mt-1">
-                <div className="flex-1 h-1 rounded-full bg-slate-700/50 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${leakLevel.color === 'text-emerald-400' ? 'bg-emerald-400' : leakLevel.color === 'text-blue-400' ? 'bg-blue-400' : leakLevel.color === 'text-amber-400' ? 'bg-amber-400' : 'bg-red-400'}`}
-                    style={{ width: `${Math.min(100, Math.max(5, 100 - (evLeakage.leakage ?? 0)))}%` }}
-                  />
-                </div>
-                <span className={`text-[9px] ${leakLevel.color}`}>{leakLevel.label}</span>
-              </div>
+
+        {/* DESEMPENHO */}
+        <div className="glass-card p-5 relative">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-purple-400" />
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Assimetria de Risco</span>
             </div>
-          </>
-        ) : (
-          <p className="text-xl font-bold text-slate-600">-</p>
-        )}
+            <div className="relative">
+              <InfoBtn name="perf" openTooltip={openTooltip} toggle={toggle} />
+              {openTooltip === 'perf' && (
+                <DiagnosticTooltip title="Diagnostico de desempenho" insights={performanceInsights} onClose={() => setOpenTooltip(null)} />
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {/* Win Rate */}
+            <div title={winRatePlanned ? `WR Planejado: ${safe(winRatePlanned.rate, 1)}% (${winRatePlanned.disciplinedWins}/${winRatePlanned.eligible} trades atingiram RR target)` : ''}>
+              <p className="text-[11px] text-slate-600 mb-1">Win rate</p>
+              <p className="text-lg font-bold text-white">{formatPercent(stats.winRate)}</p>
+              {winRatePlanned && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Planejado: <span className={`font-mono ${winRatePlanned.rate >= stats.winRate ? 'text-emerald-400' : 'text-amber-400'}`}>{safe(winRatePlanned.rate, 1)}%</span>
+                  {winRatePlanned.gap > 0 && <span className="text-amber-400/70 ml-1">{'\u2193'}{safe(winRatePlanned.gap, 0)}%</span>}
+                </p>
+              )}
+            </div>
+
+            {/* Risco W/L */}
+            <div>
+              <p className="text-[11px] text-slate-600 mb-1">Risco W/L</p>
+              {riskAsymmetry && riskAsymmetry.winsCount > 0 ? (
+                <>
+                  <p className={`text-lg font-bold ${asymLevel.color}`}>{safe(riskAsymmetry.asymmetryRatio, 2)}x</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    W: <span className="font-mono text-slate-400">{formatCurrencyDynamic(riskAsymmetry.avgRiskWins, cur)}</span>
+                    {' '}L: <span className="font-mono text-red-400/80">{formatCurrencyDynamic(riskAsymmetry.avgRiskLosses, cur)}</span>
+                  </p>
+                </>
+              ) : riskAsymmetry && riskAsymmetry.winsCount === 0 ? (
+                <>
+                  <p className="text-lg font-bold text-slate-500">N/D</p>
+                  <p className="text-[11px] text-slate-600 mt-1">Wins sem stop</p>
+                </>
+              ) : (
+                <p className="text-lg font-bold text-slate-600">-</p>
+              )}
+            </div>
+          </div>
+
+          {/* RO medio */}
+          <div className="border-t border-slate-700/50 mt-3 pt-3">
+            <p className="text-[11px] text-slate-600 mb-2">RO medio</p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 60 ? 'bg-emerald-400' : riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 30 ? 'bg-amber-400' : 'bg-red-400'}`}
+                  style={{ width: `${Math.min(100, Math.max(0, riskAsymmetry?.avgRoEfficiency ?? 0))}%` }}
+                />
+              </div>
+              <span className={`text-xs font-bold font-mono ${riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 60 ? 'text-emerald-400' : riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 30 ? 'text-amber-400' : 'text-red-400'}`}>
+                {riskAsymmetry ? safe(riskAsymmetry.avgRoEfficiency, 0) : '-'}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* EV — Plano vs Resultado */}
+        <div className={`glass-card p-5 relative border ${evLeakage && evLeakage.leakage != null ? (leakLevel.color === 'text-red-400' ? 'border-red-500/30' : leakLevel.color === 'text-amber-400' ? 'border-amber-500/30' : 'border-slate-700/50') : 'border-slate-700/50'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className={`w-4 h-4 ${leakLevel.color}`} />
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">EV</span>
+              {evLeakage?.leakage != null && !isNaN(evLeakage.leakage) && (
+                <span className={`text-xs font-bold ${leakLevel.color}`}>
+                  {evLeakage.leakage <= 0 ? `+${Math.abs(evLeakage.leakage).toFixed(0)}%` : `${evLeakage.leakage.toFixed(0)}% de perda`}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <InfoBtn name="ev" openTooltip={openTooltip} toggle={toggle} />
+              {openTooltip === 'ev' && (
+                <DiagnosticTooltip title="EV" insights={planInsights} onClose={() => setOpenTooltip(null)} />
+              )}
+            </div>
+          </div>
+
+          {evLeakage && evLeakage.leakage != null ? (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center p-2 rounded-lg bg-slate-800/50">
+                  <p className="text-[10px] text-slate-600 mb-1">EV esperado</p>
+                  <p className="text-base font-bold text-white">{formatCurrencyDynamic(evLeakage.evTheoretical, cur)}</p>
+                  <p className="text-[10px] text-slate-600">/trade</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-slate-800/50">
+                  <p className="text-[10px] text-slate-600 mb-1">EV real</p>
+                  <p className={`text-base font-bold ${evLeakage.evReal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(evLeakage.evReal, cur)}</p>
+                  <p className="text-[10px] text-slate-600">/trade</p>
+                </div>
+                <div className="text-center p-2 rounded-lg bg-red-500/5 border border-red-500/10">
+                  <p className="text-[10px] text-slate-600 mb-1">Gap</p>
+                  <p className="text-base font-bold text-red-400">{formatCurrencyDynamic(evLeakage.evReal - evLeakage.evTheoretical, cur)}</p>
+                  <p className="text-[10px] text-slate-600">/trade</p>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-700/50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] text-slate-500">Perda acumulada <span className="text-slate-600">({evLeakage.tradeCount} trades)</span></span>
+                  <span className={`text-xs font-bold font-mono ${evLeakage.totalLeakage > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {formatCurrencyDynamic(-evLeakage.totalLeakage, cur)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
+                    <div className="flex h-full">
+                      <div className="h-full bg-emerald-400" style={{ width: `${Math.min(100, Math.max(0, 100 - (evLeakage.leakage ?? 0)))}%` }} />
+                      <div className="h-full bg-red-400" style={{ width: `${Math.min(100, Math.max(0, evLeakage.leakage ?? 0))}%` }} />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-500">{safe(100 - evLeakage.leakage, 0)}% capturado</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-600">Dados insuficientes</p>
+          )}
+        </div>
       </div>
+
       <DebugBadge component="MetricsCards" />
     </div>
   );

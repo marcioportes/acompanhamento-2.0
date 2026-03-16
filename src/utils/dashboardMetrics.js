@@ -139,13 +139,25 @@ export const calculateRiskAsymmetry = (trades, plans) => {
 
   for (const trade of trades) {
     const plan = plansMap[trade.planId];
-    if (!plan || !plan.pl || !plan.riskPerOperation) continue;
-    if (trade.riskPercent == null) continue;
+    if (!plan) continue;
 
-    const riskAmount = (trade.riskPercent / 100) * plan.pl;
-    const roPlanned = (plan.riskPerOperation / 100) * plan.pl;
+    const planPl = Number(plan.pl) || 0;
+    const planRo = Number(plan.riskPerOperation) || 0;
+    if (planPl <= 0 || planRo <= 0) continue;
 
-    if (roPlanned > 0) {
+    // Se trade sem riskPercent (sem stop), assume RO$ do plano como risco
+    let rp;
+    if (trade.riskPercent == null) {
+      rp = planRo; // assume risco maximo do plano
+    } else {
+      rp = Number(trade.riskPercent);
+      if (isNaN(rp)) continue;
+    }
+
+    const riskAmount = (rp / 100) * planPl;
+    const roPlanned = (planRo / 100) * planPl;
+
+    if (roPlanned > 0 && isFinite(riskAmount / roPlanned)) {
       roEfficiencies.push(riskAmount / roPlanned);
     }
 
