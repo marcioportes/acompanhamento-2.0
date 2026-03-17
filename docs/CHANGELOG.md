@@ -5,6 +5,46 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.19.5] - 2026-03-15
+
+### Adicionado
+- **Layout agrupado 3 paineis no dashboard:** MetricsCards v4.1.0 reorganiza 7 cards em 3 paineis — Financeiro (Saldo, P&L, Expectancy, Drawdown, PF), Assimetria de Risco (WR, WR Planejado, Risco W/L, RO medio), EV (EV esperado vs EV real, gap, perda acumulada). Grid responsivo lg:grid-cols-3
+- **Tooltips diagnosticos dinamicos:** Cada painel tem botao (i) com conclusoes geradas com base nos dados reais — ex: "Acerta 80% mas so 20% atingem o alvo — ansiedade de saida". Novo util `metricsInsights.js`
+- **Trades sem stop assumem RO$ do plano:** `calculateRiskAsymmetry` atribui `plan.riskPerOperation` como risco para trades sem `riskPercent`. Elimina "N/D" e "0.00x"
+- **Numero de trades no card EV**
+- **Copy/paste imagem HTF/LTF no AddTradeModal (Ctrl+V)**
+
+### Corrigido
+- NaN guards em dashboardMetrics.js e MetricsCards.jsx
+- Sinal do EV leakage invertido
+- Tooltips nativos restaurados (DD, PF, WR)
+
+### Testes
+- 15 novos testes metricsInsights.test.js
+- riskAsymmetry.test.js atualizado (sem stop assume RO$)
+- 427+ testes totais (21 suites)
+
+---
+
+## [1.19.4] - 2026-03-13
+
+### Corrigido
+- **DEC-009: riskPercent usa plan.pl (capital base) como denominador:** Calculo de RO% usava `plan.currentPl` (flutuante) em vez de `plan.pl` (capital base). Trade com loss R$885 sobre capital R$200k mostrava 0.8% em vez de 0.44%. Corrigido em compliance.js e functions/index.js (3 pontos). Consistente com DEC-007
+- **dailyLossPercent tambem corrigido** (mesma causa)
+
+### Adicionado
+- **Card Risk Asymmetry:** Razao risco medio wins/losses + RO efficiency + breakdown W/L + barra severidade
+- **Card EV Leakage:** EV esperado vs real + gap + perda acumulada + barra severidade
+
+### Modificado
+- `compliance.js` v3.1.0, `functions/index.js`, `dashboardMetrics.js`, `useDashboardMetrics.js`, `MetricsCards.jsx` v3.0.0, `StudentDashboard.jsx`, `version.js`
+
+### Testes
+- 6 testes DEC-009, 13 riskAsymmetry, 12 evLeakage
+- 412+ testes totais (19 suites)
+
+---
+
 ## [1.19.3] - 2026-03-12
 
 ### Corrigido
