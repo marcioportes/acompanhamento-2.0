@@ -1,9 +1,10 @@
 /**
  * Sidebar
- * @version 1.2.0
- * @description Menu lateral com navegação, versão, badge alertas emocionais
+ * @version 1.3.0
+ * @description Menu lateral com navegação, versão, badges alertas emocionais e feedback aluno
  * 
  * CHANGELOG:
+ * - 1.3.0: Badge de revisões não trabalhadas (REVIEWED) no menu do aluno
  * - 1.2.0: Badge de alertas emocionais no menu mentor — Fase 1.5.0
  * - 1.1.0: Adicionado item "Feedback" no menu do aluno
  */
@@ -34,14 +35,21 @@ const Sidebar = ({
   onToggle,
   pendingFeedback = 0,
   studentsNeedingAttention = 0,
-  emotionalAlerts = 0
+  emotionalAlerts = 0,
+  unreviewedFeedback = 0
 }) => {
   const { user, logout, isMentor } = useAuth();
 
   // Menu do Aluno
   const studentMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+    { 
+      id: 'feedback', 
+      label: 'Feedback', 
+      icon: MessageSquare,
+      badge: unreviewedFeedback > 0 ? unreviewedFeedback : null,
+      badgeColor: 'green'
+    },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     { id: 'accounts', label: 'Contas', icon: Wallet },
   ];
@@ -142,6 +150,8 @@ const Sidebar = ({
                         ? 'bg-red-500/20 text-red-400' 
                         : item.badgeColor === 'purple'
                         ? 'bg-purple-500/20 text-purple-400'
+                        : item.badgeColor === 'green'
+                        ? 'bg-emerald-500/20 text-emerald-400'
                         : 'bg-blue-500/20 text-blue-400'
                     }`}>
                       {item.badge}

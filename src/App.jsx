@@ -96,6 +96,16 @@ const AppContent = () => {
     }
   }, [isMentor, viewingAsStudent, allTrades, getTradesAwaitingFeedback]);
 
+  // Badge para aluno: trades revisados pelo mentor que o aluno ainda não trabalhou
+  const unreviewedFeedbackCount = useMemo(() => {
+    if (isMentor() && !viewingAsStudent) return 0;
+    try {
+      return (allTrades || []).filter(t => t.status === 'REVIEWED').length;
+    } catch (e) {
+      return 0;
+    }
+  }, [isMentor, viewingAsStudent, allTrades]);
+
   const studentsNeedingAttention = useMemo(() => {
     if (!isMentor() || viewingAsStudent) return 0;
     try {
@@ -270,6 +280,7 @@ const AppContent = () => {
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         pendingFeedback={pendingFeedbackCount}
         studentsNeedingAttention={studentsNeedingAttention}
+        unreviewedFeedback={unreviewedFeedbackCount}
       />
 
       {/* Conteúdo principal */}
