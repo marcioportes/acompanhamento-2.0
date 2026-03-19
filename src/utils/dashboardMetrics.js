@@ -271,10 +271,43 @@ export const calculateEVLeakage = (trades, plans) => {
   };
 };
 
+/**
+ * Calcula Payoff (avgWin / avgLoss).
+ * Mede o tamanho medio de um win vs o tamanho medio de um loss.
+ * Diferente do Profit Factor (somaWins / somaLosses) que embute WR.
+ * 
+ * Payoff > 1.5 = edge sustentavel (sobrevive a queda de WR)
+ * Payoff 1.0–1.5 = edge fragil (depende do WR)
+ * Payoff < 1.0 = sem edge estrutural (perde mais por trade do que ganha)
+ * 
+ * WR minimo para breakeven = 1 / (1 + Payoff)
+ * 
+ * @param {Object} stats - Retorno de calculateStats() com avgWin, avgLoss, winRate
+ * @returns {{ ratio: number, avgWin: number, avgLoss: number, minWRForBreakeven: number }|null}
+ */
+export const calculatePayoff = (stats) => {
+  if (!stats || stats.avgWin == null || stats.avgLoss == null) return null;
+  if (stats.avgWin === 0 && stats.avgLoss === 0) return null;
+
+  const avgWin = Math.abs(stats.avgWin);
+  const avgLoss = Math.abs(stats.avgLoss);
+
+  const ratio = avgLoss > 0 ? Math.round((avgWin / avgLoss) * 100) / 100 : null;
+  const minWRForBreakeven = ratio != null ? Math.round((1 / (1 + ratio)) * 10000) / 100 : null;
+
+  return {
+    ratio,
+    avgWin,
+    avgLoss,
+    minWRForBreakeven,
+  };
+};
+
 export default {
   calculateMaxDrawdown,
   calculatePlannedWinRate,
   calculateComplianceRate,
   calculateRiskAsymmetry,
-  calculateEVLeakage
+  calculateEVLeakage,
+  calculatePayoff
 };

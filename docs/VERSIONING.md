@@ -92,6 +92,6 @@ chore: manutenção
 
 ---
 
-**Versão Atual:** 1.0.0  
+**Versão Atual:** 1.19.6  
 **Codename:** Mirror  
-**Data:** 2026-02-13
+**Data:** 2026-03-18

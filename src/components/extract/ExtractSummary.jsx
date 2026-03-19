@@ -1,7 +1,8 @@
 /**
  * ExtractSummary
- * @version 2.0.0 (v1.19.0)
+ * @version 2.1.0 (v1.19.6)
  * @description Resumo executivo do extrato — PL, resultado, estado, score, breakdown pré/pós evento.
+ *   v2.1.0: PL Atual tricolor — verde (lucro), amarelo (perda parcial), vermelho (capital zerado).
  *   v2.0.0: RO$, RO%, RR Alvo no header (B4 — Issue #71/#73).
  *   v1.0.0: PL inicial, resultado, estado, score emocional, meta/stop.
  *   Sub-componente do PlanLedgerExtract (sem DebugBadge próprio).
@@ -96,7 +97,7 @@ const ExtractSummary = ({ periodState, cycleSummary, isCycleView, startPL, emoti
         </div>
         <div>
           <span className="text-[10px] text-slate-500 uppercase block">PL Atual</span>
-          <span className={`text-sm font-mono font-bold ${currentPL >= startPL ? 'text-emerald-400' : 'text-red-400'}`}>
+          <span className={`text-sm font-mono font-bold ${currentPL <= 0 ? 'text-red-400' : totalPnL >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
             {fmt(currentPL)}
           </span>
         </div>

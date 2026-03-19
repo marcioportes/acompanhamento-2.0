@@ -1,7 +1,9 @@
 /**
  * MetricsCards
- * @version 4.1.0 (v1.19.5)
+ * @version 5.0.0 (v1.19.6)
  * @description Paineis agrupados de metricas do StudentDashboard.
+ *   v5.0.0: Payoff com semaforo de saude do edge, layout reorganizado (WR+Payoff / Consistencia+Utiliz.RO),
+ *           semaforo bidirecional do RO (>100% = infracao), labels renomeados, tooltip diagnostico da assimetria.
  *   v4.1.0: 3 paineis em linha unica, tooltips nativos restaurados, EV com explicacao semantica.
  *   v4.0.0: Layout 3 paineis + tooltips diagnosticos + NaN guards.
  *   v3.0.0: Cards Risk Asymmetry + EV Leakage (7 cards).
@@ -9,7 +11,7 @@
  *   v1.0.0: Extraido do StudentDashboard.
  */
 
-import { DollarSign, Target, BarChart3, Info } from 'lucide-react';
+import { DollarSign, Target, BarChart3, Info, AlertTriangle } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
@@ -26,6 +28,44 @@ const getAsymmetryLevel = (ratio) => {
   return { label: 'Critico', color: 'text-red-400' };
 };
 
+const getPayoffLevel = (ratio) => {
+  if (ratio == null || isNaN(ratio)) return { color: 'text-slate-400' };
+  if (ratio >= 1.5) return { color: 'text-emerald-400' };
+  if (ratio >= 1.0) return { color: 'text-amber-400' };
+  return { color: 'text-red-400' };
+};
+
+const getPayoffTooltip = (payoff, stats) => {
+  if (!payoff || payoff.ratio == null) return '';
+  const wr = stats?.winRate ?? 0;
+  if (payoff.ratio >= 1.5) {
+    return `Edge sustentavel — Payoff alto protege contra oscilacoes no WR. WR minimo para breakeven: ${payoff.minWRForBreakeven}%`;
+  }
+  if (payoff.ratio >= 1.0) {
+    return `Edge fragil — sustentado pelo WR de ${wr.toFixed(0)}%, nao pela qualidade dos trades. Queda no WR elimina a vantagem. WR minimo para breakeven: ${payoff.minWRForBreakeven}%`;
+  }
+  return `Sem edge estrutural — perde mais do que ganha por trade. Lucro so possivel com WR acima de ${payoff.minWRForBreakeven}%`;
+};
+
+/** Semaforo bidirecional: penaliza tanto subuso (<60%) quanto extrapolacao (>100%) */
+const getRoColor = (efficiency) => {
+  if (efficiency == null || isNaN(efficiency)) return 'text-slate-400';
+  if (efficiency > 120) return 'text-red-400';
+  if (efficiency > 100) return 'text-amber-400';
+  if (efficiency >= 80) return 'text-emerald-400';
+  if (efficiency >= 60) return 'text-amber-400';
+  return 'text-red-400';
+};
+
+const getRoBgColor = (efficiency) => {
+  if (efficiency == null || isNaN(efficiency)) return 'bg-slate-400';
+  if (efficiency > 120) return 'bg-red-400';
+  if (efficiency > 100) return 'bg-amber-400';
+  if (efficiency >= 80) return 'bg-emerald-400';
+  if (efficiency >= 60) return 'bg-amber-400';
+  return 'bg-red-400';
+};
+
 const getLeakageLevel = (leakage) => {
   if (leakage == null || isNaN(leakage)) return { label: '-', color: 'text-slate-400' };
   if (leakage < 0) return { label: 'Superando', color: 'text-emerald-400' };
@@ -39,7 +79,7 @@ const sevDot = (s) => ({ success: 'bg-emerald-400', warning: 'bg-amber-400', dan
 const sevText = (s) => ({ success: 'text-emerald-400', warning: 'text-amber-400', danger: 'text-red-400' }[s] || 'text-slate-400');
 
 const DiagnosticTooltip = ({ title, insights, onClose }) => (
-  <div className="absolute top-full right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-xl z-50">
+  <div className="absolute top-full right-0 mt-2 w-80 max-h-80 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-xl z-50 overflow-y-auto">
     <div className="absolute -top-1.5 right-4 w-3 h-3 bg-slate-800 border-t border-l border-slate-700 rotate-45" />
     <div className="flex justify-between items-start mb-3">
       <p className="text-sm font-medium text-white">{title}</p>
@@ -73,6 +113,8 @@ const MetricsCards = ({
   complianceRate,
   riskAsymmetry,
   evLeakage,
+  payoff,
+  asymmetryDiagnostic,
   plContext,
 }) => {
   const [openTooltip, setOpenTooltip] = useState(null);
@@ -80,15 +122,17 @@ const MetricsCards = ({
 
   const cur = dominantCurrency || 'BRL';
   const asymLevel = getAsymmetryLevel(riskAsymmetry?.asymmetryRatio);
+  const payoffLevel = getPayoffLevel(payoff?.ratio);
   const leakLevel = getLeakageLevel(evLeakage?.leakage);
+  const roEff = riskAsymmetry?.avgRoEfficiency;
 
   const financialInsights = useMemo(() => getFinancialInsights({
     stats, drawdown, maxDrawdownData, evLeakage, currency: cur
   }), [stats, drawdown, maxDrawdownData, evLeakage, cur]);
 
   const performanceInsights = useMemo(() => getPerformanceInsights({
-    stats, winRatePlanned, riskAsymmetry, complianceRate
-  }), [stats, winRatePlanned, riskAsymmetry, complianceRate]);
+    stats, winRatePlanned, riskAsymmetry, complianceRate, asymmetryDiagnostic
+  }), [stats, winRatePlanned, riskAsymmetry, complianceRate, asymmetryDiagnostic]);
 
   const planInsights = useMemo(() => getPlanVsResultInsights({
     evLeakage, riskAsymmetry, winRatePlanned, stats, currency: cur
@@ -177,7 +221,7 @@ const MetricsCards = ({
           </div>
         </div>
 
-        {/* DESEMPENHO */}
+        {/* ASSIMETRIA DE RISCO */}
         <div className="glass-card p-5 relative">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -205,21 +249,16 @@ const MetricsCards = ({
               )}
             </div>
 
-            {/* Risco W/L */}
-            <div>
-              <p className="text-[11px] text-slate-600 mb-1">Risco W/L</p>
-              {riskAsymmetry && riskAsymmetry.winsCount > 0 ? (
+            {/* Payoff */}
+            <div title={getPayoffTooltip(payoff, stats)}>
+              <p className="text-[11px] text-slate-600 mb-1">Payoff</p>
+              {payoff && payoff.ratio != null ? (
                 <>
-                  <p className={`text-lg font-bold ${asymLevel.color}`}>{safe(riskAsymmetry.asymmetryRatio, 2)}x</p>
+                  <p className={`text-lg font-bold ${payoffLevel.color}`}>{safe(payoff.ratio, 2)}x</p>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    W: <span className="font-mono text-slate-400">{formatCurrencyDynamic(riskAsymmetry.avgRiskWins, cur)}</span>
-                    {' '}L: <span className="font-mono text-red-400/80">{formatCurrencyDynamic(riskAsymmetry.avgRiskLosses, cur)}</span>
+                    W: <span className="font-mono text-emerald-400/80">{formatCurrencyDynamic(payoff.avgWin, cur)}</span>
+                    {' '}L: <span className="font-mono text-red-400/80">{formatCurrencyDynamic(payoff.avgLoss, cur)}</span>
                   </p>
-                </>
-              ) : riskAsymmetry && riskAsymmetry.winsCount === 0 ? (
-                <>
-                  <p className="text-lg font-bold text-slate-500">N/D</p>
-                  <p className="text-[11px] text-slate-600 mt-1">Wins sem stop</p>
                 </>
               ) : (
                 <p className="text-lg font-bold text-slate-600">-</p>
@@ -227,19 +266,48 @@ const MetricsCards = ({
             </div>
           </div>
 
-          {/* RO medio */}
+          {/* Risco W/L + Utiliz. RO */}
           <div className="border-t border-slate-700/50 mt-3 pt-3">
-            <p className="text-[11px] text-slate-600 mb-2">RO medio</p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 60 ? 'bg-emerald-400' : riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 30 ? 'bg-amber-400' : 'bg-red-400'}`}
-                  style={{ width: `${Math.min(100, Math.max(0, riskAsymmetry?.avgRoEfficiency ?? 0))}%` }}
-                />
+            <div className="grid grid-cols-2 gap-x-4">
+              {/* Risco W/L (Risk Asymmetry Ratio) */}
+              <div>
+                <p className="text-[11px] text-slate-600 mb-1">Risco W/L</p>
+                {riskAsymmetry && riskAsymmetry.asymmetryRatio != null ? (
+                  <>
+                    <p className={`text-base font-bold ${asymLevel.color}`}>{safe(riskAsymmetry.asymmetryRatio, 2)}x</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      W: <span className="font-mono text-slate-400">{formatCurrencyDynamic(riskAsymmetry.avgRiskWins, cur)}</span>
+                      {' '}L: <span className="font-mono text-red-400/80">{formatCurrencyDynamic(riskAsymmetry.avgRiskLosses, cur)}</span>
+                    </p>
+                  </>
+                ) : riskAsymmetry && riskAsymmetry.winsCount === 0 ? (
+                  <>
+                    <p className="text-base font-bold text-slate-500">N/D</p>
+                    <p className="text-[10px] text-slate-600 mt-0.5">Wins sem stop</p>
+                  </>
+                ) : (
+                  <p className="text-base font-bold text-slate-600">-</p>
+                )}
               </div>
-              <span className={`text-xs font-bold font-mono ${riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 60 ? 'text-emerald-400' : riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency) && riskAsymmetry.avgRoEfficiency >= 30 ? 'text-amber-400' : 'text-red-400'}`}>
-                {riskAsymmetry ? safe(riskAsymmetry.avgRoEfficiency, 0) : '-'}%
-              </span>
+
+              {/* Utiliz. RO (antes: RO medio) */}
+              <div>
+                <p className="text-[11px] text-slate-600 mb-1">Utiliz. RO</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${getRoBgColor(roEff)}`}
+                      style={{ width: `${Math.min(100, Math.max(0, roEff ?? 0))}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={`text-xs font-bold font-mono ${getRoColor(roEff)}`}>
+                      {riskAsymmetry ? safe(roEff, 0) : '-'}%
+                    </span>
+                    {roEff > 100 && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

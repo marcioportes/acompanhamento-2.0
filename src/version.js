@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.19.6: Payoff com semaforo de saude do edge, layout reorganizado, semaforo RO bidirecional, cor PL Atual tricolor, diagnostico assimetria
  * - 1.19.5: Layout agrupado 3 paineis (Financeiro/Desempenho/Plano vs Resultado), tooltips diagnosticos, NaN guards
  * - 1.19.4: DEC-009 — riskPercent usa plan.pl (capital base) como denominador, não currentPl
  * - 1.19.3: C3 (RR 2 casas decimais), C5 (resultInPoints null em override), coluna Status Feedback no ExtractTable
@@ -17,10 +18,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.19.5',
-  build: '20260315',
-  display: 'v1.19.5',
-  full: '1.19.5+20260315',
+  version: '1.19.6',
+  build: '20260318',
+  display: 'v1.19.6',
+  full: '1.19.6+20260318',
 };
 export default VERSION;
 export { VERSION };
