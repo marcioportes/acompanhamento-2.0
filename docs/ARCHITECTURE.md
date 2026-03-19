@@ -27,6 +27,16 @@
 **Decisao:** 3 paineis tematicos (Financeiro / Assimetria de Risco / EV) com tooltips diagnosticos dinamicos. Cada painel tem botao (i) que gera conclusoes acionaveis baseadas nos dados.
 **Impacto:** MetricsCards.jsx v4.1.0 (rewrite), metricsInsights.js (novo). Grid: grid-cols-1 lg:grid-cols-3.
 
+### DEC-012: Payoff como indicador de saude do edge (18/03/2026)
+**Problema:** Painel Assimetria de Risco nao exibia Payoff (avgWin/avgLoss). Mentor confundia "Risco W/L" (risk asymmetry ratio) com Payoff. Semaforo do RO tratava >100% como "excelente" quando eh infracao. PL Atual no extrato ficava vermelho com resultado negativo mesmo com capital positivo.
+**Decisao:**
+- Payoff = avgWin / avgLoss, com semaforo de saude do edge: verde >=1.5 (sustentavel), amarelo 1.0-1.5 (fragil, depende do WR), vermelho <1.0 (sem edge). Tooltip nativo informa WR minimo para breakeven.
+- Risco W/L mantido com label original, reposicionado na secao inferior do painel.
+- Semaforo RO bidirecional: 80-100% verde, 60-79% amarelo, <60% vermelho, 101-120% amarelo, >120% vermelho.
+- PL Atual tricolor: verde (resultado positivo), amarelo (resultado negativo mas PL positivo), vermelho (capital zerado).
+- Diagnostico contextual no tooltip (i) quando asymmetryRatio < 1: identifica losses que extrapolaram risco, wins sem stop com risco estimado.
+**Impacto:** dashboardMetrics.js (calculatePayoff), useDashboardMetrics.js (payoff + asymmetryDiagnostic), metricsInsights.js, MetricsCards.jsx v5.0.0, ExtractSummary.jsx v2.1.0, StudentDashboard.jsx (props). Zero impacto em Firestore/CF — calculos client-side puros.
+
 ## Secao 6 (Dividas Tecnicas) — Atualizar:
 
 - DT-010: **RESOLVIDO** v1.19.1
@@ -39,6 +49,7 @@
 
 ## Secao 8 (Historico de Versoes) — Adicionar:
 
+| v1.19.6 | Mar/2026 | Payoff com semaforo edge health, semaforo RO bidirecional, cor PL Atual tricolor, diagnostico assimetria contextual |
 | v1.19.5 | Mar/2026 | Layout 3 paineis agrupados, tooltips diagnosticos, NaN guards, trades sem stop assumem RO$, metricsInsights.js, paste imagem AddTradeModal |
 | v1.19.4 | Mar/2026 | DEC-009 riskPercent plan.pl, cards Risk Asymmetry + EV Leakage, 31 testes novos |
 | v1.19.3 | Mar/2026 | C3 RR 2 decimais, C5 resultInPoints override, ExtractTable v4.1 compacto, status feedback, navegacao contextual, RR compliant azul. Issue #78 fechado |
