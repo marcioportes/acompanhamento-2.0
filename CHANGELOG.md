@@ -5,30 +5,118 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.19.6] - 2026-03-18
+
+### Adicionado
+- **Payoff com semaforo de saude do edge:** Novo indicador `calculatePayoff` (avgWin/avgLoss) com cor semantica — verde (≥1.5, edge sustentavel), amarelo (1.0-1.5, edge fragil), vermelho (<1.0, sem edge). Tooltip nativo explica a saude do edge e informa WR minimo para breakeven
+- **Diagnostico contextual da assimetria:** Quando Consistencia de Risco < 1.0, tooltip (i) agora explica a causa — losses que extrapolaram o risco planejado, wins sem stop com risco estimado, ou sizing real inconsistente. Novo `asymmetryDiagnostic` no hook
+- **Insight de extrapolacao de RO:** Tooltip de desempenho agora alerta quando RO medio > 100% (leve) ou > 120% (severa)
+
+### Corrigido
+- **Semaforo RO bidirecional:** Barra de Utiliz. RO agora penaliza extrapolacao (>100% amarelo, >120% vermelho) em vez de tratar como "excelente". Icone ⚠ quando > 100%
+- **PL Atual tricolor no ExtractSummary:** Antes comparava com PL inicial (vermelho se menor). Agora: verde (resultado positivo), amarelo (resultado negativo mas PL positivo), vermelho (capital zerado)
+
+### Modificado
+- `dashboardMetrics.js`: Nova funcao `calculatePayoff` exportada
+- `useDashboardMetrics.js`: Novos memos `payoff` e `asymmetryDiagnostic`
+- `metricsInsights.js`: `getPerformanceInsights` aceita `asymmetryDiagnostic`, gera insights de causa da assimetria e extrapolacao de RO
+- `MetricsCards.jsx` v5.0.0: Layout reorganizado — WR+Payoff no grid superior, Risco W/L + Utiliz. RO na secao inferior. Semaforo RO bidirecional. Tooltip com max-h scroll. Label RO medio → Utiliz. RO
+- `ExtractSummary.jsx` v2.1.0: Cor PL Atual tricolor
+- `StudentDashboard.jsx`: Props `payoff` e `asymmetryDiagnostic` propagadas ao MetricsCards
+- `version.js`: v1.19.6+20260318
+
+### Testes
+- 23 novos testes: calculatePayoff (9), diagnostico assimetria (5), semaforo RO bidirecional (4), cor PL Atual (5)
+- 429+ testes totais (21 suites), zero regressao
+
+---
+
+## [1.19.5] - 2026-03-15
+
+### Adicionado
+- **Layout agrupado 3 paineis no dashboard:** MetricsCards v4.1.0 reorganiza 7 cards em 3 paineis — Financeiro (Saldo, P&L, Expectancy, Drawdown, PF), Assimetria de Risco (WR, WR Planejado, Risco W/L, RO medio), EV (EV esperado vs EV real, gap, perda acumulada). Grid responsivo lg:grid-cols-3
+- **Tooltips diagnosticos dinamicos:** Cada painel tem botao (i) com conclusoes geradas com base nos dados reais — ex: "Acerta 80% mas so 20% atingem o alvo — ansiedade de saida". Novo util `metricsInsights.js`
+- **Trades sem stop assumem RO$ do plano:** `calculateRiskAsymmetry` atribui `plan.riskPerOperation` como risco para trades sem `riskPercent`. Elimina "N/D" e "0.00x"
+- **Numero de trades no card EV**
+- **Copy/paste imagem HTF/LTF no AddTradeModal (Ctrl+V)**
+
+### Corrigido
+- NaN guards em dashboardMetrics.js e MetricsCards.jsx
+- Sinal do EV leakage invertido
+- Tooltips nativos restaurados (DD, PF, WR)
+
+### Testes
+- 15 novos testes metricsInsights.test.js
+- riskAsymmetry.test.js atualizado (sem stop assume RO$)
+- 427+ testes totais (21 suites)
+
+---
+
+## [1.19.4] - 2026-03-13
+
+### Corrigido
+- **DEC-009: riskPercent usa plan.pl (capital base) como denominador:** Calculo de RO% usava `plan.currentPl` (flutuante) em vez de `plan.pl` (capital base). Trade com loss R$885 sobre capital R$200k mostrava 0.8% em vez de 0.44%. Corrigido em compliance.js e functions/index.js (3 pontos). Consistente com DEC-007
+- **dailyLossPercent tambem corrigido** (mesma causa)
+
+### Adicionado
+- **Card Risk Asymmetry:** Razao risco medio wins/losses + RO efficiency + breakdown W/L + barra severidade
+- **Card EV Leakage:** EV esperado vs real + gap + perda acumulada + barra severidade
+
+### Modificado
+- `compliance.js` v3.1.0, `functions/index.js`, `dashboardMetrics.js`, `useDashboardMetrics.js`, `MetricsCards.jsx` v3.0.0, `StudentDashboard.jsx`, `version.js`
+
+### Testes
+- 6 testes DEC-009, 13 riskAsymmetry, 12 evLeakage
+- 412+ testes totais (19 suites)
+
+---
+
+## [1.19.3] - 2026-03-12
+
+### Corrigido
+- **C3: RR exibido com 2 casas decimais:** ExtractTable agora mostra `1.99:1` em vez de `2.0:1`. Red flags de RR também usam 2 casas. Resolve visual enganoso onde 1.99 arredondava para 2.0 parecendo compliant com alvo 2:1
+- **C5: resultInPoints null quando há resultOverride:** Trades com resultado editado manualmente agora gravam `resultInPoints: null`. UI exibe "pts: editado" no TradeDetailModal e FeedbackPage
+- **Navegação feedback ida/volta contextual:** Ao clicar feedback no extrato e voltar, o extrato reabre no plano correto. Feedback chamado do dashboard volta ao dashboard normalmente. Mecanismo: `_fromLedgerPlanId` enriquecido no trade pelo StudentDashboard, `feedbackReturnPlanId` no App.jsx
+
+### Adicionado
+- **Coluna Status Feedback no ExtractTable (QA #14):** Badge visual por trade — Pendente (OPEN), Revisado (REVIEWED), Dúvida (QUESTION), Fechado (CLOSED). Badge clicável quando `onNavigateToFeedback` presente
+- **RR compliant em azul:** Trades com resultado positivo e RR dentro do alvo exibem RR em `text-blue-400` (antes era cinza)
+
+### Modificado
+- `ExtractTable.jsx` v4.1.0: Grid compactado — emoção só emoji (tooltip nome), side como superscript L/S, S/Stop só ícone (tooltip), RR assumido asterisco `*`, padding reduzido (px-2 py-1.5), status+feedback fundidos em coluna única clicável
+- `compliance.js`: Red flag RR_BELOW_MINIMUM com 2 casas decimais na mensagem
+- `useTrades.js`: `addTrade` e `updateTrade` (parciais e legado) setam `resultInPoints: null` quando `resultOverride`
+- `TradeDetailModal.jsx`: Exibe "pts: editado" quando `resultInPoints` null e `resultEdited` true
+- `FeedbackPage.jsx`: Mesmo tratamento de "Pontos: editado"
+- `StudentDashboard.jsx`: Props `returnToPlanId`/`onReturnConsumed`, `useEffect` reabre extrato, `_fromLedgerPlanId` no callback do PlanLedgerExtract
+- `App.jsx`: `feedbackReturnPlanId` state, só guarda quando `_fromLedgerPlanId` presente
+- `version.js`: v1.19.3+20260312
+
+### Testes
+- 8 novos testes: `resultInPointsOverride.test.js` — override zera pontos, sem override mantém, override zero válido, override negativo, string numérica, resultEdited flag
+- 394 testes totais (17 suites), zero regressão
+
+---
+
 ## [1.19.2] - 2026-03-11
 
 ### Corrigido
 - **DEC-007: RR assumido integrado em calculateTradeCompliance:** Trades sem stop agora calculam RR dentro do motor de compliance (não mais como cálculo isolado no addTrade). Usa `plan.pl` (capital base do ciclo) em vez de `currentPl` (flutuante). Resolve DT-017 (rrRatio -3.14 inconsistente)
 - **Guard C4 removido:** `onTradeCreated`, `onTradeUpdated`, `recalculateCompliance` e `diagnosePlan` não preservam mais valores stale de rrRatio. O `calculateTradeCompliance` agora retorna RR correto para todos os cenários (com/sem stop)
-- **RR compliance só avalia wins:** Loss com RR negativo não é violação — perder 1R é o risco planejado. RR target (2:1) é critério de gain. Trades com takeProfit continuam avaliados independente do resultado
 - **updateTrade recalcula RR:** Edição de resultado, stop, entry, exit ou qty agora recalcula rrRatio (real com stop, assumido sem stop). Antes o rrRatio ficava congelado do addTrade original
-- **updateTrade recalcula resultInPoints:** Edição de entry/exit/qty/side agora recalcula pontos. Antes resultInPoints ficava stale (Issue #78/C5)
-- **updateTrade corrige edição de parciais (B3):** `_partials` é campo array no documento do trade — não subcollection. updateTrade agora grava `_partials` no documento e recalcula campos derivados via `calculateFromPartials`. TradesJournal lê `_partials` do documento ao abrir modal de edição
-- **diagnosePlan detecta rrAssumed stale:** Auditoria agora identifica trades com RR assumido incorreto como divergentes
+- **diagnosePlan detecta rrAssumed stale:** Auditoria agora identifica trades com RR assumido incorreto (ex: calculado com PL antigo) como divergentes
 
 ### Modificado
-- `compliance.js` v3.0.0: `calculateTradeCompliance` retorna `rrAssumed: boolean`. Trades sem stop: RR = result / (plan.pl × RO%). rrStatus NAO_CONFORME só para wins ou trades com takeProfit
-- `functions/index.js` v1.9.0: `calculateTradeCompliance` com DEC-007 + RR compliance wins-only. Guards C4 removidos
-- `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR + resultInPoints + parciais (subcollection)
+- `compliance.js` v3.0.0: `calculateTradeCompliance` retorna `rrAssumed: boolean`. Trades sem stop: RR = result / (plan.pl × RO%). RR compliance (rrStatus) agora avaliado para todos os trades
+- `functions/index.js` v1.9.0: `calculateTradeCompliance` com DEC-007. Guards C4 removidos em `onTradeCreated`, `onTradeUpdated`, `recalculateCompliance`. Persiste `rrAssumed` no documento do trade
+- `useTrades.js`: `addTrade` usa `plan.pl` (DEC-007). `updateTrade` recalcula RR quando campos relevantes mudam
 - `usePlans.js`: `diagnosePlan` comparação direta de rrRatio (sem guard C4)
-- `FeedbackPage.jsx`: Badge "(est.)" quando `rrAssumed=true` no card de risco. Indicador "Processando compliance..." enquanto CF não responde (resolve timing B4)
-- `ExtractTable.jsx`: RR usa `trade.rrAssumed` para badge "(est.)". Eventos inline removem compliance redundante (S/Stop, RO, RR) — mantém apenas state machine (META/STOP) + emocional (TILT/REVENGE/CRÍTICO). Cores ciclo diferenciadas (yellow/orange vs emerald/red período)
-- `ExtractCycleCard.jsx`: Gauge segue período selecionado — mostra PnL/Meta/Stop do período ativo em vez do ciclo. Header label dinâmico
 - `version.js`: v1.19.2+20260311
 
 ### Testes
-- 20 novos testes: 12 DEC-007 RR assumido, 1 diagnosePlan stale, 7 calculateFromPartials (B3 regressão): 12 para DEC-007 RR assumido (win/loss/breakeven, plan.pl vs currentPl, moeda diferente, red flags, loss não viola RR), 1 para diagnosePlan stale detection
-- 386 testes totais, zero regressão
+- 12 novos testes: 11 para DEC-007 RR assumido no compliance (win/loss/breakeven, plan.pl vs currentPl, moeda diferente, red flags), 1 para diagnosePlan rrAssumed stale detection
+- 1 teste atualizado: loss sem stop agora gera 2 flags (NO_STOP + RR_BELOW_MINIMUM)
+- 378 testes totais, zero regressão
 
 ---
 

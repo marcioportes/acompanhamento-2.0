@@ -17,7 +17,7 @@ import { useMemo } from 'react';
 import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
-import { calculateRiskAsymmetry, calculateEVLeakage } from '../utils/dashboardMetrics';
+import { calculateRiskAsymmetry, calculateEVLeakage, calculatePayoff } from '../utils/dashboardMetrics';
 
 /** Labels de período para display */
 const PERIOD_LABELS = {
@@ -203,6 +203,25 @@ const useDashboardMetrics = ({
     return calculateEVLeakage(filteredTrades, plansToShow);
   }, [filteredTrades, plansToShow]);
 
+  // === Payoff (v1.19.6) ===
+  const payoff = useMemo(() => {
+    return calculatePayoff(stats);
+  }, [stats]);
+
+  // === Asymmetry Diagnostic (v1.19.6) ===
+  const asymmetryDiagnostic = useMemo(() => {
+    if (!riskAsymmetry || !filteredTrades.length) return null;
+
+    const wins = filteredTrades.filter(t => t.result > 0);
+    const losses = filteredTrades.filter(t => t.result < 0);
+    const winsNoStop = wins.filter(t => t.riskPercent == null).length;
+    const lossesOverRisk = losses.filter(t =>
+      t.compliance?.roStatus === 'FORA_DO_PLANO'
+    ).length;
+
+    return { winsNoStop, winsTotal: wins.length, lossesOverRisk, lossesTotal: losses.length };
+  }, [riskAsymmetry, filteredTrades]);
+
   // === P&L Contextual (B5 — Issue #71) ===
   const plContext = useMemo(() => {
     // Prioridade 1: filtro de período ativo
@@ -253,6 +272,8 @@ const useDashboardMetrics = ({
     complianceRate,
     riskAsymmetry,
     evLeakage,
+    payoff,
+    asymmetryDiagnostic,
     // Contexto P&L (B5)
     plContext,
   };

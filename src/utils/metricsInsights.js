@@ -70,7 +70,7 @@ export const getFinancialInsights = ({ stats, drawdown, maxDrawdownData, evLeaka
  * @param {Object|null} params.complianceRate - { rate, violations }
  * @returns {Array<{ text: string, severity: 'success'|'info'|'warning'|'danger' }>}
  */
-export const getPerformanceInsights = ({ stats, winRatePlanned, riskAsymmetry, complianceRate }) => {
+export const getPerformanceInsights = ({ stats, winRatePlanned, riskAsymmetry, complianceRate, asymmetryDiagnostic }) => {
   const insights = [];
   if (!stats) return insights;
 
@@ -106,10 +106,42 @@ export const getPerformanceInsights = ({ stats, winRatePlanned, riskAsymmetry, c
     } else if (ratio >= 0.9 && ratio <= 1.1) {
       insights.push({ text: 'Sizing consistente entre wins e losses', severity: 'success' });
     }
+
+    // Diagnostico contextual da assimetria (v1.19.6)
+    if (ratio < 1.0 && asymmetryDiagnostic) {
+      const { winsNoStop, winsTotal, lossesOverRisk, lossesTotal } = asymmetryDiagnostic;
+      if (lossesOverRisk > 0 && lossesTotal > 0) {
+        insights.push({
+          text: `${lossesOverRisk} de ${lossesTotal} losses extrapolaram o risco planejado -- risco medio das perdas inflado`,
+          severity: 'warning'
+        });
+      }
+      if (winsNoStop > 0 && winsTotal > 0 && winsNoStop === winsTotal) {
+        insights.push({
+          text: `${winsNoStop} de ${winsTotal} wins sem stop -- risco nos acertos e estimado, nao medido`,
+          severity: 'warning'
+        });
+      } else if (winsNoStop > 0 && winsTotal > 0) {
+        insights.push({
+          text: `${winsNoStop} de ${winsTotal} wins sem stop -- risco parcialmente estimado`,
+          severity: 'warning'
+        });
+      }
+    }
   }
 
   if (riskAsymmetry && !isNaN(riskAsymmetry.avgRoEfficiency)) {
-    if (riskAsymmetry.avgRoEfficiency < 30) {
+    if (riskAsymmetry.avgRoEfficiency > 120) {
+      insights.push({
+        text: `Risco medio ${riskAsymmetry.avgRoEfficiency.toFixed(0)}% do permitido -- extrapolacao severa do plano`,
+        severity: 'danger'
+      });
+    } else if (riskAsymmetry.avgRoEfficiency > 100) {
+      insights.push({
+        text: `Risco medio ${riskAsymmetry.avgRoEfficiency.toFixed(0)}% do permitido -- leve extrapolacao do plano`,
+        severity: 'warning'
+      });
+    } else if (riskAsymmetry.avgRoEfficiency < 30) {
       insights.push({ 
         text: `Utiliza apenas ${riskAsymmetry.avgRoEfficiency.toFixed(0)}% do risco permitido -- opera muito abaixo da capacidade do plano`, 
         severity: 'warning' 
