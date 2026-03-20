@@ -2,14 +2,17 @@
  * v1197-sidebar-badge.test.js
  * Testes para badge de revisões não trabalhadas (REVIEWED) no Sidebar do aluno
  * @version 1.19.7
+ * 
+ * Nota: usa `trades` (não `allTrades`) porque no student mode o listener
+ * do useTrades só popula `trades` — `allTrades` fica vazio.
  */
 import { describe, it, expect } from 'vitest';
 
 // Simula a lógica do useMemo de unreviewedFeedbackCount do App.jsx
-function countUnreviewedFeedback(allTrades, isMentor, viewingAsStudent) {
+function countUnreviewedFeedback(trades, isMentor, viewingAsStudent) {
   if (isMentor && !viewingAsStudent) return 0;
   try {
-    return (allTrades || []).filter(t => t.status === 'REVIEWED').length;
+    return (trades || []).filter(t => t.status === 'REVIEWED').length;
   } catch (e) {
     return 0;
   }
