@@ -1,13 +1,14 @@
 /**
  * OrderUploader.jsx
- * @version 1.0.0 (v1.20.0)
- * @description Upload de CSV de ordens com detecção automática de formato.
+ * @version 2.0.0 (v1.20.0)
+ * @description Upload de CSV de ordens com leitura raw text.
+ *   ProfitChart-Pro tem estrutura hierárquica que precisa de parser próprio,
+ *   então lemos o arquivo como texto e passamos para OrderImportPage decidir.
+ *   Encoding: tenta UTF-8, fallback Latin-1 (padrão ProfitChart-Pro).
  */
 
 import { useState, useRef } from 'react';
-import { Upload, FileText, AlertTriangle, CheckCircle } from 'lucide-react';
-import { parseCSV } from '../../utils/csvParser';
-import { detectFormat } from '../../utils/orderParsers';
+import { Upload, FileText, AlertTriangle } from 'lucide-react';
 
 const OrderUploader = ({ onParsed, disabled = false }) => {
   const [dragOver, setDragOver] = useState(false);
@@ -16,6 +17,15 @@ const OrderUploader = ({ onParsed, disabled = false }) => {
   const [fileInfo, setFileInfo] = useState(null);
   const fileInputRef = useRef(null);
 
+  const readFileAsText = (file, encoding) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => reject(new Error(`Erro ao ler arquivo com encoding ${encoding}`));
+      reader.readAsText(file, encoding);
+    });
+  };
+
   const handleFile = async (file) => {
     if (!file) return;
     setParseError(null);
@@ -23,19 +33,27 @@ const OrderUploader = ({ onParsed, disabled = false }) => {
     setFileInfo({ name: file.name, size: file.size });
 
     try {
-      const result = await parseCSV(file);
-      const format = detectFormat(result.headers);
+      // Try UTF-8 first, fallback to Latin-1 (ProfitChart-Pro default)
+      let text;
+      try {
+        text = await readFileAsText(file, 'UTF-8');
+        // Check for garbled chars (common with Latin-1 files read as UTF-8)
+        if (text.includes('\ufffd') || text.includes('Ã')) {
+          text = await readFileAsText(file, 'ISO-8859-1');
+        }
+      } catch {
+        text = await readFileAsText(file, 'ISO-8859-1');
+      }
 
-      onParsed({
-        headers: result.headers,
-        rows: result.rows,
-        format: format.format,
-        confidence: format.confidence,
-        mappedHeaders: format.mappedHeaders,
-        warnings: result.warnings,
-        fileName: file.name,
-        rowCount: result.rowCount,
-      });
+      // Strip BOM if present
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
+      if (!text.trim()) {
+        setParseError('Arquivo vazio.');
+        return;
+      }
+
+      onParsed({ text, fileName: file.name, fileSize: file.size });
     } catch (err) {
       setParseError(err.message);
     } finally {
@@ -90,7 +108,7 @@ const OrderUploader = ({ onParsed, disabled = false }) => {
                 Arraste o CSV de ordens ou clique para selecionar
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Formatos: Tradovate, NinjaTrader, ou genérico (CSV)
+                Formatos: ProfitChart-Pro ou genérico (CSV)
               </p>
             </div>
           </div>

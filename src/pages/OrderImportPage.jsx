@@ -25,7 +25,7 @@ import OrderValidationReport from '../components/OrderImport/OrderValidationRepo
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
-import { parseTradovate, parseGeneric } from '../utils/orderParsers';
+import { parseProfitChartPro, parseGenericOrders, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
 import { correlateOrders } from '../utils/orderCorrelation';
@@ -68,30 +68,39 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // STEP 1: UPLOAD + PARSE
   // ============================================
   const handleParsed = useCallback((result) => {
-    setParseResult(result);
     setError(null);
 
-    // Parse according to detected format
-    let parsed;
-    if (result.format === 'tradovate') {
-      parsed = parseTradovate(result.rows, result.headers);
-    } else {
-      // For generic, use mapped headers as column mapping
-      parsed = parseGeneric(result.rows, result.mappedHeaders);
-    }
+    // result comes from OrderUploader: { text, fileName, fileSize }
+    // or from generic path: { headers, rows, format, ... }
 
-    setParseErrors(parsed.errors);
+    if (result.text) {
+      // Raw text mode — detect format from first lines
+      const lines = result.text.replace(/\r\n/g, '\n').split('\n');
+      // Find header line
+      const headerLine = lines.find(l => (l.match(/;/g) || []).length >= 10);
+      const headers = headerLine ? headerLine.split(';').map(h => h.trim()) : [];
+      const detection = detectOrderFormat(headers);
 
-    // Normalize + deduplicate
-    const { orders: normalized, dedupStats } = normalizeBatch(parsed.orders);
+      setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-    // Validate
-    const validation = validateBatch(normalized);
-    setValidationResult(validation);
-    setParsedOrders(validation.validOrders);
+      let parsed;
+      if (detection.format === 'profitchart_pro') {
+        parsed = parseProfitChartPro(result.text);
+      } else {
+        // Generic — needs column mapping (future UI step)
+        parsed = { orders: [], errors: [{ row: 0, message: 'Formato não reconhecido. Use o mapeamento manual.' }] };
+      }
 
-    if (validation.validOrders.length > 0) {
-      setStep(STEPS.PREVIEW);
+      setParseErrors(parsed.errors || []);
+
+      const { orders: normalized, dedupStats } = normalizeBatch(parsed.orders);
+      const validation = validateBatch(normalized);
+      setValidationResult(validation);
+      setParsedOrders(validation.validOrders);
+
+      if (validation.validOrders.length > 0) {
+        setStep(STEPS.PREVIEW);
+      }
     }
   }, []);
 
@@ -211,7 +220,7 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
             </h2>
             <p className="text-[10px] text-slate-500 mt-0.5">
               Etapa: {stepLabel}
-              {parseResult && ` • ${parseResult.format === 'tradovate' ? 'Tradovate' : 'Genérico'} detectado`}
+              {parseResult && ` • ${parseResult.format === 'profitchart_pro' ? 'ProfitChart-Pro' : 'Genérico'} detectado`}
             </p>
           </div>
           <button
@@ -244,7 +253,7 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
               {parseResult && (
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                    {parseResult.format === 'tradovate' ? 'Tradovate' : 'Genérico'}
+                    {parseResult.format === 'profitchart_pro' ? 'ProfitChart-Pro' : 'Genérico'}
                     {parseResult.confidence > 0 && ` (${(parseResult.confidence * 100).toFixed(0)}%)`}
                   </span>
                   <span className="text-[10px] text-slate-500">

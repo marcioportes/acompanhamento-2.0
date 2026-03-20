@@ -1,103 +1,85 @@
 /**
  * orderNormalizer.js
- * @version 1.0.0 (v1.20.0)
- * @description Normaliza ordens parseadas para o schema unificado do Firestore.
- *   Recebe RawOrder (output dos parsers) e produz NormalizedOrder pronto para staging.
- *
- * RESPONSABILIDADES:
- *   - Garantir tipos corretos (number, string, null — nunca undefined)
- *   - Garantir enums válidos
- *   - Gerar dedup key para deduplicação
- *   - Não valida regras de negócio (isso é orderValidation.js)
+ * @version 2.0.0 (v1.20.0)
+ * @description Normaliza ordens parseadas (Clear/Profit ou genérico) para schema unificado.
+ *   Deduplicação por externalOrderId (ClOrdID na Clear).
  *
  * EXPORTS:
- *   normalizeOrder(rawOrder) → NormalizedOrder
- *   normalizeBatch(rawOrders) → { orders: NormalizedOrder[], dedupStats: Object }
+ *   normalizeOrder(parsedOrder) → NormalizedOrder
+ *   normalizeBatch(parsedOrders) → { orders[], dedupStats }
  *   generateDedupKey(order) → string
  */
-
-import { normalizeSide, normalizeOrderType, normalizeOrderStatus, parseNumeric, parseTimestamp } from './orderParsers.js';
 
 // ============================================
 // DEDUP KEY
 // ============================================
 
 /**
- * Gera chave de deduplicação para uma ordem.
- * Formato: instrument|side|qty|orderType|submittedAt
- * Usa campos que juntos identificam univocamente uma ordem.
- *
- * @param {Object} order
- * @returns {string}
+ * Gera chave de deduplicação.
+ * Prioriza externalOrderId (ClOrdID na Clear — único por ordem).
+ * Fallback: instrument|side|qty|submittedAt
  */
 export const generateDedupKey = (order) => {
-  const parts = [
+  if (order.externalOrderId) return order.externalOrderId;
+  return [
     (order.instrument || '').toUpperCase(),
     order.side || '',
     order.quantity ?? '',
     order.orderType || '',
     order.submittedAt || '',
-    order.externalOrderId || '',
-  ];
-  return parts.join('|');
+  ].join('|');
 };
 
 // ============================================
-// NORMALIZE SINGLE ORDER
+// NORMALIZE
 // ============================================
 
 /**
- * Normaliza uma ordem raw para o schema do Firestore.
+ * Normaliza uma ordem para o schema do Firestore.
  * Garante tipos corretos e nunca undefined.
  *
- * @param {Object} rawOrder — output do parser
+ * @param {Object} parsed — output do parser (Clear ou genérico)
  * @returns {Object} NormalizedOrder
  */
-export const normalizeOrder = (rawOrder) => {
-  const side = normalizeSide(rawOrder.side) ?? rawOrder.side ?? null;
-  const orderType = normalizeOrderType(rawOrder.orderType) ?? rawOrder.orderType ?? null;
-  const status = normalizeOrderStatus(rawOrder.status) ?? rawOrder.status ?? null;
-  const quantity = typeof rawOrder.quantity === 'number' ? rawOrder.quantity : (parseNumeric(rawOrder.quantity) ?? null);
-  const limitPrice = typeof rawOrder.limitPrice === 'number' ? rawOrder.limitPrice : (parseNumeric(rawOrder.limitPrice) ?? null);
-  const stopPrice = typeof rawOrder.stopPrice === 'number' ? rawOrder.stopPrice : (parseNumeric(rawOrder.stopPrice) ?? null);
-  const filledPrice = typeof rawOrder.filledPrice === 'number' ? rawOrder.filledPrice : (parseNumeric(rawOrder.filledPrice) ?? null);
-  const filledQuantity = typeof rawOrder.filledQuantity === 'number' ? rawOrder.filledQuantity : (parseNumeric(rawOrder.filledQuantity) ?? null);
-
-  const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT' || (stopPrice != null && stopPrice > 0);
-
-  const submittedAt = rawOrder.submittedAt || null;
-  const filledAt = rawOrder.filledAt || null;
-  const cancelledAt = rawOrder.cancelledAt || null;
-
-  // Price: para ordens FILLED, usar filledPrice; para LIMIT, usar limitPrice; para STOP, usar stopPrice
+export const normalizeOrder = (parsed) => {
+  // Price resolution: filledPrice > avgFillPrice > price
   let price = null;
-  if (filledPrice != null) price = filledPrice;
-  else if (limitPrice != null) price = limitPrice;
-  else if (stopPrice != null) price = stopPrice;
+  if (parsed.filledPrice != null) price = parsed.filledPrice;
+  else if (parsed.avgFillPrice != null) price = parsed.avgFillPrice;
+  else if (parsed.price != null) price = parsed.price;
 
   const normalized = {
-    externalOrderId: rawOrder.externalOrderId || null,
-    instrument: (rawOrder.instrument || '').toUpperCase().trim() || null,
-    orderType,
-    side,
-    quantity,
+    externalOrderId: parsed.externalOrderId || null,
+    instrument: (parsed.instrument || '').toUpperCase().trim() || null,
+    orderType: parsed.orderType || null,
+    side: parsed.side || null,
+    quantity: typeof parsed.quantity === 'number' ? parsed.quantity : null,
     price,
-    limitPrice,
-    stopPrice,
-    filledPrice,
-    filledQuantity: filledQuantity ?? quantity, // default: qty inteira se não informado
-    status,
-    submittedAt,
-    filledAt,
-    cancelledAt,
-    modifications: [], // preenchido por detecção posterior se aplicável
-    isStopOrder,
-    _dedupKey: null, // preenchido abaixo
-    _rowIndex: rawOrder._rowIndex ?? null,
+    limitPrice: parsed.price || null, // preço da ordem (Limite)
+    stopPrice: parsed.stopPrice || null,
+    filledPrice: parsed.filledPrice || parsed.avgFillPrice || null,
+    filledQuantity: parsed.filledQuantity ?? parsed.quantity ?? null,
+    status: parsed.status || null,
+    submittedAt: parsed.submittedAt || null,
+    filledAt: parsed.filledAt || null,
+    cancelledAt: parsed.cancelledAt || null,
+    lastUpdatedAt: parsed.lastUpdatedAt || null,
+    modifications: [],
+    isStopOrder: parsed.isStopOrder || false,
+    // Clear-specific enrichments
+    account: parsed.account || null,
+    exchange: parsed.exchange || null,
+    origin: parsed.origin || null,
+    strategy: parsed.strategy || null,
+    totalValue: parsed.totalValue || null,
+    totalExecutedValue: parsed.totalExecutedValue || null,
+    events: parsed.events || [],
+    // Internal
+    _dedupKey: null,
+    _rowIndex: parsed._rowIndex ?? null,
   };
 
   normalized._dedupKey = generateDedupKey(normalized);
-
   return normalized;
 };
 
@@ -106,13 +88,13 @@ export const normalizeOrder = (rawOrder) => {
 // ============================================
 
 /**
- * Normaliza um array de ordens e remove duplicatas.
+ * Normaliza array de ordens e remove duplicatas por externalOrderId.
  *
- * @param {Object[]} rawOrders
- * @returns {{ orders: Object[], dedupStats: { total: number, unique: number, duplicates: number } }}
+ * @param {Object[]} parsedOrders
+ * @returns {{ orders: Object[], dedupStats: { total, unique, duplicates } }}
  */
-export const normalizeBatch = (rawOrders) => {
-  if (!rawOrders?.length) {
+export const normalizeBatch = (parsedOrders) => {
+  if (!parsedOrders?.length) {
     return { orders: [], dedupStats: { total: 0, unique: 0, duplicates: 0 } };
   }
 
@@ -120,8 +102,8 @@ export const normalizeBatch = (rawOrders) => {
   const unique = [];
   let duplicates = 0;
 
-  for (const raw of rawOrders) {
-    const normalized = normalizeOrder(raw);
+  for (const parsed of parsedOrders) {
+    const normalized = normalizeOrder(parsed);
     if (seen.has(normalized._dedupKey)) {
       duplicates++;
       continue;
@@ -132,10 +114,6 @@ export const normalizeBatch = (rawOrders) => {
 
   return {
     orders: unique,
-    dedupStats: {
-      total: rawOrders.length,
-      unique: unique.length,
-      duplicates,
-    },
+    dedupStats: { total: parsedOrders.length, unique: unique.length, duplicates },
   };
 };

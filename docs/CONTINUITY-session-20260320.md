@@ -109,7 +109,7 @@ generatedAt
 ## 5. ACCEPTANCE CRITERIA STATUS
 
 - [x] Upload com detecção automática de formato
-- [x] Parser Tradovate + formato genérico
+- [x] Parser ProfitChart-Pro + formato genérico
 - [x] Validação 3 camadas
 - [x] Preview com exclusão de linhas
 - [x] Staging `ordersStagingArea`

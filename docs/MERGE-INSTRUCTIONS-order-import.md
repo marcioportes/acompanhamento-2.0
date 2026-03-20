@@ -29,7 +29,7 @@ const VERSION = {
 ## [1.20.0] - 2026-03-20
 
 ### Adicionado
-- **Order Import Pipeline (CHUNK-10):** Importação de ordens brutas da corretora com detecção automática de formato (Tradovate + genérico). Pipeline: Upload → Parse → Validação 3 camadas → Preview → Staging → Ingestão → Correlação → Cross-check
+- **Order Import Pipeline (CHUNK-10):** Importação de ordens brutas da corretora com detecção automática de formato (ProfitChart-Pro + genérico). Pipeline: Upload → Parse → Validação 3 camadas → Preview → Staging → Ingestão → Correlação → Cross-check
 - **Cross-check comportamental:** 8 métricas derivadas de ordens vs trades — stopOrderRate, modifyRate, cancelRate, marketOrderPct, holdTimeAsymmetry, averagingDownCount, ghostOrderCount, orderToTradeRatio
 - **KPI Validation:** Detecção de inflação de KPIs (win rate inflado por ausência de stop, ghost orders, hold time asymmetry). Severidades NONE/MODERATE/SEVERE com alertas automáticos
 - **Correlação ordem↔trade:** Matching por instrumento + timestamp + side + quantity com confidence score (0-1). Ghost orders detectados automaticamente
@@ -48,7 +48,7 @@ const VERSION = {
 - `src/components/OrderImport/KPIValidationCard.jsx`
 
 ### Utils novos
-- `src/utils/orderParsers.js` v1.0.0 — Tradovate + genérico + helpers de normalização
+- `src/utils/orderParsers.js` v1.0.0 — ProfitChart-Pro + genérico + helpers de normalização
 - `src/utils/orderNormalizer.js` v1.0.0 — Schema unificado + deduplicação
 - `src/utils/orderValidation.js` v1.0.0 — Pipeline 3 camadas (structural, consistency, business)
 - `src/utils/orderCorrelation.js` v1.0.0 — Matching ordem↔trade com confidence
