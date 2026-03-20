@@ -324,8 +324,8 @@ CHUNK-01 (Auth)
 
 | Chunk | Status | Branch | Sessão | Check-out | Notas |
 |-------|--------|--------|--------|-----------|-------|
-| CHUNK-09 | `AVAILABLE` | — | — | — | Pronto para Frente 1 |
-| CHUNK-10 | `AVAILABLE` | — | — | — | Pronto para Frente 2 |
+| CHUNK-09 | `LOCKED` | feature/student-onboarding | Sessão A | 19/03/2026 | Onboarding & Baseline |
+| CHUNK-10 | `LOCKED` | feature/order-import | Sessão B | 19/03/2026 | Order Import Pipeline |
 | *(todos os demais)* | `AVAILABLE` | — | — | — | — |
 
 > **Instruções para Marcio:** Ao iniciar uma frente, preencher esta tabela. Ao receber o ZIP de volta, marcar como `MERGE-PENDING`. Após merge, voltar para `AVAILABLE`.
