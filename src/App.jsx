@@ -75,6 +75,7 @@ const AppContent = () => {
   // Hooks
   const { 
     addTrade, 
+    trades,
     getTradesAwaitingFeedback, 
     getTradesGroupedByStudent, 
     allTrades,
@@ -95,6 +96,17 @@ const AppContent = () => {
       return 0;
     }
   }, [isMentor, viewingAsStudent, allTrades, getTradesAwaitingFeedback]);
+
+  // Badge para aluno: trades revisados pelo mentor que o aluno ainda não trabalhou
+  // Nota: usa `trades` (não `allTrades`) porque no student mode o listener só popula `trades`
+  const unreviewedFeedbackCount = useMemo(() => {
+    if (isMentor() && !viewingAsStudent) return 0;
+    try {
+      return (trades || []).filter(t => t.status === 'REVIEWED').length;
+    } catch (e) {
+      return 0;
+    }
+  }, [isMentor, viewingAsStudent, trades]);
 
   const studentsNeedingAttention = useMemo(() => {
     if (!isMentor() || viewingAsStudent) return 0;
@@ -270,6 +282,7 @@ const AppContent = () => {
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         pendingFeedback={pendingFeedbackCount}
         studentsNeedingAttention={studentsNeedingAttention}
+        unreviewedFeedback={unreviewedFeedbackCount}
       />
 
       {/* Conteúdo principal */}
