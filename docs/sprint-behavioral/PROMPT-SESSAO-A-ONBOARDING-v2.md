@@ -83,6 +83,12 @@ Inicie com a **análise de impacto** conforme o gate obrigatório. Liste:
 - Como os cross-checks inter-dimensionais serão executados
 - Como a sondagem adaptativa será gerada, apresentada e armazenada
 - State machine completa: lead → pre_assessment → ai_assessed → probing → probing_complete → mentor_validated → active
+- **Evolution Tracking:**
+- Como o review mensal 3 camadas será calculado (score_trades → mentor_delta → score_final)
+- Como tradeScoreMapper extrai métricas dos trades para scores 4D
+- Quais métricas de CHUNK-04 (trades) e CHUNK-05 (compliance) serão LIDAS (não modificadas)
+- Como os gates de progressão serão avaliados (CF + mentor decision)
+- Como o mentor journal será armazenado e exibido
 
 Apresente a proposta e aguarde meu OK.
 ```
@@ -93,7 +99,7 @@ Apresente a proposta e aguarde meu OK.
 
 1. `ARCHITECTURE.md`
 2. `CHUNK-REGISTRY.md` (versão com locks atualizados — CHUNK-09 e CHUNK-10 LOCKED)
-3. `BRIEF-STUDENT-ONBOARDING-v3.md` ← **ATENÇÃO: versão 3.1, não 2**
+3. `BRIEF-STUDENT-ONBOARDING-v3.md` ← **ATENÇÃO: versão 3.2 — inclui assessment + evolution tracking**
 4. `trader_evolution_framework.md`
 5. `AVOID-SESSION-FAILURES.md`
 6. `VERSIONING.md`

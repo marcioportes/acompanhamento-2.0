@@ -327,6 +327,26 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Decisão:** Após questionário base (34 perguntas), IA analisa respostas e gera 3-5 perguntas de sondagem adaptativa. Timing: pós-questionário, pré-mentor (estágio 1.5). Transparente: "Baseado nas suas respostas, gostaríamos de aprofundar alguns pontos." Triggers: incongruência inter-dim (delta >= 30), incongruência intra-dim (delta >= 25), hesitação suspeita (responseTime < 5s), gaming suspect, respostas rasas (charCount < 80). Respostas de sondagem NÃO alteram scores base — geram probingAnalysis qualitativo para o mentor. State machine: lead → pre_assessment → ai_assessed → probing → probing_complete → mentor_validated → active.
 **Impacto:** Novo doc Firestore students/{id}/assessment/probing. Novas CFs: generateProbingQuestions, analyzeProbingResponse. Novos componentes: ProbingQuestionsFlow.jsx, ProbingIntro.jsx. Novo hook: useProbing.js. Novo util: probingTriggers.js. assessmentMethod bumped para three_stage_v1.
 
+### DEC-017: Scoring mensal 3 camadas com pesos variáveis (20/03/2026)
+**Problema:** Não existia mecanismo para acompanhar evolução 4D do aluno após o marco zero. Reviews mensais eram notas informais sem estrutura.
+**Decisão:** Scoring mensal em 3 camadas: (1) score_trades automático derivado de métricas reais dos trades no período, (2) mentor_delta ajuste empírico por dimensão sobre o score_trades, (3) score_final blendado com pesos variáveis por dimensão conforme confiabilidade das métricas automáticas — Financeiro 0.70/0.30, Operacional 0.50/0.50, Emocional 0.30/0.70, Experiência 0.80/0.20. Clamp [0, 100] com delta original preservado para auditoria.
+**Impacto:** Rewrite de monthly_reviews no Firestore (3 camadas com metrics_used, deltas, final_scores). Novos utils: tradeScoreMapper.js, evolutionCalculator.js. Nova CF: calculateMonthlyScores. Novo componente: MonthlyReviewForm.jsx (reformulado). Reads de CHUNK-04 (trades), CHUNK-05 (compliance), CHUNK-06 (emotional) — sem modificação.
+
+### DEC-018: Mentor aplica delta no review mensal (20/03/2026)
+**Problema:** Mentor precisava atribuir score absoluto 0-100 por dimensão a cada review, duplicando trabalho que o sistema já faz via métricas automáticas.
+**Decisão:** Mentor aplica delta (ex: +5, -3) sobre o score_trades calculado automaticamente, não score absoluto. Reduz carga cognitiva — mentor reage ao dado, não cria do zero. Preserva auditabilidade: sempre se sabe quanto veio dos trades (score_trades) e quanto do sentimento do mentor (delta).
+**Impacto:** MonthlyReviewForm.jsx (inputs de delta por dimensão em vez de scores absolutos). evolutionCalculator.js (blending formula).
+
+### DEC-019: Gates de progressão híbridos (20/03/2026)
+**Problema:** Progressão de stage (1→2→3→4→5) não tinha mecanismo definido — não estava claro se era automática, manual, ou híbrida.
+**Decisão:** Gates hardcoded em progressionGates.js (versionados com o código). CF evaluateProgression calcula elegibilidade automaticamente contra gates definidos. Mentor confirma/veta promoção com 4 opções: PROMOTE, HOLD, OVERRIDE_PROMOTE (promover sem todos os gates, com justificativa), OVERRIDE_HOLD (reter com todos os gates, com justificativa). Decisão registrada em progression_log com snapshot de elegibilidade.
+**Impacto:** progressionGates.js (novo — definição de gates por stage com métricas, thresholds, sustainedPeriod). Nova CF: evaluateProgression. Novos componentes: ProgressionGateStatus.jsx, PromotionDecisionModal.jsx. Novo Firestore: progression_log subcollection.
+
+### DEC-020: Regressão de stage nunca automática (20/03/2026)
+**Problema:** Aluno em Stage 3 que passa meses ruins poderia ser rebaixado automaticamente, causando desmotivação desproporcional a meses atípicos.
+**Decisão:** Se aluno falha gates do stage anterior por 2 meses → REGRESSION_WARNING (alerta ao mentor). 3 meses → REGRESSION_ELIGIBLE (elegível para rebaixamento). Regressão nunca é automática — mentor decide com justificativa. Mentor pode: rebaixar, manter com plano de ação, ou ignorar alerta.
+**Impacto:** progressionGates.js (lógica de regressão). evaluateProgression CF (detecta regression conditions). progression_log (registra warnings e decisões).
+
 ---
 
 ## 6. Dívidas Técnicas Ativas

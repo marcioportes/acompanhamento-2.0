@@ -1,6 +1,6 @@
 # BRIEF-STUDENT-ONBOARDING.md
 ## Briefing de Sessão — Frente: Setup Inicial do Aluno
-### Versão 3.1 — 20/03/2026 (Atualizado: Operacional 5D, cross-check inter-dimensional, sondagem adaptativa, randomização seeded)
+### Versão 3.2 — 20/03/2026 (Consolidado: Assessment 3 estágios + Evolution Tracking + Gates de Progressão)
 
 ---
 
@@ -8,7 +8,7 @@
 
 Você está trabalhando no **Acompanhamento 2.0** — plataforma de mentoria de trading comportamental em React/Vite + Firebase/Firestore + Cloud Functions, deploy em Vercel.
 
-Esta frente implementa o **setup inicial do aluno** com assessment em 3 estágios: (1) questionário base autoaplicável com classificação por IA, (1.5) sondagem adaptativa gerada pela IA baseada em incongruências e hesitações, (2) validação pelo mentor em entrevista curta. O objetivo é estabelecer o **marco zero** para evolução emocional e comportamental.
+Esta frente implementa o **ciclo completo de onboarding e acompanhamento evolutivo do aluno**: (1) questionário base autoaplicável com classificação por IA, (1.5) sondagem adaptativa gerada pela IA baseada em incongruências e hesitações, (2) validação pelo mentor em entrevista curta, (3) acompanhamento evolutivo 4D com reviews mensais, gates de progressão e timeline longitudinal. O objetivo é estabelecer o **marco zero** e acompanhar a evolução emocional e comportamental ao longo do tempo.
 
 **Premissa de design:** O aluno tende a inflar scores operacionais e financeiros ("uso stop sempre", "processo disciplinado"). O emocional é a dimensão mais difícil de fazer gaming — especialmente nas abertas projetivas. O sistema deve cross-checar declarações operacionais/financeiras contra respostas emocionais para detectar inconsistências. O operacional declarado no assessment será confrontado com dados reais do journal após 30 dias; o emocional não tem equivalente hard — depende da qualidade do questionário + validação do mentor.
 
@@ -22,6 +22,9 @@ Esta frente implementa o **setup inicial do aluno** com assessment em 3 estágio
 |-------|--------|-----------|
 | **CHUNK-09 (Student Onboarding)** | LOCKED | ✅ CRIAR arquivos listados |
 | CHUNK-02 (Student Management) | READ-ONLY | ⚠️ LER estrutura de `students`, NÃO MODIFICAR |
+| CHUNK-04 (Trade Ledger) | READ-ONLY | ⚠️ LER trades para calcular métricas mensais (tradeScoreMapper), NÃO MODIFICAR |
+| CHUNK-05 (Compliance) | READ-ONLY | ⚠️ LER compliance fields dos trades, NÃO MODIFICAR |
+| CHUNK-06 (Emotional System) | READ-ONLY | ⚠️ LER emotional fields/TILT/REVENGE, NÃO MODIFICAR |
 | Todos os demais | BLOQUEADO | ❌ NÃO TOCAR |
 
 **Branch:** `feature/student-onboarding`
@@ -355,31 +358,283 @@ Sistema guarda: `score_ia`, `score_mentor`, `override_justification`, `mentor_no
 }
 ```
 
-### 4.4 Monthly Reviews e Progression Log
+### 4.4 Review Mensal — 3 Camadas (DEC-017, DEC-018)
+
+O review mensal é o coração do acompanhamento evolutivo. Opera em 3 camadas:
+1. **score_trades:** Calculado automaticamente a partir dos trades do período
+2. **mentor_delta:** Ajuste empírico do mentor sobre o score_trades (delta, não absoluto)
+3. **score_final:** Blending ponderado por dimensão (pesos variáveis conforme confiabilidade das métricas)
+
+**Pesos por dimensão:**
+
+| Dimensão | Peso score_trades | Peso score_mentor | Justificativa |
+|---|---|---|---|
+| Financeiro | 0.70 | 0.30 | Métricas diretas: stop rate, drawdown, RO%, payoff |
+| Operacional | 0.50 | 0.50 | Proxies parciais: aderência ao plano, frequência, journal |
+| Emocional | 0.30 | 0.70 | Proxies indiretos: TILT/revenge, entropy, padrões pós-loss |
+| Experiência | 0.80 | 0.20 | Gates objetivos: métricas cumpridas vs exigidas |
+
+**Fórmula:**
+```
+score_mentor_abs = clamp(score_trades + mentor_delta, 0, 100)
+score_final = clamp((score_trades × peso_trades) + (score_mentor_abs × peso_mentor), 0, 100)
+```
+
+**Nota sobre clamp:** Se mentor_delta faz o score estourar 100, o delta original é preservado para auditoria mas o score_final é clampado. Mentor pode ver que seu ajuste foi parcialmente absorvido.
 
 ```javascript
-// students/{studentId}/assessment/ongoing_tracking/monthly_reviews/{date}
+// students/{studentId}/assessment/ongoing_tracking/monthly_reviews/{YYYY-MM}
 {
-  date: Timestamp,
-  emotional_update: 65,
-  financial_update: 68,
-  operational_update: 70,
-  experience_stage: 2,
-  experience_gates_met: 5,
-  experience_score: 32.5,                 // 20 + (5/8 × 20)
-  composite_update: 58.9,
-  delta_vs_baseline: {
-    emotional: +3,
-    financial: +4,
-    operational: +1,
-    experience: +5,
-    composite: +3.5
+  period: "2026-04",                      // mês de referência
+  reviewDate: Timestamp,                  // quando o mentor fez o review
+  reviewedBy: string,                     // mentor
+
+  // Camada 1: scores automáticos (calculados a partir dos trades do período)
+  trades_scores: {
+    emotional: {
+      recognition: 58, regulation: 62, locus: 55,
+      score: 58,
+      metrics_used: {
+        emotionVariety: 0.72,             // Shannon entropy
+        tiltFrequency: 1,
+        revengeFrequency: 0,
+        postLossAvgInterval: 22,          // minutos
+        sizingAfterLoss: "maintains"
+      }
+    },
+    financial: {
+      discipline: 74, loss_management: 68, profit_taking: 61,
+      score: 69,
+      metrics_used: {
+        stopUsageRate: 0.85,
+        avgRiskPercent: 1.2,
+        maxDrawdown: 0.07,
+        payoff: 1.4,
+        winRate: 0.52,
+        evLeakage: 0.18
+      }
+    },
+    operational: {
+      decision_mode: 72, timeframe: 78, strategy_fit: 70, tracking: 65,
+      emotion_control: 58,               // herdado de emotional.score
+      score: 69,
+      metrics_used: {
+        complianceRate: 0.82,
+        journalCompletionRate: 0.78,
+        tradingHoursCompliance: 0.91
+      }
+    },
+    experience: {
+      stage: 2,
+      gates_met: 5, gates_total: 8,
+      score: 32.5,
+      gates_detail: [
+        { id: "G3-01", met: true, value: 0.52 },
+        { id: "G3-02", met: true, value: 0.92 },
+        { id: "G3-03", met: true, value: 0.07 },
+        { id: "G3-04", met: true, value: 58 },
+        { id: "G3-05", met: true, value: 0.82 },
+        { id: "G3-06", met: false, value: 0.9, threshold: 1.0 },
+        { id: "G3-07", met: false, value: 3, threshold: 2 },
+        { id: "G3-08", met: false, value: 1, threshold: 0 }
+      ]
+    },
+    composite: 55.8,
+    tradesAnalyzed: 147,
+    periodStart: Timestamp,
+    periodEnd: Timestamp
   },
-  milestones_achieved: ["Stop usage > 80%"],
-  blockers_encountered: ["Strategy changed once"],
-  mentor_notes: ""
+
+  // Camada 2: delta do mentor (empírico)
+  mentor_deltas: {
+    emotional: { delta: +5, notes: "Progresso real em reconhecimento após coaching na semana 3" },
+    financial: { delta: 0, notes: "Métricas refletem a realidade" },
+    operational: { delta: -3, notes: "Journal preenchido mas superficial" },
+    experience: { delta: 0, notes: "" }
+  },
+
+  // Camada 3: scores finais (blendados)
+  final_scores: {
+    emotional: {
+      score_trades: 58,
+      score_mentor_abs: 63,              // 58 + 5 = 63
+      score_final: 62,                   // (58 × 0.30) + (63 × 0.70) = 61.5 → 62
+      weight_trades: 0.30,
+      weight_mentor: 0.70
+    },
+    financial: {
+      score_trades: 69,
+      score_mentor_abs: 69,
+      score_final: 69,
+      weight_trades: 0.70,
+      weight_mentor: 0.30
+    },
+    operational: {
+      score_trades: 69,
+      score_mentor_abs: 66,              // 69 + (-3) = 66
+      score_final: 68,                   // (69 × 0.50) + (66 × 0.50) = 67.5 → 68
+      weight_trades: 0.50,
+      weight_mentor: 0.50
+    },
+    experience: {
+      score_trades: 32.5,
+      score_mentor_abs: 32.5,
+      score_final: 33,
+      weight_trades: 0.80,
+      weight_mentor: 0.20
+    },
+    composite: 53.2,                     // (E×0.25)+(F×0.25)+(O×0.20)+(X×0.30)
+    composite_label: "DEVELOPING TRADER"
+  },
+
+  // Deltas
+  delta_vs_previous: { emotional: +4, financial: +5, operational: -1, experience: +5.5, composite: +3.2 },
+  delta_vs_baseline: { emotional: +0, financial: +5, operational: -1, experience: +5.5, composite: -2.2 },
+
+  // Notas estruturadas por dimensão
+  dimension_notes: {
+    emotional: "Progresso em reconhecimento mas regulação frágil. Episódio TILT semana 2.",
+    financial: "Stop discipline melhorando. Payoff ainda abaixo de 1.0 — ansiedade de saída.",
+    operational: "Aderência boa. Journal precisa profundidade.",
+    experience: "3 gates faltando para Stage 3. Payoff e TILT são bloqueios."
+  },
+
+  milestones: ["Stop usage >85%", "Zero revenge no período"],
+  blockers: ["Payoff <1.0", "TILT frequency >2"],
+  action_plan: "Foco 4 semanas: (1) trailing stop 50% trades, (2) pausa 30min após 2 losses consecutivos"
 }
 ```
+
+### 4.5 Mapeamento: Métricas de Trades → Scores 4D
+
+Cada dimensão tem um conjunto de métricas dos trades que são convertidas em scores automáticos. As funções de mapeamento ficam em `tradeScoreMapper.js`.
+
+**Financeiro (alta confiabilidade):**
+```
+discipline = f(stopUsageRate, avgRiskPercent vs plano, positionSizeConsistency)
+loss_management = f(maxDrawdown, avgLoser vs RO$, maxConsecutiveLosses)
+profit_taking = f(payoff, winRate contextual, evLeakage)
+score = (discipline × 0.40) + (loss_management × 0.40) + (profit_taking × 0.20)
+```
+
+**Operacional (confiabilidade média):**
+```
+decision_mode = f(complianceRate, entryQuality)
+timeframe = f(tradingHoursCompliance, avgHoldTime vs timeframe)
+strategy_fit = f(tickerConcentration, strategyConsistency)
+tracking = f(journalCompletionRate, feedbackEngagement)
+emotion_control = emotionalScore (herdado)
+score = (decision_mode × 0.25) + (timeframe × 0.20) + (strategy_fit × 0.20) + (tracking × 0.15) + (emotion_control × 0.20)
+```
+
+**Emocional (confiabilidade baixa — proxies indiretos):**
+```
+recognition = f(emotionVariety/Shannon entropy, emotionAccuracy vs resultado)
+regulation = f(tiltFrequency, revengeFrequency, postLossInterval)
+locus = f(stopComplianceTrend, sizingAfterLoss)
+score = (recognition + regulation + locus) / 3
+```
+
+**Experiência (alta confiabilidade via gates):**
+```
+score = stageBase + (gates_met / gates_total) × 20
+```
+
+### 4.6 Progression Log
+
+```javascript
+// students/{studentId}/assessment/ongoing_tracking/progression_log/{timestamp}
+{
+  timestamp: Timestamp,
+  action: "PROMOTE" | "HOLD" | "OVERRIDE_PROMOTE" | "OVERRIDE_HOLD" | "REGRESSION_WARNING" | "REGRESSION",
+  fromStage: 2,
+  toStage: 3,                            // null se HOLD
+  mentor: string,
+
+  eligibility: {
+    gates_met: 8,
+    gates_total: 8,
+    sustained_months: 2,
+    required_months: 2,
+    eligible: true
+  },
+
+  justification: "Todos os gates cumpridos por 2 meses consecutivos.",
+
+  // Para HOLD
+  hold_reason: null,
+  hold_action_plan: null,
+
+  // Para OVERRIDE (promover sem gates ou reter com gates)
+  override_gates_missing: null,          // ["G3-06"] se OVERRIDE_PROMOTE
+  override_justification: null
+}
+```
+
+### 4.7 Mentor Journal (notas livres entre reviews)
+
+```javascript
+// students/{studentId}/assessment/ongoing_tracking/mentor_journal/{timestamp}
+{
+  timestamp: Timestamp,
+  mentor: string,
+  type: "observation" | "intervention" | "concern" | "milestone",
+  dimension: "emotional" | "financial" | "operational" | "experience" | "general",
+  linkedTradeId: null,                   // opcional — trade que motivou a nota
+  linkedPlanId: null,                    // opcional
+  text: "Aluno enviou mensagem preocupado com drawdown de 6%. Boa consciência de risco mas tom ansioso.",
+  tags: ["anxiety", "drawdown", "risk-awareness"],
+  visibleToStudent: false                // mentor decide se aluno pode ver
+}
+```
+
+### 4.8 Gates de Progressão (DEC-019, DEC-020)
+
+Gates são definidos em `progressionGates.js` (hardcoded, versionados com o código). Avaliação híbrida: sistema calcula elegibilidade automática, mentor confirma/veta promoção.
+
+**Fluxo:**
+1. CF mensal calcula `gates_met` para o stage atual
+2. Se `gates_met == gates_total` E `sustainedPeriod` cumprido → Status: `ELIGIBLE`
+3. Mentor revisa: `PROMOTE` | `HOLD` | `OVERRIDE_PROMOTE` | `OVERRIDE_HOLD`
+4. Decisão registrada em `progression_log`
+
+**Regressão:** Se aluno em Stage 3 falha gates de Stage 2 por 2 meses → `REGRESSION_WARNING`. 3 meses → `REGRESSION_ELIGIBLE`. Regressão **nunca automática** — sempre via mentor.
+
+**Gates por stage (referência):**
+
+**Stage 1 → 2 (Fundamentals):** minMonths=1
+- G2-01: journalCompletionRate ≥ 80%
+- G2-02: stopUsageRate ≥ 70%
+- G2-03: emotionRegistrationRate ≥ 70%
+- G2-04: maxConsecutiveLosses ≤ 6
+- G2-05: respeita limite diário do plano
+
+**Stage 2 → 3 (Consistency):** minMonths=3, sustainedPeriod=2 meses
+- G3-01: winRate ≥ 45%
+- G3-02: stopUsageRate ≥ 90%
+- G3-03: maxDrawdown ≤ 10%
+- G3-04: emotionalScore ≥ 55
+- G3-05: complianceRate ≥ 80%
+- G3-06: payoff ≥ 1.0
+- G3-07: tiltFrequency ≤ 2/mês
+- G3-08: mesma estratégia no período
+
+**Stage 3 → 4 (Proficiency):** minMonths=6, sustainedPeriod=3 meses
+- G4-01: winRate ≥ 50%
+- G4-02: payoff ≥ 1.5
+- G4-03: maxDrawdown ≤ 8%
+- G4-04: emotionalScore ≥ 65 (LEARNER+)
+- G4-05: evLeakage ≤ 25%
+- G4-06: zero TILT
+- G4-07: zero REVENGE
+- G4-08: stopUsageRate ≥ 98%
+
+**Stage 4 → 5 (Mastery):** minMonths=12, sustainedPeriod=6 meses
+- G5-01: compositeScore ≥ 80 (Professional)
+- G5-02: ≥ 80% meses positivos no ano
+- G5-03: Sharpe ≥ 1.0
+- G5-04: emotionalScore ≥ 80 (SAGE)
+- G5-05: ≥ 90% trades sem intervenção do mentor
 
 ---
 
@@ -716,7 +971,12 @@ Labels: PROFESSIONAL TRADER (80+) | COMMITTED LEARNER (65-79) | DEVELOPING TRADE
 | `src/components/Onboarding/IncongruenceFlags.jsx` | Visualização de flags (intra + inter-dimensionais) |
 | `src/components/Onboarding/TraderProfileCard.jsx` | Card visual 4-quadrantes do perfil |
 | `src/components/Onboarding/BaselineReport.jsx` | Relatório final pós-validação |
-| `src/components/Onboarding/MonthlyReviewForm.jsx` | Formulário de review mensal |
+| `src/components/Onboarding/MonthlyReviewForm.jsx` | Formulário de review mensal (3 camadas: trades_scores pré-calculados, delta inputs, notes por dimensão) |
+| `src/components/Onboarding/TraderEvolutionTimeline.jsx` | Gráfico de evolução 4D (Recharts): 4 linhas + composite, marcadores de eventos |
+| `src/components/Onboarding/ProgressionGateStatus.jsx` | Visualização de gates cumpridos/faltantes por stage |
+| `src/components/Onboarding/PromotionDecisionModal.jsx` | Interface para mentor promover/reter com justificativa e override |
+| `src/components/Onboarding/MentorJournalEntry.jsx` | Entrada de nota livre do mentor (observation/intervention/concern/milestone) |
+| `src/components/Onboarding/MentorJournalList.jsx` | Timeline de notas do mentor por aluno, filtrável por dimensão/tipo |
 
 ### Utils
 
@@ -728,7 +988,9 @@ Labels: PROFESSIONAL TRADER (80+) | COMMITTED LEARNER (65-79) | DEVELOPING TRADE
 | `src/utils/stageMapper.js` | Mapeamento respostas → stage + gates |
 | `src/utils/incongruenceDetector.js` | Detecção de discrepância: intra-dim (fechadas × abertas) + inter-dim (entre dimensões) |
 | `src/utils/probingTriggers.js` | Identifica triggers para sondagem: incongruências, hesitações, gaming, respostas rasas. Prioriza e seleciona 3-5 |
-| `src/utils/progressionGates.js` | Validação de gates para progressão |
+| `src/utils/progressionGates.js` | Definição de gates por stage + avaliador de elegibilidade |
+| `src/utils/tradeScoreMapper.js` | Mapeamento métricas de trades → scores 4D por dimensão |
+| `src/utils/evolutionCalculator.js` | Blending score_trades + mentor_delta com pesos variáveis por dimensão |
 
 ### Cloud Functions
 
@@ -738,6 +1000,8 @@ Labels: PROFESSIONAL TRADER (80+) | COMMITTED LEARNER (65-79) | DEVELOPING TRADE
 | `generateProbingQuestions` (callable) | Recebe respostas completas + flags + responseTime data, gera 3-5 perguntas de sondagem contextualizadas com rubrica |
 | `analyzeProbingResponse` (callable) | Recebe resposta de sondagem + contexto original + flag investigada, retorna análise (resolved/reinforced/inconclusive) |
 | `generateAssessmentReport` (callable) | Processa todas as respostas (base + sondagem), executa cross-checks, gera relatório completo pré-mentor |
+| `calculateMonthlyScores` (callable) | Extrai métricas do período dos trades e calcula score_trades 4D automático |
+| `evaluateProgression` (callable) | Avalia elegibilidade de promoção contra gates do stage atual |
 
 ### Hooks
 
@@ -746,7 +1010,10 @@ Labels: PROFESSIONAL TRADER (80+) | COMMITTED LEARNER (65-79) | DEVELOPING TRADE
 | `src/hooks/useAssessment.js` | CRUD do assessment no Firestore |
 | `src/hooks/useQuestionnaire.js` | Estado do questionário (progresso, respostas, persistência de optionOrder) |
 | `src/hooks/useProbing.js` | Estado da sondagem adaptativa (geração, respostas, análise) |
-| `src/hooks/useMonthlyReview.js` | Gestão de reviews mensais |
+| `src/hooks/useMonthlyReview.js` | Gestão de reviews mensais (3 camadas) |
+| `src/hooks/useEvolutionTimeline.js` | Série temporal de scores para gráfico 4D |
+| `src/hooks/useProgressionGates.js` | Estado dos gates do aluno + elegibilidade |
+| `src/hooks/useMentorJournal.js` | CRUD do journal livre do mentor |
 
 ---
 
@@ -814,6 +1081,21 @@ Expand-Archive -Path "Temp\student-onboarding.zip" -DestinationPath "." -Force
 - [ ] Testes unitários para scoring, classificação, randomização, incongruência (intra + inter)
 - [ ] Nenhum arquivo fora do escopo modificado
 - [ ] MERGE-INSTRUCTIONS completo
+- [ ] **Evolution Tracking:**
+- [ ] Review mensal 3 camadas: score_trades (automático) + mentor_delta + score_final (blendado)
+- [ ] Pesos variáveis por dimensão: Fin 0.70/0.30, Ope 0.50/0.50, Emo 0.30/0.70, Exp 0.80/0.20
+- [ ] tradeScoreMapper: métricas de trades → scores 4D para cada dimensão
+- [ ] evolutionCalculator: blending com clamp [0, 100] e preservação do delta original
+- [ ] TraderEvolutionTimeline: gráfico 4D baseline → reviews mensais (Recharts)
+- [ ] Gates de progressão hardcoded em progressionGates.js (Stage 1→2→3→4→5)
+- [ ] Avaliação híbrida: CF calcula elegibilidade, mentor confirma/veta (PROMOTE/HOLD/OVERRIDE)
+- [ ] Regressão nunca automática — alerta + decisão do mentor
+- [ ] ProgressionGateStatus: visualização gates cumpridos/faltantes
+- [ ] PromotionDecisionModal: interface mentor com override + justificativa
+- [ ] Mentor journal: notas livres entre reviews (observation/intervention/concern/milestone)
+- [ ] Progression log: registro de promoções/retenções com justificativa
+- [ ] CFs calculateMonthlyScores e evaluateProgression funcionais
+- [ ] Testes para tradeScoreMapper, evolutionCalculator, progressionGates
 
 ---
 
@@ -825,10 +1107,15 @@ Expand-Archive -Path "Temp\student-onboarding.zip" -DestinationPath "." -Force
 | DEC-014 | 20/03/2026 | Cross-check inter-dimensional (5 flags iniciais) | Aluno tende a inflar financeiro/operacional; cruzamento com respostas emocionais detecta incongruências |
 | DEC-015 | 20/03/2026 | Randomização via persistência (Opção B preferida) | Mais robusto para retomada de sessão e troca de device |
 | DEC-016 | 20/03/2026 | Sondagem adaptativa pós-questionário (Estágio 1.5), 3-5 perguntas, transparente | Sondar incongruências enquanto aluno está no contexto; transparência modela auto-investigação; scores base não são alterados para preservar comparabilidade |
+| DEC-017 | 20/03/2026 | Scoring mensal 3 camadas: score_trades + mentor_delta + score_final com pesos variáveis por dimensão | Confiabilidade das métricas automáticas varia por dimensão; mentor calibra mais no emocional (0.70), menos no financeiro (0.30) |
+| DEC-018 | 20/03/2026 | Mentor aplica delta (não score absoluto) no review mensal | Reduz carga cognitiva — mentor reage ao dado calculado; preserva auditabilidade (sempre se sabe quanto veio dos trades vs sentimento) |
+| DEC-019 | 20/03/2026 | Gates hardcoded em progressionGates.js, avaliação híbrida (automático + mentor confirma/veta) | Gates versionados com o código para consistência; mentor tem poder de override para ambos os lados (PROMOTE/HOLD/OVERRIDE) |
+| DEC-020 | 20/03/2026 | Regressão de stage nunca automática — sempre via mentor com justificativa | Evita penalização injusta por meses atípicos; mentor contextualiza antes de rebaixar |
 
 ---
 
-*Briefing Version 3.1 — 20/03/2026*
-*Chunk: CHUNK-09 (Student Onboarding & Baseline)*
+*Briefing Version 3.2 — 20/03/2026*
+*Chunk: CHUNK-09 (Student Onboarding & Evolution Tracking)*
 *Branch: feature/student-onboarding*
-*Decisões fechadas: DEVELOPING label, gates contínuo, assessment 3 estágios com randomização, operacional 5D ponderado, cross-check inter-dimensional, sondagem adaptativa transparente*
+*Decisões: DEC-013 a DEC-020*
+*Escopo: Assessment 3 estágios + sondagem adaptativa + evolution tracking 4D + gates de progressão + mentor journal*
