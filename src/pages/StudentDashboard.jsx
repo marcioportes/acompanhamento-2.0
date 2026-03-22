@@ -47,6 +47,11 @@ import CsvImportWizard from '../components/csv/CsvImportWizard';
 import CsvImportCard from '../components/csv/CsvImportCard';
 import CsvImportManager from '../components/csv/CsvImportManager';
 
+// Order Import (CHUNK-10)
+import OrderImportPage from '../pages/OrderImportPage';
+import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
+import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
+
 // Hooks
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
@@ -54,6 +59,9 @@ import { usePlans } from '../hooks/usePlans';
 import { useAuth } from '../contexts/AuthContext';
 import useDashboardMetrics from '../hooks/useDashboardMetrics';
 import useCsvStaging from '../hooks/useCsvStaging';
+import useOrderStaging from '../hooks/useOrderStaging';
+import useOrders from '../hooks/useOrders';
+import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
 
@@ -88,6 +96,11 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
     loading: stagingLoading,
   } = useCsvStaging(overrideStudentId);
 
+  // Order Import (CHUNK-10)
+  const orderStaging = useOrderStaging(overrideStudentId);
+  const { orders, stats: orderStats } = useOrders(overrideStudentId);
+  const crossCheckHook = useCrossCheck(overrideStudentId);
+
   // === UI State ===
   const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -106,6 +119,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   const [accountTypeFilter, setAccountTypeFilter] = useState('all');
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
+  const [showOrderImport, setShowOrderImport] = useState(false);
 
   // Reabrir extrato ao voltar do feedback (só quando veio do extrato — _fromLedgerPlanId)
   useEffect(() => {
@@ -288,6 +302,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         onToggleFilters={() => setShowFilters(!showFilters)}
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
         onCsvImport={() => setShowCsvWizard(true)}
+        onOrderImport={() => setShowOrderImport(true)}
         onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
         accounts={accounts}
         accountTypeFilter={accountTypeFilter}
@@ -420,6 +435,13 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
       </div>
       <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
 
+      {/* Cross-Check Dashboard (Order Import) */}
+      {crossCheckHook.latestAnalysis && (
+        <div className="mb-6">
+          <CrossCheckDashboard analysis={crossCheckHook.latestAnalysis} />
+        </div>
+      )}
+
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} onViewFeedbackHistory={handleViewFeedbackHistory} />
@@ -469,6 +491,17 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         onActivateBatch={handleActivateStagingBatch}
         getBatches={getBatches}
       />
+
+      {/* Order Import Modal (CHUNK-10) */}
+      {showOrderImport && (
+        <OrderImportPage
+          onClose={() => setShowOrderImport(false)}
+          plans={plans}
+          trades={trades}
+          orderStaging={orderStaging}
+          crossCheck={crossCheckHook}
+        />
+      )}
 
       <DebugBadge component="StudentDashboard" />
     </div>

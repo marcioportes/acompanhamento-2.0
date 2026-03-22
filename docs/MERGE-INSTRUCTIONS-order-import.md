@@ -46,6 +46,7 @@ const VERSION = {
 - `src/components/OrderImport/OrderCorrelation.jsx`
 - `src/components/OrderImport/CrossCheckDashboard.jsx`
 - `src/components/OrderImport/KPIValidationCard.jsx`
+- `src/components/OrderImport/OrderStagingReview.jsx`
 
 ### Utils novos
 - `src/utils/orderParsers.js` v1.0.0 — ProfitChart-Pro + genérico + helpers de normalização

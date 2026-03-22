@@ -16,6 +16,8 @@
 | Utils | `orderCorrelation.js` | 14 testes (correlation.test.js) |
 | Utils | `orderCrossCheck.js` | 15 testes (crossCheck.test.js) |
 | Utils | `kpiValidation.js` | 21 testes (kpiValidation.test.js) |
+| Utils | `orderReconstruction.js` | 21 testes |
+| Utils | `stopMovementAnalysis.js` | 10 testes |
 | Hooks | `useOrderStaging.js` | — (Firestore hook, integration) |
 | Hooks | `useOrders.js` | — (Firestore hook, integration) |
 | Hooks | `useCrossCheck.js` | — (Firestore hook, integration) |
@@ -24,6 +26,7 @@
 | Component | `OrderValidationReport.jsx` | — (UI) |
 | Component | `CrossCheckDashboard.jsx` | ✅ DebugBadge |
 | Component | `KPIValidationCard.jsx` | — (UI) |
+| Component | `OrderStagingReview.jsx` | ✅ DebugBadge |
 | Component | `OrderCorrelation.jsx` | — (UI) |
 | Page | `OrderImportPage.jsx` | ✅ DebugBadge |
 | Docs | `MERGE-INSTRUCTIONS-order-import.md` | — |

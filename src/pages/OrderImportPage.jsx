@@ -1,19 +1,17 @@
 /**
  * OrderImportPage.jsx
- * @version 1.0.0 (v1.20.0)
- * @description Página/modal principal de importação de ordens.
- *   State machine: UPLOAD → PREVIEW → IMPORTING → DONE
- *   Acessível pelo aluno (importa) e mentor (visualiza cross-check).
+ * @version 2.0.0 (v1.20.0)
+ * @description Wizard de importação de ordens — fluxo completo end-to-end.
  *
- * FLOW:
- *   1. Upload CSV → parse + detect format
- *   2. Validate → show errors/warnings
- *   3. Preview → allow row exclusion
- *   4. Select plan → staging
- *   5. Ingest → orders collection + delete staging
- *   6. Correlate + cross-check → orderAnalysis
+ * STATE MACHINE:
+ *   UPLOAD → PREVIEW → PLAN_SELECT → STAGING (gravar)
+ *   → STAGING_REVIEW (operações reconstruídas, aluno confirma)
+ *   → INGESTING (staging → orders + delete staging)
+ *   → DONE (cross-check + resultado)
  *
- * @requires useOrderStaging, useOrders, useCrossCheck
+ * O aluno NÃO pode pular o STAGING_REVIEW — deve confirmar cada operação.
+ *
+ * @requires useOrderStaging, useCrossCheck
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -22,12 +20,15 @@ import DebugBadge from '../components/DebugBadge';
 import OrderUploader from '../components/OrderImport/OrderUploader';
 import OrderPreview from '../components/OrderImport/OrderPreview';
 import OrderValidationReport from '../components/OrderImport/OrderValidationReport';
+import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
-import { parseProfitChartPro, parseGenericOrders, detectOrderFormat } from '../utils/orderParsers';
+import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
+import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
+import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
 import { correlateOrders } from '../utils/orderCorrelation';
 import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
 import { validateKPIs } from '../utils/kpiValidation';
@@ -39,68 +40,92 @@ const STEPS = {
   UPLOAD: 'upload',
   PREVIEW: 'preview',
   PLAN_SELECT: 'plan_select',
-  IMPORTING: 'importing',
-  CORRELATING: 'correlating',
+  STAGING_WRITE: 'staging_write',
+  STAGING_REVIEW: 'staging_review',
+  INGESTING: 'ingesting',
   DONE: 'done',
+};
+
+const STEP_LABELS = {
+  [STEPS.UPLOAD]: 'Upload',
+  [STEPS.PREVIEW]: 'Preview',
+  [STEPS.PLAN_SELECT]: 'Selecionar Plano',
+  [STEPS.STAGING_WRITE]: 'Gravando staging...',
+  [STEPS.STAGING_REVIEW]: 'Revisão de Operações',
+  [STEPS.INGESTING]: 'Importando...',
+  [STEPS.DONE]: 'Concluído',
 };
 
 /**
  * @param {Object} props
- * @param {Function} props.onClose — fecha o modal/página
- * @param {Object[]} props.plans — planos do aluno (com id, name, pl, riskPerOperation, rrTarget)
+ * @param {Function} props.onClose
+ * @param {Object[]} props.plans — planos do aluno
  * @param {Object[]} props.trades — trades do aluno (para correlação)
  * @param {Object} props.orderStaging — hook useOrderStaging
- * @param {Object} props.crossCheck — hook useCrossCheck
+ * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
  */
 const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck }) => {
+  // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
+
+  // Parse state
   const [parseResult, setParseResult] = useState(null);
   const [parsedOrders, setParsedOrders] = useState([]);
   const [validationResult, setValidationResult] = useState(null);
   const [parseErrors, setParseErrors] = useState([]);
+
+  // Plan selection
   const [selectedPlanId, setSelectedPlanId] = useState('');
-  const [importProgress, setImportProgress] = useState('');
+
+  // Staging + reconstruction
+  const [batchId, setBatchId] = useState(null);
+  const [reconstructedOps, setReconstructedOps] = useState([]);
+
+  // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
+
+  // UI
+  const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
+  const [ingesting, setIngesting] = useState(false);
 
   // ============================================
-  // STEP 1: UPLOAD + PARSE
+  // STEP 1: UPLOAD → PARSE
   // ============================================
   const handleParsed = useCallback((result) => {
     setError(null);
 
-    // result comes from OrderUploader: { text, fileName, fileSize }
-    // or from generic path: { headers, rows, format, ... }
+    if (!result.text) return;
 
-    if (result.text) {
-      // Raw text mode — detect format from first lines
-      const lines = result.text.replace(/\r\n/g, '\n').split('\n');
-      // Find header line
-      const headerLine = lines.find(l => (l.match(/;/g) || []).length >= 10);
-      const headers = headerLine ? headerLine.split(';').map(h => h.trim()) : [];
-      const detection = detectOrderFormat(headers);
+    // Detect format
+    const lines = result.text.replace(/\r\n/g, '\n').split('\n');
+    const headerLine = lines.find(l => (l.match(/;/g) || []).length >= 10);
+    const headers = headerLine ? headerLine.split(';').map(h => h.trim()) : [];
+    const detection = detectOrderFormat(headers);
 
-      setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
+    setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-      let parsed;
-      if (detection.format === 'profitchart_pro') {
-        parsed = parseProfitChartPro(result.text);
-      } else {
-        // Generic — needs column mapping (future UI step)
-        parsed = { orders: [], errors: [{ row: 0, message: 'Formato não reconhecido. Use o mapeamento manual.' }] };
-      }
+    // Parse
+    let parsed;
+    if (detection.format === 'profitchart_pro') {
+      parsed = parseProfitChartPro(result.text);
+    } else {
+      parsed = { orders: [], meta: {}, errors: [{ row: 0, message: 'Formato não reconhecido. Use o mapeamento manual.' }] };
+    }
 
-      setParseErrors(parsed.errors || []);
+    setParseErrors(parsed.errors || []);
 
-      const { orders: normalized, dedupStats } = normalizeBatch(parsed.orders);
-      const validation = validateBatch(normalized);
-      setValidationResult(validation);
-      setParsedOrders(validation.validOrders);
+    // Normalize + dedup
+    const { orders: normalized } = normalizeBatch(parsed.orders);
 
-      if (validation.validOrders.length > 0) {
-        setStep(STEPS.PREVIEW);
-      }
+    // Validate
+    const validation = validateBatch(normalized);
+    setValidationResult(validation);
+    setParsedOrders(validation.validOrders);
+
+    if (validation.validOrders.length > 0) {
+      setStep(STEPS.PREVIEW);
     }
   }, []);
 
@@ -113,61 +138,83 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   }, []);
 
   // ============================================
-  // STEP 3: PLAN SELECT → IMPORT
+  // STEP 3: PLAN SELECT → STAGING + RECONSTRUCTION
   // ============================================
-  const handleImport = useCallback(async () => {
-    if (!selectedPlanId) return;
-    if (!orderStaging) return;
+  const handlePlanConfirm = useCallback(async () => {
+    if (!selectedPlanId || !orderStaging) return;
 
-    setStep(STEPS.IMPORTING);
+    setStep(STEPS.STAGING_WRITE);
     setError(null);
 
     try {
-      // 1. Staging
-      setImportProgress('Gravando em staging...');
-      const batchId = await orderStaging.addStagingBatch(parsedOrders, {
+      // 1. Write to staging
+      setProgress('Gravando ordens em staging...');
+      const newBatchId = await orderStaging.addStagingBatch(parsedOrders, {
         planId: selectedPlanId,
         sourceFormat: parseResult?.format || 'generic',
         fileName: parseResult?.fileName || null,
       });
+      setBatchId(newBatchId);
+
+      // 2. Reconstruct operations (client-side, from parsed orders)
+      setProgress('Reconstruindo operações...');
+      const ops = reconstructOperations(parsedOrders);
+
+      // 3. Associate non-filled orders (stops, cancellations)
+      associateNonFilledOrders(ops, parsedOrders);
+
+      // 4. Analyze stop movements
+      enrichOperationsWithStopAnalysis(ops);
+
+      setReconstructedOps(ops);
+      setStep(STEPS.STAGING_REVIEW);
+      setProgress('');
+
+    } catch (err) {
+      console.error('[OrderImportPage] Staging error:', err);
+      setError(err.message);
+      setStep(STEPS.PLAN_SELECT);
+      setProgress('');
+    }
+  }, [selectedPlanId, parsedOrders, parseResult, orderStaging]);
+
+  // ============================================
+  // STEP 4: STAGING REVIEW → INGEST
+  // ============================================
+  const handleStagingConfirm = useCallback(async ({ operations, observations }) => {
+    if (!batchId || !orderStaging) return;
+
+    setIngesting(true);
+    setError(null);
+
+    try {
+      // 1. Ingest (staging → orders + delete staging)
+      setProgress('Ingerindo ordens...');
+      await orderStaging.ingestBatch(batchId, {});
 
       // 2. Correlate with trades
-      setImportProgress('Correlacionando com trades...');
+      setProgress('Correlacionando com trades...');
       const planTrades = trades.filter(t => t.planId === selectedPlanId);
       const { correlations, stats: corrStats } = correlateOrders(parsedOrders, planTrades);
       setCorrelationResult({ correlations, stats: corrStats });
 
-      // Build correlation map for ingestion
-      // Map staging order index → correlation result
-      // Since staging orders are in same order as parsedOrders, we can use index
-      // But we need staging doc IDs — which we don't have yet until listener fires
-      // Solution: ingest with correlation data embedded
-
-      // 3. Ingest (staging → orders + delete staging)
-      setImportProgress('Ingerindo ordens...');
-      // Wait for staging listener to update
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      await orderStaging.ingestBatch(batchId, {});
-
-      // 4. Cross-check
-      setStep(STEPS.CORRELATING);
-      setImportProgress('Calculando cross-check...');
-
-      // Generate period key (current week)
-      const now = new Date();
-      const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
-      const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-
-      if (crossCheck) {
+      // 3. Cross-check
+      setProgress('Calculando cross-check...');
+      if (crossCheck && planTrades.length > 0) {
         const crossCheckMetrics = calculateCrossCheckMetrics(parsedOrders, planTrades, correlations);
         const winningTrades = planTrades.filter(t => (Number(t.result) || 0) > 0);
         const winRate = planTrades.length > 0 ? winningTrades.length / planTrades.length : 0;
         const kpiResult = validateKPIs(crossCheckMetrics, { winRate, totalTrades: planTrades.length });
 
-        const analysisId = await crossCheck.runCrossCheck(
-          parsedOrders, planTrades, selectedPlanId, period
-        );
+        const now = new Date();
+        const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
+        const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+
+        try {
+          await crossCheck.runCrossCheck(parsedOrders, planTrades, selectedPlanId, period);
+        } catch (ccErr) {
+          console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
+        }
 
         setAnalysisResult({
           crossCheckMetrics,
@@ -180,47 +227,36 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       }
 
       setStep(STEPS.DONE);
-      setImportProgress('');
-
+      setProgress('');
     } catch (err) {
-      console.error('[OrderImportPage] Import error:', err);
+      console.error('[OrderImportPage] Ingest error:', err);
       setError(err.message);
-      setStep(STEPS.PREVIEW);
-      setImportProgress('');
+      // Stay on STAGING_REVIEW so aluno can retry
+      setStep(STEPS.STAGING_REVIEW);
+      setProgress('');
+    } finally {
+      setIngesting(false);
     }
-  }, [selectedPlanId, parsedOrders, parseResult, trades, orderStaging, crossCheck]);
-
-  // ============================================
-  // STEP LABEL
-  // ============================================
-  const stepLabel = useMemo(() => {
-    switch (step) {
-      case STEPS.UPLOAD: return 'Upload';
-      case STEPS.PREVIEW: return 'Preview';
-      case STEPS.PLAN_SELECT: return 'Selecionar Plano';
-      case STEPS.IMPORTING: return 'Importando';
-      case STEPS.CORRELATING: return 'Analisando';
-      case STEPS.DONE: return 'Concluído';
-      default: return '';
-    }
-  }, [step]);
+  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck]);
 
   // ============================================
   // RENDER
   // ============================================
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/50">
+      <div className="bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+
+        {/* ─── Header ─── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/50 shrink-0">
           <div>
             <h2 className="text-sm font-semibold text-white flex items-center gap-2">
               <Upload className="w-4 h-4 text-blue-400" />
               Importar Ordens da Corretora
             </h2>
             <p className="text-[10px] text-slate-500 mt-0.5">
-              Etapa: {stepLabel}
-              {parseResult && ` • ${parseResult.format === 'profitchart_pro' ? 'ProfitChart-Pro' : 'Genérico'} detectado`}
+              Etapa: {STEP_LABELS[step] || step}
+              {parseResult && ` • ${parseResult.format === 'profitchart_pro' ? 'ProfitChart-Pro' : 'Genérico'}`}
+              {parseResult?.confidence > 0 && ` (${(parseResult.confidence * 100).toFixed(0)}%)`}
             </p>
           </div>
           <button
@@ -231,9 +267,10 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
           </button>
         </div>
 
-        {/* Content */}
+        {/* ─── Content ─── */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* Error */}
+
+          {/* Error banner */}
           {error && (
             <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
               <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
@@ -241,31 +278,26 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
             </div>
           )}
 
-          {/* STEP: UPLOAD */}
+          {/* ── UPLOAD ── */}
           {step === STEPS.UPLOAD && (
             <OrderUploader onParsed={handleParsed} />
           )}
 
-          {/* STEP: PREVIEW */}
+          {/* ── PREVIEW ── */}
           {step === STEPS.PREVIEW && (
             <>
-              {/* Format badge */}
               {parseResult && (
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20">
                     {parseResult.format === 'profitchart_pro' ? 'ProfitChart-Pro' : 'Genérico'}
-                    {parseResult.confidence > 0 && ` (${(parseResult.confidence * 100).toFixed(0)}%)`}
                   </span>
                   <span className="text-[10px] text-slate-500">
-                    {parseResult.rowCount} linhas no CSV
+                    {parsedOrders.length} ordens válidas
                   </span>
                 </div>
               )}
 
-              <OrderValidationReport
-                validationResult={validationResult}
-                parseErrors={parseErrors}
-              />
+              <OrderValidationReport validationResult={validationResult} parseErrors={parseErrors} />
 
               <OrderPreview
                 orders={parsedOrders}
@@ -274,12 +306,14 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                   setStep(STEPS.UPLOAD);
                   setParseResult(null);
                   setParsedOrders([]);
+                  setValidationResult(null);
+                  setParseErrors([]);
                 }}
               />
             </>
           )}
 
-          {/* STEP: PLAN SELECT */}
+          {/* ── PLAN SELECT ── */}
           {step === STEPS.PLAN_SELECT && (
             <div className="space-y-4">
               <p className="text-xs text-slate-400">
@@ -298,7 +332,7 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                     }`}
                   >
                     <span className="text-sm font-medium">{plan.name || plan.id}</span>
-                    {plan.pl && (
+                    {plan.pl != null && (
                       <span className="text-xs text-slate-500 ml-2">
                         Capital: {Number(plan.pl).toLocaleString('pt-BR')}
                       </span>
@@ -318,30 +352,46 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                   onClick={() => setStep(STEPS.PREVIEW)}
                   className="flex items-center gap-1 px-3 py-2 text-xs text-slate-400 hover:text-white transition-colors"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  Voltar
+                  <ArrowLeft className="w-3.5 h-3.5" /> Voltar
                 </button>
                 <button
-                  onClick={handleImport}
+                  onClick={handlePlanConfirm}
                   disabled={!selectedPlanId}
                   className="flex items-center gap-1 px-4 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Importar e Analisar
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  Analisar Operações <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP: IMPORTING / CORRELATING */}
-          {(step === STEPS.IMPORTING || step === STEPS.CORRELATING) && (
+          {/* ── STAGING WRITE (loading) ── */}
+          {step === STEPS.STAGING_WRITE && (
             <div className="flex flex-col items-center gap-4 py-8">
               <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
-              <span className="text-sm text-slate-400">{importProgress}</span>
+              <span className="text-sm text-slate-400">{progress}</span>
             </div>
           )}
 
-          {/* STEP: DONE */}
+          {/* ── STAGING REVIEW ── */}
+          {step === STEPS.STAGING_REVIEW && (
+            <OrderStagingReview
+              operations={reconstructedOps}
+              onConfirm={handleStagingConfirm}
+              onBack={() => setStep(STEPS.PLAN_SELECT)}
+              loading={ingesting}
+            />
+          )}
+
+          {/* ── INGESTING (loading) ── */}
+          {step === STEPS.INGESTING && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+              <span className="text-sm text-slate-400">{progress}</span>
+            </div>
+          )}
+
+          {/* ── DONE ── */}
           {step === STEPS.DONE && (
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-2 py-4">
@@ -349,9 +399,11 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 <p className="text-sm font-semibold text-white">
                   {parsedOrders.length} ordens importadas com sucesso
                 </p>
+                <p className="text-xs text-slate-400">
+                  {reconstructedOps.length} operações reconstruídas
+                </p>
               </div>
 
-              {/* Correlation results */}
               {correlationResult && (
                 <OrderCorrelation
                   correlations={correlationResult.correlations}
@@ -359,7 +411,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 />
               )}
 
-              {/* Cross-check results */}
               {analysisResult && (
                 <CrossCheckDashboard analysis={analysisResult} />
               )}

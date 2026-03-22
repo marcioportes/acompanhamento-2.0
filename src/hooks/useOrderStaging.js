@@ -205,6 +205,7 @@ const useOrderStaging = (overrideStudentId = null) => {
   /**
    * Move ordens do staging para a collection `orders` final.
    * Após ingestão, deleta do staging.
+   * Faz query direta ao Firestore (não depende do listener).
    *
    * @param {string} batchId
    * @param {Object} correlations — { [stagingOrderId]: { tradeId, confidence, matchType } }
@@ -213,8 +214,16 @@ const useOrderStaging = (overrideStudentId = null) => {
   const ingestBatch = useCallback(async (batchId, correlations = {}) => {
     if (!user) throw new Error('Autenticação necessária');
 
-    const batchOrders = stagingOrders.filter(o => o.importBatchId === batchId);
-    if (batchOrders.length === 0) throw new Error('Batch não encontrado no staging');
+    // Query direta — não depende do listener que pode não ter atualizado ainda
+    const q = query(
+      collection(db, STAGING_COLLECTION),
+      where('importBatchId', '==', batchId)
+    );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) throw new Error('Batch não encontrado no staging');
+
+    const batchOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
     const success = [];
     const failed = [];
@@ -267,7 +276,7 @@ const useOrderStaging = (overrideStudentId = null) => {
 
     console.log(`[useOrderStaging] Ingest batch ${batchId}: ${success.length} ok, ${failed.length} failed`);
     return { success: success.length, failed };
-  }, [user, stagingOrders]);
+  }, [user]);
 
   // ============================================
   // HELPERS
