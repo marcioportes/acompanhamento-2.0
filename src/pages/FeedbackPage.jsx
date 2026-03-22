@@ -345,28 +345,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
   const textareaRef = useRef(null);
 
-<<<<<<< HEAD
-  // Fetch parciais quando trade muda
-  const [tradeWithPartials, setTradeWithPartials] = useState(null);
-  useEffect(() => {
-    if (!trade) { setTradeWithPartials(null); return; }
-    // Inicializa sem parciais
-    setTradeWithPartials({ ...trade, _loadedPartials: [] });
-    
-    if (trade.hasPartials && getPartials) {
-      getPartials(trade.id).then(parts => {
-        // Se subcollection vazia, fallback para campo inline
-        const effectiveParts = parts.length > 0 ? parts : (trade._partials || []);
-        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: effectiveParts } : prev);
-      }).catch(() => {
-        // Fallback para campo inline em caso de erro
-        const fallback = trade._partials || [];
-        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: fallback } : prev);
-      });
-    } else if (trade._partials?.length > 0) {
-      // getPartials não disponível — usar campo inline direto
-      setTradeWithPartials({ ...trade, _loadedPartials: trade._partials });
-=======
   // Parciais são campo _partials no documento do trade — leitura direta
   // Trades legados sem _partials: construir a partir de entry/exit
   const tradeWithPartials = useMemo(() => {
@@ -381,7 +359,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       ];
     } else {
       partials = [];
->>>>>>> 39660eb9 (fix: eliminar subcollection partials - parciais sao campo _partials no documento do trade (INV-12, DEC-024))
     }
     return { ...trade, _loadedPartials: partials };
   }, [trade]);

@@ -139,40 +139,6 @@ const TradeDetailModal = ({
     if (trade?._partials?.length > 0) {
       return [...trade._partials].sort((a, b) => (a.seq || 0) - (b.seq || 0));
     }
-<<<<<<< HEAD
-
-    const fetchPartials = async () => {
-      // Se o trade tem hasPartials e temos a função getPartials, buscar subcollection
-      if (trade.hasPartials && getPartials) {
-        setPartialsLoading(true);
-        try {
-          const parts = await getPartials(trade.id);
-          // Se subcollection vazia, fallback para campo inline
-          if (parts.length > 0) {
-            setLoadedPartials(parts);
-          } else if (trade._partials?.length > 0) {
-            setLoadedPartials(trade._partials);
-          } else {
-            setLoadedPartials([]);
-          }
-        } catch (err) {
-          console.error('[TradeDetailModal] Erro ao buscar parciais:', err);
-          // Fallback para campo inline em caso de erro
-          setLoadedPartials(trade._partials?.length > 0 ? trade._partials : []);
-        } finally {
-          setPartialsLoading(false);
-        }
-      } else if (trade._partials?.length > 0) {
-        // getPartials não disponível — usar campo inline direto
-        setLoadedPartials(trade._partials);
-      } else {
-        setLoadedPartials([]);
-      }
-    };
-
-    fetchPartials();
-  }, [isOpen, trade, getPartials]);
-=======
     // Fallback: construir parciais sintéticas a partir dos campos do trade
     if (!trade?.entry || !trade?.exit) return [];
     return [
@@ -180,7 +146,6 @@ const TradeDetailModal = ({
       { type: 'EXIT', price: trade.exit, qty: trade.qty, dateTime: trade.exitTime, seq: 2 }
     ];
   }, [trade?._partials, trade?.entry, trade?.exit, trade?.qty, trade?.entryTime, trade?.exitTime]);
->>>>>>> 39660eb9 (fix: eliminar subcollection partials - parciais sao campo _partials no documento do trade (INV-12, DEC-024))
 
   if (!isOpen || !trade) return null;
 
