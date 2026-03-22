@@ -10,7 +10,7 @@
  * - 1.4.0: Fix erro "Objects are not valid as React child" - formatDate trata Timestamp Firebase
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   TrendingUp, 
@@ -127,20 +127,19 @@ const TradeDetailModal = ({
   onAddFeedback,
   feedbackLoading = false,
   onViewFeedbackHistory,
-  getPartials  // função do useTrades para buscar parciais da subcollection
+  getPartials,  // LEGADO — mantido para compatibilidade, mas parciais vêm do campo _partials do trade
 }) => {
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
-  const [loadedPartials, setLoadedPartials] = useState([]);
-  const [partialsLoading, setPartialsLoading] = useState(false);
 
-  // Buscar parciais quando o modal abre com um trade que tem parciais
-  useEffect(() => {
-    if (!isOpen || !trade) {
-      setLoadedPartials([]);
-      return;
+  // Parciais são campo _partials no documento do trade — leitura síncrona
+  // Trades legados (criados antes do sistema de parciais) não têm _partials — construir a partir de entry/exit
+  const loadedPartials = useMemo(() => {
+    if (trade?._partials?.length > 0) {
+      return [...trade._partials].sort((a, b) => (a.seq || 0) - (b.seq || 0));
     }
+<<<<<<< HEAD
 
     const fetchPartials = async () => {
       // Se o trade tem hasPartials e temos a função getPartials, buscar subcollection
@@ -173,6 +172,15 @@ const TradeDetailModal = ({
 
     fetchPartials();
   }, [isOpen, trade, getPartials]);
+=======
+    // Fallback: construir parciais sintéticas a partir dos campos do trade
+    if (!trade?.entry || !trade?.exit) return [];
+    return [
+      { type: 'ENTRY', price: trade.entry, qty: trade.qty, dateTime: trade.entryTime, seq: 1 },
+      { type: 'EXIT', price: trade.exit, qty: trade.qty, dateTime: trade.exitTime, seq: 2 }
+    ];
+  }, [trade?._partials, trade?.entry, trade?.exit, trade?.qty, trade?.entryTime, trade?.exitTime]);
+>>>>>>> 39660eb9 (fix: eliminar subcollection partials - parciais sao campo _partials no documento do trade (INV-12, DEC-024))
 
   if (!isOpen || !trade) return null;
 
@@ -357,13 +365,13 @@ const TradeDetailModal = ({
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="bg-slate-800/30 rounded-xl p-4 text-center">
                 <span className="text-xs text-slate-500 block mb-1">
-                  {trade.hasPartials ? 'Preço Médio Entrada' : 'Entrada'}
+                  {'Preço Médio Entrada'}
                 </span>
                 <span className="text-white font-mono text-lg">{trade.avgEntry || trade.entry}</span>
               </div>
               <div className="bg-slate-800/30 rounded-xl p-4 text-center">
                 <span className="text-xs text-slate-500 block mb-1">
-                  {trade.hasPartials ? 'Preço Médio Saída' : 'Saída'}
+                  {'Preço Médio Saída'}
                 </span>
                 <span className="text-white font-mono text-lg">{trade.avgExit || trade.exit}</span>
               </div>
@@ -384,26 +392,18 @@ const TradeDetailModal = ({
               </div>
             )}
 
-            {/* PARCIAIS — Item 6: Exibir detalhes quando existem */}
-            {(loadedPartials.length > 0 || trade.hasPartials) && (
+            {/* PARCIAIS — Todo trade tem parciais (campo _partials no documento) */}
+            {loadedPartials.length > 0 && (
               <div className="mb-6">
                 <div className="flex items-center gap-2 text-slate-400 mb-3">
                   <Layers className="w-4 h-4" />
                   <span className="text-sm font-medium">Parciais</span>
-                  {loadedPartials.length > 0 && (
-                    <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
-                      {loadedPartials.length}
-                    </span>
-                  )}
+                  <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">
+                    {loadedPartials.length}
+                  </span>
                 </div>
 
-                {partialsLoading ? (
-                  <div className="bg-slate-800/30 rounded-xl p-4 flex items-center justify-center gap-2 text-slate-500">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-sm">Carregando parciais...</span>
-                  </div>
-                ) : loadedPartials.length > 0 ? (
-                  <div className="bg-slate-800/30 rounded-xl overflow-hidden">
+                <div className="bg-slate-800/30 rounded-xl overflow-hidden">
                     {/* Header */}
                     <div className="grid grid-cols-[80px_1fr_80px_140px] gap-3 px-4 py-2 text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-700/50">
                       <span>Tipo</span>
@@ -412,7 +412,7 @@ const TradeDetailModal = ({
                       <span>Data/Hora</span>
                     </div>
                     {/* Rows */}
-                    {loadedPartials.sort((a, b) => (a.seq || 0) - (b.seq || 0)).map((p, i) => (
+                    {loadedPartials.map((p, i) => (
                       <div key={p.id || i} className="grid grid-cols-[80px_1fr_80px_140px] gap-3 px-4 py-2.5 items-center border-b border-slate-700/30 last:border-0">
                         <span className={`text-xs font-medium flex items-center gap-1 ${p.type === 'ENTRY' ? 'text-emerald-400' : 'text-red-400'}`}>
                           {p.type === 'ENTRY' 
@@ -444,11 +444,6 @@ const TradeDetailModal = ({
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="bg-slate-800/30 rounded-xl p-4 text-center text-sm text-slate-600">
-                    Trade marcado com parciais, mas dados não disponíveis.
-                  </div>
-                )}
               </div>
             )}
 

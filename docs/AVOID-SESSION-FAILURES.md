@@ -117,6 +117,8 @@ Antes de CADA entrega, Claude deve passar por este checklist mentalmente:
 □ Propus a mudança ao Marcio ANTES de codificar? (INV-07)
 □ Existe apenas UM write para cada documento no fluxo? (sem double write)
 □ Campos derivados (entry/exit/qty/result) são calculados das parciais, não editados?
+□ Parciais são campo _partials no documento — NÃO subcollection? (INV-12)
+□ Estou criando subcollection? Se sim, PARAR e perguntar ao Marcio. (INV-10 + INV-12)
 □ Escrevi testes para TODA lógica nova antes de gerar o ZIP? (INV-05)
 □ version.js atualizado? (INV-09)
 □ CHANGELOG.md atualizado? (INV-08)
@@ -125,6 +127,31 @@ Antes de CADA entrega, Claude deve passar por este checklist mentalmente:
 □ Estou cortando algum caminho para ir mais rápido? Se sim, PARAR. (INV-11)
 □ Estou criando alguma estrutura nova (subcollection, campo, componente) sem aprovação? Se sim, PARAR. (INV-10)
 ```
+
+---
+
+## 8. Subcollection Fantasma — O Erro Mais Caro do Projeto
+
+**O que aconteceu (sessão 11-12/03/2026):**
+Claude criou subcollection `trades/{id}/partials` sem verificar que `_partials` já existia como campo array no documento do trade. O `addTrade` passou a gravar em DOIS lugares (campo inline + subcollection). As funções `addPartial`, `updatePartial`, `deletePartial` operavam na subcollection. O modal de edição lia do campo do documento. TradeDetailModal e FeedbackPage tentavam ler da subcollection via `getPartials`.
+
+**Custo real:**
++20 horas de debug do Marcio distribuídas em múltiplas sessões. Esse incidente foi tão grave que motivou a criação do ARCHITECTURE.md e do AVOID-SESSION-FAILURES.md como documentos obrigatórios do projeto.
+
+**Root cause:**
+Claude assumiu que "subcollection é o padrão para dados filhos no Firestore" sem fazer `grep` no código existente. Bastava verificar `useTrades.js` para ver que `_partials` era campo array no documento. A subcollection foi criada sem aprovação (violação de INV-07 e INV-10).
+
+**Resolução (22/03/2026):**
+- Subcollection removida do código (zero referências operacionais)
+- `addPartial`, `updatePartial`, `deletePartial` removidos (código morto — nunca chamados por nenhum componente)
+- `getPartials` reescrito para ler do campo `_partials` do documento
+- TradeDetailModal e FeedbackPage reescritos com `useMemo` síncrono
+- INV-12 criado: "Parciais são campo no documento — NÃO subcollection"
+
+**Prevenção (reforço):**
+- INV-10 já existia mas não impediu o erro original. INV-12 é específico para parciais.
+- Regra geral: NUNCA criar subcollection sem (a) grep no código existente, (b) verificar como o dado é lido/gravado, (c) aprovação explícita do Marcio.
+- Subcollections no Firestore são para dados que precisam de queries independentes. Parciais de um trade NUNCA são consultadas fora do contexto do trade — logo, campo inline é a estrutura correta.
 
 ---
 

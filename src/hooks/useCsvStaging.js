@@ -303,6 +303,12 @@ const useCsvStaging = (overrideStudentId = null) => {
     }
 
     // Montar tradeData no formato que addTrade espera
+    // INV-12: Todo trade tem _partials — construir a partir de entry/exit do CSV
+    const _partials = [
+      { type: 'ENTRY', price: parseFloat(stagingTrade.entry), qty: parseFloat(stagingTrade.qty), dateTime: stagingTrade.entryTime, seq: 1 },
+      { type: 'EXIT', price: parseFloat(stagingTrade.exit), qty: parseFloat(stagingTrade.qty), dateTime: stagingTrade.exitTime ?? null, seq: 2 }
+    ];
+
     const tradeData = {
       planId: stagingTrade.planId,
       ticker: stagingTrade.ticker,
@@ -323,6 +329,8 @@ const useCsvStaging = (overrideStudentId = null) => {
       importBatchId: stagingTrade.importBatchId ?? null,
       // C2: tickerRule resolvido (staging ou master data lookup)
       tickerRule,
+      // INV-12: Parciais são campo no documento — todo trade tem parciais
+      _partials,
     };
 
     // Chamar addTrade legado — ele resolve planId→accountId, calcula result,

@@ -4,7 +4,7 @@
 
 > **Localização no repo:** `/docs/ARCHITECTURE.md`
 
-> **Última atualização:** 20/03/2026 — Consolidação: deltas sessões 13-18/03 + design onboarding 3-stage (DEC-013 a DEC-016)
+> **Última atualização:** 22/03/2026 — INV-12 (parciais são campo inline), DEC-024 (subcollection eliminada), DT-023/DT-024 resolvidos
 
 ---
 
@@ -102,10 +102,12 @@ trades (write)
 
 ```
 trades (collection principal)
-├── Escritor: addTrade (via AddTradeModal, futuro: csvStaging Activate)
+├── Escritor: addTrade (via AddTradeModal, csvStaging Activate, Order Import ingestBatch)
 ├── Cloud Functions: onTradeCreated, onTradeUpdated
 ├── Hooks: useTrades
-├── Subcollections: partials (para trades com parciais)
+├── Campo _partials: array de parciais DENTRO do documento (INV-12) — NÃO subcollection
+│   Estrutura: [{ seq, type: 'ENTRY'|'EXIT', price, qty, dateTime, notes }]
+│   Todo trade tem parciais (mínimo 2: 1 ENTRY + 1 EXIT)
 ├── Consumers UI: StudentDashboard, TradingCalendar, AccountStatement,
 │                  FeedbackPage, PlanLedgerExtract, MentorDashboard
 └── Side-effects: PL calculation, compliance rate, emotional scoring
@@ -347,6 +349,11 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Decisão:** Se aluno falha gates do stage anterior por 2 meses → REGRESSION_WARNING (alerta ao mentor). 3 meses → REGRESSION_ELIGIBLE (elegível para rebaixamento). Regressão nunca é automática — mentor decide com justificativa. Mentor pode: rebaixar, manter com plano de ação, ou ignorar alerta.
 **Impacto:** progressionGates.js (lógica de regressão). evaluateProgression CF (detecta regression conditions). progression_log (registra warnings e decisões).
 
+### DEC-024: Parciais são campo inline no documento, subcollection eliminada (22/03/2026)
+**Problema:** Desde a sessão 11-12/03/2026, `useTrades.js` mantinha duplicação: parciais gravadas como campo `_partials` (array) no documento do trade E como subcollection `trades/{id}/partials`. Leituras no TradeDetailModal e FeedbackPage buscavam da subcollection via `getPartials`; edições via AddTradeModal liam do campo inline. Divergência silenciosa causou +20h de debug distribuídas em múltiplas sessões. Esse incidente originou a criação do ARCHITECTURE.md e do AVOID-SESSION-FAILURES.md.
+**Decisão:** Subcollection eliminada definitivamente. `addPartial`, `updatePartial`, `deletePartial` removidos (código morto — nunca chamados por nenhum componente). `getPartials` reescrito para ler do campo `_partials` do documento. TradeDetailModal e FeedbackPage reescritos com `useMemo` síncrono sobre `trade._partials` — zero fetch assíncrono. INV-12 criado.
+**Impacto:** useTrades.js (~100 linhas removidas), TradeDetailModal.jsx (useEffect→useMemo), FeedbackPage.jsx (useEffect→useMemo), StudentDashboard.jsx (getPartials no destructuring).
+
 ---
 
 ## 6. Dívidas Técnicas Ativas
@@ -374,6 +381,8 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | v1.19.2 — inibir para evitar erros involuntários |
 | DT-021 | Templates CSV sem UI de gestão/exclusão | BAIXA | v1.19.2 |
 | DT-022 | CF scheduled para limpeza diária da staging area (csvStagingTrades) às 23h. Trades não convertidos são deletados. | MÉDIA | v1.19.x |
+| DT-023 | Subcollection `trades/{id}/partials` legada — campo `_partials` no documento é a fonte de verdade | MÉDIA | v1.19.2 — **RESOLVIDO** 22/03/2026 (subcollection eliminada do código, INV-12, DEC-024) |
+| DT-024 | `hasPartials` flag desnecessário — todo trade tem parciais | MÉDIA | v1.19.2 — **PARCIALMENTE RESOLVIDO** 22/03/2026 (gates removidos de TradeDetailModal e FeedbackPage; campo ainda existe nos documentos mas não é mais usado como condição) |
 
 ---
 
@@ -489,6 +498,19 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 
 ### INV-11: Nunca Priorizar Velocidade sobre Rigor
 **Se houver conflito entre entregar rápido e seguir as invariantes, as invariantes vencem.** Sempre. Atalhos geram dívida técnica exponencial.
+
+### INV-12: Parciais São Campo no Documento — NÃO Subcollection
+**Parciais (`_partials`) são um campo array dentro do documento `trades/{id}`.** Não existe subcollection `trades/{id}/partials`. Toda leitura e escrita de parciais acontece no campo `_partials` do documento do trade.
+
+**Todo trade tem parciais.** Mesmo um trade com uma única entrada e uma única saída tem 2 parciais (1 ENTRY + 1 EXIT). Não existe o conceito de "trade sem parciais".
+
+**Regras:**
+1. Parciais são lidas do campo `trade._partials` (array no documento) — síncrono via listener, sem fetch assíncrono
+2. Parciais são escritas via `addTrade` (spread no documento) e `updateTrade` (campo `_partials` no payload)
+3. NUNCA criar subcollection para parciais — o campo inline é a única fonte de verdade
+4. `getPartials()` existe como helper e lê do documento — NÃO de subcollection
+
+**Origem:** Sessão 11-12/03/2026 — Claude criou subcollection `trades/{id}/partials` sem aprovação, sem verificar a estrutura existente. O `addTrade` já gravava `_partials` como campo array no documento. A duplicação (campo + subcollection) causou divergência silenciosa: edições gravavam num lugar, leituras buscavam noutro. Marcio precisou de +20 horas de debug distribuídas em múltiplas sessões para identificar a raiz do problema. Esse incidente originou a criação do ARCHITECTURE.md e do AVOID-SESSION-FAILURES.md como documentos obrigatórios. Na sessão de 22/03/2026, a subcollection foi definitivamente eliminada do código — `addPartial`, `updatePartial`, `deletePartial` (que operavam na subcollection) foram removidos como código morto, e `getPartials` foi reescrito para ler do campo do documento.
 
 ### AP-06: Criação de estruturas Firestore sem aprovação
 **O que é:** Claude cria subcollections, campos ou estruturas no Firestore sem verificar a estrutura existente e sem aprovação explícita do Marcio. Assume como o banco funciona em vez de verificar.

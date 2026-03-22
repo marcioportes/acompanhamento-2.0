@@ -345,6 +345,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
   const textareaRef = useRef(null);
 
+<<<<<<< HEAD
   // Fetch parciais quando trade muda
   const [tradeWithPartials, setTradeWithPartials] = useState(null);
   useEffect(() => {
@@ -365,17 +366,25 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
     } else if (trade._partials?.length > 0) {
       // getPartials não disponível — usar campo inline direto
       setTradeWithPartials({ ...trade, _loadedPartials: trade._partials });
+=======
+  // Parciais são campo _partials no documento do trade — leitura direta
+  // Trades legados sem _partials: construir a partir de entry/exit
+  const tradeWithPartials = useMemo(() => {
+    if (!trade) return null;
+    let partials;
+    if (trade._partials?.length > 0) {
+      partials = [...trade._partials].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+    } else if (trade.entry && trade.exit) {
+      partials = [
+        { type: 'ENTRY', price: trade.entry, qty: trade.qty, dateTime: trade.entryTime, seq: 1 },
+        { type: 'EXIT', price: trade.exit, qty: trade.qty, dateTime: trade.exitTime, seq: 2 }
+      ];
+    } else {
+      partials = [];
+>>>>>>> 39660eb9 (fix: eliminar subcollection partials - parciais sao campo _partials no documento do trade (INV-12, DEC-024))
     }
-  }, [trade?.id, trade?.hasPartials, getPartials]);
-
-  // Manter campos do trade atualizados (feedbackHistory, status) sem perder parciais
-  useEffect(() => {
-    if (!trade) return;
-    setTradeWithPartials(prev => {
-      if (!prev || prev.id !== trade.id) return prev;
-      return { ...trade, _loadedPartials: prev._loadedPartials || [] };
-    });
-  }, [trade?.feedbackHistory, trade?.status]);
+    return { ...trade, _loadedPartials: partials };
+  }, [trade]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
