@@ -148,15 +148,23 @@ const TradeDetailModal = ({
         setPartialsLoading(true);
         try {
           const parts = await getPartials(trade.id);
-          setLoadedPartials(parts);
+          // Se subcollection vazia, fallback para campo inline
+          if (parts.length > 0) {
+            setLoadedPartials(parts);
+          } else if (trade._partials?.length > 0) {
+            setLoadedPartials(trade._partials);
+          } else {
+            setLoadedPartials([]);
+          }
         } catch (err) {
           console.error('[TradeDetailModal] Erro ao buscar parciais:', err);
-          setLoadedPartials([]);
+          // Fallback para campo inline em caso de erro
+          setLoadedPartials(trade._partials?.length > 0 ? trade._partials : []);
         } finally {
           setPartialsLoading(false);
         }
       } else if (trade._partials?.length > 0) {
-        // Fallback: usar parciais inline (se vieram do modal de edição)
+        // getPartials não disponível — usar campo inline direto
         setLoadedPartials(trade._partials);
       } else {
         setLoadedPartials([]);

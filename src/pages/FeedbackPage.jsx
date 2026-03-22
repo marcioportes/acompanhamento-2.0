@@ -354,8 +354,17 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
     
     if (trade.hasPartials && getPartials) {
       getPartials(trade.id).then(parts => {
-        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: parts } : prev);
-      }).catch(() => {});
+        // Se subcollection vazia, fallback para campo inline
+        const effectiveParts = parts.length > 0 ? parts : (trade._partials || []);
+        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: effectiveParts } : prev);
+      }).catch(() => {
+        // Fallback para campo inline em caso de erro
+        const fallback = trade._partials || [];
+        setTradeWithPartials(prev => prev?.id === trade.id ? { ...prev, _loadedPartials: fallback } : prev);
+      });
+    } else if (trade._partials?.length > 0) {
+      // getPartials não disponível — usar campo inline direto
+      setTradeWithPartials({ ...trade, _loadedPartials: trade._partials });
     }
   }, [trade?.id, trade?.hasPartials, getPartials]);
 
