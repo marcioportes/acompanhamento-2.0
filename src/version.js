@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.20.0: Order Import Pipeline (CHUNK-10) — parse ProfitChart-Pro, reconstrução operações, staging review, cross-check comportamental, KPI validation
  * - 1.19.7: Badge de notificação no Sidebar do aluno — trades REVIEWED não trabalhados
  * - 1.19.6: Payoff com semaforo de saude do edge, layout reorganizado, semaforo RO bidirecional, cor PL Atual tricolor, diagnostico assimetria
  * - 1.19.5: Layout agrupado 3 paineis (Financeiro/Desempenho/Plano vs Resultado), tooltips diagnosticos, NaN guards
@@ -19,10 +20,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.19.7',
-  build: '20260319',
-  display: 'v1.19.7',
-  full: '1.19.7+20260319',
+  version: '1.20.0',
+  build: '20260322',
+  display: 'v1.20.0',
+  full: '1.20.0+20260322',
 };
 export default VERSION;
 export { VERSION };

@@ -92,6 +92,6 @@ chore: manutenção
 
 ---
 
-**Versão Atual:** 1.19.6  
-**Codename:** Mirror  
-**Data:** 2026-03-18
+**Versão Atual:** 1.20.0  
+**Codename:** Lens  
+**Data:** 2026-03-22
