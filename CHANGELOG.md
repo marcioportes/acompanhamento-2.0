@@ -9,8 +9,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ### Corrigido
 - **Fix loop infinito AssessmentGuard:** `useAssessmentGuard` no `StudentDashboard` causava "Maximum update depth exceeded" — `onSnapshot` no doc `students/{id}` disparava re-render cascata com todos os hooks do dashboard. Guard movido para `App.jsx` onde é isolado dos hooks pesados (useTrades, useAccounts, usePlans, etc.)
-- `StudentDashboard.jsx` — removidos imports e hook call do guard (3 linhas mortas)
-- `App.jsx` — guard intercepts no `renderContent()` antes de qualquer view. `guardStudentId` deriva de `viewingAsStudent?.uid` (mentor) ou `user?.uid` (aluno)
+- **Fix loading infinito aluno (DEC-024):** Firestore rules de trades/accounts/plans exigiam `isOwner(studentId) || isOwnerByEmail(studentEmail)` no read — queries do aluno falhavam silenciosamente. Simplificado read para `isAuthenticated()` em todas as collections de dados do aluno (trades, accounts, plans, movements, csvStagingTrades). Write mantém ownership check.
+- `StudentDashboard.jsx` — removidos imports e hook call do guard
+- `App.jsx` — guard intercepts no `renderContent()` antes de qualquer view
+- `firestore.rules` — read simplificado para `isAuthenticated()` em 5 collections
 
 ## [1.20.0] - 2026-03-22
 
