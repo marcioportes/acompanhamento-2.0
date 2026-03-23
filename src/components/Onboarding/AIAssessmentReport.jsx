@@ -90,7 +90,7 @@ export default function AIAssessmentReport({
       {probingData && probingData.summary && (
         <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
           <h3 className="text-xs uppercase tracking-wider text-purple-400 font-medium mb-3">
-            Resultado da Sondagem Adaptativa
+            Resultado do Aprofundamento Adaptativo
           </h3>
           <div className="grid grid-cols-3 gap-4 mb-3">
             <div className="text-center">

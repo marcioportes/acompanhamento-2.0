@@ -22,7 +22,7 @@ const MAX_TOKENS = 2048;
 
 const client = new Anthropic();
 
-module.exports = onCall({ maxInstances: 10 }, async (request) => {
+module.exports = onCall({ maxInstances: 10, secrets: ['ANTHROPIC_API_KEY'] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Autenticação necessária');
   }

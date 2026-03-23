@@ -57,7 +57,7 @@ export function useProbing({ onSaveProbing, onCompleteProbingQuestion, onComplet
       setCurrentProbingIndex(0);
       responseStartTime.current = Date.now();
     } catch (err) {
-      setError(`Erro ao gerar perguntas de sondagem: ${err.message}`);
+      setError(`Erro ao gerar perguntas de aprofundamento: ${err.message}`);
     } finally {
       setGenerating(false);
     }

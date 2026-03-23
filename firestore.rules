@@ -37,10 +37,13 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if isAuthenticated();
       allow create, delete: if isMentor();
-      // Mentor pode tudo; aluno pode ativar apenas seu próprio doc
+      // Mentor pode tudo; aluno pode atualizar campos do seu próprio doc
+      // DEC-024: onboardingStatus é do aluno (progressão no assessment)
       allow update: if isMentor() || (
         isOwner(studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'firstLoginAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'firstLoginAt', 'onboardingStatus']
+        )
       );
 
       // PERFIL EMOCIONAL (subcollection) — Fase 1.4.0

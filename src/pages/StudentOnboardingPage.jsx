@@ -10,7 +10,7 @@
  * @version 1.0.0 — CHUNK-09 Fase A
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
@@ -37,8 +37,8 @@ import DebugBadge from '../components/DebugBadge.jsx';
 const STATUS_LABELS = {
   lead: 'Novo Aluno',
   pre_assessment: 'Questionário em Andamento',
-  ai_assessed: 'Aguardando Sondagem',
-  probing: 'Sondagem em Andamento',
+  ai_assessed: 'Aguardando Aprofundamento',
+  probing: 'Aprofundamento em Andamento',
   probing_complete: 'Aguardando Validação do Mentor',
   mentor_validated: 'Assessment Validado',
   active: 'Aluno Ativo',
@@ -54,8 +54,9 @@ const STATUS_COLORS = {
   active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
 };
 
-export default function StudentOnboardingPage() {
-  const { studentId } = useParams();
+export default function StudentOnboardingPage({ studentId: studentIdProp, isMentorView = false }) {
+  const params = useParams();
+  const studentId = studentIdProp || params?.studentId;
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null = auto from status
@@ -97,6 +98,27 @@ export default function StudentOnboardingPage() {
 
   // ── Determine active view ─────────────────────────────────
 
+  // Rehydrate scores from Firestore when page loads with existing data
+  // (e.g., mentor opening the page after questionnaire was completed)
+  useEffect(() => {
+    if (assessmentScores) return; // Already calculated in this session
+    if (!savedQuestionnaire?.responses || savedQuestionnaire.responses.length === 0) return;
+    if (!savedQuestionnaire.completedAt) return; // Not completed yet
+
+    try {
+      const responses = savedQuestionnaire.responses;
+      const scores = calculateFullAssessment(responses, 2, 0); // placeholder stage
+      setAssessmentScores(scores);
+      setAssessmentClassifications(classifyFullAssessment(scores));
+
+      // Rehydrate incongruences
+      const incongruences = detectAllIncongruences(responses);
+      setIncongruenceData(incongruences);
+    } catch (err) {
+      console.error('[Onboarding] Score rehydration error:', err);
+    }
+  }, [savedQuestionnaire, assessmentScores]);
+
   const currentView = activeTab || onboardingStatus || 'lead';
 
   // Tabs available based on status progression
@@ -106,13 +128,14 @@ export default function StudentOnboardingPage() {
     const currentIdx = statusOrder.indexOf(onboardingStatus);
 
     if (currentIdx >= 1) tabs.push({ key: 'pre_assessment', label: 'Questionário' });
-    if (currentIdx >= 2) tabs.push({ key: 'ai_assessed', label: 'Sondagem' });
-    if (currentIdx >= 4) tabs.push({ key: 'probing_complete', label: 'Relatório IA' });
-    if (currentIdx >= 4) tabs.push({ key: 'mentor_validation', label: 'Validação' });
+    if (currentIdx >= 2) tabs.push({ key: 'ai_assessed', label: 'Aprofundamento' });
+    // Relatório IA e Validação são ferramentas do mentor — aluno não vê scores brutos
+    if (currentIdx >= 4 && isMentorView) tabs.push({ key: 'probing_complete', label: 'Relatório IA' });
+    if (currentIdx >= 4 && isMentorView) tabs.push({ key: 'mentor_validation', label: 'Validação' });
     if (currentIdx >= 5) tabs.push({ key: 'active', label: 'Marco Zero' });
 
     return tabs;
-  }, [onboardingStatus]);
+  }, [onboardingStatus, isMentorView]);
 
   // ── Handlers ──────────────────────────────────────────────
 
@@ -460,8 +483,29 @@ export default function StudentOnboardingPage() {
         />
       )}
 
-      {/* PROBING_COMPLETE: Report + Validation */}
-      {currentView === 'probing_complete' && activeTab !== 'mentor_validation' && (
+      {/* PROBING_COMPLETE: Different views for mentor vs student */}
+      {onboardingStatus === 'probing_complete' && !isMentorView && activeTab !== 'pre_assessment' && activeTab !== 'ai_assessed' && (
+        <div className="text-center py-16">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <svg className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-medium text-white mb-3">
+            Suas respostas foram enviadas
+          </h2>
+          <p className="text-gray-400 text-sm max-w-md mx-auto mb-4">
+            O assessment está sendo processado e será revisado pelo seu mentor.
+            Você receberá o resultado após a entrevista de validação.
+          </p>
+          <p className="text-gray-500 text-xs">
+            Aguarde o contato do seu mentor para a próxima etapa.
+          </p>
+        </div>
+      )}
+
+      {/* PROBING_COMPLETE + MENTOR: Report */}
+      {onboardingStatus === 'probing_complete' && isMentorView && activeTab !== 'mentor_validation' && activeTab !== 'pre_assessment' && activeTab !== 'ai_assessed' && (
         <AIAssessmentReport
           scores={assessmentScores}
           classifications={assessmentClassifications}
@@ -472,7 +516,8 @@ export default function StudentOnboardingPage() {
         />
       )}
 
-      {currentView === 'probing_complete' && activeTab === 'mentor_validation' && (
+      {/* PROBING_COMPLETE + MENTOR: Validation */}
+      {onboardingStatus === 'probing_complete' && isMentorView && activeTab === 'mentor_validation' && (
         <MentorValidation
           aiScores={assessmentScores}
           aiClassifications={assessmentClassifications}

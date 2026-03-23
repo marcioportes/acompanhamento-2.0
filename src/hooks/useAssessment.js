@@ -38,7 +38,10 @@ export function useAssessment(studentId) {
   // ── Listeners ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (!studentId) return;
+    if (!studentId) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     const unsubscribers = [];
@@ -206,6 +209,8 @@ export function useAssessment(studentId) {
       assessmentMethod: 'three_stage_v1',
       ...assessmentData,
     });
+    // Two-step transition: probing_complete → mentor_validated → active
+    await updateOnboardingStatus('mentor_validated');
     await updateOnboardingStatus('active');
   }, [studentId, updateOnboardingStatus]);
 

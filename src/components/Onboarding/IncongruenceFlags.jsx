@@ -90,7 +90,7 @@ function FlagCard({ flag, probingResolution }) {
           probingResolution === 'reinforced' ? 'bg-red-500/10 text-red-400' :
           'bg-gray-500/10 text-gray-400'
         }`}>
-          Sondagem: {
+          Aprofundamento: {
             probingResolution === 'resolved' ? 'Esclarecido ✓' :
             probingResolution === 'reinforced' ? 'Confirmado ✗' :
             'Inconclusivo ?'

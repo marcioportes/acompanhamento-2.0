@@ -213,7 +213,7 @@ const AppContent = () => {
     // Assessment Guard — redireciona para onboarding ANTES de qualquer view
     if (guardLoading && guardStudentId) return <Loading fullScreen text="Verificando assessment..." />;
     if (shouldShowOnboarding && guardStudentId) {
-      return <StudentOnboardingPage studentId={guardStudentId} />;
+      return <StudentOnboardingPage studentId={guardStudentId} isMentorView={isMentor() && !!viewingAsStudent} />;
     }
 
     // Se está no FeedbackPage com um trade específico
@@ -251,7 +251,7 @@ const AppContent = () => {
 
     // Student Onboarding — acessível pelo mentor via viewingAsStudent
     if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
-      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} />;
+      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} isMentorView={true} />;
     }
 
     // Dashboard principal

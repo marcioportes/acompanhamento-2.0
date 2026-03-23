@@ -11,7 +11,7 @@
  * @version 1.0.0 — CHUNK-09 Fase A
  */
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { ALL_QUESTIONS, QUESTIONS_BY_DIMENSION, getOptionsForDisplay } from '../utils/assessmentQuestions.js';
 import { getOptionOrder } from '../utils/questionRandomizer.js';
 
@@ -30,7 +30,7 @@ export function useQuestionnaire({ savedResponses = null, onSaveResponse }) {
   // ── Initialize from saved state ───────────────────────────
 
   // Reconstruct state from saved responses (para retomada)
-  useMemo(() => {
+  useEffect(() => {
     if (!savedResponses || savedResponses.length === 0) return;
     const restoredResponses = {};
     const restoredOrders = {};
@@ -72,23 +72,34 @@ export function useQuestionnaire({ savedResponses = null, onSaveResponse }) {
 
   // ── Option order (randomization with persistence) ─────────
 
+  const pendingOrders = useRef({});
+
   const getOrderedOptions = useCallback((questionId) => {
     const displayOptions = getOptionsForDisplay(questionId);
     if (displayOptions.length === 0) return []; // Pergunta aberta
 
     const optionIds = displayOptions.map((o) => o.id);
-    const savedOrder = optionOrders[questionId] || null;
+    const savedOrder = optionOrders[questionId] || pendingOrders.current[questionId] || null;
     const { order, isNew } = getOptionOrder(optionIds, savedOrder);
 
-    // Se é nova ordem, persistir no state (será salvo junto com a resposta)
+    // Se é nova ordem, armazenar no ref (será persistido no state via useEffect)
     if (isNew) {
-      setOptionOrders((prev) => ({ ...prev, [questionId]: order }));
+      pendingOrders.current[questionId] = order;
     }
 
     // Reordenar as opções conforme a ordem
     const optionMap = Object.fromEntries(displayOptions.map((o) => [o.id, o]));
     return order.map((id) => optionMap[id]).filter(Boolean);
   }, [optionOrders]);
+
+  // Flush pending orders to state after render
+  useEffect(() => {
+    const pending = pendingOrders.current;
+    if (Object.keys(pending).length > 0) {
+      setOptionOrders((prev) => ({ ...prev, ...pending }));
+      pendingOrders.current = {};
+    }
+  });
 
   // ── Response time tracking ────────────────────────────────
 

@@ -110,6 +110,7 @@ export default function QuestionnaireFlow({
       <div className="mb-8">
         {currentQuestion.type === 'closed' ? (
           <QuestionClosed
+            key={currentQuestion.id}
             question={currentQuestion}
             orderedOptions={getOrderedOptions(currentQuestion.id)}
             selectedOptionId={currentResponse?.selectedOption || null}
@@ -117,6 +118,7 @@ export default function QuestionnaireFlow({
           />
         ) : (
           <QuestionOpen
+            key={currentQuestion.id}
             question={currentQuestion}
             savedText={currentResponse?.text || ''}
             onSubmit={(text) => answerOpen(currentQuestion.id, text)}

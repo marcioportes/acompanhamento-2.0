@@ -37,7 +37,7 @@ export default function ProbingQuestionsFlow({
         </div>
 
         <h2 className="text-xl font-medium text-white mb-3">
-          Sondagem concluída
+          Aprofundamento concluído
         </h2>
         <p className="text-gray-400 text-sm mb-8">
           Suas respostas serão analisadas e apresentadas ao seu mentor 
@@ -67,7 +67,7 @@ export default function ProbingQuestionsFlow({
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs uppercase tracking-wider text-purple-400 font-medium">
-            Sondagem adaptativa
+            Aprofundamento adaptativo
           </span>
         </div>
         <div className="text-xs text-gray-600">
@@ -96,6 +96,7 @@ export default function ProbingQuestionsFlow({
       {/* Question */}
       <div className="mb-8">
         <QuestionOpen
+          key={currentProbingQuestion.probingId || currentProbingIndex}
           question={{
             text: currentProbingQuestion.text,
             minChars: 80,
