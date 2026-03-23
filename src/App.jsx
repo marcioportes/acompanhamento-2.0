@@ -24,6 +24,7 @@ import TradesJournal from './pages/TradesJournal';
 import StudentsManagement from './pages/StudentsManagement';
 import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
+import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -235,6 +236,11 @@ const AppContent = () => {
       return <StudentsManagement onViewAsStudent={handleViewAsStudent} />;
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
+
+    // Student Onboarding — acessível pelo mentor via viewingAsStudent
+    if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
+      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} />;
+    }
 
     // Dashboard principal
     if (isMentor()) {

@@ -207,5 +207,16 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
     }
+
+    // ========== Assessment — Student Onboarding (CHUNK-09) ==========
+    // DEC-024: Aluno é autoridade sobre seus dados. auth != null.
+    match /students/{studentId}/assessment/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /students/{studentId}/assessment/{docId}/{subcol}/{subId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
   }
 }
