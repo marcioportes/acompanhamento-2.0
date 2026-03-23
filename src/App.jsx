@@ -30,6 +30,7 @@ import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
+import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
 
 // Banner de "Visualizando como Aluno"
 const ViewAsStudentBanner = ({ student, onClose }) => {
@@ -86,6 +87,11 @@ const AppContent = () => {
     uploadFeedbackImage
   } = useTrades();
   const { plans } = usePlans();
+
+  // Assessment Guard (CHUNK-09) — intercepta no nível do App para evitar loop no StudentDashboard
+  // Mentor visualizando aluno: usa uid do aluno. Aluno logado: usa próprio uid. Mentor no dashboard: null (desativa).
+  const guardStudentId = viewingAsStudent?.uid || (!isMentor() ? user?.uid : null);
+  const { shouldRedirect: shouldShowOnboarding, loading: guardLoading } = useAssessmentGuard(guardStudentId);
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -204,6 +210,12 @@ const AppContent = () => {
 
   // Renderização do conteúdo principal
   const renderContent = () => {
+    // Assessment Guard — redireciona para onboarding ANTES de qualquer view
+    if (guardLoading && guardStudentId) return <Loading fullScreen text="Verificando assessment..." />;
+    if (shouldShowOnboarding && guardStudentId) {
+      return <StudentOnboardingPage studentId={guardStudentId} />;
+    }
+
     // Se está no FeedbackPage com um trade específico
     if (feedbackTrade) {
       // Busca trade atualizado do allTrades para dados em tempo real
