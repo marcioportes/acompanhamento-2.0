@@ -13,7 +13,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../../firebase';
 
 export default function AssessmentToggle({ studentId, currentValue = false, onboardingStatus }) {
   const [loading, setLoading] = useState(false);

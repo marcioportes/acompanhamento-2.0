@@ -20,7 +20,7 @@
 
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../../firebase';
 
 /**
  * Hook que verifica se o aluno deve ser redirecionado para o assessment.
