@@ -4,7 +4,7 @@
 
 > **Localização no repo:** `/docs/ARCHITECTURE.md`
 
-> **Última atualização:** 22/03/2026 — INV-12 (parciais são campo inline), DEC-024 (subcollection eliminada), DT-023/DT-024 resolvidos
+> **Última atualização:** 23/03/2026 — DEC-025 (Firestore rules read simplificado), DT-025 adicionado
 
 ---
 
@@ -354,6 +354,13 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Decisão:** Subcollection eliminada definitivamente. `addPartial`, `updatePartial`, `deletePartial` removidos (código morto — nunca chamados por nenhum componente). `getPartials` reescrito para ler do campo `_partials` do documento. TradeDetailModal e FeedbackPage reescritos com `useMemo` síncrono sobre `trade._partials` — zero fetch assíncrono. INV-12 criado.
 **Impacto:** useTrades.js (~100 linhas removidas), TradeDetailModal.jsx (useEffect→useMemo), FeedbackPage.jsx (useEffect→useMemo), StudentDashboard.jsx (getPartials no destructuring).
 
+### DEC-025: Firestore rules simplificadas — read = isAuthenticated() (23/03/2026)
+**Problema:** `StudentOnboardingPage` tentava ler dados do aluno (trades, accounts, plans) mas as rules tinham lógica `isMentor() || isOwner()` que falhava silenciosamente quando o email do aluno era `@icloud.com` em vez de `@me.com` — variante de alias do mesmo Apple ID. O aluno ficou bloqueado em produção sem mensagem de erro clara. A complexidade de `isMentor()`/`isOwner()` nas rules foi a causa raiz.
+**Decisão:** Read simplificado para `request.auth != null` (isAuthenticated) em trades, accounts, plans, movements, csvStagingTrades. Write mantém ownership. Aluno `onboardingStatus` pode ser atualizado pelo próprio aluno (necessário para progressão no assessment). Premissa: todo artefato do aluno é do aluno — aluno deve ter acesso total aos próprios dados. Mentor acessa para ajudar, não como super-conta.
+**Trade-off aceito:** Qualquer usuário autenticado pode LER dados de outros alunos. Risco baixo no volume atual (poucos alunos), médio-alto se escalar. Revisitar quando base de alunos crescer.
+**Lição:** Overengineering de permissões criou bloqueio real de produção. Complexidade de rules deve ser proporcional ao risco real, não ao risco teórico máximo. Registrado também no AVOID-SESSION-FAILURES como anti-pattern.
+**Impacto:** `firestore.rules` (read simplificado + students update expandido). Deployada em 23/03/2026.
+
 ---
 
 ## 6. Dívidas Técnicas Ativas
@@ -383,6 +390,7 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | DT-022 | CF scheduled para limpeza diária da staging area (csvStagingTrades) às 23h. Trades não convertidos são deletados. | MÉDIA | v1.19.x |
 | DT-023 | Subcollection `trades/{id}/partials` legada — campo `_partials` no documento é a fonte de verdade | MÉDIA | v1.19.2 — **RESOLVIDO** 22/03/2026 (subcollection eliminada do código, INV-12, DEC-024) |
 | DT-024 | `hasPartials` flag desnecessário — todo trade tem parciais | MÉDIA | v1.19.2 — **PARCIALMENTE RESOLVIDO** 22/03/2026 (gates removidos de TradeDetailModal e FeedbackPage; campo ainda existe nos documentos mas não é mais usado como condição) |
+| DT-025 | Campos `hasPartials` e `partialsCount` nos documentos de trades são legado — todo trade tem parciais. Limpar via migração futura ou ignorar (não causam problema operacional, só ocupam espaço). | BAIXA | 22/03/2026 |
 
 ---
 
