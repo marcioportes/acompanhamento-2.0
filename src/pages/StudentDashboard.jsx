@@ -52,6 +52,10 @@ import OrderImportPage from '../pages/OrderImportPage';
 import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
+// Student Onboarding (CHUNK-09)
+import { useAssessmentGuard } from '../components/Onboarding/AssessmentGuard';
+import StudentOnboardingPage from '../pages/StudentOnboardingPage';
+
 // Hooks
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
@@ -100,6 +104,10 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   const orderStaging = useOrderStaging(overrideStudentId);
   const { orders, stats: orderStats } = useOrders(overrideStudentId);
   const crossCheckHook = useCrossCheck(overrideStudentId);
+
+  // Assessment Guard (CHUNK-09) — redireciona para onboarding se assessment pendente
+  const studentId = overrideStudentId || user?.uid;
+  const { shouldRedirect: shouldShowOnboarding, loading: guardLoading } = useAssessmentGuard(studentId);
 
   // === UI State ===
   const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
@@ -274,7 +282,12 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   };
 
   // === Loading / Empty states ===
-  if (isLoading) return <Loading fullScreen text="Carregando..." />;
+  if (isLoading || guardLoading) return <Loading fullScreen text="Carregando..." />;
+
+  // Assessment Guard — se assessment pendente, mostrar onboarding em vez do dashboard
+  if (shouldShowOnboarding) {
+    return <StudentOnboardingPage studentId={studentId} />;
+  }
 
   if (accounts.length === 0 && !wizardComplete && !viewAs) {
     return <AccountSetupWizard onComplete={() => setWizardComplete(true)} onAddAccount={addAccount} onAddPlan={addPlan} />;

@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain } from 'lucide-react';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import DebugBadge from '../components/DebugBadge';
+import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 
@@ -182,6 +183,13 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                     </div>
                   )}
                   
+                  {/* Assessment Toggle (CHUNK-09) */}
+                  <AssessmentToggle
+                    studentId={s.id}
+                    currentValue={s.requiresAssessment}
+                    onboardingStatus={s.onboardingStatus}
+                  />
+
                   {/* Botão View As Student (só para ativos) */}
                   {s.status === 'active' && onViewAsStudent && (
                     <button 
