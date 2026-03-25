@@ -18,7 +18,7 @@ const DIMENSION_LABELS = {
   emotional: 'Dimensão Emocional',
   financial: 'Dimensão Financeira',
   operational: 'Dimensão Operacional',
-  experience: 'Dimensão Experiência',
+  experience: 'Dimensão Maturidade',
 };
 
 const SUB_DIMENSION_LABELS = {
@@ -32,7 +32,7 @@ const SUB_DIMENSION_LABELS = {
   timeframe: 'Timeframe',
   strategy_fit: 'Consistência de Estratégia',
   tracking: 'Journal/Tracking',
-  timeline: 'Tempo de Experiência',
+  timeline: 'Tempo de Mercado',
   strategy_stability: 'Estabilidade de Estratégia',
   metacognition: 'Metacognição',
   analytical_sophistication: 'Sofisticação Analítica',
@@ -181,7 +181,7 @@ export default function QuestionnaireFlow({
         </div>
       )}
 
-      <DebugBadge />
+      <DebugBadge component="QuestionnaireFlow" />
     </div>
   );
 }

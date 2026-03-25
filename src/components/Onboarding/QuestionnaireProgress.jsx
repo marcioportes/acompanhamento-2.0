@@ -12,7 +12,7 @@ const DIMENSION_CONFIG = {
   emotional: { label: 'Emocional', color: 'bg-purple-500', textColor: 'text-purple-400' },
   financial: { label: 'Financeiro', color: 'bg-emerald-500', textColor: 'text-emerald-400' },
   operational: { label: 'Operacional', color: 'bg-blue-500', textColor: 'text-blue-400' },
-  experience: { label: 'Experiência', color: 'bg-amber-500', textColor: 'text-amber-400' },
+  experience: { label: 'Maturidade', color: 'bg-amber-500', textColor: 'text-amber-400' },
 };
 
 export default function QuestionnaireProgress({ progressByDimension, currentQuestion, answeredCount, totalQuestions }) {

@@ -31,6 +31,8 @@ import AddTradeModal from './components/AddTradeModal';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
 import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
+import { useAssessment } from './hooks/useAssessment';
+import BaselineReport from './components/Onboarding/BaselineReport';
 
 // Banner de "Visualizando como Aluno"
 const ViewAsStudentBanner = ({ student, onClose }) => {
@@ -92,6 +94,12 @@ const AppContent = () => {
   // Mentor visualizando aluno: usa uid do aluno. Aluno logado: usa próprio uid. Mentor no dashboard: null (desativa).
   const guardStudentId = viewingAsStudent?.uid || (!isMentor() ? user?.uid : null);
   const { shouldRedirect: shouldShowOnboarding, loading: guardLoading } = useAssessmentGuard(guardStudentId);
+
+  // Baseline do aluno — para exibir item "Marco Zero" no Sidebar
+  // Só ativo para alunos logados (não mentor). Mentor usa StudentOnboardingPage para ver o baseline.
+  const studentAssessmentId = !isMentor() ? user?.uid : null;
+  const { initialAssessment: studentInitialAssessment } = useAssessment(studentAssessmentId);
+  const hasBaseline = !!studentInitialAssessment;
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -271,6 +279,13 @@ const AppContent = () => {
         case 'feedback':
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
           return <StudentFeedbackPage />;
+        case 'baseline':
+          // Marco Zero — BaselineReport do assessment validado pelo mentor
+          return (
+            <div className="p-6 max-w-2xl mx-auto">
+              <BaselineReport assessment={studentInitialAssessment} />
+            </div>
+          );
         case 'dashboard':
         default: 
           return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
@@ -301,6 +316,7 @@ const AppContent = () => {
         pendingFeedback={pendingFeedbackCount}
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
+        hasBaseline={hasBaseline}
       />
 
       {/* Conteúdo principal */}

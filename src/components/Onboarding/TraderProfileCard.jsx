@@ -135,7 +135,7 @@ export default function TraderProfileCard({ scores, classifications, profileName
           ]}
         />
         <QuadrantCard
-          title="Experiência"
+          title="Maturidade"
           icon="📈"
           score={scores.experience?.score}
           label={classifications?.experience?.stage?.label}
@@ -146,7 +146,7 @@ export default function TraderProfileCard({ scores, classifications, profileName
         />
       </div>
 
-      <DebugBadge />
+      <DebugBadge component="TraderProfileCard" />
     </div>
   );
 }

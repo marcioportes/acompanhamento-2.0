@@ -232,6 +232,69 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     await probing.generateQuestions(payload);
   }, [questionnaire, incongruenceData, probing]);
 
+  /**
+   * Re-processa as respostas abertas do questionário com o prompt atualizado da IA.
+   * Lê as respostas salvas no Firestore, re-executa a CF classifyOpenResponse para
+   * cada resposta aberta, e sobrescreve aiScore/aiJustification/aiFinding/aiClassification.
+   * Disponível apenas para o mentor. Ação destrutiva — sobrescreve scores anteriores.
+   */
+  const handleReprocessAI = useCallback(async () => {
+    if (!savedQuestionnaire?.responses) return;
+    setProcessing(true);
+    try {
+      const classifyCF = httpsCallable(functions, 'classifyOpenResponse');
+      const allResponses = [...savedQuestionnaire.responses];
+      const openResponses = allResponses.filter((r) => r.type === 'open' && r.text);
+
+      for (const resp of openResponses) {
+        const question = QUESTION_MAP[resp.questionId];
+        if (!question) continue;
+
+        const dimClosedResponses = allResponses
+          .filter((r) => r.type === 'closed' && r.dimension === resp.dimension)
+          .map((r) => ({
+            questionId: r.questionId,
+            selectedText: QUESTION_MAP[r.questionId]?.options?.find((o) => o.id === r.selectedOption)?.text || '',
+            score: QUESTION_MAP[r.questionId]?.options?.find((o) => o.id === r.selectedOption)?.score || 0,
+          }));
+
+        const result = await classifyCF({
+          questionId: resp.questionId,
+          questionText: question.text,
+          responseText: resp.text,
+          rubric: question.aiRubric || '',
+          closedResponses: dimClosedResponses,
+          dimension: resp.dimension,
+          subDimension: resp.subDimension,
+        });
+
+        // Enrich and persist — sobrescreve scores anteriores
+        resp.aiScore = result.data.aiScore;
+        resp.aiClassification = result.data.aiClassification;
+        resp.aiJustification = result.data.aiJustification;
+        resp.aiFinding = result.data.aiFinding;
+        resp.aiConfidence = result.data.aiConfidence;
+        resp.aiModelVersion = result.data.aiModelVersion;
+
+        await saveResponse(resp);
+      }
+
+      // Re-detect incongruences with updated scores
+      const incongruences = detectAllIncongruences(allResponses);
+      setIncongruenceData(incongruences);
+
+      // Recalculate scores
+      const scores = calculateFullAssessment(allResponses, stageDiagnosis?.stage || 2, 0);
+      setAssessmentScores(scores);
+      setAssessmentClassifications(classifyFullAssessment(scores));
+
+    } catch (err) {
+      console.error('Reprocess AI error:', err);
+    } finally {
+      setProcessing(false);
+    }
+  }, [savedQuestionnaire, saveResponse, stageDiagnosis]);
+
   const handleProbingComplete = useCallback(async () => {
     setProcessing(true);
     try {
@@ -310,11 +373,13 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           progression_likelihood: 0,
           key_blockers: [],
           notes: '',
+          stage_diagnosis_justification: stageDiagnosis?.justification || '',
+          stage_key_signals: stageDiagnosis?.keySignals || [],
         },
         composite_score: null,
         composite_label: null,
         profile_name: reportData?.profileName || '',
-        development_priorities: reportData?.developmentPriorities || [],
+        development_priorities: mentorValidation.mentorData.developmentPriorities || [],
         next_review_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 days
         inter_dimensional_flags: incongruenceData?.interFlags?.map((f) => ({
           type: f.type,
@@ -506,14 +571,35 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
 
       {/* PROBING_COMPLETE + MENTOR: Report */}
       {onboardingStatus === 'probing_complete' && isMentorView && activeTab !== 'mentor_validation' && activeTab !== 'pre_assessment' && activeTab !== 'ai_assessed' && (
-        <AIAssessmentReport
-          scores={assessmentScores}
-          classifications={assessmentClassifications}
-          incongruenceData={incongruenceData}
-          probingData={savedProbing}
-          reportData={reportData}
-          stageDiagnosis={stageDiagnosis}
-        />
+        <>
+          {/* Botão re-processamento — só para mentor, ação destrutiva com confirmação */}
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={() => {
+                if (window.confirm('Re-processar vai sobrescrever todos os scores da IA com o prompt atualizado. Os textos do aluno são preservados. Confirmar?')) {
+                  handleReprocessAI();
+                }
+              }}
+              disabled={processing}
+              className={`flex items-center gap-2 px-4 py-2 text-xs rounded-lg border transition-all ${
+                processing
+                  ? 'border-white/5 text-gray-600 cursor-wait'
+                  : 'border-amber-500/20 text-amber-400 hover:bg-amber-500/10'
+              }`}
+            >
+              {processing ? 'Re-processando...' : '↻ Re-processar IA'}
+            </button>
+          </div>
+          <AIAssessmentReport
+            scores={assessmentScores}
+            classifications={assessmentClassifications}
+            incongruenceData={incongruenceData}
+            probingData={savedProbing}
+            reportData={reportData}
+            stageDiagnosis={stageDiagnosis}
+            questionnaireResponses={savedQuestionnaire?.responses || []}
+          />
+        </>
       )}
 
       {/* PROBING_COMPLETE + MENTOR: Validation */}
@@ -521,6 +607,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
         <MentorValidation
           aiScores={assessmentScores}
           aiClassifications={assessmentClassifications}
+          aiDevelopmentPriorities={reportData?.developmentPriorities || []}
           onSave={handleMentorSave}
           saving={saving}
         />
@@ -528,10 +615,10 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
 
       {/* ACTIVE / MENTOR_VALIDATED: Baseline Report */}
       {(currentView === 'mentor_validated' || currentView === 'active') && (
-        <BaselineReport assessment={initialAssessment} />
+        <BaselineReport assessment={initialAssessment} stageDiagnosis={stageDiagnosis} />
       )}
 
-      <DebugBadge />
+      <DebugBadge component="StudentOnboardingPage" />
     </div>
   );
 }

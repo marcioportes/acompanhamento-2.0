@@ -1,11 +1,14 @@
 /**
  * AIAssessmentReport.jsx
- * 
+ *
  * Relatório pré-assessment para o mentor.
  * Mostra scores propostos pela IA, flags de incongruência,
  * resultados da sondagem adaptativa, e sugestões de investigação.
- * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ *
+ * v1.1.0: Passa questionnaireResponses para IncongruenceFlags — permite
+ * exibir respostas reais do aluno e justificativas da IA em cada flag.
+ *
+ * @version 1.1.0 — rich incongruence detail (DEC-027)
  */
 
 import React from 'react';
@@ -20,6 +23,7 @@ export default function AIAssessmentReport({
   probingData,
   reportData,
   stageDiagnosis,
+  questionnaireResponses = [],
 }) {
   if (!scores) return null;
 
@@ -83,6 +87,7 @@ export default function AIAssessmentReport({
           interFlags={incongruenceData?.interFlags}
           gamingSuspect={incongruenceData?.gamingSuspect}
           probingData={probingData}
+          questionnaireResponses={questionnaireResponses}
         />
       </div>
 
@@ -158,7 +163,7 @@ export default function AIAssessmentReport({
         </div>
       )}
 
-      <DebugBadge />
+      <DebugBadge component="AIAssessmentReport" />
     </div>
   );
 }

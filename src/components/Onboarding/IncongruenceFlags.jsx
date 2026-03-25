@@ -1,107 +1,344 @@
 /**
  * IncongruenceFlags.jsx
- * 
+ *
  * Visualização de flags de incongruência para o relatório do mentor.
- * Mostra flags intra-dimensionais, inter-dimensionais e gaming suspect.
- * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ * Design master/detail — header sempre visível, detalhes colapsáveis.
+ *
+ * v2.0.0 (DEC-027): Labels semânticos em vez de códigos. Respostas reais
+ * do aluno e justificativas da IA visíveis no detail. Probing integrado
+ * por flag. Sem códigos de questão expostos no header.
+ *
+ * @version 2.0.0 — rich detail com respostas reais (DEC-027)
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { QUESTION_MAP } from '../../utils/assessmentQuestions.js';
+
+// ── Semântica das flags inter-dimensionais ────────────────────
+
+const FLAG_LABELS = {
+  STOP_CLAIM_VS_BEHAVIOR: 'Contradição: stop loss declarado vs. comportamento real',
+  PROCESS_VS_IMPULSE:     'Contradição: processo sistemático vs. impulsividade pós-loss',
+  SIZING_VS_REVENGE:      'Contradição: sizing disciplinado vs. escalada após perdas',
+  DISCIPLINE_VS_LOCUS:    'Contradição: disciplina declarada vs. externalização de culpa',
+  JOURNAL_VS_AWARENESS:   'Contradição: journal completo vs. baixo reconhecimento de padrões',
+};
 
 const FLAG_ICONS = {
   STOP_CLAIM_VS_BEHAVIOR: '🛑',
-  PROCESS_VS_IMPULSE: '⚡',
-  SIZING_VS_REVENGE: '📊',
-  DISCIPLINE_VS_LOCUS: '🎯',
-  JOURNAL_VS_AWARENESS: '📓',
-  CLOSED_VS_OPEN: '⚠️',
-  GAMING_SUSPECT: '🎮',
+  PROCESS_VS_IMPULSE:     '⚡',
+  SIZING_VS_REVENGE:      '📊',
+  DISCIPLINE_VS_LOCUS:    '🎯',
+  JOURNAL_VS_AWARENESS:   '📓',
 };
 
-const FLAG_SEVERITY = {
-  STOP_CLAIM_VS_BEHAVIOR: 'high',
-  PROCESS_VS_IMPULSE: 'high',
-  SIZING_VS_REVENGE: 'high',
-  DISCIPLINE_VS_LOCUS: 'medium',
-  JOURNAL_VS_AWARENESS: 'medium',
-  CLOSED_VS_OPEN: 'medium',
-  GAMING_SUSPECT: 'high',
+const RESOLUTION_CONFIG = {
+  resolved:    { label: 'Esclarecido ✓',    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  reinforced:  { label: 'Confirmado ✗',     className: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  inconclusive:{ label: 'Inconclusivo ?',   className: 'bg-gray-500/10 text-gray-400 border-gray-500/20' },
 };
 
-function getSeverityColor(severity) {
-  switch (severity) {
-    case 'high': return 'border-red-500/30 bg-red-500/5';
-    case 'medium': return 'border-amber-500/30 bg-amber-500/5';
-    default: return 'border-white/10 bg-white/[0.02]';
+// ── Helpers ──────────────────────────────────────────────────
+
+function buildResponseMap(responses) {
+  const map = {};
+  for (const r of (responses || [])) {
+    map[r.questionId] = r;
   }
+  return map;
 }
 
-function FlagCard({ flag, probingResolution }) {
+function getSelectedOptionText(questionId, selectedOption) {
+  const q = QUESTION_MAP[questionId];
+  if (!q || q.type !== 'closed') return null;
+  return q.options?.find((o) => o.id === selectedOption)?.text || null;
+}
+
+function getQuestionShortLabel(questionId) {
+  const q = QUESTION_MAP[questionId];
+  if (!q) return questionId;
+  // Return first 60 chars of question text as label
+  return q.text?.substring(0, 60) + (q.text?.length > 60 ? '…' : '');
+}
+
+// ── Collapsible Section ───────────────────────────────────────
+
+function CollapsibleSection({ label, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="mt-3 border-t border-white/5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between py-2 text-left group"
+      >
+        <span className="text-[11px] uppercase tracking-wider text-gray-500 group-hover:text-gray-400 transition-colors font-medium">
+          {label}
+        </span>
+        {open
+          ? <ChevronUp className="w-3.5 h-3.5 text-gray-600" />
+          : <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+        }
+      </button>
+      {open && <div className="pb-2">{children}</div>}
+    </div>
+  );
+}
+
+// ── Inter-dimensional Flag Card ───────────────────────────────
+
+function InterFlagCard({ flag, rMap, probingQuestion }) {
+  const label = FLAG_LABELS[flag.type] || flag.type;
   const icon = FLAG_ICONS[flag.type] || '⚠️';
-  const severity = FLAG_SEVERITY[flag.type] || 'medium';
-  const borderColor = getSeverityColor(severity);
+  const resolution = probingQuestion?.response?.aiAnalysis?.flagResolution;
+  const resConfig = resolution ? RESOLUTION_CONFIG[resolution] : null;
+
+  const sourceResponse = rMap[flag.sourceQuestion];
+  const targetResponse = rMap[flag.targetQuestion];
+  const sourceSelectedText = sourceResponse?.type === 'closed'
+    ? getSelectedOptionText(flag.sourceQuestion, sourceResponse.selectedOption)
+    : sourceResponse?.text;
+  const targetJustification = targetResponse?.aiJustification;
+  const targetText = targetResponse?.text;
+
+  const sourceQLabel = getQuestionShortLabel(flag.sourceQuestion);
+  const targetQLabel = getQuestionShortLabel(flag.targetQuestion);
 
   return (
-    <div className={`p-4 rounded-xl border ${borderColor} space-y-2`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{icon}</span>
-          <span className="text-xs font-mono text-gray-400 uppercase">
-            {flag.type}
-          </span>
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-1">
+      {/* Header — sempre visível */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 flex-1">
+          <span className="text-base mt-0.5 flex-shrink-0">{icon}</span>
+          <p className="text-sm text-gray-200 font-medium leading-snug">{label}</p>
         </div>
-        {flag.delta != null && (
-          <span className="text-xs font-mono text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
-            Δ {flag.delta}
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {flag.delta != null && (
+            <span className="text-xs font-mono text-red-400 bg-red-500/10 px-2 py-0.5 rounded">
+              Δ {flag.delta}
+            </span>
+          )}
+          {resConfig && (
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${resConfig.className}`}>
+              {resConfig.label}
+            </span>
+          )}
+        </div>
       </div>
 
-      <p className="text-sm text-gray-300">{flag.description}</p>
-
-      {/* Source → Target */}
-      {flag.sourceQuestion && flag.targetQuestion && (
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span className="font-mono">{flag.sourceQuestion}</span>
-          <span className="text-gray-600">({flag.sourceScore})</span>
-          <span className="text-gray-600">→</span>
-          <span className="font-mono">{flag.targetQuestion}</span>
-          <span className="text-gray-600">({flag.targetScore})</span>
-        </div>
-      )}
-
-      {/* Suggested investigation */}
+      {/* Sugestão para entrevista — sempre visível */}
       {flag.suggestedInvestigation && (
-        <div className="mt-2 p-2.5 rounded-lg bg-white/[0.02] border border-white/5">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-medium">
+        <div className="ml-6 mt-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+          <p className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-1">
             Sugestão para entrevista
           </p>
-          <p className="text-xs text-gray-400 italic">
-            {flag.suggestedInvestigation}
-          </p>
+          <p className="text-xs text-gray-300 italic">{flag.suggestedInvestigation}</p>
         </div>
       )}
 
-      {/* Probing resolution (if available) */}
-      {probingResolution && (
-        <div className={`mt-2 p-2 rounded-lg text-xs ${
-          probingResolution === 'resolved' ? 'bg-emerald-500/10 text-emerald-400' :
-          probingResolution === 'reinforced' ? 'bg-red-500/10 text-red-400' :
-          'bg-gray-500/10 text-gray-400'
-        }`}>
-          Aprofundamento: {
-            probingResolution === 'resolved' ? 'Esclarecido ✓' :
-            probingResolution === 'reinforced' ? 'Confirmado ✗' :
-            'Inconclusivo ?'
-          }
+      {/* Detail — colapsável */}
+      <CollapsibleSection label="Ver o que gerou este alerta">
+        <div className="space-y-3 ml-1">
+          {/* Pergunta fonte (fechada) */}
+          {sourceResponse && (
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+              <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">
+                {flag.sourceQuestion} — {sourceQLabel}
+              </p>
+              <p className="text-xs text-gray-400 font-medium">
+                Score: <span className="text-amber-400">{flag.sourceScore}</span>
+              </p>
+              {sourceSelectedText && (
+                <p className="text-xs text-gray-300 mt-1 italic">
+                  "{sourceSelectedText}"
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Pergunta alvo (emocional — pode ser aberta) */}
+          {targetResponse && (
+            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+              <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">
+                {flag.targetQuestion} — {targetQLabel}
+              </p>
+              <p className="text-xs text-gray-400 font-medium">
+                Score IA: <span className="text-red-400">{flag.targetScore}</span>
+              </p>
+              {targetText && (
+                <p className="text-xs text-gray-400 mt-1 italic line-clamp-3">
+                  "{targetText}"
+                </p>
+              )}
+              {(targetJustification || targetResponse?.aiFinding) && (
+                <div className="mt-2 pt-2 border-t border-white/5 space-y-2">
+                  {targetResponse?.aiFinding && (
+                    <div>
+                      <p className="text-[10px] text-amber-500/70 uppercase tracking-wider mb-0.5">Observação clínica</p>
+                      <p className="text-xs text-gray-300">{targetResponse.aiFinding}</p>
+                    </div>
+                  )}
+                  {targetJustification && (
+                    <div className={targetResponse?.aiFinding ? 'pt-1 border-t border-white/5' : ''}>
+                      <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-0.5">Justificativa IA</p>
+                      <p className="text-xs text-gray-300">{targetJustification}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+      </CollapsibleSection>
+
+      {/* Probing detail — colapsável se existir */}
+      {probingQuestion && (
+        <CollapsibleSection label={`Aprofundamento: ${probingQuestion.probingId}`}>
+          <div className="space-y-2 ml-1">
+            {/* Pergunta gerada */}
+            <div className="p-3 rounded-lg bg-purple-500/5 border border-purple-500/10">
+              <p className="text-[10px] text-purple-400 uppercase tracking-wider mb-1">Pergunta da IA</p>
+              <p className="text-xs text-gray-300">{probingQuestion.text}</p>
+            </div>
+
+            {/* Resposta do aluno */}
+            {probingQuestion.response?.text && (
+              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">
+                  Resposta do aluno
+                  {probingQuestion.response.responseTime && (
+                    <span className="ml-2 text-gray-700">({probingQuestion.response.responseTime}s)</span>
+                  )}
+                </p>
+                <p className="text-xs text-gray-300 italic">"{probingQuestion.response.text}"</p>
+              </div>
+            )}
+
+            {/* Análise da IA */}
+            {probingQuestion.response?.aiAnalysis && (
+              <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5 space-y-2">
+                {probingQuestion.response.aiAnalysis.finding && (
+                  <div>
+                    <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-0.5">Finding</p>
+                    <p className="text-xs text-gray-300">{probingQuestion.response.aiAnalysis.finding}</p>
+                  </div>
+                )}
+                {probingQuestion.response.aiAnalysis.emotionalInsight && (
+                  <div className="pt-2 border-t border-white/5">
+                    <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-0.5">Insight emocional</p>
+                    <p className="text-xs text-gray-300">{probingQuestion.response.aiAnalysis.emotionalInsight}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
       )}
     </div>
   );
 }
 
-export default function IncongruenceFlags({ intraFlags, interFlags, gamingSuspect, probingData }) {
+// ── Intra-dimensional Flag Card ───────────────────────────────
+
+const DIMENSION_LABELS = {
+  emotional:   'Emocional',
+  financial:   'Financeiro',
+  operational: 'Operacional',
+  experience:  'Maturidade',
+};
+
+function IntraFlagCard({ flag, rMap }) {
+  const dimLabel = DIMENSION_LABELS[flag.dimension] || flag.dimension;
+
+  // Find open responses from this dimension with low scores
+  const openResponses = Object.values(rMap).filter(
+    (r) => r.type === 'open' && r.dimension === flag.dimension && r.aiScore != null
+  );
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 space-y-1">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 flex-1">
+          <span className="text-base mt-0.5 flex-shrink-0">⚠️</span>
+          <div>
+            <p className="text-sm text-gray-200 font-medium leading-snug">
+              {dimLabel} — respostas fechadas inflam o score
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Fechadas: <span className="text-amber-400 font-mono">{flag.closedScore}</span>
+              {' '}·{' '}
+              Abertas: <span className="text-red-400 font-mono">{flag.openScore}</span>
+              {' '}·{' '}
+              Delta: <span className="text-red-400 font-mono">Δ {flag.delta}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Detail — respostas abertas com score baixo */}
+      {openResponses.length > 0 && (
+        <CollapsibleSection label={`Ver respostas abertas da dimensão (${openResponses.length})`}>
+          <div className="space-y-3 ml-1">
+            {openResponses.map((resp) => {
+              const q = QUESTION_MAP[resp.questionId];
+              return (
+                <div key={resp.questionId} className="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] text-gray-600 uppercase tracking-wider">
+                      {resp.questionId}
+                    </p>
+                    <span className={`text-xs font-mono font-bold ${
+                      resp.aiScore >= 65 ? 'text-yellow-400'
+                        : resp.aiScore >= 50 ? 'text-amber-400'
+                        : 'text-red-400'
+                    }`}>
+                      Score IA: {resp.aiScore}
+                    </span>
+                  </div>
+                  {q?.text && (
+                    <p className="text-[11px] text-gray-500 mb-1 italic">"{q.text.substring(0, 80)}…"</p>
+                  )}
+                  {resp.text && (
+                    <p className="text-xs text-gray-400 line-clamp-3 italic mt-1">
+                      Aluno: "{resp.text}"
+                    </p>
+                  )}
+                  {(resp.aiJustification || resp.aiFinding) && (
+                    <div className="mt-2 pt-2 border-t border-white/5 space-y-2">
+                      {resp.aiFinding && (
+                        <div>
+                          <p className="text-[10px] text-amber-500/70 uppercase tracking-wider mb-0.5">Observação clínica</p>
+                          <p className="text-xs text-gray-300">{resp.aiFinding}</p>
+                        </div>
+                      )}
+                      {resp.aiJustification && (
+                        <div className={resp.aiFinding ? 'pt-1 border-t border-white/5' : ''}>
+                          <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-0.5">Justificativa IA</p>
+                          <p className="text-xs text-gray-400">{resp.aiJustification}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────
+
+export default function IncongruenceFlags({
+  intraFlags,
+  interFlags,
+  gamingSuspect,
+  probingData,
+  questionnaireResponses = [],
+}) {
   const hasFlags = (intraFlags?.length > 0) || (interFlags?.length > 0) || gamingSuspect;
 
   if (!hasFlags) {
@@ -114,19 +351,22 @@ export default function IncongruenceFlags({ intraFlags, interFlags, gamingSuspec
     );
   }
 
-  // Build probing resolution map
-  const probingResolutions = {};
+  const rMap = buildResponseMap(questionnaireResponses);
+
+  // Build probing map by triggeredByFlag
+  const probingByFlag = {};
   if (probingData?.questions) {
     for (const q of probingData.questions) {
-      if (q.triggeredByFlag && q.response?.aiAnalysis?.flagResolution) {
-        probingResolutions[q.triggeredByFlag] = q.response.aiAnalysis.flagResolution;
+      if (q.triggeredByFlag) {
+        probingByFlag[q.triggeredByFlag] = q;
       }
     }
   }
 
   return (
-    <div className="space-y-4">
-      {/* Section: Inter-dimensional */}
+    <div className="space-y-6">
+
+      {/* Inter-dimensional */}
       {interFlags && interFlags.length > 0 && (
         <div>
           <h4 className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-3">
@@ -134,17 +374,18 @@ export default function IncongruenceFlags({ intraFlags, interFlags, gamingSuspec
           </h4>
           <div className="space-y-3">
             {interFlags.map((flag) => (
-              <FlagCard
+              <InterFlagCard
                 key={flag.type}
                 flag={flag}
-                probingResolution={probingResolutions[flag.type]}
+                rMap={rMap}
+                probingQuestion={probingByFlag[flag.type] || null}
               />
             ))}
           </div>
         </div>
       )}
 
-      {/* Section: Intra-dimensional */}
+      {/* Intra-dimensional */}
       {intraFlags && intraFlags.length > 0 && (
         <div>
           <h4 className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-3">
@@ -152,7 +393,11 @@ export default function IncongruenceFlags({ intraFlags, interFlags, gamingSuspec
           </h4>
           <div className="space-y-3">
             {intraFlags.map((flag, i) => (
-              <FlagCard key={`intra-${i}`} flag={flag} />
+              <IntraFlagCard
+                key={`intra-${i}`}
+                flag={flag}
+                rMap={rMap}
+              />
             ))}
           </div>
         </div>
@@ -163,11 +408,13 @@ export default function IncongruenceFlags({ intraFlags, interFlags, gamingSuspec
         <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/5">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-lg">🎮</span>
-            <span className="text-xs font-mono text-red-400 uppercase">GAMING SUSPECT</span>
+            <span className="text-sm font-medium text-red-400">
+              Possível inflação deliberada nas respostas fechadas
+            </span>
           </div>
-          <p className="text-sm text-gray-300">
-            O aluno selecionou consistentemente as melhores respostas nas perguntas fechadas 
-            (≥80% das opções com score máximo). Possível inflação deliberada.
+          <p className="text-xs text-gray-400">
+            O aluno selecionou consistentemente as melhores respostas em ≥80% das perguntas fechadas.
+            Cruze com as respostas abertas — se houver discrepância, é sinal de gaming.
           </p>
         </div>
       )}

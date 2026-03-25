@@ -1,19 +1,34 @@
 /**
  * MentorValidation.jsx
- * 
+ *
  * Interface de validação do mentor. Recebe scores propostos pela IA,
  * permite confirmar com 1 clique ou ajustar com justificativa.
- * 
- * Guarda: score_ia, score_mentor, override_justification, mentor_notes
- * 
+ *
+ * v1.1.0: Seção "Plano de Desenvolvimento" — sugestões da IA pré-carregadas,
+ * mentor confirma/edita/adiciona antes de validar. As prioridades confirmadas
+ * são salvas no initial_assessment e apresentadas ao aluno no BaselineReport.
+ *
+ * Guarda: score_ia, score_mentor, override_justification, mentor_notes,
+ *         developmentPriorities (confirmadas/editadas pelo mentor)
+ *
  * Nota: emotion_control no operacional NÃO tem override aqui —
  * é derivado automaticamente do emotionalScore já validado.
- * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ *
+ * @version 1.1.0 — seção de desenvolvimento com sugestões IA (DEC-027)
  */
 
 import React, { useState, useCallback } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import DebugBadge from '../DebugBadge.jsx';
+
+const DIMENSIONS = [
+  { value: 'emotional', label: 'Emocional' },
+  { value: 'financial', label: 'Financeiro' },
+  { value: 'operational', label: 'Operacional' },
+  { value: 'experience', label: 'Maturidade' },
+];
+
+const MONTHS_OPTIONS = [1, 2, 3, 6, 12];
 
 function SubDimensionRow({ name, aiScore, mentorScore, onScoreChange, notes, onNotesChange, readOnly }) {
   const hasOverride = mentorScore !== aiScore;
@@ -85,7 +100,58 @@ function DimensionBlock({ title, icon, aiScore, subDimensions, onChange, readOnl
   );
 }
 
-export default function MentorValidation({ aiScores, aiClassifications, onSave, saving }) {
+function PriorityRow({ priority, index, onChange, onRemove, isAiSuggestion }) {
+  return (
+    <div className={`p-3 rounded-lg border ${isAiSuggestion ? 'border-blue-500/20 bg-blue-500/5' : 'border-white/5 bg-white/[0.02]'}`}>
+      <div className="flex items-start gap-2 mb-2">
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-gray-400 mt-0.5">
+          {index + 1}
+        </span>
+        <div className="flex-1 space-y-2">
+          <input
+            type="text"
+            value={priority.priority}
+            onChange={(e) => onChange(index, 'priority', e.target.value)}
+            placeholder="Descreva a prioridade de desenvolvimento..."
+            className="w-full px-2 py-1.5 text-sm bg-white/5 border border-white/10 rounded text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={priority.dimension}
+              onChange={(e) => onChange(index, 'dimension', e.target.value)}
+              className="flex-1 px-2 py-1.5 text-xs bg-white/5 border border-white/10 rounded text-gray-300 focus:outline-none focus:border-blue-500"
+            >
+              {DIMENSIONS.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+            <select
+              value={priority.months}
+              onChange={(e) => onChange(index, 'months', Number(e.target.value))}
+              className="w-28 px-2 py-1.5 text-xs bg-white/5 border border-white/10 rounded text-gray-300 focus:outline-none focus:border-blue-500"
+            >
+              {MONTHS_OPTIONS.map((m) => (
+                <option key={m} value={m}>{m} {m === 1 ? 'mês' : 'meses'}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => onRemove(index)}
+              className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+              title="Remover prioridade"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {isAiSuggestion && (
+        <p className="text-[10px] text-blue-400/60 ml-8">Sugestão da IA — edite conforme necessário</p>
+      )}
+    </div>
+  );
+}
+
+export default function MentorValidation({ aiScores, aiClassifications, aiDevelopmentPriorities = [], onSave, saving }) {
   const [mentorData, setMentorData] = useState(() => {
     // Initialize mentor scores = AI scores (1-click confirm)
     return {
@@ -110,6 +176,17 @@ export default function MentorValidation({ aiScores, aiClassifications, onSave, 
     };
   });
 
+  // Prioridades: inicializadas com sugestões da IA, editáveis pelo mentor
+  const [priorities, setPriorities] = useState(() =>
+    (aiDevelopmentPriorities || []).map((p) => ({
+      rank: p.rank,
+      priority: p.priority || '',
+      dimension: p.dimension || 'emotional',
+      months: p.months || 1,
+      _aiSuggestion: true, // marca origem para UI
+    }))
+  );
+
   const handleChange = useCallback((dimension, key, field, value) => {
     setMentorData((prev) => ({
       ...prev,
@@ -123,14 +200,48 @@ export default function MentorValidation({ aiScores, aiClassifications, onSave, 
     }));
   }, []);
 
+  const handlePriorityChange = useCallback((index, field, value) => {
+    setPriorities((prev) => prev.map((p, i) =>
+      i === index ? { ...p, [field]: value, _aiSuggestion: field === 'priority' ? false : p._aiSuggestion } : p
+    ));
+  }, []);
+
+  const handlePriorityRemove = useCallback((index) => {
+    setPriorities((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handlePriorityAdd = useCallback(() => {
+    if (priorities.length >= 5) return;
+    setPriorities((prev) => [...prev, {
+      rank: prev.length + 1,
+      priority: '',
+      dimension: 'emotional',
+      months: 1,
+      _aiSuggestion: false,
+    }]);
+  }, [priorities.length]);
+
   const handleSave = useCallback(() => {
     if (onSave) {
+      // Renumber ranks, strip internal _aiSuggestion flag
+      const finalPriorities = priorities
+        .filter((p) => p.priority.trim().length > 0)
+        .map((p, i) => ({
+          rank: i + 1,
+          priority: p.priority.trim(),
+          dimension: p.dimension,
+          months: p.months,
+        }));
+
       onSave({
-        mentorData,
-        interviewer: 'current_mentor', // Will be resolved from auth context
+        mentorData: {
+          ...mentorData,
+          developmentPriorities: finalPriorities,
+        },
+        interviewer: 'current_mentor',
       });
     }
-  }, [mentorData, onSave]);
+  }, [mentorData, priorities, onSave]);
 
   if (!aiScores) return null;
 
@@ -184,6 +295,50 @@ export default function MentorValidation({ aiScores, aiClassifications, onSave, 
         onChange={(key, field, val) => handleChange('operational', key, field, val)}
       />
 
+      {/* Development Priorities */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h4 className="text-xs uppercase tracking-wider text-gray-400 font-medium">
+              Plano de Desenvolvimento
+            </h4>
+            <p className="text-[10px] text-gray-600 mt-0.5">
+              Sugestões da IA pré-carregadas — edite, reordene ou adicione conforme a entrevista
+            </p>
+          </div>
+          {priorities.length < 5 && (
+            <button
+              onClick={handlePriorityAdd}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/10 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Adicionar
+            </button>
+          )}
+        </div>
+
+        {priorities.length === 0 ? (
+          <div className="p-4 rounded-lg border border-white/5 bg-white/[0.02] text-center">
+            <p className="text-xs text-gray-600">
+              Nenhuma prioridade definida. Adicione até 5 prioridades de desenvolvimento.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {priorities.map((p, i) => (
+              <PriorityRow
+                key={i}
+                priority={p}
+                index={i}
+                onChange={handlePriorityChange}
+                onRemove={handlePriorityRemove}
+                isAiSuggestion={p._aiSuggestion}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Overall notes */}
       <div>
         <label className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-2 block">
@@ -215,7 +370,7 @@ export default function MentorValidation({ aiScores, aiClassifications, onSave, 
         </button>
       </div>
 
-      <DebugBadge />
+      <DebugBadge component="MentorValidation" />
     </div>
   );
 }
