@@ -3,7 +3,10 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.20.7: Dimensão Experiência renomeada para Maturidade em toda UI; justificativa IA do diagnóstico de stage exibida no BaselineReport e persistida no Firestore
+ * - 1.21.0: Fix stageDiagnosis rehydration — persistido no questionnaire doc, rehydratado no useEffect; TraderProfileCard Maturidade usa escala de stage (não score); useAssessment.saveStageDiagnosis
+ * - 1.20.9: Fix BaselineReport sem justificativa — stage_diagnosis campo top-level no initial_assessment
+ * - 1.20.8: Re-processar IA agora inclui aprofundamento (probing)
+ * - 1.20.7: Dimensão Experiência renomeada para Maturidade em toda UI; justificativa IA do diagnóstico de stage exibida no BaselineReport
  * - 1.20.6: Prompt classifyOpenResponse reescrito com framework completo; rubricas expandidas; campo aiFinding; botão Re-processar IA
  * - 1.20.5: DEC-027 — IncongruenceFlags redesenhado com master/detail: labels semânticos, respostas reais do aluno, justificativas da IA e probing integrado por flag
  * - 1.20.4: DEC-027 — BaselineReport redesenhado com régua de escala 4D + plano do mentor; MentorValidation com seção de prioridades editáveis pré-carregadas da IA
@@ -27,10 +30,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.20.7',
+  version: '1.21.1',
   build: '20260325',
-  display: 'v1.20.7',
-  full: '1.20.7+20260325',
+  display: 'v1.21.1',
+  full: '1.21.1+20260325',
 };
 export default VERSION;
 export { VERSION };

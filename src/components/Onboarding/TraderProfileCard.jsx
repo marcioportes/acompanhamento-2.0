@@ -25,9 +25,28 @@ function getScoreBg(score) {
   return 'bg-red-500/10 border-red-500/20';
 }
 
-function QuadrantCard({ title, score, label, icon, subScores }) {
-  const color = getScoreColor(score);
-  const bg = getScoreBg(score);
+// Cor baseada no stage de Maturidade — não no score numérico
+// Stage 1-2 é o estado inicial esperado, não um sinal de alarme
+function getStageColor(stage) {
+  if (stage == null) return 'text-gray-500';
+  if (stage >= 4) return 'text-emerald-400';
+  if (stage >= 3) return 'text-yellow-400';
+  if (stage >= 2) return 'text-amber-400';
+  return 'text-orange-400';
+}
+
+function getStageBg(stage) {
+  if (stage == null) return 'bg-gray-500/10 border-gray-500/20';
+  if (stage >= 4) return 'bg-emerald-500/10 border-emerald-500/20';
+  if (stage >= 3) return 'bg-yellow-400/10 border-yellow-400/20';
+  if (stage >= 2) return 'bg-amber-500/10 border-amber-500/20';
+  return 'bg-orange-500/10 border-orange-500/20';
+}
+
+function QuadrantCard({ title, score, label, icon, subScores, stage }) {
+  // Se stage fornecido (Maturidade), usa escala de stage; senão usa escala de score
+  const color = stage != null ? getStageColor(stage) : getScoreColor(score);
+  const bg = stage != null ? getStageBg(stage) : getScoreBg(score);
 
   return (
     <div className={`p-4 rounded-xl border ${bg} transition-all`}>
@@ -138,6 +157,7 @@ export default function TraderProfileCard({ scores, classifications, profileName
           title="Maturidade"
           icon="📈"
           score={scores.experience?.score}
+          stage={scores.experience?.stage}
           label={classifications?.experience?.stage?.label}
           subScores={[
             { name: `Stage ${scores.experience?.stage || '—'}`, value: scores.experience?.score },

@@ -122,7 +122,7 @@ Antes de CADA entrega, Claude deve passar por este checklist mentalmente:
 □ Escrevi testes para TODA lógica nova antes de gerar o ZIP? (INV-05)
 □ version.js atualizado? (INV-09)
 □ CHANGELOG.md atualizado? (INV-08)
-□ DebugBadge em componentes novos/tocados? (INV-04)
+□ DebugBadge em componentes novos/tocados? Com prop component="NomeExato"? (INV-04)
 □ Análise de impacto documentada? (INV-03)
 □ Estou cortando algum caminho para ir mais rápido? Se sim, PARAR. (INV-11)
 □ Estou criando alguma estrutura nova (subcollection, campo, componente) sem aprovação? Se sim, PARAR. (INV-10)
@@ -152,6 +152,36 @@ Claude assumiu que "subcollection é o padrão para dados filhos no Firestore" s
 - INV-10 já existia mas não impediu o erro original. INV-12 é específico para parciais.
 - Regra geral: NUNCA criar subcollection sem (a) grep no código existente, (b) verificar como o dado é lido/gravado, (c) aprovação explícita do Marcio.
 - Subcollections no Firestore são para dados que precisam de queries independentes. Parciais de um trade NUNCA são consultadas fora do contexto do trade — logo, campo inline é a estrutura correta.
+
+---
+
+## 9. Inferência Superficial — Conclusões sem Verificação de Fluxo Completo
+
+**O que aconteceu (sessão 24/03/2026):**
+Claude afirmou que `development_priorities` "vem do mentor" sem ter lido o código completo. Na realidade, o campo vem da CF `generateAssessmentReport` (IA), é copiado diretamente para o `initial_assessment` em `handleMentorSave`, e o `MentorValidation.jsx` não tem nenhum campo para o mentor ver ou editar as prioridades. A afirmação estava errada. Marcio precisou questionar, Claude teve que investigar, e perdemos tempo com uma ida-e-volta que deveria ter sido evitada com uma leitura prévia completa.
+
+**Padrão geral:**
+Claude responde perguntas sobre fluxo de dados, origem de campos, ou comportamento de componentes baseado em leitura parcial ou inferência a partir de nomes de variáveis — sem ter rastreado o fluxo real no código. Isso gera conclusões que parecem corretas mas não são, e o Marcio descobre o erro só quando questiona.
+
+**Por que é grave:**
+As conclusões de Claude alimentam decisões de produto e arquitetura do Marcio. Uma conclusão errada sobre "quem preenche esse campo" pode levar a uma decisão de design baseada em premissa falsa. O custo não é só tempo — é qualidade da decisão.
+
+**Regra obrigatória a partir de 24/03/2026:**
+Antes de afirmar qualquer coisa sobre fluxo de dados, origem de campos, comportamento de componentes, ou estado de implementação, Claude DEVE:
+1. Identificar todos os arquivos relevantes para a pergunta (componente, hook, CF, página que orquestra)
+2. Ler cada um deles
+3. Só então concluir
+
+Se não leu, não afirma. Se está incerto, diz "preciso verificar" e verifica antes de responder.
+
+**Checklist adicional para seção 7:**
+```
+□ Antes de afirmar que algo "está implementado" — grep + leitura do arquivo
+□ Antes de afirmar "quem preenche esse campo" — rastrear do componente até o Firestore
+□ Antes de afirmar "o mentor faz X" — ler o componente do mentor, não inferir pelo nome
+□ Se a resposta exige rastreamento de fluxo — ler TUDO antes de concluir
+□ DebugBadge SEMPRE com prop component="NomeDoComponente" — <DebugBadge /> sem prop deixa o campo vazio
+```
 
 ---
 

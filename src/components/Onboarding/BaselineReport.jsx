@@ -206,8 +206,11 @@ function DimensionCard({ dimensionKey, score, subScores }) {
 
 // ── Main Component ────────────────────────────────────────────
 
-export default function BaselineReport({ assessment, stageDiagnosis }) {
+export default function BaselineReport({ assessment, stageDiagnosis: stageDiagnosisProp }) {
   if (!assessment) return null;
+
+  // stageDiagnosis: prop em tempo real (mentor) ou campo do Firestore (aluno/acesso posterior)
+  const stageDiagnosis = stageDiagnosisProp || assessment?.stage_diagnosis || null;
 
   const {
     emotional,
@@ -285,17 +288,17 @@ export default function BaselineReport({ assessment, stageDiagnosis }) {
         />
 
         {/* Justificativa da IA para o diagnóstico de Maturidade */}
-        {(stageDiagnosis?.justification || experience?.stage_diagnosis_justification) && (
+        {stageDiagnosis?.justification && (
           <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 -mt-2">
             <p className="text-[10px] uppercase tracking-wider text-amber-400/70 font-medium mb-2">
               Por que Stage {experience?.stage} — {['', 'Caos', 'Reativo', 'Metódico', 'Profissional', 'Mastery'][experience?.stage] || ''}
             </p>
             <p className="text-xs text-gray-300 leading-relaxed">
-              {stageDiagnosis?.justification || experience?.stage_diagnosis_justification}
+              {stageDiagnosis.justification}
             </p>
-            {(stageDiagnosis?.keySignals || experience?.stage_key_signals)?.length > 0 && (
+            {stageDiagnosis.keySignals?.length > 0 && (
               <div className="mt-2 pt-2 border-t border-amber-500/10 flex flex-wrap gap-1.5">
-                {(stageDiagnosis?.keySignals || experience?.stage_key_signals).map((signal, i) => (
+                {stageDiagnosis.keySignals.map((signal, i) => (
                   <span key={i} className="px-2 py-0.5 text-[10px] bg-amber-500/10 text-amber-400/80 rounded">
                     {signal}
                   </span>

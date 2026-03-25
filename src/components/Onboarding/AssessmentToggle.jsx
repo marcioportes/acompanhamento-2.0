@@ -1,14 +1,18 @@
 /**
  * AssessmentToggle.jsx
- * 
+ *
  * Toggle que o mentor usa na tela de alunos para marcar que um aluno
  * precisa fazer o assessment. Grava requiresAssessment no doc do student.
- * 
+ *
  * DEC-023: Assessment acionado pelo mentor, não automático.
- * 
- * Uso: <AssessmentToggle studentId={id} currentValue={bool} />
- * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ * DEC-026 (24/03/2026): Mentor pode resetar assessment mesmo após conclusão
+ * (onboardingStatus = active). Reset requer confirmação explícita e volta
+ * o aluno para lead + requiresAssessment: false. Histórico (initial_assessment,
+ * questionnaire, probing) é preservado no Firestore — não é deletado.
+ *
+ * Uso: <AssessmentToggle studentId={id} currentValue={bool} onboardingStatus={status} />
+ *
+ * @version 1.1.0 — mentor reset habilitado (DEC-026)
  */
 
 import React, { useState, useCallback } from 'react';
@@ -17,11 +21,37 @@ import { db } from '../../firebase';
 
 export default function AssessmentToggle({ studentId, currentValue = false, onboardingStatus }) {
   const [loading, setLoading] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
   const isActive = onboardingStatus === 'active' || onboardingStatus === 'mentor_validated';
-  const isInProgress = onboardingStatus && !['lead', 'active', 'mentor_validated'].includes(onboardingStatus) && onboardingStatus !== undefined;
+  const isInProgress = onboardingStatus &&
+    !['lead', 'active', 'mentor_validated'].includes(onboardingStatus) &&
+    onboardingStatus !== undefined;
+
+  // Status label
+  let statusLabel = '';
+  let statusColor = '';
+  if (isActive) {
+    statusLabel = 'Completo';
+    statusColor = 'text-emerald-400';
+  } else if (isInProgress) {
+    statusLabel = 'Em andamento';
+    statusColor = 'text-amber-400';
+  } else if (currentValue) {
+    statusLabel = 'Pendente';
+    statusColor = 'text-blue-400';
+  }
 
   const handleToggle = useCallback(async () => {
-    if (loading) return;
+    if (loading || isInProgress) return;
+
+    // Se assessment está completo (active), exige confirmação de reset
+    if (isActive) {
+      setConfirmingReset(true);
+      return;
+    }
+
+    // Fluxo normal: ativar/desativar
     setLoading(true);
     try {
       const studentRef = doc(db, 'students', studentId);
@@ -39,20 +69,53 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
     } finally {
       setLoading(false);
     }
-  }, [studentId, currentValue, onboardingStatus, loading]);
+  }, [studentId, currentValue, onboardingStatus, loading, isInProgress, isActive]);
 
-  // Status label
-  let statusLabel = '';
-  let statusColor = '';
-  if (isActive) {
-    statusLabel = 'Completo';
-    statusColor = 'text-emerald-400';
-  } else if (isInProgress) {
-    statusLabel = 'Em andamento';
-    statusColor = 'text-amber-400';
-  } else if (currentValue) {
-    statusLabel = 'Pendente';
-    statusColor = 'text-blue-400';
+  const handleConfirmReset = useCallback(async () => {
+    setConfirmingReset(false);
+    setLoading(true);
+    try {
+      const studentRef = doc(db, 'students', studentId);
+      // Reset: volta para lead, desativa assessment
+      // Histórico (initial_assessment, questionnaire, probing) é preservado
+      await updateDoc(studentRef, {
+        onboardingStatus: 'lead',
+        requiresAssessment: false,
+      });
+    } catch (err) {
+      console.error('Erro ao resetar assessment:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [studentId]);
+
+  const handleCancelReset = useCallback(() => {
+    setConfirmingReset(false);
+  }, []);
+
+  // Modal de confirmação de reset
+  if (confirmingReset) {
+    return (
+      <div className="flex flex-col items-end gap-1.5">
+        <p className="text-[10px] text-amber-400 text-right max-w-[160px]">
+          Resetar assessment? O aluno precisará refazer o processo. Histórico preservado.
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCancelReset}
+            className="px-2 py-0.5 text-[10px] rounded bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleConfirmReset}
+            className="px-2 py-0.5 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+          >
+            Confirmar reset
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -62,10 +125,12 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
         disabled={loading || isInProgress}
         title={
           isInProgress
-            ? 'Assessment em andamento — não pode desativar'
-            : currentValue
-              ? 'Desativar assessment'
-              : 'Ativar assessment para este aluno'
+            ? 'Assessment em andamento — não pode alterar'
+            : isActive
+              ? 'Clique para resetar o assessment'
+              : currentValue
+                ? 'Desativar assessment'
+                : 'Ativar assessment para este aluno'
         }
         className={`
           relative w-9 h-5 rounded-full transition-all duration-200

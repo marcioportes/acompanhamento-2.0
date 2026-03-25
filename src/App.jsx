@@ -283,7 +283,10 @@ const AppContent = () => {
           // Marco Zero — BaselineReport do assessment validado pelo mentor
           return (
             <div className="p-6 max-w-2xl mx-auto">
-              <BaselineReport assessment={studentInitialAssessment} />
+              <BaselineReport
+                assessment={studentInitialAssessment}
+                stageDiagnosis={studentInitialAssessment?.stage_diagnosis}
+              />
             </div>
           );
         case 'dashboard':

@@ -1,15 +1,26 @@
 /**
  * useAssessment.js
- * 
+ *
  * Hook para gestão do assessment no Firestore.
  * Gerencia o ciclo de vida do assessment: questionnaire, probing, initial_assessment.
- * 
+ *
  * Paths Firestore:
  * - students/{studentId}/assessment/questionnaire
  * - students/{studentId}/assessment/probing
  * - students/{studentId}/assessment/initial_assessment
- * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ *
+ * State machine:
+ * lead → pre_assessment → ai_assessed → probing → probing_complete → mentor_validated → active
+ *
+ * DEC-026 (24/03/2026): saveInitialAssessment escreve onboardingStatus: 'active' diretamente
+ * via updateDoc, sem passar por updateOnboardingStatus. Motivo: a dupla transição
+ * probing_complete → mentor_validated → active causava stale closure — o segundo
+ * updateOnboardingStatus lia onboardingStatus do closure (probing_complete) e lançava
+ * erro de transição inválida, deixando o aluno preso em mentor_validated.
+ * mentor_validated continua existindo na state machine para transições manuais futuras,
+ * mas o fluxo normal do saveInitialAssessment vai direto para active.
+ *
+ * @version 1.1.0 — fix saveInitialAssessment stale closure
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -89,8 +100,16 @@ export function useAssessment(studentId) {
 
   // ── Status Transitions ────────────────────────────────────
 
-  const updateOnboardingStatus = useCallback(async (newStatus) => {
+  /**
+   * Transição de status via state machine.
+   * Recebe fromStatus como parâmetro para evitar stale closure.
+   * Se fromStatus não for passado, usa onboardingStatus do hook (pode ser stale).
+   */
+  const updateOnboardingStatus = useCallback(async (newStatus, fromStatus) => {
     if (!studentId) return;
+
+    const currentStatus = fromStatus ?? onboardingStatus;
+
     const validTransitions = {
       lead: ['pre_assessment'],
       pre_assessment: ['ai_assessed'],
@@ -100,16 +119,31 @@ export function useAssessment(studentId) {
       mentor_validated: ['active'],
     };
 
-    const allowed = validTransitions[onboardingStatus];
+    const allowed = validTransitions[currentStatus];
     if (!allowed || !allowed.includes(newStatus)) {
       throw new Error(
-        `Transição inválida: ${onboardingStatus} → ${newStatus}. Permitidas: ${(allowed || []).join(', ')}`
+        `Transição inválida: ${currentStatus} → ${newStatus}. Permitidas: ${(allowed || []).join(', ')}`
       );
     }
 
     const studentRef = doc(db, 'students', studentId);
     await updateDoc(studentRef, { onboardingStatus: newStatus });
   }, [studentId, onboardingStatus]);
+
+  /**
+   * Reset do assessment pelo mentor.
+   * Seta onboardingStatus: 'lead' e requiresAssessment: false diretamente,
+   * sem passar pela state machine (reset é operação administrativa, não fluxo normal).
+   * O mentor deve reativar o assessment via AssessmentToggle após o reset.
+   */
+  const resetAssessment = useCallback(async () => {
+    if (!studentId) return;
+    const studentRef = doc(db, 'students', studentId);
+    await updateDoc(studentRef, {
+      onboardingStatus: 'lead',
+      requiresAssessment: false,
+    });
+  }, [studentId]);
 
   // ── Questionnaire Actions ─────────────────────────────────
 
@@ -199,20 +233,50 @@ export function useAssessment(studentId) {
     await updateOnboardingStatus('probing_complete');
   }, [studentId, updateOnboardingStatus]);
 
+  /**
+   * Persiste stageDiagnosis no documento questionnaire para rehydration futura.
+   * Chamado após generateAssessmentReport retornar o diagnóstico de stage.
+   * Permite que mentor re-abra a página e veja o relatório sem re-gerar.
+   */
+  const saveStageDiagnosis = useCallback(async (stageDiagnosis) => {
+    if (!studentId || !stageDiagnosis) return;
+    const qRef = doc(db, 'students', studentId, 'assessment', 'questionnaire');
+    await updateDoc(qRef, { stageDiagnosis });
+  }, [studentId]);
+
   // ── Mentor Validation ─────────────────────────────────────
 
+  /**
+   * Salva o assessment validado pelo mentor e transiciona para 'active'.
+   *
+   * DEC-026: Transição vai direto para 'active' via updateDoc explícito,
+   * sem passar por updateOnboardingStatus. Evita o bug de stale closure
+   * que deixava o aluno preso em 'mentor_validated'.
+   *
+   * Fluxo correto:
+   * 1. Mentor conduz entrevista e ajusta scores no MentorValidation
+   * 2. Mentor clica "Validar Assessment"
+   * 3. initial_assessment é gravado no Firestore
+   * 4. onboardingStatus vai para 'active' atomicamente
+   * 5. Aluno acessa dashboard e vê link para BaselineReport
+   */
   const saveInitialAssessment = useCallback(async (assessmentData) => {
     if (!studentId) return;
+
+    const studentRef = doc(db, 'students', studentId);
     const iaRef = doc(db, 'students', studentId, 'assessment', 'initial_assessment');
+
+    // Gravar o assessment
     await setDoc(iaRef, {
       timestamp: serverTimestamp(),
       assessmentMethod: 'three_stage_v1',
       ...assessmentData,
     });
-    // Two-step transition: probing_complete → mentor_validated → active
-    await updateOnboardingStatus('mentor_validated');
-    await updateOnboardingStatus('active');
-  }, [studentId, updateOnboardingStatus]);
+
+    // Transição direta para 'active' — sem passar pela state machine
+    // para evitar stale closure (DEC-026)
+    await updateDoc(studentRef, { onboardingStatus: 'active' });
+  }, [studentId]);
 
   // ── Return ────────────────────────────────────────────────
 
@@ -234,5 +298,7 @@ export function useAssessment(studentId) {
     completeProbing,
     saveInitialAssessment,
     updateOnboardingStatus,
+    resetAssessment,
+    saveStageDiagnosis,
   };
 }

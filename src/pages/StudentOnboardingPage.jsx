@@ -83,6 +83,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     completeProbingQuestion,
     completeProbing,
     saveInitialAssessment,
+    saveStageDiagnosis,
   } = assessment;
 
   const questionnaire = useQuestionnaire({
@@ -101,23 +102,31 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
   // Rehydrate scores from Firestore when page loads with existing data
   // (e.g., mentor opening the page after questionnaire was completed)
   useEffect(() => {
-    if (assessmentScores) return; // Already calculated in this session
     if (!savedQuestionnaire?.responses || savedQuestionnaire.responses.length === 0) return;
-    if (!savedQuestionnaire.completedAt) return; // Not completed yet
+    if (!savedQuestionnaire.completedAt) return;
 
     try {
       const responses = savedQuestionnaire.responses;
-      const scores = calculateFullAssessment(responses, 2, 0); // placeholder stage
-      setAssessmentScores(scores);
-      setAssessmentClassifications(classifyFullAssessment(scores));
 
-      // Rehydrate incongruences
-      const incongruences = detectAllIncongruences(responses);
-      setIncongruenceData(incongruences);
+      // Rehydrate stageDiagnosis — SEMPRE, independente de assessmentScores
+      if (savedQuestionnaire.stageDiagnosis && !stageDiagnosis) {
+        setStageDiagnosis(savedQuestionnaire.stageDiagnosis);
+      }
+
+      // Recalcular scores apenas se ainda não calculados nesta sessão
+      if (!assessmentScores) {
+        const stage = savedQuestionnaire.stageDiagnosis?.stage || 2;
+        const scores = calculateFullAssessment(responses, stage, 0);
+        setAssessmentScores(scores);
+        setAssessmentClassifications(classifyFullAssessment(scores));
+
+        const incongruences = detectAllIncongruences(responses);
+        setIncongruenceData(incongruences);
+      }
     } catch (err) {
       console.error('[Onboarding] Score rehydration error:', err);
     }
-  }, [savedQuestionnaire, assessmentScores]);
+  }, [savedQuestionnaire, assessmentScores, stageDiagnosis]);
 
   const currentView = activeTab || onboardingStatus || 'lead';
 
@@ -242,6 +251,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     if (!savedQuestionnaire?.responses) return;
     setProcessing(true);
     try {
+      // ── Etapa 1: Re-classificar respostas abertas do questionário base ──
       const classifyCF = httpsCallable(functions, 'classifyOpenResponse');
       const allResponses = [...savedQuestionnaire.responses];
       const openResponses = allResponses.filter((r) => r.type === 'open' && r.text);
@@ -268,7 +278,6 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           subDimension: resp.subDimension,
         });
 
-        // Enrich and persist — sobrescreve scores anteriores
         resp.aiScore = result.data.aiScore;
         resp.aiClassification = result.data.aiClassification;
         resp.aiJustification = result.data.aiJustification;
@@ -288,12 +297,42 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
       setAssessmentScores(scores);
       setAssessmentClassifications(classifyFullAssessment(scores));
 
+      // ── Etapa 2: Re-analisar respostas do aprofundamento (probing) ──
+      if (savedProbing?.questions?.length > 0) {
+        const analyzeCF = httpsCallable(functions, 'analyzeProbingResponse');
+        const answeredQuestions = savedProbing.questions.filter((q) => q.response?.text);
+
+        for (const q of answeredQuestions) {
+          const result = await analyzeCF({
+            probingId: q.probingId,
+            probingText: q.text,
+            triggeredByFlag: q.triggeredByFlag,
+            sourceQuestions: q.sourceQuestions,
+            rubric: q.rubric,
+            responseText: q.response.text,
+            responseTime: q.response.responseTime,
+          });
+
+          const updatedResponse = {
+            ...q.response,
+            aiAnalysis: {
+              finding: result.data.finding || '',
+              flagResolution: result.data.flagResolution || 'inconclusive',
+              emotionalInsight: result.data.emotionalInsight || '',
+              confidence: result.data.confidence || 0,
+            },
+          };
+
+          await completeProbingQuestion(q.probingId, updatedResponse);
+        }
+      }
+
     } catch (err) {
       console.error('Reprocess AI error:', err);
     } finally {
       setProcessing(false);
     }
-  }, [savedQuestionnaire, saveResponse, stageDiagnosis]);
+  }, [savedQuestionnaire, savedProbing, saveResponse, completeProbingQuestion, stageDiagnosis]);
 
   const handleProbingComplete = useCallback(async () => {
     setProcessing(true);
@@ -319,6 +358,9 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
       setStageDiagnosis(sd);
       setReportData(report);
 
+      // Persistir stageDiagnosis no Firestore para rehydration futura
+      await saveStageDiagnosis(sd);
+
       // Recalculate with diagnosed stage
       const finalScores = calculateFullAssessment(allResponses, sd.stage, 0);
       setAssessmentScores(finalScores);
@@ -329,7 +371,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     } finally {
       setProcessing(false);
     }
-  }, [questionnaire, assessmentScores, assessmentClassifications, incongruenceData, savedProbing]);
+  }, [questionnaire, assessmentScores, assessmentClassifications, incongruenceData, savedProbing, saveStageDiagnosis]);
 
   const handleMentorSave = useCallback(async (mentorValidation) => {
     setSaving(true);
@@ -375,6 +417,13 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           notes: '',
           stage_diagnosis_justification: stageDiagnosis?.justification || '',
           stage_key_signals: stageDiagnosis?.keySignals || [],
+        },
+        // stage_diagnosis como campo de primeiro nível para acesso direto no BaselineReport
+        stage_diagnosis: {
+          stage: stageDiagnosis?.stage || 2,
+          justification: stageDiagnosis?.justification || '',
+          keySignals: stageDiagnosis?.keySignals || [],
+          confidence: stageDiagnosis?.confidence || null,
         },
         composite_score: null,
         composite_label: null,
@@ -576,7 +625,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           <div className="flex justify-end mb-4">
             <button
               onClick={() => {
-                if (window.confirm('Re-processar vai sobrescrever todos os scores da IA com o prompt atualizado. Os textos do aluno são preservados. Confirmar?')) {
+                if (window.confirm('Re-processar vai sobrescrever todos os scores da IA no questionário e no aprofundamento com o prompt atualizado. Os textos do aluno são preservados. Confirmar?')) {
                   handleReprocessAI();
                 }
               }}
