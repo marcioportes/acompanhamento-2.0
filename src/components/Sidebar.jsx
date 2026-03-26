@@ -54,8 +54,8 @@ const Sidebar = ({
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     { id: 'accounts', label: 'Contas', icon: Wallet },
-    // Marco Zero — só aparece após assessment concluído pelo mentor
-    ...(hasBaseline ? [{ id: 'baseline', label: 'Marco Zero', icon: Brain }] : []),
+    // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
+    ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
   ];
 
   // Menu do Mentor
