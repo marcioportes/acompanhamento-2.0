@@ -11,7 +11,7 @@
  *
  * DEC-027 (24/03/2026): régua de escala com 4 faixas por dimensão + plano do mentor.
  *
- * @version 2.0.0 — redesign para o aluno (DEC-027)
+ * @version 2.0.1 — rename "Perfil de Maturidade", stageDiagnosis card full-width
  */
 
 import React from 'react';
@@ -231,7 +231,7 @@ export default function BaselineReport({ assessment, stageDiagnosis: stageDiagno
 
       {/* Header — Perfil composto */}
       <div className={`text-center p-6 rounded-2xl border ${compositeTier?.bg || 'border-white/10 bg-white/[0.02]'}`}>
-        <p className="text-xs uppercase tracking-widest text-gray-500 mb-2">Seu Marco Zero</p>
+        <p className="text-xs uppercase tracking-widest text-gray-500 mb-2">Perfil de Maturidade</p>
         <div className={`text-3xl font-bold tabular-nums mb-1 ${compositeTier?.color || 'text-gray-400'}`}>
           {composite_score != null ? Math.round(composite_score * 10) / 10 : '—'}
         </div>
@@ -287,27 +287,28 @@ export default function BaselineReport({ assessment, stageDiagnosis: stageDiagno
           ] : []}
         />
 
-        {/* Justificativa da IA para o diagnóstico de Maturidade */}
-        {stageDiagnosis?.justification && (
-          <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 -mt-2">
-            <p className="text-[10px] uppercase tracking-wider text-amber-400/70 font-medium mb-2">
-              Por que Stage {experience?.stage} — {['', 'Caos', 'Reativo', 'Metódico', 'Profissional', 'Mastery'][experience?.stage] || ''}
-            </p>
-            <p className="text-xs text-gray-300 leading-relaxed">
-              {stageDiagnosis.justification}
-            </p>
-            {stageDiagnosis.keySignals?.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-amber-500/10 flex flex-wrap gap-1.5">
-                {stageDiagnosis.keySignals.map((signal, i) => (
-                  <span key={i} className="px-2 py-0.5 text-[10px] bg-amber-500/10 text-amber-400/80 rounded">
-                    {signal}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* Justificativa da IA para o diagnóstico de Maturidade — full width */}
+      {stageDiagnosis?.justification && (
+        <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+          <p className="text-[10px] uppercase tracking-wider text-amber-400/70 font-medium mb-2">
+            Por que Stage {experience?.stage} — {['', 'Caos', 'Reativo', 'Metódico', 'Profissional', 'Mastery'][experience?.stage] || ''}
+          </p>
+          <p className="text-xs text-gray-300 leading-relaxed">
+            {stageDiagnosis.justification}
+          </p>
+          {stageDiagnosis.keySignals?.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-amber-500/10 flex flex-wrap gap-1.5">
+              {stageDiagnosis.keySignals.map((signal, i) => (
+                <span key={i} className="px-2 py-0.5 text-[10px] bg-amber-500/10 text-amber-400/80 rounded">
+                  {signal}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Plano de Desenvolvimento */}
       {development_priorities && development_priorities.length > 0 && (
