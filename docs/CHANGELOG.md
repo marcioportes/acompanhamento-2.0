@@ -5,7 +5,111 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [1.20.0] - 2026-03-22
+## [1.21.0] - 2026-03-25
+
+### Adicionado
+- **`useAssessment.saveStageDiagnosis`:** Novo método que persiste o diagnóstico de stage no campo `stageDiagnosis` do doc `questionnaire` após `generateAssessmentReport` retornar
+- **Rehydration de stageDiagnosis:** `useEffect` de rehydration agora lê `savedQuestionnaire.stageDiagnosis` e reconstrói o estado quando mentor re-abre a página — elimina necessidade de re-gerar relatório a cada sessão
+- **`TraderProfileCard` — escala de Maturidade por stage:** Card de Maturidade usa escala cromática baseada no stage (Stage 2=âmbar, Stage 3=amarelo, Stage 4-5=verde) em vez do threshold genérico de score que causava vermelho indevido
+
+### Corrigido
+- **Fix stageDiagnosis não aparecia no AIAssessmentReport:** `stageDiagnosis` era `null` quando mentor re-abria a página porque só era setado em memória durante `handleProbingComplete`. Agora é persistido no Firestore e rehydratado automaticamente
+- **Fix cálculo de scores usava stage placeholder:** Rehydration usava stage fixo 2 em vez do stage diagnosticado pela IA
+
+---
+
+## [1.20.9] - 2026-03-25
+
+### Adicionado
+- **`stage_diagnosis` como campo top-level no `initial_assessment`:** Estrutura `{ stage, justification, keySignals, confidence }` gravada pelo `handleMentorSave` para acesso direto no `BaselineReport`
+- **`App.jsx` passa `stageDiagnosis` do Firestore para `BaselineReport`:** Aluno logado agora recebe justificativa da IA ao acessar "Meu Perfil"
+
+### Corrigido
+- **Fix BaselineReport sem justificativa de stage:** `BaselineReport` resolve `stageDiagnosis` em ordem de prioridade — prop em tempo real → `assessment.stage_diagnosis` do Firestore
+
+---
+
+## [1.20.8] - 2026-03-25
+
+### Adicionado
+- **Re-processar IA inclui aprofundamento (probing):** `handleReprocessAI` agora opera em duas etapas — re-classifica questionário base via `classifyOpenResponse` e re-analisa respostas do probing via `analyzeProbingResponse`. Sobrescreve `aiAnalysis.finding`, `flagResolution` e `emotionalInsight`
+
+---
+
+## [1.20.7] - 2026-03-25
+
+### Adicionado
+- **Dimensão "Experiência" renomeada para "Maturidade"** em todos os componentes de UI: `BaselineReport`, `TraderProfileCard`, `QuestionnaireFlow`, `QuestionnaireProgress`, `MentorValidation`, `IncongruenceFlags`. Chaves internas (`'experience'`, Firestore, fórmulas) sem alteração
+- **Justificativa da IA no BaselineReport:** Card de Maturidade exibe bloco âmbar com `stageDiagnosis.justification` e `keySignals` — explica ao aluno por que recebeu aquele stage
+- **Persistência de `stage_diagnosis_justification` e `stage_key_signals`** dentro de `experience` no `initial_assessment`
+
+---
+
+## [1.20.6] - 2026-03-25
+
+### Adicionado
+- **Prompt `classifyOpenResponse` reescrito com framework completo:** System prompt inclui contexto por dimensão (Kahneman System 1/2, Prospect Theory, TPI — Trader Personality Indicator, 5 stages de maturidade), classificações específicas (A/B/C, 1/2/3, X/Y/Z, S/D/I, Alpha/Beta/Gamma/Delta), FLAGS expandidas (LOSS_AVERSION, NARRATIVE_OVERRIDE, REVENGE_TRADING, FOMO, MARTINGALE, EXTERNALIZATION, STRATEGY_HOPPING)
+- **Campo `aiFinding` no output da CF:** Observação clínica separada de `aiJustification` — o que a resposta revela que o aluno talvez não perceba, com citação de trechos
+- **12 rubricas `aiRubric` expandidas** em `assessmentQuestions.js`: âncoras numéricas por faixa, exemplos de linguagem, constructos do framework e instruções de cross-check por pergunta
+- **Botão "↻ Re-processar IA"** no `AIAssessmentReport` — visível apenas para mentor, com confirmação antes de sobrescrever
+- **`aiFinding` exibido em `IncongruenceFlags`:** "Observação clínica" (âmbar) separada de "Justificativa IA" em flags inter e intra-dimensionais
+
+---
+
+## [1.20.5] - 2026-03-25
+
+### Adicionado
+- **`IncongruenceFlags` v2.0.0 — master/detail rico:** Labels semânticos em vez de códigos (`DISCIPLINE_VS_LOCUS` → "Contradição: disciplina declarada vs. externalização de culpa"). Detail colapsável com resposta real do aluno, `aiJustification` e probing integrado por flag
+- **Flags intra-dimensionais:** Exibe perguntas abertas da dimensão com texto do aluno e análise da IA
+- **`questionnaireResponses` passado para `IncongruenceFlags`** via `AIAssessmentReport`
+
+### Corrigido
+- **DebugBadge sem prop `component`** em 4 componentes: `MentorValidation`, `AIAssessmentReport`, `BaselineReport`, `StudentOnboardingPage`
+
+---
+
+## [1.20.4] - 2026-03-25
+
+### Adicionado
+- **`BaselineReport` v2.0.0 — redesign para o aluno:** Régua de escala 4D com 4 faixas coloridas por dimensão, marcador na posição do score, distância em pontos para próxima faixa. Grid 2×2. Plano de desenvolvimento com atribuição "definido pelo seu mentor". Calibração IA×Mentor removida (dado interno)
+- **`MentorValidation` v1.1.0 — seção "Plano de Desenvolvimento":** Sugestões da IA pré-carregadas (badge "Sugestão da IA"), editáveis pelo mentor. Mentor pode editar texto, trocar dimensão, ajustar prazo, remover ou adicionar (máx 5)
+- **Fluxo `development_priorities`:** Lidas de `mentorValidation.mentorData.developmentPriorities` (confirmadas pelo mentor) em vez de `reportData` (IA bruta)
+
+---
+
+## [1.20.3] - 2026-03-24
+
+### Adicionado
+- **"Meu Perfil" no sidebar do aluno:** Item visível apenas quando `hasBaseline=true` (assessment concluído). Renderiza `BaselineReport` com dados do `initial_assessment`
+- **`useAssessment` chamado em `App.jsx`** para detectar `initialAssessment` do aluno logado
+
+---
+
+## [1.20.2] - 2026-03-24
+
+### Corrigido
+- **Fix `saveInitialAssessment` stale closure (DEC-026):** Dupla transição `probing_complete → mentor_validated → active` causava stale closure — segundo `updateOnboardingStatus` lia status antigo do closure e lançava exceção. Corrigido com `updateDoc` direto para `active`
+- **Mentor pode resetar assessment após conclusão:** Toggle "Completo" agora habilitado para mentor com confirmação inline. Reset seta `onboardingStatus: 'lead'` e `requiresAssessment: false`. Histórico preservado no Firestore
+- **`updateOnboardingStatus` aceita `fromStatus` como parâmetro** para evitar stale closure nas demais transições
+- **`useAssessment` exporta `resetAssessment`**
+
+---
+
+## [1.20.1] - 2026-03-23
+
+### Corrigido
+- **Fix loop infinito AssessmentGuard:** Guard movido de `StudentDashboard` para `App.jsx` — isolado dos hooks pesados (`useTrades`, `useAccounts`, `usePlans`)
+- **Fix loading infinito aluno:** `StudentOnboardingPage` usava `useParams()` sem rota parametrizada; agora aceita `studentId` via prop com fallback
+- **Fix `useAssessment` loading infinito sem `studentId`:** `setLoading(false)` quando `studentId` é undefined
+- **Fix campo não limpando em perguntas abertas seguidas:** `key={currentQuestion.id}` em `QuestionnaireFlow` e `key={probingId}` em `ProbingQuestionsFlow`
+- **Fix `useQuestionnaire` setState durante render:** `useMemo` → `useEffect`; `getOrderedOptions` usa ref + deferred flush
+- **Rename "Sondagem" → "Aprofundamento"** em status labels, tabs e mensagens
+- **Tabs "Relatório IA" e "Validação" restritas ao mentor:** Aluno em `probing_complete` vê tela de espera
+- **Fix aba Validação vazia:** Condição usava `currentView` em vez de `onboardingStatus` para fase
+- **Firestore rules (DEC-024):** Read simplificado para `isAuthenticated()` em trades, accounts, plans, movements, csvStagingTrades. Students update permite `onboardingStatus` pelo aluno
+- **CFs assessment — secrets:** `secrets: ['ANTHROPIC_API_KEY']` adicionado nas 4 CFs
+
+
 
 ### Adicionado
 - **Order Import Pipeline (CHUNK-10):** Importação de ordens brutas da corretora com detecção automática de formato (ProfitChart-Pro + genérico). Pipeline: Upload → Parse → Validação 3 camadas → Preview → Staging → Reconstrução de operações (net position zero) → Confirmação do aluno → Ingestão → Cross-check

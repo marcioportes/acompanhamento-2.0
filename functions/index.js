@@ -1145,3 +1145,12 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
   console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
   return { success: true, updated, planId, oldPl, newPl, plRecalculated };
 });
+
+
+// ============================================
+// ASSESSMENT — Student Onboarding (CHUNK-09)
+// ============================================
+exports.classifyOpenResponse = require("./assessment/classifyOpenResponse");
+exports.generateProbingQuestions = require("./assessment/generateProbingQuestions");
+exports.analyzeProbingResponse = require("./assessment/analyzeProbingResponse");
+exports.generateAssessmentReport = require("./assessment/generateAssessmentReport");

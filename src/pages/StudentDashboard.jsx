@@ -52,6 +52,8 @@ import OrderImportPage from '../pages/OrderImportPage';
 import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
+// Student Onboarding (CHUNK-09) — guard movido para App.jsx (fix loop infinito)
+
 // Hooks
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';

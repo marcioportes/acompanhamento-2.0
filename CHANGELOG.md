@@ -5,22 +5,73 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [1.19.7] - 2026-03-19
-
-### Adicionado
-- **Badge de notificação no Sidebar do aluno:** Trades com status REVIEWED (mentor revisou, aluno precisa agir) exibem contador verde (emerald) no item "Feedback" do menu lateral. Visível tanto expandido quanto collapsed
+## [1.20.1] - 2026-03-23
 
 ### Corrigido
-- **Badge usava `allTrades` (vazio no student mode):** Listener do `useTrades` no modo aluno só popula `trades`, não `allTrades`. Memo corrigido para filtrar `trades`
+- **Fix loop infinito AssessmentGuard:** `useAssessmentGuard` no `StudentDashboard` causava "Maximum update depth exceeded" — guard movido para `App.jsx` onde é isolado dos hooks pesados
+- **Fix loading infinito aluno (DEC-024):** Firestore rules de trades/accounts/plans exigiam ownership check no read — simplificado para `isAuthenticated()` em todas as collections de dados do aluno. Write mantém ownership check
+- **Fix StudentOnboardingPage não recebia studentId:** Componente usava `useParams()` mas era renderizado como child do App.jsx sem rota parametrizada. Agora aceita `studentId` via prop com fallback para `useParams()`
+- **Fix useAssessment loading infinito sem studentId:** Hook fazia early return sem `setLoading(false)` quando `studentId` era undefined
+- `StudentDashboard.jsx` — removidos imports e hook call do guard
+- `App.jsx` — guard intercepts no `renderContent()` antes de qualquer view
+- `firestore.rules` — read simplificado para `isAuthenticated()` em 5 collections
+
+## [1.20.0] - 2026-03-22
+
+### Adicionado
+- **Order Import Pipeline (CHUNK-10):** Importação de ordens brutas da corretora com detecção automática de formato (ProfitChart-Pro + genérico). Pipeline: Upload → Parse → Validação 3 camadas → Preview → Staging → Reconstrução de operações (net position zero) → Confirmação do aluno → Ingestão → Cross-check
+- **Parser ProfitChart-Pro:** CSV hierárquico master+events, PT-BR, encoding Latin-1, delimiter `;`, preamble hash+data. Suporte a fills parciais, sub-events Trade/Cancel
+- **Reconstrução de operações:** Algoritmo net position zero — agrupa ordens FILLED em operações consolidadas. Validado contra 5 operações reais (19/03/2026, WINJ26, +265 pts)
+- **Stop movement analysis:** Detecção de cancelamento, reemissão, widening/tightening de stop orders. Fato objetivo com tipo + flag + observação editável
+- **Staging review:** Tela de confirmação com operações reconstruídas, cada uma expandível com parciais de entrada/saída, stop orders, flags e observações
+- **Cross-check comportamental:** 8 métricas derivadas de ordens vs trades — stopOrderRate, modifyRate, cancelRate, marketOrderPct, holdTimeAsymmetry, averagingDownCount, ghostOrderCount, orderToTradeRatio
+- **KPI Validation:** Detecção de inflação de KPIs (win rate inflado por ausência de stop, ghost orders, hold time asymmetry). Severidades NONE/MODERATE/SEVERE com alertas automáticos
+- **Correlação ordem↔trade:** Matching por instrumento + timestamp + side + quantity com confidence score (0-1). Ghost orders detectados automaticamente
+- **CrossCheckDashboard:** Painel mentor com métricas agrupadas (Proteção, Hold Time, Padrões, KPI Validation) + alertas comportamentais
+- **KPIValidationCard:** Card compacto de status KPI para StudentDashboard
+- **OrderImportPage:** Wizard modal com etapas (Upload → Preview → Plano → Staging Review → Confirmar → Resultado)
+- **Novas collections Firestore:** `ordersStagingArea` (temporária), `orders` (imutável), `orderAnalysis` (cross-check por período)
+- **Botão "Importar Ordens"** no DashboardHeader (ao lado de "Importar Performance")
+- **Botão "Importar CSV" renomeado** para "Importar Performance"
+
+### Componentes novos
+- `src/pages/OrderImportPage.jsx` v2.0.0
+- `src/components/OrderImport/OrderUploader.jsx`
+- `src/components/OrderImport/OrderPreview.jsx`
+- `src/components/OrderImport/OrderValidationReport.jsx`
+- `src/components/OrderImport/OrderStagingReview.jsx`
+- `src/components/OrderImport/OrderCorrelation.jsx`
+- `src/components/OrderImport/CrossCheckDashboard.jsx`
+- `src/components/OrderImport/KPIValidationCard.jsx`
+
+### Utils novos
+- `src/utils/orderParsers.js` v2.0.0 — ProfitChart-Pro + genérico, reutiliza parseDateTime/parseNumericValue de csvMapper.js
+- `src/utils/orderNormalizer.js` — Schema unificado + dedup por ClOrdID
+- `src/utils/orderValidation.js` — Pipeline 3 camadas (structural, consistency, business)
+- `src/utils/orderReconstruction.js` — Net position zero + associação de stops/canceladas
+- `src/utils/stopMovementAnalysis.js` — Detecção de movimentações de stop + flags
+- `src/utils/orderCorrelation.js` — Matching ordem↔trade com confidence
+- `src/utils/orderCrossCheck.js` — 8 métricas cross-check + averaging down detection
+- `src/utils/kpiValidation.js` — KPI inflation detection + alertas
+
+### Hooks novos
+- `src/hooks/useOrderStaging.js` — Staging CRUD com ingestBatch via query direta
+- `src/hooks/useOrders.js` — Listener read-only da collection orders
+- `src/hooks/useCrossCheck.js` — Cross-check compute + persist
 
 ### Modificado
-- `Sidebar.jsx` v1.3.0: Nova prop `unreviewedFeedback`, cor `green` no badge renderer
-- `App.jsx`: Novo `useMemo` `unreviewedFeedbackCount` filtrando `trades` por status REVIEWED
-- `version.js`: v1.19.7+20260319
+- `src/pages/StudentDashboard.jsx` — Integração Order Import (hooks, state, modal, CrossCheckDashboard)
+- `src/components/dashboard/DashboardHeader.jsx` — Botão "Importar Ordens" + rename "Importar CSV" → "Importar Performance"
+- `firestore.rules` — Rules para ordersStagingArea, orders, orderAnalysis (auth != null)
 
 ### Testes
-- 8 novos testes: contagem REVIEWED, exclusão QUESTION, guards null/undefined/mentor
-- 471+ testes totais (22 suites), zero regressão
+- 141 novos testes em 7 suites: orderParsers (37), orderValidation (23), orderCorrelation (14), orderCrossCheck (15), kpiValidation (21), orderReconstruction (21), stopMovementAnalysis (10)
+- 612 testes totais (29 suites), zero regressão
+
+### Decisões
+- DEC-021: Order Import Pipeline — Staging com confirmação (client-side, zero CFs)
+- DEC-022: Reconstrução de operações via net position zero
+- DEC-023: Stop movement analysis — fato objetivo sem julgamento automático
 
 ---
 

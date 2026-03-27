@@ -37,10 +37,13 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if isAuthenticated();
       allow create, delete: if isMentor();
-      // Mentor pode tudo; aluno pode ativar apenas seu próprio doc
+      // Mentor pode tudo; aluno pode atualizar campos do seu próprio doc
+      // DEC-024: onboardingStatus é do aluno (progressão no assessment)
       allow update: if isMentor() || (
         isOwner(studentId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'firstLoginAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+          ['status', 'firstLoginAt', 'onboardingStatus']
+        )
       );
 
       // PERFIL EMOCIONAL (subcollection) — Fase 1.4.0
@@ -62,13 +65,9 @@ service cloud.firestore {
       allow write: if isOwner(userId) || isMentor();
     }
 
-    // TRADES
+    // TRADES — DEC-024: dados do aluno, aluno tem acesso total
     match /trades/{tradeId} {
-      allow read: if isAuthenticated() && (
-        isMentor() || 
-        isOwner(resource.data.studentId) || 
-        isOwnerByEmail(resource.data.studentEmail)
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated(); 
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
@@ -84,23 +83,18 @@ service cloud.firestore {
       }
     }
 
-    // ACCOUNTS - CORRIGIDO: Adicionado suporte a Email no delete
+    // ACCOUNTS — DEC-024: dados do aluno, aluno tem acesso total
     match /accounts/{accountId} {
-      allow read: if isAuthenticated() && (
-        isMentor() || 
-        isOwner(resource.data.studentId) || 
-        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail)) 
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
         isOwner(resource.data.studentId) ||
-        // LINHA NOVA:
         (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
     }
 
-    // MOVEMENTS
+    // MOVEMENTS — DEC-024: dados do aluno, aluno tem acesso total
     match /movements/{movementId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
@@ -112,18 +106,13 @@ service cloud.firestore {
       );
     }
 
-    // PLANS - CORRIGIDO: Adicionado suporte a Email no delete (Aqui estava o erro)
+    // PLANS — DEC-024: dados do aluno, aluno tem acesso total
     match /plans/{planId} {
-      allow read: if isAuthenticated() && (
-        isMentor() || 
-        isOwner(resource.data.studentId) || 
-        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() || 
         isOwner(resource.data.studentId) ||
-        // LINHA NOVA - Isso permite que o useAccounts apague os planos órfãos:
         (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
     }
@@ -132,12 +121,9 @@ service cloud.firestore {
     // CSV IMPORT — STAGING + TEMPLATES (v1.18.0, Issue #23)
     // ==================================================
 
-    // CSV STAGING TRADES — trades importados aguardando ativação
+    // CSV STAGING TRADES — DEC-024: dados do aluno, acesso total
     match /csvStagingTrades/{tradeId} {
-      allow read: if isAuthenticated() && (
-        isMentor() ||
-        isOwner(resource.data.studentId)
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
         isMentor() ||
@@ -206,6 +192,17 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // ========== Assessment — Student Onboarding (CHUNK-09) ==========
+    // DEC-024: Aluno é autoridade sobre seus dados. auth != null.
+    match /students/{studentId}/assessment/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    match /students/{studentId}/assessment/{docId}/{subcol}/{subId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
   }
 }

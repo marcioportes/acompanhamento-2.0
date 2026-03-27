@@ -4,7 +4,7 @@
 
 > **Localização no repo:** `/docs/ARCHITECTURE.md`
 
-> **Última atualização:** 23/03/2026 — DEC-025 (Firestore rules read simplificado), DT-025 adicionado
+> **Última atualização:** 25/03/2026 — DEC-026 (saveInitialAssessment stale closure), DEC-027 (onboarding UX + prompt framework-aligned + Maturidade rename)
 
 ---
 
@@ -361,6 +361,30 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 **Lição:** Overengineering de permissões criou bloqueio real de produção. Complexidade de rules deve ser proporcional ao risco real, não ao risco teórico máximo. Registrado também no AVOID-SESSION-FAILURES como anti-pattern.
 **Impacto:** `firestore.rules` (read simplificado + students update expandido). Deployada em 23/03/2026.
 
+### DEC-026: saveInitialAssessment — transição direta para active, mentor pode resetar (24/03/2026)
+**Problema:** `saveInitialAssessment` executava dupla transição `probing_complete → mentor_validated → active` via `updateOnboardingStatus`. O segundo call lia `onboardingStatus` do closure (stale — ainda `probing_complete`) e lançava exceção de transição inválida, deixando o aluno preso em `mentor_validated`.
+**Decisão:** `saveInitialAssessment` escreve `onboardingStatus: 'active'` diretamente via `updateDoc`, sem passar pela state machine. `mentor_validated` continua existindo para transições manuais futuras. `updateOnboardingStatus` aceita `fromStatus` como parâmetro opcional para evitar stale closure nas demais transições. `AssessmentToggle` habilitado para mentor mesmo quando `isActive` — com confirmação inline para reset. Reset seta `onboardingStatus: 'lead'` e `requiresAssessment: false`; histórico preservado.
+**Impacto:** `useAssessment.js` (saveInitialAssessment + updateOnboardingStatus + resetAssessment), `AssessmentToggle.jsx`.
+
+### DEC-027: Onboarding UX — BaselineReport redesenhado, IncongruenceFlags rich detail, prompt framework-aligned, Maturidade (25/03/2026)
+**Contexto:** Sessão longa de refinamento do CHUNK-09. Múltiplas decisões relacionadas ao UX do assessment.
+
+**BaselineReport v2.0:** Redesenhado para o aluno — régua de escala 4D com 4 faixas coloridas por dimensão (não barra genérica 0-100), grid 2×2, plano de desenvolvimento com atribuição explícita ao mentor, calibração IA×Mentor removida (dado interno do processo). `BaselineReport` resolve `stageDiagnosis` em ordem: prop em tempo real → `assessment.stage_diagnosis` do Firestore.
+
+**MentorValidation v1.1:** Seção "Plano de Desenvolvimento" adicionada — sugestões da IA pré-carregadas (badge "Sugestão da IA"), editáveis pelo mentor. `development_priorities` agora vem do mentor (confirmado/editado na entrevista), não da IA bruta.
+
+**IncongruenceFlags v2.0:** Labels semânticos em vez de códigos (`DISCIPLINE_VS_LOCUS` → "Contradição: disciplina declarada vs. externalização de culpa"). Master/detail colapsável — header sempre visível, detail com resposta real do aluno, `aiJustification`, `aiFinding` e probing integrado por flag.
+
+**Prompt `classifyOpenResponse` v1.1:** Reescrito com framework completo por dimensão (Kahneman System 1/2, Prospect Theory, TPI, 5 stages). Classificações específicas (A/B/C, 1/2/3, X/Y/Z, S/D/I, Alpha/Beta/Gamma/Delta). Campo `aiFinding` no output — observação clínica separada da justificativa, com instrução para citar trechos. 12 rubricas `aiRubric` expandidas com âncoras numéricas.
+
+**"Maturidade":** Dimensão "Experiência" renomeada para "Maturidade" em toda UI. Justificativa: "Experiência" carrega conotação de tempo de mercado; "Maturidade" comunica qualidade de processo. Chaves internas (`'experience'`, Firestore, fórmulas) sem alteração. `TraderProfileCard` usa escala cromática por stage (não por score numérico) para evitar vermelho indevido em Stage 2.
+
+**stageDiagnosis persistência:** Gravado no `questionnaire` doc após `handleProbingComplete` via `saveStageDiagnosis`. Rehydratado automaticamente no `useEffect` quando mentor re-abre a página. Bug: guard `if (assessmentScores) return` bloqueava rehydration — corrigido em v1.21.1.
+
+**Re-processar IA:** Botão no AIAssessmentReport (só mentor). Opera em duas etapas: re-classifica questionário base (classifyOpenResponse) + re-analisa probing (analyzeProbingResponse).
+
+**Impacto:** `BaselineReport.jsx`, `MentorValidation.jsx`, `AIAssessmentReport.jsx`, `IncongruenceFlags.jsx`, `TraderProfileCard.jsx`, `QuestionnaireFlow.jsx`, `QuestionnaireProgress.jsx`, `StudentOnboardingPage.jsx`, `App.jsx`, `Sidebar.jsx`, `useAssessment.js`, `assessmentQuestions.js`, `functions/assessment/classifyOpenResponse.js`.
+
 ---
 
 ## 6. Dívidas Técnicas Ativas
@@ -391,6 +415,7 @@ IN_PROGRESS → STOP_HIT → POST_STOP (sempre violação)
 | DT-023 | Subcollection `trades/{id}/partials` legada — campo `_partials` no documento é a fonte de verdade | MÉDIA | v1.19.2 — **RESOLVIDO** 22/03/2026 (subcollection eliminada do código, INV-12, DEC-024) |
 | DT-024 | `hasPartials` flag desnecessário — todo trade tem parciais | MÉDIA | v1.19.2 — **PARCIALMENTE RESOLVIDO** 22/03/2026 (gates removidos de TradeDetailModal e FeedbackPage; campo ainda existe nos documentos mas não é mais usado como condição) |
 | DT-025 | Campos `hasPartials` e `partialsCount` nos documentos de trades são legado — todo trade tem parciais. Limpar via migração futura ou ignorar (não causam problema operacional, só ocupam espaço). | BAIXA | 22/03/2026 |
+| DT-026 | `stageDiagnosis` não é gerado pelo Re-processar IA — só por `handleProbingComplete`. Alunos cujo probing foi completado antes da v1.21.0 precisam popular o campo manualmente no Firestore ou refazer o fluxo. | BAIXA | 25/03/2026 |
 
 ---
 

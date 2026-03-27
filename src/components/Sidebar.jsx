@@ -1,9 +1,10 @@
 /**
  * Sidebar
- * @version 1.3.0
+ * @version 1.4.0
  * @description Menu lateral com navegação, versão, badges alertas emocionais e feedback aluno
  * 
  * CHANGELOG:
+ * - 1.4.0: Item "Marco Zero" no menu do aluno — visível apenas quando hasBaseline=true (assessment concluído)
  * - 1.3.0: Badge de revisões não trabalhadas (REVIEWED) no menu do aluno
  * - 1.2.0: Badge de alertas emocionais no menu mentor — Fase 1.5.0
  * - 1.1.0: Adicionado item "Feedback" no menu do aluno
@@ -36,7 +37,8 @@ const Sidebar = ({
   pendingFeedback = 0,
   studentsNeedingAttention = 0,
   emotionalAlerts = 0,
-  unreviewedFeedback = 0
+  unreviewedFeedback = 0,
+  hasBaseline = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -52,6 +54,8 @@ const Sidebar = ({
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     { id: 'accounts', label: 'Contas', icon: Wallet },
+    // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
+    ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
   ];
 
   // Menu do Mentor

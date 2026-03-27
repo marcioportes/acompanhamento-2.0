@@ -49,10 +49,14 @@ firestore-debug.log
 ui-debug.log
 
 # ==============================
+# Arquivos temporários de functions
+# ==============================
+functions/diff_index.txt
+
+# ==============================
 # Misc
 # ==============================
 coverage/
-
 Temp/
 docs/CONTINUITY-*
 test-results/

@@ -24,11 +24,15 @@ import TradesJournal from './pages/TradesJournal';
 import StudentsManagement from './pages/StudentsManagement';
 import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
+import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
+import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
+import { useAssessment } from './hooks/useAssessment';
+import BaselineReport from './components/Onboarding/BaselineReport';
 
 // Banner de "Visualizando como Aluno"
 const ViewAsStudentBanner = ({ student, onClose }) => {
@@ -85,6 +89,17 @@ const AppContent = () => {
     uploadFeedbackImage
   } = useTrades();
   const { plans } = usePlans();
+
+  // Assessment Guard (CHUNK-09) — intercepta no nível do App para evitar loop no StudentDashboard
+  // Mentor visualizando aluno: usa uid do aluno. Aluno logado: usa próprio uid. Mentor no dashboard: null (desativa).
+  const guardStudentId = viewingAsStudent?.uid || (!isMentor() ? user?.uid : null);
+  const { shouldRedirect: shouldShowOnboarding, loading: guardLoading } = useAssessmentGuard(guardStudentId);
+
+  // Baseline do aluno — para exibir item "Marco Zero" no Sidebar
+  // Só ativo para alunos logados (não mentor). Mentor usa StudentOnboardingPage para ver o baseline.
+  const studentAssessmentId = !isMentor() ? user?.uid : null;
+  const { initialAssessment: studentInitialAssessment } = useAssessment(studentAssessmentId);
+  const hasBaseline = !!studentInitialAssessment;
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -203,6 +218,12 @@ const AppContent = () => {
 
   // Renderização do conteúdo principal
   const renderContent = () => {
+    // Assessment Guard — redireciona para onboarding ANTES de qualquer view
+    if (guardLoading && guardStudentId) return <Loading fullScreen text="Verificando assessment..." />;
+    if (shouldShowOnboarding && guardStudentId) {
+      return <StudentOnboardingPage studentId={guardStudentId} isMentorView={isMentor() && !!viewingAsStudent} />;
+    }
+
     // Se está no FeedbackPage com um trade específico
     if (feedbackTrade) {
       // Busca trade atualizado do allTrades para dados em tempo real
@@ -236,6 +257,11 @@ const AppContent = () => {
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
 
+    // Student Onboarding — acessível pelo mentor via viewingAsStudent
+    if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
+      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} isMentorView={true} />;
+    }
+
     // Dashboard principal
     if (isMentor()) {
       return (
@@ -253,6 +279,16 @@ const AppContent = () => {
         case 'feedback':
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
           return <StudentFeedbackPage />;
+        case 'baseline':
+          // Marco Zero — BaselineReport do assessment validado pelo mentor
+          return (
+            <div className="p-6 max-w-2xl mx-auto">
+              <BaselineReport
+                assessment={studentInitialAssessment}
+                stageDiagnosis={studentInitialAssessment?.stage_diagnosis}
+              />
+            </div>
+          );
         case 'dashboard':
         default: 
           return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
@@ -283,6 +319,7 @@ const AppContent = () => {
         pendingFeedback={pendingFeedbackCount}
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
+        hasBaseline={hasBaseline}
       />
 
       {/* Conteúdo principal */}
