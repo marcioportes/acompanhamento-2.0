@@ -396,6 +396,18 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
+### [1.21.3] - 28/03/2026
+**Sessão:** issue-097 open responses AI report  
+**Issue:** #097
+#### Adicionado
+- Seção "Respostas Abertas — Análise IA" no AIAssessmentReport (mentor only)
+- 4 grupos colapsáveis por dimensão: texto do aluno + score IA + classificação + confiança + aiFinding + aiJustification
+- Indicador "Aguardando processamento IA" para respostas não processadas
+- `groupOpenResponsesByDimension` exportada para testes
+- Testes unitários: `openResponsesFilter.test.js` (9 casos)
+
+---
+
 ### [1.21.2] - 26/03/2026
 **Sessão:** consolidação documental + fix labels UI  
 **Issue:** #92 (pós-merge)

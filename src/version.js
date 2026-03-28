@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.21.3: feat: respostas abertas com análise IA no relatório do mentor (issue #097)
  * - 1.21.2: fix: rename "Marco Zero" → "Perfil de Maturidade" em BaselineReport header e Sidebar
  * - 1.21.0: Fix stageDiagnosis rehydration — persistido no questionnaire doc, rehydratado no useEffect; TraderProfileCard Maturidade usa escala de stage (não score); useAssessment.saveStageDiagnosis
  * - 1.20.9: Fix BaselineReport sem justificativa — stage_diagnosis campo top-level no initial_assessment
@@ -31,10 +32,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.21.2',
-  build: '20260325',
-  display: 'v1.21.2',
-  full: '1.21.2+20260325',
+  version: '1.21.3',
+  build: '20260328',
+  display: 'v1.21.3',
+  full: '1.21.3+20260328',
 };
 export default VERSION;
 export { VERSION };
