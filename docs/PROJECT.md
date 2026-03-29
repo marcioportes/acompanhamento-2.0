@@ -89,39 +89,48 @@ gh pr create --title "..." --body "..."
 
 ## 2. MILESTONES E ROADMAP
 
-### v1.1.0 — Student Experience
-**Foco:** Navegabilidade do aluno + equity curve + merge do assessment
+### v1.1.0 — Espelho Self-Service
+**Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
+**Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (14 issues)
 
-Issues-chave:
-- `#92` feat: Student Onboarding & Assessment 4D — Fase A ← **pronto para merge**
-- `#3`  feat: Aluno Dashboard V2 — Evolução estrutural
-- `#66` feat: Curva de Patrimônio por moeda + curva EV planejado
-- `#90` fix: Screen flicker CSV staging activation
-- `#89` fix: Aluno não consegue deletar plano
+Issues:
+- `#100` epic: Espelho — Modo Self-Service (tier self-service + rename externo)
+- `#96`  debt: Node.js 20→22 nas Cloud Functions (deadline 30/04/2026)
+- `#93`  feat: Order Import v1.1 — Modo Criação
+- `#91`  debt: Mentor editar feedback já enviado
+- `#90`  fix: Screen flicker CSV staging activation
+- `#89`  fix: Aluno não consegue deletar plano
+- `#66`  feat: Curva de Patrimônio por moeda + curva EV planejado
+- `#64`  refactor: Dashboard Aluno — Refatorar tabela SWOT
+- `#55`  debt: DebugBadge duplo no ComplianceConfigPage embedded
+- `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
+- `#48`  refactor: Student Emotional Detail — Reorganizar UX
+- `#44`  feat: Feedback Aluno — Indicador de Trades Revisados no Sidebar
+- `#19`  ops: Export/Import CSV do Firestore (backup + restore)
+- `#3`   epic: Aluno Dashboard V2 — Evolução estrutural
 
-### v1.2.0 — Mentor Cockpit
-**Foco:** Dashboard mentor consolidado + revisão semanal
-
-Issues-chave:
-- `#45` refactor: Aba "Precisam de Atenção"
-- `#31` feat: Preset feedback Assessment Semântico
-- feat: Dashboard mentor — visão consolidada plano + meta + stop + KPIs ← **issue a criar**
-- feat: Revisão semanal — KPIs congelados + prep + link vídeo + resumo IA ← **issue a criar**
-
-### v1.3.0 — Espelho Self-Service + Rename
-**Foco:** Dois tiers (self-service + Alpha), rename externo, custom domain
-**Prioridade:** CRÍTICA — migração do grupo ativo em andamento
-
-Issues-chave:
-- `#098` epic: Espelho — Modo Self-Service (tier self-service + rename externo)
-- `#097` feat: Open Responses AI Report ← **pré-requisito, em andamento**
-
-Sub-tarefas (#098):
+Sub-tarefas (#100):
 - C1: Campo `mentorshipTier` no student
 - C2: UI condicional — esconder funcionalidades Alpha para self-service
 - C3: Dashboard self-service — ajustes de layout
 - C4: Rename externo — Espelho (title, logo, textos UI)
 - C5: Custom domain — app.marcioportes.com.br
+
+### v1.2.0 — Mentor Cockpit
+**Foco:** Dashboard mentor consolidado + revisão semanal
+**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (9 issues)
+
+Issues:
+- `#101` feat: Dashboard Mentor — Visão consolidada plano + meta + stop + KPIs
+- `#102` feat: Revisão Semanal — KPIs congelados + prep + link vídeo + resumo IA
+- `#94`  feat: Controle de Assinaturas da Mentoria
+- `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
+- `#70`  feat: Dashboard Mentor — Template na inclusão de Ticker
+- `#56`  fix: Dashboard Mentor — Sidebar Badge Connection
+- `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção"
+- `#31`  feat: Dashboard Mentor — Preset de Feedback Semântico
+- `#1`   refactor: Configurações — Substituir 3 botões por Upload Seed
 
 ### Portal marcioportes.com.br (Maio-Junho 2026)
 **Foco:** Landing page institucional + Fibonaccing + Diagnóstico Comportamental
@@ -131,9 +140,6 @@ Fases:
 - Fase 1: Landing page MVP (Next.js, Vercel, domínio principal)
 - Fase 2: Seção Fibonaccing (curadoria 100h+ conteúdo existente)
 - Fase 3: Diagnóstico Comportamental público (lead magnet com IA)
-
-### Backlog (sem milestone definido)
-Ver seção 9 — Dívidas Técnicas Ativas e issues do GitHub.
 
 ---
 
@@ -387,16 +393,18 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-026 | saveInitialAssessment escreve onboardingStatus: 'active' direto via updateDoc | #92 | 24/03/2026 |
 | DEC-027 | Onboarding UX: BaselineReport redesenhado, IncongruenceFlags rich detail, prompt framework-aligned, rename Experiência→Maturidade | #92 | 25/03/2026 |
 | DEC-028 | Consolidação documental: PROJECT.md como single source of truth, issue-NNN.md por issue ativo | — | 26/03/2026 |
-| DEC-029 | Marca pessoal "Marcio Portes" como guarda-chuva — não institucional | #098 | 29/03/2026 |
-| DEC-030 | "Modelo Portes" como nome público do framework comportamental (4D + TEF + maturidade) | #098 | 29/03/2026 |
-| DEC-031 | "Espelho" como nome público da plataforma SaaS — codebase/repo/Firebase permanecem "acompanhamento-2.0" | #098 | 29/03/2026 |
-| DEC-032 | "Mentoria Alpha" como nome do serviço premium individual (substitui "Tchio-Alpha" externamente) | #098 | 29/03/2026 |
-| DEC-033 | "Diagnóstico Comportamental" como lead magnet #1 — assessment gratuito com IA baseado no Modelo Portes | #098 | 29/03/2026 |
-| DEC-034 | Dois tiers: Espelho self-service (KPIs + diário + gates) e Mentoria Alpha (+ ciclos + assessment + SWOT + feedback) | #098 | 29/03/2026 |
-| DEC-035 | SWOT dinâmico exclusivo Mentoria Alpha — analisa KPIs + diagnostica por gate/dimensão + prescreve evolução | #098 | 29/03/2026 |
-| DEC-036 | KPIs alimentam nota de evolução por dimensão (gates) — visível para ambos tiers. SWOT interpreta e prescreve — exclusivo Alpha | #098 | 29/03/2026 |
-| DEC-037 | Fibonaccing como motor de aquisição principal — 100h+ conteúdo gratuito, funil: Fibonacci → Diagnóstico → Espelho → Alpha | #098 | 29/03/2026 |
-| DEC-038 | Rename externo via custom domain (app.marcioportes.com.br) + UI (title, logo) — sem refactoring de codebase | #098 | 29/03/2026 |
+| DEC-029 | Marca pessoal "Marcio Portes" como guarda-chuva — não institucional | #100 | 29/03/2026 |
+| DEC-030 | "Modelo Portes" como nome público do framework comportamental (4D + TEF + maturidade) | #100 | 29/03/2026 |
+| DEC-031 | "Espelho" como nome público da plataforma SaaS — codebase/repo/Firebase permanecem "acompanhamento-2.0" | #100 | 29/03/2026 |
+| DEC-032 | "Mentoria Alpha" como nome do serviço premium individual (substitui "Tchio-Alpha" externamente) | #100 | 29/03/2026 |
+| DEC-033 | "Diagnóstico Comportamental" como lead magnet #1 — assessment gratuito com IA baseado no Modelo Portes | #100 | 29/03/2026 |
+| DEC-034 | Dois tiers: Espelho self-service (KPIs + diário + gates) e Mentoria Alpha (+ ciclos + assessment + SWOT + feedback) | #100 | 29/03/2026 |
+| DEC-035 | SWOT dinâmico exclusivo Mentoria Alpha — analisa KPIs + diagnostica por gate/dimensão + prescreve evolução | #100 | 29/03/2026 |
+| DEC-036 | KPIs alimentam nota de evolução por dimensão (gates) — visível para ambos tiers. SWOT interpreta e prescreve — exclusivo Alpha | #100 | 29/03/2026 |
+| DEC-037 | Fibonaccing como motor de aquisição principal — 100h+ conteúdo gratuito, funil: Fibonacci → Diagnóstico → Espelho → Alpha | #100 | 29/03/2026 |
+| DEC-038 | Rename externo via custom domain (app.marcioportes.com.br) + UI (title, logo) — sem refactoring de codebase | #100 | 29/03/2026 |
+| DEC-039 | GitHub é SSOT para numeração de issues — PROJECT.md reflete o GitHub, nunca o contrário | — | 29/03/2026 |
+| DEC-040 | Apenas 2 milestones: v1.1.0 Espelho Self-Service (prioridade) + v1.2.0 Mentor Cockpit. Student Experience absorvido pelo Espelho | — | 29/03/2026 |
 
 ---
 
@@ -441,7 +449,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-022 | CF scheduled limpeza diária csvStagingTrades (23h) não implementada | MÉDIA | — | — |
 | DT-025 | Campos `hasPartials`/`partialsCount` legados nos documentos de trades | BAIXA | — | — |
 | DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
-| DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #098 |
+| DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #100 |
 | DT-028 | firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016) | **CRÍTICA** | **30/04/2026** | — |
 
 ---
@@ -453,9 +461,9 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 ### [docs] - 29/03/2026
 **Sessão:** Branding, portal institucional, reestruturação de tiers
-**Issue:** #098 (criação)
+**Issue:** #100 (criação)
 #### Adicionado
-- `docs/dev/issues/issue-098-espelho-self-service.md` — épico modo self-service
+- `docs/dev/issues/issue-100-espelho-self-service.md` — épico modo self-service
 - `docs/marcioportes_portal_v2_0.md` — documento de referência do portal institucional
 - DEC-029 a DEC-038 no decision log (naming, tiers, Fibonaccing, rename, SWOT)
 - Milestone v1.3.0 (Espelho Self-Service + Rename) no roadmap

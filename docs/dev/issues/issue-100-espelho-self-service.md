@@ -1,4 +1,4 @@
-# Issue #098 — Espelho: Modo Self-Service
+# Issue #100 — Espelho: Modo Self-Service
 
 **Tipo:** Épico
 **Prioridade:** CRÍTICA
