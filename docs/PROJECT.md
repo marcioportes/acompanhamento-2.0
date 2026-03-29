@@ -216,15 +216,34 @@ Ao final de cada sessão, antes de encerrar:
    git commit -m "docs: atualizar PROJECT.md e issue-NNN sessão DD/MM/YYYY"
    ```
 
-### 4.4 Diretriz Crítica de Leitura
+### 4.4 Diretriz Crítica de Verificação
 
-Antes de qualquer diagnóstico, proposta ou afirmação sobre fluxo de dados, origem de campos, ou estado de implementação:
+**Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
 
-1. Identificar todos os arquivos relevantes (componente, hook, CF, página que orquestra)
-2. Ler cada um com `grep` + `view` + `bash`
-3. Só então concluir
+Aplica-se a QUALQUER conclusão sobre o estado do projeto, incluindo mas não limitado a:
 
-**Nunca inferir. Se não leu, não afirma. Se está incerto, diz "preciso verificar" e verifica.**
+- Fluxo de dados, origem de campos, estrutura de collections
+- Estado de branches, PRs, merges, deploys
+- Existência ou ausência de arquivos, funções, componentes, campos
+- Interpretação de outputs de terminal (git, npm, firebase, logs)
+- Interpretação de screenshots, erros, stack traces
+- Estado de features (implementado, pendente, quebrado)
+- Compatibilidade entre componentes, hooks, CFs
+
+**Protocolo obrigatório (nesta ordem):**
+
+1. Classificar: "estou prestes a afirmar algo verificável?" → Se sim, PARAR
+2. Identificar a fonte de verdade (código, remote, Firestore, output direto)
+3. Verificar com `grep` + `view` + `bash`, ou solicitar ao Marcio o comando de verificação quando não houver acesso direto
+4. Cruzar com contexto existente (issue files, instruções de integração, PROJECT.md)
+5. Só então concluir
+
+**Se o Marcio colar um output de terminal, screenshot, ou log:**
+- Tratar como dado bruto, não como fato confirmado
+- Cruzar com pelo menos uma fonte adicional antes de afirmar
+- Se houver ambiguidade, dizer "preciso confirmar — pode rodar `<comando>`?" em vez de assumir
+
+**Nunca inferir. Se não verificou, não afirma. Se está incerto, diz "preciso verificar" e verifica. Não existe output trivial — todo dado verificável passa pelo protocolo.**
 
 ---
 

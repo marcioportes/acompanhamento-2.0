@@ -5,6 +5,10 @@
  * Mostra scores propostos pela IA, flags de incongruência,
  * resultados da sondagem adaptativa, e sugestões de investigação.
  *
+ * v1.3.0 (issue #097 complemento): Painel "Perguntas do Aprofundamento" adicionado.
+ * Exibe cada pergunta do probing com resposta do aluno, análise IA (finding,
+ * flagResolution, emotionalInsight, confidence). Colapsável, purple theme.
+ *
  * v1.2.0 (issue #097): Seção "Respostas Abertas — Análise IA" adicionada.
  * Todas as respostas abertas do questionário (type==='open') agrupadas por
  * dimensão, com texto do aluno + score IA + classificação + aiJustification
@@ -13,7 +17,7 @@
  * v1.1.0: Passa questionnaireResponses para IncongruenceFlags — permite
  * exibir respostas reais do aluno e justificativas da IA em cada flag.
  *
- * @version 1.2.0 — open responses panel (issue #097)
+ * @version 1.3.0 — probing questions detail panel (issue #097)
  */
 
 import React, { useState } from 'react';
@@ -210,6 +214,165 @@ function DimensionGroup({ dimension, responses }) {
 
 // ── OpenResponsesPanel ────────────────────────────────────────
 
+// ── Probing: constantes de resolução ──────────────────────────
+
+const RESOLUTION_CONFIG = {
+  resolved:     { label: 'Esclarecido',  color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: '✓' },
+  reinforced:   { label: 'Confirmado',   color: 'text-red-400',     bg: 'bg-red-500/10',     icon: '✕' },
+  inconclusive: { label: 'Inconclusivo', color: 'text-gray-400',    bg: 'bg-white/5',        icon: '?' },
+};
+
+// ── ProbingQuestionCard ───────────────────────────────────────
+
+function ProbingQuestionCard({ question, index }) {
+  const hasResponse = question.response && question.response.text;
+  const analysis = question.response?.aiAnalysis;
+  const resConfig = RESOLUTION_CONFIG[analysis?.flagResolution] || RESOLUTION_CONFIG.inconclusive;
+  const { pct: confPct, color: confColor } = confidenceBar(analysis?.confidence);
+
+  return (
+    <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02] space-y-2">
+
+      {/* Pergunta gerada pela IA */}
+      <div className="flex items-start gap-2">
+        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-[10px] font-bold text-purple-400 mt-0.5">
+          {index + 1}
+        </span>
+        <p className="text-xs text-gray-300 leading-relaxed">
+          "{question.text}"
+        </p>
+      </div>
+
+      {/* Flag de origem */}
+      {question.triggeredByFlag && (
+        <div className="flex items-center gap-1.5 ml-7">
+          <span className="text-[10px] text-gray-600">Flag investigado:</span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 text-purple-400">
+            {question.triggeredByFlag}
+          </span>
+        </div>
+      )}
+
+      {/* Resposta do aluno */}
+      {hasResponse ? (
+        <div className="ml-7 space-y-2">
+          <div className="p-2.5 rounded-md bg-white/[0.03] border border-white/5">
+            <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">
+              Resposta do aluno
+            </p>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {question.response.text}
+            </p>
+            {question.response.responseTime && (
+              <p className="text-[10px] text-gray-600 mt-1">
+                Tempo de resposta: {question.response.responseTime}s
+              </p>
+            )}
+          </div>
+
+          {/* Análise IA */}
+          {analysis && (
+            <div className="space-y-2">
+
+              {/* Resolution badge + confiança */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${resConfig.bg} ${resConfig.color}`}>
+                  {resConfig.icon} {resConfig.label}
+                </span>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-[10px] text-gray-600">Confiança</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${confColor}`}
+                        style={{ width: `${confPct}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-gray-500 font-mono">{confPct}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Finding */}
+              {analysis.finding && (
+                <div className="pt-2 border-t border-white/5">
+                  <p className="text-[10px] uppercase tracking-wider text-purple-500/70 mb-1">
+                    O que a resposta revela
+                  </p>
+                  <p className="text-xs text-gray-300 leading-relaxed">{analysis.finding}</p>
+                </div>
+              )}
+
+              {/* Emotional Insight */}
+              {analysis.emotionalInsight && (
+                <div className="pt-2 border-t border-white/5">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">
+                    Insight comportamental
+                  </p>
+                  <p className="text-xs text-gray-400 leading-relaxed">{analysis.emotionalInsight}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="ml-7 flex items-center gap-2 pt-1">
+          <div className="w-3 h-3 border border-gray-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-[10px] text-gray-600 italic">Aguardando resposta do aluno</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ProbingQuestionsPanel ─────────────────────────────────────
+
+function ProbingQuestionsPanel({ probingData }) {
+  const [open, setOpen] = useState(false);
+  const questions = probingData?.questions;
+  if (!questions || questions.length === 0) return null;
+
+  const answeredCount = questions.filter((q) => q.response?.text).length;
+
+  return (
+    <div className="rounded-xl border border-purple-500/20 bg-purple-500/5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between p-4 text-left group"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="text-sm font-medium text-purple-400">
+            Perguntas do Aprofundamento
+          </span>
+          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400">
+            {questions.length} {questions.length === 1 ? 'pergunta' : 'perguntas'}
+          </span>
+          {answeredCount < questions.length && (
+            <span className="text-[10px] text-gray-600 italic">
+              ({questions.length - answeredCount} sem resposta)
+            </span>
+          )}
+        </div>
+        {open
+          ? <ChevronUp className="w-4 h-4 text-gray-600 flex-shrink-0" />
+          : <ChevronDown className="w-4 h-4 text-gray-600 flex-shrink-0" />
+        }
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3">
+          {questions.map((q, idx) => (
+            <ProbingQuestionCard key={q.probingId || idx} question={q} index={idx} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
 function OpenResponsesPanel({ questionnaireResponses }) {
   const grouped = groupOpenResponsesByDimension(questionnaireResponses);
   const totalOpen = Object.values(grouped).reduce((acc, arr) => acc + arr.length, 0);
@@ -356,6 +519,9 @@ export default function AIAssessmentReport({
           )}
         </div>
       )}
+
+      {/* ── Perguntas individuais do Aprofundamento (issue #097) ── */}
+      <ProbingQuestionsPanel probingData={probingData} />
 
       {/* Development Priorities */}
       {reportData?.developmentPriorities && reportData.developmentPriorities.length > 0 && (
