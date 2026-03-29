@@ -1,11 +1,12 @@
 # issue-097 — Respostas Abertas com Análise IA no Relatório do Mentor
 
 **Branch:** `feature/issue-097-open-responses-ai-report`  
-**Base:** `main` (v1.21.2)  
+**Base:** `main` (v1.21.2 → v1.21.4)  
 **Tipo:** `feat`  
-**CHUNK:** CHUNK-09 (check-out nesta sessão)  
-**Status:** pronto para integração  
-**Data:** 28/03/2026  
+**CHUNK:** CHUNK-09  
+**Status:** closed  
+**Data:** 28–29/03/2026  
+**Merged:** v1.21.3 (PR #98, 28/03) + v1.21.4 (PR pendente, 29/03)  
 
 ---
 
@@ -13,9 +14,17 @@
 
 No relatório pré-assessment (aba "Relatório IA", visível apenas para o mentor), as respostas abertas do aluno com análise da IA só apareciam **dentro das flags de incongruência** (`IncongruenceFlags`). Respostas abertas que não dispararam nenhuma flag ficavam invisíveis — o mentor precisava consultar o Firebase console para acessar o texto do aluno e a análise da IA.
 
+Adicionalmente, durante testes foi identificado que:
+- As perguntas do aprofundamento adaptativo (probing) não eram exibidas individualmente no relatório
+- O `reportData` (incluindo `developmentPriorities`) não era persistido no Firestore — desaparecia no refresh
+- O prompt da CF `generateAssessmentReport` acessava `probingData.flagsResolved` quando deveria ser `probingData.summary.flagsResolved`
+- O botão "Re-processar IA" não re-gerava o relatório completo (só reprocessava classificações e probing)
+
 ---
 
 ## Solução
+
+### v1.21.3 (sessão 28/03)
 
 Nova seção **"Respostas Abertas — Análise IA"** adicionada ao `AIAssessmentReport`, posicionada entre "Flags de Incongruência" e "Resultado do Aprofundamento Adaptativo".
 
@@ -27,90 +36,57 @@ Nova seção **"Respostas Abertas — Análise IA"** adicionada ao `AIAssessment
 - `aiJustification`
 - "Aguardando processamento IA" para respostas sem `aiScore`
 
-**Seção oculta** quando não há respostas abertas (`totalOpen === 0`).
+### v1.21.4 (sessão 29/03 — complemento)
+
+1. **ProbingQuestionsPanel** — painel colapsável (purple theme) com perguntas individuais do aprofundamento: texto da pergunta gerada, flag investigado, resposta do aluno, badge de resolução (Esclarecido/Confirmado/Inconclusivo), finding, emotionalInsight, confiança
+
+2. **reportData persistence** — `saveReportData()` no `useAssessment`, persiste no doc `questionnaire` do Firestore. Rehydration no useEffect da page.
+
+3. **Fix probingData.summary** — CF `generateAssessmentReport` corrigida: `probingData?.summary?.flagsResolved` (antes `probingData.flagsResolved` → `undefined`)
+
+4. **Re-processar IA Etapa 3** — `handleReprocessAI` agora re-chama `generateAssessmentReport` após reprocessar classificações e probing, regenerando stage + developmentPriorities + reportSummary
+
+5. **Seção 4.4 PROJECT.md** — reescrita como "Diretriz Crítica de Verificação" com protocolo expandido cobrindo outputs de terminal, screenshots, logs
 
 ---
 
 ## Arquivos modificados
 
-| Arquivo | Mudança |
-|---------|---------|
-| `src/components/Onboarding/AIAssessmentReport.jsx` | Nova seção `OpenResponsesPanel` + componentes locais `DimensionGroup` + `OpenResponseCard` |
-| `src/__tests__/utils/openResponsesFilter.test.js` | 9 testes unitários para `groupOpenResponsesByDimension` |
+| Arquivo | Mudança | Versão |
+|---------|---------|--------|
+| `src/components/Onboarding/AIAssessmentReport.jsx` | OpenResponsesPanel + ProbingQuestionsPanel (v1.3.0) | v1.21.3 + v1.21.4 |
+| `src/__tests__/utils/openResponsesFilter.test.js` | 9 testes unitários para `groupOpenResponsesByDimension` | v1.21.3 |
+| `src/pages/StudentOnboardingPage.jsx` | reportData persistence, rehydration, handleReprocessAI Etapa 3 | v1.21.4 |
+| `src/hooks/useAssessment.js` | `saveReportData()` | v1.21.4 |
+| `functions/assessment/generateAssessmentReport.js` | Fix `probingData.summary.*`, prompt "mínimo 1" prioridade | v1.21.4 |
+| `docs/PROJECT.md` | Seção 4.4 reescrita, CHANGELOG v1.21.4, DT-026 resolvido | v1.21.4 |
+| `src/version.js` | 1.21.3 → 1.21.4 | v1.21.4 |
 
-**NÃO tocados:** `StudentOnboardingPage.jsx`, `IncongruenceFlags.jsx`, `App.jsx`, `functions/index.js`, `firestore.rules`
-
----
-
-## Função exportada (testável)
-
-```javascript
-// AIAssessmentReport.jsx
-export function groupOpenResponsesByDimension(responses)
-// Filtra type==='open', agrupa por dimensão, retorna objeto com 4 chaves fixas
-```
+**NÃO tocados:** `IncongruenceFlags.jsx`, `App.jsx`, `functions/index.js`, `firestore.rules`
 
 ---
 
-## Delta de shared files (Marcio aplica no merge)
+## Decisões
 
-### `src/version.js`
-```javascript
-export const VERSION = '1.21.3';
-export const BUILD_DATE = 'DD/MM/2026'; // substituir pela data do merge
-```
-
-### `PROJECT.md` — seção 10 CHANGELOG (inserir no topo)
-
-```markdown
-### [1.21.3] - DD/MM/2026
-**Issue:** #097
-#### Adicionado
-- Seção "Respostas Abertas — Análise IA" no AIAssessmentReport
-- 4 grupos colapsáveis por dimensão com texto do aluno + score IA + classificação + confiança + aiFinding + aiJustification
-- Indicador "Aguardando processamento IA" para respostas não processadas
-- Testes unitários: openResponsesFilter.test.js (9 casos)
-```
+Nenhuma nova decisão formal (DEC-xxx). Mudanças são correções de bugs e complementos da funcionalidade existente.
 
 ---
 
-## Acceptance criteria
+## Dívidas técnicas resolvidas
 
-- [x] Seção "Respostas Abertas — Análise IA" visível no relatório do mentor
-- [x] 4 grupos colapsáveis por dimensão
-- [x] Cada resposta exibe: enunciado, texto do aluno, score IA, classificação, confiança, justificativa, aiFinding (se existir)
-- [x] Respostas sem `aiScore` exibem "Aguardando processamento IA"
-- [x] Seção oculta quando não há respostas abertas
-- [x] Não duplica IncongruenceFlags — seção separada, dados complementares
-- [x] DebugBadge `component="AIAssessmentReport"` mantido
-- [x] 9 testes unitários para `groupOpenResponsesByDimension`
-- [x] `StudentOnboardingPage.jsx` não tocado
-- [x] Shared files documentados como delta — não modificados na branch
+| DT | Descrição | Status |
+|----|-----------|--------|
+| DT-026 | stageDiagnosis não gerado pelo Re-processar IA | RESOLVIDO v1.21.4 — Etapa 3 do handleReprocessAI agora re-gera via generateAssessmentReport |
 
 ---
 
-## Instruções de integração
+## Testes
 
-```powershell
-# 1. Criar branch
-git checkout main
-git pull origin main
-git checkout -b feature/issue-097-open-responses-ai-report
+- `openResponsesFilter.test.js` — 9 casos para `groupOpenResponsesByDimension` (existente, não alterado)
+- Teste funcional: Re-processar IA → verificar developmentPriorities no relatório e na validação
 
-# 2. Extrair ZIP
-Expand-Archive -Path "Temp\issue-097-open-responses-ai-report.zip" -DestinationPath "." -Force
+---
 
-# 3. Verificar arquivos
-git status
+## Pendências
 
-# 4. Rodar testes
-npm run test -- src/__tests__/utils/openResponsesFilter.test.js
-
-# 5. Aplicar deltas de shared files (version.js + CHANGELOG no PROJECT.md)
-
-# 6. Commit e PR
-git add src/components/Onboarding/AIAssessmentReport.jsx src/__tests__/utils/openResponsesFilter.test.js src/version.js docs/PROJECT.md
-git commit -m "feat: respostas abertas com analise IA no relatorio do mentor (issue #097)"
-git push origin feature/issue-097-open-responses-ai-report
-gh pr create --title "feat: respostas abertas com analise IA no relatorio do mentor" --body "Closes #097"
-```
+Nenhuma. Issue fechado.

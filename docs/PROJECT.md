@@ -216,15 +216,34 @@ Ao final de cada sessão, antes de encerrar:
    git commit -m "docs: atualizar PROJECT.md e issue-NNN sessão DD/MM/YYYY"
    ```
 
-### 4.4 Diretriz Crítica de Leitura
+### 4.4 Diretriz Crítica de Verificação
 
-Antes de qualquer diagnóstico, proposta ou afirmação sobre fluxo de dados, origem de campos, ou estado de implementação:
+**Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
 
-1. Identificar todos os arquivos relevantes (componente, hook, CF, página que orquestra)
-2. Ler cada um com `grep` + `view` + `bash`
-3. Só então concluir
+Aplica-se a QUALQUER conclusão sobre o estado do projeto, incluindo mas não limitado a:
 
-**Nunca inferir. Se não leu, não afirma. Se está incerto, diz "preciso verificar" e verifica.**
+- Fluxo de dados, origem de campos, estrutura de collections
+- Estado de branches, PRs, merges, deploys
+- Existência ou ausência de arquivos, funções, componentes, campos
+- Interpretação de outputs de terminal (git, npm, firebase, logs)
+- Interpretação de screenshots, erros, stack traces
+- Estado de features (implementado, pendente, quebrado)
+- Compatibilidade entre componentes, hooks, CFs
+
+**Protocolo obrigatório (nesta ordem):**
+
+1. Classificar: "estou prestes a afirmar algo verificável?" → Se sim, PARAR
+2. Identificar a fonte de verdade (código, remote, Firestore, output direto)
+3. Verificar com `grep` + `view` + `bash`, ou solicitar ao Marcio o comando de verificação quando não houver acesso direto
+4. Cruzar com contexto existente (issue files, instruções de integração, PROJECT.md)
+5. Só então concluir
+
+**Se o Marcio colar um output de terminal, screenshot, ou log:**
+- Tratar como dado bruto, não como fato confirmado
+- Cruzar com pelo menos uma fonte adicional antes de afirmar
+- Se houver ambiguidade, dizer "preciso confirmar — pode rodar `<comando>`?" em vez de assumir
+
+**Nunca inferir. Se não verificou, não afirma. Se está incerto, diz "preciso verificar" e verifica. Não existe output trivial — todo dado verificável passa pelo protocolo.**
 
 ---
 
@@ -387,7 +406,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | — | — |
 | DT-022 | CF scheduled limpeza diária csvStagingTrades (23h) não implementada | MÉDIA | — | — |
 | DT-025 | Campos `hasPartials`/`partialsCount` legados nos documentos de trades | BAIXA | — | — |
-| DT-026 | stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete | BAIXA | — | — |
+| DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
 
 ---
 
@@ -395,6 +414,19 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.21.4] - 29/03/2026
+**Issue:** #097 (complemento)
+#### Adicionado
+- Painel "Perguntas do Aprofundamento" colapsável no AIAssessmentReport (v1.3.0)
+- `saveReportData` em useAssessment — persiste reportData no Firestore
+- Rehydration de reportData (developmentPriorities, profileName, reportSummary) no refresh
+- Etapa 3 no Re-processar IA — regenera relatório completo com developmentPriorities
+#### Corrigido
+- CF generateAssessmentReport: `probingData.summary.flagsResolved` (era `probingData.flagsResolved` → undefined)
+- Prompt alterado para "mínimo 1, máximo 3" prioridades de desenvolvimento
+#### Alterado
+- Seção 4.4 do PROJECT.md reescrita: "Diretriz Crítica de Verificação" com protocolo expandido
 
 ### [1.21.3] - 28/03/2026
 **Sessão:** issue-097 open responses AI report  

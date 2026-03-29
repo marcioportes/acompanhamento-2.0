@@ -84,6 +84,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     completeProbing,
     saveInitialAssessment,
     saveStageDiagnosis,
+    saveReportData,
   } = assessment;
 
   const questionnaire = useQuestionnaire({
@@ -113,6 +114,11 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
         setStageDiagnosis(savedQuestionnaire.stageDiagnosis);
       }
 
+      // Rehydrate reportData (developmentPriorities, profileName, reportSummary, etc.)
+      if (savedQuestionnaire.reportData && !reportData) {
+        setReportData(savedQuestionnaire.reportData);
+      }
+
       // Recalcular scores apenas se ainda não calculados nesta sessão
       if (!assessmentScores) {
         const stage = savedQuestionnaire.stageDiagnosis?.stage || 2;
@@ -126,7 +132,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     } catch (err) {
       console.error('[Onboarding] Score rehydration error:', err);
     }
-  }, [savedQuestionnaire, assessmentScores, stageDiagnosis]);
+  }, [savedQuestionnaire, assessmentScores, stageDiagnosis, reportData]);
 
   const currentView = activeTab || onboardingStatus || 'lead';
 
@@ -327,12 +333,44 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
         }
       }
 
+      // ── Etapa 3: Re-gerar relatório completo (stage + developmentPriorities) ──
+      const recalcScores = calculateFullAssessment(
+        allResponses,
+        stageDiagnosis?.stage || 2,
+        0
+      );
+      const recalcClassifications = classifyFullAssessment(recalcScores);
+      const stagePayload = prepareStagePayload(allResponses, recalcScores);
+
+      const generateReportCF = httpsCallable(functions, 'generateAssessmentReport');
+      const reportResult = await generateReportCF({
+        stagePayload,
+        scores: recalcScores,
+        classifications: recalcClassifications,
+        incongruenceFlags: [
+          ...(incongruenceData?.intraFlags || []),
+          ...(incongruenceData?.interFlags || []),
+        ],
+        probingData: savedProbing,
+      });
+
+      const { stageDiagnosis: sd, report } = reportResult.data;
+      setStageDiagnosis(sd);
+      setReportData(report);
+      await saveStageDiagnosis(sd);
+      await saveReportData(report);
+
+      // Recalculate final scores with updated stage
+      const finalScores = calculateFullAssessment(allResponses, sd.stage, 0);
+      setAssessmentScores(finalScores);
+      setAssessmentClassifications(classifyFullAssessment(finalScores));
+
     } catch (err) {
       console.error('Reprocess AI error:', err);
     } finally {
       setProcessing(false);
     }
-  }, [savedQuestionnaire, savedProbing, saveResponse, completeProbingQuestion, stageDiagnosis]);
+  }, [savedQuestionnaire, savedProbing, saveResponse, completeProbingQuestion, stageDiagnosis, incongruenceData, saveStageDiagnosis, saveReportData]);
 
   const handleProbingComplete = useCallback(async () => {
     setProcessing(true);
@@ -358,8 +396,9 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
       setStageDiagnosis(sd);
       setReportData(report);
 
-      // Persistir stageDiagnosis no Firestore para rehydration futura
+      // Persistir stageDiagnosis + reportData no Firestore para rehydration futura
       await saveStageDiagnosis(sd);
+      await saveReportData(report);
 
       // Recalculate with diagnosed stage
       const finalScores = calculateFullAssessment(allResponses, sd.stage, 0);
@@ -371,7 +410,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     } finally {
       setProcessing(false);
     }
-  }, [questionnaire, assessmentScores, assessmentClassifications, incongruenceData, savedProbing, saveStageDiagnosis]);
+  }, [questionnaire, assessmentScores, assessmentClassifications, incongruenceData, savedProbing, saveStageDiagnosis, saveReportData]);
 
   const handleMentorSave = useCallback(async (mentorValidation) => {
     setSaving(true);
