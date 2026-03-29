@@ -244,6 +244,18 @@ export function useAssessment(studentId) {
     await updateDoc(qRef, { stageDiagnosis });
   }, [studentId]);
 
+  /**
+   * Persiste reportData no documento questionnaire para rehydration futura.
+   * Chamado após generateAssessmentReport retornar o relatório.
+   * Permite que mentor re-abra a página e veja developmentPriorities, profileName,
+   * reportSummary, mentorFocusAreas e riskFlags sem re-gerar.
+   */
+  const saveReportData = useCallback(async (reportData) => {
+    if (!studentId || !reportData) return;
+    const qRef = doc(db, 'students', studentId, 'assessment', 'questionnaire');
+    await updateDoc(qRef, { reportData });
+  }, [studentId]);
+
   // ── Mentor Validation ─────────────────────────────────────
 
   /**
@@ -300,5 +312,6 @@ export function useAssessment(studentId) {
     updateOnboardingStatus,
     resetAssessment,
     saveStageDiagnosis,
+    saveReportData,
   };
 }

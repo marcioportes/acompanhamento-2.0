@@ -104,9 +104,9 @@ Responda APENAS com JSON válido, sem markdown, sem backticks:
 ${(incongruenceFlags || []).map((f) => `- ${f.type}: ${f.description} (delta: ${f.delta})`).join('\n') || 'Nenhuma'}
 
 ## Sondagem adaptativa
-${probingData ? `Flags resolvidos: ${probingData.flagsResolved}, Reforçados: ${probingData.flagsReinforced}, Inconclusivos: ${probingData.flagsInconclusive}` : 'Não realizada'}
+${probingData?.summary ? `Flags resolvidos: ${probingData.summary.flagsResolved}, Reforçados: ${probingData.summary.flagsReinforced}, Inconclusivos: ${probingData.summary.flagsInconclusive}` : 'Não realizada'}
 
-Gere o relatório pré-mentor com prioridades de desenvolvimento (máximo 3).`;
+Gere o relatório pré-mentor com prioridades de desenvolvimento (mínimo 1, máximo 3). Para alunos com scores baixos, as prioridades são ainda mais importantes.`;
 
   try {
     // Execute both prompts

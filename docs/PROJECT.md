@@ -406,7 +406,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | — | — |
 | DT-022 | CF scheduled limpeza diária csvStagingTrades (23h) não implementada | MÉDIA | — | — |
 | DT-025 | Campos `hasPartials`/`partialsCount` legados nos documentos de trades | BAIXA | — | — |
-| DT-026 | stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete | BAIXA | — | — |
+| DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
 
 ---
 
@@ -414,6 +414,19 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.21.4] - 29/03/2026
+**Issue:** #097 (complemento)
+#### Adicionado
+- Painel "Perguntas do Aprofundamento" colapsável no AIAssessmentReport (v1.3.0)
+- `saveReportData` em useAssessment — persiste reportData no Firestore
+- Rehydration de reportData (developmentPriorities, profileName, reportSummary) no refresh
+- Etapa 3 no Re-processar IA — regenera relatório completo com developmentPriorities
+#### Corrigido
+- CF generateAssessmentReport: `probingData.summary.flagsResolved` (era `probingData.flagsResolved` → undefined)
+- Prompt alterado para "mínimo 1, máximo 3" prioridades de desenvolvimento
+#### Alterado
+- Seção 4.4 do PROJECT.md reescrita: "Diretriz Crítica de Verificação" com protocolo expandido
 
 ### [1.21.3] - 28/03/2026
 **Sessão:** issue-097 open responses AI report  
