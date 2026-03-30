@@ -441,6 +441,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-040 | Apenas 2 milestones: v1.1.0 Espelho Self-Service (prioridade) + v1.2.0 Mentor Cockpit. Student Experience absorvido pelo Espelho | — | 29/03/2026 |
 | DEC-041 | #101 é épico Torre de Controle — agrupa todos os sub-issues do dashboard mentor. #1 (Upload Seed) fechado como não relevante | #101 | 29/03/2026 |
 | DEC-042 | Torre de Controle: header redesenhado (4 KPIs operacionais), seções Ranking por Aluno + Ranking por Causa (dual view), SWOT e Stop por Motivo movidos para nova tela Performance (#103) | #101 | 29/03/2026 |
+| DEC-043 | useProbing rehydrata savedQuestions do Firestore + effectiveStatus resolve status preso ai_assessed quando probing já gerado | #92 | 30/03/2026 |
 
 ---
 
@@ -487,6 +488,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
 | DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #100 |
 | DT-028 | firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016) | **CRÍTICA** | **30/04/2026** | — |
+| DT-029 | ~~useProbing não rehydratava savedQuestions do Firestore — aluno em loop no aprofundamento~~ RESOLVIDO v1.21.5 | ALTA | — | #92 |
 
 ---
 
@@ -512,6 +514,18 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 - KPIs alimentam nota de evolução (gates) para ambos tiers
 - Fibonaccing (100h+ conteúdo gratuito) como motor de aquisição principal
 - Rename externo via custom domain + UI, sem refactoring de codebase
+
+### [1.21.5] - 30/03/2026
+**Issue:** #92 (fix probing rehydration)
+#### Corrigido
+- `useProbing` rehydrata `savedQuestions` do Firestore ao retornar à página — resolve loop onde aluno via "Começar" repetidamente
+- `effectiveStatus` detecta `onboardingStatus === 'ai_assessed'` com `savedProbing.questions` existente e trata como `probing`
+- Badge de status, tabs e tab highlight usam `effectiveStatus`
+#### Adicionado
+- `src/utils/probingUtils.js` — `calculateRehydrationIndex` (função pura, testável)
+- 6 testes unitários: `probingRehydration.test.js`
+#### Decisão
+- DEC-043: useProbing rehydrata do Firestore + effectiveStatus
 
 ### [1.21.4] - 29/03/2026
 **Issue:** #097 (complemento)

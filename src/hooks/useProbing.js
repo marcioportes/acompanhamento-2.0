@@ -13,24 +13,40 @@
  * @version 1.0.0 — CHUNK-09 Fase A
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
+import { calculateRehydrationIndex } from '../utils/probingUtils';
 
 /**
  * @param {Object} params
  * @param {Function} params.onSaveProbing - Callback para persistir probing doc (via useAssessment.saveProbing)
  * @param {Function} params.onCompleteProbingQuestion - Callback para persistir resposta individual
  * @param {Function} params.onCompleteProbing - Callback para finalizar sondagem
+ * @param {Array|null} params.savedQuestions - perguntas salvas no Firestore (rehydration)
  * @returns {Object} Probing UI state and actions
  */
-export function useProbing({ onSaveProbing, onCompleteProbingQuestion, onCompleteProbing }) {
+export function useProbing({ onSaveProbing, onCompleteProbingQuestion, onCompleteProbing, savedQuestions }) {
   const [questions, setQuestions] = useState([]);
   const [currentProbingIndex, setCurrentProbingIndex] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
   const responseStartTime = useRef(null);
+  const rehydrated = useRef(false);
+
+  // ── Rehydrate from Firestore when returning to page ──────
+  // savedQuestions comes from useAssessment's onSnapshot listener.
+  // Only rehydrate once to avoid overwriting in-session state.
+  useEffect(() => {
+    if (savedQuestions?.length > 0 && !rehydrated.current) {
+      rehydrated.current = true;
+      const answered = calculateRehydrationIndex(savedQuestions);
+      setQuestions(savedQuestions);
+      setCurrentProbingIndex(answered);
+      responseStartTime.current = Date.now();
+    }
+  }, [savedQuestions]);
 
   // ── Generate probing questions ────────────────────────────
 

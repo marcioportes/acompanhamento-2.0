@@ -96,6 +96,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     onSaveProbing: saveProbing,
     onCompleteProbingQuestion: completeProbingQuestion,
     onCompleteProbing: completeProbing,
+    savedQuestions: savedProbing?.questions || null,
   });
 
   // ── Determine active view ─────────────────────────────────
@@ -134,13 +135,25 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     }
   }, [savedQuestionnaire, assessmentScores, stageDiagnosis, reportData]);
 
-  const currentView = activeTab || onboardingStatus || 'lead';
+  // If status is ai_assessed but probing questions already exist in Firestore,
+  // the status transition failed — treat as 'probing' to avoid showing ProbingIntro again.
+  const effectiveStatus = (onboardingStatus === 'ai_assessed' && savedProbing?.questions?.length > 0)
+    ? 'probing'
+    : onboardingStatus;
+
+  // When tab 'ai_assessed' (Aprofundamento) is clicked but probing is already in progress,
+  // show the probing flow, not the intro screen.
+  const resolvedTab = (activeTab === 'ai_assessed' && (effectiveStatus === 'probing' || onboardingStatus === 'probing'))
+    ? 'probing'
+    : activeTab;
+
+  const currentView = resolvedTab || effectiveStatus || 'lead';
 
   // Tabs available based on status progression
   const availableTabs = useMemo(() => {
     const tabs = [];
     const statusOrder = ['lead', 'pre_assessment', 'ai_assessed', 'probing', 'probing_complete', 'mentor_validated', 'active'];
-    const currentIdx = statusOrder.indexOf(onboardingStatus);
+    const currentIdx = statusOrder.indexOf(effectiveStatus);
 
     if (currentIdx >= 1) tabs.push({ key: 'pre_assessment', label: 'Questionário' });
     if (currentIdx >= 2) tabs.push({ key: 'ai_assessed', label: 'Aprofundamento' });
@@ -150,7 +163,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
     if (currentIdx >= 5) tabs.push({ key: 'active', label: 'Marco Zero' });
 
     return tabs;
-  }, [onboardingStatus, isMentorView]);
+  }, [effectiveStatus, isMentorView]);
 
   // ── Handlers ──────────────────────────────────────────────
 
@@ -544,8 +557,8 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           <h1 className="text-2xl font-semibold text-white">Onboarding</h1>
           <p className="text-sm text-gray-500 mt-1">Assessment 4D — Trader Evolution Framework</p>
         </div>
-        <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${STATUS_COLORS[onboardingStatus] || STATUS_COLORS.lead}`}>
-          {STATUS_LABELS[onboardingStatus] || onboardingStatus}
+        <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${STATUS_COLORS[effectiveStatus] || STATUS_COLORS.lead}`}>
+          {STATUS_LABELS[effectiveStatus] || effectiveStatus}
         </div>
       </div>
 
@@ -558,7 +571,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
               onClick={() => setActiveTab(tab.key)}
               className={`
                 px-4 py-2 rounded-lg text-xs font-medium transition-all
-                ${(activeTab || onboardingStatus) === tab.key
+                ${(activeTab || effectiveStatus) === tab.key
                   ? 'bg-white/10 text-white'
                   : 'text-gray-500 hover:text-gray-300'
                 }
