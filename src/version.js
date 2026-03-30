@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.21.5: fix: probing rehydration — useProbing agora rehydrata perguntas do Firestore ao retornar à página; effectiveStatus resolve status preso em ai_assessed quando probing já foi gerado
  * - 1.21.4: fix: reportData persistence/rehydration, re-processar IA regenera report completo, probing questions panel, fix probingData.summary path, rewrite diretriz 4.4
  * - 1.21.3: feat: respostas abertas com análise IA no relatório do mentor (issue #097)
  * - 1.21.2: fix: rename "Marco Zero" → "Perfil de Maturidade" em BaselineReport header e Sidebar
@@ -33,10 +34,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.21.4',
-  build: '20260329',
-  display: 'v1.21.4',
-  full: '1.21.4+20260329',
+  version: '1.21.5',
+  build: '20260330',
+  display: 'v1.21.5',
+  full: '1.21.5+20260330',
 };
 export default VERSION;
 export { VERSION };
