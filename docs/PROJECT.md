@@ -118,11 +118,13 @@ Sub-tarefas (#100):
 - C5: Custom domain — app.marcioportes.com.br
 
 ### v1.2.0 — Mentor Cockpit
-**Foco:** Dashboard mentor consolidado + revisão semanal
-**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (9 issues)
+**Foco:** Dashboard mentor consolidado (Torre de Controle) + revisão semanal + performance
+**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (10 issues)
 
-Issues:
-- `#101` feat: Dashboard Mentor — Visão consolidada plano + meta + stop + KPIs
+Épico guarda-chuva: `#101` epic: Dashboard Mentor — Torre de Controle
+
+Sub-issues:
+- `#103` feat: Performance — visão analítica retrospectiva (SWOT IA, Stop por Motivo)
 - `#102` feat: Revisão Semanal — KPIs congelados + prep + link vídeo + resumo IA
 - `#94`  feat: Controle de Assinaturas da Mentoria
 - `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
@@ -130,7 +132,39 @@ Issues:
 - `#56`  fix: Dashboard Mentor — Sidebar Badge Connection
 - `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção"
 - `#31`  feat: Dashboard Mentor — Preset de Feedback Semântico
-- `#1`   refactor: Configurações — Substituir 3 botões por Upload Seed
+
+`#1` refactor: Configurações — Upload Seed → **FECHADO** (não relevante, DEC-041)
+
+#### Torre de Controle — Design (DEC-042, 29/03/2026)
+
+**Header KPIs (4 cards):**
+- Revisões Pendentes (trades com feedback pendente + revisados sem fechar)
+- Alertas (com direção ▲▼ vs ontem)
+- Fora do Plano (compliance < 80% no ciclo)
+- Pendências Operacionais (staging, inativos 7d+, assessment pendente)
+
+**Seções:**
+- Ranking por Aluno: top-5 piores do dia com badges de causa (VIOLAÇÃO purple-flag, TILT/REVENGE/SEM STOP red, PÓS-META yellow)
+- Ranking por Causa: causas agregadas + contagem alunos + diagnóstico coletivo no rodapé (60%+ mesma causa = alerta de mercado)
+- Fora do Plano: compliance ciclo + pior regra violada (NO_STOP/RISK_EXCEEDED/RR_BELOW_MINIMUM) + evolução meta + dias em dívida
+- Stop vs Gain: barras semanais agregadas da turma + badge liquidez
+- Visão Rápida por Aluno: painel lateral com KPIs + flags ativas + eventos ciclo
+
+**Sidebar Mentor:**
+- Torre de Controle (operacional, diário)
+- Performance (analítico, retrospectivo — #103)
+- Fila de Revisão (individual — #102)
+- Alunos / Assinaturas / Configurações
+
+**Flags disponíveis para a torre (Fase A — dados existentes):**
+- Compliance: NO_STOP, RISK_EXCEEDED, RR_BELOW_MINIMUM (`compliance.js`)
+- Comportamental: TILT_DETECTED, REVENGE_DETECTED (`emotionalAnalysisV2.js`)
+- Plano/Ciclo: META, PÓS-META, STOP, PÓS-STOP/VIOLAÇÃO (`planLedger.js`)
+- Não implementadas: NO_PLAN, DAILY_LOSS_EXCEEDED, BLOCKED_EMOTION
+
+**Fases:**
+- Fase A: dados existentes (compliance, planLedger, emotionalAnalysisV2)
+- Fase B: Behavioral Detection Engine (Prioridade do Dia com recomendações, futuro)
 
 ### Portal marcioportes.com.br (Maio-Junho 2026)
 **Foco:** Landing page institucional + Fibonaccing + Diagnóstico Comportamental
@@ -405,6 +439,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-038 | Rename externo via custom domain (app.marcioportes.com.br) + UI (title, logo) — sem refactoring de codebase | #100 | 29/03/2026 |
 | DEC-039 | GitHub é SSOT para numeração de issues — PROJECT.md reflete o GitHub, nunca o contrário | — | 29/03/2026 |
 | DEC-040 | Apenas 2 milestones: v1.1.0 Espelho Self-Service (prioridade) + v1.2.0 Mentor Cockpit. Student Experience absorvido pelo Espelho | — | 29/03/2026 |
+| DEC-041 | #101 é épico Torre de Controle — agrupa todos os sub-issues do dashboard mentor. #1 (Upload Seed) fechado como não relevante | #101 | 29/03/2026 |
+| DEC-042 | Torre de Controle: header redesenhado (4 KPIs operacionais), seções Ranking por Aluno + Ranking por Causa (dual view), SWOT e Stop por Motivo movidos para nova tela Performance (#103) | #101 | 29/03/2026 |
 
 ---
 
