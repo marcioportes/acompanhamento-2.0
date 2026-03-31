@@ -231,9 +231,96 @@ Se houver conflito entre entregar rápido e seguir as invariantes, as invariante
 ### INV-12: Parciais São Campo no Documento — NÃO Subcollection
 `_partials` é um campo array dentro do documento `trades/{id}`. Não existe subcollection `trades/{id}/partials`. Todo trade tem parciais (mínimo 1 ENTRY + 1 EXIT).
 
+### INV-13: Rastreabilidade Obrigatória por Issue
+Toda modificação de código exige: (1) issue aberto no GitHub, (2) arquivo de controle `docs/dev/issues/issue-NNN-descricao.md` criado a partir do template (seção 4.0), (3) branch nomeada `tipo/issue-NNN-descricao`. Sem esses três artefatos, o Gate Pré-Código não pode ser iniciado. O arquivo de issue é o documento de continuidade — se a sessão for interrompida, qualquer sessão subsequente deve conseguir retomar o trabalho exclusivamente a partir dele + PROJECT.md + código.
+
 ---
 
 ## 4. PROTOCOLO DE SESSÃO
+
+### 4.0 Abertura de Sessão (obrigatório, antes de tudo)
+
+```
+□ Identificar ou criar issue no GitHub (gh issue create / gh issue list)
+□ Criar arquivo docs/dev/issues/issue-NNN-descricao.md a partir do template abaixo
+□ Registrar branch: git checkout -b tipo/issue-NNN-descricao
+□ Preencher seções 1 (Contexto), 2 (Acceptance Criteria) e 3 (Análise de Impacto)
+□ Só então iniciar Gate Pré-Código (seção 4.1)
+```
+
+**Regra:** sem issue no GitHub + arquivo de controle em `docs/dev/issues/`, nenhuma linha de código é escrita. Se a sessão for perdida, outra sessão reconstrói o contexto completo a partir do arquivo de issue.
+
+#### Template: `docs/dev/issues/issue-NNN-descricao.md`
+
+```markdown
+# Issue NNN — tipo: Título descritivo
+> **Branch:** `tipo/issue-NNN-descricao`  
+> **Milestone:** vX.Y.Z — Nome do Milestone  
+> **Aberto em:** DD/MM/YYYY  
+> **Status:** 🔵 Em andamento | ✅ Encerrado  
+> **Versão entregue:** —
+
+---
+
+## 1. CONTEXTO
+
+Descrição do problema ou feature. Por que existe. Qual o impacto.
+
+## 2. ACCEPTANCE CRITERIA
+
+- [ ] Critério 1
+- [ ] Critério 2
+- [ ] Critério 3
+
+## 3. ANÁLISE DE IMPACTO
+
+| Aspecto | Detalhe |
+|---------|---------|
+| Collections tocadas | — |
+| Cloud Functions afetadas | — |
+| Hooks/listeners afetados | — |
+| Side-effects (PL, compliance, emotional) | — |
+| Blast radius | — |
+| Rollback | — |
+
+## 4. SESSÕES
+
+### Sessão — DD/MM/YYYY
+
+**O que foi feito:**
+- Item 1
+- Item 2
+
+**Decisões tomadas:**
+
+| ID | Decisão | Justificativa |
+|----|---------|---------------|
+| DEC-xxx | — | — |
+
+**Arquivos tocados:**
+- `path/to/file.js`
+
+**Testes:**
+- X testes novos, Y total passando
+
+**Commits:** (listar como bloco de código)
+- `hash mensagem`
+
+**Pendências para próxima sessão:**
+- Item 1
+
+## 5. ENCERRAMENTO
+
+**Status:** Aguardando PR | Mergeado | Cancelado
+
+**Checklist final:**
+- [ ] Acceptance criteria atendidos
+- [ ] Testes passando
+- [ ] PROJECT.md atualizado (DEC, DT, CHANGELOG)
+- [ ] PR aberto e mergeado
+- [ ] Issue fechado no GitHub
+- [ ] Branch deletada
+```
 
 ### 4.1 Gate Pré-Código (obrigatório, nesta ordem)
 
@@ -442,6 +529,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-041 | #101 é épico Torre de Controle — agrupa todos os sub-issues do dashboard mentor. #1 (Upload Seed) fechado como não relevante | #101 | 29/03/2026 |
 | DEC-042 | Torre de Controle: header redesenhado (4 KPIs operacionais), seções Ranking por Aluno + Ranking por Causa (dual view), SWOT e Stop por Motivo movidos para nova tela Performance (#103) | #101 | 29/03/2026 |
 | DEC-043 | useProbing rehydrata savedQuestions do Firestore + effectiveStatus resolve status preso ai_assessed quando probing já gerado | #92 | 30/03/2026 |
+| DEC-044 | INV-13: rastreabilidade obrigatória — toda modificação de código exige issue GitHub + arquivo docs/dev/issues/issue-NNN.md + branch nomeada. Template formal definido na seção 4.0 | — | 30/03/2026 |
 
 ---
 
