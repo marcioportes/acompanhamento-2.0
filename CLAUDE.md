@@ -149,7 +149,7 @@ Aplica-se a:
 
 - Todas CFs com Claude API requerem: `secrets: ['ANTHROPIC_API_KEY']`
 - **Debt crítico:** `onTradeCreated` dispara em trades IMPORTED, corrompendo PL
-- **Debt crítico:** Node.js 20 depreca 30/04/2026 (DT-016) + firebase-functions SDK 4.9.0 → ≥5.1.0 (DT-028)
+- ~~**Debt crítico:** Node.js 20 depreca 30/04/2026 (DT-016) + firebase-functions SDK 4.9.0 → ≥5.1.0 (DT-028)~~ RESOLVIDO v1.22.0 — Node.js 22 + SDK 5.1
 
 | Function | Trigger | Responsabilidade |
 |----------|---------|-----------------|
@@ -251,8 +251,8 @@ Issues-chave: #100 (epic self-service), #96 (Node 20→22), #3 (Aluno Dashboard 
 
 | ID | Descrição | Prioridade | Deadline |
 |----|-----------|-----------|----------|
-| DT-016 | **Node.js 20 depreca** | **CRÍTICA** | **30/04/2026** |
-| DT-028 | **firebase-functions SDK 4.9.0 → ≥5.1.0** | **CRÍTICA** | **30/04/2026** |
+| ~~DT-016~~ | ~~Node.js 20 depreca~~ RESOLVIDO v1.22.0 | ~~CRÍTICA~~ | ~~30/04/2026~~ |
+| ~~DT-028~~ | ~~firebase-functions SDK 4.5.0 → ≥5.1.0~~ RESOLVIDO v1.22.0 | ~~CRÍTICA~~ | ~~30/04/2026~~ |
 | DT-002 | Cycle transitions sem fechamento formal | ALTA | — |
 | DT-027 | Rename externo UI "Acompanhamento 2.0" → "Espelho" | ALTA | Antes da comunicação |
 | DT-012 | Mentor não consegue editar feedback já enviado | MÉDIA | — |
