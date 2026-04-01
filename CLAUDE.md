@@ -57,7 +57,7 @@ Toda versão (major, minor, patch) deve ter entrada no CHANGELOG (seção 10 do 
 5. CHANGELOG atualizado
 6. Testes criados para toda lógica nova
 7. DebugBadge em todos os componentes novos/tocados com `component="NomeExato"`
-8. Instruções git (commits em linha única)
+8. Commit via Claude Code ou git direto (commits em linha única)
 9. PARAR — aguardar confirmação do Marcio
 
 ### INV-10: Verificar Estrutura Firestore Antes de Criar/Modificar

@@ -331,16 +331,14 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 □ Checklist de impacto (seção 5) executado mentalmente
 ```
 
-### 4.2 Gate Pré-Entrega (obrigatório, antes de cada ZIP)
+### 4.2 Gate Pré-Entrega (obrigatório, antes de cada entrega)
 
 ```
 □ version.js atualizado com nova versão e build date
 □ CHANGELOG (seção 10) com entrada da versão
 □ Testes para toda lógica nova criados e passando
 □ DebugBadge em todos os componentes novos/tocados com component="NomeExato"
-□ ZIP com paths project-relative
-□ Comando Expand-Archive fornecido
-□ Instruções git fornecidas (commits em linha única)
+□ Commit via Claude Code ou git direto (commits em linha única)
 □ PARAR — aguardar confirmação do Marcio
 ```
 
