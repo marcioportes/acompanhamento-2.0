@@ -95,6 +95,23 @@ Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção
 
 ---
 
+## PERMISSÕES IMPLÍCITAS
+
+**Não requerem confirmação:**
+- Operações de leitura: `grep`, `cat`, `ls`, `find`, `view`, `gh issue view`, `git log/status/diff`
+- Comandos de build/test: `npm install`, `npm test`, `npm run build`
+- Fetch de URLs: `github.com`, `npmjs.com`, `firebase.google.com`
+- Edições de arquivos durante sessão aprovada: aprovar em lote (`shift+tab`)
+
+**Requerem confirmação explícita:**
+- `git commit`, `git push`
+- `firebase deploy`
+- Criação/deleção de branches
+- Criação de PRs
+- Deleção de Cloud Functions
+
+---
+
 ## DIRETRIZ CRÍTICA DE VERIFICAÇÃO
 
 **Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
