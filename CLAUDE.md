@@ -110,6 +110,9 @@ Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção
 - Criação de PRs
 - Deleção de Cloud Functions
 
+**Automático (sem perguntar):**
+- Protocolo de encerramento de sessão (PROJECT.md §4.3): executar automaticamente quando o issue for fechado (PR mergeado, issue closed, branch deletada). Atualizar documento de issue, PROJECT.md e commitar os docs.
+
 ---
 
 ## DIRETRIZ CRÍTICA DE VERIFICAÇÃO
