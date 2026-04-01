@@ -57,7 +57,7 @@ Cada entrada deve conter: ID sequencial, descrição, issue de origem, data e ho
 
 | Ferramenta | Versão | Uso |
 |-----------|--------|-----|
-| Node.js | 20.x (migrar para 22 — DT-016) | Runtime local + Cloud Functions |
+| Node.js | 22.x (migrado de 20 — DT-016 resolvido v1.22.0) | Runtime local + Cloud Functions |
 | Firebase CLI | latest | Deploy de CFs e Firestore rules |
 | GitHub CLI (`gh`) | 2.86.0 | Gestão de issues, PRs e milestones via script |
 | PowerShell | Windows | Shell padrão — commits em linha única obrigatório |
@@ -566,14 +566,14 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-011 | Templates CSV vazam entre alunos (sem filtro por studentId) | MÉDIA | — | — |
 | DT-012 | Mentor não consegue editar feedback já enviado | MÉDIA | — | #91 |
 | DT-015 | recalculateCompliance não usa writeBatch (não atômico) | BAIXA | — | — |
-| DT-016 | **Cloud Functions Node.js 20 depreca 30/04/2026** | **CRÍTICA** | **30/04/2026** | — |
+| DT-016 | ~~Cloud Functions Node.js 20 depreca 30/04/2026~~ RESOLVIDO v1.22.0 | **CRÍTICA** | **30/04/2026** | #96 |
 | DT-018 | FeedbackPage não reflete edições de trade em tempo real | BAIXA | — | — |
 | DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | — | — |
 | DT-022 | CF scheduled limpeza diária csvStagingTrades (23h) não implementada | MÉDIA | — | — |
 | DT-025 | Campos `hasPartials`/`partialsCount` legados nos documentos de trades | BAIXA | — | — |
 | DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
 | DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #100 |
-| DT-028 | firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016) | **CRÍTICA** | **30/04/2026** | — |
+| DT-028 | ~~firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016)~~ RESOLVIDO v1.22.0 | **CRÍTICA** | **30/04/2026** | #96 |
 | DT-029 | ~~useProbing não rehydratava savedQuestions do Firestore — aluno em loop no aprofundamento~~ RESOLVIDO v1.21.5 | ALTA | — | #92 |
 
 ---
@@ -582,6 +582,19 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.22.0] - 01/04/2026
+**Issue:** #96 (debt: Node.js 20→22 Cloud Functions)
+#### Alterado
+- `functions/package.json`: `engines.node` de `"20"` para `"22"`
+- `functions/package.json`: `firebase-functions` de `"^4.5.0"` para `"^5.1.0"`
+#### Resolvido
+- DT-016: Cloud Functions Node.js 20 → 22
+- DT-028: firebase-functions SDK 4.5 → 5.1
+#### Notas
+- SDK 5.x mantém compatibilidade com imports `firebase-functions/v1` (index.js) e `firebase-functions/v2/https` (assessment modules)
+- Sem mudança de signatures — todas as 18 CFs mantêm a mesma API
+- 755 testes passando
 
 ### [docs] - 29/03/2026
 **Sessão:** Branding, portal institucional, reestruturação de tiers
