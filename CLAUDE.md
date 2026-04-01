@@ -79,6 +79,22 @@ Sem esses três artefatos, o Gate Pré-Código **não pode ser iniciado**.
 
 ---
 
+## REGRA DE ATIVAÇÃO AUTOMÁTICA
+
+Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção de modificar código, iniciar imediatamente o protocolo 4.0 (Abertura de Sessão) do PROJECT.md sem que o usuário precise pedir. Isso inclui:
+
+1. Verificar o issue no GitHub (`gh issue view`)
+2. Criar/verificar arquivo de controle em `docs/dev/issues/`
+3. Criar/verificar branch (`tipo/issue-NNN-descricao`)
+4. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
+
+- Se o issue **não existir** no GitHub → perguntar ao usuário se deseja criá-lo
+- Se o arquivo de controle **não existir** → criá-lo a partir do template (PROJECT.md §4.0)
+- Se a branch **não existir** → criá-la
+- **Nunca pular etapas**
+
+---
+
 ## DIRETRIZ CRÍTICA DE VERIFICAÇÃO
 
 **Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
