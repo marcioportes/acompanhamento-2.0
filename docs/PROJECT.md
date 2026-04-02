@@ -60,24 +60,18 @@ Cada entrada deve conter: ID sequencial, descrição, issue de origem, data e ho
 | Node.js | 22.x (migrado de 20 — DT-016 resolvido v1.22.0) | Runtime local + Cloud Functions |
 | Firebase CLI | latest | Deploy de CFs e Firestore rules |
 | GitHub CLI (`gh`) | 2.86.0 | Gestão de issues, PRs e milestones via script |
-| PowerShell | Windows | Shell padrão — commits em linha única obrigatório |
+| bash | Linux | Shell padrão — commits em linha única obrigatório |
 | Obsidian | latest | Leitura e edição de `.md` — abrir repo como vault |
 | Vite | 4.x | Dev server + build |
 
-**Convenções PowerShell — obrigatórias em todos os scripts:**
+**Convenções bash — obrigatórias:**
 
-1. **Execução de scripts** — PowerShell bloqueia `.ps1` por padrão (`ExecutionPolicy Restricted`). Todo script do projeto deve começar com:
-   ```powershell
-   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-   ```
-   Afeta apenas a sessão atual do terminal — sem impacto permanente no sistema.
-
-2. **Redirecionamento de stderr** — Nunca usar `2> arquivo.txt`. O PowerShell grava em UTF-16 LE com BOM, incompatível com o git (não detecta modificações corretamente no `git status`). Usar `2>$null` para suprimir, ou `try/catch` para tratar. **Nunca redirecionar stderr para arquivo.**
-
-3. **Commit messages** — Não suporta multiline em `git commit -m`. Sempre em linha única.
+1. **Commit messages** — sempre em linha única (`git commit -m "mensagem"`)
+2. **ZIPs** — `unzip -o <arquivo>.zip` na raiz do projeto (substitui `Expand-Archive`)
+3. **Scripts** — ASCII-only em strings passadas ao `gh` CLI (acentos podem causar encoding issues)
 
 **GitHub CLI — comandos frequentes:**
-```powershell
+```bash
 gh issue list --state open          # listar issues abertos
 gh issue create --title "..." --body "..." --label "type:feat"
 gh issue edit NNN --title "..." --add-label "milestone:v1.1.0"
@@ -125,7 +119,23 @@ Sub-tarefas (#100):
 
 Sub-issues:
 - `#103` feat: Performance — visão analítica retrospectiva (SWOT IA, Stop por Motivo)
-- `#102` feat: Revisão Semanal — KPIs congelados + prep + link vídeo + resumo IA
+- `#102` feat: Revisão Semanal — modo revisão do PlanLedgerExtract
+
+#### #102 — Revisão Semanal: Design consolidado (02/04/2026)
+
+**Princípio arquitetural:** a Revisão Semanal é um **modo do PlanLedgerExtract**, não uma tela separada. O extrato do plano é a fundação — os subitens são camadas ativadas em contexto de revisão.
+
+**Subitens:**
+1. Seleção de Trades — default: trades da semana. Período ajustável.
+2. Comparação de Indicadores — snapshot KPIs congelados na última revisão vs período atual.
+3. SWOT do Aluno — CF com IA, 1x/semana (controle de custo). Não regenera a cada abertura.
+4. Notas de Sessões — últimas sessões fechadas + sessão aberta em andamento.
+5. Takeaways — itens de ação com checkbox (completo / aberto).
+6. Ranking de Trades — top 3 piores + top 3 melhores do período.
+
+**Camadas adicionais:**
+7. Evolução de Maturidade — perfil 4D atual vs marco zero. Progressão/regressão via trades.
+8. Navegação contextual — acesso direto à conta e plano do aluno sem sair da revisão.
 - `#94`  feat: Controle de Assinaturas da Mentoria
 - `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
 - `#70`  feat: Dashboard Mentor — Template na inclusão de Ticker
