@@ -125,22 +125,43 @@ Sub-issues:
 
 **Princípio arquitetural:** a Revisão Semanal é um **modo do PlanLedgerExtract**, não uma tela separada. O extrato do plano é a fundação — os subitens são camadas ativadas em contexto de revisão.
 
-**Subitens:**
+**Evento de criação:** botão "Criar Revisão" dispara CF `createWeeklyReview` que:
+1. Congela snapshot dos KPIs (WR, RR, Payoff, EV, compliance, drawdown)
+2. Calcula ranking top 3 piores/melhores trades
+3. Gera SWOT do aluno via chamada IA (custo controlado pelo trigger explícito)
+4. Persiste tudo em `students/{id}/reviews/{reviewId}` com status `open`
+
+**Subitens (pós-criação, preenchidos pelo mentor no frontend):**
 1. Seleção de Trades — default: trades da semana. Período ajustável.
-2. Comparação de Indicadores — snapshot KPIs congelados na última revisão vs período atual.
-3. SWOT do Aluno — CF com IA, 1x/semana (controle de custo). Não regenera a cada abertura.
+2. Comparação de Indicadores — snapshot congelado da revisão anterior vs snapshot atual (DEC-045).
+3. SWOT do Aluno — gerado pela CF no momento da criação da revisão.
 4. Notas de Sessões — últimas sessões fechadas + sessão aberta em andamento.
 5. Takeaways — itens de ação com checkbox (completo / aberto).
-6. Ranking de Trades — top 3 piores + top 3 melhores do período.
+6. Ranking de Trades — top 3 piores + top 3 melhores (congelados no snapshot).
 
 **Camadas adicionais:**
 7. Evolução de Maturidade — perfil 4D atual vs marco zero. Progressão/regressão via trades.
 8. Navegação contextual — acesso direto à conta e plano do aluno sem sair da revisão.
+
+**Modelo de dados (Firestore):**
+```
+students/{studentId}/reviews/{reviewId}
+  createdAt, planId, cycleNumber, period: { start, end }
+  snapshot: { wr, rr, payoff, ev, compliance, drawdown, ... }
+  topTrades: { worst: [3], best: [3] }
+  swot: { strengths, weaknesses, opportunities, threats }
+  meetingNotes, zoomLink, zoomSummary
+  takeaways: [{ text, completed: bool }]
+  status: open | closed
+```
+
+**DEC-045:** Snapshots de revisão semanal são independentes do fechamento de ciclo (#72). Revisão congela indicadores parciais para comparação longitudinal semana a semana. Ciclo congela o consolidado final. Sem dependência entre eles.
+
 - `#94`  feat: Controle de Assinaturas da Mentoria
 - `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
 - `#70`  feat: Dashboard Mentor — Template na inclusão de Ticker
 - `#56`  fix: Dashboard Mentor — Sidebar Badge Connection
-- `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção"
+- `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção" → **FECHADO** (absorvido pelo Ranking por Aluno, Torre de Controle)
 - `#31`  feat: Dashboard Mentor — Preset de Feedback Semântico
 
 `#1` refactor: Configurações — Upload Seed → **FECHADO** (não relevante, DEC-041)
@@ -538,6 +559,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-042 | Torre de Controle: header redesenhado (4 KPIs operacionais), seções Ranking por Aluno + Ranking por Causa (dual view), SWOT e Stop por Motivo movidos para nova tela Performance (#103) | #101 | 29/03/2026 |
 | DEC-043 | useProbing rehydrata savedQuestions do Firestore + effectiveStatus resolve status preso ai_assessed quando probing já gerado | #92 | 30/03/2026 |
 | DEC-044 | INV-13: rastreabilidade obrigatória — toda modificação de código exige issue GitHub + arquivo docs/dev/issues/issue-NNN.md + branch nomeada. Template formal definido na seção 4.0 | — | 30/03/2026 |
+| DEC-045 | Revisão semanal é evento persistido (collection reviews), não visualização on-the-fly. CF createWeeklyReview congela snapshot + gera SWOT + persiste. Independente do fechamento de ciclo (#72) | #102 | 02/04/2026 |
+| DEC-046 | #45 (Aba Precisam de Atenção) absorvido pelo Ranking por Aluno da Torre de Controle (#101) | #45 | 02/04/2026 |
 
 ---
 
