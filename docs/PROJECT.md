@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.5.0  
-> **Última atualização:** 03/04/2026 — sessão design Dashboard-Aluno MVP  
+> **Versão:** 0.5.1  
+> **Última atualização:** 03/04/2026 — registrar issues #106-#119 nos milestones, fechar #19  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -23,6 +23,7 @@ Este documento segue versionamento semântico:
 | 0.3.0 | 30/03/2026 | Probing rehydration | DEC-043/044, INV-13, template issue-NNN |
 | 0.4.0 | 02/04/2026 | Design Revisão Semanal | DEC-045/046, design #102, bash migration |
 | 0.5.0 | 03/04/2026 | Dashboard-Aluno MVP | DEC-047 a DEC-052, CHUNK-13 a 16, INV-14, protocolo chunks |
+| 0.5.1 | 03/04/2026 | Registro de issues | Issues #106-#119 nos milestones, #3 reescrito, #19 fechado |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -109,9 +110,15 @@ gh pr create --title "..." --body "..."
 ### v1.1.0 — Espelho Self-Service
 **Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
 **Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
-**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (14 issues)
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (19 issues)
 
 Issues:
+- `#118` arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período persistente
+- `#117` ops: Atualizar CHUNK-REGISTRY para novas frentes paralelas
+- `#116` epic: Onboarding Automatizado — CSV → indicadores → Kelly → plano sugerido
+- `#114` feat: Breakeven threshold configurável no compliance
+- `#111` debt: Padronização de exibição de moeda em todo o sistema
+- `#107` fix: CSV Import — parse silencioso quando formato não reconhecido
 - `#100` epic: Espelho — Modo Self-Service (tier self-service + rename externo)
 - `#96`  debt: Node.js 20→22 nas Cloud Functions (deadline 30/04/2026)
 - `#93`  feat: Order Import v1.1 — Modo Criação
@@ -124,8 +131,8 @@ Issues:
 - `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
 - `#48`  refactor: Student Emotional Detail — Reorganizar UX
 - `#44`  feat: Feedback Aluno — Indicador de Trades Revisados no Sidebar
-- `#19`  ops: Export/Import CSV do Firestore (backup + restore)
-- `#3`   epic: Aluno Dashboard V2 — Evolução estrutural
+- `#19`  ops: Export/Import CSV do Firestore (backup + restore) → **FECHADO** (03/04/2026)
+- `#3`   epic: Dashboard-Aluno MVP — Redesign com contexto unificado e views reativas
 
 Sub-tarefas (#100):
 - C1: Campo `mentorshipTier` no student
@@ -136,11 +143,19 @@ Sub-tarefas (#100):
 
 ### v1.2.0 — Mentor Cockpit
 **Foco:** Dashboard mentor consolidado (Torre de Controle) + revisão semanal + performance
-**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (10 issues)
+**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (17 issues)
 
 Épico guarda-chuva: `#101` epic: Dashboard Mentor — Torre de Controle
 
-Sub-issues:
+Issues:
+- `#119` feat: Maturidade — barra de evolução por gate com progressão baseada em trades
+- `#115` feat: Desvio padrão dos resultados como métrica de consistência operacional
+- `#113` feat: Overtrading — detecção por clustering temporal (substituir maxTradesPerDay)
+- `#112` epic: Módulo Swing Trade — Gestão de Carteira e Indicadores de Portfolio
+- `#110` feat: Curva de Patrimônio — agrupamento por moeda, benchmark, guard multi-ciclo
+- `#109` feat: FeedbackPage — rascunho de revisão semanal por trade
+- `#108` feat: FeedbackPage — mentor override de emoção declarada pelo aluno
+- `#106` feat: PlanLedgerExtract — rename, acumulado do período e resumo de trades
 - `#103` feat: Performance — visão analítica retrospectiva (SWOT IA, Stop por Motivo)
 - `#102` feat: Revisão Semanal — modo revisão do PlanLedgerExtract
 
