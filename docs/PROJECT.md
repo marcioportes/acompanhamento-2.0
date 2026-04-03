@@ -1,10 +1,33 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.1.0  
+> **Versão:** 0.5.0  
+> **Última atualização:** 03/04/2026 — sessão design Dashboard-Aluno MVP  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
-> **Fontes:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
+> **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
+
+### Versionamento do PROJECT.md (INV-14)
+
+Este documento segue versionamento semântico:
+- **MAJOR (X.0.0):** reestruturação de seções, mudança de invariantes existentes, remoção de seções
+- **MINOR (0.X.0):** novas invariantes, novas seções, novos chunks, novas DECs, mudança de protocolo
+- **PATCH (0.0.X):** correções textuais, ajustes de formatação, atualização de status de DTs
+
+**Histórico de versões do documento:**
+
+| Versão | Data | Sessão | Mudanças |
+|--------|------|--------|----------|
+| 0.1.0 | 26/03/2026 | Consolidação documental | Criação — merge de 5 documentos |
+| 0.2.0 | 29/03/2026 | Branding e tiers | DEC-029 a DEC-038, milestones, DT-027/028 |
+| 0.3.0 | 30/03/2026 | Probing rehydration | DEC-043/044, INV-13, template issue-NNN |
+| 0.4.0 | 02/04/2026 | Design Revisão Semanal | DEC-045/046, design #102, bash migration |
+| 0.5.0 | 03/04/2026 | Dashboard-Aluno MVP | DEC-047 a DEC-052, CHUNK-13 a 16, INV-14, protocolo chunks |
+
+**Regra de uso:**
+- Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
+- Toda proposta de atualização DEVE declarar "baseado na versão X.Y.Z" para detecção de conflito
+- Na abertura de sessão, comparar versão do repo com versão em mãos — se divergir, o arquivo está stale e deve ser relido
 
 ---
 
@@ -265,21 +288,33 @@ Se houver conflito entre entregar rápido e seguir as invariantes, as invariante
 ### INV-13: Rastreabilidade Obrigatória por Issue
 Toda modificação de código exige: (1) issue aberto no GitHub, (2) arquivo de controle `docs/dev/issues/issue-NNN-descricao.md` criado a partir do template (seção 4.0), (3) branch nomeada `tipo/issue-NNN-descricao`. Sem esses três artefatos, o Gate Pré-Código não pode ser iniciado. O arquivo de issue é o documento de continuidade — se a sessão for interrompida, qualquer sessão subsequente deve conseguir retomar o trabalho exclusivamente a partir dele + PROJECT.md + código.
 
+### INV-14: Versionamento do PROJECT.md
+Toda modificação deste documento DEVE: (1) incrementar a versão no header (semver: major.minor.patch), (2) adicionar entrada na tabela de histórico de versões, (3) declarar "baseado na versão X.Y.Z" na proposta. Na abertura de sessão, a versão do repo deve ser comparada com a versão em contexto — divergência indica arquivo stale que deve ser relido antes de qualquer ação.
+
 ---
 
 ## 4. PROTOCOLO DE SESSÃO
 
-### 4.0 Abertura de Sessão (obrigatório, antes de tudo)
+### 4.0 Abertura de Sessão (obrigatório, antes de tudo — starta automaticamente em sessões de codificação)
 
 ```
-□ Identificar ou criar issue no GitHub (gh issue create / gh issue list)
+□ Ler PROJECT.md do repo — verificar versão no header (INV-14)
+   → Se versão diverge do que a sessão tem em contexto: PARAR, reler o arquivo fresh
+□ Ler o issue no GitHub (gh issue view NNN)
+□ Identificar campo "Chunks necessários" no body do issue
+□ Consultar Registry de Chunks (seção 6.3) — verificar que TODOS estão AVAILABLE
+   → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
+   → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
+□ Registrar lock no registry: chunk + issue + branch + data
 □ Criar arquivo docs/dev/issues/issue-NNN-descricao.md a partir do template abaixo
 □ Registrar branch: git checkout -b tipo/issue-NNN-descricao
-□ Preencher seções 1 (Contexto), 2 (Acceptance Criteria) e 3 (Análise de Impacto)
+□ Preencher seções 1 (Contexto), 2 (Acceptance Criteria), 3 (Análise de Impacto) e 6 (Chunks)
 □ Só então iniciar Gate Pré-Código (seção 4.1)
 ```
 
-**Regra:** sem issue no GitHub + arquivo de controle em `docs/dev/issues/`, nenhuma linha de código é escrita. Se a sessão for perdida, outra sessão reconstrói o contexto completo a partir do arquivo de issue.
+**Regra:** sem issue no GitHub + chunks verificados + arquivo de controle em `docs/dev/issues/`, nenhuma linha de código é escrita. Se a sessão for perdida, outra sessão reconstrói o contexto completo a partir do arquivo de issue.
+
+**Regra de chunks:** o campo "Chunks necessários" no issue do GitHub é OBRIGATÓRIO para issues de código. A sessão NÃO infere chunks — lê do issue. Se o campo estiver ausente, a sessão preenche antes de prosseguir (grep no código + análise de impacto → propõe chunks → aguarda aprovação).
 
 #### Template: `docs/dev/issues/issue-NNN-descricao.md`
 
@@ -351,6 +386,16 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 - [ ] PR aberto e mergeado
 - [ ] Issue fechado no GitHub
 - [ ] Branch deletada
+- [ ] Locks de chunks liberados no registry (seção 6.3)
+
+## 6. CHUNKS
+
+| Chunk | Modo | Motivo |
+|-------|------|--------|
+| CHUNK-XX | leitura / escrita | Descrição do que será tocado |
+
+> **Modo leitura:** a sessão consulta arquivos do chunk mas não os modifica. Não requer lock.
+> **Modo escrita:** a sessão modifica arquivos do chunk. Requer lock obrigatório.
 ```
 
 ### 4.1 Gate Pré-Código (obrigatório, nesta ordem)
@@ -460,37 +505,57 @@ Cada frente de desenvolvimento opera em um branch isolado. Arquivos transversais
 | `functions/index.js` | Entry point CFs | Delta de exports no documento do issue |
 | `firestore.rules` | Regras de segurança | Delta de rules no documento do issue |
 | `package.json` | Dependências | Novas deps no documento do issue |
+| `src/contexts/StudentContextProvider.jsx` | Contexto do aluno (NOVO) | Consumido por CHUNK-02, 13, 14, 15. Delta no doc do issue |
+| `src/utils/compliance.js` | Engine compliance | Tocado por #113, #114. Delta no doc do issue |
+| `src/hooks/useComplianceRules.js` | Hook compliance | Tocado por #113, #114. Delta no doc do issue |
+
+**Protocolo de contenção para sessões paralelas:**
+1. Sessão que encontrar bloqueio em shared file documenta no `issue-NNN.md`
+2. Propõe delta (nunca edita direto)
+3. Notifica Marcio para resolução antes de prosseguir
+4. NUNCA assume que o shared file está no mesmo estado da última leitura — lê fresh
 
 ### 6.3 Registry de Chunks
 
 Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks necessários; enquanto checked-out, nenhuma outra sessão toca esses arquivos.
 
-| Chunk | Domínio | Arquivos principais | Status |
-|-------|---------|-------------------|--------|
-| CHUNK-01 | Auth & User Management | `AuthContext`, `useAuth` | AVAILABLE |
-| CHUNK-02 | Student Management | `StudentDashboard`, `students` collection | AVAILABLE |
-| CHUNK-03 | Plan Management | `PlanManagementModal`, `plans` collection | AVAILABLE |
-| CHUNK-04 | Trade Ledger | `useTrades`, `trades` collection, `addTrade` | AVAILABLE |
-| CHUNK-05 | Compliance Engine | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
-| CHUNK-06 | Emotional System | `emotionalAnalysisV2`, `useEmotionalProfile` | AVAILABLE |
-| CHUNK-07 | CSV Import | `CsvImport/*`, `csvStagingTrades` | AVAILABLE |
-| CHUNK-08 | Mentor Feedback | `Feedback/*`, `feedbackHelpers` | AVAILABLE |
-| CHUNK-09 | Student Onboarding | `Onboarding/*`, `assessment` subcollection | AVAILABLE |
-| CHUNK-10 | Order Import | `OrderImport/*`, `orders` collection | AVAILABLE |
-| CHUNK-11 | Behavioral Detection | `behavioralDetection` — FUTURO | BLOCKED |
-| CHUNK-12 | Cycle Alerts | `cycleMonitoring` — FUTURO | BLOCKED |
+**Como usar:** antes de iniciar qualquer sessão de código, consultar o campo "Chunks necessários" no issue do GitHub. Verificar que todos estão AVAILABLE. Registrar lock. Ao encerrar, liberar lock.
+
+| Chunk | Domínio | Descrição | Arquivos principais | Status |
+|-------|---------|-----------|-------------------|--------|
+| CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
+| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
+| CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
+| CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `addTrade` | AVAILABLE |
+| CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
+| CHUNK-06 | Emotional System | Scoring emocional, detecção TILT/REVENGE, perfil emocional | `emotionalAnalysisV2`, `useEmotionalProfile` | AVAILABLE |
+| CHUNK-07 | CSV Import | Parser CSV, staging, mapeamento de colunas, validação | `CsvImport/*`, `csvStagingTrades` | AVAILABLE |
+| CHUNK-08 | Mentor Feedback | Feedback do mentor por trade, chat, status de revisão | `Feedback/*`, `feedbackHelpers` | AVAILABLE |
+| CHUNK-09 | Student Onboarding | Assessment 4D, probing, baseline report, marco zero | `Onboarding/*`, `assessment` subcollection | AVAILABLE |
+| CHUNK-10 | Order Import | Import de ordens brutas, parse ProfitChart-Pro, cross-check | `OrderImport/*`, `orders` collection | AVAILABLE |
+| CHUNK-11 | Behavioral Detection | Motor de detecção comportamental em 4 camadas — FUTURO | `behavioralDetection` | BLOCKED |
+| CHUNK-12 | Cycle Alerts | Monitoramento de ciclos, alertas automáticos — FUTURO | `cycleMonitoring` | BLOCKED |
+| CHUNK-13 | Context Bar | Barra de contexto unificado Conta>Plano>Ciclo>Período, provider, hook | `StudentContextProvider`, `ContextBar`, `useStudentContext` | AVAILABLE |
+| CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
+| CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
+| CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor redesenhado | `TorreDeControle`, `ReviewManager` | AVAILABLE |
 
 **Locks ativos:** Nenhum no momento.
 
 ### 6.4 Checklist de Check-Out
 
 ```
-□ Identificar chunks necessários
-□ Verificar que todos estão AVAILABLE
-□ Registrar lock nesta seção (chunk + branch + data)
+□ Ler campo "Chunks necessários" no issue do GitHub
+□ Para cada chunk com modo ESCRITA:
+   → Verificar status AVAILABLE no registry acima
+   → Se LOCKED: PARAR e notificar Marcio
+□ Registrar lock: chunk + issue + branch + data (editar tabela acima)
 □ Criar branch: git checkout -b feature/issue-NNN-descricao
 □ Criar documento da sessão: docs/dev/issues/issue-NNN-descricao.md
 ```
+
+> **Modo leitura** não requer lock — a sessão pode consultar arquivos de qualquer chunk.
+> **Modo escrita** requer lock exclusivo — apenas uma sessão por chunk.
 
 ### 6.5 Checklist de Check-In / Merge
 
@@ -561,6 +626,12 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-044 | INV-13: rastreabilidade obrigatória — toda modificação de código exige issue GitHub + arquivo docs/dev/issues/issue-NNN.md + branch nomeada. Template formal definido na seção 4.0 | — | 30/03/2026 |
 | DEC-045 | Revisão semanal é evento persistido (collection reviews), não visualização on-the-fly. CF createWeeklyReview congela snapshot + gera SWOT + persiste. Independente do fechamento de ciclo (#72) | #102 | 02/04/2026 |
 | DEC-046 | #45 (Aba Precisam de Atenção) absorvido pelo Ranking por Aluno da Torre de Controle (#101) | #45 | 02/04/2026 |
+| DEC-047 | Barra de Contexto Unificado: Conta > Plano > Ciclo > Período, persistente no topo, reativa. Governa todas as views do Dashboard-Aluno. Fundação arquitetural — implementar antes de refatorar views | #3 | 03/04/2026 |
+| DEC-048 | Overtrading detectado por clustering temporal (janela configurável: windowMinutes, maxTradesInWindow, cooldownMinutes), não por maxTradesPerDay fixo. Base: Barber & Odean 2000 | #113 | 03/04/2026 |
+| DEC-049 | BE threshold configurável no compliance (percentual do capital base ou valor absoluto), não hardcoded | #114 | 03/04/2026 |
+| DEC-050 | Desvio padrão (Coefficient of Variation) como métrica de consistência operacional. CV < 0.5 consistente, 0.5-1.0 moderado, > 1.0 errático. Alimenta Dashboard, Torre, Revisão e SWOT IA | #115 | 03/04/2026 |
+| DEC-051 | Onboarding Automatizado: pipeline CSV performance + ordens → cruzamento → indicadores → Kelly Criterion → plano sugerido. Self-service aceita direto, Alpha mentor valida. Mínimo 30 trades para relevância estatística | #116 | 03/04/2026 |
+| DEC-052 | Chunks mapeados no issue do GitHub (campo obrigatório). Issues concretos mapeados em batch, épicos mapeados na decomposição em sub-issues. Modo leitura não requer lock, modo escrita requer lock exclusivo | #117 | 03/04/2026 |
 
 ---
 
@@ -615,6 +686,30 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [docs] - 03/04/2026
+**Sessão:** Design Dashboard-Aluno MVP + backlog de issues + protocolo de chunks
+**Issues criadas:** #106-#117 (12 issues via gh CLI)
+#### Adicionado
+- #3 reescrito como épico Dashboard-Aluno MVP com contexto unificado e views reativas
+- DEC-047 a DEC-052 no decision log
+- INV-14: Versionamento obrigatório do PROJECT.md (semver + histórico + detecção de conflito)
+- CHUNK-13 (Context Bar), CHUNK-14 (Onboarding Auto), CHUNK-15 (Swing Trade), CHUNK-16 (Mentor Cockpit) no registry
+- Descrições em todos os chunks (registry expandido com coluna Descrição)
+- Shared infrastructure: StudentContextProvider, compliance.js, useComplianceRules adicionados
+- Protocolo de contenção para sessões paralelas (seção 6.2)
+- Campo "Chunks necessários" obrigatório no template de issue (seção 4.0)
+- Seção 6 (Chunks) no template do issue-NNN.md com modo leitura/escrita
+- Protocolo de abertura reescrito: starta automático em sessão de código, verificação de chunks obrigatória
+#### Decisões-chave
+- Barra de Contexto Unificado como fundação do Dashboard-Aluno (DEC-047)
+- Onboarding Automatizado: CSV → indicadores → Kelly → plano sugerido (DEC-051)
+- Overtrading por clustering temporal (DEC-048)
+- Desvio padrão como métrica de consistência (DEC-050)
+- Chunks obrigatórios no issue, modo leitura/escrita, lock exclusivo (DEC-052)
+#### Mockups
+- Arquitetura de informação Dashboard-Aluno (barra de contexto + sidebar + views)
+- View Resumo detalhada (6 seções + KPIs + ciclos anteriores)
 
 ### [1.22.0] - 01/04/2026
 **Issue:** #96 (debt: Node.js 20→22 Cloud Functions)
