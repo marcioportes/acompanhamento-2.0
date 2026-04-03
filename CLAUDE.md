@@ -77,21 +77,34 @@ Toda modificação de código exige:
 
 Sem esses três artefatos, o Gate Pré-Código **não pode ser iniciado**.
 
+### INV-14: Versionamento do PROJECT.md
+Toda modificação do PROJECT.md **DEVE**: (1) incrementar versão no header (semver), (2) adicionar entrada na tabela de histórico, (3) declarar "baseado na versão X.Y.Z" na proposta. Na abertura de sessão, comparar versão do repo com versão em contexto — divergência = arquivo stale, reler antes de agir.
+
 ---
 
 ## REGRA DE ATIVAÇÃO AUTOMÁTICA
 
 Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção de modificar código, iniciar imediatamente o protocolo 4.0 (Abertura de Sessão) do PROJECT.md sem que o usuário precise pedir. Isso inclui:
 
-1. Verificar o issue no GitHub (`gh issue view`)
-2. Criar/verificar arquivo de controle em `docs/dev/issues/`
-3. Criar/verificar branch (`tipo/issue-NNN-descricao`)
-4. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
+1. **Verificar versão do PROJECT.md** (`head -5 docs/PROJECT.md`) — comparar com versão em contexto. Se divergir, reler o arquivo fresh antes de prosseguir (INV-14)
+2. Verificar o issue no GitHub (`gh issue view NNN`)
+3. **Ler campo "Chunks necessários" no body do issue**
+   - Se campo ausente: preencher antes de prosseguir (grep no código + análise de impacto → propor chunks → aguardar aprovação)
+4. **Consultar Registry de Chunks** (PROJECT.md §6.3) — verificar que todos os chunks com modo ESCRITA estão AVAILABLE
+   - Se algum chunk está LOCKED: **PARAR**. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
+   - Se chunk não existe no registry: **PARAR**. Propor novo chunk ao Marcio
+5. **Registrar lock** no registry: chunk + issue + branch + data
+6. Criar/verificar arquivo de controle em `docs/dev/issues/`
+7. Criar/verificar branch (`tipo/issue-NNN-descricao`)
+8. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
 
 - Se o issue **não existir** no GitHub → perguntar ao usuário se deseja criá-lo
-- Se o arquivo de controle **não existir** → criá-lo a partir do template (PROJECT.md §4.0)
+- Se o arquivo de controle **não existir** → criá-lo a partir do template (PROJECT.md §4.0), incluindo seção 6 (Chunks)
 - Se a branch **não existir** → criá-la
 - **Nunca pular etapas**
+
+> **Modo leitura** de chunk não requer lock — a sessão pode consultar arquivos de qualquer chunk.
+> **Modo escrita** requer lock exclusivo — apenas uma sessão por chunk.
 
 ---
 
@@ -229,30 +242,47 @@ students/{id}/assessment/ → questionnaire, probing, initial_assessment (CHUNK-
 | Arquivo | Protocolo |
 |---------|-----------|
 | `src/version.js` | Propor bump no documento do issue |
-| `docs/PROJECT.md` | Propor adições no documento do issue |
+| `docs/PROJECT.md` | Propor adições no documento do issue. Verificar versão (INV-14) |
 | `src/App.jsx` | Delta de rotas no documento do issue |
 | `functions/index.js` | Delta de exports no documento do issue |
 | `firestore.rules` | Delta de rules no documento do issue |
 | `package.json` | Novas deps no documento do issue |
+| `src/contexts/StudentContextProvider.jsx` | Consumido por CHUNK-02, 13, 14, 15. Delta no doc do issue |
+| `src/utils/compliance.js` | Tocado por #113, #114. Delta no doc do issue |
+| `src/hooks/useComplianceRules.js` | Tocado por #113, #114. Delta no doc do issue |
+
+**Protocolo de contenção para sessões paralelas:**
+1. Sessão que encontrar bloqueio em shared file documenta no `issue-NNN.md`
+2. Propõe delta (nunca edita direto)
+3. Notifica Marcio para resolução antes de prosseguir
+4. NUNCA assume que o shared file está no mesmo estado da última leitura — lê fresh
 
 ---
 
 ## CHUNKS (registro de domínios)
 
-| Chunk | Domínio | Arquivos principais |
-|-------|---------|-------------------|
-| CHUNK-01 | Auth & User Management | `AuthContext`, `useAuth` |
-| CHUNK-02 | Student Management | `StudentDashboard`, `students` collection |
-| CHUNK-03 | Plan Management | `PlanManagementModal`, `plans` collection |
-| CHUNK-04 | Trade Ledger | `useTrades`, `trades` collection, `addTrade` |
-| CHUNK-05 | Compliance Engine | `compliance.js`, `ComplianceConfigPage` |
-| CHUNK-06 | Emotional System | `emotionalAnalysisV2`, `useEmotionalProfile` |
-| CHUNK-07 | CSV Import | `CsvImport/*`, `csvStagingTrades` |
-| CHUNK-08 | Mentor Feedback | `Feedback/*`, `feedbackHelpers` |
-| CHUNK-09 | Student Onboarding | `Onboarding/*`, `assessment` subcollection |
-| CHUNK-10 | Order Import | `OrderImport/*`, `orders` collection |
-| CHUNK-11 | Behavioral Detection | `behavioralDetection` — FUTURO |
-| CHUNK-12 | Cycle Alerts | `cycleMonitoring` — FUTURO |
+> Cada issue de código DEVE ter campo "Chunks necessários" no body do GitHub (DEC-052).
+> Modo leitura: consulta sem lock. Modo escrita: lock exclusivo obrigatório.
+> Status e locks ativos: ver PROJECT.md §6.3 (fonte de verdade).
+
+| Chunk | Domínio | Descrição | Arquivos principais |
+|-------|---------|-----------|-------------------|
+| CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão | `AuthContext`, `useAuth` |
+| CHUNK-02 | Student Management | Dashboard aluno, dados do estudante, sidebar | `StudentDashboard`, `students` collection |
+| CHUNK-03 | Plan Management | CRUD planos, ciclos, metas, stops, state machine | `PlanManagementModal`, `plans` collection |
+| CHUNK-04 | Trade Ledger | Registro trades, gateway addTrade, parciais, PL | `useTrades`, `trades` collection, `addTrade` |
+| CHUNK-05 | Compliance Engine | Regras compliance, scores, config mentor | `compliance.js`, `ComplianceConfigPage` |
+| CHUNK-06 | Emotional System | Scoring emocional, TILT/REVENGE, perfil | `emotionalAnalysisV2`, `useEmotionalProfile` |
+| CHUNK-07 | CSV Import | Parser CSV, staging, mapeamento, validação | `CsvImport/*`, `csvStagingTrades` |
+| CHUNK-08 | Mentor Feedback | Feedback por trade, chat, status revisão | `Feedback/*`, `feedbackHelpers` |
+| CHUNK-09 | Student Onboarding | Assessment 4D, probing, baseline, marco zero | `Onboarding/*`, `assessment` subcollection |
+| CHUNK-10 | Order Import | Import ordens, parse ProfitChart-Pro, cross-check | `OrderImport/*`, `orders` collection |
+| CHUNK-11 | Behavioral Detection | Motor detecção 4 camadas — FUTURO | `behavioralDetection` |
+| CHUNK-12 | Cycle Alerts | Monitoramento ciclos, alertas — FUTURO | `cycleMonitoring` |
+| CHUNK-13 | Context Bar | Barra contexto Conta>Plano>Ciclo>Período, provider | `StudentContextProvider`, `ContextBar`, `useStudentContext` |
+| CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido | `OnboardingWizard`, `kellyCalculator`, `planSuggester` |
+| CHUNK-15 | Swing Trade | Módulo carteira, indicadores portfólio, stress test | `PortfolioManager`, `portfolioIndicators` |
+| CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor | `TorreDeControle`, `ReviewManager` |
 
 ---
 
@@ -289,11 +319,14 @@ Issues-chave: #100 (epic self-service), #96 (Node 20→22), #3 (Aluno Dashboard 
 
 ## REFERÊNCIAS OBRIGATÓRIAS
 
+- **PROJECT.md versão atual:** verificar com `head -5 docs/PROJECT.md` antes de usar (INV-14)
 - Assessment/diagnóstico de trader: ler `trader_evolution_framework.md`
-- Decision log completo: `docs/PROJECT.md` seção 7 (DEC-001 a DEC-044)
-- Template de issue: `docs/PROJECT.md` seção 4.0
+- Decision log completo: `docs/PROJECT.md` seção 7 (DEC-001 a DEC-052)
+- Template de issue: `docs/PROJECT.md` seção 4.0 (inclui seção 6 Chunks obrigatória)
 - Modelo comportamental: 4D (Emotional, Financial, Operational, Maturidade) × 5 estágios (Chaos → Mastery)
 - Dois tiers: Espelho self-service (KPIs + diário + gates) vs Mentoria Alpha (+ ciclos + assessment + SWOT + feedback)
+- Onboarding Automatizado: CSV → indicadores → Kelly → plano sugerido (DEC-051)
+- Barra de Contexto Unificado: Conta > Plano > Ciclo > Período (DEC-047)
 
 ---
 
