@@ -13,7 +13,7 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   CreditCard, Search, Plus, RefreshCw, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
-  DollarSign, Loader2, UserPlus, FlaskConical, Trash2
+  DollarSign, Loader2, UserPlus, FlaskConical, Trash2, Edit2
 } from 'lucide-react';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import DebugBadge from '../components/DebugBadge';
@@ -85,8 +85,10 @@ const SubscriptionsPage = () => {
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' });
-  const [receiptFile, setReceiptFile] = useState(null); // { file: File, preview: string }
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ plan: 'alpha', amount: '', currency: 'BRL', billingPeriodMonths: '1', gracePeriodDays: '5', notes: '' });
+  const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], method: 'pix', reference: '', plan: 'alpha', billingPeriodMonths: '1' });
+  const [receiptFile, setReceiptFile] = useState(null);
   const [newForm, setNewForm] = useState({ studentId: '', type: 'paid', plan: 'alpha', amount: '497', currency: 'BRL', startDate: new Date().toISOString().split('T')[0], gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' });
 
   // ── Filtered data ──
@@ -111,8 +113,9 @@ const SubscriptionsPage = () => {
 
   // ── Handlers ──
 
-  const handleRegisterPayment = (sub) => { setSelectedSubscription(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' }); setReceiptFile(null); setShowPaymentModal(true); };
+  const handleRegisterPayment = (sub) => { setSelectedSubscription(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: new Date().toISOString().split('T')[0], method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setShowPaymentModal(true); };
   const handleRenew = (sub) => { setSelectedSubscription(sub); setShowRenewModal(true); };
+  const handleEdit = (sub) => { setSelectedSubscription(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), notes: sub.notes ?? '' }); setShowEditModal(true); };
 
   const handleDelete = useCallback(async (sub) => {
     if (actionLoading) return;
@@ -121,11 +124,21 @@ const SubscriptionsPage = () => {
     try { await deleteSubscription(sub); } catch (err) { console.error('[SubscriptionsPage] Erro excluir:', err); } finally { setActionLoading(false); }
   }, [deleteSubscription, actionLoading]);
 
-  const handleChangePlan = useCallback(async (sub, newPlan) => {
-    if (actionLoading) return;
+  const handleSaveEdit = useCallback(async () => {
+    if (!selectedSubscription || actionLoading) return;
     setActionLoading(true);
-    try { await updateSubscription(sub, { plan: newPlan }); } catch (err) { console.error('[SubscriptionsPage] Erro mudar plano:', err); } finally { setActionLoading(false); }
-  }, [updateSubscription, actionLoading]);
+    try {
+      await updateSubscription(selectedSubscription, {
+        plan: editForm.plan,
+        amount: parseFloat(editForm.amount) || 0,
+        currency: editForm.currency,
+        billingPeriodMonths: parseInt(editForm.billingPeriodMonths) || 1,
+        gracePeriodDays: parseInt(editForm.gracePeriodDays) || 5,
+        notes: editForm.notes,
+      });
+      setShowEditModal(false); setSelectedSubscription(null);
+    } catch (err) { console.error('[SubscriptionsPage] Erro editar:', err); } finally { setActionLoading(false); }
+  }, [selectedSubscription, editForm, updateSubscription, actionLoading]);
 
   const handleViewPayments = useCallback(async (sub) => {
     setSelectedSubscription(sub); setShowPaymentHistory(true); setLoadingPayments(true);
@@ -135,7 +148,17 @@ const SubscriptionsPage = () => {
   const handleSubmitPayment = useCallback(async () => {
     if (!selectedSubscription || actionLoading) return;
     setActionLoading(true);
-    try { await registerPayment(selectedSubscription, paymentForm, receiptFile?.file ?? null); setShowPaymentModal(false); setSelectedSubscription(null); setReceiptFile(null); } catch (err) { console.error('[SubscriptionsPage] Erro pagamento:', err); } finally { setActionLoading(false); }
+    try {
+      // Se plano mudou no form, atualiza subscription antes de registrar pagamento
+      const subToUse = { ...selectedSubscription };
+      if (paymentForm.plan !== selectedSubscription.plan || parseInt(paymentForm.billingPeriodMonths) !== (selectedSubscription.billingPeriodMonths ?? 1)) {
+        await updateSubscription(selectedSubscription, { plan: paymentForm.plan, billingPeriodMonths: parseInt(paymentForm.billingPeriodMonths) || 1 });
+        subToUse.plan = paymentForm.plan;
+        subToUse.billingPeriodMonths = parseInt(paymentForm.billingPeriodMonths) || 1;
+      }
+      await registerPayment(subToUse, paymentForm, receiptFile?.file ?? null);
+      setShowPaymentModal(false); setSelectedSubscription(null); setReceiptFile(null);
+    } catch (err) { console.error('[SubscriptionsPage] Erro pagamento:', err); } finally { setActionLoading(false); }
   }, [selectedSubscription, paymentForm, registerPayment, actionLoading]);
 
   const handleConfirmRenew = useCallback(async () => {
@@ -238,7 +261,7 @@ const SubscriptionsPage = () => {
               {filtered.map(sub => (
                 <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
                   <td className="px-4 py-3"><div><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p></div></td>
-                  <td className="px-4 py-3"><div className="flex flex-col gap-1"><button onClick={() => handleChangePlan(sub, sub.plan === 'alpha' ? 'self_service' : 'alpha')} className={`text-xs font-medium px-2 py-1 rounded-lg w-fit cursor-pointer hover:opacity-80 transition-opacity ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`} title={`Clique para trocar para ${sub.plan === 'alpha' ? 'Espelho' : 'Mentoria Alpha'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</button><TypeBadge type={sub.type} /></div></td>
+                  <td className="px-4 py-3"><div className="flex flex-col gap-1"><span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span><TypeBadge type={sub.type} /></div></td>
                   <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
                   <td className="px-4 py-3"><span className="text-sm text-slate-300">{sub.type === 'trial' ? formatBrDate(sub.trialEndsAt) : formatBrDate(sub.renewalDate)}</span></td>
                   <td className="px-4 py-3"><DaysBadge sub={sub} /></td>
@@ -248,6 +271,7 @@ const SubscriptionsPage = () => {
                       {sub.type === 'paid' && <button onClick={() => handleViewPayments(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                       {sub.type === 'paid' && (sub.status === 'active' || sub.status === 'overdue' || sub.status === 'pending') && <button onClick={() => handleRegisterPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
                       {sub.type === 'paid' && (sub.status === 'active' || sub.status === 'overdue' || sub.status === 'paused') && <button onClick={() => handleRenew(sub)} className="group/btn relative p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Renovar</span></button>}
+                      <button onClick={() => handleEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar</span></button>
                       <button onClick={() => handleDelete(sub)} className="group/btn relative p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Excluir</span></button>
                     </div>
                   </td>
@@ -265,6 +289,10 @@ const SubscriptionsPage = () => {
           <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white">Registrar Pagamento</h3><button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSubscription.studentName}</p><p className="text-xs text-slate-400">{PLAN_LABELS[selectedSubscription.plan]} — {formatCurrency(selectedSubscription.amount, selectedSubscription.currency)}/mes</p></div>
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-sm text-slate-400 mb-1">Plano vigente</label><select value={paymentForm.plan} onChange={(e) => setPaymentForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={paymentForm.billingPeriodMonths} onChange={(e) => setPaymentForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+            </div>
             <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             <div><label className="block text-sm text-slate-400 mb-1">Data do pagamento</label><input type="date" value={paymentForm.date} onChange={(e) => setPaymentForm(f => ({ ...f, date: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
@@ -391,6 +419,29 @@ const SubscriptionsPage = () => {
             <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={newForm.notes} onChange={(e) => setNewForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="Opcional" /></div>
           </div>
           <div className="flex gap-3 mt-6"><button onClick={() => setShowNewModal(false)} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleCreateSubscription} disabled={actionLoading || !newForm.studentId} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Criar Assinatura</button></div>
+        </div></div>
+      )}
+
+      {/* ── Modal: Editar Assinatura ── */}
+      {showEditModal && selectedSubscription && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+          <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white flex items-center gap-2"><Edit2 className="w-5 h-5 text-amber-400" />Editar Assinatura</h3><button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
+          <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSubscription.studentName}</p><p className="text-xs text-slate-400">{selectedSubscription.studentEmail}</p></div>
+          <div className="space-y-4">
+            <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            {selectedSubscription.type === 'paid' && <>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-sm text-slate-400 mb-1">Valor mensal</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={editForm.currency} onChange={(e) => setEditForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={editForm.billingPeriodMonths} onChange={(e) => setEditForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Grace period (dias)</label><input type="number" value={editForm.gracePeriodDays} onChange={(e) => setEditForm(f => ({ ...f, gracePeriodDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              </div>
+            </>}
+            <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={editForm.notes} onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="Opcional" /></div>
+          </div>
+          <div className="flex gap-3 mt-6"><button onClick={() => setShowEditModal(false)} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveEdit} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
         </div></div>
       )}
 
