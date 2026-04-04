@@ -4,12 +4,14 @@
  * @see version.js para versão do produto
  *
  * CHANGELOG:
+ * - 2.0.0: Refactor DEC-055/DEC-056 — subcollection students/{id}/subscriptions,
+ *          collectionGroup para reads, type trial/paid, getStudentsWithoutSubscription
  * - 1.0.0: CRUD completo — listener real-time, add, update, registerPayment, renew
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, query, onSnapshot, addDoc, updateDoc, doc,
+  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, doc,
   getDocs, serverTimestamp, orderBy, Timestamp
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -33,15 +35,26 @@ const daysUntil = (date) => {
   return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
 };
 
+/**
+ * Extrai studentId do path do documento de subscription.
+ * Path: students/{studentId}/subscriptions/{subId}
+ */
+const getStudentIdFromRef = (docRef) => {
+  // docRef.path = "students/abc123/subscriptions/xyz456"
+  const segments = docRef.path.split('/');
+  return segments[1]; // students/{THIS}/subscriptions/...
+};
+
 // ── Hook ─────────────────────────────────────────────────
 
 export const useSubscriptions = () => {
   const { user, isMentor } = useAuth();
   const [subscriptions, setSubscriptions] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ── Listener real-time ──
+  // ── Listener real-time — collectionGroup('subscriptions') ──
 
   useEffect(() => {
     if (!user || !isMentor()) {
@@ -53,24 +66,28 @@ export const useSubscriptions = () => {
     setLoading(true);
     setError(null);
 
-    const q = query(
-      collection(db, 'subscriptions'),
-      orderBy('renewalDate', 'asc')
-    );
+    const q = query(collectionGroup(db, 'subscriptions'));
 
     const unsubscribe = onSnapshot(q,
       (snapshot) => {
-        const data = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data(),
-          // Normaliza timestamps para Date objects para UI
-          startDate: toDate(d.data().startDate),
-          endDate: toDate(d.data().endDate),
-          renewalDate: toDate(d.data().renewalDate),
-          lastPaymentDate: toDate(d.data().lastPaymentDate),
-          createdAt: toDate(d.data().createdAt),
-          updatedAt: toDate(d.data().updatedAt),
-        }));
+        const data = snapshot.docs.map(d => {
+          const raw = d.data();
+          const studentId = getStudentIdFromRef(d.ref);
+          return {
+            id: d.id,
+            studentId,
+            _path: d.ref.path, // para operações de escrita
+            ...raw,
+            type: raw.type ?? 'paid',
+            startDate: toDate(raw.startDate),
+            endDate: toDate(raw.endDate),
+            renewalDate: toDate(raw.renewalDate),
+            lastPaymentDate: toDate(raw.lastPaymentDate),
+            trialEndsAt: toDate(raw.trialEndsAt),
+            createdAt: toDate(raw.createdAt),
+            updatedAt: toDate(raw.updatedAt),
+          };
+        });
         setSubscriptions(data);
         setLoading(false);
       },
@@ -84,80 +101,141 @@ export const useSubscriptions = () => {
     return () => unsubscribe();
   }, [user, isMentor]);
 
+  // ── Listener students (para nomes e seletor) ──
+
+  useEffect(() => {
+    if (!user || !isMentor()) {
+      setStudents([]);
+      return;
+    }
+
+    const q = query(collection(db, 'students'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      data.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+      setStudents(data);
+    });
+
+    return () => unsubscribe();
+  }, [user, isMentor]);
+
+  // ── Enriquecer subscriptions com dados do student ──
+
+  const enrichedSubscriptions = useMemo(() => {
+    const studentMap = new Map(students.map(s => [s.id, s]));
+    return subscriptions.map(sub => {
+      const student = studentMap.get(sub.studentId);
+      return {
+        ...sub,
+        studentName: student?.name ?? sub.studentId,
+        studentEmail: student?.email ?? '',
+      };
+    });
+  }, [subscriptions, students]);
+
+  // ── Students sem subscription (para seletor "Nova Assinatura") ──
+
+  const studentsWithoutSubscription = useMemo(() => {
+    const studentIdsWithSub = new Set(subscriptions.map(s => s.studentId));
+    return students.filter(s => !studentIdsWithSub.has(s.id));
+  }, [students, subscriptions]);
+
   // ── Summary (computado) ──
 
   const summary = useMemo(() => {
-    const active = subscriptions.filter(s => s.status === 'active').length;
-    const overdue = subscriptions.filter(s => s.status === 'overdue').length;
-    const expiringSoon = subscriptions.filter(s => {
+    const active = enrichedSubscriptions.filter(s => s.status === 'active').length;
+    const overdue = enrichedSubscriptions.filter(s => s.status === 'overdue').length;
+    const expiringSoon = enrichedSubscriptions.filter(s => {
       if (s.status !== 'active') return false;
+      if (s.type === 'trial') {
+        const days = daysUntil(s.trialEndsAt);
+        return days !== null && days >= 0 && days <= 7;
+      }
       const days = daysUntil(s.renewalDate);
       return days !== null && days >= 0 && days <= 7;
     }).length;
-    const monthlyRevenue = subscriptions
-      .filter(s => s.status === 'active')
+    const monthlyRevenue = enrichedSubscriptions
+      .filter(s => s.status === 'active' && s.type === 'paid')
       .reduce((sum, s) => sum + (s.amount ?? 0), 0);
 
-    return { active, overdue, expiringSoon, monthlyRevenue, total: subscriptions.length };
-  }, [subscriptions]);
+    return { active, overdue, expiringSoon, monthlyRevenue, total: enrichedSubscriptions.length };
+  }, [enrichedSubscriptions]);
 
-  // ── Criar assinatura ──
+  // ── Criar assinatura (subcollection do student) ──
 
   const addSubscription = useCallback(async (data) => {
     if (!user) throw new Error('Usuário não autenticado');
+    if (!data.studentId) throw new Error('studentId obrigatório');
+
+    const isTrial = data.type === 'trial';
+    const startDate = new Date(data.startDate ?? new Date());
 
     const newSub = {
-      studentId: data.studentId,
-      studentName: data.studentName,
-      studentEmail: data.studentEmail,
+      type: data.type ?? 'paid',
       plan: data.plan ?? 'alpha',
-      status: 'pending',
-      startDate: Timestamp.fromDate(new Date(data.startDate)),
-      endDate: Timestamp.fromDate(new Date(data.endDate)),
-      renewalDate: Timestamp.fromDate(new Date(data.renewalDate ?? data.endDate)),
-      lastPaymentDate: null,
-      amount: parseFloat(data.amount) || 0,
-      currency: data.currency ?? 'BRL',
-      gracePeriodDays: parseInt(data.gracePeriodDays) || 5,
+      status: isTrial ? 'active' : 'pending',
+      startDate: Timestamp.fromDate(startDate),
       notes: data.notes ?? '',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(db, 'subscriptions'), newSub);
-    console.log('[useSubscriptions] Assinatura criada:', docRef.id);
+    if (isTrial) {
+      const trialEnd = new Date(data.trialEndsAt ?? startDate);
+      if (!data.trialEndsAt) trialEnd.setDate(trialEnd.getDate() + 30);
+      newSub.trialEndsAt = Timestamp.fromDate(trialEnd);
+    } else {
+      const endDate = new Date(data.endDate ?? startDate);
+      if (!data.endDate) endDate.setDate(endDate.getDate() + 30);
+      newSub.endDate = Timestamp.fromDate(endDate);
+      newSub.renewalDate = Timestamp.fromDate(new Date(data.renewalDate ?? endDate));
+      newSub.lastPaymentDate = null;
+      newSub.amount = parseFloat(data.amount) || 0;
+      newSub.currency = data.currency ?? 'BRL';
+      newSub.gracePeriodDays = parseInt(data.gracePeriodDays) || 5;
+    }
+
+    // Escrita na subcollection: students/{studentId}/subscriptions
+    const subColRef = collection(db, 'students', data.studentId, 'subscriptions');
+    const docRef = await addDoc(subColRef, newSub);
+
+    // Atualiza accessTier no student
+    const tierValue = newSub.status === 'active' ? (data.plan ?? 'alpha') : 'none';
+    await updateDoc(doc(db, 'students', data.studentId), {
+      accessTier: tierValue,
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('[useSubscriptions] Assinatura criada:', docRef.id, 'student:', data.studentId);
     return docRef.id;
   }, [user]);
 
   // ── Atualizar assinatura ──
 
-  const updateSubscription = useCallback(async (subscriptionId, updates) => {
+  const updateSubscription = useCallback(async (sub, updates) => {
     if (!user) throw new Error('Usuário não autenticado');
 
-    const ref = doc(db, 'subscriptions', subscriptionId);
+    // sub deve ter studentId e id
+    const ref = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
     const cleanUpdates = { ...updates, updatedAt: serverTimestamp() };
 
-    // Converte datas string para Timestamp
-    for (const field of ['startDate', 'endDate', 'renewalDate', 'lastPaymentDate']) {
+    for (const field of ['startDate', 'endDate', 'renewalDate', 'lastPaymentDate', 'trialEndsAt']) {
       if (cleanUpdates[field] && typeof cleanUpdates[field] === 'string') {
         cleanUpdates[field] = Timestamp.fromDate(new Date(cleanUpdates[field]));
       }
     }
 
     await updateDoc(ref, cleanUpdates);
-    console.log('[useSubscriptions] Assinatura atualizada:', subscriptionId);
+    console.log('[useSubscriptions] Assinatura atualizada:', sub.id);
   }, [user]);
 
   // ── Registrar pagamento ──
 
-  const registerPayment = useCallback(async (subscriptionId, paymentData) => {
+  const registerPayment = useCallback(async (sub, paymentData) => {
     if (!user) throw new Error('Usuário não autenticado');
 
-    const sub = subscriptions.find(s => s.id === subscriptionId);
-    if (!sub) throw new Error('Assinatura não encontrada');
-
-    // Cria payment na subcollection
-    const paymentRef = collection(db, 'subscriptions', subscriptionId, 'payments');
+    // sub deve ter studentId, id, amount, currency, renewalDate
+    const paymentRef = collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments');
     const paymentDate = new Date(paymentData.date);
     const periodEnd = new Date(paymentDate);
     periodEnd.setDate(periodEnd.getDate() + 30);
@@ -174,47 +252,57 @@ export const useSubscriptions = () => {
       createdAt: serverTimestamp(),
     });
 
-    // Atualiza subscription: avança renewalDate +30 dias, status active
+    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
     const newRenewalDate = new Date(sub.renewalDate ?? paymentDate);
     newRenewalDate.setDate(newRenewalDate.getDate() + 30);
 
-    await updateDoc(doc(db, 'subscriptions', subscriptionId), {
+    await updateDoc(subRef, {
       lastPaymentDate: Timestamp.fromDate(paymentDate),
       renewalDate: Timestamp.fromDate(newRenewalDate),
       status: 'active',
       updatedAt: serverTimestamp(),
     });
 
-    console.log('[useSubscriptions] Pagamento registrado:', subscriptionId);
-  }, [user, subscriptions]);
+    // Sincroniza accessTier
+    await updateDoc(doc(db, 'students', sub.studentId), {
+      accessTier: sub.plan ?? 'alpha',
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('[useSubscriptions] Pagamento registrado:', sub.id);
+  }, [user]);
 
   // ── Renovar (sem pagamento) ──
 
-  const renewSubscription = useCallback(async (subscriptionId) => {
+  const renewSubscription = useCallback(async (sub) => {
     if (!user) throw new Error('Usuário não autenticado');
 
-    const sub = subscriptions.find(s => s.id === subscriptionId);
-    if (!sub) throw new Error('Assinatura não encontrada');
-
+    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
     const currentRenewal = sub.renewalDate ?? new Date();
     const newRenewalDate = new Date(currentRenewal);
     newRenewalDate.setDate(newRenewalDate.getDate() + 30);
 
-    await updateDoc(doc(db, 'subscriptions', subscriptionId), {
+    await updateDoc(subRef, {
       renewalDate: Timestamp.fromDate(newRenewalDate),
       endDate: Timestamp.fromDate(newRenewalDate),
       status: 'active',
       updatedAt: serverTimestamp(),
     });
 
-    console.log('[useSubscriptions] Assinatura renovada:', subscriptionId);
-  }, [user, subscriptions]);
+    // Sincroniza accessTier
+    await updateDoc(doc(db, 'students', sub.studentId), {
+      accessTier: sub.plan ?? 'alpha',
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('[useSubscriptions] Assinatura renovada:', sub.id);
+  }, [user]);
 
   // ── Buscar pagamentos de uma assinatura ──
 
-  const getPayments = useCallback(async (subscriptionId) => {
+  const getPayments = useCallback(async (sub) => {
     const q = query(
-      collection(db, 'subscriptions', subscriptionId, 'payments'),
+      collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'),
       orderBy('date', 'desc')
     );
     const snapshot = await getDocs(q);
@@ -229,7 +317,9 @@ export const useSubscriptions = () => {
   }, []);
 
   return {
-    subscriptions,
+    subscriptions: enrichedSubscriptions,
+    students,
+    studentsWithoutSubscription,
     loading,
     error,
     summary,

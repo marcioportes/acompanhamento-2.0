@@ -202,7 +202,9 @@ service cloud.firestore {
     }
 
     // ========== Subscriptions — Controle de Assinaturas (CHUNK-16, issue #094) ==========
-    match /subscriptions/{subscriptionId} {
+    // DEC-055: Subcollection de students. DEC-056: type trial/paid + accessTier.
+    // Regras para acesso direto via path students/{id}/subscriptions/{subId}
+    match /students/{studentId}/subscriptions/{subscriptionId} {
       allow read: if isMentor();
       allow write: if isMentor();
 
@@ -210,6 +212,11 @@ service cloud.firestore {
         allow read: if isMentor();
         allow write: if isMentor();
       }
+    }
+
+    // collectionGroup('subscriptions') — permite queries cross-student do mentor
+    match /{path=**}/subscriptions/{subscriptionId} {
+      allow read: if isMentor();
     }
   }
 }
