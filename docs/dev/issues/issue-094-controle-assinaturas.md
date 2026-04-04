@@ -209,17 +209,25 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 - Ajustes de produto: Espelho (nao Self-Service), coluna Situacao, tooltips, receita ativos only, ordenacao
 - Build OK, 22/22 testes
 
-**Refactor pendente (decisao DEC-055/DEC-056):**
-- Migrar de collection raiz `subscriptions` para subcollection `students/{id}/subscriptions`
-- Adicionar campo `type: trial/paid` e `trialEndsAt`
-- Adicionar campo `accessTier` no student
-- Hook: trocar `collection(db, 'subscriptions')` para `collectionGroup('subscriptions')` em queries do mentor
-- Hook: escrita via `collection(db, 'students', studentId, 'subscriptions')`
-- CF: iterar por students e suas subcollections, sincronizar accessTier
-- Firestore rules: regras para subcollection com collectionGroup
-- Remover `studentEmail` e `studentName` da subscription (vem do parent)
-- UI: adicionar filtro trial/paid, modal nova assinatura funcional (seletor de students sem subscription)
-- Testes: atualizar para novo schema
+**Refactor DEC-055/DEC-056 (CONCLUIDO):**
+- Migrado de collection raiz para subcollection `students/{id}/subscriptions`
+- Campo `type: trial/paid`, `trialEndsAt`, `billingPeriodMonths` adicionados
+- Campo `accessTier` no student — CF sincroniza
+- Hook: `collectionGroup('subscriptions')` para reads, path com studentId para writes
+- Hook: enrich com dados do student (nome, email), `studentsWithoutSubscription` para seletor
+- CF: itera students→subcollections, expira trials, sincroniza accessTier
+- Firestore rules: subcollection path + collectionGroup wildcard (mentor read/write)
+- `studentEmail`/`studentName` removidos da subscription (vem do parent via join)
+- UI: filtro trial/paid, modal nova assinatura funcional (seletor students sem subscription)
+- UI: campo `billingPeriodMonths` (Mensal/Bimestral/Trimestral/Semestral/Anual)
+- UI: campo `receiptUrl` no pagamento (file input + paste, upload Firebase Storage)
+- UI: link "Ver comprovante" no historico de pagamentos
+- Testes: 32 (trial expiration, accessTier, grace period, receita paid only)
+
+**Deploy realizado:**
+- `firebase deploy --only firestore:rules` — 04/04/2026
+  - Regras para `students/{id}/subscriptions` (subcollection) + `collectionGroup('subscriptions')` (mentor read)
+  - Necessario para que o hook `collectionGroup` funcione em producao
 
 **Decisoes tomadas:**
 
