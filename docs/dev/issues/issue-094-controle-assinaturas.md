@@ -12,61 +12,68 @@
 Modulo de gestao de assinaturas centralizado no dashboard do mentor. Escopo intencional: dados, status e alertas por email. Sem integracao com gateway de pagamento e sem automacao de WhatsApp nesta fase.
 
 Entregas:
-1. **Firestore** — nova collection `subscriptions` com subcollection `payments`
-2. **Cloud Function** — `checkSubscriptions` (onSchedule, diaria 8h BRT). Detecta vencimentos proximos, atualiza status `overdue`, envia email ao mentor
-3. **Frontend** — `SubscriptionsPage` (rota mentor) com tabela, filtros por status, acoes "Registrar pagamento" e "Renovar"
+1. **Firestore** — subcollection `students/{id}/subscriptions` com subcollection `payments`
+2. **Cloud Function** — `checkSubscriptions` (onSchedule, diaria 8h BRT). Detecta vencimentos proximos, atualiza status `overdue`, expira trials, sincroniza `accessTier`, envia email ao mentor
+3. **Frontend** — `SubscriptionsPage` (rota mentor) com tabela, filtros por status/tipo, acoes "Registrar pagamento" e "Renovar"
 4. **Card resumo** — semaforo no dashboard mentor (ativos / vencendo / inadimplentes)
+5. **Seed** — criar subscriptions para os 48 alunos ativos (todos alpha paid)
 
 Fora de escopo: gateway de pagamento, notificacao ao aluno, controle de WhatsApp.
 
 Email provider: `firebase/firestore-send-email@0.2.7` (ja em producao — collection `mail`).
 
-### 1.1 Schema consolidado — `subscriptions` (APROVADO)
+### 1.1 Schema consolidado — `students/{id}/subscriptions/{subId}` (REVISADO)
 
-> Merge do issue GitHub + proposta do briefing master. Divergencias resolvidas em 04/04/2026.
+> Refatorado de collection raiz para subcollection do student. Assinatura e entidade dependente — nunca existe sem aluno (INV-15). Decisao DEC-055.
 
+**Campo novo no student:**
 ```javascript
-// subscriptions/{subscriptionId}
+// students/{studentId} — campo adicionado
 {
-  // --- Identificacao ---
-  studentId: string,          // ref ao student
-  studentName: string,        // desnormalizado para listagem rapida
-  studentEmail: string,       // para email de alerta (desnormalizado)
+  accessTier: string,   // 'alpha' | 'self_service' | 'none'
+                         // Fonte de verdade para UI condicional (#100)
+                         // Derivado da subscription ativa. CF checkSubscriptions mantem sincronizado
+}
+```
 
-  // --- Plano ---
-  plan: string,               // 'alpha' | 'self_service' (enum — DEC-034)
+**Subscription (subcollection):**
+```javascript
+// students/{studentId}/subscriptions/{subscriptionId}
+{
+  // --- Natureza ---
+  type: string,               // 'trial' | 'paid'
+  plan: string,               // 'alpha' | 'self_service' (nivel de acesso que esta subscription da)
 
   // --- Status ---
   status: string,             // 'active' | 'pending' | 'overdue' | 'paused' | 'cancelled' | 'expired'
-                               //   pending  = aguardando primeiro pagamento
-                               //   active   = em dia
-                               //   overdue  = vencido (apos gracePeriodDays)
+                               //   pending  = aguardando primeiro pagamento (so paid)
+                               //   active   = em dia / trial ativo
+                               //   overdue  = vencido apos gracePeriodDays (so paid)
                                //   paused   = suspensao temporaria pelo mentor
                                //   cancelled = cancelado definitivamente
-                               //   expired  = periodo expirou sem renovacao
+                               //   expired  = periodo expirou sem renovacao / trial expirou
 
-  // --- Datas ---
-  startDate: Timestamp,
+  // --- Trial ---
+  trialEndsAt: Timestamp,     // so para type: 'trial'. CF expira automaticamente
+
+  // --- Paid ---
+  amount: number,             // so para type: 'paid'
+  currency: string,           // 'BRL' | 'USD'
   endDate: Timestamp,         // data de vencimento do periodo atual
   renewalDate: Timestamp,     // proxima renovacao esperada
   lastPaymentDate: Timestamp, // atalho — evita query na subcollection payments
-
-  // --- Financeiro ---
-  amount: number,             // valor mensal
-  currency: string,           // 'BRL' | 'USD'
-
-  // --- Controle ---
   gracePeriodDays: number,    // dias de tolerancia antes de marcar overdue (default: 5)
-  notes: string,              // observacoes livres do mentor
 
-  // --- Metadata ---
+  // --- Comum ---
+  startDate: Timestamp,
+  notes: string,              // observacoes livres do mentor
   createdAt: Timestamp,
   updatedAt: Timestamp
 }
 
-// subscriptions/{id}/payments/{paymentId}
+// students/{studentId}/subscriptions/{subId}/payments/{paymentId}
 {
-  date: Timestamp,            // data do pagamento
+  date: Timestamp,
   amount: number,
   currency: string,           // 'BRL' | 'USD'
   method: string,             // 'pix' | 'transfer' | 'card' | 'other'
@@ -78,20 +85,28 @@ Email provider: `firebase/firestore-send-email@0.2.7` (ja em producao — collec
 }
 ```
 
-**Decisoes de schema (resolucao de divergencias):**
+**Regra de accessTier (CF checkSubscriptions mantem sincronizado):**
 
-| Campo | Decisao | Razao |
-|-------|---------|-------|
-| `studentEmail` | Incluido | Necessario para alertas via email |
-| `whatsappNumber` | Excluido | WhatsApp fora de escopo nesta fase |
-| `plan` (enum) | Enum `alpha/self_service` | Consistente com DEC-034 (dois tiers definidos) |
-| `status` | Merge: 6 estados | `pending` + `paused` sao estados distintos uteis |
-| `amount/currency` | Incluido na subscription | Necessario para card de resumo e pagamento parcial |
-| `endDate` | Incluido | Essencial para CF calcular vencimento |
-| `lastPaymentDate` | Incluido | Atalho de consulta, evita query na subcollection |
-| `notes` | Incluido | Observacoes do mentor, campo simples |
-| `periodStart/periodEnd` | No payment, nao na subscription | Identifica periodo coberto pelo pagamento |
-| `method/reference` | Incluido no payment | Comprovante e operacionalmente necessario |
+| Pessoa | type | plan | status | accessTier |
+|--------|------|------|--------|------------|
+| Aluno pagante Alpha | paid | alpha | active | alpha |
+| Aluno pagante Espelho | paid | self_service | active | self_service |
+| Lead testando 30 dias | trial | alpha | active | alpha |
+| Lead com trial expirado | trial | alpha | expired | none |
+| VIP free lunch | — (sem subscription) | — | none |
+| Aluno inadimplente | paid | alpha | overdue→expired | alpha (grace) → none |
+
+**Decisoes de schema (revisao 04/04/2026):**
+
+| Decisao | Razao |
+|---------|-------|
+| Subcollection em vez de collection raiz | Assinatura e entidade dependente do aluno (INV-15). Nunca existe sozinha |
+| Campo `accessTier` no student | UI condicional le este campo. Derivado da subscription, sincronizado pela CF |
+| `type: trial/paid` | Separa leads testando de alunos convertidos. Trial nao tem amount/cobranca |
+| `trialEndsAt` | CF expira trial automaticamente e atualiza accessTier para none |
+| VIP nao tem subscription | Existe como student com accessTier: none. Sem registro de assinatura |
+| `studentEmail` removido da subscription | Desnecessario — dado ja existe no documento parent (student) |
+| collectionGroup para queries do mentor | Listar todas as subscriptions cross-student via collectionGroup('subscriptions') |
 
 ### 1.2 Email provider — JA EM PRODUCAO
 
@@ -101,27 +116,32 @@ A CF `checkSubscriptions` segue o mesmo padrao. Nao ha decisao pendente.
 
 ## 2. ACCEPTANCE CRITERIA
 
-- [ ] Collection `subscriptions` criada com schema conforme issue
-- [ ] Subcollection `payments` funcional
+- [ ] Subcollection `students/{id}/subscriptions` criada com schema conforme secao 1.1
+- [ ] Subcollection `payments` funcional (3 niveis: student → subscription → payment)
+- [ ] Campo `accessTier` adicionado aos students existentes
 - [ ] CF `checkSubscriptions` rodando as 8h BRT sem erros
+- [ ] CF sincroniza `accessTier` no student baseado na subscription ativa
+- [ ] CF expira trials automaticamente quando `trialEndsAt` e passado
 - [ ] Status `overdue` atualizado automaticamente respeitando `gracePeriodDays`
-- [ ] Email enviado apenas quando ha ocorrencias (vencimento ou inadimplencia)
-- [ ] `SubscriptionsPage` com tabela, filtros e acoes de pagamento/renovacao
+- [ ] Email enviado apenas quando ha ocorrencias (vencimento, inadimplencia, trial expirando)
+- [ ] `SubscriptionsPage` com tabela, filtros por status e tipo (trial/paid), acoes de pagamento/renovacao
+- [ ] Modal "Nova Assinatura" pergunta tipo (trial/paid) e preenche campos conforme tipo
 - [ ] Card de resumo visivel no dashboard do mentor
-- [ ] Regras Firestore para `subscriptions` (mentor read/write, aluno sem acesso direto)
+- [ ] Regras Firestore para `subscriptions` via collectionGroup (mentor read/write)
+- [ ] Seed dos 48 alunos ativos como alpha/paid/active
 - [ ] DebugBadge presente na pagina e no card
-- [ ] Testes cobrindo: transicao de status, logica de grace period, geracao do relatorio
+- [ ] Testes cobrindo: transicao de status, grace period, trial expiration, accessTier sync
 
 ## 3. ANALISE DE IMPACTO
 
 | Aspecto | Detalhe |
 |---------|---------|
-| Collections tocadas | `subscriptions` (nova — escrita), `subscriptions/payments` (nova subcollection — escrita) |
+| Collections tocadas | `students/{id}/subscriptions` (nova subcollection — escrita), `students` (campo `accessTier` — escrita) |
 | Cloud Functions afetadas | Nova CF `checkSubscriptions` (onSchedule). Zero impacto em CFs existentes |
-| Hooks/listeners afetados | Nenhum existente — collection isolada |
+| Hooks/listeners afetados | Nenhum existente — subcollection nova. Hook `useSubscriptions` usa collectionGroup |
 | Side-effects (PL, compliance, emotional) | Nenhum — dominio financeiro/administrativo separado |
-| Blast radius | BAIXO — collection completamente isolada, sem dependencias cruzadas |
-| Rollback | Deletar collection + remover CF + remover rota/componentes |
+| Blast radius | BAIXO — subcollection nova + 1 campo no student |
+| Rollback | Deletar subcollections + remover campo accessTier + remover CF + remover rota/componentes |
 
 ### 3.1 Verificacoes pre-codigo
 
@@ -135,25 +155,25 @@ grep -rn "subscriptions\|subscription" src/ functions/
 | Invariante | Aplicacao neste issue |
 |------------|----------------------|
 | INV-04 (DebugBadge) | Em `SubscriptionsPage` e card de resumo com `component="NomeExato"` |
-| INV-05 (Testes) | Transicao de status, grace period, geracao de relatorio |
-| INV-07 (Autorizacao) | Schema da collection e email provider — aprovar antes de codificar |
+| INV-05 (Testes) | Transicao de status, grace period, trial expiration, accessTier sync |
+| INV-07 (Autorizacao) | Schema da subcollection — aprovado |
 | INV-10 (Verificar Firestore) | Confirmar que `subscriptions` nao existe antes de criar |
+| **INV-15 (Persistencia)** | Toda criacao de collection/subcollection/campo exige justificativa + parecer tecnico + aprovacao do Marcio |
 
 ### 3.3 Shared files — nao editar direto (protocolo secao 6.2 PROJECT.md)
 
 | Arquivo | Necessidade | Protocolo |
 |---------|-------------|-----------|
-| `src/App.jsx` | Nova rota `/mentor/subscriptions` | Delta no doc do issue |
-| `functions/index.js` | Export de `checkSubscriptions` | Delta no doc do issue |
-| `firestore.rules` | Rules para `subscriptions` (mentor read/write, aluno sem acesso) | Delta no doc do issue |
+| `src/App.jsx` | View subscriptions (ja editado) | Manter |
+| `functions/index.js` | Export de `checkSubscriptions` (ja editado) | Manter |
+| `firestore.rules` | Rules para subscriptions via collectionGroup (refatorar) | Delta no doc do issue |
 | `src/version.js` | Bump na entrega | Propor no doc do issue |
-| `docs/PROJECT.md` | DECs e CHANGELOG | Propor no doc do issue |
+| `docs/PROJECT.md` | INV-15, DEC-055, DEC-056, CHANGELOG | Propor no doc do issue |
 
 ### 3.4 Isolamento de sessao paralela
 
 **NAO TOCAR** arquivos dos chunks 04, 07, 08, 10 — sessao #93 opera la.
 Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
-Proximo DEC disponivel: DEC-055 (conferir no PROJECT.md — pode ser DEC-056 se #93 registrar primeiro).
 **Este issue e milestone v1.2.0** (Mentor Cockpit), enquanto #93 e v1.1.0 — merges independentes.
 
 ## 4. SESSOES
@@ -168,39 +188,52 @@ Proximo DEC disponivel: DEC-055 (conferir no PROJECT.md — pode ser DEC-056 se 
 - Arquivo de controle criado pelo Claude Code (protocolo INV-13)
 - Chunk proposto (CHUNK-16) e verificado como AVAILABLE no registry
 - Analise de impacto expandida (secao 3.1-3.4) com invariantes mapeadas
-- Schema de `subscriptions` proposto (secao 1.1)
-- Analise de email providers com recomendacao (secao 1.2)
+- Schema inicial proposto e consolidado
+- Email provider confirmado como ja em producao
+
+### Sessao — 04/04/2026 — Claude Code (implementacao v1 + refactor)
+
+**Tipo:** codigo
+
+**O que foi feito (v1 — collection raiz, SUPERSEDED):**
+- SubscriptionsPage.jsx (772 linhas) com mock data, depois integrado com hook
+- SubscriptionSummaryCard.jsx — card semaforo
+- useSubscriptions.js — hook CRUD + listener
+- checkSubscriptions.js — CF onSchedule
+- subscriptions.test.js — 22 testes
+- Shared files editados: App.jsx, Sidebar.jsx, MentorDashboard.jsx, functions/index.js, firestore.rules
+- Ajustes de produto: Espelho (nao Self-Service), coluna Situacao, tooltips, receita ativos only, ordenacao
+- Build OK, 22/22 testes
+
+**Refactor pendente (decisao DEC-055/DEC-056):**
+- Migrar de collection raiz `subscriptions` para subcollection `students/{id}/subscriptions`
+- Adicionar campo `type: trial/paid` e `trialEndsAt`
+- Adicionar campo `accessTier` no student
+- Hook: trocar `collection(db, 'subscriptions')` para `collectionGroup('subscriptions')` em queries do mentor
+- Hook: escrita via `collection(db, 'students', studentId, 'subscriptions')`
+- CF: iterar por students e suas subcollections, sincronizar accessTier
+- Firestore rules: regras para subcollection com collectionGroup
+- Remover `studentEmail` e `studentName` da subscription (vem do parent)
+- UI: adicionar filtro trial/paid, modal nova assinatura com tipo
+- Seed: criar subscriptions para 48 alunos ativos
+- Testes: atualizar para novo schema
 
 **Decisoes tomadas:**
 
 | ID | Decisao | Justificativa |
 |----|---------|---------------|
-| — | Opus 4.6 como sessao master | Trabalho cognitivo/documental. Claude Code como executor |
-| — | Schema subscriptions consolidado | Merge issue GitHub + briefing master. 6 status, enum plan, email sem WhatsApp |
+| DEC-055 | Subscriptions como subcollection de students, nao collection raiz | Assinatura e entidade dependente — nunca existe sem aluno (INV-15). Modelo reflete realidade do dominio |
+| DEC-056 | Campo `type: trial/paid` + `trialEndsAt` + `accessTier` no student | Separa natureza (trial vs convertido) de nivel de acesso. VIP = student sem subscription (accessTier: none). CF sincroniza |
 | — | Email via firebase-send-email extension | Ja em producao (collection `mail`). Sem decisao pendente |
-
-**Sequencia recomendada de implementacao:**
-1. Gate pre-codigo: ler codebase do mentor dashboard, propor schema completo ao Marcio
-2. Schema Firestore — collection `subscriptions` + subcollection `payments` (apos aprovacao)
-3. CRUD basico — `SubscriptionsPage` com tabela + formularios de registro/renovacao
-4. Card resumo — semaforo no dashboard mentor
-5. CF `checkSubscriptions` — logica de vencimento + grace period + atualizacao de status
-6. Email — integracao com provider aprovado
-7. Testes — incrementais
-8. Gate pre-entrega: version.js + CHANGELOG + DebugBadge + testes passando
-
-**Pendencias para proxima sessao (Claude Code):**
-- Registrar lock do CHUNK-16 no PROJECT.md (secao 6.3)
-- Executar grep de verificacao (secao 3.1) antes do gate pre-codigo
 
 ## 5. ENCERRAMENTO
 
-**Status:** Aguardando aprovacao de chunks
+**Status:** Refactor em andamento (DEC-055/DEC-056)
 
 **Checklist final:**
 - [ ] Acceptance criteria atendidos
 - [ ] Testes passando
-- [ ] PROJECT.md atualizado (DEC, DT, CHANGELOG)
+- [ ] PROJECT.md atualizado (INV-15, DEC-055, DEC-056, CHANGELOG)
 - [ ] PR aberto e mergeado
 - [ ] Issue fechado no GitHub
 - [ ] Branch deletada
@@ -210,9 +243,10 @@ Proximo DEC disponivel: DEC-055 (conferir no PROJECT.md — pode ser DEC-056 se 
 
 | Chunk | Modo | Motivo |
 |-------|------|--------|
-| CHUNK-16 | escrita | Mentor Cockpit — pagina + card + collection subscriptions |
+| CHUNK-16 | escrita | Mentor Cockpit — pagina + card + subcollection subscriptions |
 
-> **Observacoes pendentes:**
-> 1. Campo "Chunks necessarios" ausente no issue GitHub. Chunk acima proposto — aguardar aprovacao do Marcio antes de registrar lock.
-> 2. A collection `subscriptions` e nova e isolada — incluida no escopo do CHUNK-16 por ser funcionalidade exclusiva do mentor.
+> **Observacoes:**
+> 1. CHUNK-16 locked para issue #94 desde 04/04/2026.
+> 2. Subcollection `subscriptions` dentro de students — inclusa no CHUNK-16 por ser funcionalidade exclusiva do mentor.
 > 3. Email provider definido: `firebase/firestore-send-email@0.2.7` (collection `mail`, ja em producao).
+> 4. Campo `accessTier` no student toca CHUNK-02 (Student Management) em modo escrita minima — apenas 1 campo. Nao requer lock full do CHUNK-02 pois nao altera logica existente.
