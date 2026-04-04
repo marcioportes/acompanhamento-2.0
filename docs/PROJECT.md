@@ -1,7 +1,7 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.5.1  
+> **Versão:** 0.6.0  
 > **Última atualização:** 03/04/2026 — registrar issues #106-#119 nos milestones, fechar #19  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
@@ -24,6 +24,7 @@ Este documento segue versionamento semântico:
 | 0.4.0 | 02/04/2026 | Design Revisão Semanal | DEC-045/046, design #102, bash migration |
 | 0.5.0 | 03/04/2026 | Dashboard-Aluno MVP | DEC-047 a DEC-052, CHUNK-13 a 16, INV-14, protocolo chunks |
 | 0.5.1 | 03/04/2026 | Registro de issues | Issues #106-#119 nos milestones, #3 reescrito, #19 fechado |
+| 0.6.0 | 03/04/2026 | Revisão #52 Prop Firms | DEC-053, escopo #52 atualizado com regras Apex Mar/2026 |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -110,7 +111,7 @@ gh pr create --title "..." --body "..."
 ### v1.1.0 — Espelho Self-Service
 **Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
 **Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
-**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (19 issues)
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (17 issues)
 
 Issues:
 - `#118` arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período persistente
@@ -120,7 +121,6 @@ Issues:
 - `#111` debt: Padronização de exibição de moeda em todo o sistema
 - `#107` fix: CSV Import — parse silencioso quando formato não reconhecido
 - `#100` epic: Espelho — Modo Self-Service (tier self-service + rename externo)
-- `#96`  debt: Node.js 20→22 nas Cloud Functions (deadline 30/04/2026)
 - `#93`  feat: Order Import v1.1 — Modo Criação
 - `#91`  debt: Mentor editar feedback já enviado
 - `#90`  fix: Screen flicker CSV staging activation
@@ -131,7 +131,6 @@ Issues:
 - `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
 - `#48`  refactor: Student Emotional Detail — Reorganizar UX
 - `#44`  feat: Feedback Aluno — Indicador de Trades Revisados no Sidebar
-- `#19`  ops: Export/Import CSV do Firestore (backup + restore) → **FECHADO** (03/04/2026)
 - `#3`   epic: Dashboard-Aluno MVP — Redesign com contexto unificado e views reativas
 
 Sub-tarefas (#100):
@@ -647,6 +646,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-050 | Desvio padrão (Coefficient of Variation) como métrica de consistência operacional. CV < 0.5 consistente, 0.5-1.0 moderado, > 1.0 errático. Alimenta Dashboard, Torre, Revisão e SWOT IA | #115 | 03/04/2026 |
 | DEC-051 | Onboarding Automatizado: pipeline CSV performance + ordens → cruzamento → indicadores → Kelly Criterion → plano sugerido. Self-service aceita direto, Alpha mentor valida. Mínimo 30 trades para relevância estatística | #116 | 03/04/2026 |
 | DEC-052 | Chunks mapeados no issue do GitHub (campo obrigatório). Issues concretos mapeados em batch, épicos mapeados na decomposição em sub-issues. Modo leitura não requer lock, modo escrita requer lock exclusivo | #117 | 03/04/2026 |
+| DEC-053 | Revisão de escopo #52 (Prop Firms): regras Apex março 2026 incorporadas — campos removidos (maeRule, maxRR), campos adicionados (dailyLossAction, evalTimeLimit, bracketOrderRequired, dcaAllowed, restrictedInstruments, qualifyingDays). Templates agora diferenciam Apex EOD vs Intraday como produtos separados | #52 | 03/04/2026 |
 
 ---
 
