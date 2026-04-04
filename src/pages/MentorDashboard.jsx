@@ -35,6 +35,7 @@ import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import useOrders from '../hooks/useOrders';
 import { 
   calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, 
   formatCurrency, formatPercent, filterTradesByPeriod 
@@ -48,7 +49,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     addBulkFeedback
   } = useTrades();
   const { plans } = usePlans();
-  
+  const { orders } = useOrders();
+
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
@@ -247,7 +249,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         <div className="glass-card">
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
-        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       </div>
     );
   }
@@ -561,7 +563,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <DebugBadge component="MentorDashboard" />
     </div>
   );

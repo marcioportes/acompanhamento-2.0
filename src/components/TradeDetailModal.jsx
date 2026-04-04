@@ -31,6 +31,7 @@ import {
   ArrowDownRight,
   ArrowUpRight
 } from 'lucide-react';
+import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -123,6 +124,7 @@ const TradeDetailModal = ({
   onClose, 
   trade, 
   plans = [],
+  orders = [],
   isMentor = false,
   onAddFeedback,
   feedbackLoading = false,
@@ -411,6 +413,9 @@ const TradeDetailModal = ({
                   </div>
               </div>
             )}
+
+            {/* Ordens da Corretora (V1.1c — issue #93) */}
+            <TradeOrdersPanel trade={trade} orders={orders} embedded />
 
             {/* Observações do Aluno */}
             {notes && (

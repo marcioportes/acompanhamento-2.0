@@ -27,6 +27,7 @@ import { usePlans } from '../hooks/usePlans';
 import { useSetups } from '../hooks/useSetups';
 import useCsvStaging from '../hooks/useCsvStaging';
 import useMasterData from '../hooks/useMasterData';
+import useOrders from '../hooks/useOrders';
 import { filterTradesByPeriod, filterTradesByDateRange, searchTrades } from '../utils/calculations';
 
 // Helpers
@@ -47,6 +48,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const { plans, loading: plansLoading } = usePlans();
   const { setups, loading: setupsLoading } = useSetups();
   const { emotions, tickers: masterTickers } = useMasterData();
+  const { orders } = useOrders();
   const {
     stagingTrades, pendingCount, readyCount,
     addStagingBatch, updateStagingTrade, deleteStagingTrade, deleteStagingBatch,
@@ -244,11 +246,12 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         setups={setups}     
       />
       
-      <TradeDetailModal 
-        isOpen={!!viewingTrade} 
-        onClose={() => setViewingTrade(null)} 
+      <TradeDetailModal
+        isOpen={!!viewingTrade}
+        onClose={() => setViewingTrade(null)}
         trade={viewingTrade}
         plans={plans}
+        orders={orders}
         onViewFeedbackHistory={handleViewFeedbackHistory}
         getPartials={getPartials}
       />
