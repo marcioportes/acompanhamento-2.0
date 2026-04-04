@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, doc,
+  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
   getDocs, serverTimestamp, orderBy, Timestamp
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -331,11 +331,11 @@ export const useSubscriptions = () => {
     // Deleta payments da subcollection primeiro
     const paymentsSnap = await getDocs(collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'));
     for (const payDoc of paymentsSnap.docs) {
-      await payDoc.ref.delete();
+      await deleteDoc(payDoc.ref);
     }
 
     // Deleta a subscription
-    await subRef.delete();
+    await deleteDoc(subRef);
 
     // Recalcula accessTier: verifica se há outra subscription ativa
     const remainingSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
