@@ -171,10 +171,16 @@ export const useSubscriptions = () => {
     const isTrial = data.type === 'trial';
     const startDate = new Date(data.startDate ?? new Date());
 
+    // Upload do recibo se fornecido
+    let receiptUrl = '';
+    if (data.receiptFile) {
+      receiptUrl = await uploadReceipt(data.receiptFile, data.studentId, 'initial');
+    }
+
     const newSub = {
       type: data.type ?? 'paid',
       plan: data.plan ?? 'alpha',
-      status: isTrial ? 'active' : 'pending',
+      status: 'active',
       startDate: Timestamp.fromDate(startDate),
       notes: data.notes ?? '',
       createdAt: serverTimestamp(),
@@ -182,29 +188,31 @@ export const useSubscriptions = () => {
     };
 
     if (isTrial) {
-      const trialEnd = new Date(data.trialEndsAt ?? startDate);
-      if (!data.trialEndsAt) trialEnd.setDate(trialEnd.getDate() + 30);
+      const trialDays = parseInt(data.trialDays) || 30;
+      const trialEnd = new Date(startDate);
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
       newSub.trialEndsAt = Timestamp.fromDate(trialEnd);
     } else {
-      const endDate = new Date(data.endDate ?? startDate);
-      if (!data.endDate) endDate.setDate(endDate.getDate() + 30);
+      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + billingMonths);
       newSub.endDate = Timestamp.fromDate(endDate);
-      newSub.renewalDate = Timestamp.fromDate(new Date(data.renewalDate ?? endDate));
+      newSub.renewalDate = Timestamp.fromDate(endDate);
       newSub.lastPaymentDate = null;
       newSub.amount = parseFloat(data.amount) || 0;
       newSub.currency = data.currency ?? 'BRL';
       newSub.gracePeriodDays = parseInt(data.gracePeriodDays) || 5;
-      newSub.billingPeriodMonths = parseInt(data.billingPeriodMonths) || 1;
+      newSub.billingPeriodMonths = billingMonths;
+      if (receiptUrl) newSub.receiptUrl = receiptUrl;
     }
 
     // Escrita na subcollection: students/{studentId}/subscriptions
     const subColRef = collection(db, 'students', data.studentId, 'subscriptions');
     const docRef = await addDoc(subColRef, newSub);
 
-    // Atualiza accessTier no student
-    const tierValue = newSub.status === 'active' ? (data.plan ?? 'alpha') : 'none';
+    // Atualiza accessTier no student (sempre active na criação)
     await updateDoc(doc(db, 'students', data.studentId), {
-      accessTier: tierValue,
+      accessTier: data.plan ?? 'alpha',
       updatedAt: serverTimestamp(),
     });
 
