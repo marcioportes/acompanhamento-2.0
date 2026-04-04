@@ -11,11 +11,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
+  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, doc,
   getDocs, serverTimestamp, orderBy, Timestamp
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -169,20 +168,12 @@ export const useSubscriptions = () => {
     if (!data.studentId) throw new Error('studentId obrigatório');
 
     const isTrial = data.type === 'trial';
-    // Força T12:00:00Z para evitar shift de fuso (BR = UTC-3)
-    const startDateStr = data.startDate ?? new Date().toISOString().split('T')[0];
-    const startDate = new Date(startDateStr + 'T12:00:00Z');
-
-    // Upload do recibo se fornecido
-    let receiptUrl = '';
-    if (data.receiptFile) {
-      receiptUrl = await uploadReceipt(data.receiptFile, data.studentId, 'initial');
-    }
+    const startDate = new Date(data.startDate ?? new Date());
 
     const newSub = {
       type: data.type ?? 'paid',
       plan: data.plan ?? 'alpha',
-      status: 'active',
+      status: isTrial ? 'active' : 'pending',
       startDate: Timestamp.fromDate(startDate),
       notes: data.notes ?? '',
       createdAt: serverTimestamp(),
@@ -190,57 +181,28 @@ export const useSubscriptions = () => {
     };
 
     if (isTrial) {
-      const trialDays = parseInt(data.trialDays) || 30;
-      const trialEnd = new Date(startDate);
-      trialEnd.setDate(trialEnd.getDate() + trialDays);
+      const trialEnd = new Date(data.trialEndsAt ?? startDate);
+      if (!data.trialEndsAt) trialEnd.setDate(trialEnd.getDate() + 30);
       newSub.trialEndsAt = Timestamp.fromDate(trialEnd);
     } else {
-      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
-      const endDate = new Date(startDate);
-      endDate.setMonth(endDate.getMonth() + billingMonths);
+      const endDate = new Date(data.endDate ?? startDate);
+      if (!data.endDate) endDate.setDate(endDate.getDate() + 30);
       newSub.endDate = Timestamp.fromDate(endDate);
-      newSub.renewalDate = Timestamp.fromDate(endDate);
+      newSub.renewalDate = Timestamp.fromDate(new Date(data.renewalDate ?? endDate));
       newSub.lastPaymentDate = null;
       newSub.amount = parseFloat(data.amount) || 0;
       newSub.currency = data.currency ?? 'BRL';
       newSub.gracePeriodDays = parseInt(data.gracePeriodDays) || 5;
-      newSub.billingPeriodMonths = billingMonths;
-      if (receiptUrl) newSub.receiptUrl = receiptUrl;
     }
 
     // Escrita na subcollection: students/{studentId}/subscriptions
     const subColRef = collection(db, 'students', data.studentId, 'subscriptions');
     const docRef = await addDoc(subColRef, newSub);
 
-    // Registra payment inicial para paid (histórico do início)
-    if (!isTrial && (parseFloat(data.amount) || 0) > 0) {
-      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
-      const periodEnd = new Date(startDate);
-      periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
-
-      await addDoc(collection(db, 'students', data.studentId, 'subscriptions', docRef.id, 'payments'), {
-        date: Timestamp.fromDate(startDate),
-        amount: parseFloat(data.amount) || 0,
-        currency: data.currency ?? 'BRL',
-        method: 'other',
-        reference: 'Pagamento inicial',
-        receiptUrl: receiptUrl || '',
-        plan: data.plan ?? 'alpha',
-        periodStart: Timestamp.fromDate(startDate),
-        periodEnd: Timestamp.fromDate(periodEnd),
-        registeredBy: user.uid,
-        createdAt: serverTimestamp(),
-      });
-
-      // Atualiza lastPaymentDate na subscription
-      await updateDoc(doc(db, 'students', data.studentId, 'subscriptions', docRef.id), {
-        lastPaymentDate: Timestamp.fromDate(startDate),
-      });
-    }
-
-    // Atualiza accessTier no student (sempre active na criação)
+    // Atualiza accessTier no student
+    const tierValue = newSub.status === 'active' ? (data.plan ?? 'alpha') : 'none';
     await updateDoc(doc(db, 'students', data.studentId), {
-      accessTier: data.plan ?? 'alpha',
+      accessTier: tierValue,
       updatedAt: serverTimestamp(),
     });
 
@@ -269,33 +231,14 @@ export const useSubscriptions = () => {
 
   // ── Registrar pagamento ──
 
-  // ── Upload de recibo (imagem ou PDF) ──
-
-  const uploadReceipt = useCallback(async (file, studentId, subscriptionId) => {
-    if (!file) return null;
-    const ext = file.name.split('.').pop();
-    const path = `subscriptions/${studentId}/${subscriptionId}/receipt_${Date.now()}.${ext}`;
-    const snap = await uploadBytes(ref(storage, path), file);
-    return await getDownloadURL(snap.ref);
-  }, []);
-
-  // ── Registrar pagamento ──
-
-  const registerPayment = useCallback(async (sub, paymentData, receiptFile = null) => {
+  const registerPayment = useCallback(async (sub, paymentData) => {
     if (!user) throw new Error('Usuário não autenticado');
-
-    // Upload do recibo se fornecido
-    let receiptUrl = '';
-    if (receiptFile) {
-      receiptUrl = await uploadReceipt(receiptFile, sub.studentId, sub.id);
-    }
 
     // sub deve ter studentId, id, amount, currency, renewalDate
     const paymentRef = collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments');
-    const paymentDate = new Date(paymentData.date + 'T12:00:00Z');
-    const billingMonths = sub.billingPeriodMonths ?? 1;
+    const paymentDate = new Date(paymentData.date);
     const periodEnd = new Date(paymentDate);
-    periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
+    periodEnd.setDate(periodEnd.getDate() + 30);
 
     await addDoc(paymentRef, {
       date: Timestamp.fromDate(paymentDate),
@@ -303,8 +246,6 @@ export const useSubscriptions = () => {
       currency: paymentData.currency ?? sub.currency ?? 'BRL',
       method: paymentData.method ?? 'pix',
       reference: paymentData.reference ?? '',
-      receiptUrl,
-      plan: sub.plan ?? 'alpha', // plano vigente no momento do pagamento (histórico)
       periodStart: Timestamp.fromDate(paymentDate),
       periodEnd: Timestamp.fromDate(periodEnd),
       registeredBy: user.uid,
@@ -313,7 +254,7 @@ export const useSubscriptions = () => {
 
     const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
     const newRenewalDate = new Date(sub.renewalDate ?? paymentDate);
-    newRenewalDate.setMonth(newRenewalDate.getMonth() + billingMonths);
+    newRenewalDate.setDate(newRenewalDate.getDate() + 30);
 
     await updateDoc(subRef, {
       lastPaymentDate: Timestamp.fromDate(paymentDate),
@@ -357,33 +298,6 @@ export const useSubscriptions = () => {
     console.log('[useSubscriptions] Assinatura renovada:', sub.id);
   }, [user]);
 
-  // ── Excluir assinatura (limpeza de duplicatas) ──
-
-  const deleteSubscription = useCallback(async (sub) => {
-    if (!user) throw new Error('Usuário não autenticado');
-
-    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
-
-    // Deleta payments da subcollection primeiro
-    const paymentsSnap = await getDocs(collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'));
-    for (const payDoc of paymentsSnap.docs) {
-      await deleteDoc(payDoc.ref);
-    }
-
-    // Deleta a subscription
-    await deleteDoc(subRef);
-
-    // Recalcula accessTier: verifica se há outra subscription ativa
-    const remainingSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
-    const activeSub = remainingSubs.find(s => s.status === 'active');
-    await updateDoc(doc(db, 'students', sub.studentId), {
-      accessTier: activeSub ? (activeSub.plan ?? 'none') : 'none',
-      updatedAt: serverTimestamp(),
-    });
-
-    console.log('[useSubscriptions] Assinatura excluida:', sub.id);
-  }, [user, subscriptions]);
-
   // ── Buscar pagamentos de uma assinatura ──
 
   const getPayments = useCallback(async (sub) => {
@@ -411,7 +325,6 @@ export const useSubscriptions = () => {
     summary,
     addSubscription,
     updateSubscription,
-    deleteSubscription,
     registerPayment,
     renewSubscription,
     getPayments,
