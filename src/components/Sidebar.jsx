@@ -24,7 +24,8 @@ import {
   BookOpen,
   LineChart,
   Settings,
-  Brain
+  Brain,
+  CreditCard
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -83,6 +84,7 @@ const Sidebar = ({
       badgeColor: 'red'
     },
     { id: 'ranking', label: 'Ranking', icon: Trophy },
+    { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
