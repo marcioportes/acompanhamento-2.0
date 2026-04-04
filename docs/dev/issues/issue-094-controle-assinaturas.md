@@ -16,9 +16,14 @@ Entregas:
 2. **Cloud Function** — `checkSubscriptions` (onSchedule, diaria 8h BRT). Detecta vencimentos proximos, atualiza status `overdue`, expira trials, sincroniza `accessTier`, envia email ao mentor
 3. **Frontend** — `SubscriptionsPage` (rota mentor) com tabela, filtros por status/tipo, acoes "Registrar pagamento" e "Renovar"
 4. **Card resumo** — semaforo no dashboard mentor (ativos / vencendo / inadimplentes)
-5. **Seed** — criar subscriptions para os 48 alunos ativos (todos alpha paid)
 
 Fora de escopo: gateway de pagamento, notificacao ao aluno, controle de WhatsApp.
+
+**Fluxo operacional de criacao de assinatura:**
+1. Mentor cadastra aluno no sistema (ja existe)
+2. Mentor abre "Nova Assinatura" → seletor lista apenas students que NAO possuem nenhum documento na subcollection `subscriptions` (unico criterio)
+3. Mentor seleciona aluno, tipo (trial/paid), plano → cria subscription
+4. Aluno sai do seletor apos criacao
 
 Email provider: `firebase/firestore-send-email@0.2.7` (ja em producao — collection `mail`).
 
@@ -93,7 +98,7 @@ Email provider: `firebase/firestore-send-email@0.2.7` (ja em producao — collec
 | Aluno pagante Espelho | paid | self_service | active | self_service |
 | Lead testando 30 dias | trial | alpha | active | alpha |
 | Lead com trial expirado | trial | alpha | expired | none |
-| VIP free lunch | — (sem subscription) | — | none |
+| VIP free lunch | — (sem subscription) | — | — | none |
 | Aluno inadimplente | paid | alpha | overdue→expired | alpha (grace) → none |
 
 **Decisoes de schema (revisao 04/04/2026):**
@@ -125,10 +130,9 @@ A CF `checkSubscriptions` segue o mesmo padrao. Nao ha decisao pendente.
 - [ ] Status `overdue` atualizado automaticamente respeitando `gracePeriodDays`
 - [ ] Email enviado apenas quando ha ocorrencias (vencimento, inadimplencia, trial expirando)
 - [ ] `SubscriptionsPage` com tabela, filtros por status e tipo (trial/paid), acoes de pagamento/renovacao
-- [ ] Modal "Nova Assinatura" pergunta tipo (trial/paid) e preenche campos conforme tipo
+- [ ] Modal "Nova Assinatura" funcional: seletor lista students sem subscription (unico criterio), tipo (trial/paid), campos conforme tipo
 - [ ] Card de resumo visivel no dashboard do mentor
 - [ ] Regras Firestore para `subscriptions` via collectionGroup (mentor read/write)
-- [ ] Seed dos 48 alunos ativos como alpha/paid/active
 - [ ] DebugBadge presente na pagina e no card
 - [ ] Testes cobrindo: transicao de status, grace period, trial expiration, accessTier sync
 
@@ -214,8 +218,7 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 - CF: iterar por students e suas subcollections, sincronizar accessTier
 - Firestore rules: regras para subcollection com collectionGroup
 - Remover `studentEmail` e `studentName` da subscription (vem do parent)
-- UI: adicionar filtro trial/paid, modal nova assinatura com tipo
-- Seed: criar subscriptions para 48 alunos ativos
+- UI: adicionar filtro trial/paid, modal nova assinatura funcional (seletor de students sem subscription)
 - Testes: atualizar para novo schema
 
 **Decisoes tomadas:**
