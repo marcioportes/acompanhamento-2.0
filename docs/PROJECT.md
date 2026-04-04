@@ -1,7 +1,7 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.6.2  
+> **Versão:** 0.6.3  
 > **Última atualização:** 03/04/2026 — fix #89 v1.22.1, DEC-053 #52 Prop Firms, fechar #66/#89  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
@@ -27,6 +27,7 @@ Este documento segue versionamento semântico:
 | 0.6.0 | 03/04/2026 | Revisão #52 Prop Firms | DEC-053, escopo #52 atualizado com regras Apex Mar/2026 |
 | 0.6.1 | 03/04/2026 | Fix #89 + v1.22.1 | firestore.rules DEC-025 plans, índice movements, #120 aberto, #66 fechado |
 | 0.6.2 | 03/04/2026 | Reescrita #31 Feedback Semântico | DEC-054, abordagem escalonada rule-based + Gemini Flash |
+| 0.6.3 | 04/04/2026 | Limpeza milestones | Fechar #44/#55/#56/#117, DT-007 RESOLVIDO, contagens atualizadas |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -113,11 +114,10 @@ gh pr create --title "..." --body "..."
 ### v1.1.0 — Espelho Self-Service
 **Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
 **Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
-**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (15 issues)
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (12 issues)
 
 Issues:
 - `#118` arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período persistente
-- `#117` ops: Atualizar CHUNK-REGISTRY para novas frentes paralelas
 - `#116` epic: Onboarding Automatizado — CSV → indicadores → Kelly → plano sugerido
 - `#114` feat: Breakeven threshold configurável no compliance
 - `#111` debt: Padronização de exibição de moeda em todo o sistema
@@ -127,10 +127,8 @@ Issues:
 - `#91`  debt: Mentor editar feedback já enviado
 - `#90`  fix: Screen flicker CSV staging activation
 - `#64`  refactor: Dashboard Aluno — Refatorar tabela SWOT
-- `#55`  debt: DebugBadge duplo no ComplianceConfigPage embedded
 - `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
 - `#48`  refactor: Student Emotional Detail — Reorganizar UX
-- `#44`  feat: Feedback Aluno — Indicador de Trades Revisados no Sidebar
 - `#3`   epic: Dashboard-Aluno MVP — Redesign com contexto unificado e views reativas
 
 Sub-tarefas (#100):
@@ -142,7 +140,7 @@ Sub-tarefas (#100):
 
 ### v1.2.0 — Mentor Cockpit
 **Foco:** Dashboard mentor consolidado (Torre de Controle) + revisão semanal + performance
-**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (17 issues)
+**GitHub Milestone:** `v1.2.0 - Mentor Cockpit` (16 issues)
 
 Épico guarda-chuva: `#101` epic: Dashboard Mentor — Torre de Controle
 
@@ -197,7 +195,6 @@ students/{studentId}/reviews/{reviewId}
 - `#94`  feat: Controle de Assinaturas da Mentoria
 - `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
 - `#70`  feat: Dashboard Mentor — Template na inclusão de Ticker
-- `#56`  fix: Dashboard Mentor — Sidebar Badge Connection
 - `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção" → **FECHADO** (absorvido pelo Ranking por Aluno, Torre de Controle)
 - `#31`  feat: Dashboard Mentor — Preset de Feedback Semântico
 
@@ -681,7 +678,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | ID | Descrição | Prioridade | Deadline | Issue |
 |----|-----------|-----------|----------|-------|
 | DT-002 | Cycle transitions sem fechamento formal — PL de entrada do novo ciclo não registrado | ALTA | — | #72 |
-| DT-007 | DebugBadge duplo no ComplianceConfigPage embedded | BAIXA | — | #55 |
+| DT-007 | ~~DebugBadge duplo no ComplianceConfigPage embedded~~ RESOLVIDO — já usa `{!embedded && <DebugBadge>}` | BAIXA | — | #55 |
 | DT-008 | formatCurrency hardcoded R$ em MentorDashboard e labels | BAIXA | — | — |
 | DT-011 | Templates CSV vazam entre alunos (sem filtro por studentId) | MÉDIA | — | — |
 | DT-012 | Mentor não consegue editar feedback já enviado | MÉDIA | — | #91 |
