@@ -268,6 +268,7 @@ export const useSubscriptions = () => {
       method: paymentData.method ?? 'pix',
       reference: paymentData.reference ?? '',
       receiptUrl,
+      plan: sub.plan ?? 'alpha', // plano vigente no momento do pagamento (histórico)
       periodStart: Timestamp.fromDate(paymentDate),
       periodEnd: Timestamp.fromDate(periodEnd),
       registeredBy: user.uid,
@@ -320,6 +321,33 @@ export const useSubscriptions = () => {
     console.log('[useSubscriptions] Assinatura renovada:', sub.id);
   }, [user]);
 
+  // ── Excluir assinatura (limpeza de duplicatas) ──
+
+  const deleteSubscription = useCallback(async (sub) => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
+
+    // Deleta payments da subcollection primeiro
+    const paymentsSnap = await getDocs(collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'));
+    for (const payDoc of paymentsSnap.docs) {
+      await payDoc.ref.delete();
+    }
+
+    // Deleta a subscription
+    await subRef.delete();
+
+    // Recalcula accessTier: verifica se há outra subscription ativa
+    const remainingSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
+    const activeSub = remainingSubs.find(s => s.status === 'active');
+    await updateDoc(doc(db, 'students', sub.studentId), {
+      accessTier: activeSub ? (activeSub.plan ?? 'none') : 'none',
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('[useSubscriptions] Assinatura excluida:', sub.id);
+  }, [user, subscriptions]);
+
   // ── Buscar pagamentos de uma assinatura ──
 
   const getPayments = useCallback(async (sub) => {
@@ -347,6 +375,7 @@ export const useSubscriptions = () => {
     summary,
     addSubscription,
     updateSubscription,
+    deleteSubscription,
     registerPayment,
     renewSubscription,
     getPayments,

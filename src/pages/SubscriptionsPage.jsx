@@ -13,7 +13,7 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   CreditCard, Search, Plus, RefreshCw, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
-  DollarSign, Loader2, UserPlus, FlaskConical
+  DollarSign, Loader2, UserPlus, FlaskConical, Trash2
 } from 'lucide-react';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import DebugBadge from '../components/DebugBadge';
@@ -70,7 +70,7 @@ const PAYMENT_METHODS = [
 const SubscriptionsPage = () => {
   const {
     subscriptions, studentsWithoutSubscription, loading, summary,
-    addSubscription, registerPayment, renewSubscription, getPayments,
+    addSubscription, updateSubscription, deleteSubscription, registerPayment, renewSubscription, getPayments,
   } = useSubscriptions();
 
   const [statusFilter, setStatusFilter] = useState('all');
@@ -113,6 +113,19 @@ const SubscriptionsPage = () => {
 
   const handleRegisterPayment = (sub) => { setSelectedSubscription(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' }); setReceiptFile(null); setShowPaymentModal(true); };
   const handleRenew = (sub) => { setSelectedSubscription(sub); setShowRenewModal(true); };
+
+  const handleDelete = useCallback(async (sub) => {
+    if (actionLoading) return;
+    if (!confirm(`Excluir assinatura de ${sub.studentName}? Pagamentos associados serao perdidos.`)) return;
+    setActionLoading(true);
+    try { await deleteSubscription(sub); } catch (err) { console.error('[SubscriptionsPage] Erro excluir:', err); } finally { setActionLoading(false); }
+  }, [deleteSubscription, actionLoading]);
+
+  const handleChangePlan = useCallback(async (sub, newPlan) => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    try { await updateSubscription(sub, { plan: newPlan }); } catch (err) { console.error('[SubscriptionsPage] Erro mudar plano:', err); } finally { setActionLoading(false); }
+  }, [updateSubscription, actionLoading]);
 
   const handleViewPayments = useCallback(async (sub) => {
     setSelectedSubscription(sub); setShowPaymentHistory(true); setLoadingPayments(true);
@@ -225,7 +238,7 @@ const SubscriptionsPage = () => {
               {filtered.map(sub => (
                 <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
                   <td className="px-4 py-3"><div><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p></div></td>
-                  <td className="px-4 py-3"><div className="flex flex-col gap-1"><span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span><TypeBadge type={sub.type} /></div></td>
+                  <td className="px-4 py-3"><div className="flex flex-col gap-1"><button onClick={() => handleChangePlan(sub, sub.plan === 'alpha' ? 'self_service' : 'alpha')} className={`text-xs font-medium px-2 py-1 rounded-lg w-fit cursor-pointer hover:opacity-80 transition-opacity ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`} title={`Clique para trocar para ${sub.plan === 'alpha' ? 'Espelho' : 'Mentoria Alpha'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</button><TypeBadge type={sub.type} /></div></td>
                   <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
                   <td className="px-4 py-3"><span className="text-sm text-slate-300">{sub.type === 'trial' ? formatBrDate(sub.trialEndsAt) : formatBrDate(sub.renewalDate)}</span></td>
                   <td className="px-4 py-3"><DaysBadge sub={sub} /></td>
@@ -235,6 +248,7 @@ const SubscriptionsPage = () => {
                       {sub.type === 'paid' && <button onClick={() => handleViewPayments(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                       {sub.type === 'paid' && (sub.status === 'active' || sub.status === 'overdue' || sub.status === 'pending') && <button onClick={() => handleRegisterPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
                       {sub.type === 'paid' && (sub.status === 'active' || sub.status === 'overdue' || sub.status === 'paused') && <button onClick={() => handleRenew(sub)} className="group/btn relative p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Renovar</span></button>}
+                      <button onClick={() => handleDelete(sub)} className="group/btn relative p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Excluir</span></button>
                     </div>
                   </td>
                 </tr>
@@ -325,7 +339,7 @@ const SubscriptionsPage = () => {
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSubscription.studentName}</p><p className="text-xs text-slate-400">{PLAN_LABELS[selectedSubscription.plan]} — Desde {formatBrDate(selectedSubscription.startDate)}</p></div>
           {loadingPayments ? <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 text-blue-400 animate-spin" /></div> : paymentHistory.length === 0 ? <div className="py-8 text-center text-slate-500 text-sm">Nenhum pagamento registrado</div> : (
             <div className="space-y-2 max-h-80 overflow-y-auto">{paymentHistory.map(p => (
-              <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl"><div><p className="text-sm text-white">{formatBrDate(p.date)}</p><p className="text-xs text-slate-500">{PAYMENT_METHODS.find(m => m.value === p.method)?.label ?? p.method}{p.reference && ` — ${p.reference}`}</p><p className="text-xs text-slate-600">Periodo: {formatBrDate(p.periodStart)} a {formatBrDate(p.periodEnd)}</p>{p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Ver comprovante</a>}</div><span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span></div>
+              <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl"><div><div className="flex items-center gap-2"><p className="text-sm text-white">{formatBrDate(p.date)}</p>{p.plan && <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[p.plan] ?? p.plan}</span>}</div><p className="text-xs text-slate-500">{PAYMENT_METHODS.find(m => m.value === p.method)?.label ?? p.method}{p.reference && ` — ${p.reference}`}</p><p className="text-xs text-slate-600">Periodo: {formatBrDate(p.periodStart)} a {formatBrDate(p.periodEnd)}</p>{p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Ver comprovante</a>}</div><span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span></div>
             ))}</div>
           )}
           <div className="mt-6"><button onClick={() => setShowPaymentHistory(false)} className="w-full px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Fechar</button></div>
