@@ -2,7 +2,7 @@
 ## Documento Mestre do Projeto · Single Source of Truth
 
 > **Versão:** 0.6.1  
-> **Última atualização:** 03/04/2026 — registrar issues #106-#119 nos milestones, fechar #19  
+> **Última atualização:** 03/04/2026 — fix #89 v1.22.1, DEC-053 #52 Prop Firms, fechar #66/#89  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -112,7 +112,7 @@ gh pr create --title "..." --body "..."
 ### v1.1.0 — Espelho Self-Service
 **Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
 **Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
-**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (16 issues)
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (15 issues)
 
 Issues:
 - `#118` arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período persistente
@@ -125,7 +125,6 @@ Issues:
 - `#93`  feat: Order Import v1.1 — Modo Criação
 - `#91`  debt: Mentor editar feedback já enviado
 - `#90`  fix: Screen flicker CSV staging activation
-- `#89`  fix: Aluno não consegue deletar plano
 - `#64`  refactor: Dashboard Aluno — Refatorar tabela SWOT
 - `#55`  debt: DebugBadge duplo no ComplianceConfigPage embedded
 - `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
