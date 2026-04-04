@@ -23,6 +23,7 @@ import OrderValidationReport from '../components/OrderImport/OrderValidationRepo
 import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
+import GhostOperationsPanel from '../components/OrderImport/GhostOperationsPanel';
 
 import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -32,6 +33,8 @@ import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis'
 import { correlateOrders } from '../utils/orderCorrelation';
 import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
 import { validateKPIs } from '../utils/kpiValidation';
+import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
+import { createTrade } from '../utils/tradeGateway';
 
 // ============================================
 // STEPS
@@ -64,7 +67,7 @@ const STEP_LABELS = {
  * @param {Object} props.orderStaging — hook useOrderStaging
  * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
  */
-const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck }) => {
+const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext }) => {
   // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
 
@@ -84,6 +87,9 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
+
+  // Modo Criação (V1.1a — issue #93)
+  const [ghostCreationData, setGhostCreationData] = useState(null);
 
   // UI
   const [progress, setProgress] = useState('');
@@ -226,6 +232,16 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         });
       }
 
+      // 4. Modo Criação: identificar operações ghost (V1.1a — issue #93)
+      if (corrStats.ghost > 0 && reconstructedOps.length > 0) {
+        setProgress('Identificando operações sem trade...');
+        const ghostOps = identifyGhostOperations(reconstructedOps, correlations);
+        if (ghostOps.length > 0) {
+          const batchData = prepareBatchCreation(ghostOps, selectedPlanId, planTrades, batchId);
+          setGhostCreationData(batchData);
+        }
+      }
+
       setStep(STEPS.DONE);
       setProgress('');
     } catch (err) {
@@ -237,7 +253,32 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck]);
+  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck, reconstructedOps]);
+
+  // ============================================
+  // MODO CRIAÇÃO: criar trades a partir de operações ghost (V1.1a)
+  // ============================================
+  const handleCreateGhostTrades = useCallback(async (tradeDataArray) => {
+    if (!userContext?.uid || !tradeDataArray?.length) {
+      return { success: [], failed: [{ error: 'Contexto de usuário ou dados inválidos' }] };
+    }
+
+    const success = [];
+    const failed = [];
+
+    for (const tradeData of tradeDataArray) {
+      try {
+        const newTrade = await createTrade(tradeData, userContext);
+        success.push({ id: newTrade.id, ticker: newTrade.ticker });
+      } catch (err) {
+        console.error('[OrderImportPage] Erro criando trade:', err);
+        failed.push({ ticker: tradeData.ticker, error: err.message });
+      }
+    }
+
+    console.log(`[OrderImportPage] Modo Criação: ${success.length} criados, ${failed.length} falhas`);
+    return { success, failed };
+  }, [userContext]);
 
   // ============================================
   // RENDER
@@ -413,6 +454,16 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
               {analysisResult && (
                 <CrossCheckDashboard analysis={analysisResult} />
+              )}
+
+              {/* Modo Criação: operações ghost → criar trades (V1.1a) */}
+              {ghostCreationData && (
+                <GhostOperationsPanel
+                  ghostOperations={ghostCreationData.toCreate.map(t => t.operation).concat(ghostCreationData.duplicates.map(d => d.operation))}
+                  toCreate={ghostCreationData.toCreate}
+                  duplicates={ghostCreationData.duplicates}
+                  onCreateTrades={handleCreateGhostTrades}
+                />
               )}
 
               <div className="flex justify-end pt-2">
