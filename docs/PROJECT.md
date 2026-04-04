@@ -1,7 +1,7 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.6.0  
+> **Versão:** 0.6.1  
 > **Última atualização:** 03/04/2026 — registrar issues #106-#119 nos milestones, fechar #19  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
@@ -25,6 +25,7 @@ Este documento segue versionamento semântico:
 | 0.5.0 | 03/04/2026 | Dashboard-Aluno MVP | DEC-047 a DEC-052, CHUNK-13 a 16, INV-14, protocolo chunks |
 | 0.5.1 | 03/04/2026 | Registro de issues | Issues #106-#119 nos milestones, #3 reescrito, #19 fechado |
 | 0.6.0 | 03/04/2026 | Revisão #52 Prop Firms | DEC-053, escopo #52 atualizado com regras Apex Mar/2026 |
+| 0.6.1 | 03/04/2026 | Fix #89 + v1.22.1 | firestore.rules DEC-025 plans, índice movements, #120 aberto, #66 fechado |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -111,7 +112,7 @@ gh pr create --title "..." --body "..."
 ### v1.1.0 — Espelho Self-Service
 **Foco:** Dois tiers (self-service + Alpha), rename externo, Node.js migration, stability fixes
 **Prioridade:** CRÍTICA — migração do grupo ativo (48 alunos) em andamento
-**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (17 issues)
+**GitHub Milestone:** `v1.1.0 - Espelho Self-Service` (16 issues)
 
 Issues:
 - `#118` arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período persistente
@@ -125,7 +126,6 @@ Issues:
 - `#91`  debt: Mentor editar feedback já enviado
 - `#90`  fix: Screen flicker CSV staging activation
 - `#89`  fix: Aluno não consegue deletar plano
-- `#66`  feat: Curva de Patrimônio por moeda + curva EV planejado
 - `#64`  refactor: Dashboard Aluno — Refatorar tabela SWOT
 - `#55`  debt: DebugBadge duplo no ComplianceConfigPage embedded
 - `#52`  epic: Gestão de Contas em Mesas Proprietárias (Prop Firms)
@@ -701,6 +701,14 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.22.1] - 03/04/2026
+**Issue:** #89 (fix: Aluno não consegue deletar próprio plano)
+#### Corrigido
+- `firestore.rules`: rule de `plans/{planId}` simplificada para `isAuthenticated()` (DEC-025)
+- `firestore.indexes.json`: índice composto `movements` (accountId + date + createdAt) adicionado — query do `useMovements` falhava silenciosamente
+#### Descoberto durante investigação
+- #120: `deletePlan` cascade não recalcula `currentBalance` (race condition em CFs) — issue aberto
 
 ### [docs] - 03/04/2026
 **Sessão:** Design Dashboard-Aluno MVP + backlog de issues + protocolo de chunks
