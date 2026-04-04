@@ -86,7 +86,8 @@ const SubscriptionsPage = () => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' });
-  const [newForm, setNewForm] = useState({ studentId: '', type: 'paid', plan: 'alpha', amount: '497', currency: 'BRL', startDate: new Date().toISOString().split('T')[0], gracePeriodDays: '5', trialDays: '30', notes: '' });
+  const [receiptFile, setReceiptFile] = useState(null); // { file: File, preview: string }
+  const [newForm, setNewForm] = useState({ studentId: '', type: 'paid', plan: 'alpha', amount: '497', currency: 'BRL', startDate: new Date().toISOString().split('T')[0], gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' });
 
   // ── Filtered data ──
 
@@ -110,7 +111,7 @@ const SubscriptionsPage = () => {
 
   // ── Handlers ──
 
-  const handleRegisterPayment = (sub) => { setSelectedSubscription(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' }); setShowPaymentModal(true); };
+  const handleRegisterPayment = (sub) => { setSelectedSubscription(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: new Date().toISOString().split('T')[0], method: 'pix', reference: '' }); setReceiptFile(null); setShowPaymentModal(true); };
   const handleRenew = (sub) => { setSelectedSubscription(sub); setShowRenewModal(true); };
 
   const handleViewPayments = useCallback(async (sub) => {
@@ -121,7 +122,7 @@ const SubscriptionsPage = () => {
   const handleSubmitPayment = useCallback(async () => {
     if (!selectedSubscription || actionLoading) return;
     setActionLoading(true);
-    try { await registerPayment(selectedSubscription, paymentForm); setShowPaymentModal(false); setSelectedSubscription(null); } catch (err) { console.error('[SubscriptionsPage] Erro pagamento:', err); } finally { setActionLoading(false); }
+    try { await registerPayment(selectedSubscription, paymentForm, receiptFile?.file ?? null); setShowPaymentModal(false); setSelectedSubscription(null); setReceiptFile(null); } catch (err) { console.error('[SubscriptionsPage] Erro pagamento:', err); } finally { setActionLoading(false); }
   }, [selectedSubscription, paymentForm, registerPayment, actionLoading]);
 
   const handleConfirmRenew = useCallback(async () => {
@@ -130,7 +131,7 @@ const SubscriptionsPage = () => {
     try { await renewSubscription(selectedSubscription); setShowRenewModal(false); setSelectedSubscription(null); } catch (err) { console.error('[SubscriptionsPage] Erro renovar:', err); } finally { setActionLoading(false); }
   }, [selectedSubscription, renewSubscription, actionLoading]);
 
-  const handleOpenNewModal = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '497', currency: 'BRL', startDate: new Date().toISOString().split('T')[0], gracePeriodDays: '5', trialDays: '30', notes: '' }); setShowNewModal(true); };
+  const handleOpenNewModal = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '497', currency: 'BRL', startDate: new Date().toISOString().split('T')[0], gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setShowNewModal(true); };
 
   const handleCreateSubscription = useCallback(async () => {
     if (!newForm.studentId || actionLoading) return;
@@ -141,7 +142,7 @@ const SubscriptionsPage = () => {
         const end = new Date(newForm.startDate); end.setDate(end.getDate() + (parseInt(newForm.trialDays) || 30));
         data.trialEndsAt = end.toISOString().split('T')[0];
       } else {
-        data.amount = newForm.amount; data.currency = newForm.currency; data.gracePeriodDays = newForm.gracePeriodDays;
+        data.amount = newForm.amount; data.currency = newForm.currency; data.gracePeriodDays = newForm.gracePeriodDays; data.billingPeriodMonths = newForm.billingPeriodMonths;
       }
       await addSubscription(data); setShowNewModal(false);
     } catch (err) { console.error('[SubscriptionsPage] Erro criar:', err); } finally { setActionLoading(false); }
@@ -253,7 +254,54 @@ const SubscriptionsPage = () => {
             <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             <div><label className="block text-sm text-slate-400 mb-1">Data do pagamento</label><input type="date" value={paymentForm.date} onChange={(e) => setPaymentForm(f => ({ ...f, date: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
-            <div><label className="block text-sm text-slate-400 mb-1">Referencia / Comprovante</label><input type="text" value={paymentForm.reference} onChange={(e) => setPaymentForm(f => ({ ...f, reference: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="PIX-20260404-001" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Referencia</label><input type="text" value={paymentForm.reference} onChange={(e) => setPaymentForm(f => ({ ...f, reference: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="PIX-20260404-001" /></div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Comprovante (imagem ou PDF)</label>
+              <div
+                className="w-full px-3 py-3 bg-slate-800/50 border border-slate-700/50 border-dashed rounded-xl text-sm transition-colors focus-within:border-blue-500/50 cursor-pointer"
+                onPaste={(e) => {
+                  const items = e.clipboardData?.items;
+                  if (!items) return;
+                  for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                      e.preventDefault();
+                      const file = item.getAsFile();
+                      if (!file || file.size > 5 * 1024 * 1024) { alert('Arquivo muito grande. Maximo 5MB.'); return; }
+                      setReceiptFile({ file, preview: URL.createObjectURL(file) });
+                      return;
+                    }
+                  }
+                }}
+                onClick={() => document.getElementById('receipt-file-input')?.click()}
+                tabIndex={0}
+              >
+                <input
+                  id="receipt-file-input"
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) { alert('Arquivo muito grande. Maximo 5MB.'); return; }
+                    const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+                    setReceiptFile({ file, preview });
+                  }}
+                />
+                {receiptFile ? (
+                  <div className="flex items-center gap-3">
+                    {receiptFile.preview && <img src={receiptFile.preview} alt="Preview" className="max-h-16 rounded-lg border border-slate-700" />}
+                    <div className="flex-1">
+                      <p className="text-white text-sm">{receiptFile.file.name}</p>
+                      <p className="text-slate-500 text-xs">{(receiptFile.file.size / 1024).toFixed(0)} KB</p>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setReceiptFile(null); }} className="text-slate-400 hover:text-red-400"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <p className="text-slate-500 text-center">Clique para selecionar ou cole (Ctrl+V) uma imagem</p>
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex gap-3 mt-6"><button onClick={() => setShowPaymentModal(false)} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSubmitPayment} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Confirmar</button></div>
         </div></div>
@@ -277,7 +325,7 @@ const SubscriptionsPage = () => {
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSubscription.studentName}</p><p className="text-xs text-slate-400">{PLAN_LABELS[selectedSubscription.plan]} — Desde {formatBrDate(selectedSubscription.startDate)}</p></div>
           {loadingPayments ? <div className="py-8 flex justify-center"><Loader2 className="w-6 h-6 text-blue-400 animate-spin" /></div> : paymentHistory.length === 0 ? <div className="py-8 text-center text-slate-500 text-sm">Nenhum pagamento registrado</div> : (
             <div className="space-y-2 max-h-80 overflow-y-auto">{paymentHistory.map(p => (
-              <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl"><div><p className="text-sm text-white">{formatBrDate(p.date)}</p><p className="text-xs text-slate-500">{PAYMENT_METHODS.find(m => m.value === p.method)?.label ?? p.method}{p.reference && ` — ${p.reference}`}</p><p className="text-xs text-slate-600">Periodo: {formatBrDate(p.periodStart)} a {formatBrDate(p.periodEnd)}</p></div><span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span></div>
+              <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800/30 rounded-xl"><div><p className="text-sm text-white">{formatBrDate(p.date)}</p><p className="text-xs text-slate-500">{PAYMENT_METHODS.find(m => m.value === p.method)?.label ?? p.method}{p.reference && ` — ${p.reference}`}</p><p className="text-xs text-slate-600">Periodo: {formatBrDate(p.periodStart)} a {formatBrDate(p.periodEnd)}</p>{p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Ver comprovante</a>}</div><span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span></div>
             ))}</div>
           )}
           <div className="mt-6"><button onClick={() => setShowPaymentHistory(false)} className="w-full px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Fechar</button></div>
@@ -318,7 +366,10 @@ const SubscriptionsPage = () => {
                 <div><label className="block text-sm text-slate-400 mb-1">Valor mensal</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
                 <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={newForm.currency} onChange={(e) => setNewForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
               </div>
-              <div><label className="block text-sm text-slate-400 mb-1">Grace period (dias)</label><input type="number" value={newForm.gracePeriodDays} onChange={(e) => setNewForm(f => ({ ...f, gracePeriodDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-sm text-slate-400 mb-1">Periodicidade (meses)</label><select value={newForm.billingPeriodMonths} onChange={(e) => setNewForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Grace period (dias)</label><input type="number" value={newForm.gracePeriodDays} onChange={(e) => setNewForm(f => ({ ...f, gracePeriodDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              </div>
             </>}
             {/* Campos trial */}
             {newForm.type === 'trial' && <div><label className="block text-sm text-slate-400 mb-1">Duracao do trial (dias)</label><input type="number" value={newForm.trialDays} onChange={(e) => setNewForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /><p className="text-xs text-slate-600 mt-1">Trial expira em {(() => { const d = new Date(newForm.startDate); d.setDate(d.getDate() + (parseInt(newForm.trialDays) || 30)); return formatBrDate(d); })()}</p></div>}

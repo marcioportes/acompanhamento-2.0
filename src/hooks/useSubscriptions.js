@@ -14,7 +14,8 @@ import {
   collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, doc,
   getDocs, serverTimestamp, orderBy, Timestamp
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -193,6 +194,7 @@ export const useSubscriptions = () => {
       newSub.amount = parseFloat(data.amount) || 0;
       newSub.currency = data.currency ?? 'BRL';
       newSub.gracePeriodDays = parseInt(data.gracePeriodDays) || 5;
+      newSub.billingPeriodMonths = parseInt(data.billingPeriodMonths) || 1;
     }
 
     // Escrita na subcollection: students/{studentId}/subscriptions
@@ -231,14 +233,33 @@ export const useSubscriptions = () => {
 
   // ── Registrar pagamento ──
 
-  const registerPayment = useCallback(async (sub, paymentData) => {
+  // ── Upload de recibo (imagem ou PDF) ──
+
+  const uploadReceipt = useCallback(async (file, studentId, subscriptionId) => {
+    if (!file) return null;
+    const ext = file.name.split('.').pop();
+    const path = `subscriptions/${studentId}/${subscriptionId}/receipt_${Date.now()}.${ext}`;
+    const snap = await uploadBytes(ref(storage, path), file);
+    return await getDownloadURL(snap.ref);
+  }, []);
+
+  // ── Registrar pagamento ──
+
+  const registerPayment = useCallback(async (sub, paymentData, receiptFile = null) => {
     if (!user) throw new Error('Usuário não autenticado');
+
+    // Upload do recibo se fornecido
+    let receiptUrl = '';
+    if (receiptFile) {
+      receiptUrl = await uploadReceipt(receiptFile, sub.studentId, sub.id);
+    }
 
     // sub deve ter studentId, id, amount, currency, renewalDate
     const paymentRef = collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments');
     const paymentDate = new Date(paymentData.date);
+    const billingMonths = sub.billingPeriodMonths ?? 1;
     const periodEnd = new Date(paymentDate);
-    periodEnd.setDate(periodEnd.getDate() + 30);
+    periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
 
     await addDoc(paymentRef, {
       date: Timestamp.fromDate(paymentDate),
@@ -246,6 +267,7 @@ export const useSubscriptions = () => {
       currency: paymentData.currency ?? sub.currency ?? 'BRL',
       method: paymentData.method ?? 'pix',
       reference: paymentData.reference ?? '',
+      receiptUrl,
       periodStart: Timestamp.fromDate(paymentDate),
       periodEnd: Timestamp.fromDate(periodEnd),
       registeredBy: user.uid,
@@ -254,7 +276,7 @@ export const useSubscriptions = () => {
 
     const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
     const newRenewalDate = new Date(sub.renewalDate ?? paymentDate);
-    newRenewalDate.setDate(newRenewalDate.getDate() + 30);
+    newRenewalDate.setMonth(newRenewalDate.getMonth() + billingMonths);
 
     await updateDoc(subRef, {
       lastPaymentDate: Timestamp.fromDate(paymentDate),
