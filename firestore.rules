@@ -106,15 +106,11 @@ service cloud.firestore {
       );
     }
 
-    // PLANS — DEC-024: dados do aluno, aluno tem acesso total
+    // PLANS — DEC-025: dados do aluno, auth != null (fix #89)
     match /plans/{planId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        isMentor() || 
-        isOwner(resource.data.studentId) ||
-        (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
-      );
+      allow update, delete: if isAuthenticated();
     }
 
     // ==================================================
