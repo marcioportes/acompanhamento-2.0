@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.8.0  
-> **Última atualização:** 05/04/2026 — INV-15/16, DT-030/031, mapa CFs, convenções bash  
+> **Versão:** 0.9.0  
+> **Última atualização:** 05/04/2026 — CHUNK-17 Prop Firm Engine, lock #52  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -30,6 +30,7 @@ Este documento segue versionamento semântico:
 | 0.6.3 | 04/04/2026 | Limpeza milestones | Fechar #44/#55/#56/#117, DT-007 RESOLVIDO, contagens atualizadas |
 | 0.7.0 | 05/04/2026 | Controle de Assinaturas | #94 v1.23.0, DEC-055/DEC-056, CHUNK-16 liberado |
 | 0.8.0 | 05/04/2026 | Revisão documental | INV-15/16, DT-030/031, mapa CFs atualizado, convenções bash, #94 fechado |
+| 0.9.0 | 05/04/2026 | CHUNK-17 + lock #52 | CHUNK-17 Prop Firm Engine criado no registry, lock registrado para #52 |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -563,6 +564,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
 | CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
 | CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor redesenhado | `TorreDeControle`, `ReviewManager` | AVAILABLE |
+| CHUNK-17 | Prop Firm Engine | Gestão de contas prop, engine de drawdown, templates, plano de ataque | `PropFirmEngine/*`, `propFirmTemplates` collection, `useAccounts` (campo propFirm) | LOCKED |
 
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
@@ -570,6 +572,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
+| CHUNK-17 | #52 | `feature/issue-052-prop-firms` | 05/04/2026 | Claude Code |
 
 ### 6.4 Checklist de Check-Out
 

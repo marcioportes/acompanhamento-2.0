@@ -291,6 +291,7 @@ students/{id}/subscriptions → type, status, accessTier, payments subcollection
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido | `OnboardingWizard`, `kellyCalculator`, `planSuggester` |
 | CHUNK-15 | Swing Trade | Módulo carteira, indicadores portfólio, stress test | `PortfolioManager`, `portfolioIndicators` |
 | CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor | `TorreDeControle`, `ReviewManager` |
+| CHUNK-17 | Prop Firm Engine | Gestão de contas prop, engine de drawdown, templates, plano de ataque | `PropFirmEngine/*`, `propFirmTemplates` collection |
 
 ---
 
