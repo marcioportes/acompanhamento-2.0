@@ -2,8 +2,8 @@
 > **Branch:** `feature/issue-094-controle-assinaturas`  
 > **Milestone:** v1.2.0 — Mentor Cockpit  
 > **Aberto em:** 04/04/2026  
-> **Status:** 🔵 Em andamento  
-> **Versao entregue:** —
+> **Status:** 🟢 Em entrega  
+> **Versao entregue:** v1.23.0
 
 ---
 
@@ -239,16 +239,20 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 
 ## 5. ENCERRAMENTO
 
-**Status:** Refactor em andamento (DEC-055/DEC-056)
+**Status:** Em entrega — aguardando PR merge
+**Versao:** v1.23.0
 
 **Checklist final:**
-- [ ] Acceptance criteria atendidos
-- [ ] Testes passando
-- [ ] PROJECT.md atualizado (INV-15, DEC-055, DEC-056, CHANGELOG)
+- [x] Acceptance criteria atendidos
+- [x] Testes passando (52/52)
+- [x] PROJECT.md atualizado (DEC-055, DEC-056, CHANGELOG v1.23.0)
+- [x] version.js atualizado (v1.23.0, build 20260405)
+- [x] DebugBadge presente (SubscriptionsPage)
+- [x] Deploys realizados (firestore:rules + storage)
+- [x] Locks de chunks liberados (CHUNK-16 → AVAILABLE)
 - [ ] PR aberto e mergeado
 - [ ] Issue fechado no GitHub
 - [ ] Branch deletada
-- [ ] Locks de chunks liberados no registry (secao 6.3)
 
 ## 6. CHUNKS
 
