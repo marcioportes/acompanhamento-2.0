@@ -47,6 +47,62 @@ const daysUntil = (date) => {
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
+// INV-06: converte ISO (YYYY-MM-DD) para BR (DD/MM/YYYY) e vice-versa
+const isoToBr = (iso) => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+};
+const brToIso = (br) => {
+  if (!br || br.length !== 10) return '';
+  const [d, m, y] = br.split('/');
+  if (!d || !m || !y) return '';
+  return `${y}-${m}-${d}`;
+};
+
+// Input de data com máscara DD/MM/YYYY (INV-06)
+const DateInputBR = ({ value, onChange, className, ...props }) => {
+  // value é ISO internamente, exibe BR
+  const displayValue = isoToBr(value);
+
+  const handleChange = (e) => {
+    let raw = e.target.value.replace(/[^\d]/g, '');
+    if (raw.length > 8) raw = raw.slice(0, 8);
+    let formatted = '';
+    if (raw.length > 0) formatted += raw.slice(0, 2);
+    if (raw.length > 2) formatted += '/' + raw.slice(2, 4);
+    if (raw.length > 4) formatted += '/' + raw.slice(4, 8);
+    e.target.value = formatted;
+
+    if (formatted.length === 10) {
+      const iso = brToIso(formatted);
+      if (iso && !isNaN(new Date(iso + 'T12:00:00Z').getTime())) {
+        onChange(iso);
+      }
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      maxLength={10}
+      placeholder="DD/MM/AAAA"
+      defaultValue={displayValue}
+      key={value}
+      onBlur={(e) => {
+        const iso = brToIso(e.target.value);
+        if (iso && !isNaN(new Date(iso + 'T12:00:00Z').getTime())) {
+          onChange(iso);
+        }
+      }}
+      onChange={handleChange}
+      className={className}
+      {...props}
+    />
+  );
+};
+
 // ── Config ───────────────────────────────────────────────
 
 const STATUS_CONFIG = {
@@ -350,7 +406,7 @@ const SubscriptionsPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Data</label><input type="date" value={paymentForm.date} onChange={(e) => setPaymentForm(f => ({ ...f, date: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Data</label><DateInputBR value={paymentForm.date} onChange={(iso) => setPaymentForm(f => ({ ...f, date: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
@@ -407,7 +463,7 @@ const SubscriptionsPage = () => {
               </div>
             </div>
             <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="">Selecione...</option><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
-            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><input type="date" value={newForm.startDate} onChange={(e) => setNewForm(f => ({ ...f, startDate: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             {newForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" placeholder="0,00" /></div>
