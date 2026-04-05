@@ -169,7 +169,9 @@ export const useSubscriptions = () => {
     if (!data.studentId) throw new Error('studentId obrigatório');
 
     const isTrial = data.type === 'trial';
-    const startDate = new Date(data.startDate ?? new Date());
+    // Força T12:00:00Z para evitar shift de fuso (BR = UTC-3)
+    const startDateStr = data.startDate ?? new Date().toISOString().split('T')[0];
+    const startDate = new Date(startDateStr + 'T12:00:00Z');
 
     // Upload do recibo se fornecido
     let receiptUrl = '';
@@ -290,7 +292,7 @@ export const useSubscriptions = () => {
 
     // sub deve ter studentId, id, amount, currency, renewalDate
     const paymentRef = collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments');
-    const paymentDate = new Date(paymentData.date);
+    const paymentDate = new Date(paymentData.date + 'T12:00:00Z');
     const billingMonths = sub.billingPeriodMonths ?? 1;
     const periodEnd = new Date(paymentDate);
     periodEnd.setMonth(periodEnd.getMonth() + billingMonths);

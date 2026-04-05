@@ -42,6 +42,15 @@ const daysUntil = (date) => {
 };
 
 const todayStr = () => new Date().toISOString().split('T')[0];
+const dateToIso = (d) => {
+  if (!d) return '';
+  const date = d instanceof Date ? d : new Date(d);
+  if (isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 // INV-06: converte ISO (YYYY-MM-DD) para BR (DD/MM/YYYY) e vice-versa
 const isoToBr = (iso) => {
@@ -238,7 +247,7 @@ const SubscriptionsPage = () => {
   // ── Handlers ──
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
-  const openEdit = (sub) => { setSelectedSub(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), notes: sub.notes ?? '' }); setModal('edit'); };
+  const openEdit = (sub) => { setSelectedSub(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), notes: sub.notes ?? '' }); setModal('edit'); };
   const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
   const openHistory = useCallback(async (sub) => {
@@ -273,10 +282,13 @@ const SubscriptionsPage = () => {
     if (!selectedSub || actionLoading) return;
     setActionLoading(true);
     try {
-      await updateSubscription(selectedSub, {
+      const updates = {
         plan: editForm.plan, amount: parseFloat(editForm.amount) || 0, currency: editForm.currency,
         billingPeriodMonths: parseInt(editForm.billingPeriodMonths) || 1, gracePeriodDays: parseInt(editForm.gracePeriodDays) || 5, notes: editForm.notes,
-      });
+      };
+      if (editForm.startDate) updates.startDate = editForm.startDate + 'T12:00:00Z';
+      if (editForm.renewalDate) { updates.renewalDate = editForm.renewalDate + 'T12:00:00Z'; updates.endDate = editForm.renewalDate + 'T12:00:00Z'; }
+      await updateSubscription(selectedSub, updates);
       closeModal();
     } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [selectedSub, editForm, updateSubscription, actionLoading]);
@@ -514,6 +526,10 @@ const SubscriptionsPage = () => {
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSub.studentName}</p><p className="text-xs text-slate-400">{selectedSub.studentEmail}</p></div>
           <div className="space-y-4">
             <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-sm text-slate-400 mb-1">Data inicio</label><DateInputBR id="edit-start" value={editForm.startDate} onChange={(iso) => setEditForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Vencimento</label><DateInputBR id="edit-renewal" value={editForm.renewalDate} onChange={(iso) => setEditForm(f => ({ ...f, renewalDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            </div>
             {selectedSub.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
