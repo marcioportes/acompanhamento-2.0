@@ -1154,3 +1154,8 @@ exports.classifyOpenResponse = require("./assessment/classifyOpenResponse");
 exports.generateProbingQuestions = require("./assessment/generateProbingQuestions");
 exports.analyzeProbingResponse = require("./assessment/analyzeProbingResponse");
 exports.generateAssessmentReport = require("./assessment/generateAssessmentReport");
+
+// ============================================
+// SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)
+// ============================================
+exports.checkSubscriptions = require("./subscriptions/checkSubscriptions");

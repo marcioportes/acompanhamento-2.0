@@ -25,6 +25,7 @@ import StudentsManagement from './pages/StudentsManagement';
 import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentOnboardingPage from './pages/StudentOnboardingPage';
+import SubscriptionsPage from './pages/SubscriptionsPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -256,6 +257,7 @@ const AppContent = () => {
       return <StudentsManagement onViewAsStudent={handleViewAsStudent} />;
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
+    if (currentView === 'subscriptions' && isMentor()) return <SubscriptionsPage />;
 
     // Student Onboarding — acessível pelo mentor via viewingAsStudent
     if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {

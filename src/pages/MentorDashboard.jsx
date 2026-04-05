@@ -28,6 +28,7 @@ import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
 import MentorAlerts from '../components/MentorAlerts';
+import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
@@ -287,11 +288,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           </div>
           {/* Alertas Emocionais (Fase 1.5.0) */}
           <div className="mb-8">
-            <MentorAlerts 
-              students={students} 
-              getTradesByStudent={getTradesByStudent} 
-              onViewStudent={setSelectedStudent} 
+            <MentorAlerts
+              students={students}
+              getTradesByStudent={getTradesByStudent}
+              onViewStudent={setSelectedStudent}
             />
+          </div>
+          {/* Card Assinaturas (issue #094) */}
+          <div className="mb-8 max-w-sm">
+            <SubscriptionSummaryCard onNavigate={() => onViewChange('subscriptions')} />
           </div>
           <div className="glass-card">
             <TradesList trades={allTrades.slice(0, 20)} plans={plans} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
