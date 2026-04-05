@@ -57,25 +57,19 @@ const brToIso = (br) => {
 };
 
 // Input de data DD/MM/YYYY com calendário nativo (INV-06)
-// Usa type="date" invisível + display BR formatado
 const DateInputBR = ({ value, onChange, className, ...props }) => {
   return (
     <div className="relative">
       <input
-        type="text"
-        readOnly
-        value={isoToBr(value)}
-        placeholder="DD/MM/AAAA"
-        className={className + ' cursor-pointer pr-10'}
-        onClick={(e) => e.target.nextElementSibling?.showPicker?.()}
-        {...props}
-      />
-      <input
         type="date"
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 opacity-0 cursor-pointer"
+        className={className + ' opacity-0 absolute inset-0 z-10 cursor-pointer'}
       />
+      <div className={className + ' pointer-events-none flex items-center justify-between'}>
+        <span className={value ? 'text-white' : 'text-slate-500'}>{value ? isoToBr(value) : 'DD/MM/AAAA'}</span>
+        <span className="text-slate-500 text-xs">📅</span>
+      </div>
     </div>
   );
 };
