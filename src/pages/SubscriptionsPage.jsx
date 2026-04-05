@@ -27,15 +27,11 @@ const formatCurrency = (value, currency = 'BRL') => {
 };
 
 // INV-06: Formato brasileiro DD/MM/YYYY
-// Usa UTC para evitar shift de fuso (mesmo padrão do AccountsPage)
 const formatBrDate = (date) => {
   if (!date) return '—';
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d.getTime())) return '—';
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const year = d.getUTCFullYear();
-  return `${day}/${month}/${year}`;
+  return d.toLocaleDateString('pt-BR');
 };
 
 const daysUntil = (date) => {
