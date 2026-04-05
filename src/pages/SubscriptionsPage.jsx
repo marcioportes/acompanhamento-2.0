@@ -12,7 +12,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import {
-  CreditCard, Search, Plus, RefreshCw, Receipt,
+  CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
   DollarSign, Loader2, UserPlus, FlaskConical, Trash2, Edit2
 } from 'lucide-react';
@@ -116,7 +116,7 @@ const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
 const SubscriptionsPage = () => {
   const {
     subscriptions, studentsWithoutSubscription, loading, summary,
-    addSubscription, updateSubscription, deleteSubscription, registerPayment, renewSubscription, getPayments,
+    addSubscription, updateSubscription, deleteSubscription, registerPayment, getPayments,
   } = useSubscriptions();
 
   const [statusFilter, setStatusFilter] = useState('all');
@@ -157,7 +157,6 @@ const SubscriptionsPage = () => {
   // ── Handlers ──
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
-  const openRenew = (sub) => { setSelectedSub(sub); setModal('renew'); };
   const openEdit = (sub) => { setSelectedSub(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), notes: sub.notes ?? '' }); setModal('edit'); };
   const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: '', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
@@ -188,11 +187,6 @@ const SubscriptionsPage = () => {
     } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [selectedSub, paymentForm, registerPayment, updateSubscription, receiptFile, actionLoading]);
 
-  const handleConfirmRenew = useCallback(async () => {
-    if (!selectedSub || actionLoading) return;
-    setActionLoading(true);
-    try { await renewSubscription(selectedSub); closeModal(); } catch (err) { console.error(err); } finally { setActionLoading(false); }
-  }, [selectedSub, renewSubscription, actionLoading]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!selectedSub || actionLoading) return;
@@ -330,7 +324,7 @@ const SubscriptionsPage = () => {
                       <div className="flex items-center justify-end gap-1">
                         {sub.type === 'paid' && <button onClick={() => openHistory(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
-                        {sub.type === 'paid' && ['active','overdue','paused'].includes(sub.status) && <button onClick={() => openRenew(sub)} className="group/btn relative p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Renovar</span></button>}
+
                         <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar</span></button>
                         <button onClick={() => handleDelete(sub)} className="group/btn relative p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Excluir</span></button>
                       </div>
@@ -365,19 +359,6 @@ const SubscriptionsPage = () => {
             <ReceiptUpload receiptFile={receiptFile} setReceiptFile={setReceiptFile} />
           </div>
           <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSubmitPayment} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Confirmar</button></div>
-        </div></div>
-      )}
-
-      {/* ── Modal: Renovar ── */}
-      {modal === 'renew' && selectedSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
-          <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white">Renovar Assinatura</h3><button onClick={closeModal} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
-          <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSub.studentName}</p><p className="text-xs text-slate-400">{PLAN_LABELS[selectedSub.plan]} — {BILLING_LABELS[selectedSub.billingPeriodMonths ?? 1]}</p></div>
-          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl mb-6">
-            <p className="text-sm text-blue-300">Vencimento atual: <strong>{formatBrDate(selectedSub.renewalDate)}</strong></p>
-            <p className="text-xs text-blue-400/60 mt-2">Novo vencimento: {(() => { const d = new Date(selectedSub.renewalDate); d.setDate(d.getDate() + 30); return formatBrDate(d); })()}</p>
-          </div>
-          <div className="flex gap-3"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleConfirmRenew} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Renovar</button></div>
         </div></div>
       )}
 
