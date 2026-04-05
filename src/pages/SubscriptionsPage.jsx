@@ -195,7 +195,7 @@ const SubscriptionsPage = () => {
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
   const openEdit = (sub) => { setSelectedSub(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), notes: sub.notes ?? '' }); setModal('edit'); };
-  const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: '', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
+  const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
   const openHistory = useCallback(async (sub) => {
     setSelectedSub(sub); setModal('history'); setLoadingPayments(true);
@@ -443,7 +443,7 @@ const SubscriptionsPage = () => {
                 ))}
               </div>
             </div>
-            <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="">Selecione...</option><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
             <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             {newForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
