@@ -151,9 +151,9 @@ const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observati
 
         {/* Entry → Exit times */}
         <span className="text-[10px] text-slate-500 ml-1">
-          {operation.entryTime ? new Date(operation.entryTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.entryTime ? new Date(operation.entryTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
           {' → '}
-          {operation.exitTime ? new Date(operation.exitTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.exitTime ? new Date(operation.exitTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
         </span>
 
         {operation.duration && (

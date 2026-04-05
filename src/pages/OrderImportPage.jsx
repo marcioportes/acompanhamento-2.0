@@ -35,6 +35,8 @@ import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
 import { validateKPIs } from '../utils/kpiValidation';
 import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
 import { createTrade } from '../utils/tradeGateway';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // ============================================
 // STEPS
@@ -237,7 +239,30 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         setProgress('Identificando operações sem trade...');
         const ghostOps = identifyGhostOperations(reconstructedOps, correlations);
         if (ghostOps.length > 0) {
-          const batchData = prepareBatchCreation(ghostOps, selectedPlanId, planTrades, batchId);
+          // Resolver tickerRules do master data para cálculo correto de futuros
+          const instruments = [...new Set(ghostOps.map(op => (op.instrument || '').toUpperCase()))];
+          const tickerRuleMap = {};
+          for (const symbol of instruments) {
+            try {
+              const tickerSnap = await getDocs(
+                query(collection(db, 'tickers'), where('symbol', '==', symbol))
+              );
+              if (!tickerSnap.empty) {
+                const tickerDoc = tickerSnap.docs[0].data();
+                if (tickerDoc.tickSize && tickerDoc.tickValue) {
+                  tickerRuleMap[symbol] = {
+                    tickSize: tickerDoc.tickSize,
+                    tickValue: tickerDoc.tickValue,
+                    pointValue: tickerDoc.pointValue ?? null,
+                  };
+                }
+              }
+            } catch (err) {
+              console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
+            }
+          }
+
+          const batchData = prepareBatchCreation(ghostOps, selectedPlanId, planTrades, batchId, tickerRuleMap);
           setGhostCreationData(batchData);
         }
       }

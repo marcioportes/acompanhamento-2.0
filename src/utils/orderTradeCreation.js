@@ -77,9 +77,10 @@ export function identifyGhostOperations(operations, correlations) {
  * @param {Object} operation — ReconstructedOperation
  * @param {string} planId — ID do plano selecionado
  * @param {string|null} importBatchId — batch ID da importação de ordens
+ * @param {Object|null} tickerRule — { tickSize, tickValue, pointValue } resolvido do master data
  * @returns {Object} tradeData pronto para createTrade
  */
-export function mapOperationToTradeData(operation, planId, importBatchId = null) {
+export function mapOperationToTradeData(operation, planId, importBatchId = null, tickerRule = null) {
   if (!operation || !planId) {
     throw new Error('Operação e planId são obrigatórios');
   }
@@ -129,6 +130,8 @@ export function mapOperationToTradeData(operation, planId, importBatchId = null)
     entryTime: operation.entryTime || null,
     exitTime: operation.exitTime || null,
     stopLoss,
+    // Ticker specs para cálculo correto de result em futuros (tickSize/tickValue/pointValue)
+    tickerRule: tickerRule ?? null,
     // Campos comportamentais pendentes (aluno complementa depois)
     emotionEntry: null,
     emotionExit: null,
@@ -213,16 +216,19 @@ export function checkDuplication(tradeData, existingTrades) {
  * @param {string} planId — ID do plano
  * @param {Object[]} existingTrades — trades existentes do plano
  * @param {string|null} importBatchId — batch ID
+ * @param {Object|null} tickerRuleMap — { [instrument]: { tickSize, tickValue, pointValue } }
  * @returns {{ toCreate: Object[], duplicates: Object[], errors: Object[] }}
  */
-export function prepareBatchCreation(ghostOps, planId, existingTrades, importBatchId = null) {
+export function prepareBatchCreation(ghostOps, planId, existingTrades, importBatchId = null, tickerRuleMap = null) {
   const toCreate = [];
   const duplicates = [];
   const errors = [];
 
   for (const op of ghostOps) {
     try {
-      const tradeData = mapOperationToTradeData(op, planId, importBatchId);
+      const instrument = (op.instrument || '').toUpperCase();
+      const tickerRule = tickerRuleMap?.[instrument] ?? null;
+      const tradeData = mapOperationToTradeData(op, planId, importBatchId, tickerRule);
       const dedup = checkDuplication(tradeData, existingTrades);
 
       if (dedup.isDuplicate) {
