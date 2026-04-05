@@ -60,46 +60,27 @@ const brToIso = (br) => {
   return `${y}-${m}-${d}`;
 };
 
-// Input de data com máscara DD/MM/YYYY (INV-06)
+// Input de data DD/MM/YYYY com calendário nativo (INV-06)
+// Usa type="date" invisível + display BR formatado
 const DateInputBR = ({ value, onChange, className, ...props }) => {
-  // value é ISO internamente, exibe BR
-  const displayValue = isoToBr(value);
-
-  const handleChange = (e) => {
-    let raw = e.target.value.replace(/[^\d]/g, '');
-    if (raw.length > 8) raw = raw.slice(0, 8);
-    let formatted = '';
-    if (raw.length > 0) formatted += raw.slice(0, 2);
-    if (raw.length > 2) formatted += '/' + raw.slice(2, 4);
-    if (raw.length > 4) formatted += '/' + raw.slice(4, 8);
-    e.target.value = formatted;
-
-    if (formatted.length === 10) {
-      const iso = brToIso(formatted);
-      if (iso && !isNaN(new Date(iso + 'T12:00:00Z').getTime())) {
-        onChange(iso);
-      }
-    }
-  };
-
   return (
-    <input
-      type="text"
-      inputMode="numeric"
-      maxLength={10}
-      placeholder="DD/MM/AAAA"
-      defaultValue={displayValue}
-      key={value}
-      onBlur={(e) => {
-        const iso = brToIso(e.target.value);
-        if (iso && !isNaN(new Date(iso + 'T12:00:00Z').getTime())) {
-          onChange(iso);
-        }
-      }}
-      onChange={handleChange}
-      className={className}
-      {...props}
-    />
+    <div className="relative">
+      <input
+        type="text"
+        readOnly
+        value={isoToBr(value)}
+        placeholder="DD/MM/AAAA"
+        className={className + ' cursor-pointer pr-10'}
+        onClick={(e) => e.target.nextElementSibling?.showPicker?.()}
+        {...props}
+      />
+      <input
+        type="date"
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 opacity-0 cursor-pointer"
+      />
+    </div>
   );
 };
 
