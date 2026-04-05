@@ -210,6 +210,32 @@ export const useSubscriptions = () => {
     const subColRef = collection(db, 'students', data.studentId, 'subscriptions');
     const docRef = await addDoc(subColRef, newSub);
 
+    // Registra payment inicial para paid (histórico do início)
+    if (!isTrial && (parseFloat(data.amount) || 0) > 0) {
+      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
+      const periodEnd = new Date(startDate);
+      periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
+
+      await addDoc(collection(db, 'students', data.studentId, 'subscriptions', docRef.id, 'payments'), {
+        date: Timestamp.fromDate(startDate),
+        amount: parseFloat(data.amount) || 0,
+        currency: data.currency ?? 'BRL',
+        method: 'other',
+        reference: 'Pagamento inicial',
+        receiptUrl: receiptUrl || '',
+        plan: data.plan ?? 'alpha',
+        periodStart: Timestamp.fromDate(startDate),
+        periodEnd: Timestamp.fromDate(periodEnd),
+        registeredBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      // Atualiza lastPaymentDate na subscription
+      await updateDoc(doc(db, 'students', data.studentId, 'subscriptions', docRef.id), {
+        lastPaymentDate: Timestamp.fromDate(startDate),
+      });
+    }
+
     // Atualiza accessTier no student (sempre active na criação)
     await updateDoc(doc(db, 'students', data.studentId), {
       accessTier: data.plan ?? 'alpha',
