@@ -558,9 +558,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 
 ### 6.4 Checklist de Check-Out
 
