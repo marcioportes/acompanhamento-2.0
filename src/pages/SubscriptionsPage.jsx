@@ -56,20 +56,74 @@ const brToIso = (br) => {
   return `${y}-${m}-${d}`;
 };
 
-// Input de data DD/MM/YYYY com calendário nativo (INV-06)
+// Input de data DD/MM/YYYY editável + calendário (INV-06)
 const DateInputBR = ({ value, onChange, className, ...props }) => {
+  const [text, setText] = useState(isoToBr(value));
+  const [focused, setFocused] = useState(false);
+
+  const handleTextChange = (e) => {
+    let raw = e.target.value.replace(/[^\d/]/g, '');
+    // Auto-insere barras
+    const digits = raw.replace(/\//g, '');
+    if (digits.length <= 8) {
+      let formatted = '';
+      if (digits.length > 0) formatted += digits.slice(0, 2);
+      if (digits.length > 2) formatted += '/' + digits.slice(2, 4);
+      if (digits.length > 4) formatted += '/' + digits.slice(4, 8);
+      raw = formatted;
+    }
+    setText(raw);
+    if (raw.length === 10) {
+      const iso = brToIso(raw);
+      if (iso && !isNaN(new Date(iso + 'T12:00:00Z').getTime())) {
+        onChange(iso);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    setFocused(false);
+    // Sincroniza texto com valor atual
+    setText(isoToBr(value));
+  };
+
+  const handleFocus = () => {
+    setFocused(true);
+    setText(isoToBr(value));
+  };
+
   return (
-    <div className="relative">
+    <div className="relative flex items-center">
       <input
+        type="text"
+        inputMode="numeric"
+        maxLength={10}
+        placeholder="DD/MM/AAAA"
+        value={focused ? text : isoToBr(value)}
+        onChange={handleTextChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        className={className + ' pr-9'}
+        {...props}
+      />
+      <button
+        type="button"
+        className="absolute right-2 text-slate-500 hover:text-slate-300 p-1"
+        onClick={() => {
+          const picker = document.getElementById('date-picker-' + (props.id ?? 'default'));
+          picker?.showPicker?.();
+        }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </button>
+      <input
+        id={'date-picker-' + (props.id ?? 'default')}
         type="date"
         value={value ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        className={className + ' opacity-0 absolute inset-0 z-10 cursor-pointer'}
+        onChange={(e) => { onChange(e.target.value); setText(isoToBr(e.target.value)); }}
+        className="absolute opacity-0 w-0 h-0 pointer-events-none"
+        tabIndex={-1}
       />
-      <div className={className + ' pointer-events-none flex items-center justify-between'}>
-        <span className={value ? 'text-white' : 'text-slate-500'}>{value ? isoToBr(value) : 'DD/MM/AAAA'}</span>
-        <span className="text-slate-500 text-xs">📅</span>
-      </div>
     </div>
   );
 };
@@ -377,7 +431,7 @@ const SubscriptionsPage = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Data</label><DateInputBR value={paymentForm.date} onChange={(iso) => setPaymentForm(f => ({ ...f, date: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Data</label><DateInputBR id="payment-date" value={paymentForm.date} onChange={(iso) => setPaymentForm(f => ({ ...f, date: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
@@ -434,7 +488,7 @@ const SubscriptionsPage = () => {
               </div>
             </div>
             <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
-            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR id="new-start-date" value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             {newForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" placeholder="0,00" /></div>
