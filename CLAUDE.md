@@ -80,6 +80,12 @@ Sem esses três artefatos, o Gate Pré-Código **não pode ser iniciado**.
 ### INV-14: Versionamento do PROJECT.md
 Toda modificação do PROJECT.md **DEVE**: (1) incrementar versão no header (semver), (2) adicionar entrada na tabela de histórico, (3) declarar "baseado na versão X.Y.Z" na proposta. Na abertura de sessão, comparar versão do repo com versão em contexto — divergência = arquivo stale, reler antes de agir.
 
+### INV-15: Aprovação Obrigatória para Persistência
+Toda criação de collection, subcollection, ou campo novo no Firestore exige: (1) justificativa escrita com análise de dependência conceitual, (2) parecer técnico com prós/contras das opções de modelagem, (3) aprovação explícita do Marcio. Nenhuma estrutura de dados é criada sem passar por este gate.
+
+### INV-16: Isolamento de Sessões Paralelas via Worktree
+Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado (`git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk. Worktrees são removidos após merge.
+
 ---
 
 ## REGRA DE ATIVAÇÃO AUTOMÁTICA
@@ -170,7 +176,7 @@ Aplica-se a:
 3. Quais hooks/listeners são afetados? (re-renders, queries)
 4. Há side-effects em PL, compliance, emotional scoring?
 5. Dados parciais/inválidos podem entrar no caminho crítico?
-6. A feature respeita todas as INV-01 a INV-13?
+6. A feature respeita todas as INV-01 a INV-16?
 7. Qual o blast radius se algo der errado?
 8. Existe rollback viável?
 9. Quais testes existentes podem quebrar?
@@ -192,6 +198,7 @@ Aplica-se a:
 | `generateProbingQuestions` | callable | Gera 3-5 perguntas sondagem adaptativa |
 | `analyzeProbingResponse` | callable | Analisa respostas do probing |
 | `generateAssessmentReport` | callable | Gera relatório completo pré-mentor |
+| `checkSubscriptions` | onSchedule (8h BRT) | Detecta vencimentos, marca overdue, expira trials, sincroniza accessTier |
 
 ---
 
@@ -211,6 +218,7 @@ emotions → scoring -4..+3 normalizado 0-100, TILT/REVENGE detection
 csvStagingTrades → staging CSV, nunca dispara CFs diretamente
 orders → staging de ordens brutas (CHUNK-10)
 students/{id}/assessment/ → questionnaire, probing, initial_assessment (CHUNK-09)
+students/{id}/subscriptions → type, status, accessTier, payments subcollection (DEC-055/056)
 ```
 
 ---
