@@ -114,14 +114,23 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-    // Parse
-    let parsed;
-    if (detection.format === 'profitchart_pro') {
-      parsed = parseProfitChartPro(result.text);
-    } else {
-      parsed = { orders: [], meta: {}, errors: [{ row: 0, message: 'Formato não reconhecido. Use o mapeamento manual.' }] };
+    // Validação de formato — bloqueio explícito quando não é arquivo de ordens
+    if (detection.format !== 'profitchart_pro') {
+      const headerHint = headers.length > 0
+        ? ` Cabeçalho detectado: "${headers.slice(0, 5).join(', ')}${headers.length > 5 ? '...' : ''}"`
+        : '';
+      setError(
+        `Este arquivo NÃO é um CSV de ordens reconhecido (formato esperado: ProfitChart-Pro). ` +
+        `Confira se você não está subindo um arquivo de performance/trades por engano.${headerHint}`
+      );
+      setParseErrors([]);
+      setValidationResult(null);
+      setParsedOrders([]);
+      return;
     }
 
+    // Parse
+    const parsed = parseProfitChartPro(result.text);
     setParseErrors(parsed.errors || []);
 
     // Normalize + dedup
@@ -134,6 +143,12 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     if (validation.validOrders.length > 0) {
       setStep(STEPS.PREVIEW);
+    } else {
+      // Parser reconheceu o formato mas não extraiu nenhuma ordem válida
+      const reason = parsed.errors?.length > 0
+        ? `${parsed.errors.length} erros de parse + 0 ordens válidas após validação`
+        : '0 ordens válidas após validação';
+      setError(`Arquivo reconhecido como ProfitChart-Pro mas sem ordens importáveis. ${reason}.`);
     }
   }, []);
 
