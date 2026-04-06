@@ -14,10 +14,12 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
-  DollarSign, Loader2, UserPlus, FlaskConical, Trash2, Edit2
+  DollarSign, Loader2, UserPlus, FlaskConical, Trash2, Edit2, Crown, RotateCcw
 } from 'lucide-react';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import DebugBadge from '../components/DebugBadge';
+import RenewalForecast from '../components/RenewalForecast';
+import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -206,7 +208,7 @@ const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
 const SubscriptionsPage = () => {
   const {
     subscriptions, studentsWithoutSubscription, loading, summary,
-    addSubscription, updateSubscription, deleteSubscription, registerPayment, getPayments,
+    addSubscription, updateSubscription, deleteSubscription, registerPayment, getPayments, deletePayment,
   } = useSubscriptions();
 
   const [statusFilter, setStatusFilter] = useState('all');
@@ -222,14 +224,17 @@ const SubscriptionsPage = () => {
   const [paymentForm, setPaymentForm] = useState({});
   const [newForm, setNewForm] = useState({});
   const [editForm, setEditForm] = useState({});
+  const [editError, setEditError] = useState('');
 
-  const closeModal = () => { setModal(null); setSelectedSub(null); setReceiptFile(null); };
+  const closeModal = () => { setModal(null); setSelectedSub(null); setReceiptFile(null); setEditError(''); };
 
   // ── Filtered data ──
 
   const filtered = useMemo(() => {
     let result = [...subscriptions];
-    if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
+    // "Todos" mostra tudo inclusive cancelled. "active" exclui cancelled.
+    if (statusFilter === 'active') result = result.filter(s => s.status !== 'cancelled');
+    else if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
     if (typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -247,7 +252,7 @@ const SubscriptionsPage = () => {
   // ── Handlers ──
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
-  const openEdit = (sub) => { setSelectedSub(sub); setEditForm({ plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), notes: sub.notes ?? '' }); setModal('edit'); };
+  const openEdit = (sub) => { setSelectedSub(sub); setEditError(''); setEditForm({ type: sub.type ?? 'paid', plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), trialDays: '30', notes: sub.notes ?? '' }); setModal('edit'); };
   const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
   const openHistory = useCallback(async (sub) => {
@@ -255,12 +260,29 @@ const SubscriptionsPage = () => {
     try { setPaymentHistory(await getPayments(sub)); } catch { setPaymentHistory([]); } finally { setLoadingPayments(false); }
   }, [getPayments]);
 
+  const handleReactivate = useCallback(async (sub) => {
+    if (actionLoading) return;
+    if (!confirm(`Reativar assinatura de ${sub.studentName}?`)) return;
+    setActionLoading(true);
+    try { await updateSubscription(sub, { status: 'active' }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
+  }, [updateSubscription, actionLoading]);
+
   const handleDelete = useCallback(async (sub) => {
     if (actionLoading) return;
-    if (!confirm(`Excluir assinatura de ${sub.studentName}?`)) return;
+    const isCancelled = sub.status === 'cancelled';
+    const message = isCancelled
+      ? `Excluir permanentemente a assinatura de ${sub.studentName}?\n\nEsta ação não pode ser desfeita.`
+      : `Cancelar assinatura de ${sub.studentName}?\n\nEla será arquivada e só aparecerá no filtro "Cancelados".`;
+    if (!confirm(message)) return;
     setActionLoading(true);
-    try { await deleteSubscription(sub); } catch (err) { console.error(err); } finally { setActionLoading(false); }
-  }, [deleteSubscription, actionLoading]);
+    try {
+      if (isCancelled) {
+        await deleteSubscription(sub);
+      } else {
+        await updateSubscription(sub, { status: 'cancelled' });
+      }
+    } catch (err) { console.error(err); } finally { setActionLoading(false); }
+  }, [deleteSubscription, updateSubscription, actionLoading]);
 
   const handleSubmitPayment = useCallback(async () => {
     if (!selectedSub || actionLoading) return;
@@ -282,15 +304,37 @@ const SubscriptionsPage = () => {
     if (!selectedSub || actionLoading) return;
     setActionLoading(true);
     try {
+      const isPaid = editForm.type === 'paid';
       const updates = {
-        plan: editForm.plan, amount: parseFloat(editForm.amount) || 0, currency: editForm.currency,
-        billingPeriodMonths: parseInt(editForm.billingPeriodMonths) || 1, gracePeriodDays: parseInt(editForm.gracePeriodDays) || 5, notes: editForm.notes,
+        type: editForm.type,
+        plan: editForm.plan,
+        notes: editForm.notes,
       };
       if (editForm.startDate) updates.startDate = editForm.startDate + 'T12:00:00Z';
       if (editForm.renewalDate) { updates.renewalDate = editForm.renewalDate + 'T12:00:00Z'; updates.endDate = editForm.renewalDate + 'T12:00:00Z'; }
+      if (isPaid) {
+        updates.amount = parseFloat(editForm.amount) || 0;
+        updates.currency = editForm.currency;
+        updates.billingPeriodMonths = parseInt(editForm.billingPeriodMonths) || 1;
+        updates.gracePeriodDays = parseInt(editForm.gracePeriodDays) || 5;
+        // Se não tem renewalDate (ex: conversão trial→paid), calcular a partir de startDate
+        if (!editForm.renewalDate && editForm.startDate) {
+          const start = new Date(editForm.startDate + 'T12:00:00Z');
+          start.setMonth(start.getMonth() + (parseInt(editForm.billingPeriodMonths) || 1));
+          const iso = start.toISOString().split('T')[0];
+          updates.renewalDate = iso + 'T12:00:00Z';
+          updates.endDate = iso + 'T12:00:00Z';
+        }
+      } else {
+        // Reversão paid → trial: recalcular trialEndsAt a partir de hoje
+        const trialDays = parseInt(editForm.trialDays) || 30;
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + trialDays);
+        updates.trialEndsAt = trialEnd.toISOString();
+      }
       await updateSubscription(selectedSub, updates);
       closeModal();
-    } catch (err) { console.error(err); } finally { setActionLoading(false); }
+    } catch (err) { console.error('[handleSaveEdit] Erro:', err); setEditError(err.message ?? 'Erro ao salvar'); } finally { setActionLoading(false); }
   }, [selectedSub, editForm, updateSubscription, actionLoading]);
 
   const handleCreateSubscription = useCallback(async () => {
@@ -300,10 +344,11 @@ const SubscriptionsPage = () => {
       const data = { studentId: newForm.studentId, type: newForm.type, plan: newForm.plan, startDate: newForm.startDate, notes: newForm.notes, receiptFile: receiptFile?.file ?? null };
       if (newForm.type === 'trial') {
         data.trialDays = newForm.trialDays;
-      } else {
+      } else if (newForm.type === 'paid') {
         data.amount = newForm.amount; data.currency = newForm.currency;
         data.gracePeriodDays = newForm.gracePeriodDays; data.billingPeriodMonths = newForm.billingPeriodMonths;
       }
+      // VIP: só plan, startDate e notes — sem amount/trial
       await addSubscription(data); closeModal();
     } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [newForm, addSubscription, receiptFile, actionLoading]);
@@ -314,6 +359,7 @@ const SubscriptionsPage = () => {
 
   const DaysBadge = ({ sub }) => {
     const { status, type, renewalDate, trialEndsAt } = sub;
+    if (type === 'vip') return <span className="text-xs text-purple-400 font-medium">VIP</span>;
     if (status === 'cancelled' || status === 'expired') return <span className="text-xs text-slate-600">—</span>;
     if (status === 'paused') return <span className="text-xs text-slate-500">Pausado</span>;
     const target = type === 'trial' ? trialEndsAt : renewalDate;
@@ -321,7 +367,8 @@ const SubscriptionsPage = () => {
     const days = daysUntil(target);
     if (days === null) return <span className="text-xs text-slate-600">—</span>;
     if (status === 'overdue') return <span className="text-xs text-red-400 font-medium">{Math.abs(days)} dias em atraso</span>;
-    if (days <= 0) return <span className="text-xs text-red-400 font-medium">{type === 'trial' ? 'Trial expira hoje' : 'Vence hoje'}</span>;
+    if (days < 0) return <span className="text-xs text-red-400 font-medium">Vencido há {Math.abs(days)} {Math.abs(days) === 1 ? 'dia' : 'dias'}</span>;
+    if (days === 0) return <span className="text-xs text-red-400 font-medium">{type === 'trial' ? 'Trial expira hoje' : 'Vence hoje'}</span>;
     if (days <= 7) return <span className="text-xs text-amber-400 font-medium">{days} dias restantes</span>;
     return <span className="text-xs text-emerald-500">{days} dias restantes</span>;
   };
@@ -349,11 +396,14 @@ const SubscriptionsPage = () => {
           { value: summary.active, label: 'Ativas', icon: CheckCircle, color: 'emerald' },
           { value: summary.expiringSoon, label: 'Vencendo em 7 dias', icon: Clock, color: 'amber' },
           { value: summary.overdue, label: 'Inadimplentes', icon: AlertTriangle, color: 'red' },
-          { value: formatCurrency(summary.monthlyRevenue), label: 'Receita/periodo (ativos)', icon: DollarSign, color: 'blue', isText: true },
+          { value: `${subscriptions.filter(s => s.type === 'paid' && s.status === 'active').length} / ${subscriptions.filter(s => s.type === 'trial' && s.status === 'active').length} / ${subscriptions.filter(s => s.type === 'vip' && s.status === 'active').length}`, label: 'Pagantes / Trial / VIP', icon: DollarSign, color: 'blue', isText: true },
         ].map((card, i) => (
           <div key={i} className="glass-card p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl bg-${card.color}-500/15 flex items-center justify-center`}><card.icon className={`w-5 h-5 text-${card.color}-400`} /></div><div><p className="text-2xl font-bold text-white">{card.isText ? card.value : card.value}</p><p className="text-xs text-slate-400">{card.label}</p></div></div></div>
         ))}
       </div>
+
+      {/* Renewal Forecast — issue #122 */}
+      <RenewalForecast subscriptions={subscriptions} embedded />
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -362,13 +412,13 @@ const SubscriptionsPage = () => {
           <input type="text" placeholder="Buscar por nome ou email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {[{ value: 'all', label: 'Todos', count: summary.total }, { value: 'active', label: 'Ativos', count: summary.active }, { value: 'overdue', label: 'Inadimplentes', count: summary.overdue }, { value: 'pending', label: 'Pendentes' }, { value: 'paused', label: 'Pausados' }].map(f => (
+          {[{ value: 'all', label: 'Todos', count: subscriptions.length }, { value: 'active', label: 'Ativos', count: subscriptions.filter(s => s.status !== 'cancelled').length }, { value: 'overdue', label: 'Atrasados', count: summary.overdue }, { value: 'cancelled', label: 'Cancelados', count: subscriptions.filter(s => s.status === 'cancelled').length }].map(f => (
             <button key={f.value} onClick={() => setStatusFilter(f.value)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
               {f.label}{f.count !== undefined && <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>}
             </button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
-          {[{ value: 'all', label: 'Todos tipos' }, { value: 'paid', label: 'Pagos' }, { value: 'trial', label: 'Trial' }].map(f => (
+          {[{ value: 'all', label: 'Todos tipos' }, { value: 'paid', label: 'Pagos' }, { value: 'trial', label: 'Trial' }, { value: 'vip', label: 'VIP' }].map(f => (
             <button key={`t-${f.value}`} onClick={() => setTypeFilter(f.value)} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
           ))}
         </div>
@@ -397,16 +447,16 @@ const SubscriptionsPage = () => {
                 const billing = sub.billingPeriodMonths ?? 1;
                 return (
                   <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-4 py-3"><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p></td>
+                    <td className="px-4 py-3"><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p>{sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span>
-                        <span className="text-[10px] text-slate-500">{sub.type === 'trial' ? 'Trial' : BILLING_LABELS[billing] ?? `${billing}m`}</span>
+                        <span className="text-[10px] text-slate-500">{sub.type === 'trial' ? 'Trial' : sub.type === 'vip' ? 'VIP' : BILLING_LABELS[billing] ?? `${billing}m`}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={sub.status} /></td>
                     <td className="px-4 py-3"><span className="text-sm text-slate-400">{formatBrDate(sub.startDate)}</span></td>
-                    <td className="px-4 py-3"><span className="text-sm text-slate-300">{sub.type === 'trial' ? formatBrDate(sub.trialEndsAt) : formatBrDate(sub.renewalDate)}</span></td>
+                    <td className="px-4 py-3"><span className="text-sm text-slate-300">{sub.type === 'vip' ? '—' : sub.type === 'trial' ? formatBrDate(sub.trialEndsAt) : formatBrDate(sub.renewalDate)}</span></td>
                     <td className="px-4 py-3"><DaysBadge sub={sub} /></td>
                     <td className="px-4 py-3 text-right">
                       {sub.type === 'paid' ? (
@@ -419,6 +469,7 @@ const SubscriptionsPage = () => {
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
 
                         <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar</span></button>
+                        {sub.status === 'cancelled' && <button onClick={() => handleReactivate(sub)} className="group/btn relative p-2 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Reativar</span></button>}
                         <button onClick={() => handleDelete(sub)} className="group/btn relative p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Excluir</span></button>
                       </div>
                     </td>
@@ -469,7 +520,10 @@ const SubscriptionsPage = () => {
                   <p className="text-xs text-slate-600">Periodo: {formatBrDate(p.periodStart)} a {formatBrDate(p.periodEnd)}</p>
                   {p.receiptUrl && <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:text-blue-300">Ver comprovante</a>}
                 </div>
-                <span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-sm font-medium text-emerald-400">{formatCurrency(p.amount, p.currency)}</span>
+                  <button onClick={async () => { if (!confirm(`Excluir pagamento de ${formatBrDate(p.date)}?`)) return; await deletePayment(selectedSub, p.id); setPaymentHistory(prev => prev.filter(x => x.id !== p.id)); }} className="p-1 text-slate-600 hover:text-red-400 rounded transition-colors" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
             ))}</div>
           )}
@@ -494,7 +548,7 @@ const SubscriptionsPage = () => {
             <div>
               <label className="block text-sm text-slate-400 mb-1">Tipo</label>
               <div className="flex gap-2">
-                {[{ value: 'paid', label: 'Pago', icon: DollarSign, activeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' }, { value: 'trial', label: 'Trial', icon: FlaskConical, activeClass: 'bg-violet-500/20 text-violet-400 border-violet-500/30' }].map(t => (
+                {[{ value: 'paid', label: 'Pago', icon: DollarSign, activeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' }, { value: 'trial', label: 'Trial', icon: FlaskConical, activeClass: 'bg-violet-500/20 text-violet-400 border-violet-500/30' }, { value: 'vip', label: 'VIP', icon: Crown, activeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }].map(t => (
                   <button key={t.value} onClick={() => setNewForm(f => ({ ...f, type: t.value }))} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border ${newForm.type === t.value ? t.activeClass : 'text-slate-400 border-slate-700/50 hover:text-white hover:bg-slate-800/50'}`}><t.icon className="w-4 h-4" />{t.label}</button>
                 ))}
               </div>
@@ -512,6 +566,7 @@ const SubscriptionsPage = () => {
               </div>
               <ReceiptUpload receiptFile={receiptFile} setReceiptFile={setReceiptFile} />
             </>}
+            {newForm.type === 'vip' && <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-400">VIP — sem cobrança, sem acesso ao sistema</div>}
             {newForm.type === 'trial' && <div><label className="block text-sm text-slate-400 mb-1">Duracao do trial (dias)</label><input type="number" value={newForm.trialDays} onChange={(e) => setNewForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /><p className="text-xs text-slate-600 mt-1">Expira em {(() => { const d = new Date(newForm.startDate); d.setDate(d.getDate() + (parseInt(newForm.trialDays) || 30)); return formatBrDate(d); })()}</p></div>}
             <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={newForm.notes} onChange={(e) => setNewForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="Opcional" /></div>
           </div>
@@ -525,12 +580,37 @@ const SubscriptionsPage = () => {
           <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white flex items-center gap-2"><Edit2 className="w-5 h-5 text-amber-400" />Editar Assinatura</h3><button onClick={closeModal} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSub.studentName}</p><p className="text-xs text-slate-400">{selectedSub.studentEmail}</p></div>
           <div className="space-y-4">
-            <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            {/* Tipo — trial pode converter para paid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-sm text-slate-400 mb-1">Tipo</label><select value={editForm.type} onChange={(e) => setEditForm(f => ({ ...f, type: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="trial">Trial</option><option value="paid">Pago</option><option value="vip">VIP</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            </div>
+            {/* Banner de conversão */}
+            {selectedSub.type === 'trial' && editForm.type === 'paid' && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 flex-shrink-0" />
+                Convertendo trial para pago — preencha valor e periodicidade abaixo
+              </div>
+            )}
+            {selectedSub.type === 'paid' && editForm.type === 'trial' && (
+              <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-400 flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 flex-shrink-0" />
+                Revertendo para trial — defina os dias de trial abaixo
+              </div>
+            )}
+            {/* Dias de trial (só quando tipo = trial) */}
+            {editForm.type === 'trial' && (
+              <div><label className="block text-sm text-slate-400 mb-1">Dias de trial (a partir de hoje)</label><input type="number" value={editForm.trialDays} onChange={(e) => setEditForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            )}
+            {/* VIP info */}
+            {editForm.type === 'vip' && (
+              <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-400">VIP — sem cobrança, sem acesso ao sistema</div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm text-slate-400 mb-1">Data inicio</label><DateInputBR id="edit-start" value={editForm.startDate} onChange={(iso) => setEditForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
               <div><label className="block text-sm text-slate-400 mb-1">Vencimento</label><DateInputBR id="edit-renewal" value={editForm.renewalDate} onChange={(iso) => setEditForm(f => ({ ...f, renewalDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             </div>
-            {selectedSub.type === 'paid' && <>
+            {editForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
                 <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={editForm.currency} onChange={(e) => setEditForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
@@ -542,6 +622,7 @@ const SubscriptionsPage = () => {
             </>}
             <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={editForm.notes} onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" /></div>
           </div>
+          {editError && <div className="mt-4 p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">{editError}</div>}
           <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveEdit} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
         </div></div>
       )}

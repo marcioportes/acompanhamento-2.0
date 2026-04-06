@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.9.0  
-> **Última atualização:** 05/04/2026 — CHUNK-17 Prop Firm Engine, lock #52  
+> **Versão:** 0.10.0  
+> **Última atualização:** 05/04/2026 — v1.24.0 RenewalForecast + whatsappNumber (#122/#123)  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -31,6 +31,7 @@ Este documento segue versionamento semântico:
 | 0.7.0 | 05/04/2026 | Controle de Assinaturas | #94 v1.23.0, DEC-055/DEC-056, CHUNK-16 liberado |
 | 0.8.0 | 05/04/2026 | Revisão documental | INV-15/16, DT-030/031, mapa CFs atualizado, convenções bash, #94 fechado |
 | 0.9.0 | 05/04/2026 | CHUNK-17 + lock #52 | CHUNK-17 Prop Firm Engine criado no registry, lock registrado para #52 |
+| 0.10.0 | 05/04/2026 | v1.24.0 #122/#123 | RenewalForecast + whatsappNumber, CHANGELOG v1.24.0, CHUNK-02/16 lock |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -724,6 +725,17 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.24.0] - 05/04/2026
+**Issues:** #122 (feat: Fluxo de caixa — previsão de renovações), #123 (feat: Campo WhatsApp no student)
+**Milestone:** v1.2.0 — Mentor Cockpit
+#### Adicionado
+- `RenewalForecast` — componente de projeção mensal de receita por renovação na SubscriptionsPage
+- `groupRenewalsByMonth` helper — agrupa subscriptions ativas paid por mês de vencimento (endDate), soma amount
+- `formatDateBR` (UTC-safe) e `formatBRL` helpers em `renewalForecast.js`
+- Campo `whatsappNumber` (string) no doc `students` — edição inline na StudentsManagement
+- `validateWhatsappNumber` helper — validação E.164 (10-15 dígitos, sanitização de formatação)
+- 31 testes novos (14 whatsapp validation + 17 renewal forecast + formatação BRL/datas BR)
 
 ### [1.23.0] - 05/04/2026
 **Issue:** #94 (feat: Controle de Assinaturas da Mentoria)
