@@ -95,14 +95,29 @@ const PlanManagementModal = ({
     }
   }, [isOpen, editingPlan, accounts, defaultAccountId]);
 
-  const selectedAccount = useMemo(() => 
-    accounts.find(a => a.id === formData.accountId), 
+  const selectedAccount = useMemo(() =>
+    accounts.find(a => a.id === formData.accountId),
     [accounts, formData.accountId]
   );
 
+  // Currency: tenta da conta carregada, senão do editingPlan (defaults pré-criação)
+  const accountCurrency = selectedAccount?.currency || editingPlan?.currency || 'BRL';
+  const currencySymbol = accountCurrency === 'USD' ? 'US$' : accountCurrency === 'EUR' ? '€' : 'R$';
+
   const availableCapital = useMemo(() => {
-    if (!selectedAccount) return 0;
-    const currentPlanPl = editingPlan && editingPlan.accountId === selectedAccount.id ? (editingPlan.pl || 0) : 0;
+    if (!selectedAccount) {
+      // Conta ainda não apareceu no snapshot — usa pl do editingPlan (defaults pós-criação)
+      return editingPlan?.pl ?? 0;
+    }
+    // Defaults pré-preenchidos (criação pós-conta PROP) — NÃO devolver pl ao freePl
+    // Sem essa guard, o cálculo dobraria o saldo (freePl + propPlanDefaults.pl).
+    if (editingPlan && editingPlan.__isDefaults) {
+      return getAvailablePl(selectedAccount.id, selectedAccount.currentBalance);
+    }
+    // Edição real de plano existente — devolver o pl ocupado por este plano ao free
+    const currentPlanPl = editingPlan && editingPlan.id && editingPlan.accountId === selectedAccount.id
+      ? (editingPlan.pl || 0)
+      : 0;
     const freePl = getAvailablePl(selectedAccount.id, selectedAccount.currentBalance);
     return freePl + currentPlanPl;
   }, [selectedAccount, getAvailablePl, editingPlan]);
@@ -134,7 +149,7 @@ const PlanManagementModal = ({
       if (isInvalidNum(formData.pl)) {
         newErrors.pl = 'Capital inválido';
       } else if (plValue > availableCapital + 0.1) {
-         newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital)})`;
+         newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital, accountCurrency)})`;
       }
     }
 
@@ -265,12 +280,12 @@ const PlanManagementModal = ({
                   <div className="col-span-2 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                     <label className="input-label flex justify-between mb-2">
                       <span className="flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-400"/> Capital Alocado (PL)</span>
-                      <span className="text-xs text-emerald-400 font-mono">Disponível: {formatCurrency(availableCapital)}</span>
+                      <span className="text-xs text-emerald-400 font-mono">Disponível: {formatCurrency(availableCapital, accountCurrency)}</span>
                     </label>
                     
                     <div className={`flex items-stretch rounded-lg overflow-hidden border ${errors.pl ? 'border-red-500' : 'border-slate-600'}`}>
                       <div className="bg-slate-700/50 px-4 flex items-center justify-center border-r border-slate-600">
-                        <span className="text-slate-300 font-bold">R$</span>
+                        <span className="text-slate-300 font-bold">{currencySymbol}</span>
                       </div>
                       <input type="number" name="pl" value={formData.pl} onChange={handleChange} className="flex-1 bg-slate-900 text-white p-3 outline-none font-bold text-lg" placeholder="0.00" />
                     </div>
@@ -350,18 +365,18 @@ const PlanManagementModal = ({
                   <div className="space-y-3 text-sm bg-slate-800/30 p-4 rounded-lg">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Capital (PL):</span>
-                      <span className="text-white font-mono font-bold">{formatCurrency(formData.pl)}</span>
+                      <span className="text-white font-mono font-bold">{formatCurrency(formData.pl, accountCurrency)}</span>
                     </div>
                     <div className="border-t border-slate-700/50 pt-2 mt-2">
                       <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Período ({formData.operationPeriod})</p>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="flex justify-between">
                           <span className="text-emerald-400/70 text-xs">Meta:</span>
-                          <span className="text-emerald-400 font-mono text-xs">{formData.periodGoal}% · {formatCurrency(calcValue(formData.periodGoal))}</span>
+                          <span className="text-emerald-400 font-mono text-xs">{formData.periodGoal}% · {formatCurrency(calcValue(formData.periodGoal), accountCurrency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-red-400/70 text-xs">Stop:</span>
-                          <span className="text-red-400 font-mono text-xs">{formData.periodStop}% · -{formatCurrency(calcValue(formData.periodStop))}</span>
+                          <span className="text-red-400 font-mono text-xs">{formData.periodStop}% · -{formatCurrency(calcValue(formData.periodStop), accountCurrency)}</span>
                         </div>
                       </div>
                     </div>
@@ -370,11 +385,11 @@ const PlanManagementModal = ({
                       <div className="grid grid-cols-2 gap-2">
                         <div className="flex justify-between">
                           <span className="text-emerald-400/70 text-xs">Meta:</span>
-                          <span className="text-emerald-400 font-mono text-xs">{formData.cycleGoal}% · {formatCurrency(calcValue(formData.cycleGoal))}</span>
+                          <span className="text-emerald-400 font-mono text-xs">{formData.cycleGoal}% · {formatCurrency(calcValue(formData.cycleGoal), accountCurrency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-red-400/70 text-xs">Stop:</span>
-                          <span className="text-red-400 font-mono text-xs">{formData.cycleStop}% · -{formatCurrency(calcValue(formData.cycleStop))}</span>
+                          <span className="text-red-400 font-mono text-xs">{formData.cycleStop}% · -{formatCurrency(calcValue(formData.cycleStop), accountCurrency)}</span>
                         </div>
                       </div>
                     </div>
@@ -383,7 +398,7 @@ const PlanManagementModal = ({
                       <div className="grid grid-cols-2 gap-2">
                         <div className="flex justify-between">
                           <span className="text-amber-400/70 text-xs">RO Máx:</span>
-                          <span className="text-amber-400 font-mono text-xs">{formData.riskPerOperation}% · {formatCurrency(calcValue(formData.riskPerOperation))}</span>
+                          <span className="text-amber-400 font-mono text-xs">{formData.riskPerOperation}% · {formatCurrency(calcValue(formData.riskPerOperation), accountCurrency)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-blue-400/70 text-xs">RR Mín:</span>
