@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.7.0  
-> **Última atualização:** 05/04/2026 — feat #94 Controle de Assinaturas v1.23.0, DEC-055/DEC-056  
+> **Versão:** 0.10.1  
+> **Última atualização:** 05/04/2026 — DEC-057/058/059, locks CHUNK-02/16 registrados (#122/#123)  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -29,6 +29,10 @@ Este documento segue versionamento semântico:
 | 0.6.2 | 03/04/2026 | Reescrita #31 Feedback Semântico | DEC-054, abordagem escalonada rule-based + Gemini Flash |
 | 0.6.3 | 04/04/2026 | Limpeza milestones | Fechar #44/#55/#56/#117, DT-007 RESOLVIDO, contagens atualizadas |
 | 0.7.0 | 05/04/2026 | Controle de Assinaturas | #94 v1.23.0, DEC-055/DEC-056, CHUNK-16 liberado |
+| 0.8.0 | 05/04/2026 | Revisão documental | INV-15/16, DT-030/031, mapa CFs atualizado, convenções bash, #94 fechado |
+| 0.9.0 | 05/04/2026 | CHUNK-17 + lock #52 | CHUNK-17 Prop Firm Engine criado no registry, lock registrado para #52 |
+| 0.10.0 | 05/04/2026 | v1.24.0 #122/#123 | RenewalForecast + whatsappNumber, CHANGELOG v1.24.0, CHUNK-02/16 lock |
+| 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-057/058/059 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -193,7 +197,7 @@ students/{studentId}/reviews/{reviewId}
 
 **DEC-045:** Snapshots de revisão semanal são independentes do fechamento de ciclo (#72). Revisão congela indicadores parciais para comparação longitudinal semana a semana. Ciclo congela o consolidado final. Sem dependência entre eles.
 
-- `#94`  feat: Controle de Assinaturas da Mentoria
+- `#94`  feat: Controle de Assinaturas da Mentoria → **FECHADO** (v1.23.0)
 - `#72`  epic: Fechamento de Ciclo — Apuração, Transição e Realocação
 - `#70`  feat: Dashboard Mentor — Template na inclusão de Ticker
 - `#45`  refactor: Dashboard Mentor — Aba "Precisam de Atenção" → **FECHADO** (absorvido pelo Ranking por Aluno, Torre de Controle)
@@ -303,6 +307,12 @@ Toda modificação de código exige: (1) issue aberto no GitHub, (2) arquivo de 
 ### INV-14: Versionamento do PROJECT.md
 Toda modificação deste documento DEVE: (1) incrementar a versão no header (semver: major.minor.patch), (2) adicionar entrada na tabela de histórico de versões, (3) declarar "baseado na versão X.Y.Z" na proposta. Na abertura de sessão, a versão do repo deve ser comparada com a versão em contexto — divergência indica arquivo stale que deve ser relido antes de qualquer ação.
 
+### INV-15: Aprovação Obrigatória para Persistência
+Toda criação de collection, subcollection, ou campo novo no Firestore exige: (1) justificativa escrita com análise de dependência conceitual (a entidade existe sozinha ou depende de outra?), (2) parecer técnico com prós/contras das opções de modelagem (collection raiz vs subcollection vs field inline), (3) aprovação explícita do Marcio antes de implementar. Nenhuma estrutura de dados é criada sem passar por este gate.
+
+### INV-16: Isolamento de Sessões Paralelas via Worktree
+Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado para sua branch (`git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk — sessões trabalham exclusivamente no worktree. Worktrees são removidos após merge. Trabalho direto na working tree principal é proibido para sessões de código.
+
 ---
 
 ## 4. PROTOCOLO DE SESSÃO
@@ -318,8 +328,9 @@ Toda modificação deste documento DEVE: (1) incrementar a versão no header (se
    → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
 □ Registrar lock no registry: chunk + issue + branch + data
+□ Criar worktree isolado: git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao (INV-16)
 □ Criar arquivo docs/dev/issues/issue-NNN-descricao.md a partir do template abaixo
-□ Registrar branch: git checkout -b tipo/issue-NNN-descricao
+□ Registrar branch: git checkout -b tipo/issue-NNN-descricao (dentro do worktree)
 □ Preencher seções 1 (Contexto), 2 (Acceptance Criteria), 3 (Análise de Impacto) e 6 (Chunks)
 □ Só então iniciar Gate Pré-Código (seção 4.1)
 ```
@@ -448,10 +459,14 @@ Ao final de cada sessão, antes de encerrar:
    - Entrada no CHANGELOG (seção 10)
 
 3. **Commit dos docs** junto com o código:
-   ```powershell
+   ```bash
    git add docs/PROJECT.md docs/dev/issues/issue-NNN-nome.md
    git commit -m "docs: atualizar PROJECT.md e issue-NNN sessão DD/MM/YYYY"
    ```
+
+4. **Liberar locks de chunks desta sessão** no registry (seção 6.3) — liberar APENAS os locks registrados por esta sessão/issue. Nunca tocar em locks de outras sessões.
+
+5. **Remover worktree** após merge confirmado: `git worktree remove ~/projects/acomp-{NNN}` (INV-16)
 
 ### 4.4 Diretriz Crítica de Verificação
 
@@ -493,7 +508,7 @@ Antes de propor qualquer feature, executar mentalmente:
 3. Quais hooks/listeners são afetados? (re-renders, queries)
 4. Há side-effects em PL, compliance, emotional scoring?
 5. Dados parciais/inválidos podem entrar no caminho crítico?
-6. A feature respeita todas as INV-01 a INV-12?
+6. A feature respeita todas as INV-01 a INV-16?
 7. Qual o blast radius se algo der errado?
 8. Existe rollback viável?
 9. Quais testes existentes podem quebrar?
@@ -536,7 +551,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | Chunk | Domínio | Descrição | Arquivos principais | Status |
 |-------|---------|-----------|-------------------|--------|
 | CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
-| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
+| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | LOCKED |
 | CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
 | CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `addTrade` | LOCKED |
 | CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
@@ -550,7 +565,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-13 | Context Bar | Barra de contexto unificado Conta>Plano>Ciclo>Período, provider, hook | `StudentContextProvider`, `ContextBar`, `useStudentContext` | AVAILABLE |
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
 | CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
-| CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor redesenhado | `TorreDeControle`, `ReviewManager` | AVAILABLE |
+| CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor redesenhado | `TorreDeControle`, `ReviewManager` | LOCKED |
+| CHUNK-17 | Prop Firm Engine | Gestão de contas prop, engine de drawdown, templates, plano de ataque | `PropFirmEngine/*`, `propFirmTemplates` collection, `useAccounts` (campo propFirm) | LOCKED |
 
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
@@ -558,6 +574,9 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
+| CHUNK-17 | #52 | `feature/issue-052-prop-firms` | 05/04/2026 | Claude Code |
+| CHUNK-02 | #122/#123 | `feature/issue-122-fluxo-caixa-renovacoes` | 05/04/2026 | Claude Code |
+| CHUNK-16 | #122/#123 | `feature/issue-122-fluxo-caixa-renovacoes` | 05/04/2026 | Claude Code |
 
 ### 6.4 Checklist de Check-Out
 
@@ -653,6 +672,9 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-054 | Feedback semântico (#31) em 2 fases: Fase 1 rule-based (custo zero, dados existentes), Fase 2 Gemini Flash (incluso no Google Workspace, mesmo ecossistema GCP/Firebase). Claude API descartado por custo recorrente | #31 | 03/04/2026 |
 | DEC-055 | Subscriptions como subcollection de students (`students/{id}/subscriptions`), não collection raiz. Assinatura é entidade dependente — nunca existe sem aluno. Mentor queries via `collectionGroup('subscriptions')` | #94 | 04/04/2026 |
 | DEC-056 | Campo `type: trial/paid` + `trialEndsAt` na subscription + `accessTier` no student. Separa leads (trial) de convertidos (paid). Trial sem cobrança, CF expira automaticamente. `accessTier` derivado da subscription ativa, sincronizado pela CF `checkSubscriptions` | #94 | 04/04/2026 |
+| DEC-057 | Campo `whatsappNumber` como propriedade do documento `students/{id}`, não subcollection de contatos. WhatsApp é atributo direto do aluno, acesso em leitura única, sem necessidade de query adicional. Subcollection seria over-engineering para um único campo string | #123 | 05/04/2026 |
+| DEC-058 | `formatDateBR` usa `getUTCDate/getUTCMonth/getUTCFullYear` em vez de `toLocaleDateString('pt-BR')`. Datas ISO midnight (ex: `2026-05-01T00:00:00Z`) em fuso BR (UTC-3) convertem para dia anterior via `toLocaleDateString`. Teste de regressão em `renewalForecast.test.js` pegou o bug antes da UI | #122 | 05/04/2026 |
+| DEC-059 | `RenewalForecast` implementado como componente collapsible (colapsado por default) na `SubscriptionsPage`, não como bloco fixo. Projeção de caixa é consulta ocasional do mentor, não informação de primeira camada. Preserva espaço vertical para lista de subscriptions | #122 | 05/04/2026 |
 
 ---
 
@@ -700,6 +722,8 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #100 |
 | DT-028 | ~~firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016)~~ RESOLVIDO v1.22.0 | **CRÍTICA** | **30/04/2026** | #96 |
 | DT-029 | ~~useProbing não rehydratava savedQuestions do Firestore — aluno em loop no aprofundamento~~ RESOLVIDO v1.21.5 | ALTA | — | #92 |
+| DT-030 | TradesJournal batch activate sem `setSuspendListener` — snapshots do onSnapshot processam trades intermediários durante batch, causando re-renders desnecessários. StudentDashboard tem o fix correto como referência | BAIXA | — | #93 |
+| DT-031 | `balanceBefore`/`balanceAfter` incorretos em movements criados em batch — cada `addTrade` lê o "último movement" mas em batch todos leem o mesmo. Saldo final correto via `FieldValue.increment` na CF. Afeta apenas visualização do extrato em movements intermediários (cosmético) | BAIXA | — | #93 |
 
 ---
 
@@ -707,6 +731,17 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.24.0] - 05/04/2026
+**Issues:** #122 (feat: Fluxo de caixa — previsão de renovações), #123 (feat: Campo WhatsApp no student)
+**Milestone:** v1.2.0 — Mentor Cockpit
+#### Adicionado
+- `RenewalForecast` — componente de projeção mensal de receita por renovação na SubscriptionsPage
+- `groupRenewalsByMonth` helper — agrupa subscriptions ativas paid por mês de vencimento (endDate), soma amount
+- `formatDateBR` (UTC-safe) e `formatBRL` helpers em `renewalForecast.js`
+- Campo `whatsappNumber` (string) no doc `students` — edição inline na StudentsManagement
+- `validateWhatsappNumber` helper — validação E.164 (10-15 dígitos, sanitização de formatação)
+- 31 testes novos (14 whatsapp validation + 17 renewal forecast + formatação BRL/datas BR)
 
 ### [1.23.0] - 05/04/2026
 **Issue:** #94 (feat: Controle de Assinaturas da Mentoria)
@@ -929,6 +964,8 @@ emotions → scoring -4..+3 normalizado 0-100, TILT/REVENGE detection
 csvStagingTrades → staging CSV, nunca dispara CFs diretamente
 orders → staging de ordens brutas (CHUNK-10)
 students/{id}/assessment/ → questionnaire, probing, initial_assessment (CHUNK-09)
+students/{id}/subscriptions → type, status, accessTier, payments subcollection (DEC-055/056)
+  └── payments → amount, date, proof, plan vigente no momento
 ```
 
 ### Cloud Functions
@@ -941,6 +978,7 @@ students/{id}/assessment/ → questionnaire, probing, initial_assessment (CHUNK-
 | `generateProbingQuestions` | callable | Gera 3-5 perguntas de sondagem adaptativa |
 | `analyzeProbingResponse` | callable | Analisa respostas do probing |
 | `generateAssessmentReport` | callable | Gera relatório completo pré-mentor |
+| `checkSubscriptions` | onSchedule (8h BRT) | Detecta vencimentos, marca overdue, expira trials, sincroniza accessTier, envia email |
 
 ---
 
@@ -954,7 +992,7 @@ debt/issue-NNN-descricao      ← dívida técnica
 arch/issue-NNN-descricao      ← mudança arquitetural
 ```
 
-Commit messages em linha única (PowerShell):
+Commit messages em linha única (bash):
 ```
 feat: descrição da feature (issue #NNN)
 fix: descrição do fix (issue #NNN)
