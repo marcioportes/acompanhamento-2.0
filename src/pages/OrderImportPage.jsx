@@ -189,16 +189,17 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // ============================================
   // STEP 4: STAGING REVIEW → INGEST
   // ============================================
-  const handleStagingConfirm = useCallback(async ({ operations, observations }) => {
+  const handleStagingConfirm = useCallback(async ({ operations, observations, confirmedOrderKeys }) => {
     if (!batchId || !orderStaging) return;
 
     setIngesting(true);
     setError(null);
 
     try {
-      // 1. Ingest (staging → orders + delete staging)
-      setProgress('Ingerindo ordens...');
-      await orderStaging.ingestBatch(batchId, {});
+      // 1. Ingest filtrado: apenas ordens das operações confirmadas vão para `orders`.
+      //    As ordens não-confirmadas são DELETADAS do staging (Opção B — issue #93).
+      setProgress('Ingerindo ordens das operações confirmadas...');
+      await orderStaging.ingestBatch(batchId, {}, confirmedOrderKeys);
 
       // 2. Correlate with trades
       setProgress('Correlacionando com trades...');

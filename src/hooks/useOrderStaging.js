@@ -211,7 +211,19 @@ const useOrderStaging = (overrideStudentId = null) => {
    * @param {Object} correlations — { [stagingOrderId]: { tradeId, confidence, matchType } }
    * @returns {Promise<{ success: number, failed: Array<{ id: string, error: string }> }>}
    */
-  const ingestBatch = useCallback(async (batchId, correlations = {}) => {
+  /**
+   * Ingere ordens do staging para a collection `orders` final.
+   *
+   * @param {string} batchId
+   * @param {Object} correlations - { [stagingOrderId]: { tradeId, confidence } }
+   * @param {string[]|null} confirmedOrderKeys - chaves das ordens confirmadas pelo usuário
+   *   na tela de Revisão de Operações (V1.1 issue #93). Format: "eid:<externalOrderId>"
+   *   ou "comp:<instrument>|<side>|<submittedAt>|<quantity>|<filledAt>".
+   *   Se null, ingere todas (backward compatible).
+   *   Ordens fora dessa lista são DELETADAS do staging sem ingerir (Opção B).
+   * @returns {Promise<{ success: number, excluded: number, failed: Array }>}
+   */
+  const ingestBatch = useCallback(async (batchId, correlations = {}, confirmedOrderKeys = null) => {
     if (!user) throw new Error('Autenticação necessária');
 
     // Query direta — não depende do listener que pode não ter atualizado ainda
@@ -225,7 +237,17 @@ const useOrderStaging = (overrideStudentId = null) => {
 
     const batchOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // Set de chaves confirmadas para lookup O(1) — null = ingerir todas
+    const confirmedSet = confirmedOrderKeys ? new Set(confirmedOrderKeys) : null;
+
+    /** Gera a chave da ordem no mesmo formato usado em OrderStagingReview.handleSubmit */
+    const makeOrderKey = (o) => {
+      if (o.externalOrderId) return `eid:${o.externalOrderId}`;
+      return `comp:${o.instrument}|${o.side}|${o.submittedAt || ''}|${o.quantity ?? ''}|${o.filledAt || ''}`;
+    };
+
     const success = [];
+    const excluded = [];
     const failed = [];
     const BATCH_SIZE = 450;
 
@@ -235,37 +257,45 @@ const useOrderStaging = (overrideStudentId = null) => {
 
       for (const stagingOrder of chunk) {
         try {
-          const correlation = correlations[stagingOrder.id] || {};
-          const orderRef = doc(collection(db, ORDERS_COLLECTION));
+          const isConfirmed = confirmedSet === null || confirmedSet.has(makeOrderKey(stagingOrder));
 
-          writeBatchRef.set(orderRef, {
-            studentId: stagingOrder.studentId,
-            planId: stagingOrder.planId,
-            batchId,
-            instrument: stagingOrder.instrument,
-            orderType: stagingOrder.orderType,
-            side: stagingOrder.side,
-            quantity: stagingOrder.quantity,
-            price: stagingOrder.price,
-            limitPrice: stagingOrder.limitPrice,
-            stopPrice: stagingOrder.stopPrice,
-            filledPrice: stagingOrder.filledPrice,
-            filledQuantity: stagingOrder.filledQuantity,
-            status: stagingOrder.status,
-            submittedAt: stagingOrder.submittedAt,
-            filledAt: stagingOrder.filledAt,
-            cancelledAt: stagingOrder.cancelledAt,
-            modifications: stagingOrder.modifications || [],
-            correlatedTradeId: correlation.tradeId || null,
-            correlationConfidence: correlation.confidence || 0,
-            isStopOrder: stagingOrder.isStopOrder || false,
-            importedAt: serverTimestamp(),
-            sourceFormat: stagingOrder.sourceFormat,
-          });
+          if (isConfirmed) {
+            // Ingere para `orders` + remove do staging (mesma transação)
+            const correlation = correlations[stagingOrder.id] || {};
+            const orderRef = doc(collection(db, ORDERS_COLLECTION));
 
-          // Delete from staging in same batch
-          writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
-          success.push(stagingOrder.id);
+            writeBatchRef.set(orderRef, {
+              studentId: stagingOrder.studentId,
+              planId: stagingOrder.planId,
+              batchId,
+              instrument: stagingOrder.instrument,
+              orderType: stagingOrder.orderType,
+              side: stagingOrder.side,
+              quantity: stagingOrder.quantity,
+              price: stagingOrder.price,
+              limitPrice: stagingOrder.limitPrice,
+              stopPrice: stagingOrder.stopPrice,
+              filledPrice: stagingOrder.filledPrice,
+              filledQuantity: stagingOrder.filledQuantity,
+              status: stagingOrder.status,
+              submittedAt: stagingOrder.submittedAt,
+              filledAt: stagingOrder.filledAt,
+              cancelledAt: stagingOrder.cancelledAt,
+              modifications: stagingOrder.modifications || [],
+              correlatedTradeId: correlation.tradeId || null,
+              correlationConfidence: correlation.confidence || 0,
+              isStopOrder: stagingOrder.isStopOrder || false,
+              importedAt: serverTimestamp(),
+              sourceFormat: stagingOrder.sourceFormat,
+            });
+
+            writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
+            success.push(stagingOrder.id);
+          } else {
+            // Ordem de operação não confirmada → deletar do staging sem ingerir (Opção B)
+            writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
+            excluded.push(stagingOrder.id);
+          }
         } catch (err) {
           failed.push({ id: stagingOrder.id, error: err.message });
         }
@@ -274,8 +304,8 @@ const useOrderStaging = (overrideStudentId = null) => {
       await writeBatchRef.commit();
     }
 
-    console.log(`[useOrderStaging] Ingest batch ${batchId}: ${success.length} ok, ${failed.length} failed`);
-    return { success: success.length, failed };
+    console.log(`[useOrderStaging] Ingest batch ${batchId}: ${success.length} ingeridas, ${excluded.length} excluídas, ${failed.length} falhas`);
+    return { success: success.length, excluded: excluded.length, failed };
   }, [user]);
 
   // ============================================
