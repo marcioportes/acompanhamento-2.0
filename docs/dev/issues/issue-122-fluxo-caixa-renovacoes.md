@@ -85,16 +85,16 @@ Adicionar campo `whatsappNumber` (string) na collection `students`. Campo de ref
 - Helper `groupRenewalsByMonth`, `formatDateBR` (UTC-safe), `formatBRL`
 - Campo `whatsappNumber` inline edit na StudentsManagement (Web SDK updateDoc)
 - Componente `RenewalForecast` — projecao mensal collapsible na SubscriptionsPage
-- version.js 1.24.0, CHANGELOG, PROJECT.md v0.10.0
-- Build limpo, 838 testes passando (39 test files)
+- version.js 1.24.0, CHANGELOG, PROJECT.md v0.10.1
+- Build limpo, 854 testes passando (39 test files)
 
 **Decisoes tomadas:**
 
 | ID | Decisao | Justificativa |
 |----|---------|---------------|
-| — | whatsappNumber como campo no doc student (nao subcollection) | Acesso direto, sem query adicional. INV-15 aprovado no body #123 |
-| — | formatDateBR usa getUTC* em vez de toLocaleDateString | Evita shift de fuso BR UTC-3 em datas midnight (licao sessao #94) |
-| — | RenewalForecast como componente collapsible | Nao ocupa espaco fixo na pagina, mentor expande quando necessario |
+| DEC-057 | whatsappNumber como campo no doc student (nao subcollection) | Acesso direto, sem query adicional. INV-15 aprovado no body #123 |
+| DEC-058 | formatDateBR usa getUTC* em vez de toLocaleDateString | Evita shift de fuso BR UTC-3 em datas midnight (licao sessao #94) |
+| DEC-059 | RenewalForecast como componente collapsible | Nao ocupa espaco fixo na pagina, mentor expande quando necessario |
 
 **Arquivos tocados:**
 - `src/utils/whatsappValidation.js` (NOVO)
@@ -109,10 +109,10 @@ Adicionar campo `whatsappNumber` (string) na collection `students`. Campo de ref
 - `docs/dev/issues/issue-122-fluxo-caixa-renovacoes.md` (este arquivo)
 
 **Testes:**
-- 31 testes novos (14 + 17), 838 total passando
+- 31 testes novos (14 + 17), 854 total passando (39 test files)
 
 **Commits:**
-- (pendente — aguardando confirmacao do Marcio)
+- `1c57046e` feat: RenewalForecast + whatsappNumber (issues #122 #123)
 
 **Pendencias para proxima sessao:**
 - Commit e PR
