@@ -190,6 +190,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ========== Prop Firm Templates (CHUNK-17, issue #052) ==========
+    // Catálogo de templates de mesas proprietárias (collection raiz, INV-15 aprovado)
+    // Mentor configura, todos autenticados podem ler (aluno seleciona ao criar conta PROP)
+    match /propFirmTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isMentor();
+    }
+
     // ========== Assessment — Student Onboarding (CHUNK-09) ==========
     // DEC-024: Aluno é autoridade sobre seus dados. auth != null.
     match /students/{studentId}/assessment/{docId} {

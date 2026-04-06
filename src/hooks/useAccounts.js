@@ -123,6 +123,24 @@ export const useAccounts = (overrideStudentId = null) => {
         updatedAt: serverTimestamp()
       };
 
+      // Prop firm — campo opcional, só para contas PROP (#52)
+      if (accountType === 'PROP' && accountData.propFirm) {
+        newAccount.propFirm = {
+          templateId: accountData.propFirm.templateId ?? null,
+          firmName: accountData.propFirm.firmName ?? '',
+          productName: accountData.propFirm.productName ?? '',
+          phase: accountData.propFirm.phase ?? 'EVALUATION',
+          phaseStartDate: serverTimestamp(),
+          evalDeadline: accountData.propFirm.evalDeadline ?? null,
+          peakBalance: initialAmount,
+          currentDrawdownThreshold: initialAmount - (accountData.propFirm.drawdownMax ?? 0),
+          lockLevel: null,
+          isDayPaused: false,
+          tradingDays: 0,
+          suggestedPlan: accountData.propFirm.suggestedPlan ?? null
+        };
+      }
+
       const docRef = await addDoc(collection(db, 'accounts'), newAccount);
       const accountId = docRef.id;
       
@@ -216,13 +234,23 @@ export const useAccounts = (overrideStudentId = null) => {
         }
       }
       
-      await updateDoc(accountRef, { 
-        ...updateData, 
-        updatedAt: serverTimestamp() 
+      // Prop firm — atualizar campos prop se fornecidos (#52)
+      if (updateData.propFirm) {
+        const prefixed = {};
+        for (const [key, value] of Object.entries(updateData.propFirm)) {
+          prefixed[`propFirm.${key}`] = value;
+        }
+        delete updateData.propFirm;
+        Object.assign(updateData, prefixed);
+      }
+
+      await updateDoc(accountRef, {
+        ...updateData,
+        updatedAt: serverTimestamp()
       });
-    } catch (err) { 
+    } catch (err) {
       console.error('[useAccounts] Erro atualizar:', err);
-      throw err; 
+      throw err;
     }
   }, [user, accounts]);
 
