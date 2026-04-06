@@ -15,6 +15,8 @@ Muitos alunos operam em mesas proprietarias (prop firms). Cada mesa tem regras p
 
 **Revisao v3.0 (05/04/2026):** Discussao com sessao master (Opus 4.6) definiu modelo semantico completo, plano de ataque personalizado, 3 camadas de alerta, e decisoes de persistencia.
 
+**Revisao v4.0 (06/04/2026):** Fase 1 implementada e validada operacionalmente. Identificado e corrigido bug critico no algoritmo: `calculateAttackPlan` original tratava `drawdownMax` como input para % generico, gerando RO maior que `dailyLossLimit` (impossivel). Reescrito com hard constraints (RO baseado em `dailyLossLimit`, nunca em `drawdownMax`). Bug do `availableCapital` no `PlanManagementModal` (dobrava saldo via `currentPlanPl`) corrigido com flag `__isDefaults`. Validacao operacional revelou problema mais profundo: stop em USD nao tem significado sem contexto de instrumento (15pts no MNQ = imediatamente comido pelo ATR). Faseamento expandido com **Fase 1.5 (instrumentsTable + calculateAttackPlan instrument-aware)** e **Fase 2.5 (IA Sonnet 4.6 como narrador)**.
+
 ### Modelo semantico — 3 camadas
 
 **Camada 1 — Template (regras da mesa):**
@@ -81,14 +83,16 @@ O plano mostra de onde veio (`dataSource`) e alerta quando baseado em defaults: 
 | RO sugerido | Conservador (DD apertado, sem 2a chance) | Moderado (DD resetou) | Conforme perfil real |
 | Alertas | Pressao de prazo + margem de DD | Complacencia pos-aprovacao | Payout eligibility |
 
-### Faseamento (revisado)
+### Faseamento (revisado v4.0)
 
-| Fase | Escopo | Estimativa | Restricoes |
-|------|--------|-----------|-----------|
-| 1 | Templates `propFirmTemplates` + configuracao mentor + extensao `accounts` + plano de ataque rule-based | 1.5 sessoes | Sem conflito de chunks |
-| 2 | Engine de drawdown (4 tipos) + CFs com transacao + daily loss + eval deadline | 1.5 sessoes | CF usa `runTransaction` para drawdown |
-| 3 | Dashboard card prop + gauges + alertas mentor + tempo medio trades (universal) | 1 sessao | CHUNK-02 + CHUNK-04 (leitura) — #93 deve liberar locks antes |
-| 4 | Payout tracking + qualifying days + simulador | 0.5 sessao | — |
+| Fase | Escopo | Estimativa | Estado | Restricoes |
+|------|--------|-----------|--------|-----------|
+| 1 | Templates `propFirmTemplates` + configuracao mentor + extensao `accounts` + plano de ataque rule-based | 1.5 sessoes | ✅ Implementada (com correcoes) | Sem conflito de chunks |
+| **1.5** | **`instrumentsTable.js` curada (23 instrumentos: ATR, point value, micro variants, disponibilidade por mesa, session profiles) + `calculateAttackPlan` instrument-aware (sizing/stop em pontos reais) + campo `selectedInstrument` no `propFirm` + UI seleciona instrumento na criacao** | **1 sessao** | 🟡 Em andamento | Bloqueia Fase 2 — sem instrumento, plano e abstrato |
+| 2 | Engine de drawdown (4 tipos) + CFs com transacao + daily loss + eval deadline | 1.5 sessoes | ⏸️ Aguarda 1.5 | CF usa `runTransaction` para drawdown |
+| **2.5** | **CF `generatePropFirmApproachPlan` com Sonnet 4.6: narrativa estrategica + exemplos + tabela visual baseada em (perfil 4D + indicadores + instrumento + mesa + tipo conta + tipo ataque). Math determinada na camada 1.5; IA so narra. Validacao pos-processamento contra constraints. Persiste em `account.propFirm.aiApproachPlan`** | **2-3 sessoes** | 📋 Planejada | DEC nova: Sonnet 4.6 (nao Gemini Flash, DEC-054 nao se aplica) |
+| 3 | Dashboard card prop + gauges + alertas mentor + tempo medio trades (universal) | 1 sessao | ⏸️ Aguarda 2 | CHUNK-02 + CHUNK-04 (leitura) — #93 deve liberar locks antes |
+| 4 | Payout tracking + qualifying days + simulador | 0.5 sessao | ⏸️ | — |
 
 ### Decisoes arquiteturais (DEC-053 + discussao 05/04/2026)
 
@@ -105,6 +109,12 @@ O plano mostra de onde veio (`dataSource`) e alerta quando baseado em defaults: 
 | Drawdown usa `runTransaction` na CF | Trailing depende de read-then-write atomico do peakBalance. FieldValue.increment nao serve aqui |
 | Tempo medio de trades e metrica universal | Vai nos MetricsCards para todas as contas, nao so prop. No card prop mostra com contexto |
 | Eval deadline conta dias corridos | Apex conta corridos, nao dias de trading. UI deve ser explicita |
+| **`calculateAttackPlan` usa hard constraints absolutos (06/04)** | **roPerTrade NUNCA > dailyLossLimit. roPerTrade × maxTradesPerDay <= dailyLossLimit. metaDiaria × diasUteis >= profitTarget. Algoritmo original (% de drawdown) gerava planos impossiveis** |
+| **`instrumentsTable.js` como tabela curada hardcoded (06/04)** | **Path: `src/constants/instrumentsTable.js`. 23 instrumentos top com ATR + point value + micro variants. Helpers: `getInstrument`, `getSessionRange`, `isInstrumentAllowed`. Revisao trimestral pelo mentor. Nao em masterData (volume baixo, mudanca trimestral, schema rico). Fonte de verdade unica para volatilidade** |
+| **`restrictedInstruments` derivado dinamicamente (06/04)** | **Manter compatibilidade da UI atual (le `template.restrictedInstruments`), mas a fonte de verdade e `INSTRUMENTS_TABLE.availability[firm]`. Funcao helper expoe lista derivada para cada mesa** |
+| **Sonnet 4.6 para AI Approach Plan, NAO Gemini Flash (06/04)** | **DEC-054 (Gemini Flash para feedback semantico) nao se aplica. Justificativa: volume baixo (1 chamada/conta), stakes altas (dinheiro do trader), infra Claude ja existe (4 CFs), reasoning superior, custo aceitavel ate 500 alunos (~$24/mes). Nova DEC formal a registrar no PROJECT.md** |
+| **selectedInstrument inline em `account.propFirm` (06/04)** | **Atributo da instancia da conta. Faz parte do mesmo objeto `propFirm`. INV-15: aprovado verbalmente — campo do mesmo objeto ja aprovado, expansao natural** |
+| **Cap operacional max trades/dia (06/04)** | **8 conservador, 10 agressivo. Independente da formula matematica. Razao: dailyLoss/RO pode dar 21 trades, operacionalmente absurdo** |
 
 ## 2. ACCEPTANCE CRITERIA
 
@@ -240,9 +250,151 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 - Iniciar Fase 1 (templates + configuracao + plano de ataque)
 - Consultar body do issue GitHub (#52) para templates detalhados das mesas
 
+### Sessao — 05-06/04/2026 — Implementacao Fase 1 + Correcoes + Reescrita do calculator
+
+**Tipo:** codigo (worktree `~/projects/acomp-052`, branch `feature/issue-052-prop-firms`)
+**Baseado em:** PROJECT.md v0.9.0 (sessao iniciou nesse ponto; main avancou para v0.10.2 durante a sessao)
+
+**O que foi feito (Fase 1 — estrutura inicial):**
+- CHUNK-17 (Prop Firm Engine) registrado no PROJECT.md §6.3 com lock para #52
+- Worktree isolado criado: `git worktree add ~/projects/acomp-052 feature/issue-052-prop-firms` (INV-16)
+- `src/constants/propFirmDefaults.js` (NEW) — 23 templates: Apex EOD/Intraday 25K-300K (10), MFF Starter/Core/Scale 50K-150K (4), Lucid Pro/Flex 50K/100K (3), Tradeify Select 25K/50K/100K/150K (4) — 4 firms × multi-size
+- Constantes: PROP_FIRM_PHASES, DRAWDOWN_TYPES, FEE_MODELS, DAILY_LOSS_ACTIONS, ATTACK_PLAN_PROFILES, ATTACK_PLAN_DATA_SOURCES, EMPTY_TEMPLATE
+- `src/utils/attackPlanCalculator.js` (NEW) — primeira versao com cascata 4D → indicadores → defaults
+- `src/__tests__/utils/attackPlanCalculator.test.js` (NEW) — 34 testes iniciais
+- `src/hooks/usePropFirmTemplates.js` (NEW) — CRUD collection raiz com listener real-time, seedDefaults, deleteAllTemplates
+- `src/pages/PropFirmConfigPage.jsx` (NEW) — config mentor: seed, edit inline, delete, "Limpar Todos", agrupado por firma. DebugBadge (INV-04)
+- `src/hooks/useAccounts.js` — extensao addAccount/updateAccount com campo `propFirm` (templateId, firmName, productName, phase, peakBalance, currentDrawdownThreshold, suggestedPlan)
+- `src/components/AddAccountModal.jsx` — seletor firma → produto quando type=PROP, fallback para DEFAULT_TEMPLATES, auto-fill currency/balance/name, preview do plano de ataque
+- `src/pages/SettingsPage.jsx` — nova aba "Prop Firms"
+- `src/pages/AccountsPage.jsx` — DESCOBERTA: o modal de criacao de conta NAO usa AddAccountModal — tem form inline proprio. Adicionado seletor prop firm + propPlanDefaults + auto-abertura do PlanManagementModal para criar plano apos conta PROP
+- `firestore.rules` — rules para `propFirmTemplates` (mentor write, autenticado read) — DEPLOYED via `firebase deploy --only firestore:rules`
+
+**O que foi feito (5 correcoes de revisao identificadas pelo Marcio):**
+
+1. **Currency BRL fixa no PlanManagementModal** — modal usava `formatCurrency` sem currency, default BRL. Conta Apex em USD mostrava R$ no plano. Fix: derivar `accountCurrency` da conta selecionada (ou `editingPlan.currency` quando snapshot stale). 7 chamadas `formatCurrency(value)` → `formatCurrency(value, accountCurrency)`. Simbolo dinamico US$/€/R$.
+
+2. **Defaults do plano genericos** — `propPlanDefaults` so passava accountId, name, pl, riskPerOperation, rrTarget. Fix: derivar `cycleGoalPct = profitTarget/pl`, `cycleStopPct = drawdownMax/pl`, `periodGoalPct = dailyTarget/pl`, `periodStopPct = dailyLossLimit/pl` (ou cycleStop/5). Inclui `currency`, `name`, `type`, todos os 13 campos do form de plano.
+
+3. **Sizing fixo sem contexto de instrumento** — calculator retornava `sizing: 1 contrato` arbitrario. Sem saber se NQ ($20/pt) ou MNQ ($2/pt) ou ES ($50/pt), o sizing nao tem significado. Fix: `sizing: null` no calculator, UI mostra "a definir conforme instrumento" no preview.
+
+4. **Edit modal nao rehydratava propFirm** — ao editar conta PROP existente, dropdowns firma/produto voltavam vazios mesmo com `propFirm.templateId` salvo no Firestore. Fix: `openModal(account)` agora seta `propFirmData` a partir de `account.propFirm` quando existe.
+
+5. **Max trades/dia 21 (operacionalmente absurdo)** — formula `dailyLoss/stopPerTrade` dava numeros irreais. Fix: cap operacional **8 conservador / 10 agressivo**, independente da formula. Mesmo se a math diz 21, o cap reduz para 8.
+
+**O que foi feito (reescrita critica do calculateAttackPlan — bug $1.150):**
+
+Identificado bug: o algoritmo original calculava `roPerTrade = drawdownMax × percentual` (ex: $2.500 × 4.6% = $115 USD), e quando convertido para `riskPerOperation` em % do PL ($25.000), ficava 4.6% = $1.150 — 2.3x o daily loss limit ($500). Um unico trade ruim estouraria o dia inteiro.
+
+**Causa raiz:** algoritmo tratava `drawdownMax` como input para % generico. ERRADO. As regras da mesa sao **HARD CONSTRAINTS absolutas**, nao inputs.
+
+**Reescrito com hard constraints (`calculateAttackPlan` v2):**
+```
+stopTotal = drawdownMax (constraint mesa)
+stopDiario = dailyLossLimit (constraint mesa)
+metaTotal = profitTarget (constraint mesa)
+metaDiaria = profitTarget / diasUteis (Math.ceil para garantir)
+roPerTrade = dailyLossLimit × fatorPerfil (NUNCA × drawdownMax)
+maxTrades = floor(dailyLossLimit / roPerTrade) com cap 8/10
+rrMinimum = 1.5 conservador, 2.0 agressivo
+stopPerTrade = roPerTrade / rrMinimum
+```
+
+**Constraints invioláveis validadas:**
+- roPerTrade NUNCA > dailyLossLimit ✓
+- stopPerTrade NUNCA > dailyLossLimit ✓
+- roPerTrade × maxTradesPerDay NUNCA > dailyLossLimit ✓
+- metaDiaria × diasUteis >= profitTarget ✓
+
+**Validacao manual Apex EOD 25K (DD $1.000, daily $500, target $1.500, eval 30 dias):**
+
+| Metrica | Conservador (defaults) | Agressivo (4D forte) |
+|---|---|---|
+| RO/trade | $46 | $94 |
+| Stop/trade | $30 | $47 |
+| Max trades/dia | 8 (cap) | 5 |
+| RR minimo | 1.5:1 | 2.0:1 |
+| Meta diaria | $72 | $72 |
+| Dias uteis eval | 21 | 21 |
+| $46 × 8 = $368 ≤ $500 | ✓ | — |
+| $94 × 5 = $470 ≤ $500 | — | ✓ |
+| $72 × 21 = $1.512 ≥ $1.500 | ✓ | ✓ |
+| `constraintsViolated` | [] | [] |
+
+**Bug do `availableCapital` no PlanManagementModal:**
+Modal mostrava "Disponivel: US$ 50.000" para conta de US$ 25.000. Causa raiz: `currentPlanPl + freePl` dobrava o saldo quando `editingPlan = propPlanDefaults`. O `currentPlanPl` foi feito para edicao real (devolver pl ocupado por plano existente), mas foi disparado errado para defaults pre-preenchidos. Fix: flag `__isDefaults: true` em propPlanDefaults; o modal pula a devolucao quando ve a flag.
+
+**Validacao critica do Marcio (06/04):**
+Apesar dos numeros do calculator estarem matematicamente corretos, sao **operacionalmente inuteis**. Stop $30 = 15 pontos no MNQ (com NQ a 24.230). ATR diario do NQ ~400 pontos. Stop de 15 pts e comido pela primeira vela. **O algoritmo determina valores em USD sem saber o instrumento — abstracao sem significado.**
+
+**Conclusao:** Fase 1 entrega estrutura mas nao entrega valor real. Necessario:
+- **Fase 1.5**: tabela curada de instrumentos com ATR, point value, session profiles. Reescrever `calculateAttackPlan` para receber `instrument` como input e fazer math instrument-aware (back-calc: stop em pontos × valor do ponto = RO real).
+- **Fase 2.5**: Sonnet 4.6 como narrador (nao calculador). IA usa o math determinado da Fase 1.5 e gera narrativa estrategica + exemplos + tabela.
+
+**Discussao DEC-054 vs Sonnet 4.6 (06/04):**
+- DEC-054 (Gemini Flash para feedback semantico #31) NAO se aplica
+- Volume aqui e ~1 chamada/conta criada (raro) vs feedback que e 1 chamada/trade (alto volume)
+- Stakes diferentes: prop firm = dinheiro real do trader, requer reasoning superior
+- Custo Sonnet aceitavel ate 500 alunos (~$24/mes)
+- Infra Claude ja existe (4 CFs: classifyOpenResponse, generateProbingQuestions, analyzeProbingResponse, generateAssessmentReport) — secret ANTHROPIC_API_KEY ja configurado
+
+**Decisoes tomadas:**
+
+| ID | Decisao | Justificativa |
+|----|---------|---------------|
+| — | calculateAttackPlan v2 com hard constraints | Original gerava roPerTrade > dailyLossLimit, impossivel |
+| — | Cap operacional 8/10 trades/dia | Math poderia dar 21, absurdo operacional |
+| — | RR conservador 1.5, agressivo 2.0 | Conservador prioriza acerto (RR menor mais facil), agressivo prioriza eficiencia |
+| — | sizing: null | Depende do instrumento, calculado depois |
+| — | Tabela curada de instrumentos em src/constants/instrumentsTable.js | Volume baixo, mudanca trimestral, schema rico, separacao de dominio |
+| — | restrictedInstruments derivado da tabela | Source of truth unica, compatibilidade com UI atual |
+| — | Sonnet 4.6 (nao Gemini) para approach plan IA | Volume baixo, stakes altas, infra ja existe, reasoning superior |
+| — | selectedInstrument inline em propFirm | Atributo da instancia, INV-15 expansao natural |
+| — | __isDefaults flag para propPlanDefaults | Pular currentPlanPl no PlanManagementModal |
+
+**Arquivos tocados nesta sessao:**
+
+NOVOS:
+- `src/constants/propFirmDefaults.js`
+- `src/utils/attackPlanCalculator.js`
+- `src/__tests__/utils/attackPlanCalculator.test.js`
+- `src/hooks/usePropFirmTemplates.js`
+- `src/pages/PropFirmConfigPage.jsx`
+
+EDITADOS:
+- `src/hooks/useAccounts.js`
+- `src/components/AddAccountModal.jsx`
+- `src/pages/SettingsPage.jsx`
+- `src/pages/AccountsPage.jsx`
+- `src/components/PlanManagementModal.jsx`
+- `firestore.rules` (rules para propFirmTemplates) — **DEPLOYED**
+- `package-lock.json` (npm install no worktree)
+
+**Testes:**
+- 37 novos testes (`attackPlanCalculator.test.js`)
+- 844 testes totais passando — **zero regressao**
+- Build: limpo
+
+**Pendencias para esta mesma sessao (Fase 1.5):**
+- Criar `src/constants/instrumentsTable.js` baseado em `Temp/instruments-table-prop-firms.md`
+- Criar testes dos helpers (`getInstrument`, `getSessionRange`, `isInstrumentAllowed`)
+- Substituir `restrictedInstruments` hardcoded em `propFirmDefaults.js` por derivacao dinamica
+- Reescrever `calculateAttackPlan` instrument-aware (recebe `instrumentVolatility`)
+- Adicionar campo `selectedInstrument` em `propFirm` (INV-15 verbal aprovado — expansao do mesmo objeto)
+- Adicionar UI de selecao de instrumento na criacao de conta PROP
+- Atualizar `propPlanDefaults` para usar stop instrument-aware
+- Atualizar PROJECT.md com nova DEC ("instrumentsTable curada") e bump v0.11.0
+
+**Pendencias para sessoes futuras:**
+- Fase 2: Engine de drawdown (4 tipos) + CFs runTransaction
+- Fase 2.5: CF `generatePropFirmApproachPlan` com Sonnet 4.6 + UX
+- Fase 3: Dashboard card prop (depende de CHUNK-04 unlock)
+- Fase 4: Payout tracking
+- Conta APEX antiga sem propFirm: deletar via Firebase Console (sem service account no worktree)
+
 ## 5. ENCERRAMENTO
 
-**Status:** Aguardando inicio de codificacao
+**Status:** 🟡 Em andamento — Fase 1 implementada, Fase 1.5 iniciada
 
 **Checklist final:**
 - [ ] Acceptance criteria atendidos
