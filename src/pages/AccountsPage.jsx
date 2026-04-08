@@ -25,10 +25,11 @@ import {
   PROP_FIRM_PHASE_LABELS,
   ATTACK_PLAN_PROFILES,
   ATTACK_PLAN_PROFILE_LABELS,
-  DEFAULT_TEMPLATES,
+  DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
 import PlanManagementModal from '../components/PlanManagementModal';
@@ -122,11 +123,12 @@ const AccountsPage = () => {
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
-    attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE
+    attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE,
+    selectedInstrument: '' // #52 Fase 1.5 — instrumento principal da conta
   });
 
   const allTemplates = useMemo(
-    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES,
+    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES_ENRICHED,
     [firestoreTemplates]
   );
   const firmGroups = useMemo(() => groupByFirm(allTemplates), [allTemplates]);
@@ -139,12 +141,24 @@ const AccountsPage = () => {
     () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
     [allTemplates, propFirmData.selectedTemplateId]
   );
+  // Lista de instrumentos permitidos para a firma selecionada (#52 Fase 1.5)
+  const allowedInstruments = useMemo(() => {
+    if (!selectedTemplate?.firm) return [];
+    return getAllowedInstrumentsForFirm(selectedTemplate.firm);
+  }, [selectedTemplate]);
   const attackPlan = useMemo(() => {
     if (!selectedTemplate) return null;
     try {
-      return calculateAttackPlan(selectedTemplate, null, null, propFirmData.attackProfile, propFirmData.phase);
+      return calculateAttackPlan(
+        selectedTemplate,
+        null,
+        null,
+        propFirmData.attackProfile,
+        propFirmData.phase,
+        propFirmData.selectedInstrument || null
+      );
     } catch { return null; }
-  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase]);
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument]);
 
   // Auto-fill quando template selecionado
   useEffect(() => {
@@ -228,10 +242,11 @@ const AccountsPage = () => {
           selectedFirm: account.propFirm.firmName || '',
           selectedTemplateId: account.propFirm.templateId || '',
           phase: account.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
-          attackProfile: account.propFirm.suggestedPlan?.profile || ATTACK_PLAN_PROFILES.CONSERVATIVE
+          attackProfile: account.propFirm.suggestedPlan?.profile || ATTACK_PLAN_PROFILES.CONSERVATIVE,
+          selectedInstrument: account.propFirm.selectedInstrument?.symbol || ''
         });
       } else {
-        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE });
+        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE, selectedInstrument: '' });
       }
       setIsModalOpen(true);
       setShowBrokerSuggestions(false);
@@ -248,7 +263,7 @@ const AccountsPage = () => {
         type: 'DEMO'
       });
     }
-    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE });
+    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE, selectedInstrument: '' });
     setIsModalOpen(true);
     setShowBrokerSuggestions(false);
   };
@@ -408,9 +423,25 @@ const AccountsPage = () => {
           initialBalance: Number(formData.initialBalance),
           currentBalance: Number(formData.initialBalance)
         };
-        // Prop firm — incluir campo propFirm se tipo PROP (#52)
+        // Prop firm — incluir campo propFirm se tipo PROP (#52 + Fase 1.5)
         if (formData.type === 'PROP' && selectedTemplate) {
           const evalDays = selectedTemplate.evalTimeLimit;
+          // selectedInstrument inline (Fase 1.5)
+          let instrumentField = null;
+          if (propFirmData.selectedInstrument) {
+            const inst = getInstrument(propFirmData.selectedInstrument);
+            if (inst) {
+              instrumentField = {
+                symbol: inst.symbol,
+                name: inst.name,
+                type: inst.type,
+                isMicro: inst.isMicro,
+                pointValue: inst.pointValue,
+                avgDailyRange: inst.avgDailyRange,
+                minStopPoints: inst.minStopPoints
+              };
+            }
+          }
           createPayload.propFirm = {
             templateId: selectedTemplate.id,
             firmName: selectedTemplate.firm,
@@ -420,40 +451,40 @@ const AccountsPage = () => {
             evalDeadline: evalDays
               ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
               : null,
+            selectedInstrument: instrumentField,
             suggestedPlan: attackPlan
           };
         }
         const newAccountId = await addAccount(createPayload);
 
-        // Auto-abrir modal de plano para conta PROP com defaults do attackPlan (#52)
+        // Auto-abrir modal de plano para conta PROP com defaults do attackPlan (#52 + Fase 1.5)
         if (formData.type === 'PROP' && attackPlan && selectedTemplate && newAccountId) {
           const pl = Number(formData.initialBalance);
+          const isExecution = attackPlan.mode === 'execution' && !attackPlan.incompatible;
 
-          // Conversão valores absolutos da mesa → percentuais do PL (para o plan modal)
-          // Os valores absolutos são as constraints reais; os % são representação do plano interno.
+          // Conversão valores absolutos → percentuais do PL (para o plan modal)
           const toPct = (absValue) => pl > 0 && absValue > 0
-            ? Math.round((absValue / pl) * 1000) / 10  // 1 decimal
+            ? Math.round((absValue / pl) * 1000) / 10
             : 0;
 
-          // Mapeamento attackPlan (absoluto) → plan modal (%):
-          // - cycleGoal = profitTarget / pl  (meta total do ciclo)
-          // - cycleStop = drawdownMax / pl   (stop total do ciclo)
-          // - periodGoal = dailyTarget / pl  (meta diária)
-          // - periodStop = dailyLossLimit / pl  (stop diário)
-          // - riskPerOperation = roPerTrade / pl  (risco por trade)
+          // Constraints da mesa sempre presentes (mode abstract OU execution)
           const cycleGoalPct = toPct(attackPlan.profitTarget) || 10.0;
           const cycleStopPct = toPct(attackPlan.drawdownMax) || 10.0;
           const periodGoalPct = toPct(attackPlan.dailyTarget) || 1.0;
           const periodStopPct = toPct(attackPlan.dailyLossLimit) || 2.0;
-          const riskPctPerOp = toPct(attackPlan.roPerTrade) || 0.5;
+
+          // riskPerOperation: se execution, usa roPerTrade real; se abstract, default conservador
+          const riskPctPerOp = isExecution
+            ? toPct(attackPlan.roPerTrade) || 0.5
+            : 0.5; // sem instrumento → default 0.5% até refinar
 
           setPropPlanDefaults({
-            __isDefaults: true,  // flag para o PlanManagementModal não tratar como edit
+            __isDefaults: true,
             accountId: newAccountId,
             name: `Plano ${selectedTemplate.name}`,
             type: 'Day Trade',
             pl,
-            currency: formData.currency,  // USD para prop
+            currency: formData.currency,
             adjustmentCycle: 'Mensal',
             cycleGoal: cycleGoalPct,
             cycleStop: cycleStopPct,
@@ -464,7 +495,6 @@ const AccountsPage = () => {
             rrTarget: attackPlan.rrMinimum ?? 1.5
           });
           setIsModalOpen(false);
-          // Aguardar Firestore snapshot atualizar accounts antes de abrir modal de plano
           setTimeout(() => {
             setEditingPlan(null);
             setShowPlanModal(true);
@@ -619,20 +649,82 @@ const AccountsPage = () => {
                           ))}
                         </div>
                       </div>
-                      {attackPlan && (
+                      {/* Seletor de instrumento (Fase 1.5) */}
+                      <div>
+                        <label className="input-label">Instrumento Principal</label>
+                        <select
+                          className="input-dark w-full"
+                          value={propFirmData.selectedInstrument}
+                          onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
+                        >
+                          <option value="">— Sem instrumento (plano abstrato)</option>
+                          {allowedInstruments.map(inst => (
+                            <option key={inst.symbol} value={inst.symbol}>
+                              {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          O instrumento define o stop natural realista para o cálculo do plano.
+                        </p>
+                      </div>
+
+                      {attackPlan && attackPlan.mode === 'abstract' && (
                         <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold">Plano de ataque sugerido (defaults)</span>
+                          <span className="text-[10px] text-slate-500 uppercase font-semibold">Constraints da mesa (abstrato — sem instrumento)</span>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                            <span className="text-slate-500">DD total:</span><span className="text-slate-300">${attackPlan.drawdownMax.toLocaleString()}</span>
+                            <span className="text-slate-500">Daily loss limit:</span><span className="text-slate-300">${attackPlan.dailyLossLimit.toLocaleString()}</span>
+                            <span className="text-slate-500">Profit target:</span><span className="text-slate-300">${attackPlan.profitTarget.toLocaleString()}</span>
+                            <span className="text-slate-500">Meta diária:</span><span className="text-slate-300">${attackPlan.dailyTarget.toLocaleString()}</span>
+                            <span className="text-slate-500">Dias úteis:</span><span className="text-slate-300">{attackPlan.evalBusinessDays}</span>
+                            <span className="text-slate-500">RR mínimo:</span><span className="text-slate-300">{attackPlan.rrMinimum}:1</span>
+                          </div>
+                          <p className="text-[10px] text-amber-400/80 mt-1 italic">{attackPlan.message}</p>
+                        </div>
+                      )}
+
+                      {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (
+                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
+                          <span className="text-[10px] text-slate-500 uppercase font-semibold">
+                            Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name})
+                          </span>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                            <span className="text-slate-500">Stop sugerido:</span><span className="text-slate-300">{attackPlan.stopPoints} pts (${attackPlan.stopPerTrade.toFixed(2)})</span>
                             <span className="text-slate-500">RO/trade:</span><span className="text-slate-300">${attackPlan.roPerTrade.toFixed(2)}</span>
-                            <span className="text-slate-500">Stop/trade:</span><span className="text-slate-300">${attackPlan.stopPerTrade.toFixed(2)}</span>
+                            <span className="text-slate-500">Target/trade:</span><span className="text-slate-300">${attackPlan.targetPerTrade.toFixed(2)}</span>
                             <span className="text-slate-500">RR mínimo:</span><span className="text-slate-300">{attackPlan.rrMinimum}:1</span>
                             <span className="text-slate-500">Max trades/dia:</span><span className="text-slate-300">{attackPlan.maxTradesPerDay}</span>
-                            <span className="text-slate-500">Target diário:</span><span className="text-slate-300">${attackPlan.dailyTarget.toFixed(2)}</span>
-                            <span className="text-slate-500">Dias estimados:</span><span className="text-slate-300">{attackPlan.daysToTarget} ({attackPlan.bufferDays} margem)</span>
-                            <span className="text-slate-500">Sizing:</span><span className="text-slate-400 italic text-[10px]">a definir conforme instrumento</span>
+                            <span className="text-slate-500">Meta diária:</span><span className="text-slate-300">${attackPlan.dailyTarget.toFixed(2)}</span>
+                            <span className="text-slate-500">Dias úteis:</span><span className="text-slate-300">{attackPlan.evalBusinessDays}</span>
+                            <span className="text-slate-500">Sizing:</span><span className="text-slate-300">{attackPlan.sizing} contrato</span>
                           </div>
                         </div>
                       )}
+
+                      {attackPlan && attackPlan.mode === 'execution' && attackPlan.incompatible && (
+                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-400" />
+                            <span className="text-xs font-semibold text-red-300">Instrumento incompatível com tamanho da conta</span>
+                          </div>
+                          <p className="text-[11px] text-red-200/80">
+                            O stop natural de <strong>{attackPlan.instrument.symbol}</strong> ({attackPlan.stopPoints} pts × ${attackPlan.instrument.pointValue}/pt = ${attackPlan.stopPerTrade.toFixed(2)})
+                            excede o daily loss limit de ${attackPlan.dailyLossLimit.toLocaleString()}.
+                            Um único trade pode estourar o dia inteiro.
+                          </p>
+                          {attackPlan.microSuggestion && (
+                            <button
+                              type="button"
+                              onClick={() => setPropFirmData(prev => ({ ...prev, selectedInstrument: attackPlan.microSuggestion }))}
+                              className="text-[11px] text-emerald-400 hover:text-emerald-300 underline"
+                            >
+                              ↳ Sugestão: usar {attackPlan.microSuggestion} (micro variant)
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       <div className="text-[10px] text-slate-500 space-y-0.5">
                         <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
                         <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>

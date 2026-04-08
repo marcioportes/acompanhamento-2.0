@@ -123,7 +123,7 @@ export const useAccounts = (overrideStudentId = null) => {
         updatedAt: serverTimestamp()
       };
 
-      // Prop firm — campo opcional, só para contas PROP (#52)
+      // Prop firm — campo opcional, só para contas PROP (#52 + Fase 1.5)
       if (accountType === 'PROP' && accountData.propFirm) {
         newAccount.propFirm = {
           templateId: accountData.propFirm.templateId ?? null,
@@ -137,6 +137,8 @@ export const useAccounts = (overrideStudentId = null) => {
           lockLevel: null,
           isDayPaused: false,
           tradingDays: 0,
+          // Fase 1.5: instrumento principal selecionado pelo aluno
+          selectedInstrument: accountData.propFirm.selectedInstrument ?? null,
           suggestedPlan: accountData.propFirm.suggestedPlan ?? null
         };
       }

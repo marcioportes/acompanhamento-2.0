@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { DEFAULT_TEMPLATES } from '../constants/propFirmDefaults';
+import { DEFAULT_TEMPLATES, enrichTemplate } from '../constants/propFirmDefaults';
 
 const COLLECTION_NAME = 'propFirmTemplates';
 
@@ -43,7 +43,8 @@ export function usePropFirmTemplates() {
     const unsubscribe = onSnapshot(
       colRef,
       (snapshot) => {
-        const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Enriquecer cada template com restrictedInstruments derivado da instrumentsTable
+        const docs = snapshot.docs.map(d => enrichTemplate({ id: d.id, ...d.data() }));
         docs.sort((a, b) => {
           if (a.firm !== b.firm) return (a.firm ?? '').localeCompare(b.firm ?? '');
           return (a.accountSize ?? 0) - (b.accountSize ?? 0);

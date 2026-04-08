@@ -86,6 +86,13 @@ export const ATTACK_PLAN_DATA_SOURCES = {
 // TEMPLATES DEFAULT POR MESA
 // ============================================
 // Ref: issue #52 body — comparativo Apex Mar/2026, MFF, Lucid
+//
+// IMPORTANTE: `restrictedInstruments` é DERIVADO da instrumentsTable via
+// `getRestrictedInstrumentsForFirm()`. NÃO duplicar listas hardcoded aqui.
+// Os helpers `enrichTemplate()` e `enrichTemplates()` no final deste arquivo
+// adicionam o campo dinamicamente quando os templates são consumidos.
+
+import { getRestrictedInstrumentsForFirm } from './instrumentsTable';
 
 const APEX_BASE = {
   firm: PROP_FIRMS.APEX,
@@ -93,7 +100,7 @@ const APEX_BASE = {
   bracketOrderRequired: true,
   newsTrading: true,
   dcaAllowed: false,
-  restrictedInstruments: ['GC', 'SI', 'MGC', 'HG', 'PL', 'PA'],
+  // restrictedInstruments derivado em runtime via enrichTemplate()
   tradingHours: { close: '16:59', timezone: 'America/New_York' },
   phases: ['EVALUATION', 'SIM_FUNDED', 'LIVE'],
   consistency: { evalRule: 0.50, fundedRule: null },
@@ -623,7 +630,47 @@ export const DEFAULT_TEMPLATES = [
   }
 ];
 
+// ============================================
+// ENRICH — adicionar restrictedInstruments derivado da instrumentsTable
+// ============================================
+// Os templates são definidos sem `restrictedInstruments` (fonte de verdade
+// é instrumentsTable.availability). Antes de consumir, enrichTemplate adiciona
+// o campo derivado para manter compatibilidade com UI atual.
+
+/**
+ * Adiciona `restrictedInstruments` derivado a um template.
+ * Se o template já tem o campo (ex: custom criado pelo mentor), preserva.
+ *
+ * @param {Object} template
+ * @returns {Object} template enriquecido
+ */
+export const enrichTemplate = (template) => {
+  if (!template) return template;
+  if (Array.isArray(template.restrictedInstruments)) return template;
+  const firmKey = (template.firm ?? '').toLowerCase();
+  return {
+    ...template,
+    restrictedInstruments: getRestrictedInstrumentsForFirm(firmKey)
+  };
+};
+
+/**
+ * Aplica enrichTemplate a um array de templates.
+ */
+export const enrichTemplates = (templates) => {
+  if (!Array.isArray(templates)) return templates;
+  return templates.map(enrichTemplate);
+};
+
+/**
+ * DEFAULT_TEMPLATES já enriquecido com restrictedInstruments derivado.
+ * Use este nas UIs (fallback do usePropFirmTemplates) para garantir
+ * que o campo restrictedInstruments esteja sempre presente.
+ */
+export const DEFAULT_TEMPLATES_ENRICHED = DEFAULT_TEMPLATES.map(enrichTemplate);
+
 // Agrupar templates por firma para o seletor de UI
+// (assume que templates já vêm enriquecidos do hook)
 export const getTemplatesByFirm = (templates) => {
   const grouped = {};
   for (const t of templates) {

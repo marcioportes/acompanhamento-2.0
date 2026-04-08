@@ -20,7 +20,7 @@ import {
   PROP_FIRM_PHASE_LABELS,
   ATTACK_PLAN_PROFILES,
   ATTACK_PLAN_PROFILE_LABELS,
-  DEFAULT_TEMPLATES,
+  DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
@@ -35,9 +35,9 @@ const AddAccountModal = ({
   const { brokers, currencies, loading: masterDataLoading } = useMasterData();
   const { templates: firestoreTemplates } = usePropFirmTemplates();
 
-  // Fallback: se Firestore está vazio, usar DEFAULT_TEMPLATES
+  // Fallback: se Firestore está vazio, usar DEFAULT_TEMPLATES_ENRICHED (com restrictedInstruments derivado)
   const allTemplates = useMemo(
-    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES,
+    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES_ENRICHED,
     [firestoreTemplates]
   );
 
@@ -432,26 +432,24 @@ const AddAccountModal = ({
                   </div>
                 )}
 
-                {/* Preview do plano de ataque */}
-                {attackPlan && (
+                {/* Preview do plano de ataque (Fase 1.5: instrument-aware, modo abstract) */}
+                {attackPlan && attackPlan.mode === 'abstract' && (
                   <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
                     <div className="flex items-center gap-1 mb-2">
                       <Info className="w-3 h-3 text-slate-400" />
-                      <span className="text-xs text-slate-400">Plano de ataque sugerido (baseado em defaults)</span>
+                      <span className="text-xs text-slate-400">Constraints da mesa (sem instrumento)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <div className="text-slate-500">RO por trade:</div>
-                      <div className="text-slate-300">${attackPlan.roPerTrade.toFixed(2)}</div>
-                      <div className="text-slate-500">Stop por trade:</div>
-                      <div className="text-slate-300">${attackPlan.stopPerTrade.toFixed(2)}</div>
+                      <div className="text-slate-500">DD total:</div>
+                      <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Daily loss:</div>
+                      <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Profit target:</div>
+                      <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Meta diária:</div>
+                      <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
                       <div className="text-slate-500">RR mínimo:</div>
                       <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
-                      <div className="text-slate-500">Max trades/dia:</div>
-                      <div className="text-slate-300">{attackPlan.maxTradesPerDay}</div>
-                      <div className="text-slate-500">Target diário:</div>
-                      <div className="text-slate-300">${attackPlan.dailyTarget.toFixed(2)}</div>
-                      <div className="text-slate-500">Dias estimados:</div>
-                      <div className="text-slate-300">{attackPlan.daysToTarget} dias ({attackPlan.bufferDays} de margem)</div>
                       <div className="text-slate-500">Sizing:</div>
                       <div className="text-slate-400 italic text-[10px]">a definir conforme instrumento</div>
                     </div>
