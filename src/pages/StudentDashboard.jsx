@@ -49,7 +49,6 @@ import CsvImportManager from '../components/csv/CsvImportManager';
 
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
-import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
 
 // Student Onboarding (CHUNK-09) — guard movido para App.jsx (fix loop infinito)
 

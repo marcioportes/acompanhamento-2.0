@@ -22,7 +22,6 @@ import OrderPreview from '../components/OrderImport/OrderPreview';
 import OrderValidationReport from '../components/OrderImport/OrderValidationReport';
 import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
-import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 import GhostOperationsPanel from '../components/OrderImport/GhostOperationsPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 
@@ -32,8 +31,6 @@ import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
 import { correlateOrders } from '../utils/orderCorrelation';
-import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
-import { validateKPIs } from '../utils/kpiValidation';
 import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
 import { prepareConfrontBatch } from '../utils/orderTradeComparison';
 import { createTrade } from '../utils/tradeGateway';
@@ -90,7 +87,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
 
   // Modo Criação (V1.1a — issue #93)
   const [ghostCreationData, setGhostCreationData] = useState(null);
@@ -227,32 +223,17 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       const { correlations, stats: corrStats } = correlateOrders(parsedOrders, planTrades);
       setCorrelationResult({ correlations, stats: corrStats });
 
-      // 3. Cross-check
-      setProgress('Calculando cross-check...');
+      // 3. Cross-check (persistido para a Revisão Semanal #102 — não exibido ao aluno)
       if (crossCheck && planTrades.length > 0) {
-        const crossCheckMetrics = calculateCrossCheckMetrics(parsedOrders, planTrades, correlations);
-        const winningTrades = planTrades.filter(t => (Number(t.result) || 0) > 0);
-        const winRate = planTrades.length > 0 ? winningTrades.length / planTrades.length : 0;
-        const kpiResult = validateKPIs(crossCheckMetrics, { winRate, totalTrades: planTrades.length });
-
+        setProgress('Calculando cross-check...');
         const now = new Date();
         const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
         const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-
         try {
           await crossCheck.runCrossCheck(parsedOrders, planTrades, selectedPlanId, period);
         } catch (ccErr) {
           console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
         }
-
-        setAnalysisResult({
-          crossCheckMetrics,
-          kpiValidation: kpiResult,
-          alerts: kpiResult.alerts,
-          ordersAnalyzed: parsedOrders.length,
-          tradesInPeriod: planTrades.length,
-          period,
-        });
       }
 
       // 4. Modo Criação: identificar operações ghost (V1.1a — issue #93)
@@ -615,10 +596,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                   correlations={correlationResult.correlations}
                   stats={correlationResult.stats}
                 />
-              )}
-
-              {analysisResult && (
-                <CrossCheckDashboard analysis={analysisResult} />
               )}
 
               {/* Modo Criação: operações ghost → criar trades (V1.1a) */}
