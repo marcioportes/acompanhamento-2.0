@@ -269,6 +269,48 @@ npm test -- --run
 | — | uploadImage permanece no wrapper do hook | createTrade puro nao lida com arquivos |
 | — | Modo Criacao seta AMBOS: source + importSource | source: 'order_import' (campo canonico novo) + importSource: 'order_import' (compatibilidade padrao CSV) |
 
+### Sessao — 07/04/2026 — Decisao: remover CrossCheckDashboard do dashboard-aluno
+
+**Tipo:** decisao de produto + cleanup UI
+
+**Decisao do Marcio (07/04/2026):**
+O painel `CrossCheckDashboard` NAO deve aparecer no dashboard-aluno como snapshot
+solto apos importacao de ordens. O aluno nao deve ver metricas comportamentais
+agregadas (ghostOrderCount, holdTimeAsymmetry, averagingDownCount, etc.) sem
+**contexto de periodo** — fora de contexto, essas metricas sao ruido ou
+ansiedade sem acao.
+
+O Cross-Check sera recalculado e apresentado na **Revisao Semanal (#102)**,
+onde o mentor conduz a analise com o periodo correto, janela temporal clara
+e acao pedagogica vinculada.
+
+**O que FICA no codigo (intencional):**
+- `CrossCheckDashboard.jsx` componente — reutilizavel pela #102
+- `orderCrossCheck.js` utility — calculo das metricas
+- `kpiValidation.js` — validacao de KPI inflado
+- `useCrossCheck.js` hook — persistencia cross-check por periodo
+- Collection `orders` — dados brutos intactos
+- OrderImportPage continua calculando cross-check durante o ingest (metricas
+  persistidas via `crossCheck.runCrossCheck`), apenas nao mostra o dashboard
+  ao aluno no step DONE
+
+**O que SAI:**
+- Render do `<CrossCheckDashboard>` em `StudentDashboard.jsx` (linha 441-445)
+- Import nao utilizado `CrossCheckDashboard` em `StudentDashboard.jsx`
+
+**O que mantem `crossCheckHook` ativo no StudentDashboard:**
+- E passado ao `OrderImportPage` como prop `crossCheck={crossCheckHook}` para
+  o calculo durante a importacao (persiste no Firestore para a #102 consumir).
+  Sem isso, a importacao nao salvaria as metricas.
+
+**Racional arquitetural:**
+- Metricas comportamentais agregadas sem janela temporal fixa = falsos positivos
+- Aluno olhando "holdTimeAsymmetry = 3.5" sem saber o periodo nem o que fazer
+  a respeito = ansiedade improdutiva
+- Mentoria acontece na conversa sobre o dado, nao na exposicao do dado
+- Issue #102 (Revisao Semanal) e o contexto natural: periodo fechado, mentor
+  presente, framework 4D para interpretacao
+
 ## 5. ENCERRAMENTO
 
 **Status:** Aguardando aprovacao de chunks

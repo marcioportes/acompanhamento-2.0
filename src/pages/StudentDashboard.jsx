@@ -50,7 +50,6 @@ import CsvImportManager from '../components/csv/CsvImportManager';
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
 import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
-import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
 // Student Onboarding (CHUNK-09) — guard movido para App.jsx (fix loop infinito)
 
@@ -436,13 +435,6 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         <SetupAnalysis trades={filteredTrades} />
       </div>
       <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
-
-      {/* Cross-Check Dashboard (Order Import) */}
-      {crossCheckHook.latestAnalysis && (
-        <div className="mb-6">
-          <CrossCheckDashboard analysis={crossCheckHook.latestAnalysis} />
-        </div>
-      )}
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
