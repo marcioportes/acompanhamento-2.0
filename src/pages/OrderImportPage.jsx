@@ -24,6 +24,7 @@ import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 import GhostOperationsPanel from '../components/OrderImport/GhostOperationsPanel';
+import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 
 import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -34,6 +35,7 @@ import { correlateOrders } from '../utils/orderCorrelation';
 import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
 import { validateKPIs } from '../utils/kpiValidation';
 import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
+import { prepareConfrontBatch } from '../utils/orderTradeComparison';
 import { createTrade } from '../utils/tradeGateway';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -69,7 +71,7 @@ const STEP_LABELS = {
  * @param {Object} props.orderStaging — hook useOrderStaging
  * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
  */
-const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext }) => {
+const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext, deleteTrade }) => {
   // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
 
@@ -92,6 +94,9 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
   // Modo Criação (V1.1a — issue #93)
   const [ghostCreationData, setGhostCreationData] = useState(null);
+
+  // Modo Confronto (V1.1b — issue #93)
+  const [confrontData, setConfrontData] = useState(null);
 
   // UI
   const [progress, setProgress] = useState('');
@@ -283,6 +288,15 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         }
       }
 
+      // 5. Modo Confronto: identificar operações correlacionadas com divergências (V1.1b — issue #93)
+      if (corrStats.matched > 0 && reconstructedOps.length > 0 && planTrades.length > 0) {
+        setProgress('Comparando operações com trades do diário...');
+        const confront = prepareConfrontBatch(reconstructedOps, correlations, planTrades);
+        if (confront.divergent.length > 0 || confront.converged.length > 0) {
+          setConfrontData(confront);
+        }
+      }
+
       setStep(STEPS.DONE);
       setProgress('');
     } catch (err) {
@@ -320,6 +334,116 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     console.log(`[OrderImportPage] Modo Criação: ${success.length} criados, ${failed.length} falhas`);
     return { success, failed };
   }, [userContext]);
+
+  // ============================================
+  // MODO CONFRONTO: aceitar ou atualizar trade a partir de operação (V1.1b)
+  // ============================================
+
+  /** "Aceitar como está" — dismissal client-side, sem write no Firestore */
+  const handleAcceptMatched = useCallback(async (_item) => {
+    // A correlatedTradeId já foi setada durante ingestBatch.
+    // Não há ação no Firestore — o aluno apenas confirmou que o trade do diário permanece.
+    return { success: true };
+  }, []);
+
+  /** "Atualizar com corretora" — DELETE + CREATE via pipeline limpo */
+  const handleUpdateMatched = useCallback(async (item) => {
+    if (!userContext?.uid || !deleteTrade) {
+      return { success: false, error: 'Contexto de usuário ou deleteTrade indisponível' };
+    }
+
+    const { trade, operation } = item;
+
+    try {
+      // 1. Resolver tickerRule do master data para cálculo correto de futuros
+      let tickerRule = null;
+      const symbol = (operation.instrument || '').toUpperCase();
+      try {
+        const tickerSnap = await getDocs(
+          query(collection(db, 'tickers'), where('symbol', '==', symbol))
+        );
+        if (!tickerSnap.empty) {
+          const tickerDoc = tickerSnap.docs[0].data();
+          if (tickerDoc.tickSize && tickerDoc.tickValue) {
+            tickerRule = {
+              tickSize: tickerDoc.tickSize,
+              tickValue: tickerDoc.tickValue,
+              pointValue: tickerDoc.pointValue ?? null,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
+      }
+
+      // 2. Construir _partials das ordens reconstruídas (INV-12)
+      const partials = [];
+      let seq = 1;
+      for (const entry of (operation.entryOrders || [])) {
+        partials.push({
+          type: 'ENTRY',
+          price: parseFloat(entry.filledPrice ?? entry.price) || 0,
+          qty: parseFloat(entry.filledQuantity ?? entry.quantity) || 0,
+          dateTime: entry.filledAt || entry.submittedAt || null,
+          seq: seq++,
+        });
+      }
+      for (const exit of (operation.exitOrders || [])) {
+        partials.push({
+          type: 'EXIT',
+          price: parseFloat(exit.filledPrice ?? exit.price) || 0,
+          qty: parseFloat(exit.filledQuantity ?? exit.quantity) || 0,
+          dateTime: exit.filledAt || exit.submittedAt || null,
+          seq: seq++,
+        });
+      }
+
+      // Stop loss do último stop order (se existir)
+      let stopLoss = null;
+      if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
+        const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
+        stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
+      }
+
+      // 3. Montar tradeData preservando campos comportamentais do trade original
+      //    (emotionEntry, emotionExit, setup, mentorFeedback, feedbackHistory — o aluno
+      //    já preencheu esses campos no trade original e eles devem ser preservados)
+      const tradeData = {
+        planId: trade.planId,
+        ticker: (operation.instrument || '').toUpperCase(),
+        side: operation.side,
+        entry: String(operation.avgEntryPrice ?? 0),
+        exit: String(operation.avgExitPrice ?? 0),
+        qty: String(operation.totalQty ?? 0),
+        entryTime: operation.entryTime || null,
+        exitTime: operation.exitTime || null,
+        stopLoss,
+        // Preservar campos comportamentais do trade original
+        emotionEntry: trade.emotionEntry ?? null,
+        emotionExit: trade.emotionExit ?? null,
+        setup: trade.setup ?? null,
+        // Rastreabilidade — origem é order_import (vs o trade original)
+        source: 'order_import',
+        importSource: 'order_import',
+        importBatchId: batchId,
+        confrontedFrom: trade.id, // rastreia que este trade substitui o anterior
+        tickerRule,
+        _partials: partials,
+      };
+
+      // 4. DELETE do trade antigo (CF onTradeDeleted reverte PL via FieldValue.increment)
+      await deleteTrade(trade.id);
+
+      // 5. CREATE novo via pipeline limpo (CF onTradeCreated recalcula PL)
+      const newTrade = await createTrade(tradeData, userContext);
+
+      console.log(`[OrderImportPage] Modo Confronto: trade ${trade.id} substituído por ${newTrade.id}`);
+      return { success: true, oldTradeId: trade.id, newTradeId: newTrade.id };
+    } catch (err) {
+      console.error('[OrderImportPage] Erro no DELETE+CREATE:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userContext, deleteTrade, batchId]);
 
   // ============================================
   // RENDER
@@ -504,6 +628,15 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                   toCreate={ghostCreationData.toCreate}
                   duplicates={ghostCreationData.duplicates}
                   onCreateTrades={handleCreateGhostTrades}
+                />
+              )}
+
+              {/* Modo Confronto: operações correlacionadas com divergências (V1.1b) */}
+              {confrontData && (
+                <MatchedOperationsPanel
+                  confrontData={confrontData}
+                  onAccept={handleAcceptMatched}
+                  onUpdate={handleUpdateMatched}
                 />
               )}
 

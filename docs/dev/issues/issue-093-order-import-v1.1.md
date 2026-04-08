@@ -311,6 +311,93 @@ e acao pedagogica vinculada.
 - Issue #102 (Revisao Semanal) e o contexto natural: periodo fechado, mentor
   presente, framework 4D para interpretacao
 
+### Sessao — 07/04/2026 — Claude Code (V1.1b Modo Confronto — implementacao)
+
+**Tipo:** codigo + testes
+
+**Contexto:** Sessao anterior caiu apos commit do cleanup do CrossCheckDashboard
+(5450cdf8). Trabalho do V1.1b ja estava no working tree (untracked + modified)
+e foi recuperado intacto. Esta sessao apenas documenta e commita.
+
+**O que foi feito:**
+
+**Utility novo — `src/utils/orderTradeComparison.js`:**
+- `identifyMatchedOperations(operations, correlations, trades)` — identifica
+  operacoes reconstruidas que TEM trade correspondente (oposto de ghost ops).
+  Lookup O(1) por tradesById Map. Aceita match exact/best, descarta ghost.
+  Filtra ambiguos (1 operacao -> >1 trade) e operacoes abertas
+- `compareOperationWithTrade(operation, trade)` — diff campo a campo:
+  - HIGH: side, entry, exit, qty (numericos financeiros, tolerancia 0.01)
+  - MEDIUM: stopLoss (presenca + valor), partialsCount
+  - LOW: entryTime/exitTime fora da janela CORRELATION_WINDOW_MS
+  - Retorna `{ divergences, hasDivergences, maxSeverity }`
+- `prepareConfrontBatch(operations, correlations, trades)` — particiona
+  matched em `divergent[]` e `converged[]`
+
+**Componente UI novo — `src/components/OrderImport/MatchedOperationsPanel.jsx`:**
+- Render lado-a-lado "Diario (atual)" → "Corretora" por operacao divergente
+- `OperationCard` colore por `maxSeverity` (red/amber/slate)
+- `DivergenceRow` por campo, com label localizado
+- Acoes por card: "Aceitar como esta" (slate) ou "Atualizar com corretora" (azul)
+- Estados pos-acao: accepted (verde) / updated (azul) / error (vermelho)
+- Badge agregado mostra contagem de operacoes convergidas alinhadas
+- DebugBadge `component="MatchedOperationsPanel"` (INV-04)
+
+**Wiring em `src/pages/OrderImportPage.jsx`:**
+- Novo prop `deleteTrade` (vindo do useTrades via StudentDashboard)
+- Novo state `confrontData`
+- Passo 5 do `ingestBatch`: `prepareConfrontBatch` apos correlacao, persiste
+  no state se houver divergent ou converged
+- `handleAcceptMatched` — no-op client-side. correlatedTradeId ja foi setada
+  durante o ingest, "aceitar" so confirma client-side sem write
+- `handleUpdateMatched` — DELETE + CREATE via pipeline limpo (Decisao 2 sec 4):
+  1. Resolve `tickerRule` no master data `tickers` (futuros precisam de
+     tickSize/tickValue/pointValue para PL correto)
+  2. Constroi `_partials[]` inline com seq incremental a partir de
+     entryOrders + exitOrders (INV-12)
+  3. Resolve stopLoss do ultimo stopOrder se `hasStopProtection`
+  4. **Preserva campos comportamentais do trade original**
+     (`emotionEntry`, `emotionExit`, `setup`) — o aluno ja preencheu, nao
+     pode perder
+  5. Marca `source: 'order_import'`, `importSource: 'order_import'`,
+     `importBatchId`, `confrontedFrom: trade.id` (rastreabilidade)
+  6. `await deleteTrade(trade.id)` → CF `onTradeDeleted` reverte PL via
+     FieldValue.increment
+  7. `await createTrade(tradeData, userContext)` → CF `onTradeCreated`
+     recalcula PL
+- Render do `<MatchedOperationsPanel>` no STEP DONE, abaixo do
+  `GhostOperationsPanel`
+
+**Wiring em `src/pages/StudentDashboard.jsx`:**
+- Passa `deleteTrade={deleteTrade}` para `OrderImportPage` (deleteTrade ja
+  vinha do hook `useTrades` no StudentDashboard)
+
+**Testes — `src/__tests__/utils/orderTradeComparison.test.js`:**
+- 19 testes cobrindo:
+  - identifyMatchedOperations: empty, ghost-only, ambiguo (>1 trade),
+    operacao aberta, match por externalOrderId, fallback por instrumento
+  - compareOperationWithTrade: side divergence, entry/exit/qty HIGH,
+    stopLoss presence/value MEDIUM, partials count MEDIUM, time delta LOW,
+    sem divergencias (converged), maxSeverity ranking
+  - prepareConfrontBatch: particionamento divergent/converged
+- **19/19 passing** (`npx vitest run src/__tests__/utils/orderTradeComparison.test.js`)
+
+**Pendencias para esta sessao:**
+- [ ] Validacao manual na UI pelo Marcio (testar fluxo completo Modo Confronto)
+- [ ] Gate pre-entrega (version.js bump, CHANGELOG, DebugBadge nos arquivos
+      tocados, INV-04 check em MatchedOperationsPanel — ja feito)
+- [ ] Atualizar acceptance criteria checkboxes V1.1b apos validacao
+- [ ] Decidir se ha teste end-to-end do `handleUpdateMatched` (envolve
+      mock de Firestore + tradeGateway + deleteTrade — alto custo)
+
+**Bugs/limitacoes conhecidos:**
+- handleAcceptMatched e no-op: nao persiste "decisao do aluno" em lugar
+  nenhum. Se o aluno reimportar o mesmo CSV, vai ver os mesmos divergentes
+  novamente. Aceitavel para v1.1b — deduplicacao (V1.1d) cuidara disso
+- Apos "Atualizar com corretora", o UI nao re-renderiza a lista de trades
+  do plano. O proximo refresh natural (fechar/reabrir modal) sincroniza.
+  Aceitavel — operacao ja foi persistida via CF
+
 ## 5. ENCERRAMENTO
 
 **Status:** Aguardando aprovacao de chunks
