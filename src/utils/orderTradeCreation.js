@@ -78,9 +78,11 @@ export function identifyGhostOperations(operations, correlations) {
  * @param {string} planId — ID do plano selecionado
  * @param {string|null} importBatchId — batch ID da importação de ordens
  * @param {Object|null} tickerRule — { tickSize, tickValue, pointValue } resolvido do master data
+ * @param {boolean} lowResolution — flag de resolução temporal do CSV (issue #93 redesign);
+ *   quando true, padrões comportamentais que dependem de segundos ficam inconclusive
  * @returns {Object} tradeData pronto para createTrade
  */
-export function mapOperationToTradeData(operation, planId, importBatchId = null, tickerRule = null) {
+export function mapOperationToTradeData(operation, planId, importBatchId = null, tickerRule = null, lowResolution = false) {
   if (!operation || !planId) {
     throw new Error('Operação e planId são obrigatórios');
   }
@@ -144,6 +146,8 @@ export function mapOperationToTradeData(operation, planId, importBatchId = null,
     _partials: partials,
     // Metadado para UI saber que este trade veio de ordens
     operationId: operation.operationId ?? null,
+    // Resolução temporal do CSV (issue #93 redesign — shadow detection futuro)
+    lowResolution,
   };
 }
 
@@ -217,9 +221,10 @@ export function checkDuplication(tradeData, existingTrades) {
  * @param {Object[]} existingTrades — trades existentes do plano
  * @param {string|null} importBatchId — batch ID
  * @param {Object|null} tickerRuleMap — { [instrument]: { tickSize, tickValue, pointValue } }
+ * @param {boolean} lowResolution — flag de resolução temporal do CSV (issue #93 redesign)
  * @returns {{ toCreate: Object[], duplicates: Object[], errors: Object[] }}
  */
-export function prepareBatchCreation(ghostOps, planId, existingTrades, importBatchId = null, tickerRuleMap = null) {
+export function prepareBatchCreation(ghostOps, planId, existingTrades, importBatchId = null, tickerRuleMap = null, lowResolution = false) {
   const toCreate = [];
   const duplicates = [];
   const errors = [];
@@ -228,7 +233,7 @@ export function prepareBatchCreation(ghostOps, planId, existingTrades, importBat
     try {
       const instrument = (op.instrument || '').toUpperCase();
       const tickerRule = tickerRuleMap?.[instrument] ?? null;
-      const tradeData = mapOperationToTradeData(op, planId, importBatchId, tickerRule);
+      const tradeData = mapOperationToTradeData(op, planId, importBatchId, tickerRule, lowResolution);
       const dedup = checkDuplication(tradeData, existingTrades);
 
       if (dedup.isDuplicate) {
