@@ -34,6 +34,7 @@ import { correlateOrders } from '../utils/orderCorrelation';
 import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
 import { prepareConfrontBatch } from '../utils/orderTradeComparison';
 import { createTrade } from '../utils/tradeGateway';
+import { makeOrderKey } from '../utils/orderKey';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -205,41 +206,50 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // ============================================
   // STEP 4: STAGING REVIEW → INGEST
   // ============================================
-  const handleStagingConfirm = useCallback(async ({ operations, observations, confirmedOrderKeys }) => {
+  const handleStagingConfirm = useCallback(async ({ operations: confirmedOps, observations, confirmedOrderKeys }) => {
     if (!batchId || !orderStaging) return;
 
     setIngesting(true);
     setError(null);
 
     try {
+      // Filtrar ordens cruas pelo mesmo critério canônico usado em ingestBatch.
+      // confirmedOrderKeys vem do OrderStagingReview e contém TODAS as ordens
+      // (entry/exit/stop/cancelled) das operações que o aluno confirmou.
+      // Operações desmarcadas são descartadas do fluxo inteiro — issue #93.
+      const confirmedSet = new Set(confirmedOrderKeys || []);
+      const confirmedOrders = parsedOrders.filter(o => confirmedSet.has(makeOrderKey(o)));
+
       // 1. Ingest filtrado: apenas ordens das operações confirmadas vão para `orders`.
       //    As ordens não-confirmadas são DELETADAS do staging (Opção B — issue #93).
       setProgress('Ingerindo ordens das operações confirmadas...');
       await orderStaging.ingestBatch(batchId, {}, confirmedOrderKeys);
 
-      // 2. Correlate with trades
+      // 2. Correlate with trades — apenas ordens confirmadas
       setProgress('Correlacionando com trades...');
       const planTrades = trades.filter(t => t.planId === selectedPlanId);
-      const { correlations, stats: corrStats } = correlateOrders(parsedOrders, planTrades);
+      const { correlations, stats: corrStats } = correlateOrders(confirmedOrders, planTrades);
       setCorrelationResult({ correlations, stats: corrStats });
 
       // 3. Cross-check (persistido para a Revisão Semanal #102 — não exibido ao aluno)
-      if (crossCheck && planTrades.length > 0) {
+      //    Usa apenas ordens confirmadas — métricas comportamentais refletem só o subset validado.
+      if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
         setProgress('Calculando cross-check...');
         const now = new Date();
         const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
         const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
         try {
-          await crossCheck.runCrossCheck(parsedOrders, planTrades, selectedPlanId, period);
+          await crossCheck.runCrossCheck(confirmedOrders, planTrades, selectedPlanId, period);
         } catch (ccErr) {
           console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
         }
       }
 
       // 4. Modo Criação: identificar operações ghost (V1.1a — issue #93)
-      if (corrStats.ghost > 0 && reconstructedOps.length > 0) {
+      //    Itera só sobre as ops que o aluno confirmou.
+      if (corrStats.ghost > 0 && confirmedOps.length > 0) {
         setProgress('Identificando operações sem trade...');
-        const ghostOps = identifyGhostOperations(reconstructedOps, correlations);
+        const ghostOps = identifyGhostOperations(confirmedOps, correlations);
         if (ghostOps.length > 0) {
           // Resolver tickerRules do master data para cálculo correto de futuros
           const instruments = [...new Set(ghostOps.map(op => (op.instrument || '').toUpperCase()))];
@@ -270,9 +280,10 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       }
 
       // 5. Modo Confronto: identificar operações correlacionadas com divergências (V1.1b — issue #93)
-      if (corrStats.matched > 0 && reconstructedOps.length > 0 && planTrades.length > 0) {
+      //    Itera só sobre as ops que o aluno confirmou.
+      if (corrStats.matched > 0 && confirmedOps.length > 0 && planTrades.length > 0) {
         setProgress('Comparando operações com trades do diário...');
-        const confront = prepareConfrontBatch(reconstructedOps, correlations, planTrades);
+        const confront = prepareConfrontBatch(confirmedOps, correlations, planTrades);
         if (confront.divergent.length > 0 || confront.converged.length > 0) {
           setConfrontData(confront);
         }
@@ -289,7 +300,7 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck, reconstructedOps]);
+  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck]);
 
   // ============================================
   // MODO CRIAÇÃO: criar trades a partir de operações ghost (V1.1a)

@@ -26,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { makeOrderKey } from '../utils/orderKey';
 
 const STAGING_COLLECTION = 'ordersStagingArea';
 const ORDERS_COLLECTION = 'orders';
@@ -237,14 +238,9 @@ const useOrderStaging = (overrideStudentId = null) => {
 
     const batchOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Set de chaves confirmadas para lookup O(1) — null = ingerir todas
+    // Set de chaves confirmadas para lookup O(1) — null = ingerir todas.
+    // makeOrderKey vem de src/utils/orderKey.js (single source of truth — issue #93).
     const confirmedSet = confirmedOrderKeys ? new Set(confirmedOrderKeys) : null;
-
-    /** Gera a chave da ordem no mesmo formato usado em OrderStagingReview.handleSubmit */
-    const makeOrderKey = (o) => {
-      if (o.externalOrderId) return `eid:${o.externalOrderId}`;
-      return `comp:${o.instrument}|${o.side}|${o.submittedAt || ''}|${o.quantity ?? ''}|${o.filledAt || ''}`;
-    };
 
     const success = [];
     const excluded = [];

@@ -21,6 +21,7 @@ import {
   TrendingUp, TrendingDown, XCircle,
 } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
+import { makeOrderKey } from '../../utils/orderKey';
 
 // ============================================
 // SUB-COMPONENTS
@@ -305,8 +306,10 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
     });
 
     // Coletar chaves das ordens das operações confirmadas (V1.1 issue #93)
-    // Inclui entry/exit/stop/cancelled — TODAS as ordens da operação
-    // ingestBatch usa essas chaves para filtrar staging → orders e deletar o resto
+    // Inclui entry/exit/stop/cancelled — TODAS as ordens da operação.
+    // ingestBatch usa essas chaves para filtrar staging → orders e deletar o resto;
+    // OrderImportPage.handleStagingConfirm usa para filtrar parsedOrders → confirmedOrders.
+    // Critério canônico em src/utils/orderKey.js (single source of truth).
     const confirmedOrderKeys = [];
     const seen = new Set();
     for (const op of selectedOps) {
@@ -317,9 +320,7 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
         ...(op.cancelledOrders || []),
       ];
       for (const o of allOrders) {
-        const key = o.externalOrderId
-          ? `eid:${o.externalOrderId}`
-          : `comp:${o.instrument}|${o.side}|${o.submittedAt || ''}|${o.quantity ?? ''}|${o.filledAt || ''}`;
+        const key = makeOrderKey(o);
         if (!seen.has(key)) {
           seen.add(key);
           confirmedOrderKeys.push(key);
