@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   identifyGhostOperations,
+  categorizeConfirmedOps,
   mapOperationToTradeData,
   checkDuplication,
   prepareBatchCreation,
@@ -145,6 +146,230 @@ describe('identifyGhostOperations', () => {
     const ghosts = identifyGhostOperations(ops, correlations);
     expect(ghosts).toHaveLength(1);
     expect(ghosts[0].operationId).toBe('OP-001');
+  });
+});
+
+// ============================================
+// categorizeConfirmedOps (issue #93 redesign)
+// ============================================
+
+describe('categorizeConfirmedOps', () => {
+  /** Helper para criar uma op com _rowIndex específico nas ordens */
+  const makeOp = (id, entryRowIndex, exitRowIndex, overrides = {}) => ({
+    operationId: id,
+    instrument: 'WINJ26',
+    side: 'LONG',
+    _isOpen: false,
+    entryOrders: [
+      { _rowIndex: entryRowIndex, instrument: 'WINJ26', filledPrice: 130000, filledQuantity: 1, filledAt: '2026-04-04T10:00:00' },
+    ],
+    exitOrders: [
+      { _rowIndex: exitRowIndex, instrument: 'WINJ26', filledPrice: 130050, filledQuantity: 1, filledAt: '2026-04-04T10:30:00' },
+    ],
+    ...overrides,
+  });
+
+  /** Helper para correlation por orderIndex */
+  const corr = (orderIndex, opts = {}) => ({
+    orderIndex,
+    externalOrderId: opts.externalOrderId ?? null,
+    instrument: opts.instrument ?? 'WINJ26',
+    tradeId: opts.tradeId ?? null,
+    matchType: opts.matchType ?? 'ghost',
+    confidence: opts.confidence ?? 0,
+  });
+
+  describe('inputs vazios', () => {
+    it('operations vazio → 3 arrays vazios', () => {
+      expect(categorizeConfirmedOps([], [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    });
+
+    it('operations null → 3 arrays vazios', () => {
+      expect(categorizeConfirmedOps(null, [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    });
+
+    it('operations undefined → 3 arrays vazios', () => {
+      expect(categorizeConfirmedOps(undefined, undefined)).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    });
+
+    it('correlations vazio → todas as ops vão para toCreate', () => {
+      const ops = [makeOp('OP-001', 1, 2), makeOp('OP-002', 3, 4)];
+      const result = categorizeConfirmedOps(ops, []);
+      expect(result.toCreate).toHaveLength(2);
+      expect(result.toConfront).toHaveLength(0);
+      expect(result.ambiguous).toHaveLength(0);
+    });
+
+    it('correlations null → todas as ops vão para toCreate', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const result = categorizeConfirmedOps(ops, null);
+      expect(result.toCreate).toHaveLength(1);
+      expect(result.toCreate[0].operationId).toBe('OP-001');
+    });
+  });
+
+  describe('toCreate — ops sem correlação', () => {
+    it('op com 2 ordens ghost → toCreate', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { matchType: 'ghost' }),
+        corr(2, { matchType: 'ghost' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toCreate).toHaveLength(1);
+      expect(result.toCreate[0].operationId).toBe('OP-001');
+      expect(result.toConfront).toHaveLength(0);
+      expect(result.ambiguous).toHaveLength(0);
+    });
+
+    it('op com correlations sem tradeId → toCreate', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      // Correlations existem mas sem tradeId (não matched)
+      const correlations = [
+        corr(1, { tradeId: null }),
+        corr(2, { tradeId: null }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toCreate).toHaveLength(1);
+    });
+  });
+
+  describe('toConfront — ops com 1 trade matched', () => {
+    it('op com ambas ordens batendo no mesmo trade → toConfront', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact' }),
+        corr(2, { tradeId: 'trade-A', matchType: 'exact' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront).toHaveLength(1);
+      expect(result.toConfront[0].operation.operationId).toBe('OP-001');
+      expect(result.toConfront[0].tradeId).toBe('trade-A');
+    });
+
+    it('op MISTA (entry matched + exit ghost, mesmo trade) → toConfront (não limbo)', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'best' }),
+        corr(2, { tradeId: null, matchType: 'ghost' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront).toHaveLength(1);
+      expect(result.toConfront[0].tradeId).toBe('trade-A');
+      expect(result.toCreate).toHaveLength(0);
+      expect(result.ambiguous).toHaveLength(0);
+    });
+
+    it('aceita matchType "best" como matched', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'best' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront).toHaveLength(1);
+    });
+  });
+
+  describe('ambiguous — ops com 2+ trades matched', () => {
+    it('op com entry → trade A, exit → trade B → ambiguous', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact' }),
+        corr(2, { tradeId: 'trade-B', matchType: 'exact' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.ambiguous).toHaveLength(1);
+      expect(result.ambiguous[0].operation.operationId).toBe('OP-001');
+      expect(result.ambiguous[0].tradeIds).toEqual(expect.arrayContaining(['trade-A', 'trade-B']));
+      expect(result.ambiguous[0].tradeIds).toHaveLength(2);
+    });
+
+    it('op com 3 trades matched → ambiguous com 3 tradeIds', () => {
+      const op = {
+        operationId: 'OP-001',
+        instrument: 'WINJ26',
+        side: 'LONG',
+        _isOpen: false,
+        entryOrders: [
+          { _rowIndex: 1, instrument: 'WINJ26' },
+          { _rowIndex: 2, instrument: 'WINJ26' },
+        ],
+        exitOrders: [
+          { _rowIndex: 3, instrument: 'WINJ26' },
+        ],
+      };
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact' }),
+        corr(2, { tradeId: 'trade-B', matchType: 'exact' }),
+        corr(3, { tradeId: 'trade-C', matchType: 'exact' }),
+      ];
+      const result = categorizeConfirmedOps([op], correlations);
+      expect(result.ambiguous).toHaveLength(1);
+      expect(result.ambiguous[0].tradeIds).toHaveLength(3);
+    });
+  });
+
+  describe('ops ignoradas', () => {
+    it('op aberta (_isOpen: true) → não vai para nenhuma lista', () => {
+      const ops = [makeOp('OP-001', 1, 2, { _isOpen: true })];
+      const correlations = [corr(1, { tradeId: 'trade-A', matchType: 'exact' })];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toCreate).toHaveLength(0);
+      expect(result.toConfront).toHaveLength(0);
+      expect(result.ambiguous).toHaveLength(0);
+    });
+
+    it('op sem entryOrders → ignorada', () => {
+      const ops = [makeOp('OP-001', 1, 2, { entryOrders: [] })];
+      const result = categorizeConfirmedOps(ops, []);
+      expect(result.toCreate).toHaveLength(0);
+    });
+
+    it('op sem exitOrders → ignorada', () => {
+      const ops = [makeOp('OP-001', 1, 2, { exitOrders: [] })];
+      const result = categorizeConfirmedOps(ops, []);
+      expect(result.toCreate).toHaveLength(0);
+    });
+  });
+
+  describe('cenários complexos', () => {
+    it('múltiplas ops de tipos diferentes → particiona corretamente', () => {
+      const ops = [
+        makeOp('OP-CREATE', 1, 2),       // ghost
+        makeOp('OP-CONFRONT', 3, 4),     // 1 trade
+        makeOp('OP-AMBIGUOUS', 5, 6),    // 2 trades
+        makeOp('OP-OPEN', 7, 8, { _isOpen: true }), // ignorada
+      ];
+      const correlations = [
+        corr(1, { matchType: 'ghost' }),
+        corr(2, { matchType: 'ghost' }),
+        corr(3, { tradeId: 'trade-A', matchType: 'exact' }),
+        corr(4, { tradeId: 'trade-A', matchType: 'exact' }),
+        corr(5, { tradeId: 'trade-B', matchType: 'exact' }),
+        corr(6, { tradeId: 'trade-C', matchType: 'exact' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toCreate).toHaveLength(1);
+      expect(result.toCreate[0].operationId).toBe('OP-CREATE');
+      expect(result.toConfront).toHaveLength(1);
+      expect(result.toConfront[0].operation.operationId).toBe('OP-CONFRONT');
+      expect(result.toConfront[0].tradeId).toBe('trade-A');
+      expect(result.ambiguous).toHaveLength(1);
+      expect(result.ambiguous[0].operation.operationId).toBe('OP-AMBIGUOUS');
+    });
+  });
+
+  describe('defensivo', () => {
+    it('correlation com tradeId mas matchType ghost → ignorada (não conta como matched)', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'ghost' }), // estado inválido — ignorar
+        corr(2, { matchType: 'ghost' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toCreate).toHaveLength(1); // foi para create porque "matched" foi descartado
+      expect(result.toConfront).toHaveLength(0);
+    });
   });
 });
 

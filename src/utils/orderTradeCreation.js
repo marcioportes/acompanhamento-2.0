@@ -68,6 +68,78 @@ export function identifyGhostOperations(operations, correlations) {
 }
 
 // ============================================
+// CONFIRMED OPS CATEGORIZATION (issue #93 redesign)
+// ============================================
+
+/**
+ * Particiona operações confirmadas em três grupos baseado em correlação com trades existentes:
+ *   - toCreate: operações sem nenhuma ordem correlacionada → criação automática
+ *   - toConfront: operações cujas ordens correlacionam com EXATAMENTE 1 trade → confronto enriquecido
+ *   - ambiguous: operações cujas ordens correlacionam com 2+ trades → decisão manual
+ *
+ * Substitui o uso de identifyGhostOperations + identifyMatchedOperations no fluxo
+ * principal. Resolve o bug de operações mistas em limbo (issue #93 redesign).
+ *
+ * Lookup por _rowIndex (identificador estável do parser) — sem fallback por
+ * instrumento que causa falsos positivos.
+ *
+ * @param {Object[]} operations — operações reconstruídas (output de reconstructOperations)
+ * @param {Object[]} correlations — output de correlateOrders().correlations
+ * @returns {{
+ *   toCreate: Object[],
+ *   toConfront: Array<{ operation: Object, tradeId: string }>,
+ *   ambiguous: Array<{ operation: Object, tradeIds: string[] }>
+ * }}
+ */
+export function categorizeConfirmedOps(operations, correlations) {
+  if (!operations?.length) {
+    return { toCreate: [], toConfront: [], ambiguous: [] };
+  }
+
+  // Index correlations matched por _rowIndex (identificador estável do parser)
+  const tradeIdByRowIndex = new Map();
+  if (correlations?.length) {
+    for (const c of correlations) {
+      if (c.tradeId && c.matchType !== 'ghost') {
+        tradeIdByRowIndex.set(c.orderIndex, c.tradeId);
+      }
+    }
+  }
+
+  const toCreate = [];
+  const toConfront = [];
+  const ambiguous = [];
+
+  for (const op of operations) {
+    if (op._isOpen) continue;
+    if (!op.entryOrders?.length || !op.exitOrders?.length) continue;
+
+    const filledOrders = [
+      ...(op.entryOrders || []),
+      ...(op.exitOrders || []),
+    ];
+
+    // Coletar tradeIds únicos correlacionados a alguma das ordens da op
+    const tradeIds = new Set();
+    for (const order of filledOrders) {
+      const tid = tradeIdByRowIndex.get(order._rowIndex);
+      if (tid) tradeIds.add(tid);
+    }
+
+    if (tradeIds.size === 0) {
+      toCreate.push(op);
+    } else if (tradeIds.size === 1) {
+      const [tradeId] = tradeIds;
+      toConfront.push({ operation: op, tradeId });
+    } else {
+      ambiguous.push({ operation: op, tradeIds: [...tradeIds] });
+    }
+  }
+
+  return { toCreate, toConfront, ambiguous };
+}
+
+// ============================================
 // OPERATION → TRADE DATA MAPPING
 // ============================================
 
