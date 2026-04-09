@@ -22,7 +22,7 @@ import OrderPreview from '../components/OrderImport/OrderPreview';
 import OrderValidationReport from '../components/OrderImport/OrderValidationReport';
 import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
-import GhostOperationsPanel from '../components/OrderImport/GhostOperationsPanel';
+import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 
 import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
@@ -31,7 +31,8 @@ import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
 import { correlateOrders } from '../utils/orderCorrelation';
-import { identifyGhostOperations, prepareBatchCreation } from '../utils/orderTradeCreation';
+import { categorizeConfirmedOps } from '../utils/orderTradeCreation';
+import { createTradesBatch } from '../utils/orderTradeBatch';
 import { prepareConfrontBatch } from '../utils/orderTradeComparison';
 import { createTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
@@ -89,11 +90,14 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
 
-  // Modo Criação (V1.1a — issue #93)
-  const [ghostCreationData, setGhostCreationData] = useState(null);
+  // Modo Criação (V1.1a — issue #93 redesign): summary completo da importação
+  const [importSummary, setImportSummary] = useState(null);
 
   // Modo Confronto (V1.1b — issue #93)
   const [confrontData, setConfrontData] = useState(null);
+
+  // Operações ambíguas (correlacionam com 2+ trades) — Fase 5 vai criar painel
+  const [ambiguousData, setAmbiguousData] = useState(null);
 
   // UI
   const [progress, setProgress] = useState('');
@@ -245,48 +249,76 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         }
       }
 
-      // 4. Modo Criação: identificar operações ghost (V1.1a — issue #93)
-      //    Itera só sobre as ops que o aluno confirmou.
-      if (corrStats.ghost > 0 && confirmedOps.length > 0) {
-        setProgress('Identificando operações sem trade...');
-        const ghostOps = identifyGhostOperations(confirmedOps, correlations);
-        if (ghostOps.length > 0) {
-          // Resolver tickerRules do master data para cálculo correto de futuros
-          const instruments = [...new Set(ghostOps.map(op => (op.instrument || '').toUpperCase()))];
-          const tickerRuleMap = {};
-          for (const symbol of instruments) {
-            try {
-              const tickerSnap = await getDocs(
-                query(collection(db, 'tickers'), where('symbol', '==', symbol))
-              );
-              if (!tickerSnap.empty) {
-                const tickerDoc = tickerSnap.docs[0].data();
-                if (tickerDoc.tickSize && tickerDoc.tickValue) {
-                  tickerRuleMap[symbol] = {
-                    tickSize: tickerDoc.tickSize,
-                    tickValue: tickerDoc.tickValue,
-                    pointValue: tickerDoc.pointValue ?? null,
-                  };
-                }
-              }
-            } catch (err) {
-              console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
+      // 4. Categorizar ops em toCreate / toConfront / ambiguous (issue #93 redesign — Fase 2)
+      //    Resolve o bug de ops mistas em limbo: critério baseado em correlação por op,
+      //    não em filledOrders.every() do código antigo.
+      setProgress('Categorizando operações...');
+      const { toCreate, toConfront, ambiguous } = categorizeConfirmedOps(confirmedOps, correlations);
+
+      // 5. Resolver tickerRules dos instrumentos a criar (futuros precisam para cálculo correto)
+      const instrumentsToCreate = [...new Set(toCreate.map(op => (op.instrument || '').toUpperCase()))];
+      const tickerRuleMap = {};
+      for (const symbol of instrumentsToCreate) {
+        try {
+          const tickerSnap = await getDocs(
+            query(collection(db, 'tickers'), where('symbol', '==', symbol))
+          );
+          if (!tickerSnap.empty) {
+            const tickerDoc = tickerSnap.docs[0].data();
+            if (tickerDoc.tickSize && tickerDoc.tickValue) {
+              tickerRuleMap[symbol] = {
+                tickSize: tickerDoc.tickSize,
+                tickValue: tickerDoc.tickValue,
+                pointValue: tickerDoc.pointValue ?? null,
+              };
             }
           }
-
-          const batchData = prepareBatchCreation(ghostOps, selectedPlanId, planTrades, batchId, tickerRuleMap);
-          setGhostCreationData(batchData);
+        } catch (err) {
+          console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
         }
       }
 
-      // 5. Modo Confronto: identificar operações correlacionadas com divergências (V1.1b — issue #93)
-      //    Itera só sobre as ops que o aluno confirmou.
-      if (corrStats.matched > 0 && confirmedOps.length > 0 && planTrades.length > 0) {
+      // 6. Criação automática (V1.1a redesign): sem painel intermediário, sem clique extra.
+      //    Throttling: batch > 20 → sequencial; ≤ 20 → paralelo (Promise.allSettled).
+      //    Deduplicação verificada antes de cada createTrade pelo helper.
+      const lowResolution = !!parseResult?.lowResolution;
+      const batchResult = await createTradesBatch({
+        toCreate,
+        planId: selectedPlanId,
+        importBatchId: batchId,
+        tickerRuleMap,
+        lowResolution,
+        existingTrades: planTrades,
+        userContext,
+        onProgress: (_current, _total, message) => setProgress(message),
+      });
+
+      // 7. Persistir summary completo para o STEP DONE (Fase 4 vai consumir nas labels)
+      setImportSummary({
+        ordersConfirmed: confirmedOrders.length,
+        opsConfirmed: confirmedOps.length,
+        toCreateCount: toCreate.length,
+        tradesCreated: batchResult.created,
+        tradesDuplicates: batchResult.duplicates.length,
+        tradesFailed: batchResult.failed,
+        toConfrontCount: toConfront.length,
+        ambiguousCount: ambiguous.length,
+        lowResolution,
+      });
+
+      // 8. Modo Confronto (V1.1b — Fase 5 vai refatorar para enriquecimento)
+      //    Por enquanto continua usando prepareConfrontBatch antigo + MatchedOperationsPanel.
+      if (toConfront.length > 0) {
         setProgress('Comparando operações com trades do diário...');
         const confront = prepareConfrontBatch(confirmedOps, correlations, planTrades);
         if (confront.divergent.length > 0 || confront.converged.length > 0) {
           setConfrontData(confront);
         }
+      }
+
+      // 9. Persistir ambíguas (Fase 5 cria o painel de decisão manual)
+      if (ambiguous.length > 0) {
+        setAmbiguousData(ambiguous);
       }
 
       setStep(STEPS.DONE);
@@ -300,32 +332,7 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck]);
-
-  // ============================================
-  // MODO CRIAÇÃO: criar trades a partir de operações ghost (V1.1a)
-  // ============================================
-  const handleCreateGhostTrades = useCallback(async (tradeDataArray) => {
-    if (!userContext?.uid || !tradeDataArray?.length) {
-      return { success: [], failed: [{ error: 'Contexto de usuário ou dados inválidos' }] };
-    }
-
-    const success = [];
-    const failed = [];
-
-    for (const tradeData of tradeDataArray) {
-      try {
-        const newTrade = await createTrade(tradeData, userContext);
-        success.push({ id: newTrade.id, ticker: newTrade.ticker });
-      } catch (err) {
-        console.error('[OrderImportPage] Erro criando trade:', err);
-        failed.push({ ticker: tradeData.ticker, error: err.message });
-      }
-    }
-
-    console.log(`[OrderImportPage] Modo Criação: ${success.length} criados, ${failed.length} falhas`);
-    return { success, failed };
-  }, [userContext]);
+  }, [batchId, parsedOrders, parseResult, selectedPlanId, trades, orderStaging, crossCheck, userContext]);
 
   // ============================================
   // MODO CONFRONTO: aceitar ou atualizar trade a partir de operação (V1.1b)
@@ -609,13 +616,14 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 />
               )}
 
-              {/* Modo Criação: operações ghost → criar trades (V1.1a) */}
-              {ghostCreationData && (
-                <GhostOperationsPanel
-                  ghostOperations={ghostCreationData.toCreate.map(t => t.operation).concat(ghostCreationData.duplicates.map(d => d.operation))}
-                  toCreate={ghostCreationData.toCreate}
-                  duplicates={ghostCreationData.duplicates}
-                  onCreateTrades={handleCreateGhostTrades}
+              {/* Modo Criação (V1.1a redesign): trades criados automaticamente após confirmação */}
+              {importSummary && (
+                <CreationResultPanel
+                  summary={{
+                    created: importSummary.tradesCreated,
+                    duplicates: importSummary.tradesDuplicates,
+                    failed: importSummary.tradesFailed,
+                  }}
                 />
               )}
 
