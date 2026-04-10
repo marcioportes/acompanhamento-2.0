@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.11.0  
-> **Última atualização:** 09/04/2026 — Prop Firm Engine deployado (#52 Fases 1/1.5/2), DEC-060/061/062, DT-034/035, v1.25.0  
+> **Versão:** 0.12.0  
+> **Última atualização:** 10/04/2026 — Order Import V1.1 redesign (#93), DEC-063 a DEC-067, v1.26.0  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -34,6 +34,7 @@ Este documento segue versionamento semântico:
 | 0.10.0 | 05/04/2026 | v1.24.0 #122/#123 | RenewalForecast + whatsappNumber, CHANGELOG v1.24.0, CHUNK-02/16 lock |
 | 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-060/061/062 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
 | 0.10.2 | 06/04/2026 | #122/#123 mergeados | PR #124 mergeado, locks CHUNK-02/16 liberados (AVAILABLE), removidos de Locks ativos |
+| 0.12.0 | 10/04/2026 | Order Import V1.1 redesign | #93 v1.26.0, DEC-063 a DEC-067, criação automática + confronto enriquecido |
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 
 **Regra de uso:**
@@ -555,13 +556,13 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
 | CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
 | CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
-| CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `addTrade` | LOCKED |
+| CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade/enrichTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `tradeGateway` | AVAILABLE |
 | CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
 | CHUNK-06 | Emotional System | Scoring emocional, detecção TILT/REVENGE, perfil emocional | `emotionalAnalysisV2`, `useEmotionalProfile` | AVAILABLE |
 | CHUNK-07 | CSV Import | Parser CSV, staging, mapeamento de colunas, validação | `CsvImport/*`, `csvStagingTrades` | AVAILABLE |
-| CHUNK-08 | Mentor Feedback | Feedback do mentor por trade, chat, status de revisão | `Feedback/*`, `feedbackHelpers` | LOCKED |
+| CHUNK-08 | Mentor Feedback | Feedback do mentor por trade, chat, status de revisão | `Feedback/*`, `feedbackHelpers` | AVAILABLE |
 | CHUNK-09 | Student Onboarding | Assessment 4D, probing, baseline report, marco zero | `Onboarding/*`, `assessment` subcollection | AVAILABLE |
-| CHUNK-10 | Order Import | Import de ordens brutas, parse ProfitChart-Pro, cross-check | `OrderImport/*`, `orders` collection | LOCKED |
+| CHUNK-10 | Order Import | Import ordens, parse ProfitChart-Pro, criação automática, confronto enriquecido | `OrderImport/*`, `orders` collection, `tradeGateway` | AVAILABLE |
 | CHUNK-11 | Behavioral Detection | Motor de detecção comportamental em 4 camadas — FUTURO | `behavioralDetection` | BLOCKED |
 | CHUNK-12 | Cycle Alerts | Monitoramento de ciclos, alertas automáticos — FUTURO | `cycleMonitoring` | BLOCKED |
 | CHUNK-13 | Context Bar | Barra de contexto unificado Conta>Plano>Ciclo>Período, provider, hook | `StudentContextProvider`, `ContextBar`, `useStudentContext` | AVAILABLE |
@@ -573,9 +574,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 
 ### 6.4 Checklist de Check-Out
 
@@ -677,6 +675,11 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-060 | **Plano de ataque prop firm — 5 perfis determinísticos instrument-aware** (CONS_A 10% DD, CONS_B 15% ★, CONS_C 20%, AGRES_A 25%, AGRES_B 30%). Lógica invertida: mais risco = menos trades (conservadores 2/dia, agressivos 1/dia). RR fixo 1:2. `roUSD = drawdownMax × roPct`, `stopPoints = roUSD / instrument.pointValue`. Viabilidade por 3 critérios + sugestão micro. Substitui modelo binário conservador/agressivo — `normalizeAttackProfile()` compat legado | #52 | 07/04/2026 |
 | DEC-061 | **Restrição de sessão NY** — stops abaixo de `NY_MIN_VIABLE_STOP_PCT = 12.5%` do range NY não viáveis na sessão NY, mas viáveis em Ásia/London. Flag `sessionRestricted` + `recommendedSessions`. Threshold 12.5% genérico; calibração com ATR real v2: NQ NY range 329.4 pts → 12.5% = ~41 pts mínimo | #52 | 08/04/2026 |
 | DEC-062 | **Engine prop firm duplicado (Opção A)** — `src/utils/propFirmDrawdownEngine.js` (ESM, testado 58 testes) e `functions/propFirmEngine.js` (CommonJS para CFs) são cópias manuais. Header de aviso obrigatório. DT-034 registra unificação futura via build step ou monorepo workspace | #52 | 09/04/2026 |
+| DEC-063 | **Order Import cria trades automaticamente** após staging review — airlock = tela de seleção do aluno, criação é consequência da confirmação. GhostOperationsPanel (botão manual) descartado | #93 | 10/04/2026 |
+| DEC-064 | **Confronto Enriquecido via updateDoc** com `_enrichmentSnapshot` inline — preserva campos comportamentais (emoção, setup, feedback), sobrescreve snapshot anterior (sem histórico infinito). DELETE+CREATE descartado | #93 | 10/04/2026 |
+| DEC-065 | **Categorização de ops em 3 grupos**: toCreate (0 correlações) / toConfront (1 trade) / ambiguous (2+ trades). Lookup por `_rowIndex` — sem fallback por instrumento que causa falsos positivos. Ops mistas nunca caem em limbo | #93 | 10/04/2026 |
+| DEC-066 | **Throttling de criação em batch**: ≤20 → Promise.allSettled paralelo; >20 → for/await sequencial com progresso dinâmico ("Criando trade N de M...") | #93 | 10/04/2026 |
+| DEC-067 | **Badges "Importado" + "Complemento pendente"** em 4 componentes do diário. "Importado" (blue, permanente) = `source === 'order_import'`. "Pendente" (amber, transitório) = `!(emotionEntry\|\|emotion) \|\| !setup`. emotionExit não entra no critério | #93 | 10/04/2026 |
 
 ---
 
@@ -735,6 +738,31 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.26.0] - 10/04/2026
+**Issue:** #93 (feat: Order Import V1.1 redesign)
+**Epic:** #128 (Pipeline Unificado de Import de Ordens)
+**Milestone:** v1.1.0 — Espelho Self-Service
+#### Adicionado
+- Criação automática de trades após confirmação no staging review — sem painel intermediário (DEC-063)
+- `enrichTrade` no tradeGateway — enriquecimento de trade existente com `_enrichmentSnapshot` inline (DEC-064)
+- `categorizeConfirmedOps` — particiona ops em 3 grupos sem limbo (DEC-065)
+- `createTradesBatch` helper com throttling ≤20 paralelo / >20 sequencial (DEC-066)
+- `CreationResultPanel` — display read-only de trades criados automaticamente
+- `AmbiguousOperationsPanel` — MVP informativo para ops com 2+ trades correlacionados
+- `TradeStatusBadges` — badges "Importado" (blue) + "Complemento pendente" (amber) em TradesList, TradeDetailModal, ExtractTable, FeedbackPage (DEC-067)
+- Labels STEP DONE consumindo `importSummary` (contagens corretas, não parse cheia)
+- Flag `lowResolution` na parse + propagação nos trades (shadow behavior futuro)
+- `orderKey.js` — chave canônica de ordem (single source of truth para filtro)
+- 10 testes de integração end-to-end + 70 testes unitários novos (953 total)
+#### Alterado
+- `MatchedOperationsPanel` — "Aceitar enriquecimento" substitui "DELETE+CREATE"
+- `handleStagingConfirm` refatorado — criação automática + confronto enriquecido
+#### Removido
+- `GhostOperationsPanel` (botão manual de criação)
+- `identifyGhostOperations`, `prepareBatchCreation`, `identifyMatchedOperations`, `prepareConfrontBatch` (substituídos)
+- `handleUpdateMatched` (DELETE+CREATE) — substituído por `enrichTrade`
+- CrossCheckDashboard do OrderImportPage (movido para #102)
 
 ### [1.25.0] - 09/04/2026
 **Issue:** #52 (epic: Gestão de Contas em Mesas Proprietárias)
