@@ -15,8 +15,6 @@ Muitos alunos operam em mesas proprietarias (prop firms). Cada mesa tem regras p
 
 **Revisao v3.0 (05/04/2026):** Discussao com sessao master (Opus 4.6) definiu modelo semantico completo, plano de ataque personalizado, 3 camadas de alerta, e decisoes de persistencia.
 
-**Revisao v4.0 (06/04/2026):** Fase 1 implementada e validada operacionalmente. Identificado e corrigido bug critico no algoritmo: `calculateAttackPlan` original tratava `drawdownMax` como input para % generico, gerando RO maior que `dailyLossLimit` (impossivel). Reescrito com hard constraints (RO baseado em `dailyLossLimit`, nunca em `drawdownMax`). Bug do `availableCapital` no `PlanManagementModal` (dobrava saldo via `currentPlanPl`) corrigido com flag `__isDefaults`. Validacao operacional revelou problema mais profundo: stop em USD nao tem significado sem contexto de instrumento (15pts no MNQ = imediatamente comido pelo ATR). Faseamento expandido com **Fase 1.5 (instrumentsTable + calculateAttackPlan instrument-aware)** e **Fase 2.5 (IA Sonnet 4.6 como narrador)**.
-
 ### Modelo semantico — 3 camadas
 
 **Camada 1 — Template (regras da mesa):**
@@ -83,16 +81,14 @@ O plano mostra de onde veio (`dataSource`) e alerta quando baseado em defaults: 
 | RO sugerido | Conservador (DD apertado, sem 2a chance) | Moderado (DD resetou) | Conforme perfil real |
 | Alertas | Pressao de prazo + margem de DD | Complacencia pos-aprovacao | Payout eligibility |
 
-### Faseamento (revisado v4.0)
+### Faseamento (revisado)
 
-| Fase | Escopo | Estimativa | Estado | Restricoes |
-|------|--------|-----------|--------|-----------|
-| 1 | Templates `propFirmTemplates` + configuracao mentor + extensao `accounts` + plano de ataque rule-based | 1.5 sessoes | ✅ Implementada (com correcoes) | Sem conflito de chunks |
-| **1.5** | **`instrumentsTable.js` curada (23 instrumentos: ATR, point value, micro variants, disponibilidade por mesa, session profiles) + `calculateAttackPlan` instrument-aware (sizing/stop em pontos reais) + campo `selectedInstrument` no `propFirm` + UI seleciona instrumento na criacao** | **1 sessao** | 🟡 Em andamento | Bloqueia Fase 2 — sem instrumento, plano e abstrato |
-| 2 | Engine de drawdown (4 tipos) + CFs com transacao + daily loss + eval deadline | 1.5 sessoes | ⏸️ Aguarda 1.5 | CF usa `runTransaction` para drawdown |
-| **2.5** | **CF `generatePropFirmApproachPlan` com Sonnet 4.6: narrativa estrategica + exemplos + tabela visual baseada em (perfil 4D + indicadores + instrumento + mesa + tipo conta + tipo ataque). Math determinada na camada 1.5; IA so narra. Validacao pos-processamento contra constraints. Persiste em `account.propFirm.aiApproachPlan`** | **2-3 sessoes** | 📋 Planejada | DEC nova: Sonnet 4.6 (nao Gemini Flash, DEC-054 nao se aplica) |
-| 3 | Dashboard card prop + gauges + alertas mentor + tempo medio trades (universal) | 1 sessao | ⏸️ Aguarda 2 | CHUNK-02 + CHUNK-04 (leitura) — #93 deve liberar locks antes |
-| 4 | Payout tracking + qualifying days + simulador | 0.5 sessao | ⏸️ | — |
+| Fase | Escopo | Estimativa | Restricoes |
+|------|--------|-----------|-----------|
+| 1 | Templates `propFirmTemplates` + configuracao mentor + extensao `accounts` + plano de ataque rule-based | 1.5 sessoes | Sem conflito de chunks |
+| 2 | Engine de drawdown (4 tipos) + CFs com transacao + daily loss + eval deadline | 1.5 sessoes | CF usa `runTransaction` para drawdown |
+| 3 | Dashboard card prop + gauges + alertas mentor + tempo medio trades (universal) | 1 sessao | CHUNK-02 + CHUNK-04 (leitura) — #93 deve liberar locks antes |
+| 4 | Payout tracking + qualifying days + simulador | 0.5 sessao | — |
 
 ### Decisoes arquiteturais (DEC-053 + discussao 05/04/2026)
 
@@ -109,12 +105,6 @@ O plano mostra de onde veio (`dataSource`) e alerta quando baseado em defaults: 
 | Drawdown usa `runTransaction` na CF | Trailing depende de read-then-write atomico do peakBalance. FieldValue.increment nao serve aqui |
 | Tempo medio de trades e metrica universal | Vai nos MetricsCards para todas as contas, nao so prop. No card prop mostra com contexto |
 | Eval deadline conta dias corridos | Apex conta corridos, nao dias de trading. UI deve ser explicita |
-| **`calculateAttackPlan` usa hard constraints absolutos (06/04)** | **roPerTrade NUNCA > dailyLossLimit. roPerTrade × maxTradesPerDay <= dailyLossLimit. metaDiaria × diasUteis >= profitTarget. Algoritmo original (% de drawdown) gerava planos impossiveis** |
-| **`instrumentsTable.js` como tabela curada hardcoded (06/04)** | **Path: `src/constants/instrumentsTable.js`. 23 instrumentos top com ATR + point value + micro variants. Helpers: `getInstrument`, `getSessionRange`, `isInstrumentAllowed`. Revisao trimestral pelo mentor. Nao em masterData (volume baixo, mudanca trimestral, schema rico). Fonte de verdade unica para volatilidade** |
-| **`restrictedInstruments` derivado dinamicamente (06/04)** | **Manter compatibilidade da UI atual (le `template.restrictedInstruments`), mas a fonte de verdade e `INSTRUMENTS_TABLE.availability[firm]`. Funcao helper expoe lista derivada para cada mesa** |
-| **Sonnet 4.6 para AI Approach Plan, NAO Gemini Flash (06/04)** | **DEC-054 (Gemini Flash para feedback semantico) nao se aplica. Justificativa: volume baixo (1 chamada/conta), stakes altas (dinheiro do trader), infra Claude ja existe (4 CFs), reasoning superior, custo aceitavel ate 500 alunos (~$24/mes). Nova DEC formal a registrar no PROJECT.md** |
-| **selectedInstrument inline em `account.propFirm` (06/04)** | **Atributo da instancia da conta. Faz parte do mesmo objeto `propFirm`. INV-15: aprovado verbalmente — campo do mesmo objeto ja aprovado, expansao natural** |
-| **Cap operacional max trades/dia (06/04)** | **8 conservador, 10 agressivo. Independente da formula matematica. Razao: dailyLoss/RO pode dar 21 trades, operacionalmente absurdo** |
 
 ## 2. ACCEPTANCE CRITERIA
 
@@ -250,151 +240,191 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 - Iniciar Fase 1 (templates + configuracao + plano de ataque)
 - Consultar body do issue GitHub (#52) para templates detalhados das mesas
 
-### Sessao — 05-06/04/2026 — Implementacao Fase 1 + Correcoes + Reescrita do calculator
+### Sessao — 09/04/2026 — Fase 2 passo 2.b + 2.d (CF + drawdownHistory)
 
-**Tipo:** codigo (worktree `~/projects/acomp-052`, branch `feature/issue-052-prop-firms`)
-**Baseado em:** PROJECT.md v0.9.0 (sessao iniciou nesse ponto; main avancou para v0.10.2 durante a sessao)
+**Tipo:** codigo (worktree `~/projects/acomp-052`)
+**Baseado em:** propFirmDrawdownEngine.js v1 (passo 2.a, 58 testes Vitest)
 
-**O que foi feito (Fase 1 — estrutura inicial):**
-- CHUNK-17 (Prop Firm Engine) registrado no PROJECT.md §6.3 com lock para #52
-- Worktree isolado criado: `git worktree add ~/projects/acomp-052 feature/issue-052-prop-firms` (INV-16)
-- `src/constants/propFirmDefaults.js` (NEW) — 23 templates: Apex EOD/Intraday 25K-300K (10), MFF Starter/Core/Scale 50K-150K (4), Lucid Pro/Flex 50K/100K (3), Tradeify Select 25K/50K/100K/150K (4) — 4 firms × multi-size
-- Constantes: PROP_FIRM_PHASES, DRAWDOWN_TYPES, FEE_MODELS, DAILY_LOSS_ACTIONS, ATTACK_PLAN_PROFILES, ATTACK_PLAN_DATA_SOURCES, EMPTY_TEMPLATE
-- `src/utils/attackPlanCalculator.js` (NEW) — primeira versao com cascata 4D → indicadores → defaults
-- `src/__tests__/utils/attackPlanCalculator.test.js` (NEW) — 34 testes iniciais
-- `src/hooks/usePropFirmTemplates.js` (NEW) — CRUD collection raiz com listener real-time, seedDefaults, deleteAllTemplates
-- `src/pages/PropFirmConfigPage.jsx` (NEW) — config mentor: seed, edit inline, delete, "Limpar Todos", agrupado por firma. DebugBadge (INV-04)
-- `src/hooks/useAccounts.js` — extensao addAccount/updateAccount com campo `propFirm` (templateId, firmName, productName, phase, peakBalance, currentDrawdownThreshold, suggestedPlan)
-- `src/components/AddAccountModal.jsx` — seletor firma → produto quando type=PROP, fallback para DEFAULT_TEMPLATES, auto-fill currency/balance/name, preview do plano de ataque
-- `src/pages/SettingsPage.jsx` — nova aba "Prop Firms"
-- `src/pages/AccountsPage.jsx` — DESCOBERTA: o modal de criacao de conta NAO usa AddAccountModal — tem form inline proprio. Adicionado seletor prop firm + propPlanDefaults + auto-abertura do PlanManagementModal para criar plano apos conta PROP
-- `firestore.rules` — rules para `propFirmTemplates` (mentor write, autenticado read) — DEPLOYED via `firebase deploy --only firestore:rules`
+**Escopo aprovado:** estender `functions/index.js` (`onTradeCreated`/`onTradeUpdated`/`onTradeDeleted`) com branch prop firm engine + `runTransaction` + write em `accounts/{id}/drawdownHistory`. Decisoes A/2/3/4/5 confirmadas pelo Marcio antes de codificar.
 
-**O que foi feito (5 correcoes de revisao identificadas pelo Marcio):**
+**O que foi feito:**
 
-1. **Currency BRL fixa no PlanManagementModal** — modal usava `formatCurrency` sem currency, default BRL. Conta Apex em USD mostrava R$ no plano. Fix: derivar `accountCurrency` da conta selecionada (ou `editingPlan.currency` quando snapshot stale). 7 chamadas `formatCurrency(value)` → `formatCurrency(value, accountCurrency)`. Simbolo dinamico US$/€/R$.
+1. **`functions/propFirmEngine.js`** (NEW) — copia CommonJS do `src/utils/propFirmDrawdownEngine.js`. Header de aviso "ESPELHO — manter sincronizado". Smoke test via `node -e` confirmou paridade com o engine ESM.
 
-2. **Defaults do plano genericos** — `propPlanDefaults` so passava accountId, name, pl, riskPerOperation, rrTarget. Fix: derivar `cycleGoalPct = profitTarget/pl`, `cycleStopPct = drawdownMax/pl`, `periodGoalPct = dailyTarget/pl`, `periodStopPct = dailyLossLimit/pl` (ou cycleStop/5). Inclui `currency`, `name`, `type`, todos os 13 campos do form de plano.
+2. **`functions/index.js`** — bump v1.9.0 → **v1.10.0**:
+   - CHANGELOG header atualizado
+   - VERSION constant: minor=10, patch=0, build=20260409
+   - `require('./propFirmEngine')` no topo (apos `db = admin.firestore()`)
+   - Helpers novos apos `updatePlanPl`:
+     - `recalculatePropFirmState(accountId, trade, tradeId)` — pre-check fora da tx (early return non-PROP), le template, runTransaction com re-read do propFirm + chamada engine + update dos campos runtime
+     - `appendDrawdownHistory(accountId, docId, trade, state)` — append-only snapshot
+     - `notifyPropFirmFlag(accountId, trade, state)` — throttle 1×/dia/flag via doc id deterministico `propfirm-{accountId}-{flag}-{date}`
+   - `onTradeCreated`: bloco 5 "PROP FIRM ENGINE" apos alerta emocional, isolado em try/catch
+   - `onTradeUpdated`: bloco "PROP FIRM RECALC" apos compliance recalc, antes do bloco emocional. Aplica `delta = newResult - oldResult` (LIMITACAO v1)
+   - `onTradeDeleted`: bloco "PROP FIRM RECALC" apos `updatePlanPl`. Aplica `-trade.result` (reversao). drawdownHistory permanece append-only (snapshot orfao intencional)
 
-3. **Sizing fixo sem contexto de instrumento** — calculator retornava `sizing: 1 contrato` arbitrario. Sem saber se NQ ($20/pt) ou MNQ ($2/pt) ou ES ($50/pt), o sizing nao tem significado. Fix: `sizing: null` no calculator, UI mostra "a definir conforme instrumento" no preview.
+3. **`firestore.rules`** — nova subcollection `accounts/{accountId}/drawdownHistory/{historyId}`: `read: isAuthenticated()`, `write: false` (apenas CF via admin SDK).
 
-4. **Edit modal nao rehydratava propFirm** — ao editar conta PROP existente, dropdowns firma/produto voltavam vazios mesmo com `propFirm.templateId` salvo no Firestore. Fix: `openModal(account)` agora seta `propFirmData` a partir de `account.propFirm` quando existe.
+**Schema novo em `account.propFirm` (expansao do objeto ja aprovado, INV-15):**
 
-5. **Max trades/dia 21 (operacionalmente absurdo)** — formula `dailyLoss/stopPerTrade` dava numeros irreais. Fix: cap operacional **8 conservador / 10 agressivo**, independente da formula. Mesmo se a math diz 21, o cap reduz para 8.
-
-**O que foi feito (reescrita critica do calculateAttackPlan — bug $1.150):**
-
-Identificado bug: o algoritmo original calculava `roPerTrade = drawdownMax × percentual` (ex: $2.500 × 4.6% = $115 USD), e quando convertido para `riskPerOperation` em % do PL ($25.000), ficava 4.6% = $1.150 — 2.3x o daily loss limit ($500). Um unico trade ruim estouraria o dia inteiro.
-
-**Causa raiz:** algoritmo tratava `drawdownMax` como input para % generico. ERRADO. As regras da mesa sao **HARD CONSTRAINTS absolutas**, nao inputs.
-
-**Reescrito com hard constraints (`calculateAttackPlan` v2):**
-```
-stopTotal = drawdownMax (constraint mesa)
-stopDiario = dailyLossLimit (constraint mesa)
-metaTotal = profitTarget (constraint mesa)
-metaDiaria = profitTarget / diasUteis (Math.ceil para garantir)
-roPerTrade = dailyLossLimit × fatorPerfil (NUNCA × drawdownMax)
-maxTrades = floor(dailyLossLimit / roPerTrade) com cap 8/10
-rrMinimum = 1.5 conservador, 2.0 agressivo
-stopPerTrade = roPerTrade / rrMinimum
-```
-
-**Constraints invioláveis validadas:**
-- roPerTrade NUNCA > dailyLossLimit ✓
-- stopPerTrade NUNCA > dailyLossLimit ✓
-- roPerTrade × maxTradesPerDay NUNCA > dailyLossLimit ✓
-- metaDiaria × diasUteis >= profitTarget ✓
-
-**Validacao manual Apex EOD 25K (DD $1.000, daily $500, target $1.500, eval 30 dias):**
-
-| Metrica | Conservador (defaults) | Agressivo (4D forte) |
+| Campo | Tipo | Descricao |
 |---|---|---|
-| RO/trade | $46 | $94 |
-| Stop/trade | $30 | $47 |
-| Max trades/dia | 8 (cap) | 5 |
-| RR minimo | 1.5:1 | 2.0:1 |
-| Meta diaria | $72 | $72 |
-| Dias uteis eval | 21 | 21 |
-| $46 × 8 = $368 ≤ $500 | ✓ | — |
-| $94 × 5 = $470 ≤ $500 | — | ✓ |
-| $72 × 21 = $1.512 ≥ $1.500 | ✓ | ✓ |
-| `constraintsViolated` | [] | [] |
+| `peakBalance` | number | maior saldo ja visto (ou snapshot EOD) |
+| `currentDrawdownThreshold` | number | nivel abaixo do qual a conta quebra |
+| `lockLevel` | number\|null | threshold congelado pos-lock (ou null) |
+| `isDayPaused` | boolean | daily loss limit atingido hoje |
+| `tradingDays` | number | dias com pelo menos 1 trade |
+| `dailyPnL` | number | P&L acumulado do dia (zera ao virar) |
+| `lastTradeDate` | string YYYY-MM-DD | usado pra detectar isNewDay |
+| `currentBalance` | number | saldo runtime mantido pelo engine |
+| `distanceToDD` | number 0..1 | margem proporcional ainda disponivel |
+| `flags` | string[] | snapshot atual de flags |
+| `lastUpdateTradeId` | string | ultimo tradeId que disparou recalc |
 
-**Bug do `availableCapital` no PlanManagementModal:**
-Modal mostrava "Disponivel: US$ 50.000" para conta de US$ 25.000. Causa raiz: `currentPlanPl + freePl` dobrava o saldo quando `editingPlan = propPlanDefaults`. O `currentPlanPl` foi feito para edicao real (devolver pl ocupado por plano existente), mas foi disparado errado para defaults pre-preenchidos. Fix: flag `__isDefaults: true` em propPlanDefaults; o modal pula a devolucao quando ve a flag.
+**Subcollection `accounts/{accountId}/drawdownHistory/{tradeId}`:**
 
-**Validacao critica do Marcio (06/04):**
-Apesar dos numeros do calculator estarem matematicamente corretos, sao **operacionalmente inuteis**. Stop $30 = 15 pontos no MNQ (com NQ a 24.230). ATR diario do NQ ~400 pontos. Stop de 15 pts e comido pela primeira vela. **O algoritmo determina valores em USD sem saber o instrumento — abstracao sem significado.**
+```js
+{
+  tradeId, date, balance, peakBalance, drawdownThreshold,
+  distanceToDD, dailyPnL, flags, lockLevel, createdAt
+}
+```
 
-**Conclusao:** Fase 1 entrega estrutura mas nao entrega valor real. Necessario:
-- **Fase 1.5**: tabela curada de instrumentos com ATR, point value, session profiles. Reescrever `calculateAttackPlan` para receber `instrument` como input e fazer math instrument-aware (back-calc: stop em pontos × valor do ponto = RO real).
-- **Fase 2.5**: Sonnet 4.6 como narrador (nao calculador). IA usa o math determinado da Fase 1.5 e gera narrativa estrategica + exemplos + tabela.
+Doc id = `tradeId` para idempotencia (re-execucao do trigger nao duplica). Para edits: doc id = `${tradeId}-edit-${Date.now()}`.
 
-**Discussao DEC-054 vs Sonnet 4.6 (06/04):**
-- DEC-054 (Gemini Flash para feedback semantico #31) NAO se aplica
-- Volume aqui e ~1 chamada/conta criada (raro) vs feedback que e 1 chamada/trade (alto volume)
-- Stakes diferentes: prop firm = dinheiro real do trader, requer reasoning superior
-- Custo Sonnet aceitavel ate 500 alunos (~$24/mes)
-- Infra Claude ja existe (4 CFs: classifyOpenResponse, generateProbingQuestions, analyzeProbingResponse, generateAssessmentReport) — secret ANTHROPIC_API_KEY ja configurado
+**Notificacoes `PROP_FIRM_FLAG`:**
+- `severity: CRITICAL` para `ACCOUNT_BUST`, `WARNING` para os demais
+- Idempotencia: doc id = `propfirm-{accountId}-{flag}-{date}` (1× por flag-tipo por dia)
+- Cobre: `ACCOUNT_BUST`, `DAILY_LOSS_HIT`, `DD_NEAR`, `LOCK_ACTIVATED`
+
+**Decisoes registradas (executadas conforme aprovacao do Marcio):**
+
+| ID | Decisao | Status |
+|----|---------|--------|
+| Engine sharing | Opcao A — duplicacao com header + DT-034 | ✅ Executado |
+| Schema novo | Campos runtime no propFirm (expansao INV-15) | ✅ Aprovado verbalmente |
+| Throttle | 1× por (flag-tipo, accountId, dia) | ✅ Executado |
+| onTradeDeleted | Snapshot append-only orfao | ✅ Executado |
+| Overhead account.get() | Aceito v1, monitorar | ✅ Aceito |
+
+**Limitacoes documentadas (v1):**
+- `onTradeUpdated` aplica DELTA incremental, NAO reconstrói historico do peakBalance
+- `onTradeDeleted` aplica reversao do delta, NAO remove snapshot do drawdownHistory
+- Trade editado muito antigo pode dessincronizar peakBalance — aceito (Marcio)
+- Pre-read `account.get()` em todos os trades — overhead ~50ms para non-PROP
+- DT-034 (NOVA): unificar engine prop firm via build step (rollup/esbuild) para eliminar a duplicacao
+
+**Validacao:**
+- `node --check functions/index.js` ✅
+- `node --check functions/propFirmEngine.js` ✅
+- Smoke test do engine CommonJS via `node -e` ✅ paridade com ESM
+- 963 testes Vitest passando (engine `src/utils/` inalterado) ✅
+- Build cliente limpo ✅
+
+**Arquivos tocados:**
+
+NOVOS:
+- `functions/propFirmEngine.js`
+
+EDITADOS:
+- `functions/index.js` (CHANGELOG, VERSION, helpers, onTradeCreated, onTradeUpdated, onTradeDeleted)
+- `firestore.rules` (subcollection drawdownHistory)
+- `docs/dev/issues/issue-052-prop-firms.md` (esta sessao)
+
+**Pendencias:**
+- Bump `src/version.js` (cliente) e `version` em `functions/package.json` se aplicavel
+- CHANGELOG do produto
+- DT-034 (NOVA) registrar em PROJECT.md
+- Deploy CFs: `firebase deploy --only functions:onTradeCreated,functions:onTradeUpdated,functions:onTradeDeleted` + `firebase deploy --only firestore:rules`
+- Validacao manual no browser apos deploy (criar trade em conta PROP, verificar campos runtime)
+- Fase 2.e (alerta mentor para flags) ja embutido neste passo via `notifyPropFirmFlag`
+- Fase 2.f (eval deadline countdown helper) — ja existe no engine puro como `calculateEvalDaysRemaining`/`isEvalDeadlineNear`. Pendente integracao com flag em algum lugar (provavelmente Fase 3 — UI)
+- Fase 3: card prop no StudentDashboard (depende de CHUNK-04 unlock)
+
+### Sessao — 09/04/2026 — Correcao critica de ATR (instrumentsTable v2)
+
+**Tipo:** correcao de bug critico (worktree `~/projects/acomp-052`)
+
+**Bug:** Fase 1.5 v1 da `instrumentsTable.js` tinha valores `avgDailyRange` ALUCINADOS — nao baseados em dados reais do TradingView. Impacto: viabilidade do plano de ataque calculada errada. Exemplo concreto: MES CONS_B Apex 25K com 30 pts → calculator dizia 90.9% do range NY (INVIAVEL), mas real e 40.6% (VIAVEL day trade).
+
+**Fonte de verdade:** `Temp/instruments-table-v2-atr-real.md` v2.0, captura TradingView ATR(14) diario em 09/04/2026.
+
+**O que foi feito:**
+
+1. **`src/constants/instrumentsTable.js`** — atualizado SOMENTE `avgDailyRange` (preserva availability, micros, types):
+
+| Símbolo | ATR v1 (alucinado) | ATR v2 (real) | Delta |
+|---|---|---|---|
+| ES | 55 | 123 | 2.24× |
+| NQ | 400 | 549 | 1.37× |
+| YM | 420 | 856 | 2.04× |
+| RTY | 30 | 70 | 2.33× |
+| CL | 2.5 | 9.11 | 3.64× |
+| GC | 40 | 180 | 4.50× |
+| SI | 0.60 | 5.69 | 9.48× |
+| 6B | 0.0110 | 0.0117 | 1.06× |
+| 6J | 0.00070 | 0.000046 | 0.066× (10× menor) |
+| ZC | 10 | 8.87 | 0.89× |
+| ZW | 15 | 17.75 | 1.18× |
+| ZS | 18 | 19.15 | 1.06× |
+| MBT | 4000 | 3201 | 0.80× |
+
+NG, HG, 6A: marcados como "ATR pendente de recaptura" — nao incluidos no v2, mantem valores v1.
+
+2. **`src/constants/propFirmDefaults.js`** — comentario do `NY_MIN_VIABLE_STOP_PCT` recalibrado: threshold 12.5% × NY range NQ (329.4) = ~41 pts (era 30 pts no calculo errado).
+
+3. **Testes recalculados — `attackPlanCalculator.test.js`:**
+   - "stop como % do range NY" — expected 240 → 329.4, stopNyPct 31.25 → 22.77
+   - "stop > 75% NY → INVIAVEL" — RTY 50K AGRES_B nao dispara mais (35.7%). Substituido por **M2K Apex 25K CONS_C**: 40 pts / 42 pts = 95.2% > 75% INVIAVEL ✓
+   - "AGRES_A NQ 50K — NY viavel" — 31.25/329.4 = 9.49% nao mais NY viavel. Substituido por **AGRES_B NQ 100K (DD $3000)**: 45 pts / 329.4 = 13.66% > 12.5% NY viavel ✓
+   - "threshold NY exato 12.5%" — recalculado: NQ DD $5490 CONS_B → RO $823.50 → 41.175 pts → 12.5% exato
+   - Comentarios de `NQ Apex 50K CONS_B/CONS_C` atualizados (5.69%/7.59% reais)
+   - **NOVO teste regressao**: `MES Apex 25K CONS_B com 30 pts é VIÁVEL na NY` (40.65% do range, nao 90.9%)
+
+4. **Testes recalculados — `instrumentsTable.test.js`:**
+   - `getSessionRange NQ NY` — 240 → 329.4
+   - `getSessionRange ES London` — 12.65 → 28.29
+   - `getRecommendedStop NQ` — 20pts/$400 → 27.45pts/$549 (atr passa a prevalecer)
+   - `getRecommendedStop MNQ` — $40 → $54.90
+   - `getRecommendedStop ES` — 4pts ($200, source min) → 6.15pts ($307.50, source atr)
+   - `getRecommendedStop YM` — 25pts ($125, source min) → 42.8pts ($214, source atr)
+   - Substituido teste "minStop prevalece" por **6E** (0.00045 × 5% < minStop 0.0008) — único caso onde minStop ainda ganha
+
+**Validacao chave:**
+- MES Apex 25K CONS_B: stop 30 pts, $150, 40.65% do range NY → ✅ VIAVEL day trade (era ❌ INVIAVEL)
+- MNQ Apex 25K CONS_B: stop 75 pts, 22.77% do range NY → ✅ VIAVEL NY (era 31.25% — mesma classificacao, valores diferentes)
+- NQ Apex 50K CONS_B: stop 18.75 pts, 5.69% do range NY → ⚠ session restricted (era 7.81% — mesma classificacao)
 
 **Decisoes tomadas:**
 
-| ID | Decisao | Justificativa |
-|----|---------|---------------|
-| — | calculateAttackPlan v2 com hard constraints | Original gerava roPerTrade > dailyLossLimit, impossivel |
-| — | Cap operacional 8/10 trades/dia | Math poderia dar 21, absurdo operacional |
-| — | RR conservador 1.5, agressivo 2.0 | Conservador prioriza acerto (RR menor mais facil), agressivo prioriza eficiencia |
-| — | sizing: null | Depende do instrumento, calculado depois |
-| — | Tabela curada de instrumentos em src/constants/instrumentsTable.js | Volume baixo, mudanca trimestral, schema rico, separacao de dominio |
-| — | restrictedInstruments derivado da tabela | Source of truth unica, compatibilidade com UI atual |
-| — | Sonnet 4.6 (nao Gemini) para approach plan IA | Volume baixo, stakes altas, infra ja existe, reasoning superior |
-| — | selectedInstrument inline em propFirm | Atributo da instancia, INV-15 expansao natural |
-| — | __isDefaults flag para propPlanDefaults | Pular currentPlanPl no PlanManagementModal |
+| Decisao | Justificativa |
+|---|---|
+| Atualizar SO `avgDailyRange`, nao tocar availability/micros/types | User explicitamente disse "Atualizar TODOS os avgDailyRange". Mudancas estruturais sao escopo separado |
+| Preservar GC `apex: false` (nota "suspenso Abr/2026") | v2 file mostra `apex: true` mas isso e sobre catalogo bruto. Nota de suspensao operacional permanece |
+| `getRecommendedStop` mantido como helper legado | Nao mais usado pelo calculator novo (5 perfis), mas testes ainda existem. Manter funcao + atualizar testes |
+| Threshold 12.5% generico mantido | Mesma logica da regra anterior do user, agora com numeros reais. Calibragem traduz para ~41 pts no NQ (era 30 com ATR errado) |
+| Adicionar teste de regressao MES Apex 25K | Caso pedagogico do user — garantir que o bug nao reaparece |
 
-**Arquivos tocados nesta sessao:**
-
-NOVOS:
-- `src/constants/propFirmDefaults.js`
-- `src/utils/attackPlanCalculator.js`
-- `src/__tests__/utils/attackPlanCalculator.test.js`
-- `src/hooks/usePropFirmTemplates.js`
-- `src/pages/PropFirmConfigPage.jsx`
+**Arquivos tocados:**
 
 EDITADOS:
-- `src/hooks/useAccounts.js`
-- `src/components/AddAccountModal.jsx`
-- `src/pages/SettingsPage.jsx`
-- `src/pages/AccountsPage.jsx`
-- `src/components/PlanManagementModal.jsx`
-- `firestore.rules` (rules para propFirmTemplates) — **DEPLOYED**
-- `package-lock.json` (npm install no worktree)
+- `src/constants/instrumentsTable.js` (16 valores avgDailyRange)
+- `src/constants/propFirmDefaults.js` (comentario calibragem)
+- `src/__tests__/utils/attackPlanCalculator.test.js` (4 testes corrigidos + 1 novo regressao)
+- `src/__tests__/utils/instrumentsTable.test.js` (6 testes recalculados)
 
 **Testes:**
-- 37 novos testes (`attackPlanCalculator.test.js`)
-- 844 testes totais passando — **zero regressao**
+- 905 testes totais passando (era 904 — +1 regressao MES)
 - Build: limpo
 
-**Pendencias para esta mesma sessao (Fase 1.5):**
-- Criar `src/constants/instrumentsTable.js` baseado em `Temp/instruments-table-prop-firms.md`
-- Criar testes dos helpers (`getInstrument`, `getSessionRange`, `isInstrumentAllowed`)
-- Substituir `restrictedInstruments` hardcoded em `propFirmDefaults.js` por derivacao dinamica
-- Reescrever `calculateAttackPlan` instrument-aware (recebe `instrumentVolatility`)
-- Adicionar campo `selectedInstrument` em `propFirm` (INV-15 verbal aprovado — expansao do mesmo objeto)
-- Adicionar UI de selecao de instrumento na criacao de conta PROP
-- Atualizar `propPlanDefaults` para usar stop instrument-aware
-- Atualizar PROJECT.md com nova DEC ("instrumentsTable curada") e bump v0.11.0
-
-**Pendencias para sessoes futuras:**
-- Fase 2: Engine de drawdown (4 tipos) + CFs runTransaction
-- Fase 2.5: CF `generatePropFirmApproachPlan` com Sonnet 4.6 + UX
-- Fase 3: Dashboard card prop (depende de CHUNK-04 unlock)
-- Fase 4: Payout tracking
-- Conta APEX antiga sem propFirm: deletar via Firebase Console (sem service account no worktree)
+**Pendencias:**
+- Re-medir ATR de NG, HG, 6A no TradingView (nao incluidos no v2)
+- Re-medir trimestralmente (recomendacao do user) ou quando VIX mudar significativamente
+- Bump version.js + CHANGELOG (aguardando direcao)
 
 ## 5. ENCERRAMENTO
 
-**Status:** 🟡 Em andamento — Fase 1 implementada, Fase 1.5 iniciada
+**Status:** Aguardando inicio de codificacao
 
 **Checklist final:**
 - [ ] Acceptance criteria atendidos
