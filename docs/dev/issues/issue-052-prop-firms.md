@@ -424,15 +424,15 @@ EDITADOS:
 
 ## 5. ENCERRAMENTO
 
-**Status:** Aguardando inicio de codificacao
+**Status:** ✅ FECHADO — v1.25.0, PR #132 mergeado, CFs deployadas
 
 **Checklist final:**
-- [ ] Acceptance criteria atendidos
-- [ ] Testes passando
-- [ ] PROJECT.md atualizado (DEC, DT, CHANGELOG)
-- [ ] PR aberto e mergeado
-- [ ] Issue fechado no GitHub
-- [ ] Branch deletada
+- [x] Acceptance criteria Fases 1/1.5/2 atendidos
+- [x] 1010 testes passando
+- [x] PROJECT.md v0.11.0 atualizado (DEC-060/061/062, DT-034/035, CHANGELOG v1.25.0)
+- [x] PR #132 mergeado (10/04/2026)
+- [x] Issue #52 fechado no GitHub
+- [x] Branch `feature/issue-052-prop-firms` deletada (local + remota)
 - [ ] Locks de chunks liberados no registry (secao 6.3)
 
 ## 6. CHUNKS
