@@ -601,12 +601,37 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-2 py-4">
                 <CheckCircle className="w-10 h-10 text-emerald-400" />
-                <p className="text-sm font-semibold text-white">
-                  {parsedOrders.length} ordens importadas com sucesso
-                </p>
-                <p className="text-xs text-slate-400">
-                  {reconstructedOps.length} operações reconstruídas
-                </p>
+                {importSummary ? (
+                  <>
+                    <p className="text-sm font-semibold text-white">
+                      {importSummary.ordersConfirmed} ordens importadas, {importSummary.opsConfirmed} operaç{importSummary.opsConfirmed === 1 ? 'ão' : 'ões'}
+                    </p>
+                    <p className="text-xs text-slate-400 text-center max-w-md">
+                      {importSummary.tradesCreated.length > 0 && (
+                        <>{importSummary.tradesCreated.length} trade{importSummary.tradesCreated.length > 1 ? 's' : ''} criado{importSummary.tradesCreated.length > 1 ? 's' : ''}</>
+                      )}
+                      {importSummary.toConfrontCount > 0 && (
+                        <>{importSummary.tradesCreated.length > 0 ? ' · ' : ''}{importSummary.toConfrontCount} correlacionad{importSummary.toConfrontCount === 1 ? 'a' : 'as'}</>
+                      )}
+                      {importSummary.ambiguousCount > 0 && (
+                        <> · {importSummary.ambiguousCount} ambígu{importSummary.ambiguousCount === 1 ? 'a' : 'as'}</>
+                      )}
+                      {importSummary.tradesDuplicates > 0 && (
+                        <> · {importSummary.tradesDuplicates} duplicata{importSummary.tradesDuplicates > 1 ? 's' : ''} ignorada{importSummary.tradesDuplicates > 1 ? 's' : ''}</>
+                      )}
+                      {importSummary.tradesFailed.length > 0 && (
+                        <> · <span className="text-red-400">{importSummary.tradesFailed.length} falha{importSummary.tradesFailed.length > 1 ? 's' : ''}</span></>
+                      )}
+                      {importSummary.lowResolution && (
+                        <> · <span className="text-amber-400/80" title="CSV exportado sem segundos — padrões comportamentais dependentes de granularidade fina ficam inconclusive">baixa resolução</span></>
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-white">
+                    Importação concluída
+                  </p>
+                )}
               </div>
 
               {correlationResult && (
