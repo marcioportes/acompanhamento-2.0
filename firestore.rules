@@ -88,10 +88,17 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
-        isMentor() || 
+        isMentor() ||
         isOwner(resource.data.studentId) ||
         (resource.data.studentEmail != null && isOwnerByEmail(resource.data.studentEmail))
       );
+
+      // DRAWDOWN HISTORY (subcollection) — Prop Firm Engine #52 Fase 2
+      // Append-only audit log. Apenas CF (admin SDK) escreve. Aluno/mentor lêem.
+      match /drawdownHistory/{historyId} {
+        allow read: if isAuthenticated();
+        allow write: if false;
+      }
     }
 
     // MOVEMENTS — DEC-024: dados do aluno, aluno tem acesso total
@@ -188,6 +195,14 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // ========== Prop Firm Templates (CHUNK-17, issue #052) ==========
+    // Catálogo de templates de mesas proprietárias (collection raiz, INV-15 aprovado)
+    // Mentor configura, todos autenticados podem ler (aluno seleciona ao criar conta PROP)
+    match /propFirmTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isMentor();
     }
 
     // ========== Assessment — Student Onboarding (CHUNK-09) ==========

@@ -19,6 +19,7 @@ import { useTrades } from '../hooks/useTrades';
 import { runSeed, forceSeed, updateTickers } from '../utils/seedData';
 import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import ComplianceConfigPage from './ComplianceConfigPage';
+import PropFirmConfigPage from './PropFirmConfigPage';
 import DebugBadge from '../components/DebugBadge';
 
 const TABS = [
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'currencies', label: 'Moedas', icon: DollarSign, color: 'amber' },
   { id: 'emotions', label: 'Emoções', icon: Heart, color: 'rose' },
   { id: 'compliance', label: 'Compliance', icon: Shield, color: 'cyan' },
+  { id: 'propfirm', label: 'Prop Firms', icon: TrendingUp, color: 'purple' },
   { id: 'admin', label: 'Admin', icon: Database, color: 'slate' },
 ];
 
@@ -525,6 +527,8 @@ const SettingsPage = () => {
       {/* ====== COMPLIANCE CONFIG ====== */}
       {activeTab === 'compliance' ? (
         <ComplianceConfigPage embedded={true} />
+      ) : activeTab === 'propfirm' ? (
+        <PropFirmConfigPage embedded={true} />
       ) : activeTab === 'admin' ? (
         <div className="max-w-2xl space-y-4">
           {adminResult && (

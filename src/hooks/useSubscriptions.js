@@ -11,10 +11,11 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, doc,
+  collection, collectionGroup, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc,
   getDocs, serverTimestamp, orderBy, Timestamp
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -129,6 +130,7 @@ export const useSubscriptions = () => {
         ...sub,
         studentName: student?.name ?? sub.studentId,
         studentEmail: student?.email ?? '',
+        studentWhatsapp: student?.whatsappNumber ?? '',
       };
     });
   }, [subscriptions, students]);
@@ -168,41 +170,82 @@ export const useSubscriptions = () => {
     if (!data.studentId) throw new Error('studentId obrigatório');
 
     const isTrial = data.type === 'trial';
-    const startDate = new Date(data.startDate ?? new Date());
+    // Força T12:00:00Z para evitar shift de fuso (BR = UTC-3)
+    const startDateStr = data.startDate ?? new Date().toISOString().split('T')[0];
+    const startDate = new Date(startDateStr + 'T12:00:00Z');
+
+    // Upload do recibo se fornecido
+    let receiptUrl = '';
+    if (data.receiptFile) {
+      receiptUrl = await uploadReceipt(data.receiptFile, data.studentId, 'initial');
+    }
 
     const newSub = {
       type: data.type ?? 'paid',
       plan: data.plan ?? 'alpha',
-      status: isTrial ? 'active' : 'pending',
+      status: 'active',
       startDate: Timestamp.fromDate(startDate),
       notes: data.notes ?? '',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    if (isTrial) {
-      const trialEnd = new Date(data.trialEndsAt ?? startDate);
-      if (!data.trialEndsAt) trialEnd.setDate(trialEnd.getDate() + 30);
+    const isVip = data.type === 'vip';
+
+    if (isVip) {
+      // VIP: sem endDate, sem amount, sem vencimento
+    } else if (isTrial) {
+      const trialDays = parseInt(data.trialDays) || 30;
+      const trialEnd = new Date(startDate);
+      trialEnd.setDate(trialEnd.getDate() + trialDays);
       newSub.trialEndsAt = Timestamp.fromDate(trialEnd);
     } else {
-      const endDate = new Date(data.endDate ?? startDate);
-      if (!data.endDate) endDate.setDate(endDate.getDate() + 30);
+      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
+      const endDate = new Date(startDate);
+      endDate.setMonth(endDate.getMonth() + billingMonths);
       newSub.endDate = Timestamp.fromDate(endDate);
-      newSub.renewalDate = Timestamp.fromDate(new Date(data.renewalDate ?? endDate));
+      newSub.renewalDate = Timestamp.fromDate(endDate);
       newSub.lastPaymentDate = null;
       newSub.amount = parseFloat(data.amount) || 0;
       newSub.currency = data.currency ?? 'BRL';
       newSub.gracePeriodDays = parseInt(data.gracePeriodDays) || 5;
+      newSub.billingPeriodMonths = billingMonths;
+      if (receiptUrl) newSub.receiptUrl = receiptUrl;
     }
 
     // Escrita na subcollection: students/{studentId}/subscriptions
     const subColRef = collection(db, 'students', data.studentId, 'subscriptions');
     const docRef = await addDoc(subColRef, newSub);
 
-    // Atualiza accessTier no student
-    const tierValue = newSub.status === 'active' ? (data.plan ?? 'alpha') : 'none';
+    // Registra payment inicial para paid (histórico do início)
+    if (!isTrial && !isVip && (parseFloat(data.amount) || 0) > 0) {
+      const billingMonths = parseInt(data.billingPeriodMonths) || 1;
+      const periodEnd = new Date(startDate);
+      periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
+
+      await addDoc(collection(db, 'students', data.studentId, 'subscriptions', docRef.id, 'payments'), {
+        date: Timestamp.fromDate(startDate),
+        amount: parseFloat(data.amount) || 0,
+        currency: data.currency ?? 'BRL',
+        method: 'other',
+        reference: 'Pagamento inicial',
+        receiptUrl: receiptUrl || '',
+        plan: data.plan ?? 'alpha',
+        periodStart: Timestamp.fromDate(startDate),
+        periodEnd: Timestamp.fromDate(periodEnd),
+        registeredBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      // Atualiza lastPaymentDate na subscription
+      await updateDoc(doc(db, 'students', data.studentId, 'subscriptions', docRef.id), {
+        lastPaymentDate: Timestamp.fromDate(startDate),
+      });
+    }
+
+    // Atualiza accessTier no student (VIP não altera access)
     await updateDoc(doc(db, 'students', data.studentId), {
-      accessTier: tierValue,
+      accessTier: isVip ? 'none' : (data.plan ?? 'alpha'),
       updatedAt: serverTimestamp(),
     });
 
@@ -231,14 +274,33 @@ export const useSubscriptions = () => {
 
   // ── Registrar pagamento ──
 
-  const registerPayment = useCallback(async (sub, paymentData) => {
+  // ── Upload de recibo (imagem ou PDF) ──
+
+  const uploadReceipt = useCallback(async (file, studentId, subscriptionId) => {
+    if (!file) return null;
+    const ext = file.name.split('.').pop();
+    const path = `subscriptions/${studentId}/${subscriptionId}/receipt_${Date.now()}.${ext}`;
+    const snap = await uploadBytes(ref(storage, path), file);
+    return await getDownloadURL(snap.ref);
+  }, []);
+
+  // ── Registrar pagamento ──
+
+  const registerPayment = useCallback(async (sub, paymentData, receiptFile = null) => {
     if (!user) throw new Error('Usuário não autenticado');
+
+    // Upload do recibo se fornecido
+    let receiptUrl = '';
+    if (receiptFile) {
+      receiptUrl = await uploadReceipt(receiptFile, sub.studentId, sub.id);
+    }
 
     // sub deve ter studentId, id, amount, currency, renewalDate
     const paymentRef = collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments');
-    const paymentDate = new Date(paymentData.date);
+    const paymentDate = new Date(paymentData.date + 'T12:00:00Z');
+    const billingMonths = sub.billingPeriodMonths ?? 1;
     const periodEnd = new Date(paymentDate);
-    periodEnd.setDate(periodEnd.getDate() + 30);
+    periodEnd.setMonth(periodEnd.getMonth() + billingMonths);
 
     await addDoc(paymentRef, {
       date: Timestamp.fromDate(paymentDate),
@@ -246,6 +308,8 @@ export const useSubscriptions = () => {
       currency: paymentData.currency ?? sub.currency ?? 'BRL',
       method: paymentData.method ?? 'pix',
       reference: paymentData.reference ?? '',
+      receiptUrl,
+      plan: sub.plan ?? 'alpha', // plano vigente no momento do pagamento (histórico)
       periodStart: Timestamp.fromDate(paymentDate),
       periodEnd: Timestamp.fromDate(periodEnd),
       registeredBy: user.uid,
@@ -253,12 +317,15 @@ export const useSubscriptions = () => {
     });
 
     const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
-    const newRenewalDate = new Date(sub.renewalDate ?? paymentDate);
-    newRenewalDate.setDate(newRenewalDate.getDate() + 30);
+    // Política: vencimento conta a partir da data do pagamento, não do vencimento anterior
+    const newRenewalDate = new Date(paymentDate);
+    newRenewalDate.setMonth(newRenewalDate.getMonth() + billingMonths);
 
     await updateDoc(subRef, {
       lastPaymentDate: Timestamp.fromDate(paymentDate),
       renewalDate: Timestamp.fromDate(newRenewalDate),
+      endDate: Timestamp.fromDate(newRenewalDate),
+      amount: parseFloat(paymentData.amount) || sub.amount,
       status: 'active',
       updatedAt: serverTimestamp(),
     });
@@ -298,6 +365,33 @@ export const useSubscriptions = () => {
     console.log('[useSubscriptions] Assinatura renovada:', sub.id);
   }, [user]);
 
+  // ── Excluir assinatura (limpeza de duplicatas) ──
+
+  const deleteSubscription = useCallback(async (sub) => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
+
+    // Deleta payments da subcollection primeiro
+    const paymentsSnap = await getDocs(collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'));
+    for (const payDoc of paymentsSnap.docs) {
+      await deleteDoc(payDoc.ref);
+    }
+
+    // Deleta a subscription
+    await deleteDoc(subRef);
+
+    // Recalcula accessTier: verifica se há outra subscription ativa
+    const remainingSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
+    const activeSub = remainingSubs.find(s => s.status === 'active');
+    await updateDoc(doc(db, 'students', sub.studentId), {
+      accessTier: activeSub ? (activeSub.plan ?? 'none') : 'none',
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('[useSubscriptions] Assinatura excluida:', sub.id);
+  }, [user, subscriptions]);
+
   // ── Buscar pagamentos de uma assinatura ──
 
   const getPayments = useCallback(async (sub) => {
@@ -316,6 +410,53 @@ export const useSubscriptions = () => {
     }));
   }, []);
 
+  // ── Excluir pagamento individual ──
+
+  const deletePayment = useCallback(async (sub, paymentId) => {
+    if (!user) throw new Error('Usuário não autenticado');
+
+    // Excluir o pagamento
+    const payRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments', paymentId);
+    await deleteDoc(payRef);
+
+    // Buscar pagamentos restantes para recalcular vencimento
+    const remaining = await getDocs(
+      query(collection(db, 'students', sub.studentId, 'subscriptions', sub.id, 'payments'), orderBy('date', 'desc'))
+    );
+
+    const subRef = doc(db, 'students', sub.studentId, 'subscriptions', sub.id);
+    const billingMonths = sub.billingPeriodMonths ?? 1;
+
+    if (remaining.empty) {
+      // Sem pagamentos: vencimento volta a startDate + período
+      const start = sub.startDate instanceof Date ? sub.startDate : new Date(sub.startDate);
+      const renewal = new Date(start);
+      renewal.setMonth(renewal.getMonth() + billingMonths);
+      await updateDoc(subRef, {
+        renewalDate: Timestamp.fromDate(renewal),
+        endDate: Timestamp.fromDate(renewal),
+        lastPaymentDate: null,
+        amount: sub.amount ?? 0,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      // Recalcular a partir do último pagamento restante
+      const lastPay = remaining.docs[0].data();
+      const lastPayDate = toDate(lastPay.date);
+      const renewal = new Date(lastPayDate);
+      renewal.setMonth(renewal.getMonth() + billingMonths);
+      await updateDoc(subRef, {
+        renewalDate: Timestamp.fromDate(renewal),
+        endDate: Timestamp.fromDate(renewal),
+        lastPaymentDate: Timestamp.fromDate(lastPayDate),
+        amount: lastPay.amount ?? sub.amount ?? 0,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    console.log('[useSubscriptions] Pagamento excluído e vencimento recalculado:', paymentId);
+  }, [user]);
+
   return {
     subscriptions: enrichedSubscriptions,
     students,
@@ -325,9 +466,11 @@ export const useSubscriptions = () => {
     summary,
     addSubscription,
     updateSubscription,
+    deleteSubscription,
     registerPayment,
     renewSubscription,
     getPayments,
+    deletePayment,
   };
 };
 

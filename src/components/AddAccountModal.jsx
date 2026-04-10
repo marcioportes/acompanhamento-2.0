@@ -1,16 +1,30 @@
-import { useState, useEffect } from 'react';
-import { 
-  X, 
-  Loader2, 
+import { useState, useEffect, useMemo } from 'react';
+import {
+  X,
+  Loader2,
   AlertCircle,
   Wallet,
   Building2,
   Coins,
   Tag,
-  DollarSign
+  DollarSign,
+  Trophy,
+  Info
 } from 'lucide-react';
 import { ACCOUNT_TYPES } from '../firebase';
 import { useMasterData } from '../hooks/useMasterData';
+import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
+import {
+  PROP_FIRM_LABELS,
+  PROP_FIRM_PHASES,
+  PROP_FIRM_PHASE_LABELS,
+  ATTACK_PROFILES,
+  DEFAULT_ATTACK_PROFILE,
+  normalizeAttackProfile,
+  DEFAULT_TEMPLATES_ENRICHED,
+  getTemplatesByFirm as groupByFirm
+} from '../constants/propFirmDefaults';
+import { calculateAttackPlan } from '../utils/attackPlanCalculator';
 
 const AddAccountModal = ({ 
   isOpen, 
@@ -20,7 +34,14 @@ const AddAccountModal = ({
   loading = false 
 }) => {
   const { brokers, currencies, loading: masterDataLoading } = useMasterData();
-  
+  const { templates: firestoreTemplates } = usePropFirmTemplates();
+
+  // Fallback: se Firestore está vazio, usar DEFAULT_TEMPLATES_ENRICHED (com restrictedInstruments derivado)
+  const allTemplates = useMemo(
+    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES_ENRICHED,
+    [firestoreTemplates]
+  );
+
   const [formData, setFormData] = useState({
     name: '',
     broker: '',
@@ -28,8 +49,56 @@ const AddAccountModal = ({
     initialBalance: '',
     currency: 'BRL',
   });
-  
+
+  // Prop firm state (separado para clareza)
+  const [propFirmData, setPropFirmData] = useState({
+    selectedFirm: '',
+    selectedTemplateId: '',
+    phase: PROP_FIRM_PHASES.EVALUATION,
+    attackProfile: DEFAULT_ATTACK_PROFILE
+  });
+
   const [errors, setErrors] = useState({});
+
+  // Templates agrupados por firma
+  const firmGroups = useMemo(() => groupByFirm(allTemplates), [allTemplates]);
+  const firmList = useMemo(() => Object.keys(firmGroups), [firmGroups]);
+  const productsForFirm = useMemo(
+    () => firmGroups[propFirmData.selectedFirm] ?? [],
+    [firmGroups, propFirmData.selectedFirm]
+  );
+  const selectedTemplate = useMemo(
+    () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
+    [allTemplates, propFirmData.selectedTemplateId]
+  );
+
+  // Plano de ataque calculado (sem 4D/indicadores na criação — usa defaults)
+  const attackPlan = useMemo(() => {
+    if (!selectedTemplate) return null;
+    try {
+      return calculateAttackPlan(
+        selectedTemplate,
+        null,
+        null,
+        propFirmData.attackProfile,
+        propFirmData.phase
+      );
+    } catch {
+      return null;
+    }
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase]);
+
+  // Auto-fill currency (USD), balance (accountSize) e nome quando template selecionado
+  useEffect(() => {
+    if (selectedTemplate && formData.type === 'PROP') {
+      setFormData(prev => ({
+        ...prev,
+        currency: 'USD',
+        initialBalance: selectedTemplate.accountSize?.toString() ?? prev.initialBalance,
+        name: prev.name || selectedTemplate.name
+      }));
+    }
+  }, [selectedTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Preencher dados para edição
   useEffect(() => {
@@ -41,14 +110,27 @@ const AddAccountModal = ({
         initialBalance: editAccount.initialBalance?.toString() || '',
         currency: editAccount.currency || 'BRL',
       });
+      if (editAccount.propFirm) {
+        setPropFirmData({
+          selectedFirm: editAccount.propFirm.firmName || '',
+          selectedTemplateId: editAccount.propFirm.templateId || '',
+          phase: editAccount.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
+          attackProfile: normalizeAttackProfile(editAccount.propFirm.suggestedPlan?.profile)
+        });
+      }
     } else {
-      // Reset form
       setFormData({
         name: '',
         broker: '',
         type: 'REAL',
         initialBalance: '',
         currency: 'BRL',
+      });
+      setPropFirmData({
+        selectedFirm: '',
+        selectedTemplateId: '',
+        phase: PROP_FIRM_PHASES.EVALUATION,
+        attackProfile: DEFAULT_ATTACK_PROFILE
       });
     }
     setErrors({});
@@ -80,13 +162,18 @@ const AddAccountModal = ({
       newErrors.initialBalance = 'Saldo não pode ser negativo';
     }
 
+    // Validação prop firm
+    if (formData.type === 'PROP' && !propFirmData.selectedTemplateId) {
+      newErrors.propFirm = 'Selecione a mesa e o produto';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validate()) return;
 
     try {
@@ -94,7 +181,23 @@ const AddAccountModal = ({
         ...formData,
         initialBalance: parseFloat(formData.initialBalance),
       };
-      
+
+      // Montar propFirm se tipo PROP
+      if (formData.type === 'PROP' && selectedTemplate) {
+        const evalDays = selectedTemplate.evalTimeLimit;
+        accountData.propFirm = {
+          templateId: selectedTemplate.id,
+          firmName: selectedTemplate.firm,
+          productName: selectedTemplate.name,
+          phase: propFirmData.phase,
+          drawdownMax: selectedTemplate.drawdown?.maxAmount ?? 0,
+          evalDeadline: evalDays
+            ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
+            : null,
+          suggestedPlan: attackPlan
+        };
+      }
+
       await onSubmit(accountData, editAccount?.id);
       onClose();
     } catch (err) {
@@ -242,6 +345,142 @@ const AddAccountModal = ({
                 {accountTypeConfig[formData.type]?.description}
               </p>
             </div>
+
+            {/* Prop Firm — seletor condicional (#52) */}
+            {console.log('[AddAccountModal] formData.type:', formData.type, '| isPROP:', formData.type === 'PROP', '| firmList:', firmList)}
+            {formData.type === 'PROP' && (
+              <div className="mb-4 p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy className="w-4 h-4 text-purple-400" />
+                  <span className="text-sm font-medium text-purple-300">Configuração da Mesa</span>
+                </div>
+
+                {/* Firma */}
+                <div className="input-group">
+                  <label className="input-label text-xs">Mesa Proprietária *</label>
+                  <select
+                    value={propFirmData.selectedFirm}
+                    onChange={(e) => setPropFirmData(prev => ({
+                      ...prev,
+                      selectedFirm: e.target.value,
+                      selectedTemplateId: ''
+                    }))}
+                    className={errors.propFirm ? 'ring-2 ring-red-500/50' : ''}
+                  >
+                    <option value="">Selecione a mesa</option>
+                    {firmList.map(firm => (
+                      <option key={firm} value={firm}>
+                        {PROP_FIRM_LABELS[firm] ?? firm}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Produto */}
+                {propFirmData.selectedFirm && (
+                  <div className="input-group">
+                    <label className="input-label text-xs">Produto *</label>
+                    <select
+                      value={propFirmData.selectedTemplateId}
+                      onChange={(e) => setPropFirmData(prev => ({
+                        ...prev,
+                        selectedTemplateId: e.target.value
+                      }))}
+                    >
+                      <option value="">Selecione o produto</option>
+                      {productsForFirm.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Fase */}
+                <div className="input-group">
+                  <label className="input-label text-xs">Fase da Conta</label>
+                  <select
+                    value={propFirmData.phase}
+                    onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}
+                  >
+                    {Object.entries(PROP_FIRM_PHASE_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Perfil do plano de ataque (5 perfis) */}
+                {selectedTemplate && (
+                  <div className="input-group">
+                    <label className="input-label text-xs">Perfil do Plano de Ataque</label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {Object.values(ATTACK_PROFILES).map((p) => {
+                        const selected = propFirmData.attackProfile === p.code;
+                        const isCons = p.family === 'conservative';
+                        return (
+                          <button
+                            key={p.code}
+                            type="button"
+                            onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
+                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}`}
+                            className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
+                              selected
+                                ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
+                                : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
+                            }`}
+                          >
+                            <div>{(p.roPct * 100).toFixed(0)}%</div>
+                            <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
+                            {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
+                    </p>
+                  </div>
+                )}
+
+                {/* Preview do plano de ataque (Fase 1.5: instrument-aware, modo abstract) */}
+                {attackPlan && attackPlan.mode === 'abstract' && (
+                  <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
+                    <div className="flex items-center gap-1 mb-2">
+                      <Info className="w-3 h-3 text-slate-400" />
+                      <span className="text-xs text-slate-400">Constraints da mesa (sem instrumento)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="text-slate-500">DD total:</div>
+                      <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Daily loss:</div>
+                      <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Profit target:</div>
+                      <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">Meta diária:</div>
+                      <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-500">RR mínimo:</div>
+                      <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
+                      <div className="text-slate-500">Sizing:</div>
+                      <div className="text-slate-400 italic text-[10px]">a definir conforme instrumento</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Template info */}
+                {selectedTemplate && (
+                  <div className="text-xs text-slate-500 space-y-0.5">
+                    <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
+                    <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>
+                    {selectedTemplate.evalTimeLimit && <div>Prazo eval: {selectedTemplate.evalTimeLimit} dias corridos</div>}
+                    {selectedTemplate.dailyLossLimit && <div>Daily loss: ${selectedTemplate.dailyLossLimit?.toLocaleString()}</div>}
+                    {selectedTemplate.restrictedInstruments?.length > 0 && (
+                      <div className="text-amber-400/80">⚠ Instrumentos restritos: {selectedTemplate.restrictedInstruments.join(', ')}</div>
+                    )}
+                  </div>
+                )}
+
+                {errors.propFirm && <span className="text-xs text-red-400">{errors.propFirm}</span>}
+              </div>
+            )}
 
             {/* Corretora */}
             <div className="input-group mb-4">
