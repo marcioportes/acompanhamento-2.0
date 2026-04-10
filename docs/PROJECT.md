@@ -568,7 +568,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
 | CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
 | CHUNK-16 | Mentor Cockpit | Torre de Controle, Revisão Semanal, sidebar mentor redesenhado | `TorreDeControle`, `ReviewManager` | AVAILABLE |
-| CHUNK-17 | Prop Firm Engine | Gestão de contas prop, engine de drawdown, templates, plano de ataque | `PropFirmEngine/*`, `propFirmTemplates` collection, `useAccounts` (campo propFirm) | LOCKED |
+| CHUNK-17 | Prop Firm Engine | Gestão de contas prop, engine de drawdown, templates, plano de ataque | `PropFirmEngine/*`, `propFirmTemplates` collection, `useAccounts` (campo propFirm) | AVAILABLE |
 
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
@@ -576,7 +576,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-04 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-08 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
 | CHUNK-10 | #93 | `feature/issue-093-order-import-v1.1` | 04/04/2026 | Claude Code |
-| CHUNK-17 | #52 | `feature/issue-052-prop-firms` | 05/04/2026 | Claude Code |
 
 ### 6.4 Checklist de Check-Out
 
