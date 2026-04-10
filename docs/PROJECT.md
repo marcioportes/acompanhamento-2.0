@@ -2,7 +2,7 @@
 ## Documento Mestre do Projeto · Single Source of Truth
 
 > **Versão:** 0.11.0  
-> **Última atualização:** 09/04/2026 — Prop Firm Engine deployado (#52 Fases 1/1.5/2), DEC-057/058/059, DT-034/035, v1.25.0  
+> **Última atualização:** 09/04/2026 — Prop Firm Engine deployado (#52 Fases 1/1.5/2), DEC-060/061/062, DT-034/035, v1.25.0  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -32,7 +32,7 @@ Este documento segue versionamento semântico:
 | 0.8.0 | 05/04/2026 | Revisão documental | INV-15/16, DT-030/031, mapa CFs atualizado, convenções bash, #94 fechado |
 | 0.9.0 | 05/04/2026 | CHUNK-17 + lock #52 | CHUNK-17 Prop Firm Engine criado no registry, lock registrado para #52 |
 | 0.10.0 | 05/04/2026 | v1.24.0 #122/#123 | RenewalForecast + whatsappNumber, CHANGELOG v1.24.0, CHUNK-02/16 lock |
-| 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-057/058/059 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
+| 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-060/061/062 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
 | 0.10.2 | 06/04/2026 | #122/#123 mergeados | PR #124 mergeado, locks CHUNK-02/16 liberados (AVAILABLE), removidos de Locks ativos |
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 
