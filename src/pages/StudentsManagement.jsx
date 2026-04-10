@@ -9,11 +9,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain } from 'lucide-react';
+import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain, Phone, Check, X } from 'lucide-react';
+import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsappValidation';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
@@ -34,6 +35,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [adding, setAdding] = useState(false);
   const [resending, setResending] = useState(null);
   const [studentTrades, setStudentTrades] = useState({}); // { email: trades[] }
+  const [editingWhatsapp, setEditingWhatsapp] = useState(null); // studentId being edited
+  const [whatsappInput, setWhatsappInput] = useState('');
+  const [whatsappError, setWhatsappError] = useState('');
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
 
   const functions = getFunctions();
   const { detectionConfig, statusThresholds } = useComplianceRules();
@@ -106,6 +111,39 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     } catch (err) { setError('Erro: ' + err.message); }
   };
 
+  const handleWhatsappEdit = (student) => {
+    setEditingWhatsapp(student.id);
+    setWhatsappInput(student.whatsappNumber ?? '');
+    setWhatsappError('');
+  };
+
+  const handleWhatsappSave = async (studentId) => {
+    const result = validateWhatsappNumber(whatsappInput);
+    if (!result.valid) {
+      setWhatsappError(result.error);
+      return;
+    }
+    setSavingWhatsapp(true);
+    try {
+      await updateDoc(doc(db, 'students', studentId), {
+        whatsappNumber: result.sanitized,
+      });
+      setEditingWhatsapp(null);
+      setWhatsappInput('');
+      setWhatsappError('');
+    } catch (err) {
+      setWhatsappError('Erro ao salvar: ' + err.message);
+    } finally {
+      setSavingWhatsapp(false);
+    }
+  };
+
+  const handleWhatsappCancel = () => {
+    setEditingWhatsapp(null);
+    setWhatsappInput('');
+    setWhatsappError('');
+  };
+
   const handleViewAs = (student, focusTab = null) => {
     if (onViewAsStudent) {
       onViewAsStudent({
@@ -168,6 +206,38 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                   <div>
                     <p className="font-medium text-white">{s.name || '-'}</p>
                     <p className="text-sm text-slate-500">{s.email}</p>
+                    {/* WhatsApp inline — issue #123 */}
+                    {editingWhatsapp === s.id ? (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Phone className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                        <input
+                          type="text"
+                          value={whatsappInput}
+                          onChange={(e) => { setWhatsappInput(e.target.value); setWhatsappError(''); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleWhatsappSave(s.id); if (e.key === 'Escape') handleWhatsappCancel(); }}
+                          placeholder="+55 11 99999-9999"
+                          className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none w-40"
+                          autoFocus
+                          disabled={savingWhatsapp}
+                        />
+                        <button onClick={() => handleWhatsappSave(s.id)} disabled={savingWhatsapp} className="p-0.5 text-emerald-400 hover:text-emerald-300" title="Salvar">
+                          {savingWhatsapp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        </button>
+                        <button onClick={handleWhatsappCancel} className="p-0.5 text-slate-500 hover:text-red-400" title="Cancelar">
+                          <X className="w-3 h-3" />
+                        </button>
+                        {whatsappError && <span className="text-xs text-red-400">{whatsappError}</span>}
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleWhatsappEdit(s)}
+                        className="flex items-center gap-1 mt-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors"
+                        title="Editar WhatsApp"
+                      >
+                        <Phone className="w-3 h-3" />
+                        {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : 'Adicionar WhatsApp'}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
