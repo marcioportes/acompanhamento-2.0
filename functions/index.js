@@ -1,10 +1,19 @@
 /**
  * Firebase Cloud Functions - Tchio-Alpha
- * @version 1.9.0
- * 
+ * @version 1.10.0
+ *
  * SEMANTIC VERSIONING (SemVer 2.0.0)
  * MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
- * 
+ *
+ * CHANGELOG v1.10.0 (#52 Fase 2 — Prop Firm Drawdown Engine):
+ *   - Engine de drawdown integrado em onTradeCreated/onTradeUpdated/onTradeDeleted
+ *   - Novo helper recalculatePropFirmState com runTransaction (atomicidade peakBalance)
+ *   - Subcollection accounts/{id}/drawdownHistory append-only (1 doc por trade prop)
+ *   - Notificações PROP_FIRM_FLAG throttled 1× por flag-tipo por dia (idempotência via doc id)
+ *   - Idempotente: contas não-PROP têm early return e zero overhead funcional
+ *   - LIMITAÇÃO v1: trade editado/deletado usa delta incremental, NÃO reconstrói histórico
+ *   - Engine duplicado em functions/propFirmEngine.js (DT-034 — unificar via build step)
+ *
  * CHANGELOG v1.9.0 (alinhado com produto v1.19.2):
  *   - DEC-007: RR assumido integrado em calculateTradeCompliance para trades sem stop
  *     RR = result / (plan.pl × RO%). Usa plan.pl (capital base), não currentPl.
@@ -49,16 +58,21 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+// === PROP FIRM ENGINE (Fase 2 #52) ===
+// Engine puro testado em src/__tests__/utils/propFirmDrawdownEngine.test.js (58 testes)
+// Espelhado em functions/propFirmEngine.js — DT-034: unificar via build step
+const propFirmEngine = require('./propFirmEngine');
+
 // ============================================
 // VERSÃO (SemVer 2.0.0)
 // ============================================
 
 const VERSION = {
   major: 1,
-  minor: 9,
+  minor: 10,
   patch: 0,
   prerelease: null,
-  build: '20260311',
+  build: '20260409',
   
   get full() {
     let v = `${this.major}.${this.minor}.${this.patch}`;
@@ -285,6 +299,142 @@ const updatePlanPl = async (planId, resultDiff) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
+};
+
+// ============================================
+// PROP FIRM HELPERS (#52 Fase 2)
+// ============================================
+
+/**
+ * Recalcula o estado runtime do prop firm da conta após um trade fechado.
+ * Idempotente para contas não-PROP (early return).
+ * Usa runTransaction para garantir atomicidade do peakBalance em escrita concorrente.
+ *
+ * Pré-condição: trade.result e trade.date precisam estar definidos.
+ * Pós-condição: account.propFirm.{peakBalance, threshold, lockLevel, isDayPaused,
+ *               tradingDays, dailyPnL, lastTradeDate, currentBalance, distanceToDD, flags}
+ *               atualizados; updatedAt bump.
+ *
+ * @param {string} accountId
+ * @param {Object} trade - documento do trade (precisa: result, date, accountId)
+ * @param {string} tradeId
+ * @returns {Promise<Object|null>} novo estado do engine ou null se não-PROP
+ */
+const recalculatePropFirmState = async (accountId, trade, tradeId) => {
+  if (!accountId || trade.result == null || !trade.date) return null;
+
+  const accountRef = db.collection('accounts').doc(accountId);
+
+  // Pre-read fora da transaction para evitar overhead em contas comuns
+  const preCheck = await accountRef.get();
+  if (!preCheck.exists) return null;
+  const accountData = preCheck.data();
+  if (accountData.type !== 'PROP' || !accountData.propFirm?.templateId) return null;
+
+  // Lê template (collection raiz)
+  const templateDoc = await db.collection('propFirmTemplates')
+    .doc(accountData.propFirm.templateId).get();
+  if (!templateDoc.exists) {
+    console.warn(`[propFirm] Template ${accountData.propFirm.templateId} não encontrado para conta ${accountId}`);
+    return null;
+  }
+  const template = templateDoc.data();
+  const accountSize = template.accountSize ?? accountData.initialBalance ?? 0;
+  if (accountSize <= 0) return null;
+
+  // Transaction: re-read propFirm dentro do tx (estado pode ter mudado entre pre-check e tx)
+  const newState = await db.runTransaction(async (t) => {
+    const fresh = await t.get(accountRef);
+    if (!fresh.exists) return null;
+    const propFirm = fresh.data().propFirm ?? {};
+    const balanceBefore = propFirm.currentBalance ?? accountSize;
+
+    const result = propFirmEngine.calculateDrawdownState({
+      propFirm,
+      template,
+      accountSize,
+      balanceBefore,
+      tradeNet: trade.result,
+      tradeDate: trade.date
+    });
+
+    t.update(accountRef, {
+      'propFirm.peakBalance': result.peakBalance,
+      'propFirm.currentDrawdownThreshold': result.currentDrawdownThreshold,
+      'propFirm.lockLevel': result.lockLevel,
+      'propFirm.isDayPaused': result.isDayPaused,
+      'propFirm.tradingDays': result.tradingDays,
+      'propFirm.dailyPnL': result.dailyPnL,
+      'propFirm.lastTradeDate': result.lastTradeDate,
+      'propFirm.currentBalance': result.newBalance,
+      'propFirm.distanceToDD': result.distanceToDD,
+      'propFirm.flags': result.flags,
+      'propFirm.lastUpdateTradeId': tradeId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return result;
+  });
+
+  return newState;
+};
+
+/**
+ * Append snapshot em accounts/{accountId}/drawdownHistory após trade prop firm.
+ * Doc id = tradeId (idempotente — re-execução do trigger não duplica).
+ * Append-only audit log: trades deletados deixam snapshot orfão (intentional).
+ */
+const appendDrawdownHistory = async (accountId, docId, trade, state) => {
+  if (!state) return;
+  await db.collection('accounts').doc(accountId)
+    .collection('drawdownHistory').doc(docId)
+    .set({
+      tradeId: trade.id ?? docId,
+      date: trade.date,
+      balance: state.newBalance,
+      peakBalance: state.peakBalance,
+      drawdownThreshold: state.currentDrawdownThreshold,
+      distanceToDD: state.distanceToDD,
+      dailyPnL: state.dailyPnL,
+      flags: state.flags,
+      lockLevel: state.lockLevel,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+};
+
+/**
+ * Cria notificação para mentor sobre flag prop firm crítica.
+ * Throttled: cada (flag-tipo, accountId, dia) só notifica 1×.
+ * Idempotência via doc id determinístico.
+ */
+const notifyPropFirmFlag = async (accountId, trade, state) => {
+  if (!state || !state.flags || state.flags.length === 0) return;
+
+  const criticalFlags = state.flags.filter(f =>
+    f === 'ACCOUNT_BUST' || f === 'DAILY_LOSS_HIT' || f === 'DD_NEAR' || f === 'LOCK_ACTIVATED'
+  );
+  if (criticalFlags.length === 0) return;
+
+  for (const flag of criticalFlags) {
+    const notifId = `propfirm-${accountId}-${flag}-${trade.date}`;
+    const notifRef = db.collection('notifications').doc(notifId);
+    const exists = await notifRef.get();
+    if (exists.exists) continue;
+
+    await notifRef.set({
+      type: 'PROP_FIRM_FLAG',
+      flag,
+      severity: flag === 'ACCOUNT_BUST' ? 'CRITICAL' : 'WARNING',
+      targetRole: 'mentor',
+      studentId: trade.studentId,
+      studentEmail: trade.studentEmail,
+      accountId,
+      tradeId: trade.id ?? null,
+      message: `Prop firm: ${flag} (${trade.studentEmail?.split('@')[0]})`,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
 };
 
 /**
@@ -840,6 +990,20 @@ exports.onTradeCreated = functions.firestore
         }
       }
 
+      // === 5. PROP FIRM ENGINE (#52 Fase 2) ===
+      // Idempotente: early return em recalculatePropFirmState se conta não é PROP.
+      // Erro isolado em try/catch — não propaga para o pipeline existente.
+      try {
+        const propFirmState = await recalculatePropFirmState(trade.accountId, trade, tradeId);
+        if (propFirmState) {
+          await appendDrawdownHistory(trade.accountId, tradeId, { ...trade, id: tradeId }, propFirmState);
+          await notifyPropFirmFlag(trade.accountId, { ...trade, id: tradeId }, propFirmState);
+          console.log(`[onTradeCreated] PropFirm recalculado: balance=${propFirmState.newBalance}, threshold=${propFirmState.currentDrawdownThreshold}, flags=[${propFirmState.flags.join(',')}]`);
+        }
+      } catch (propErr) {
+        console.error('[onTradeCreated] Erro PropFirm engine:', propErr);
+      }
+
     } catch (e) { console.error('[onTradeCreated]', e); }
     
     return null;
@@ -919,6 +1083,34 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       }
     }
 
+    // === PROP FIRM RECALC (#52 Fase 2) ===
+    // LIMITAÇÃO v1: aplica delta incremental (newResult - oldResult), NÃO reconstrói histórico.
+    // Trade editado muito antigo pode dessincronizar peakBalance. Aceito intencionalmente.
+    if ((resultChanged || planChanged) && after.accountId) {
+      try {
+        const incrementalNet = newResult - oldResult;
+        if (incrementalNet !== 0) {
+          const tradeForEngine = { ...after, result: incrementalNet };
+          const propFirmState = await recalculatePropFirmState(
+            after.accountId,
+            tradeForEngine,
+            context.params.tradeId
+          );
+          if (propFirmState) {
+            await appendDrawdownHistory(
+              after.accountId,
+              `${context.params.tradeId}-edit-${Date.now()}`,
+              { ...after, id: context.params.tradeId },
+              propFirmState
+            );
+            console.log(`[onTradeUpdated] PropFirm delta=${incrementalNet}, balance=${propFirmState.newBalance}, flags=[${propFirmState.flags.join(',')}]`);
+          }
+        }
+      } catch (propErr) {
+        console.error('[onTradeUpdated] Erro PropFirm engine:', propErr);
+      }
+    }
+
     // === B1 (v1.19.0): Re-check alerta emocional se emotionEntry mudou ===
     if (before.emotionEntry !== after.emotionEntry && after.emotionEntry) {
       try {
@@ -959,15 +1151,34 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
 
 exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDelete(async (snap, context) => {
   const trade = snap.data();
-  
+
   try {
     // Reverter PL do plano
     if (trade.planId && trade.result) {
       await updatePlanPl(trade.planId, -(trade.result));
       console.log(`[onTradeDeleted] PL plano ${trade.planId} revertido: ${-trade.result}`);
     }
+
+    // === PROP FIRM RECALC (#52 Fase 2) ===
+    // Aplica delta negativo (reverte o trade). drawdownHistory permanece append-only:
+    // o snapshot original NÃO é removido. Análises Phase 3 devem filtrar por tradeId existente.
+    if (trade.accountId && trade.result && trade.date) {
+      try {
+        const tradeForEngine = { ...trade, result: -trade.result };
+        const propFirmState = await recalculatePropFirmState(
+          trade.accountId,
+          tradeForEngine,
+          context.params.tradeId
+        );
+        if (propFirmState) {
+          console.log(`[onTradeDeleted] PropFirm reverso aplicado: balance=${propFirmState.newBalance}, flags=[${propFirmState.flags.join(',')}]`);
+        }
+      } catch (propErr) {
+        console.error('[onTradeDeleted] Erro PropFirm engine:', propErr);
+      }
+    }
   } catch (e) { console.error('[onTradeDeleted]', e); }
-  
+
   return null;
 });
 
