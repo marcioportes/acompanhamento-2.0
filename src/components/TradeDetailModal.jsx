@@ -31,6 +31,8 @@ import {
   ArrowDownRight,
   ArrowUpRight
 } from 'lucide-react';
+import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
+import TradeStatusBadges from './TradeStatusBadges';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -123,6 +125,7 @@ const TradeDetailModal = ({
   onClose, 
   trade, 
   plans = [],
+  orders = [],
   isMentor = false,
   onAddFeedback,
   feedbackLoading = false,
@@ -233,6 +236,7 @@ const TradeDetailModal = ({
                     </span>
                   )}
                   <StatusBadge status={trade.status} />
+                  <TradeStatusBadges trade={trade} />
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {trade.studentName || trade.studentEmail?.split('@')[0]}
@@ -411,6 +415,9 @@ const TradeDetailModal = ({
                   </div>
               </div>
             )}
+
+            {/* Ordens da Corretora (V1.1c — issue #93) */}
+            <TradeOrdersPanel trade={trade} orders={orders} embedded />
 
             {/* Observações do Aluno */}
             {notes && (

@@ -22,7 +22,9 @@ import OrderPreview from '../components/OrderImport/OrderPreview';
 import OrderValidationReport from '../components/OrderImport/OrderValidationReport';
 import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
-import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
+import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
+import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
+import AmbiguousOperationsPanel from '../components/OrderImport/AmbiguousOperationsPanel';
 
 import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -30,8 +32,13 @@ import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
 import { correlateOrders } from '../utils/orderCorrelation';
-import { calculateCrossCheckMetrics } from '../utils/orderCrossCheck';
-import { validateKPIs } from '../utils/kpiValidation';
+import { categorizeConfirmedOps } from '../utils/orderTradeCreation';
+import { createTradesBatch } from '../utils/orderTradeBatch';
+import { compareOperationWithTrade } from '../utils/orderTradeComparison';
+import { enrichTrade } from '../utils/tradeGateway';
+import { makeOrderKey } from '../utils/orderKey';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // ============================================
 // STEPS
@@ -64,7 +71,7 @@ const STEP_LABELS = {
  * @param {Object} props.orderStaging — hook useOrderStaging
  * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
  */
-const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck }) => {
+const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext }) => {
   // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
 
@@ -83,7 +90,15 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
+
+  // Modo Criação (V1.1a — issue #93 redesign): summary completo da importação
+  const [importSummary, setImportSummary] = useState(null);
+
+  // Modo Confronto (V1.1b — issue #93)
+  const [confrontData, setConfrontData] = useState(null);
+
+  // Operações ambíguas (correlacionam com 2+ trades) — Fase 5 vai criar painel
+  const [ambiguousData, setAmbiguousData] = useState(null);
 
   // UI
   const [progress, setProgress] = useState('');
@@ -106,14 +121,23 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-    // Parse
-    let parsed;
-    if (detection.format === 'profitchart_pro') {
-      parsed = parseProfitChartPro(result.text);
-    } else {
-      parsed = { orders: [], meta: {}, errors: [{ row: 0, message: 'Formato não reconhecido. Use o mapeamento manual.' }] };
+    // Validação de formato — bloqueio explícito quando não é arquivo de ordens
+    if (detection.format !== 'profitchart_pro') {
+      const headerHint = headers.length > 0
+        ? ` Cabeçalho detectado: "${headers.slice(0, 5).join(', ')}${headers.length > 5 ? '...' : ''}"`
+        : '';
+      setError(
+        `Este arquivo NÃO é um CSV de ordens reconhecido (formato esperado: ProfitChart-Pro). ` +
+        `Confira se você não está subindo um arquivo de performance/trades por engano.${headerHint}`
+      );
+      setParseErrors([]);
+      setValidationResult(null);
+      setParsedOrders([]);
+      return;
     }
 
+    // Parse
+    const parsed = parseProfitChartPro(result.text);
     setParseErrors(parsed.errors || []);
 
     // Normalize + dedup
@@ -126,6 +150,12 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     if (validation.validOrders.length > 0) {
       setStep(STEPS.PREVIEW);
+    } else {
+      // Parser reconheceu o formato mas não extraiu nenhuma ordem válida
+      const reason = parsed.errors?.length > 0
+        ? `${parsed.errors.length} erros de parse + 0 ordens válidas após validação`
+        : '0 ordens válidas após validação';
+      setError(`Arquivo reconhecido como ProfitChart-Pro mas sem ordens importáveis. ${reason}.`);
     }
   }, []);
 
@@ -181,49 +211,128 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // ============================================
   // STEP 4: STAGING REVIEW → INGEST
   // ============================================
-  const handleStagingConfirm = useCallback(async ({ operations, observations }) => {
+  const handleStagingConfirm = useCallback(async ({ operations: confirmedOps, observations, confirmedOrderKeys }) => {
     if (!batchId || !orderStaging) return;
 
     setIngesting(true);
     setError(null);
 
     try {
-      // 1. Ingest (staging → orders + delete staging)
-      setProgress('Ingerindo ordens...');
-      await orderStaging.ingestBatch(batchId, {});
+      // Filtrar ordens cruas pelo mesmo critério canônico usado em ingestBatch.
+      // confirmedOrderKeys vem do OrderStagingReview e contém TODAS as ordens
+      // (entry/exit/stop/cancelled) das operações que o aluno confirmou.
+      // Operações desmarcadas são descartadas do fluxo inteiro — issue #93.
+      const confirmedSet = new Set(confirmedOrderKeys || []);
+      const confirmedOrders = parsedOrders.filter(o => confirmedSet.has(makeOrderKey(o)));
 
-      // 2. Correlate with trades
+      // 1. Ingest filtrado: apenas ordens das operações confirmadas vão para `orders`.
+      //    As ordens não-confirmadas são DELETADAS do staging (Opção B — issue #93).
+      setProgress('Ingerindo ordens das operações confirmadas...');
+      await orderStaging.ingestBatch(batchId, {}, confirmedOrderKeys);
+
+      // 2. Correlate with trades — apenas ordens confirmadas
       setProgress('Correlacionando com trades...');
       const planTrades = trades.filter(t => t.planId === selectedPlanId);
-      const { correlations, stats: corrStats } = correlateOrders(parsedOrders, planTrades);
+      const { correlations, stats: corrStats } = correlateOrders(confirmedOrders, planTrades);
       setCorrelationResult({ correlations, stats: corrStats });
 
-      // 3. Cross-check
-      setProgress('Calculando cross-check...');
-      if (crossCheck && planTrades.length > 0) {
-        const crossCheckMetrics = calculateCrossCheckMetrics(parsedOrders, planTrades, correlations);
-        const winningTrades = planTrades.filter(t => (Number(t.result) || 0) > 0);
-        const winRate = planTrades.length > 0 ? winningTrades.length / planTrades.length : 0;
-        const kpiResult = validateKPIs(crossCheckMetrics, { winRate, totalTrades: planTrades.length });
-
+      // 3. Cross-check (persistido para a Revisão Semanal #102 — não exibido ao aluno)
+      //    Usa apenas ordens confirmadas — métricas comportamentais refletem só o subset validado.
+      if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
+        setProgress('Calculando cross-check...');
         const now = new Date();
         const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
         const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-
         try {
-          await crossCheck.runCrossCheck(parsedOrders, planTrades, selectedPlanId, period);
+          await crossCheck.runCrossCheck(confirmedOrders, planTrades, selectedPlanId, period);
         } catch (ccErr) {
           console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
         }
+      }
 
-        setAnalysisResult({
-          crossCheckMetrics,
-          kpiValidation: kpiResult,
-          alerts: kpiResult.alerts,
-          ordersAnalyzed: parsedOrders.length,
-          tradesInPeriod: planTrades.length,
-          period,
-        });
+      // 4. Categorizar ops em toCreate / toConfront / ambiguous (issue #93 redesign — Fase 2)
+      //    Resolve o bug de ops mistas em limbo: critério baseado em correlação por op,
+      //    não em filledOrders.every() do código antigo.
+      setProgress('Categorizando operações...');
+      const { toCreate, toConfront, ambiguous } = categorizeConfirmedOps(confirmedOps, correlations);
+
+      // 5. Resolver tickerRules dos instrumentos a criar (futuros precisam para cálculo correto)
+      const instrumentsToCreate = [...new Set(toCreate.map(op => (op.instrument || '').toUpperCase()))];
+      const tickerRuleMap = {};
+      for (const symbol of instrumentsToCreate) {
+        try {
+          const tickerSnap = await getDocs(
+            query(collection(db, 'tickers'), where('symbol', '==', symbol))
+          );
+          if (!tickerSnap.empty) {
+            const tickerDoc = tickerSnap.docs[0].data();
+            if (tickerDoc.tickSize && tickerDoc.tickValue) {
+              tickerRuleMap[symbol] = {
+                tickSize: tickerDoc.tickSize,
+                tickValue: tickerDoc.tickValue,
+                pointValue: tickerDoc.pointValue ?? null,
+              };
+            }
+          }
+        } catch (err) {
+          console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
+        }
+      }
+
+      // 6. Criação automática (V1.1a redesign): sem painel intermediário, sem clique extra.
+      //    Throttling: batch > 20 → sequencial; ≤ 20 → paralelo (Promise.allSettled).
+      //    Deduplicação verificada antes de cada createTrade pelo helper.
+      const lowResolution = !!parseResult?.lowResolution;
+      const batchResult = await createTradesBatch({
+        toCreate,
+        planId: selectedPlanId,
+        importBatchId: batchId,
+        tickerRuleMap,
+        lowResolution,
+        existingTrades: planTrades,
+        userContext,
+        onProgress: (_current, _total, message) => setProgress(message),
+      });
+
+      // 7. Persistir summary completo para o STEP DONE (Fase 4 vai consumir nas labels)
+      setImportSummary({
+        ordersConfirmed: confirmedOrders.length,
+        opsConfirmed: confirmedOps.length,
+        toCreateCount: toCreate.length,
+        tradesCreated: batchResult.created,
+        tradesDuplicates: batchResult.duplicates.length,
+        tradesFailed: batchResult.failed,
+        toConfrontCount: toConfront.length,
+        ambiguousCount: ambiguous.length,
+        lowResolution,
+      });
+
+      // 8. Modo Confronto Enriquecido (V1.1b redesign Fase 5)
+      //    Usa toConfront direto do categorizeConfirmedOps + compareOperationWithTrade
+      //    para detectar divergências campo a campo sem o bug do fallback por instrumento.
+      if (toConfront.length > 0) {
+        setProgress('Comparando operações com trades do diário...');
+        const existingTradesById = new Map(planTrades.map(t => [t.id, t]));
+        const divergent = [];
+        const converged = [];
+        for (const { operation, tradeId } of toConfront) {
+          const trade = existingTradesById.get(tradeId);
+          if (!trade) continue;
+          const comparison = compareOperationWithTrade(operation, trade);
+          if (comparison.hasDivergences) {
+            divergent.push({ operation, trade, comparison });
+          } else {
+            converged.push({ operation, trade });
+          }
+        }
+        if (divergent.length > 0 || converged.length > 0) {
+          setConfrontData({ divergent, converged });
+        }
+      }
+
+      // 9. Persistir ambíguas (Fase 5 cria o painel de decisão manual)
+      if (ambiguous.length > 0) {
+        setAmbiguousData(ambiguous);
       }
 
       setStep(STEPS.DONE);
@@ -237,7 +346,96 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, selectedPlanId, trades, orderStaging, crossCheck]);
+  }, [batchId, parsedOrders, parseResult, selectedPlanId, trades, orderStaging, crossCheck, userContext]);
+
+  // ============================================
+  // MODO CONFRONTO: aceitar ou atualizar trade a partir de operação (V1.1b)
+  // ============================================
+
+  /** "Manter manual" — dismissal client-side, sem write no Firestore */
+  const handleAcceptMatched = useCallback(async (_item) => {
+    return { success: true };
+  }, []);
+
+  /** "Aceitar enriquecimento" — updateDoc via enrichTrade (V1.1b redesign Fase 5) */
+  const handleEnrichMatched = useCallback(async (item) => {
+    if (!userContext?.uid) {
+      return { success: false, error: 'Contexto de usuário indisponível' };
+    }
+
+    const { trade, operation } = item;
+
+    try {
+      // 1. Resolver tickerRule do master data para cálculo correto de futuros
+      let tickerRule = null;
+      const symbol = (operation.instrument || '').toUpperCase();
+      try {
+        const tickerSnap = await getDocs(
+          query(collection(db, 'tickers'), where('symbol', '==', symbol))
+        );
+        if (!tickerSnap.empty) {
+          const tickerDoc = tickerSnap.docs[0].data();
+          if (tickerDoc.tickSize && tickerDoc.tickValue) {
+            tickerRule = {
+              tickSize: tickerDoc.tickSize,
+              tickValue: tickerDoc.tickValue,
+              pointValue: tickerDoc.pointValue ?? null,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
+      }
+
+      // 2. Construir _partials das ordens reconstruídas (INV-12)
+      const partials = [];
+      let seq = 1;
+      for (const entry of (operation.entryOrders || [])) {
+        partials.push({
+          type: 'ENTRY',
+          price: parseFloat(entry.filledPrice ?? entry.price) || 0,
+          qty: parseFloat(entry.filledQuantity ?? entry.quantity) || 0,
+          dateTime: entry.filledAt || entry.submittedAt || null,
+          seq: seq++,
+        });
+      }
+      for (const exit of (operation.exitOrders || [])) {
+        partials.push({
+          type: 'EXIT',
+          price: parseFloat(exit.filledPrice ?? exit.price) || 0,
+          qty: parseFloat(exit.filledQuantity ?? exit.quantity) || 0,
+          dateTime: exit.filledAt || exit.submittedAt || null,
+          seq: seq++,
+        });
+      }
+
+      // 3. Stop loss do último stop order (se existir)
+      let stopLoss = null;
+      if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
+        const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
+        stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
+      }
+
+      // 4. Montar enrichment — enrichTrade preserva campos comportamentais automaticamente
+      const enrichment = {
+        _partials: partials,
+        entry: operation.avgEntryPrice,
+        exit: operation.avgExitPrice,
+        qty: operation.totalQty,
+        stopLoss,
+        tickerRule,
+        importBatchId: batchId,
+      };
+
+      // 5. Enriquecer via gateway (INV-02) — CF onTradeUpdated recalcula PL + compliance
+      await enrichTrade(trade.id, enrichment, userContext);
+      console.log(`[OrderImportPage] Trade ${trade.id} enriquecido com dados da corretora`);
+      return { success: true, tradeId: trade.id };
+    } catch (err) {
+      console.error('[OrderImportPage] Erro enrichTrade:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userContext, batchId]);
 
   // ============================================
   // RENDER
@@ -396,12 +594,37 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
             <div className="space-y-6">
               <div className="flex flex-col items-center gap-2 py-4">
                 <CheckCircle className="w-10 h-10 text-emerald-400" />
-                <p className="text-sm font-semibold text-white">
-                  {parsedOrders.length} ordens importadas com sucesso
-                </p>
-                <p className="text-xs text-slate-400">
-                  {reconstructedOps.length} operações reconstruídas
-                </p>
+                {importSummary ? (
+                  <>
+                    <p className="text-sm font-semibold text-white">
+                      {importSummary.ordersConfirmed} ordens importadas, {importSummary.opsConfirmed} operaç{importSummary.opsConfirmed === 1 ? 'ão' : 'ões'}
+                    </p>
+                    <p className="text-xs text-slate-400 text-center max-w-md">
+                      {importSummary.tradesCreated.length > 0 && (
+                        <>{importSummary.tradesCreated.length} trade{importSummary.tradesCreated.length > 1 ? 's' : ''} criado{importSummary.tradesCreated.length > 1 ? 's' : ''}</>
+                      )}
+                      {importSummary.toConfrontCount > 0 && (
+                        <>{importSummary.tradesCreated.length > 0 ? ' · ' : ''}{importSummary.toConfrontCount} correlacionad{importSummary.toConfrontCount === 1 ? 'a' : 'as'}</>
+                      )}
+                      {importSummary.ambiguousCount > 0 && (
+                        <> · {importSummary.ambiguousCount} ambígu{importSummary.ambiguousCount === 1 ? 'a' : 'as'}</>
+                      )}
+                      {importSummary.tradesDuplicates > 0 && (
+                        <> · {importSummary.tradesDuplicates} duplicata{importSummary.tradesDuplicates > 1 ? 's' : ''} ignorada{importSummary.tradesDuplicates > 1 ? 's' : ''}</>
+                      )}
+                      {importSummary.tradesFailed.length > 0 && (
+                        <> · <span className="text-red-400">{importSummary.tradesFailed.length} falha{importSummary.tradesFailed.length > 1 ? 's' : ''}</span></>
+                      )}
+                      {importSummary.lowResolution && (
+                        <> · <span className="text-amber-400/80" title="CSV exportado sem segundos — padrões comportamentais dependentes de granularidade fina ficam inconclusive">baixa resolução</span></>
+                      )}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-white">
+                    Importação concluída
+                  </p>
+                )}
               </div>
 
               {correlationResult && (
@@ -411,8 +634,29 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 />
               )}
 
-              {analysisResult && (
-                <CrossCheckDashboard analysis={analysisResult} />
+              {/* Modo Criação (V1.1a redesign): trades criados automaticamente após confirmação */}
+              {importSummary && (
+                <CreationResultPanel
+                  summary={{
+                    created: importSummary.tradesCreated,
+                    duplicates: importSummary.tradesDuplicates,
+                    failed: importSummary.tradesFailed,
+                  }}
+                />
+              )}
+
+              {/* Modo Confronto Enriquecido (V1.1b redesign Fase 5) */}
+              {confrontData && (
+                <MatchedOperationsPanel
+                  confrontData={confrontData}
+                  onAccept={handleAcceptMatched}
+                  onEnrich={handleEnrichMatched}
+                />
+              )}
+
+              {/* Operações ambíguas (2+ trades matched) — MVP informativo */}
+              {ambiguousData && ambiguousData.length > 0 && (
+                <AmbiguousOperationsPanel ops={ambiguousData} />
               )}
 
               <div className="flex justify-end pt-2">

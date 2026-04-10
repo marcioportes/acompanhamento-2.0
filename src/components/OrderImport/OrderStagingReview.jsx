@@ -21,6 +21,7 @@ import {
   TrendingUp, TrendingDown, XCircle,
 } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
+import { makeOrderKey } from '../../utils/orderKey';
 
 // ============================================
 // SUB-COMPONENTS
@@ -151,9 +152,9 @@ const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observati
 
         {/* Entry → Exit times */}
         <span className="text-[10px] text-slate-500 ml-1">
-          {operation.entryTime ? new Date(operation.entryTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.entryTime ? new Date(operation.entryTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
           {' → '}
-          {operation.exitTime ? new Date(operation.exitTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.exitTime ? new Date(operation.exitTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
         </span>
 
         {operation.duration && (
@@ -288,6 +289,7 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
 
   const allConfirmed = operations.length > 0 && operations.every(op => confirmed[op.operationId]);
   const confirmedCount = Object.values(confirmed).filter(Boolean).length;
+  const hasAnyConfirmed = confirmedCount > 0;
 
   const handleConfirmAll = () => {
     const all = {};
@@ -296,7 +298,37 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
   };
 
   const handleSubmit = () => {
-    onConfirm({ operations, observations });
+    // Filtrar apenas operações confirmadas (marcadas) — desmarcadas são excluídas da importação
+    const selectedOps = operations.filter(op => confirmed[op.operationId]);
+    const selectedObservations = {};
+    selectedOps.forEach(op => {
+      if (observations[op.operationId]) selectedObservations[op.operationId] = observations[op.operationId];
+    });
+
+    // Coletar chaves das ordens das operações confirmadas (V1.1 issue #93)
+    // Inclui entry/exit/stop/cancelled — TODAS as ordens da operação.
+    // ingestBatch usa essas chaves para filtrar staging → orders e deletar o resto;
+    // OrderImportPage.handleStagingConfirm usa para filtrar parsedOrders → confirmedOrders.
+    // Critério canônico em src/utils/orderKey.js (single source of truth).
+    const confirmedOrderKeys = [];
+    const seen = new Set();
+    for (const op of selectedOps) {
+      const allOrders = [
+        ...(op.entryOrders || []),
+        ...(op.exitOrders || []),
+        ...(op.stopOrders || []),
+        ...(op.cancelledOrders || []),
+      ];
+      for (const o of allOrders) {
+        const key = makeOrderKey(o);
+        if (!seen.has(key)) {
+          seen.add(key);
+          confirmedOrderKeys.push(key);
+        }
+      }
+    }
+
+    onConfirm({ operations: selectedOps, observations: selectedObservations, confirmedOrderKeys });
   };
 
   return (
@@ -365,8 +397,9 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
 
           <button
             onClick={handleSubmit}
-            disabled={!allConfirmed || loading}
+            disabled={!hasAnyConfirmed || loading}
             className="flex items-center gap-2 px-4 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title={!hasAnyConfirmed ? 'Selecione ao menos uma operação para importar' : `Importar ${confirmedCount} operação(ões) selecionada(s)`}
           >
             {loading ? (
               <>
@@ -376,7 +409,7 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
             ) : (
               <>
                 <CheckCircle className="w-3.5 h-3.5" />
-                Confirmar e Importar
+                Importar {confirmedCount > 0 ? `${confirmedCount} ` : ''}operaç{confirmedCount === 1 ? 'ão' : 'ões'}
               </>
             )}
           </button>

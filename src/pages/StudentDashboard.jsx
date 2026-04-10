@@ -49,8 +49,6 @@ import CsvImportManager from '../components/csv/CsvImportManager';
 
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
-import KPIValidationCard from '../components/OrderImport/KPIValidationCard';
-import CrossCheckDashboard from '../components/OrderImport/CrossCheckDashboard';
 
 // Student Onboarding (CHUNK-09) — guard movido para App.jsx (fix loop infinito)
 
@@ -437,16 +435,9 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
       </div>
       <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
 
-      {/* Cross-Check Dashboard (Order Import) */}
-      {crossCheckHook.latestAnalysis && (
-        <div className="mb-6">
-          <CrossCheckDashboard analysis={crossCheckHook.latestAnalysis} />
-        </div>
-      )}
-
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} onViewFeedbackHistory={handleViewFeedbackHistory} getPartials={getPartials} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} onViewFeedbackHistory={handleViewFeedbackHistory} getPartials={getPartials} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
       {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ? (trade) => onNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id }) : null} />)}
@@ -502,6 +493,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
           trades={trades}
           orderStaging={orderStaging}
           crossCheck={crossCheckHook}
+          userContext={user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null}
         />
       )}
 

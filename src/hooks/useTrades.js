@@ -33,6 +33,7 @@ import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
 import { calculateFromPartials, calculateAssumedRR } from '../utils/tradeCalculations';
+import { createTrade } from '../utils/tradeGateway';
 
 // Status constants
 const STATUS = {
@@ -196,141 +197,28 @@ export const useTrades = (overrideStudentId = null) => {
 
   const addTrade = useCallback(async (tradeData, htfFile, ltfFile) => {
     if (!user) throw new Error('Usuário não autenticado');
-    setLoading(true); 
+    setLoading(true);
     setError(null);
 
     try {
-      if (!tradeData.planId) throw new Error('Selecione um Plano.');
-      const planRef = doc(db, 'plans', tradeData.planId);
-      const planSnap = await getDoc(planRef);
-      if (!planSnap.exists()) throw new Error('Plano não encontrado.');
-      const derivedAccountId = planSnap.data().accountId;
-      if (!derivedAccountId) throw new Error('Plano sem conta vinculada.');
+      // Delega lógica core para tradeGateway.createTrade (INV-02: gateway único)
+      const result = await createTrade(tradeData, {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+      });
 
-      // Busca moeda da conta para persistir no trade
-      const accountRef = doc(db, 'accounts', derivedAccountId);
-      const accountSnap = await getDoc(accountRef);
-      const derivedCurrency = accountSnap.exists() ? (accountSnap.data().currency || 'BRL') : 'BRL';
+      // Upload de imagens permanece no wrapper (closure do hook)
+      if (htfFile) { const url = await uploadImage(htfFile, result.id, 'htf'); await updateDoc(doc(db, 'trades', result.id), { htfUrl: url }); }
+      if (ltfFile) { const url = await uploadImage(ltfFile, result.id, 'ltf'); await updateDoc(doc(db, 'trades', result.id), { ltfUrl: url }); }
 
-      const entry = parseFloat(tradeData.entry);
-      const exit = parseFloat(tradeData.exit);
-      const qty = parseFloat(tradeData.qty);
-      const side = tradeData.side;
-      let result;
-      let resultInPoints = 0;
-      
-      if (tradeData._partials?.length > 0) {
-        // Cálculo via parciais (SEMPRE preferido)
-        const calc = calculateFromPartials({
-          side,
-          partials: tradeData._partials,
-          tickerRule: tradeData.tickerRule || null
-        });
-        result = calc.result;
-        resultInPoints = calc.resultInPoints;
-      } else if (tradeData.tickerRule?.tickSize && tradeData.tickerRule?.tickValue) {
-        const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
-        resultInPoints = Math.round(rawDiff * 100) / 100;
-        const ticks = rawDiff / tradeData.tickerRule.tickSize;
-        result = Math.round(ticks * tradeData.tickerRule.tickValue * qty);
-      } else {
-        result = Math.round(calculateTradeResult(side, entry, exit, qty));
-        resultInPoints = side === 'LONG' ? exit - entry : entry - exit;
-      }
-      
-      const entryTime = tradeData.entryTime; 
-      const exitTime = tradeData.exitTime || null;
-      const duration = calculateDuration(entryTime, exitTime);
-      const legacyDate = entryTime ? entryTime.split('T')[0] : new Date().toISOString().split('T')[0];
-
-      // B2/B5: Calcular RR — real (com stop) ou assumido (sem stop)
-      const stopLoss = tradeData.stopLoss != null ? parseFloat(tradeData.stopLoss) : null;
-      const effectiveResult = (tradeData.resultOverride != null && !isNaN(parseFloat(tradeData.resultOverride)))
-        ? Math.round(parseFloat(tradeData.resultOverride) * 100) / 100
-        : Math.round(result * 100) / 100;
-
-      let rrRatio = null;
-      let rrAssumed = false;
-      if (stopLoss != null && stopLoss !== 0 && entry) {
-        // RR real: baseado no stop loss efetivo
-        const risk = Math.abs(entry - stopLoss);
-        if (risk > 0) {
-          rrRatio = Math.round((effectiveResult / (risk * (tradeData.tickerRule?.pointValue || 1) * qty)) * 100) / 100;
-        }
-      } else {
-        // RR assumido: baseado no RO$ do plano (DEC-007: usa plan.pl = capital base)
-        const planData = planSnap.data();
-        const assumed = calculateAssumedRR({
-          result: effectiveResult,
-          planPl: Number(planData.pl) || 0,
-          planRiskPerOperation: Number(planData.riskPerOperation) || 0,
-          planRrTarget: Number(planData.rrTarget) || 0,
-        });
-        if (assumed) {
-          rrRatio = assumed.rrRatio;
-          rrAssumed = true;
-        }
-      }
-
-      const newTrade = {
-        ...tradeData,
-        date: legacyDate, entryTime, exitTime, duration,
-        ticker: tradeData.ticker?.toUpperCase() || '',
-        entry, exit, qty, 
-        stopLoss,
-        resultCalculated: Math.round(result * 100) / 100,
-        result: effectiveResult,
-        resultInPoints: (tradeData.resultOverride != null) ? null : resultInPoints,
-        resultEdited: tradeData.resultOverride != null,
-        resultPercent: calculateResultPercent(side, entry, exit),
-        rrRatio,
-        rrAssumed,
-        hasPartials: (tradeData._partials?.length || 0) > 0,
-        partialsCount: tradeData._partials?.length || 0,
-        studentEmail: user.email,
-        studentName: user.displayName || user.email.split('@')[0],
-        studentId: user.uid,
-        status: DEFAULT_STATUS,
-        accountId: derivedAccountId,
-        currency: derivedCurrency,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        htfUrl: null, ltfUrl: null, mentorFeedback: null,
-        feedbackHistory: []
-      };
-
-      const docRef = await addDoc(collection(db, 'trades'), newTrade);
-      
-      if (htfFile) { const url = await uploadImage(htfFile, docRef.id, 'htf'); await updateDoc(docRef, { htfUrl: url }); }
-      if (ltfFile) { const url = await uploadImage(ltfFile, docRef.id, 'ltf'); await updateDoc(docRef, { ltfUrl: url }); }
-
-      // _partials já está no documento via spread de tradeData (linha 276)
-      // Não existe subcollection — parciais são campo array no documento do trade
-      console.log(`[useTrades] Trade criado com ${tradeData._partials?.length || 0} parciais (campo _partials no documento)`);
-
-      // effectiveResult já calculado acima (B5)
-      if (derivedAccountId && effectiveResult !== 0) {
-        const qMoves = query(collection(db, 'movements'), where('accountId', '==', derivedAccountId));
-        const snapMoves = await getDocs(qMoves);
-        const moves = snapMoves.docs.map(d => d.data()).sort((a,b) => (b.dateTime||'').localeCompare(a.dateTime||''));
-        const balanceBefore = moves[0]?.balanceAfter || 0;
-
-        await addDoc(collection(db, 'movements'), {
-          accountId: derivedAccountId, type: 'TRADE_RESULT', amount: effectiveResult,
-          balanceBefore, balanceAfter: balanceBefore + effectiveResult,
-          description: `${tradeData.side} ${tradeData.ticker} (${tradeData.qty}x)`,
-          date: legacyDate, dateTime: exitTime || new Date().toISOString(), 
-          tradeId: docRef.id, studentId: user.uid, studentEmail: user.email,
-          createdBy: user.uid, createdAt: serverTimestamp()
-        });
-      }
-      return { id: docRef.id, ...newTrade };
-    } catch (err) { 
+      return result;
+    } catch (err) {
       console.error('[useTrades] Erro:', err);
-      setError(err.message); 
-      throw err; 
-    } finally { 
-      setLoading(false); 
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 

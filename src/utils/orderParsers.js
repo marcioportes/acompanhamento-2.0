@@ -28,6 +28,7 @@
  */
 
 import { parseDateTime, parseNumericValue } from './csvMapper.js';
+import { detectLowResolution } from './orderTemporalResolution.js';
 
 // ============================================
 // CLEAR/PROFIT — CONSTANTS
@@ -324,7 +325,10 @@ export const parseProfitChartPro = (text) => {
   meta.totalOrders = orders.length;
   meta.totalEvents = orders.reduce((sum, o) => sum + o.events.length, 0);
 
-  return { orders, meta, errors };
+  // Detecta resolução temporal para shadow detection futuro (issue #93 redesign)
+  const lowResolution = detectLowResolution(orders);
+
+  return { orders, meta, errors, lowResolution };
 };
 
 // ============================================
@@ -389,5 +393,8 @@ export const parseGenericOrders = (rows, columnMapping) => {
     });
   }
 
-  return { orders, errors };
+  // Detecta resolução temporal para shadow detection futuro (issue #93 redesign)
+  const lowResolution = detectLowResolution(orders);
+
+  return { orders, errors, lowResolution };
 };
