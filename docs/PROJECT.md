@@ -313,7 +313,7 @@ Toda modificação deste documento DEVE: (1) incrementar a versão no header (se
 Toda criação de collection, subcollection, ou campo novo no Firestore exige: (1) justificativa escrita com análise de dependência conceitual (a entidade existe sozinha ou depende de outra?), (2) parecer técnico com prós/contras das opções de modelagem (collection raiz vs subcollection vs field inline), (3) aprovação explícita do Marcio antes de implementar. Nenhuma estrutura de dados é criada sem passar por este gate.
 
 ### INV-16: Isolamento de Sessões Paralelas via Worktree
-Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado para sua branch (`git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk — sessões trabalham exclusivamente no worktree. Worktrees são removidos após merge. Trabalho direto na working tree principal é proibido para sessões de código.
+Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado para sua branch (`git worktree add ~/projects/issue-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk — sessões trabalham exclusivamente no worktree. Worktrees são removidos após merge. Trabalho direto na working tree principal é proibido para sessões de código.
 
 ---
 
