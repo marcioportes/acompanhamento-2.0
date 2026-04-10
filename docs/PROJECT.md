@@ -471,6 +471,9 @@ Ao final de cada sessão, antes de encerrar:
 
 5. **Remover worktree** após merge confirmado: `git worktree remove ~/projects/acomp-{NNN}` (INV-16)
 
+6. **Mover issue file para archive** após merge confirmado:
+   `mv docs/dev/issues/issue-NNN-nome.md docs/archive/`
+
 ### 4.4 Diretriz Crítica de Verificação
 
 **Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
