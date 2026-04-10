@@ -154,20 +154,51 @@ Operacoes mistas NUNCA caem em limbo.
 | — | Throttling batch > 20 | Contencao CFs (critica externa) |
 | — | Flag lowResolution em trades | Timestamps sem segundos (critica externa) |
 
-**Pendencias para Claude Code:**
-- Implementar criacao automatica no handleConfirmOrders
-- Remover/simplificar GhostOperationsPanel
-- Implementar Confronto Enriquecido
-- Corrigir identifyGhostOperations para ops mistas
-- Corrigir labels STEP DONE
-- Throttling para batch > 20
-- Validacao resolucao temporal + flag lowResolution
-- Testes para todos os cenarios
-- Gate pre-entrega
+### Sessao — 09-10/04/2026 — Claude Code (Redesign Fases 1-7)
+
+**Tipo:** codigo + testes + gate pre-entrega
+
+**O que foi feito (7 fases):**
+
+| Fase | Commit | Descricao |
+|------|--------|-----------|
+| 1 | `46fc9a75` | `lowResolution` flag na parse + propagacao no tradeData |
+| 2 | `0b0406d6` | `categorizeConfirmedOps` — 3 grupos (ghost/confront/ambiguo) via _rowIndex |
+| 3a | `9023e636` | `orderTradeBatch` helper — criacao automatica com throttling >20 |
+| 3b | `3cd492a9` | `CreationResultPanel` — display read-only de trades criados |
+| 3c | `ba979e83` | Refactor handleStagingConfirm — criacao automatica, delete GhostOperationsPanel |
+| 4a | `557253ae` | `TradeStatusBadges` + labels STEP DONE consumindo importSummary |
+| 4b | `59b90993` | Integracao badges em TradesList, TradeDetailModal, ExtractTable, FeedbackPage |
+| 5a | `3d8f9b14` | `enrichTrade` no tradeGateway — enriquecimento com snapshot |
+| 5b | `5249c29f` | `AmbiguousOperationsPanel` — MVP informativo |
+| 5c | `a94e4b70` | Refactor MatchedOperationsPanel — enriquecimento em vez de DELETE+CREATE |
+| 5d | `af5a1a1d` | Refactor OrderImportPage + limpeza codigo legado (-491 linhas) |
+| 6 | `37b1c31c` | Testes de integracao end-to-end (10 cenarios) |
+| 7 | (este) | Gate pre-entrega: version.js, issue file, CHANGELOG |
+
+**Decisoes tomadas (aprovadas pelo Marcio):**
+
+| ID | Decisao | Justificativa |
+|----|---------|---------------|
+| A | `enrichTrade` no tradeGateway (INV-02) | Gateway unico cobre criacao E enriquecimento |
+| B | CreationResultPanel read-only (substitui GhostOperationsPanel) | Aluno quer ver o que foi criado |
+| C | Dedup: pula silenciosamente, conta em importSummary | Label informativa |
+| D | Throttling threshold = 20 | Abaixo paralelo, acima sequencial |
+| E | Snapshot inline (_enrichmentSnapshot) | Sem subcollection, sobrescreve anterior |
+| F | Ops mistas → 3 grupos (toCreate/toConfront/ambiguous) | Ops nunca caem em limbo |
+
+**Testes:** 953 testes totais (46 test files). Delta: +80 testes novos, -17 testes legado removidos.
+
+**Arquivos criados:** orderTemporalResolution.js, orderTradeBatch.js, orderKey.js, CreationResultPanel.jsx, AmbiguousOperationsPanel.jsx, TradeStatusBadges.jsx + 5 arquivos de teste.
+
+**Arquivos deletados:** GhostOperationsPanel.jsx.
+
+**Codigo legado removido:** identifyGhostOperations, prepareBatchCreation, identifyMatchedOperations, prepareConfrontBatch, handleUpdateMatched (DELETE+CREATE), handleCreateGhostTrades.
 
 ## 5. ENCERRAMENTO
 
-**Status:** Em andamento — aguardando implementacao do redesign
+**Status:** Aguardando PR + merge + validacao manual
+**Versao entregue:** v1.24.0
 
 **Checklist final:**
 - [ ] Acceptance criteria atendidos

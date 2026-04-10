@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.24.0: feat: Order Import V1.1 redesign — criação automática de trades, confronto enriquecido (updateDoc), categorização 3 grupos (ghost/confront/ambígua), throttling >20, lowResolution flag, badges "Importado"/"Complemento pendente", labels STEP DONE corretas (issue #093 redesign, epic #128)
  * - 1.23.0: feat: Controle de Assinaturas da Mentoria — subcollection students/{id}/subscriptions, CF checkSubscriptions, trial/paid, accessTier, billingPeriodMonths, receiptUrl (issue #094, DEC-055/DEC-056)
  * - 1.22.1: fix: Aluno não consegue deletar plano — firestore.rules DEC-025 + índice composto movements (issue #089)
  * - 1.22.0: debt: Node.js 20→22 + firebase-functions SDK 4.5→5.1 nas Cloud Functions (issue #096, DT-016, DT-028)
@@ -37,10 +38,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.23.0',
-  build: '20260405',
-  display: 'v1.23.0',
-  full: '1.23.0+20260405',
+  version: '1.24.0',
+  build: '20260410',
+  display: 'v1.24.0',
+  full: '1.24.0+20260410',
 };
 export default VERSION;
 export { VERSION };
