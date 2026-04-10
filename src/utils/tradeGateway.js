@@ -1,19 +1,25 @@
 /**
- * tradeGateway — Gateway único para criação de trades (INV-02)
+ * tradeGateway — Gateway único para escrita em trades (INV-02)
  * @see version.js para versão do produto
  *
- * Função pura extraída de useTrades.addTrade.
- * Toda escrita na collection `trades` DEVE passar por createTrade.
+ * Funções puras de escrita na collection `trades`:
+ *   - createTrade: criação de novo trade + movement
+ *   - enrichTrade: enriquecimento de trade existente com dados da corretora
  *
- * Pipeline: createTrade → addDoc(trades) → CF onTradeCreated (PL, compliance)
- *           createTrade → addDoc(movements) → CF onMovementCreated (account balance)
+ * Pipeline createTrade: addDoc(trades) → CF onTradeCreated (PL, compliance)
+ *                       addDoc(movements) → CF onMovementCreated (account balance)
+ *
+ * Pipeline enrichTrade: updateDoc(trades) → CF onTradeUpdated (PL diff, compliance)
+ *                       Preserva campos comportamentais (emoção, setup, feedback)
+ *                       _enrichmentSnapshot inline para rollback manual
  *
  * O hook useTrades.addTrade é wrapper fino que chama createTrade
  * e adiciona: setLoading, setError, uploadImage.
  */
 
 import {
-  collection, query, where, addDoc, getDoc, getDocs, doc, serverTimestamp
+  collection, query, where, addDoc, getDoc, getDocs, doc, serverTimestamp,
+  updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
@@ -180,4 +186,142 @@ export async function createTrade(tradeData, userContext) {
   }
 
   return { id: docRef.id, ...newTrade };
+}
+
+// ============================================
+// ENRIQUECIMENTO (Modo Confronto — issue #93 redesign V1.1b)
+// ============================================
+
+/**
+ * Enriquece um trade existente com dados reais de ordens da corretora.
+ *
+ * Campos atualizados: _partials, entry, exit, qty, stopLoss, result,
+ * resultCalculated, resultInPoints, resultPercent, rrRatio, rrAssumed,
+ * hasPartials, partialsCount, tickerRule.
+ *
+ * Campos preservados: emotionEntry, emotionExit, setup, notes, mentorFeedback,
+ * feedbackHistory, htfUrl, ltfUrl, status, source, planId, accountId,
+ * studentId, date, entryTime, exitTime, createdAt.
+ *
+ * _enrichmentSnapshot inline guarda estado anterior para rollback manual.
+ * Segundo enriquecimento sobrescreve snapshot anterior (Decisão E).
+ *
+ * @param {string} tradeId
+ * @param {Object} enrichment — { _partials, entry, exit, qty, stopLoss, tickerRule, importBatchId }
+ * @param {Object} userContext — { uid }
+ * @param {Object} [deps] — injeção de Firestore fns para testes
+ * @returns {Promise<{ id: string, before: Object, after: Object }>}
+ */
+export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+
+  // 1. Buscar trade atual
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  // 2. Validar ownership (defesa em profundidade)
+  if (before.studentId && before.studentId !== userContext.uid) {
+    throw new Error('Trade não pertence ao usuário atual');
+  }
+
+  // 3. Dedup de enriquecimento por batch
+  if (before.enrichedByImport && before.importBatchId === enrichment.importBatchId) {
+    throw new Error('Trade já enriquecido por este batch');
+  }
+
+  // 4. Parse dos campos financeiros
+  const entry = parseFloat(enrichment.entry);
+  const exit = parseFloat(enrichment.exit);
+  const qty = parseFloat(enrichment.qty);
+  const stopLoss = enrichment.stopLoss != null ? parseFloat(enrichment.stopLoss) : null;
+  const side = before.side; // preserva side do trade original
+  const tickerRule = enrichment.tickerRule || before.tickerRule || null;
+
+  // 5. Recalcular result (mesma lógica de createTrade)
+  let result;
+  let resultInPoints = 0;
+  if (enrichment._partials?.length > 0) {
+    const calc = calculateFromPartials({ side, partials: enrichment._partials, tickerRule });
+    result = calc.result;
+    resultInPoints = calc.resultInPoints;
+  } else if (tickerRule?.tickSize && tickerRule?.tickValue) {
+    const rawDiff = side === 'LONG' ? exit - entry : entry - exit;
+    resultInPoints = Math.round(rawDiff * 100) / 100;
+    const ticks = rawDiff / tickerRule.tickSize;
+    result = Math.round(ticks * tickerRule.tickValue * qty);
+  } else {
+    result = Math.round(calculateTradeResult(side, entry, exit, qty));
+    resultInPoints = side === 'LONG' ? exit - entry : entry - exit;
+  }
+
+  // 6. RR (usa planPl do plano atual — preserva DEC-007/009)
+  const planRef = docFn(db, 'plans', before.planId);
+  const planSnap = await getDocFn(planRef);
+  const planData = planSnap.exists() ? planSnap.data() : {};
+  const effectiveResult = Math.round(result * 100) / 100;
+
+  let rrRatio = null;
+  let rrAssumed = false;
+  if (stopLoss != null && stopLoss !== 0 && entry) {
+    const risk = Math.abs(entry - stopLoss);
+    if (risk > 0) {
+      rrRatio = Math.round((effectiveResult / (risk * (tickerRule?.pointValue || 1) * qty)) * 100) / 100;
+    }
+  } else {
+    const assumed = calculateAssumedRR({
+      result: effectiveResult,
+      planPl: Number(planData.pl) || 0,
+      planRiskPerOperation: Number(planData.riskPerOperation) || 0,
+      planRrTarget: Number(planData.rrTarget) || 0,
+    });
+    if (assumed) { rrRatio = assumed.rrRatio; rrAssumed = true; }
+  }
+
+  // 7. Snapshot inline (Decisão E — sobrescreve anterior, sem histórico infinito)
+  const snapshot = {
+    entry: before.entry,
+    exit: before.exit,
+    qty: before.qty,
+    stopLoss: before.stopLoss ?? null,
+    _partials: before._partials || [],
+    result: before.result,
+    resultInPoints: before.resultInPoints,
+    rrRatio: before.rrRatio,
+    rrAssumed: before.rrAssumed,
+    hasPartials: before.hasPartials || false,
+    partialsCount: before.partialsCount || 0,
+    snapshotAt: new Date().toISOString(),
+  };
+
+  // 8. Patch — apenas campos enriquecidos. Preserva emoção/setup/feedback/etc.
+  const patch = {
+    _partials: enrichment._partials || [],
+    entry, exit, qty, stopLoss,
+    resultCalculated: Math.round(result * 100) / 100,
+    result: effectiveResult,
+    resultInPoints,
+    resultPercent: calculateResultPercent(side, entry, exit),
+    rrRatio, rrAssumed,
+    hasPartials: (enrichment._partials?.length || 0) > 0,
+    partialsCount: enrichment._partials?.length || 0,
+    tickerRule,
+    enrichedByImport: true,
+    enrichedAt: serverTimestamp(),
+    importBatchId: enrichment.importBatchId || null,
+    _enrichmentSnapshot: snapshot,
+    updatedAt: serverTimestamp(),
+  };
+
+  // 9. updateDoc — CF onTradeUpdated dispara PL diff + compliance + redFlags
+  await updateDocFn(tradeRef, patch);
+
+  console.log(`[tradeGateway] Trade ${tradeId} enriquecido (batch ${enrichment.importBatchId})`);
+  return { id: tradeId, before, after: { ...before, ...patch } };
 }
