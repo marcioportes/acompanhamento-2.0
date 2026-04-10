@@ -1,10 +1,11 @@
 /**
  * MatchedOperationsPanel.jsx
- * @version 1.0.0 (v1.1.0 — issue #93, V1.1b)
- * @description Modo Confronto: exibe operações correlacionadas a trades existentes
- *   com divergências lado a lado. Permite ao aluno:
- *   - "Aceitar como está": mantém o trade atual (dismissal client-side)
- *   - "Atualizar com corretora": DELETE + CREATE via tradeGateway
+ * @version 2.0.0 (v1.1.0 — issue #93 redesign V1.1b Fase 5)
+ * @description Modo Confronto Enriquecido: exibe operações correlacionadas a
+ *   trades existentes com divergências lado a lado. Permite ao aluno:
+ *   - "Manter manual": mantém o trade atual (dismissal client-side)
+ *   - "Aceitar enriquecimento": atualiza trade existente via enrichTrade
+ *     (parciais + stop + preços da corretora, preserva emoção/setup)
  *
  * Racional: mentoria comportamental exige dado verdadeiro. O aluno confronta
  * o que ele registrou vs o que a corretora viu e decide caso a caso.
@@ -61,7 +62,7 @@ const DivergenceRow = ({ divergence }) => {
   );
 };
 
-const OperationCard = ({ item, onAccept, onUpdate, disabled, state }) => {
+const OperationCard = ({ item, onAccept, onEnrich, disabled, state }) => {
   const { operation, trade, comparison } = item;
   const isLong = operation.side === 'LONG';
   const maxColor = severityColor(comparison.maxSeverity);
@@ -69,7 +70,7 @@ const OperationCard = ({ item, onAccept, onUpdate, disabled, state }) => {
   return (
     <div className={`rounded-lg border p-3 transition-colors ${
       state === 'accepted' ? 'bg-emerald-500/5 border-emerald-500/20' :
-      state === 'updated' ? 'bg-blue-500/5 border-blue-500/20' :
+      state === 'enriched' ? 'bg-blue-500/5 border-blue-500/20' :
       state === 'error' ? 'bg-red-500/10 border-red-500/30' :
       `bg-slate-900/50 border-${maxColor}-500/20`
     }`}>
@@ -111,10 +112,10 @@ const OperationCard = ({ item, onAccept, onUpdate, disabled, state }) => {
           Mantido como está
         </div>
       )}
-      {state === 'updated' && (
+      {state === 'enriched' && (
         <div className="flex items-center gap-1.5 text-[10px] text-blue-400 mb-2">
           <CheckCircle className="w-3 h-3" />
-          Atualizado com dados da corretora
+          Enriquecido com dados da corretora
         </div>
       )}
       {state === 'error' && (
@@ -134,16 +135,16 @@ const OperationCard = ({ item, onAccept, onUpdate, disabled, state }) => {
             title="Mantém o trade atual do diário sem alterações"
           >
             <Check className="w-3 h-3" />
-            Aceitar como está
+            Manter manual
           </button>
           <button
-            onClick={onUpdate}
+            onClick={onEnrich}
             disabled={disabled}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] bg-blue-600/80 hover:bg-blue-500 text-white rounded border border-blue-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="DELETE + CREATE via pipeline limpo. O trade antigo é removido e recriado com dados da corretora."
+            title="Aplica parciais, stop e preços exatos da corretora ao trade existente, preservando emoção e setup."
           >
             <RefreshCw className="w-3 h-3" />
-            Atualizar com corretora
+            Aceitar enriquecimento
           </button>
         </div>
       )}
@@ -159,10 +160,10 @@ const OperationCard = ({ item, onAccept, onUpdate, disabled, state }) => {
  * @param {Object} props
  * @param {Array} props.confrontData — { divergent: [], converged: [] } (output de prepareConfrontBatch)
  * @param {Function} props.onAccept — async (item) => void (dismissal client-side)
- * @param {Function} props.onUpdate — async (item) => Promise<{ success, error }>
+ * @param {Function} props.onEnrich — async (item) => Promise<{ success, error }>
  */
-const MatchedOperationsPanel = ({ confrontData, onAccept, onUpdate }) => {
-  const [itemStates, setItemStates] = useState({}); // { [operationId]: 'accepted' | 'updated' | 'error' }
+const MatchedOperationsPanel = ({ confrontData, onAccept, onEnrich }) => {
+  const [itemStates, setItemStates] = useState({}); // { [operationId]: 'accepted' | 'enriched' | 'error' }
   const [busy, setBusy] = useState(false);
 
   const handleAccept = useCallback(async (item) => {
@@ -171,23 +172,23 @@ const MatchedOperationsPanel = ({ confrontData, onAccept, onUpdate }) => {
     setItemStates(prev => ({ ...prev, [opId]: 'accepted' }));
   }, [onAccept]);
 
-  const handleUpdate = useCallback(async (item) => {
+  const handleEnrich = useCallback(async (item) => {
     const opId = item.operation.operationId;
     setBusy(true);
     try {
-      const result = await onUpdate(item);
+      const result = await onEnrich(item);
       if (result?.success) {
-        setItemStates(prev => ({ ...prev, [opId]: 'updated' }));
+        setItemStates(prev => ({ ...prev, [opId]: 'enriched' }));
       } else {
         setItemStates(prev => ({ ...prev, [opId]: 'error' }));
       }
     } catch (err) {
-      console.error('[MatchedOperationsPanel] Erro atualizando trade:', err);
+      console.error('[MatchedOperationsPanel] Erro enriquecendo trade:', err);
       setItemStates(prev => ({ ...prev, [opId]: 'error' }));
     } finally {
       setBusy(false);
     }
-  }, [onUpdate]);
+  }, [onEnrich]);
 
   if (!confrontData || (confrontData.divergent.length === 0 && confrontData.converged.length === 0)) {
     return null;
@@ -230,7 +231,7 @@ const MatchedOperationsPanel = ({ confrontData, onAccept, onUpdate }) => {
                 item={item}
                 state={itemStates[item.operation.operationId]}
                 onAccept={() => handleAccept(item)}
-                onUpdate={() => handleUpdate(item)}
+                onEnrich={() => handleEnrich(item)}
                 disabled={busy || !!itemStates[item.operation.operationId]}
               />
             ))}
@@ -240,13 +241,14 @@ const MatchedOperationsPanel = ({ confrontData, onAccept, onUpdate }) => {
         {busy && (
           <div className="flex items-center gap-2 justify-center py-2 mt-2 text-[10px] text-slate-500">
             <Loader2 className="w-3 h-3 animate-spin" />
-            Processando DELETE + CREATE...
+            Enriquecendo trade...
           </div>
         )}
 
         <p className="text-[10px] text-slate-600 mt-3 text-center">
-          "Atualizar" faz DELETE do trade antigo + CREATE do novo via pipeline limpo.
-          PL é recalculado via Cloud Functions.
+          "Aceitar enriquecimento" atualiza o trade existente com parciais, stop e preços exatos
+          da corretora. PL e compliance são recalculados via Cloud Functions. Emoção e setup
+          são preservados.
         </p>
       </div>
       <DebugBadge component="MatchedOperationsPanel" />
