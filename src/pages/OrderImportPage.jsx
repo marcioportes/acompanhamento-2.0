@@ -24,6 +24,7 @@ import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
+import AmbiguousOperationsPanel from '../components/OrderImport/AmbiguousOperationsPanel';
 
 import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -33,8 +34,8 @@ import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis'
 import { correlateOrders } from '../utils/orderCorrelation';
 import { categorizeConfirmedOps } from '../utils/orderTradeCreation';
 import { createTradesBatch } from '../utils/orderTradeBatch';
-import { prepareConfrontBatch } from '../utils/orderTradeComparison';
-import { createTrade } from '../utils/tradeGateway';
+import { compareOperationWithTrade } from '../utils/orderTradeComparison';
+import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -70,7 +71,7 @@ const STEP_LABELS = {
  * @param {Object} props.orderStaging — hook useOrderStaging
  * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
  */
-const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext, deleteTrade }) => {
+const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext }) => {
   // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
 
@@ -306,13 +307,26 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         lowResolution,
       });
 
-      // 8. Modo Confronto (V1.1b — Fase 5 vai refatorar para enriquecimento)
-      //    Por enquanto continua usando prepareConfrontBatch antigo + MatchedOperationsPanel.
+      // 8. Modo Confronto Enriquecido (V1.1b redesign Fase 5)
+      //    Usa toConfront direto do categorizeConfirmedOps + compareOperationWithTrade
+      //    para detectar divergências campo a campo sem o bug do fallback por instrumento.
       if (toConfront.length > 0) {
         setProgress('Comparando operações com trades do diário...');
-        const confront = prepareConfrontBatch(confirmedOps, correlations, planTrades);
-        if (confront.divergent.length > 0 || confront.converged.length > 0) {
-          setConfrontData(confront);
+        const existingTradesById = new Map(planTrades.map(t => [t.id, t]));
+        const divergent = [];
+        const converged = [];
+        for (const { operation, tradeId } of toConfront) {
+          const trade = existingTradesById.get(tradeId);
+          if (!trade) continue;
+          const comparison = compareOperationWithTrade(operation, trade);
+          if (comparison.hasDivergences) {
+            divergent.push({ operation, trade, comparison });
+          } else {
+            converged.push({ operation, trade });
+          }
+        }
+        if (divergent.length > 0 || converged.length > 0) {
+          setConfrontData({ divergent, converged });
         }
       }
 
@@ -338,17 +352,15 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   // MODO CONFRONTO: aceitar ou atualizar trade a partir de operação (V1.1b)
   // ============================================
 
-  /** "Aceitar como está" — dismissal client-side, sem write no Firestore */
+  /** "Manter manual" — dismissal client-side, sem write no Firestore */
   const handleAcceptMatched = useCallback(async (_item) => {
-    // A correlatedTradeId já foi setada durante ingestBatch.
-    // Não há ação no Firestore — o aluno apenas confirmou que o trade do diário permanece.
     return { success: true };
   }, []);
 
-  /** "Atualizar com corretora" — DELETE + CREATE via pipeline limpo */
-  const handleUpdateMatched = useCallback(async (item) => {
-    if (!userContext?.uid || !deleteTrade) {
-      return { success: false, error: 'Contexto de usuário ou deleteTrade indisponível' };
+  /** "Aceitar enriquecimento" — updateDoc via enrichTrade (V1.1b redesign Fase 5) */
+  const handleEnrichMatched = useCallback(async (item) => {
+    if (!userContext?.uid) {
+      return { success: false, error: 'Contexto de usuário indisponível' };
     }
 
     const { trade, operation } = item;
@@ -397,52 +409,33 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         });
       }
 
-      // Stop loss do último stop order (se existir)
+      // 3. Stop loss do último stop order (se existir)
       let stopLoss = null;
       if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
         const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
         stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
       }
 
-      // 3. Montar tradeData preservando campos comportamentais do trade original
-      //    (emotionEntry, emotionExit, setup, mentorFeedback, feedbackHistory — o aluno
-      //    já preencheu esses campos no trade original e eles devem ser preservados)
-      const tradeData = {
-        planId: trade.planId,
-        ticker: (operation.instrument || '').toUpperCase(),
-        side: operation.side,
-        entry: String(operation.avgEntryPrice ?? 0),
-        exit: String(operation.avgExitPrice ?? 0),
-        qty: String(operation.totalQty ?? 0),
-        entryTime: operation.entryTime || null,
-        exitTime: operation.exitTime || null,
-        stopLoss,
-        // Preservar campos comportamentais do trade original
-        emotionEntry: trade.emotionEntry ?? null,
-        emotionExit: trade.emotionExit ?? null,
-        setup: trade.setup ?? null,
-        // Rastreabilidade — origem é order_import (vs o trade original)
-        source: 'order_import',
-        importSource: 'order_import',
-        importBatchId: batchId,
-        confrontedFrom: trade.id, // rastreia que este trade substitui o anterior
-        tickerRule,
+      // 4. Montar enrichment — enrichTrade preserva campos comportamentais automaticamente
+      const enrichment = {
         _partials: partials,
+        entry: operation.avgEntryPrice,
+        exit: operation.avgExitPrice,
+        qty: operation.totalQty,
+        stopLoss,
+        tickerRule,
+        importBatchId: batchId,
       };
 
-      // 4. DELETE do trade antigo (CF onTradeDeleted reverte PL via FieldValue.increment)
-      await deleteTrade(trade.id);
-
-      // 5. CREATE novo via pipeline limpo (CF onTradeCreated recalcula PL)
-      const newTrade = await createTrade(tradeData, userContext);
-
-      console.log(`[OrderImportPage] Modo Confronto: trade ${trade.id} substituído por ${newTrade.id}`);
-      return { success: true, oldTradeId: trade.id, newTradeId: newTrade.id };
+      // 5. Enriquecer via gateway (INV-02) — CF onTradeUpdated recalcula PL + compliance
+      await enrichTrade(trade.id, enrichment, userContext);
+      console.log(`[OrderImportPage] Trade ${trade.id} enriquecido com dados da corretora`);
+      return { success: true, tradeId: trade.id };
     } catch (err) {
-      console.error('[OrderImportPage] Erro no DELETE+CREATE:', err);
+      console.error('[OrderImportPage] Erro enrichTrade:', err);
       return { success: false, error: err.message };
     }
-  }, [userContext, deleteTrade, batchId]);
+  }, [userContext, batchId]);
 
   // ============================================
   // RENDER
@@ -652,13 +645,18 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 />
               )}
 
-              {/* Modo Confronto: operações correlacionadas com divergências (V1.1b) */}
+              {/* Modo Confronto Enriquecido (V1.1b redesign Fase 5) */}
               {confrontData && (
                 <MatchedOperationsPanel
                   confrontData={confrontData}
                   onAccept={handleAcceptMatched}
-                  onUpdate={handleUpdateMatched}
+                  onEnrich={handleEnrichMatched}
                 />
+              )}
+
+              {/* Operações ambíguas (2+ trades matched) — MVP informativo */}
+              {ambiguousData && ambiguousData.length > 0 && (
+                <AmbiguousOperationsPanel ops={ambiguousData} />
               )}
 
               <div className="flex justify-end pt-2">

@@ -14,60 +14,6 @@
 import { CORRELATION_WINDOW_MS } from './orderCorrelation';
 
 // ============================================
-// GHOST OPERATION DETECTION
-// ============================================
-
-/**
- * Identifica operações reconstruídas cujas ordens FILLED são todas ghost (sem trade correspondente).
- *
- * @param {Object[]} operations — output de reconstructOperations + associateNonFilledOrders
- * @param {Object[]} correlations — output de correlateOrders().correlations
- * @returns {Object[]} operações ghost (candidatas para Modo Criação)
- */
-export function identifyGhostOperations(operations, correlations) {
-  if (!operations?.length || !correlations?.length) return [];
-
-  // Indexar correlações por instrumento+timestamp para lookup rápido
-  const ghostCorrelations = correlations.filter(c => c.matchType === 'ghost');
-  if (ghostCorrelations.length === 0) return [];
-
-  // Para cada operação, verificar se TODAS as suas ordens filled são ghost
-  return operations.filter(op => {
-    if (op._isOpen) return false; // Operações abertas não podem virar trades
-
-    const filledOrders = [
-      ...(op.entryOrders || []),
-      ...(op.exitOrders || []),
-    ];
-
-    if (filledOrders.length === 0) return false;
-
-    // Verificar se pelo menos as ordens de entrada E saída existem
-    if (!op.entryOrders?.length || !op.exitOrders?.length) return false;
-
-    // Verificar se TODAS as ordens filled desta operação são ghost
-    return filledOrders.every(order => {
-      const orderTime = order.filledAt || order.submittedAt;
-      const orderInstrument = (order.instrument || '').toUpperCase();
-
-      return ghostCorrelations.some(gc => {
-        const gcInstrument = (gc.instrument || '').toUpperCase();
-        if (gcInstrument !== orderInstrument) return false;
-
-        // Match por externalOrderId se disponível
-        if (gc.externalOrderId && order.externalOrderId) {
-          return gc.externalOrderId === order.externalOrderId;
-        }
-
-        // Fallback: match por timestamp + instrumento
-        if (!orderTime) return gcInstrument === orderInstrument;
-        return gcInstrument === orderInstrument;
-      });
-    });
-  });
-}
-
-// ============================================
 // CONFIRMED OPS CATEGORIZATION (issue #93 redesign)
 // ============================================
 
@@ -285,43 +231,3 @@ export function checkDuplication(tradeData, existingTrades) {
   return { isDuplicate: false, matchedTradeId: null, reason: null };
 }
 
-/**
- * Processa batch de operações ghost: mapeia, verifica dedup, retorna apenas as criáveis.
- *
- * @param {Object[]} ghostOps — operações ghost (output de identifyGhostOperations)
- * @param {string} planId — ID do plano
- * @param {Object[]} existingTrades — trades existentes do plano
- * @param {string|null} importBatchId — batch ID
- * @param {Object|null} tickerRuleMap — { [instrument]: { tickSize, tickValue, pointValue } }
- * @param {boolean} lowResolution — flag de resolução temporal do CSV (issue #93 redesign)
- * @returns {{ toCreate: Object[], duplicates: Object[], errors: Object[] }}
- */
-export function prepareBatchCreation(ghostOps, planId, existingTrades, importBatchId = null, tickerRuleMap = null, lowResolution = false) {
-  const toCreate = [];
-  const duplicates = [];
-  const errors = [];
-
-  for (const op of ghostOps) {
-    try {
-      const instrument = (op.instrument || '').toUpperCase();
-      const tickerRule = tickerRuleMap?.[instrument] ?? null;
-      const tradeData = mapOperationToTradeData(op, planId, importBatchId, tickerRule, lowResolution);
-      const dedup = checkDuplication(tradeData, existingTrades);
-
-      if (dedup.isDuplicate) {
-        duplicates.push({
-          operation: op,
-          tradeData,
-          reason: dedup.reason,
-          matchedTradeId: dedup.matchedTradeId,
-        });
-      } else {
-        toCreate.push({ operation: op, tradeData });
-      }
-    } catch (err) {
-      errors.push({ operation: op, error: err.message });
-    }
-  }
-
-  return { toCreate, duplicates, errors };
-}

@@ -8,9 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  identifyMatchedOperations,
   compareOperationWithTrade,
-  prepareConfrontBatch,
   DIVERGENCE_SEVERITY,
   DIVERGENCE_FIELD,
 } from '../../utils/orderTradeComparison';
@@ -69,66 +67,6 @@ const makeTrade = (overrides = {}) => ({
     { type: 'EXIT', price: 130050, qty: 2, dateTime: '2026-04-04T10:30:00', seq: 2 },
   ],
   ...overrides,
-});
-
-// ============================================
-// identifyMatchedOperations
-// ============================================
-
-describe('identifyMatchedOperations', () => {
-  it('retorna operações cujas ordens correlacionam com trade existente', () => {
-    const ops = [makeOperation()];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001', tradeId: 'trade-001' }),
-      makeCorrelation({ externalOrderId: 'ORD-002', tradeId: 'trade-001' }),
-    ];
-    const trades = [makeTrade()];
-
-    const matched = identifyMatchedOperations(ops, correlations, trades);
-    expect(matched).toHaveLength(1);
-    expect(matched[0].operation.operationId).toBe('OP-001');
-    expect(matched[0].trade.id).toBe('trade-001');
-  });
-
-  it('ignora operações abertas (_isOpen)', () => {
-    const ops = [makeOperation({ _isOpen: true })];
-    const correlations = [makeCorrelation()];
-    const trades = [makeTrade()];
-
-    const matched = identifyMatchedOperations(ops, correlations, trades);
-    expect(matched).toHaveLength(0);
-  });
-
-  it('ignora correlações ghost', () => {
-    const ops = [makeOperation()];
-    const correlations = [
-      makeCorrelation({ matchType: 'ghost', tradeId: null, confidence: 0 }),
-    ];
-    const trades = [makeTrade()];
-
-    const matched = identifyMatchedOperations(ops, correlations, trades);
-    expect(matched).toHaveLength(0);
-  });
-
-  it('retorna vazio quando operação matcha com múltiplos trades (ambíguo)', () => {
-    const ops = [makeOperation()];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001', tradeId: 'trade-001' }),
-      makeCorrelation({ externalOrderId: 'ORD-002', tradeId: 'trade-002' }),
-    ];
-    const trades = [
-      makeTrade({ id: 'trade-001' }),
-      makeTrade({ id: 'trade-002' }),
-    ];
-
-    const matched = identifyMatchedOperations(ops, correlations, trades);
-    expect(matched).toHaveLength(0);
-  });
-
-  it('retorna vazio com inputs vazios', () => {
-    expect(identifyMatchedOperations([], [], [])).toEqual([]);
-    expect(identifyMatchedOperations(null, null, null)).toEqual([]);
-  });
 });
 
 // ============================================
@@ -276,49 +214,3 @@ describe('compareOperationWithTrade', () => {
   });
 });
 
-// ============================================
-// prepareConfrontBatch
-// ============================================
-
-describe('prepareConfrontBatch', () => {
-  it('separa operações divergentes e convergentes', () => {
-    const ops = [
-      makeOperation({ operationId: 'OP-001' }), // convergente (bate com trade-001)
-      makeOperation({
-        operationId: 'OP-002',
-        avgEntryPrice: 130099, // divergente
-        entryOrders: [{ instrument: 'WINJ26', filledPrice: 130099, filledQuantity: 2, externalOrderId: 'ORD-003' }],
-        exitOrders: [{ instrument: 'WINJ26', filledPrice: 130050, filledQuantity: 2, externalOrderId: 'ORD-004' }],
-      }),
-    ];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001', tradeId: 'trade-001' }),
-      makeCorrelation({ externalOrderId: 'ORD-002', tradeId: 'trade-001' }),
-      makeCorrelation({ externalOrderId: 'ORD-003', tradeId: 'trade-002' }),
-      makeCorrelation({ externalOrderId: 'ORD-004', tradeId: 'trade-002' }),
-    ];
-    const trades = [
-      makeTrade({ id: 'trade-001' }),
-      makeTrade({ id: 'trade-002' }),
-    ];
-
-    const result = prepareConfrontBatch(ops, correlations, trades);
-
-    expect(result.divergent).toHaveLength(1);
-    expect(result.divergent[0].operation.operationId).toBe('OP-002');
-    expect(result.divergent[0].comparison.hasDivergences).toBe(true);
-
-    expect(result.converged).toHaveLength(1);
-    expect(result.converged[0].operation.operationId).toBe('OP-001');
-  });
-
-  it('retorna vazios quando não há matched operations', () => {
-    const ops = [makeOperation()];
-    const correlations = [makeCorrelation({ matchType: 'ghost', tradeId: null })];
-    const trades = [makeTrade()];
-
-    const result = prepareConfrontBatch(ops, correlations, trades);
-    expect(result.divergent).toHaveLength(0);
-    expect(result.converged).toHaveLength(0);
-  });
-});

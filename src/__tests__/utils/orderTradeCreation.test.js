@@ -9,11 +9,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  identifyGhostOperations,
   categorizeConfirmedOps,
   mapOperationToTradeData,
   checkDuplication,
-  prepareBatchCreation,
 } from '../../utils/orderTradeCreation';
 
 // ============================================
@@ -68,85 +66,6 @@ const makeTrade = (overrides = {}) => ({
   exitTime: '2026-04-04T10:30:00',
   date: '2026-04-04',
   ...overrides,
-});
-
-// ============================================
-// identifyGhostOperations
-// ============================================
-
-describe('identifyGhostOperations', () => {
-  it('retorna operações cujas ordens são todas ghost', () => {
-    const ops = [makeOperation()];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001', instrument: 'WINJ26' }),
-      makeCorrelation({ externalOrderId: 'ORD-002', instrument: 'WINJ26', orderIndex: 1 }),
-    ];
-
-    const ghosts = identifyGhostOperations(ops, correlations);
-    expect(ghosts).toHaveLength(1);
-    expect(ghosts[0].operationId).toBe('OP-001');
-  });
-
-  it('ignora operações abertas (_isOpen)', () => {
-    const ops = [makeOperation({ _isOpen: true })];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001' }),
-      makeCorrelation({ externalOrderId: 'ORD-002' }),
-    ];
-
-    const ghosts = identifyGhostOperations(ops, correlations);
-    expect(ghosts).toHaveLength(0);
-  });
-
-  it('ignora operações sem ordens de saída', () => {
-    const ops = [makeOperation({ exitOrders: [] })];
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001' }),
-    ];
-
-    const ghosts = identifyGhostOperations(ops, correlations);
-    expect(ghosts).toHaveLength(0);
-  });
-
-  it('retorna vazio quando não há correlações ghost', () => {
-    const ops = [makeOperation()];
-    const correlations = [
-      makeCorrelation({ matchType: 'exact', tradeId: 'trade-001', confidence: 0.95 }),
-    ];
-
-    const ghosts = identifyGhostOperations(ops, correlations);
-    expect(ghosts).toHaveLength(0);
-  });
-
-  it('retorna vazio com inputs vazios', () => {
-    expect(identifyGhostOperations([], [])).toEqual([]);
-    expect(identifyGhostOperations(null, null)).toEqual([]);
-    expect(identifyGhostOperations(undefined, undefined)).toEqual([]);
-  });
-
-  it('filtra múltiplas operações — só retorna as ghost', () => {
-    const ops = [
-      makeOperation({ operationId: 'OP-001' }),
-      makeOperation({
-        operationId: 'OP-002',
-        instrument: 'WDOJ26',
-        entryOrders: [{ instrument: 'WDOJ26', filledPrice: 5000, filledQuantity: 1, filledAt: '2026-04-04T11:00:00', externalOrderId: 'ORD-003' }],
-        exitOrders: [{ instrument: 'WDOJ26', filledPrice: 5010, filledQuantity: 1, filledAt: '2026-04-04T11:30:00', externalOrderId: 'ORD-004' }],
-      }),
-    ];
-
-    // Apenas OP-001 é ghost, OP-002 tem match
-    const correlations = [
-      makeCorrelation({ externalOrderId: 'ORD-001', instrument: 'WINJ26' }),
-      makeCorrelation({ externalOrderId: 'ORD-002', instrument: 'WINJ26' }),
-      makeCorrelation({ externalOrderId: 'ORD-003', instrument: 'WDOJ26', matchType: 'exact', tradeId: 'trade-002' }),
-      makeCorrelation({ externalOrderId: 'ORD-004', instrument: 'WDOJ26', matchType: 'exact', tradeId: 'trade-002' }),
-    ];
-
-    const ghosts = identifyGhostOperations(ops, correlations);
-    expect(ghosts).toHaveLength(1);
-    expect(ghosts[0].operationId).toBe('OP-001');
-  });
 });
 
 // ============================================
@@ -557,60 +476,3 @@ describe('checkDuplication', () => {
   });
 });
 
-// ============================================
-// prepareBatchCreation
-// ============================================
-
-describe('prepareBatchCreation', () => {
-  it('separa operações em toCreate e duplicates', () => {
-    const ghostOps = [
-      makeOperation({ operationId: 'OP-001' }),
-      makeOperation({
-        operationId: 'OP-002',
-        instrument: 'WDOJ26',
-        avgEntryPrice: 5000,
-        avgExitPrice: 5010,
-        entryTime: '2026-04-04T11:00:00',
-        exitTime: '2026-04-04T11:30:00',
-        entryOrders: [{ filledPrice: 5000, filledQuantity: 1, filledAt: '2026-04-04T11:00:00' }],
-        exitOrders: [{ filledPrice: 5010, filledQuantity: 1, filledAt: '2026-04-04T11:30:00' }],
-      }),
-    ];
-
-    // OP-001 tem duplicata, OP-002 não
-    const existingTrades = [makeTrade()];
-    const result = prepareBatchCreation(ghostOps, 'plan-001', existingTrades, 'batch-001');
-
-    expect(result.toCreate).toHaveLength(1);
-    expect(result.toCreate[0].tradeData.ticker).toBe('WDOJ26');
-
-    expect(result.duplicates).toHaveLength(1);
-    expect(result.duplicates[0].operation.operationId).toBe('OP-001');
-    expect(result.duplicates[0].matchedTradeId).toBe('trade-001');
-
-    expect(result.errors).toHaveLength(0);
-  });
-
-  it('todas operações criáveis quando não há trades existentes', () => {
-    const ghostOps = [makeOperation()];
-    const result = prepareBatchCreation(ghostOps, 'plan-001', []);
-
-    expect(result.toCreate).toHaveLength(1);
-    expect(result.duplicates).toHaveLength(0);
-  });
-
-  it('seta importBatchId em todos os tradeData', () => {
-    const ghostOps = [makeOperation()];
-    const result = prepareBatchCreation(ghostOps, 'plan-001', [], 'batch-xyz');
-
-    expect(result.toCreate[0].tradeData.importBatchId).toBe('batch-xyz');
-  });
-
-  it('tradeData tem source: order_import', () => {
-    const ghostOps = [makeOperation()];
-    const result = prepareBatchCreation(ghostOps, 'plan-001', []);
-
-    expect(result.toCreate[0].tradeData.source).toBe('order_import');
-    expect(result.toCreate[0].tradeData.importSource).toBe('order_import');
-  });
-});

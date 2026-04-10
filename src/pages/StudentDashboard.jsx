@@ -494,7 +494,6 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
           orderStaging={orderStaging}
           crossCheck={crossCheckHook}
           userContext={user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null}
-          deleteTrade={deleteTrade}
         />
       )}
 
