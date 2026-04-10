@@ -18,6 +18,20 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlans } from '../hooks/usePlans';
+import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
+import {
+  PROP_FIRM_LABELS,
+  PROP_FIRM_PHASES,
+  PROP_FIRM_PHASE_LABELS,
+  ATTACK_PROFILES,
+  DEFAULT_ATTACK_PROFILE,
+  normalizeAttackProfile,
+  ATTACK_PLAN_PROFILE_LABELS,
+  DEFAULT_TEMPLATES_ENRICHED,
+  getTemplatesByFirm as groupByFirm
+} from '../constants/propFirmDefaults';
+import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
 import PlanManagementModal from '../components/PlanManagementModal';
@@ -78,7 +92,8 @@ const AccountsPage = () => {
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
   const { user, isMentor } = useAuth();
-  const { plans, updatePlan } = usePlans();
+  const { plans, addPlan, updatePlan } = usePlans();
+  const { templates: firestoreTemplates } = usePropFirmTemplates();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
@@ -88,6 +103,7 @@ const AccountsPage = () => {
   const [planSubmitting, setPlanSubmitting] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+  const [propPlanDefaults, setPropPlanDefaults] = useState(null); // defaults do attackPlan para criar plano após conta PROP
   
   const [auditState, setAuditState] = useState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null });
   const [isFixing, setIsFixing] = useState(false);
@@ -103,6 +119,60 @@ const AccountsPage = () => {
     createdAt: '',
     type: 'DEMO',
   });
+
+  // --- Prop firm state (#52) ---
+  const [propFirmData, setPropFirmData] = useState({
+    selectedFirm: '',
+    selectedTemplateId: '',
+    phase: PROP_FIRM_PHASES.EVALUATION,
+    attackProfile: DEFAULT_ATTACK_PROFILE,
+    selectedInstrument: '' // #52 Fase 1.5 — instrumento principal da conta
+  });
+
+  const allTemplates = useMemo(
+    () => firestoreTemplates.length > 0 ? firestoreTemplates : DEFAULT_TEMPLATES_ENRICHED,
+    [firestoreTemplates]
+  );
+  const firmGroups = useMemo(() => groupByFirm(allTemplates), [allTemplates]);
+  const firmList = useMemo(() => Object.keys(firmGroups), [firmGroups]);
+  const productsForFirm = useMemo(
+    () => firmGroups[propFirmData.selectedFirm] ?? [],
+    [firmGroups, propFirmData.selectedFirm]
+  );
+  const selectedTemplate = useMemo(
+    () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
+    [allTemplates, propFirmData.selectedTemplateId]
+  );
+  // Lista de instrumentos permitidos para a firma selecionada (#52 Fase 1.5)
+  const allowedInstruments = useMemo(() => {
+    if (!selectedTemplate?.firm) return [];
+    return getAllowedInstrumentsForFirm(selectedTemplate.firm);
+  }, [selectedTemplate]);
+  const attackPlan = useMemo(() => {
+    if (!selectedTemplate) return null;
+    try {
+      return calculateAttackPlan(
+        selectedTemplate,
+        null,
+        null,
+        propFirmData.attackProfile,
+        propFirmData.phase,
+        propFirmData.selectedInstrument || null
+      );
+    } catch { return null; }
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument]);
+
+  // Auto-fill quando template selecionado
+  useEffect(() => {
+    if (selectedTemplate && formData.type === 'PROP') {
+      setFormData(prev => ({
+        ...prev,
+        currency: 'USD',
+        initialBalance: selectedTemplate.accountSize?.toString() ?? prev.initialBalance,
+        name: prev.name || selectedTemplate.name
+      }));
+    }
+  }, [selectedTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const brokerNames = useMemo(() => brokers.map(b => b.name).sort(), [brokers]);
   const filteredBrokers = useMemo(() => {
@@ -154,11 +224,11 @@ const AccountsPage = () => {
   }, [groupedAccounts, searchTerm, isMentor]);
 
   const openModal = (account = null) => {
-    setAuditState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null }); 
+    setAuditState({ status: 'idle', message: '', issueType: null, ledgerBalance: 0, suggestion: null });
     if (account) {
       setEditingAccount(account);
       const dateObj = account.createdAt ? getDateObject(account.createdAt) : new Date();
-      
+
       setFormData({
         name: account.name || '',
         broker: account.broker || account.brokerName || '',
@@ -168,6 +238,21 @@ const AccountsPage = () => {
         createdAt: dateToInputString(dateObj), // [FIX] Usa helper corrigido
         type: account.type || (account.isReal ? 'REAL' : 'DEMO')
       });
+      // Rehydratação prop firm (#52)
+      if (account.propFirm) {
+        setPropFirmData({
+          selectedFirm: account.propFirm.firmName || '',
+          selectedTemplateId: account.propFirm.templateId || '',
+          phase: account.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
+          attackProfile: normalizeAttackProfile(account.propFirm.suggestedPlan?.profile),
+          selectedInstrument: account.propFirm.selectedInstrument?.symbol || ''
+        });
+      } else {
+        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
+      }
+      setIsModalOpen(true);
+      setShowBrokerSuggestions(false);
+      return;
     } else {
       setEditingAccount(null);
       setFormData({
@@ -180,6 +265,7 @@ const AccountsPage = () => {
         type: 'DEMO'
       });
     }
+    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
     setIsModalOpen(true);
     setShowBrokerSuggestions(false);
   };
@@ -339,7 +425,84 @@ const AccountsPage = () => {
           initialBalance: Number(formData.initialBalance),
           currentBalance: Number(formData.initialBalance)
         };
-        await addAccount(createPayload);
+        // Prop firm — incluir campo propFirm se tipo PROP (#52 + Fase 1.5)
+        if (formData.type === 'PROP' && selectedTemplate) {
+          const evalDays = selectedTemplate.evalTimeLimit;
+          // selectedInstrument inline (Fase 1.5)
+          let instrumentField = null;
+          if (propFirmData.selectedInstrument) {
+            const inst = getInstrument(propFirmData.selectedInstrument);
+            if (inst) {
+              instrumentField = {
+                symbol: inst.symbol,
+                name: inst.name,
+                type: inst.type,
+                isMicro: inst.isMicro,
+                pointValue: inst.pointValue,
+                avgDailyRange: inst.avgDailyRange,
+                minStopPoints: inst.minStopPoints
+              };
+            }
+          }
+          createPayload.propFirm = {
+            templateId: selectedTemplate.id,
+            firmName: selectedTemplate.firm,
+            productName: selectedTemplate.name,
+            phase: propFirmData.phase,
+            drawdownMax: selectedTemplate.drawdown?.maxAmount ?? 0,
+            evalDeadline: evalDays
+              ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
+              : null,
+            selectedInstrument: instrumentField,
+            suggestedPlan: attackPlan
+          };
+        }
+        const newAccountId = await addAccount(createPayload);
+
+        // Auto-abrir modal de plano para conta PROP com defaults do attackPlan (#52 + Fase 1.5)
+        if (formData.type === 'PROP' && attackPlan && selectedTemplate && newAccountId) {
+          const pl = Number(formData.initialBalance);
+          const isExecution = attackPlan.mode === 'execution' && !attackPlan.incompatible;
+
+          // Conversão valores absolutos → percentuais do PL (para o plan modal)
+          const toPct = (absValue) => pl > 0 && absValue > 0
+            ? Math.round((absValue / pl) * 1000) / 10
+            : 0;
+
+          // Constraints da mesa sempre presentes (mode abstract OU execution)
+          const cycleGoalPct = toPct(attackPlan.profitTarget) || 10.0;
+          const cycleStopPct = toPct(attackPlan.drawdownMax) || 10.0;
+          const periodGoalPct = toPct(attackPlan.dailyTarget) || 1.0;
+          const periodStopPct = toPct(attackPlan.dailyLossLimit) || 2.0;
+
+          // riskPerOperation: se execution, usa roPerTrade real; se abstract, default conservador
+          const riskPctPerOp = isExecution
+            ? toPct(attackPlan.roPerTrade) || 0.5
+            : 0.5; // sem instrumento → default 0.5% até refinar
+
+          setPropPlanDefaults({
+            __isDefaults: true,
+            accountId: newAccountId,
+            name: `Plano ${selectedTemplate.name}`,
+            type: 'Day Trade',
+            pl,
+            currency: formData.currency,
+            adjustmentCycle: 'Mensal',
+            cycleGoal: cycleGoalPct,
+            cycleStop: cycleStopPct,
+            operationPeriod: 'Diário',
+            periodGoal: periodGoalPct,
+            periodStop: periodStopPct,
+            riskPerOperation: riskPctPerOp,
+            rrTarget: attackPlan.rrMinimum ?? 1.5
+          });
+          setIsModalOpen(false);
+          setTimeout(() => {
+            setEditingPlan(null);
+            setShowPlanModal(true);
+          }, 800);
+          return;
+        }
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -439,23 +602,187 @@ const AccountsPage = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-6 border-b border-slate-800">
               <h3 className="text-xl font-bold text-white">{editingAccount ? 'Editar Conta' : 'Nova Conta'}</h3>
               <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-white" /></button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
               <div><label className="input-label mb-3">Tipo de Conta</label><div className="grid grid-cols-3 gap-3">{[{ id: 'REAL', icon: ShieldCheck, label: 'Real', color: 'emerald' }, { id: 'DEMO', icon: FlaskConical, label: 'Demo', color: 'yellow' }, { id: 'PROP', icon: Trophy, label: 'Mesa', color: 'purple' }].map(type => (<div key={type.id} onClick={() => setFormData({ ...formData, type: type.id })} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition-all ${formData.type === type.id ? `bg-${type.color}-500/10 border-${type.color}-500/50 text-white` : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><type.icon className={`w-6 h-6 ${formData.type === type.id ? `text-${type.color}-400` : 'text-slate-500'}`} /><span className="text-xs font-bold uppercase">{type.label}</span></div>))}</div></div>
-              <div><label className="input-label">Nome da Conta *</label><input required className="input-dark w-full" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
-              <div className="relative"><label className="input-label">Corretora / Mesa *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input required className="input-dark w-full pl-10" value={formData.broker} onChange={e => { setFormData({ ...formData, broker: e.target.value }); setShowBrokerSuggestions(true); }} /></div>{showBrokerSuggestions && filteredBrokers.length > 0 && (<div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">{filteredBrokers.map(broker => (<button key={broker} type="button" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2" onClick={() => { setFormData({ ...formData, broker: broker }); setShowBrokerSuggestions(false); }}><Search className="w-3 h-3 opacity-50" /> {broker}</button>))}</div>)}</div>
-              
+              {/* Prop Firm — seletor condicional (#52) */}
+              {formData.type === 'PROP' && (
+                <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-semibold text-purple-300 uppercase">Configuração da Mesa</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="input-label">Mesa Proprietária *</label>
+                      <select className="input-dark w-full" value={propFirmData.selectedFirm} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedFirm: e.target.value, selectedTemplateId: '' }))}>
+                        <option value="">Selecione a mesa</option>
+                        {firmList.map(firm => (<option key={firm} value={firm}>{PROP_FIRM_LABELS[firm] ?? firm}</option>))}
+                      </select>
+                    </div>
+                    {propFirmData.selectedFirm && (
+                      <div>
+                        <label className="input-label">Produto *</label>
+                        <select className="input-dark w-full" value={propFirmData.selectedTemplateId} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedTemplateId: e.target.value }))}>
+                          <option value="">Selecione o produto</option>
+                          {productsForFirm.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  {selectedTemplate && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="input-label">Fase da Conta</label>
+                          <select className="input-dark w-full" value={propFirmData.phase} onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}>
+                            {Object.entries(PROP_FIRM_PHASE_LABELS).map(([k, v]) => (<option key={k} value={k}>{v}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="input-label">Instrumento Principal</label>
+                          <select
+                            className="input-dark w-full"
+                            value={propFirmData.selectedInstrument}
+                            onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
+                          >
+                            <option value="">— Sem instrumento (plano abstrato)</option>
+                            {allowedInstruments.map(inst => (
+                              <option key={inst.symbol} value={inst.symbol}>
+                                {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="input-label">Perfil do Plano de Ataque</label>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {Object.values(ATTACK_PROFILES).map((p) => {
+                            const selected = propFirmData.attackProfile === p.code;
+                            const isCons = p.family === 'conservative';
+                            return (
+                              <button
+                                key={p.code}
+                                type="button"
+                                onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
+                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}`}
+                                className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
+                                  selected
+                                    ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
+                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                }`}
+                              >
+                                <div>{(p.roPct * 100).toFixed(0)}%</div>
+                                <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
+                                {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
+                          {' · '}{ATTACK_PROFILES[propFirmData.attackProfile]?.maxTradesPerDay ?? '—'} trade(s)/dia · RR 1:2
+                        </p>
+                      </div>
+
+                      {attackPlan && attackPlan.mode === 'abstract' && (
+                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
+                          <span className="text-[10px] text-slate-500 uppercase font-semibold">Constraints da mesa (abstrato — sem instrumento)</span>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                            <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Daily loss limit</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">RR mínimo</div><div className="text-slate-200 font-mono">{attackPlan.rrMinimum}:1</div></div>
+                          </div>
+                          <p className="text-[10px] text-amber-400/80 italic">{attackPlan.message}</p>
+                        </div>
+                      )}
+
+                      {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (
+                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
+                          <span className="text-[10px] text-slate-500 uppercase font-semibold">
+                            Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name}) · {attackPlan.profileName}
+                          </span>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                            <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${attackPlan.roPerTrade.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">Stop</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">Target</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">RR</div><div className="text-slate-200 font-mono">1:{attackPlan.rrMinimum}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{attackPlan.maxTradesPerDay}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%</div><div className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${attackPlan.evPerTrade.toFixed(2)}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toFixed(0)}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
+                          </div>
+                          {attackPlan.wrBelowBreakeven && (
+                            <p className="text-[10px] text-amber-400 mt-1">⚠ WR assumido abaixo do breakeven (33.3%). EV negativa — plano matematicamente inviável.</p>
+                          )}
+                          {attackPlan.sessionRestricted && (
+                            <p className="text-[10px] text-amber-400 mt-1">
+                              ⚠ Stop {attackPlan.stopPoints} pts ({attackPlan.stopNyPct}% do range NY) — <strong>operar somente Ásia/London</strong>. NY consome esse stop por volatilidade.
+                            </p>
+                          )}
+                          {attackPlan.stopIsNoise && (
+                            <p className="text-[10px] text-amber-400/80 mt-1">⚠ Stop muito pequeno relativo ao range NY ({attackPlan.stopNyPct}%) — risco de ruído.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {attackPlan && attackPlan.mode === 'execution' && attackPlan.incompatible && (
+                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-red-400" />
+                            <span className="text-xs font-semibold text-red-300">Instrumento incompatível com este perfil/conta</span>
+                          </div>
+                          <p className="text-[11px] text-red-200/80">
+                            <strong>{attackPlan.instrument.symbol}</strong>: RO ${attackPlan.roPerTrade.toFixed(0)} resulta em stop {attackPlan.stopPoints} pts.
+                            {' '}{attackPlan.inviabilityReason}.
+                          </p>
+                          {attackPlan.microSuggestion && (
+                            <button
+                              type="button"
+                              onClick={() => setPropFirmData(prev => ({ ...prev, selectedInstrument: attackPlan.microSuggestion }))}
+                              className="text-[11px] text-emerald-400 hover:text-emerald-300 underline"
+                            >
+                              ↳ Sugestão: usar {attackPlan.microSuggestion} (micro variant)
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="text-[10px] text-slate-500 space-y-0.5">
+                        <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
+                        <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>
+                        {selectedTemplate.evalTimeLimit && <div>Prazo eval: {selectedTemplate.evalTimeLimit} dias corridos</div>}
+                        {selectedTemplate.dailyLossLimit && <div>Daily loss: ${selectedTemplate.dailyLossLimit?.toLocaleString()}</div>}
+                        {selectedTemplate.restrictedInstruments?.length > 0 && (
+                          <div className="text-amber-400/80">⚠ Instrumentos restritos: {selectedTemplate.restrictedInstruments.join(', ')}</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="input-label">Moeda</label><select className="input-dark w-full" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}><option value="BRL">BRL (R$)</option><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
-                <div><label className="input-label">Saldo Inicial *</label><input required type="number" step="0.01" min="0" className="input-dark w-full" value={formData.initialBalance} onChange={e => setFormData({ ...formData, initialBalance: e.target.value })} /></div>
+                <div><label className="input-label">Nome da Conta *</label><input required className="input-dark w-full" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
+                <div className="relative"><label className="input-label">Corretora / Mesa *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input required className="input-dark w-full pl-10" value={formData.broker} onChange={e => { setFormData({ ...formData, broker: e.target.value }); setShowBrokerSuggestions(true); }} /></div>{showBrokerSuggestions && filteredBrokers.length > 0 && (<div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">{filteredBrokers.map(broker => (<button key={broker} type="button" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2" onClick={() => { setFormData({ ...formData, broker: broker }); setShowBrokerSuggestions(false); }}><Search className="w-3 h-3 opacity-50" /> {broker}</button>))}</div>)}</div>
               </div>
 
-              <div><label className="input-label flex items-center gap-2"><Calendar className="w-3 h-3" /> Data de Abertura / Início</label><input type="date" className="input-dark w-full" value={formData.createdAt} onChange={e => setFormData({ ...formData, createdAt: e.target.value })} /></div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><label className="input-label">Moeda</label><select className="input-dark w-full" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}><option value="BRL">BRL (R$)</option><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
+                <div><label className="input-label">Saldo Inicial *</label><input required type="number" step="0.01" min="0" className="input-dark w-full" value={formData.initialBalance} onChange={e => setFormData({ ...formData, initialBalance: e.target.value })} /></div>
+                <div><label className="input-label flex items-center gap-2"><Calendar className="w-3 h-3" /> Data de Abertura</label><input type="date" className="input-dark w-full" value={formData.createdAt} onChange={e => setFormData({ ...formData, createdAt: e.target.value })} /></div>
+              </div>
 
               {editingAccount && (
                 <div className={`mt-4 border rounded-xl p-4 transition-all ${auditState.status === 'issue' ? 'bg-amber-500/10 border-amber-500/30' : auditState.status === 'ok' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800/50 border-slate-700'}`}>
@@ -493,13 +820,35 @@ const AccountsPage = () => {
         </div>
       )}
       <style>{`.badge-account { position: absolute; top: 1rem; right: 1rem; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.625rem; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 0.25rem; border-width: 1px; } .input-label { display: block; font-size: 0.75rem; color: rgb(148 163 184); margin-bottom: 0.5rem; font-weight: 500; } .input-dark { background: rgb(15 23 42); border: 1px solid rgb(51 65 85); padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: white; outline: none; transition: border-color 0.2s; } .input-dark:focus { border-color: rgb(59 130 246); }`}</style>
-      {/* Modal edição de plano pelo mentor (via accordion) */}
-      {isMentor() && showPlanModal && (
+      {/* Modal de plano — mentor (edição) ou aluno (criação pós conta PROP) */}
+      {showPlanModal && (
         <PlanManagementModal
           isOpen={showPlanModal}
-          onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
-          onSubmit={handleMentorSavePlan}
-          editingPlan={editingPlan}
+          onClose={() => { setShowPlanModal(false); setEditingPlan(null); setPropPlanDefaults(null); }}
+          onSubmit={async (planData) => {
+            setPlanSubmitting(true);
+            try {
+              if (editingPlan) {
+                await updatePlan(editingPlan.id, planData, {
+                  editedBy: isMentor() ? 'mentor' : 'student',
+                  email: user?.email || 'unknown',
+                  editedAt: new Date().toISOString(),
+                  source: 'AccountsPage',
+                });
+              } else {
+                await addPlan(planData);
+              }
+              setShowPlanModal(false);
+              setEditingPlan(null);
+              setPropPlanDefaults(null);
+            } catch (error) {
+              console.error('Erro ao salvar plano:', error);
+              alert('Erro: ' + error.message);
+            }
+            setPlanSubmitting(false);
+          }}
+          editingPlan={editingPlan ?? propPlanDefaults}
+          defaultAccountId={propPlanDefaults?.accountId}
           isSubmitting={planSubmitting}
         />
       )}

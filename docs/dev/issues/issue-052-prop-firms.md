@@ -240,6 +240,188 @@ Se encontrar conflito com shared file: documentar aqui e notificar Marcio.
 - Iniciar Fase 1 (templates + configuracao + plano de ataque)
 - Consultar body do issue GitHub (#52) para templates detalhados das mesas
 
+### Sessao — 09/04/2026 — Fase 2 passo 2.b + 2.d (CF + drawdownHistory)
+
+**Tipo:** codigo (worktree `~/projects/acomp-052`)
+**Baseado em:** propFirmDrawdownEngine.js v1 (passo 2.a, 58 testes Vitest)
+
+**Escopo aprovado:** estender `functions/index.js` (`onTradeCreated`/`onTradeUpdated`/`onTradeDeleted`) com branch prop firm engine + `runTransaction` + write em `accounts/{id}/drawdownHistory`. Decisoes A/2/3/4/5 confirmadas pelo Marcio antes de codificar.
+
+**O que foi feito:**
+
+1. **`functions/propFirmEngine.js`** (NEW) — copia CommonJS do `src/utils/propFirmDrawdownEngine.js`. Header de aviso "ESPELHO — manter sincronizado". Smoke test via `node -e` confirmou paridade com o engine ESM.
+
+2. **`functions/index.js`** — bump v1.9.0 → **v1.10.0**:
+   - CHANGELOG header atualizado
+   - VERSION constant: minor=10, patch=0, build=20260409
+   - `require('./propFirmEngine')` no topo (apos `db = admin.firestore()`)
+   - Helpers novos apos `updatePlanPl`:
+     - `recalculatePropFirmState(accountId, trade, tradeId)` — pre-check fora da tx (early return non-PROP), le template, runTransaction com re-read do propFirm + chamada engine + update dos campos runtime
+     - `appendDrawdownHistory(accountId, docId, trade, state)` — append-only snapshot
+     - `notifyPropFirmFlag(accountId, trade, state)` — throttle 1×/dia/flag via doc id deterministico `propfirm-{accountId}-{flag}-{date}`
+   - `onTradeCreated`: bloco 5 "PROP FIRM ENGINE" apos alerta emocional, isolado em try/catch
+   - `onTradeUpdated`: bloco "PROP FIRM RECALC" apos compliance recalc, antes do bloco emocional. Aplica `delta = newResult - oldResult` (LIMITACAO v1)
+   - `onTradeDeleted`: bloco "PROP FIRM RECALC" apos `updatePlanPl`. Aplica `-trade.result` (reversao). drawdownHistory permanece append-only (snapshot orfao intencional)
+
+3. **`firestore.rules`** — nova subcollection `accounts/{accountId}/drawdownHistory/{historyId}`: `read: isAuthenticated()`, `write: false` (apenas CF via admin SDK).
+
+**Schema novo em `account.propFirm` (expansao do objeto ja aprovado, INV-15):**
+
+| Campo | Tipo | Descricao |
+|---|---|---|
+| `peakBalance` | number | maior saldo ja visto (ou snapshot EOD) |
+| `currentDrawdownThreshold` | number | nivel abaixo do qual a conta quebra |
+| `lockLevel` | number\|null | threshold congelado pos-lock (ou null) |
+| `isDayPaused` | boolean | daily loss limit atingido hoje |
+| `tradingDays` | number | dias com pelo menos 1 trade |
+| `dailyPnL` | number | P&L acumulado do dia (zera ao virar) |
+| `lastTradeDate` | string YYYY-MM-DD | usado pra detectar isNewDay |
+| `currentBalance` | number | saldo runtime mantido pelo engine |
+| `distanceToDD` | number 0..1 | margem proporcional ainda disponivel |
+| `flags` | string[] | snapshot atual de flags |
+| `lastUpdateTradeId` | string | ultimo tradeId que disparou recalc |
+
+**Subcollection `accounts/{accountId}/drawdownHistory/{tradeId}`:**
+
+```js
+{
+  tradeId, date, balance, peakBalance, drawdownThreshold,
+  distanceToDD, dailyPnL, flags, lockLevel, createdAt
+}
+```
+
+Doc id = `tradeId` para idempotencia (re-execucao do trigger nao duplica). Para edits: doc id = `${tradeId}-edit-${Date.now()}`.
+
+**Notificacoes `PROP_FIRM_FLAG`:**
+- `severity: CRITICAL` para `ACCOUNT_BUST`, `WARNING` para os demais
+- Idempotencia: doc id = `propfirm-{accountId}-{flag}-{date}` (1× por flag-tipo por dia)
+- Cobre: `ACCOUNT_BUST`, `DAILY_LOSS_HIT`, `DD_NEAR`, `LOCK_ACTIVATED`
+
+**Decisoes registradas (executadas conforme aprovacao do Marcio):**
+
+| ID | Decisao | Status |
+|----|---------|--------|
+| Engine sharing | Opcao A — duplicacao com header + DT-034 | ✅ Executado |
+| Schema novo | Campos runtime no propFirm (expansao INV-15) | ✅ Aprovado verbalmente |
+| Throttle | 1× por (flag-tipo, accountId, dia) | ✅ Executado |
+| onTradeDeleted | Snapshot append-only orfao | ✅ Executado |
+| Overhead account.get() | Aceito v1, monitorar | ✅ Aceito |
+
+**Limitacoes documentadas (v1):**
+- `onTradeUpdated` aplica DELTA incremental, NAO reconstrói historico do peakBalance
+- `onTradeDeleted` aplica reversao do delta, NAO remove snapshot do drawdownHistory
+- Trade editado muito antigo pode dessincronizar peakBalance — aceito (Marcio)
+- Pre-read `account.get()` em todos os trades — overhead ~50ms para non-PROP
+- DT-034 (NOVA): unificar engine prop firm via build step (rollup/esbuild) para eliminar a duplicacao
+
+**Validacao:**
+- `node --check functions/index.js` ✅
+- `node --check functions/propFirmEngine.js` ✅
+- Smoke test do engine CommonJS via `node -e` ✅ paridade com ESM
+- 963 testes Vitest passando (engine `src/utils/` inalterado) ✅
+- Build cliente limpo ✅
+
+**Arquivos tocados:**
+
+NOVOS:
+- `functions/propFirmEngine.js`
+
+EDITADOS:
+- `functions/index.js` (CHANGELOG, VERSION, helpers, onTradeCreated, onTradeUpdated, onTradeDeleted)
+- `firestore.rules` (subcollection drawdownHistory)
+- `docs/dev/issues/issue-052-prop-firms.md` (esta sessao)
+
+**Pendencias:**
+- Bump `src/version.js` (cliente) e `version` em `functions/package.json` se aplicavel
+- CHANGELOG do produto
+- DT-034 (NOVA) registrar em PROJECT.md
+- Deploy CFs: `firebase deploy --only functions:onTradeCreated,functions:onTradeUpdated,functions:onTradeDeleted` + `firebase deploy --only firestore:rules`
+- Validacao manual no browser apos deploy (criar trade em conta PROP, verificar campos runtime)
+- Fase 2.e (alerta mentor para flags) ja embutido neste passo via `notifyPropFirmFlag`
+- Fase 2.f (eval deadline countdown helper) — ja existe no engine puro como `calculateEvalDaysRemaining`/`isEvalDeadlineNear`. Pendente integracao com flag em algum lugar (provavelmente Fase 3 — UI)
+- Fase 3: card prop no StudentDashboard (depende de CHUNK-04 unlock)
+
+### Sessao — 09/04/2026 — Correcao critica de ATR (instrumentsTable v2)
+
+**Tipo:** correcao de bug critico (worktree `~/projects/acomp-052`)
+
+**Bug:** Fase 1.5 v1 da `instrumentsTable.js` tinha valores `avgDailyRange` ALUCINADOS — nao baseados em dados reais do TradingView. Impacto: viabilidade do plano de ataque calculada errada. Exemplo concreto: MES CONS_B Apex 25K com 30 pts → calculator dizia 90.9% do range NY (INVIAVEL), mas real e 40.6% (VIAVEL day trade).
+
+**Fonte de verdade:** `Temp/instruments-table-v2-atr-real.md` v2.0, captura TradingView ATR(14) diario em 09/04/2026.
+
+**O que foi feito:**
+
+1. **`src/constants/instrumentsTable.js`** — atualizado SOMENTE `avgDailyRange` (preserva availability, micros, types):
+
+| Símbolo | ATR v1 (alucinado) | ATR v2 (real) | Delta |
+|---|---|---|---|
+| ES | 55 | 123 | 2.24× |
+| NQ | 400 | 549 | 1.37× |
+| YM | 420 | 856 | 2.04× |
+| RTY | 30 | 70 | 2.33× |
+| CL | 2.5 | 9.11 | 3.64× |
+| GC | 40 | 180 | 4.50× |
+| SI | 0.60 | 5.69 | 9.48× |
+| 6B | 0.0110 | 0.0117 | 1.06× |
+| 6J | 0.00070 | 0.000046 | 0.066× (10× menor) |
+| ZC | 10 | 8.87 | 0.89× |
+| ZW | 15 | 17.75 | 1.18× |
+| ZS | 18 | 19.15 | 1.06× |
+| MBT | 4000 | 3201 | 0.80× |
+
+NG, HG, 6A: marcados como "ATR pendente de recaptura" — nao incluidos no v2, mantem valores v1.
+
+2. **`src/constants/propFirmDefaults.js`** — comentario do `NY_MIN_VIABLE_STOP_PCT` recalibrado: threshold 12.5% × NY range NQ (329.4) = ~41 pts (era 30 pts no calculo errado).
+
+3. **Testes recalculados — `attackPlanCalculator.test.js`:**
+   - "stop como % do range NY" — expected 240 → 329.4, stopNyPct 31.25 → 22.77
+   - "stop > 75% NY → INVIAVEL" — RTY 50K AGRES_B nao dispara mais (35.7%). Substituido por **M2K Apex 25K CONS_C**: 40 pts / 42 pts = 95.2% > 75% INVIAVEL ✓
+   - "AGRES_A NQ 50K — NY viavel" — 31.25/329.4 = 9.49% nao mais NY viavel. Substituido por **AGRES_B NQ 100K (DD $3000)**: 45 pts / 329.4 = 13.66% > 12.5% NY viavel ✓
+   - "threshold NY exato 12.5%" — recalculado: NQ DD $5490 CONS_B → RO $823.50 → 41.175 pts → 12.5% exato
+   - Comentarios de `NQ Apex 50K CONS_B/CONS_C` atualizados (5.69%/7.59% reais)
+   - **NOVO teste regressao**: `MES Apex 25K CONS_B com 30 pts é VIÁVEL na NY` (40.65% do range, nao 90.9%)
+
+4. **Testes recalculados — `instrumentsTable.test.js`:**
+   - `getSessionRange NQ NY` — 240 → 329.4
+   - `getSessionRange ES London` — 12.65 → 28.29
+   - `getRecommendedStop NQ` — 20pts/$400 → 27.45pts/$549 (atr passa a prevalecer)
+   - `getRecommendedStop MNQ` — $40 → $54.90
+   - `getRecommendedStop ES` — 4pts ($200, source min) → 6.15pts ($307.50, source atr)
+   - `getRecommendedStop YM` — 25pts ($125, source min) → 42.8pts ($214, source atr)
+   - Substituido teste "minStop prevalece" por **6E** (0.00045 × 5% < minStop 0.0008) — único caso onde minStop ainda ganha
+
+**Validacao chave:**
+- MES Apex 25K CONS_B: stop 30 pts, $150, 40.65% do range NY → ✅ VIAVEL day trade (era ❌ INVIAVEL)
+- MNQ Apex 25K CONS_B: stop 75 pts, 22.77% do range NY → ✅ VIAVEL NY (era 31.25% — mesma classificacao, valores diferentes)
+- NQ Apex 50K CONS_B: stop 18.75 pts, 5.69% do range NY → ⚠ session restricted (era 7.81% — mesma classificacao)
+
+**Decisoes tomadas:**
+
+| Decisao | Justificativa |
+|---|---|
+| Atualizar SO `avgDailyRange`, nao tocar availability/micros/types | User explicitamente disse "Atualizar TODOS os avgDailyRange". Mudancas estruturais sao escopo separado |
+| Preservar GC `apex: false` (nota "suspenso Abr/2026") | v2 file mostra `apex: true` mas isso e sobre catalogo bruto. Nota de suspensao operacional permanece |
+| `getRecommendedStop` mantido como helper legado | Nao mais usado pelo calculator novo (5 perfis), mas testes ainda existem. Manter funcao + atualizar testes |
+| Threshold 12.5% generico mantido | Mesma logica da regra anterior do user, agora com numeros reais. Calibragem traduz para ~41 pts no NQ (era 30 com ATR errado) |
+| Adicionar teste de regressao MES Apex 25K | Caso pedagogico do user — garantir que o bug nao reaparece |
+
+**Arquivos tocados:**
+
+EDITADOS:
+- `src/constants/instrumentsTable.js` (16 valores avgDailyRange)
+- `src/constants/propFirmDefaults.js` (comentario calibragem)
+- `src/__tests__/utils/attackPlanCalculator.test.js` (4 testes corrigidos + 1 novo regressao)
+- `src/__tests__/utils/instrumentsTable.test.js` (6 testes recalculados)
+
+**Testes:**
+- 905 testes totais passando (era 904 — +1 regressao MES)
+- Build: limpo
+
+**Pendencias:**
+- Re-medir ATR de NG, HG, 6A no TradingView (nao incluidos no v2)
+- Re-medir trimestralmente (recomendacao do user) ou quando VIX mudar significativamente
+- Bump version.js + CHANGELOG (aguardando direcao)
+
 ## 5. ENCERRAMENTO
 
 **Status:** Aguardando inicio de codificacao

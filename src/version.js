@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.25.0: feat: Prop Firm Engine (#52) — Fase 1 templates/config/plano rule-based, Fase 1.5 instrumentsTable curada + 5 perfis determinísticos instrument-aware + viabilidade + restrição sessão NY, Fase 2 engine drawdown puro + CF onTrade* integrada + subcollection drawdownHistory + notificações throttled, correção crítica ATR v2 (TradingView real), DEC-060/061/062, DT-034
  * - 1.24.0: feat: Previsão de renovações + campo WhatsApp — RenewalForecast na SubscriptionsPage, campo whatsappNumber no student, validação E.164 (issue #122/#123)
  * - 1.23.0: feat: Controle de Assinaturas da Mentoria — subcollection students/{id}/subscriptions, CF checkSubscriptions, trial/paid, accessTier, billingPeriodMonths, receiptUrl (issue #094, DEC-055/DEC-056)
  * - 1.22.1: fix: Aluno não consegue deletar plano — firestore.rules DEC-025 + índice composto movements (issue #089)
@@ -38,10 +39,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.24.0',
-  build: '20260405',
-  display: 'v1.24.0',
-  full: '1.24.0+20260405',
+  version: '1.25.0',
+  build: '20260409',
+  display: 'v1.25.0',
+  full: '1.25.0+20260409',
 };
 export default VERSION;
 export { VERSION };

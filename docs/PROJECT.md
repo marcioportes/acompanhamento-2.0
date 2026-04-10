@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.10.2  
-> **Última atualização:** 06/04/2026 — #122/#123 mergeados, locks CHUNK-02/16 liberados  
+> **Versão:** 0.11.0  
+> **Última atualização:** 09/04/2026 — Prop Firm Engine deployado (#52 Fases 1/1.5/2), DEC-057/058/059, DT-034/035, v1.25.0  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -34,6 +34,7 @@ Este documento segue versionamento semântico:
 | 0.10.0 | 05/04/2026 | v1.24.0 #122/#123 | RenewalForecast + whatsappNumber, CHANGELOG v1.24.0, CHUNK-02/16 lock |
 | 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-057/058/059 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
 | 0.10.2 | 06/04/2026 | #122/#123 mergeados | PR #124 mergeado, locks CHUNK-02/16 liberados (AVAILABLE), removidos de Locks ativos |
+| 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -674,6 +675,9 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-057 | Campo `whatsappNumber` como propriedade do documento `students/{id}`, não subcollection de contatos. WhatsApp é atributo direto do aluno, acesso em leitura única, sem necessidade de query adicional. Subcollection seria over-engineering para um único campo string | #123 | 05/04/2026 |
 | DEC-058 | `formatDateBR` usa `getUTCDate/getUTCMonth/getUTCFullYear` em vez de `toLocaleDateString('pt-BR')`. Datas ISO midnight (ex: `2026-05-01T00:00:00Z`) em fuso BR (UTC-3) convertem para dia anterior via `toLocaleDateString`. Teste de regressão em `renewalForecast.test.js` pegou o bug antes da UI | #122 | 05/04/2026 |
 | DEC-059 | `RenewalForecast` implementado como componente collapsible (colapsado por default) na `SubscriptionsPage`, não como bloco fixo. Projeção de caixa é consulta ocasional do mentor, não informação de primeira camada. Preserva espaço vertical para lista de subscriptions | #122 | 05/04/2026 |
+| DEC-060 | **Plano de ataque prop firm — 5 perfis determinísticos instrument-aware** (CONS_A 10% DD, CONS_B 15% ★, CONS_C 20%, AGRES_A 25%, AGRES_B 30%). Lógica invertida: mais risco = menos trades (conservadores 2/dia, agressivos 1/dia). RR fixo 1:2. `roUSD = drawdownMax × roPct`, `stopPoints = roUSD / instrument.pointValue`. Viabilidade por 3 critérios + sugestão micro. Substitui modelo binário conservador/agressivo — `normalizeAttackProfile()` compat legado | #52 | 07/04/2026 |
+| DEC-061 | **Restrição de sessão NY** — stops abaixo de `NY_MIN_VIABLE_STOP_PCT = 12.5%` do range NY não viáveis na sessão NY, mas viáveis em Ásia/London. Flag `sessionRestricted` + `recommendedSessions`. Threshold 12.5% genérico; calibração com ATR real v2: NQ NY range 329.4 pts → 12.5% = ~41 pts mínimo | #52 | 08/04/2026 |
+| DEC-062 | **Engine prop firm duplicado (Opção A)** — `src/utils/propFirmDrawdownEngine.js` (ESM, testado 58 testes) e `functions/propFirmEngine.js` (CommonJS para CFs) são cópias manuais. Header de aviso obrigatório. DT-034 registra unificação futura via build step ou monorepo workspace | #52 | 09/04/2026 |
 
 ---
 
@@ -723,6 +727,8 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-029 | ~~useProbing não rehydratava savedQuestions do Firestore — aluno em loop no aprofundamento~~ RESOLVIDO v1.21.5 | ALTA | — | #92 |
 | DT-030 | TradesJournal batch activate sem `setSuspendListener` — snapshots do onSnapshot processam trades intermediários durante batch, causando re-renders desnecessários. StudentDashboard tem o fix correto como referência | BAIXA | — | #93 |
 | DT-031 | `balanceBefore`/`balanceAfter` incorretos em movements criados em batch — cada `addTrade` lê o "último movement" mas em batch todos leem o mesmo. Saldo final correto via `FieldValue.increment` na CF. Afeta apenas visualização do extrato em movements intermediários (cosmético) | BAIXA | — | #93 |
+| DT-034 | Engine prop firm duplicado entre `src/utils/propFirmDrawdownEngine.js` (ESM, testado) e `functions/propFirmEngine.js` (CommonJS, executado). Sincronização manual com header de aviso. Mudanças de lógica exigem atualização nos 2 arquivos. Refactoring futuro: build step (rollup/esbuild) ou monorepo workspace permitindo import compartilhado. Engine é estável (58 testes, lógica determinística) — mudanças raras justificam pragmatismo de v1 | BAIXA | — | #52 |
+| DT-035 | ATR de NG (Natural Gas), HG (Copper) e 6A (Australian Dollar) na `instrumentsTable.js` não foram incluídos na recaptura TradingView v2 (09/04/2026). Mantêm valores v1 (alucinados). Não são usados em nenhum template Apex/MFF/Lucid/Tradeify atual — impacto baixo. Remedir trimestralmente junto com os outros | BAIXA | — | #52 |
 
 ---
 
@@ -730,6 +736,59 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.25.0] - 09/04/2026
+**Issue:** #52 (epic: Gestão de Contas em Mesas Proprietárias)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fases:** 1 (Templates/Config/Plano rule-based) + 1.5 (Instrument-aware + 5 perfis + viabilidade) + 2 (Engine Drawdown + CFs)
+#### Adicionado
+- **Collection raiz `propFirmTemplates`** (INV-15 aprovado) — catálogo com 21 templates pré-configurados: Apex EOD 25K-300K, Apex Intraday, MFF Starter/Core/Scale, Lucid Pro/Flex, Tradeify Select 25K-150K
+- **`PropFirmConfigPage`** (Settings → aba Prop Firms) — mentor seed/edit/delete templates, agrupado por firma, botão "Limpar Todos"
+- **`src/constants/instrumentsTable.js`** — 23 instrumentos curados (equity_index, energy, metals, currency, agriculture, crypto) com ATR real TradingView v2, point value, micro variants, availability por firma, session profiles (AM Trades framework)
+- **`src/constants/propFirmDefaults.js`** — constantes `PROP_FIRM_PHASES`, `DRAWDOWN_TYPES`, `FEE_MODELS`, `DAILY_LOSS_ACTIONS`, `ATTACK_PLAN_PROFILES` (5 códigos), `ATTACK_PROFILES` (5 perfis com metadata), `MIN_VIABLE_STOP` por type, `MAX_STOP_NY_PCT=75`, `NY_MIN_VIABLE_STOP_PCT=12.5`, `normalizeAttackProfile()` legacy compat
+- **`src/utils/attackPlanCalculator.js`** — plano de ataque determinístico 5 perfis instrument-aware: `roUSD = drawdownMax × profile.roPct`, `stopPoints = roUSD / instrument.pointValue` back-calculado, RR fixo 1:2, `lossesToBust`, `evPerTrade`, viabilidade por 3 critérios + sugestão de micro, restrição sessão NY (`nySessionViable`, `recommendedSessions`) (DEC-060, DEC-061)
+- **`src/utils/propFirmDrawdownEngine.js`** — engine puro 4 tipos de drawdown (STATIC, TRAILING_INTRADAY, TRAILING_EOD, TRAILING_WITH_LOCK), `resolveLockAt()` com lockFormula `BALANCE + DD + 100`, `calculateDrawdownState()`, `initializePropFirmState()`, `calculateEvalDaysRemaining()`, 5 flags (`ACCOUNT_BUST`, `DD_NEAR`, `DAILY_LOSS_HIT`, `LOCK_ACTIVATED`, `EVAL_DEADLINE_NEAR`)
+- **`functions/propFirmEngine.js`** — cópia CommonJS do engine para Cloud Functions (DEC-062, DT-034)
+- **CF `onTradeCreated/onTradeUpdated/onTradeDeleted` estendidas** — branch prop firm com `runTransaction` (atomicidade peakBalance), helpers `recalculatePropFirmState`, `appendDrawdownHistory`, `notifyPropFirmFlag` throttled 1×/dia/flag via doc id determinístico
+- **Subcollection `accounts/{accountId}/drawdownHistory/{tradeId}`** — append-only audit log (INV-15 aprovado)
+- **Campo `propFirm` inline em `accounts`** — templateId, firmName, productName, phase, evalDeadline, selectedInstrument, suggestedPlan + runtime (peakBalance, currentDrawdownThreshold, lockLevel, isDayPaused, tradingDays, dailyPnL, lastTradeDate, currentBalance, distanceToDD, flags, lastUpdateTradeId)
+- **Seletor PROP 2 níveis** no `AccountsPage` (firma → produto) + 5 botões de perfil com tooltip + seletor de instrumento derivado de `getAllowedInstrumentsForFirm`
+- **Modal de conta redesenhado** — `max-w-lg` → `max-w-4xl`, layout 2/3 colunas, preview de execução em grid 3 cols
+- **Auto-abertura do `PlanManagementModal`** após criar conta PROP com defaults derivados do attackPlan (currency dinâmica, cycleGoalPct/cycleStopPct/periodGoalPct/periodStopPct derivados)
+#### Corrigido
+- **Bug crítico ATR alucinado (instrumentsTable v1)** — 13 valores corrigidos com ATR real TradingView v2 (ES 55→123, NQ 400→549, YM 420→856, RTY 30→70, CL 2.5→9.11, GC 40→180, SI 0.60→5.69, 6B/6J/ZC/ZW/ZS/MBT). Bug MES Apex 25K CONS_B 30pts: antes 90.9% do range NY (INVIÁVEL), agora 40.65% (VIÁVEL day trade) ✅
+- **Bug `availableCapital` dobrado no PlanManagementModal** — flag `__isDefaults: true` em propPlanDefaults evita que `currentPlanPl` dobre o saldo em conta PROP nova
+- **Currency BRL fixa no PlanManagementModal** — agora deriva `accountCurrency` da conta selecionada, símbolo dinâmico US$/€/R$
+- **Edit modal não rehydratava propFirm** — `openModal(account)` agora seta `propFirmData` a partir de `account.propFirm` quando existe
+#### Testes
+- **905 testes totais** (58 engine drawdown + 52 attackPlan calculator + 46 instrumentsTable + 749 pré-existentes) — zero regressão
+- Cobertura engine drawdown: 4 tipos × cenários, lock Apex, daily loss soft, distanceToDD edge cases, cenário integrado eval realista 5 dias
+- Cobertura attackPlan: 5 perfis × instrumentos, viabilidade, sugestão micro, restrição NY, validação operacional Apex 25K MNQ CONS_B
+- Cobertura instrumentsTable: 46 testes pós-correção ATR v2
+#### Infraestrutura
+- **CF bump v1.9.0 → v1.10.0** com CHANGELOG header
+- **`firestore.rules`** — regras para `propFirmTemplates` (mentor write) + subcollection `accounts/{id}/drawdownHistory` (read autenticado, write false apenas CF admin SDK)
+- **CHUNK-17 Prop Firm Engine** locked para #52 no registry (§6.3)
+#### Decisões
+- DEC-053 — Escopo revisado com regras Apex Mar/2026
+- **DEC-060** — 5 perfis determinísticos instrument-aware com RR fixo 1:2
+- **DEC-061** — Restrição sessão NY threshold 12.5%
+- **DEC-062** — Engine duplicado Opção A (DT-034 registra refactoring futuro)
+#### Dívida técnica nova
+- **DT-034** — Unificar engine prop firm via build step ou monorepo workspace
+- **DT-035** — Re-medir ATR de NG/HG/6A no TradingView (não incluídos no v2)
+#### Limitações v1 documentadas
+- `onTradeUpdated` aplica delta incremental, NÃO reconstrói histórico do peakBalance (trade editado antigo pode dessincronizar)
+- `onTradeDeleted` aplica reversão mas NÃO remove snapshot do drawdownHistory (append-only audit log — análises filtram por tradeId existente)
+- Pre-read `account.get()` em todos os trades (~50ms overhead para non-PROP — aceito v1, monitorar)
+#### Pendente (fases futuras)
+- **Fase 2.5** — CF `generatePropFirmApproachPlan` com Sonnet 4.6 (prompt v1.0 em `Temp/ai-approach-plan-prompt.md`)
+- **Fase 3** — Dashboard card prop + gauges + alertas visuais (depende CHUNK-04 unlock #93)
+- **Fase 4** — Payout tracking + qualifying days + simulador de saque
+#### Deploys realizados
+- `firebase deploy --only firestore:rules` — 09/04/2026 (subcollection drawdownHistory)
+- `firebase deploy --only functions:onTradeCreated,onTradeUpdated,onTradeDeleted` — 09/04/2026 (v1.10.0)
+- Validado ao vivo na conta `gJ3zjI9OoF5PqM2puV0H` (Apex EOD 25K)
 
 ### [1.24.0] - 05/04/2026
 **Issues:** #122 (feat: Fluxo de caixa — previsão de renovações), #123 (feat: Campo WhatsApp no student)
