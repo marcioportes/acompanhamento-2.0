@@ -4,6 +4,7 @@ import {
   calculateMesaConstraints,
   resolveDataSource
 } from '../../utils/attackPlanCalculator';
+import { normalizeAttackProfile } from '../../constants/propFirmDefaults';
 
 // --- Templates de referência ---
 const APEX_EOD_25K = {
@@ -38,10 +39,34 @@ const PROFILE_4D_WEAK = { emotionalScore: 30, stage: 1, coefficientOfVariation: 
 const PROFILE_4D_MID = { emotionalScore: 50, stage: 3, coefficientOfVariation: 0.5 };
 
 const INDICATORS_GOOD = { winRate: 0.6, coefficientOfVariation: 0.4 };
-const INDICATORS_POOR = { winRate: 0.35, coefficientOfVariation: 1.5 };
+const INDICATORS_POOR = { winRate: 0.30, coefficientOfVariation: 1.5 };
 
 // ============================================
-// resolveDataSource (inalterado)
+// normalizeAttackProfile — legacy compat
+// ============================================
+describe('normalizeAttackProfile', () => {
+  it('aceita os 5 novos códigos', () => {
+    expect(normalizeAttackProfile('CONS_A')).toBe('CONS_A');
+    expect(normalizeAttackProfile('CONS_B')).toBe('CONS_B');
+    expect(normalizeAttackProfile('CONS_C')).toBe('CONS_C');
+    expect(normalizeAttackProfile('AGRES_A')).toBe('AGRES_A');
+    expect(normalizeAttackProfile('AGRES_B')).toBe('AGRES_B');
+  });
+
+  it('mapeia legados conservative → CONS_B, aggressive → AGRES_A', () => {
+    expect(normalizeAttackProfile('conservative')).toBe('CONS_B');
+    expect(normalizeAttackProfile('aggressive')).toBe('AGRES_A');
+  });
+
+  it('default CONS_B quando ausente ou desconhecido', () => {
+    expect(normalizeAttackProfile(null)).toBe('CONS_B');
+    expect(normalizeAttackProfile(undefined)).toBe('CONS_B');
+    expect(normalizeAttackProfile('xyz')).toBe('CONS_B');
+  });
+});
+
+// ============================================
+// resolveDataSource
 // ============================================
 describe('resolveDataSource', () => {
   it('usa 4D completo quando disponível', () => {
@@ -49,27 +74,23 @@ describe('resolveDataSource', () => {
     expect(result.dataSource).toBe('4d_full');
   });
 
-  it('calcula adjustmentFactor correto com 4D completo', () => {
-    // emotional 0.8, maturity 0.8, consistency 0.7
-    // factor = 0.8*0.4 + 0.8*0.3 + 0.7*0.3 = 0.77
-    const result = resolveDataSource(PROFILE_4D_STRONG, null, 'conservative');
-    expect(result.adjustmentFactor).toBeCloseTo(0.77, 2);
-  });
-
   it('usa indicadores quando 4D ausente', () => {
     const result = resolveDataSource(null, INDICATORS_GOOD, 'conservative');
     expect(result.dataSource).toBe('indicators');
+    expect(result.assumedWR).toBe(0.6);
   });
 
   it('usa defaults quando nada disponível', () => {
     const result = resolveDataSource(null, null, 'conservative');
     expect(result.dataSource).toBe('defaults');
     expect(result.adjustmentFactor).toBe(0.3);
+    expect(result.assumedWR).toBe(0.5);
   });
 
-  it('default agressivo é 0.6', () => {
+  it('default agressivo é 0.6 e WR 0.5', () => {
     const result = resolveDataSource(null, null, 'aggressive');
     expect(result.adjustmentFactor).toBe(0.6);
+    expect(result.assumedWR).toBe(0.5);
   });
 
   it('clamp 0..1', () => {
@@ -90,19 +111,13 @@ describe('calculateMesaConstraints', () => {
     expect(c.drawdownMax).toBe(1000);
     expect(c.dailyLossLimit).toBe(500);
     expect(c.profitTarget).toBe(1500);
-    expect(c.evalTimeLimit).toBe(30);
-    expect(c.evalBusinessDays).toBe(21); // 30 × 5/7 = 21.4 → floor 21
+    expect(c.evalBusinessDays).toBe(21);
     expect(c.dailyTarget).toBe(72); // ceil(1500/21) = 72
-  });
-
-  it('dailyTarget × evalBusinessDays >= profitTarget', () => {
-    const c = calculateMesaConstraints(APEX_EOD_25K);
-    expect(c.dailyTarget * c.evalBusinessDays).toBeGreaterThanOrEqual(c.profitTarget);
   });
 
   it('usa proxy 25% do drawdown quando dailyLossLimit ausente', () => {
     const c = calculateMesaConstraints(APEX_INTRADAY_50K);
-    expect(c.dailyLossLimit).toBe(625); // 2500 × 0.25
+    expect(c.dailyLossLimit).toBe(625);
   });
 
   it('lança erro sem template', () => {
@@ -111,239 +126,380 @@ describe('calculateMesaConstraints', () => {
 });
 
 // ============================================
-// calculateAttackPlan — modo abstract (sem instrumento)
+// calculateAttackPlan — modo abstract
 // ============================================
 describe('calculateAttackPlan — modo abstract', () => {
-  it('sem instrumento retorna mode=abstract com constraints da mesa', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION');
+  it('CONS_B Apex 25K — RO = 15% do DD = $150', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
     expect(plan.mode).toBe('abstract');
-    expect(plan.drawdownMax).toBe(1000);
-    expect(plan.dailyLossLimit).toBe(500);
-    expect(plan.profitTarget).toBe(1500);
-    expect(plan.dailyTarget).toBe(72);
-    expect(plan.evalBusinessDays).toBe(21);
+    expect(plan.profile).toBe('CONS_B');
+    expect(plan.profileFamily).toBe('conservative');
+    expect(plan.profileRecommended).toBe(true);
+    expect(plan.roPerTrade).toBe(150);
+    expect(plan.roPct).toBe(0.15);
+    expect(plan.rrMinimum).toBe(2);
+    expect(plan.maxTradesPerDay).toBe(2);
+    expect(plan.winUSD).toBe(300); // 150 × 2
+    expect(plan.lossesToBust).toBe(6); // floor(1000/150)
   });
 
-  it('modo abstract não tem campos de execução', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION');
+  it('CONS_A — RO 10% = $100, lossesToBust 10', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION');
+    expect(plan.roPerTrade).toBe(100);
+    expect(plan.lossesToBust).toBe(10);
+    expect(plan.maxTradesPerDay).toBe(2);
+  });
+
+  it('AGRES_B — RO 30% = $300, 1 trade/dia, lossesToBust 3', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(plan.roPerTrade).toBe(300);
+    expect(plan.maxTradesPerDay).toBe(1);
+    expect(plan.lossesToBust).toBe(3);
+    expect(plan.profileFamily).toBe('aggressive');
+  });
+
+  it('EV @ WR 50% — CONS_B = $75 ((0.5 × 300) - (0.5 × 150))', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
+    expect(plan.assumedWR).toBe(0.5);
+    expect(plan.evPerTrade).toBe(75);
+    expect(plan.wrBelowBreakeven).toBe(false);
+  });
+
+  it('EV @ WR 50% — AGRES_B = $150', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(plan.evPerTrade).toBe(150);
+  });
+
+  it('WR abaixo do breakeven (33.3%) marca wrBelowBreakeven=true', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, INDICATORS_POOR, 'CONS_B', 'EVALUATION');
+    expect(plan.assumedWR).toBe(0.30);
+    expect(plan.wrBelowBreakeven).toBe(true);
+    expect(plan.evPerTrade).toBeLessThan(0);
+  });
+
+  it('modo abstract não tem campos de execução em pontos', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
     expect(plan.instrument).toBeNull();
     expect(plan.stopPoints).toBeNull();
     expect(plan.stopPerTrade).toBeNull();
-    expect(plan.roPerTrade).toBeNull();
-    expect(plan.maxTradesPerDay).toBeNull();
+    expect(plan.targetPoints).toBeNull();
     expect(plan.sizing).toBeNull();
   });
 
-  it('modo abstract tem mensagem informativa', () => {
+  it('perfil legado conservative → CONS_B', () => {
     const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION');
-    expect(plan.message).toContain('instrumento');
+    expect(plan.profile).toBe('CONS_B');
   });
 
-  it('modo abstract preserva profile, dataSource, rrMinimum', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, PROFILE_4D_STRONG, null, 'aggressive', 'EVALUATION');
-    expect(plan.profile).toBe('aggressive');
-    expect(plan.dataSource).toBe('4d_full');
-    expect(plan.rrMinimum).toBe(2.0);
-  });
-
-  it('modo abstract não viola constraints', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION');
-    expect(plan.constraintsViolated).toEqual([]);
+  it('perfil legado aggressive → AGRES_A', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'aggressive', 'EVALUATION');
+    expect(plan.profile).toBe('AGRES_A');
   });
 });
 
 // ============================================
-// calculateAttackPlan — modo execution com instrumento
+// calculateAttackPlan — modo execution
 // ============================================
 describe('calculateAttackPlan — modo execution', () => {
-  it('com MNQ retorna mode=execution com sizing 1', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
+  it('CONS_B + MNQ Apex 25K — stop 75 pts back-calculado de $150 / $2', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'MNQ');
     expect(plan.mode).toBe('execution');
+    expect(plan.roPerTrade).toBe(150);
+    expect(plan.stopPoints).toBe(75); // 150 / 2
+    expect(plan.targetPoints).toBe(150); // 75 × 2
+    expect(plan.stopPerTrade).toBe(150);
+    expect(plan.targetPerTrade).toBe(300);
+    expect(plan.maxTradesPerDay).toBe(2);
     expect(plan.sizing).toBe(1);
-    expect(plan.instrument.symbol).toBe('MNQ');
-    expect(plan.instrument.isMicro).toBe(true);
-    expect(plan.instrument.pointValue).toBe(2);
-  });
-
-  it('MNQ stop natural: 20 pts × $2 = $40', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    expect(plan.stopPoints).toBe(20);
-    expect(plan.stopPerTrade).toBe(40);
-  });
-
-  it('MNQ Apex 25K conservador — valores operacionalmente sensatos', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    // stop $40, RO ~$44-48 (overhead +10% × ajuste por adjustment)
-    expect(plan.roPerTrade).toBeGreaterThanOrEqual(44);
-    expect(plan.roPerTrade).toBeLessThanOrEqual(60);
-    // RO < daily loss
-    expect(plan.roPerTrade).toBeLessThan(500);
-    // max trades cabe no daily loss
-    expect(plan.roPerTrade * plan.maxTradesPerDay).toBeLessThanOrEqual(500);
-    // cap operacional
-    expect(plan.maxTradesPerDay).toBeLessThanOrEqual(8);
+    expect(plan.incompatible).toBe(false);
     expect(plan.constraintsViolated).toEqual([]);
+  });
+
+  it('CONS_A + MNQ — 50 pts (back-calc de $100/$2)', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION', 'MNQ');
+    expect(plan.roPerTrade).toBe(100);
+    expect(plan.stopPoints).toBe(50);
+    expect(plan.targetPoints).toBe(100);
     expect(plan.incompatible).toBe(false);
   });
 
-  it('NQ (full) na Apex 25K — INCOMPATÍVEL (1 trade $400 ~ daily loss $500)', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'NQ');
-    // stop NQ = 20 pts × $20 = $400, RO com overhead ~$440-480 = quase todo daily loss
-    // mas ainda < $500, então NÃO incompatível tecnicamente, max trades = 1
-    // Vamos validar:
-    expect(plan.mode).toBe('execution');
-    if (plan.incompatible) {
-      // Se incompatível, deve sugerir MNQ
-      expect(plan.microSuggestion).toBe('MNQ');
-    } else {
-      // Se não incompatível, max trades é muito baixo (1)
-      expect(plan.maxTradesPerDay).toBeLessThanOrEqual(1);
-    }
+  it('AGRES_B + MNQ — 150 pts, 1 trade/dia, viável', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION', 'MNQ');
+    expect(plan.roPerTrade).toBe(300);
+    expect(plan.stopPoints).toBe(150);
+    expect(plan.maxTradesPerDay).toBe(1);
+    expect(plan.incompatible).toBe(false);
   });
 
-  it('ES Apex 50K conservador — viável, RO razoável', () => {
-    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'conservative', 'EVALUATION', 'ES');
-    // ES stop 4 pts × $50 = $200, RO ~$220-240
-    expect(plan.stopPerTrade).toBe(200);
-    expect(plan.roPerTrade).toBeLessThanOrEqual(plan.dailyLossLimit);
-    expect(plan.constraintsViolated).toEqual([]);
+  it('NQ na Apex 25K com CONS_B — INVIÁVEL (stop 7.5pts < 15 minViable)', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'NQ');
+    expect(plan.incompatible).toBe(true);
+    expect(plan.microSuggestion).toBe('MNQ');
+    expect(plan.constraintsViolated).toContain('stop_below_min_viable');
+    expect(plan.maxTradesPerDay).toBe(0);
+    expect(plan.sizing).toBe(0);
   });
 
-  it('GC na Apex — não permitido (suspenso)', () => {
-    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'conservative', 'EVALUATION', 'GC');
+  it('ES na Apex 50K com CONS_B — INVIÁVEL (stop 7.5pts < 15)', () => {
+    // 50K: drawdown 2500, RO CONS_B = 375. ES point value 50. Stop = 7.5 pts < 15
+    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'CONS_B', 'EVALUATION', 'ES');
+    expect(plan.incompatible).toBe(true);
+    expect(plan.microSuggestion).toBe('MES');
+  });
+
+  it('NQ na Apex 50K com CONS_B — VIÁVEL (stop 18.75pts ≥ 15)', () => {
+    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'CONS_B', 'EVALUATION', 'NQ');
+    expect(plan.roPerTrade).toBe(375); // 2500 × 0.15
+    expect(plan.stopPoints).toBe(18.75);
+    expect(plan.incompatible).toBe(false);
+  });
+
+  it('GC na Apex — não permitido (suspenso) registra constraint', () => {
+    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'CONS_B', 'EVALUATION', 'GC');
     expect(plan.mode).toBe('execution');
-    // Deve ter constraint violation por instrumento não permitido
-    const hasNotAllowed = plan.constraintsViolated.some(v => v.includes('não permitido') || v.includes('apex'));
+    const hasNotAllowed = plan.constraintsViolated.some(v => v.includes('não permitido'));
     expect(hasNotAllowed).toBe(true);
   });
 
   it('instrumento desconhecido retorna mode=error', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'XYZ');
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'XYZ');
     expect(plan.mode).toBe('error');
     expect(plan.error).toContain('XYZ');
     expect(plan.constraintsViolated).toContain('instrument_not_found');
   });
+
+  it('stop como % do range NY é calculado', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'MNQ');
+    // NQ avgDailyRange = 549 (real ATR v2), NY range = 549 × 0.6 = 329.4
+    // stop 75 / 329.4 × 100 = 22.77%
+    expect(plan.nyRangePoints).toBeCloseTo(329.4, 1);
+    expect(plan.stopNyPct).toBeCloseTo(22.77, 1);
+  });
+
+  it('reduz maxTradesPerDay se RO × profile.maxTradesPerDay > dailyLossLimit', () => {
+    // Cenário forçado: dailyLossLimit pequeno
+    const tinyDaily = { ...APEX_EOD_25K, dailyLossLimit: 200 };
+    const plan = calculateAttackPlan(tinyDaily, null, null, 'CONS_B', 'EVALUATION', 'MNQ');
+    // RO = $150. profile.maxTradesPerDay = 2. 150 × 2 = 300 > 200 → reduz para floor(200/150) = 1
+    expect(plan.maxTradesPerDay).toBe(1);
+  });
+
+  it('RO > dailyLossLimit → INVIÁVEL', () => {
+    // CONS_C 20% × $1000 = $200; force daily loss 100
+    const tinyDaily = { ...APEX_EOD_25K, dailyLossLimit: 100 };
+    const plan = calculateAttackPlan(tinyDaily, null, null, 'CONS_C', 'EVALUATION', 'MNQ');
+    expect(plan.incompatible).toBe(true);
+    expect(plan.constraintsViolated).toContain('ro_exceeds_daily_loss');
+  });
+
+  it('stop NY > 75% → INVIÁVEL (vela única consome stop)', () => {
+    // M2K (RTY micro): avgDailyRange 70, NY range 42. Apex 25K CONS_C → RO $200.
+    // M2K pointValue $5 → stop pts = 40. 40/42 = 95.2% > 75% INVIÁVEL.
+    // Stop 40pts ≥ 15 (minViable equity_index) ✓ não dispara V1
+    // RO $200 ≤ daily $500 ✓ não dispara V3
+    // Apenas V2 (stop > 75% NY) dispara.
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_C', 'EVALUATION', 'M2K');
+    expect(plan.stopPoints).toBe(40);
+    expect(plan.stopNyPct).toBeGreaterThan(75);
+    expect(plan.incompatible).toBe(true);
+    expect(plan.constraintsViolated).toContain('stop_exceeds_ny_range');
+  });
 });
 
 // ============================================
-// calculateAttackPlan — perfis com instrumento
+// calculateAttackPlan — perfis comparativos
 // ============================================
-describe('calculateAttackPlan — perfis (execution)', () => {
-  it('agressivo tem RO maior que conservador (overhead maior)', () => {
-    const cons = calculateAttackPlan(APEX_EOD_25K, PROFILE_4D_MID, null, 'conservative', 'EVALUATION', 'MNQ');
-    const agg = calculateAttackPlan(APEX_EOD_25K, PROFILE_4D_MID, null, 'aggressive', 'EVALUATION', 'MNQ');
-    expect(agg.roPerTrade).toBeGreaterThanOrEqual(cons.roPerTrade);
+describe('calculateAttackPlan — comparação entre perfis', () => {
+  it('roPct cresce do CONS_A → AGRES_B', () => {
+    const a = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION');
+    const b = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
+    const c = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_C', 'EVALUATION');
+    const d = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_A', 'EVALUATION');
+    const e = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(a.roPerTrade).toBeLessThan(b.roPerTrade);
+    expect(b.roPerTrade).toBeLessThan(c.roPerTrade);
+    expect(c.roPerTrade).toBeLessThan(d.roPerTrade);
+    expect(d.roPerTrade).toBeLessThan(e.roPerTrade);
   });
 
-  it('conservador rrMinimum 1.5, agressivo 2.0', () => {
-    const cons = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    const agg = calculateAttackPlan(APEX_EOD_25K, null, null, 'aggressive', 'EVALUATION', 'MNQ');
-    expect(cons.rrMinimum).toBe(1.5);
-    expect(agg.rrMinimum).toBe(2.0);
+  it('agressivos têm 1 trade/dia, conservadores têm 2', () => {
+    const cons_a = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION');
+    const cons_b = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
+    const cons_c = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_C', 'EVALUATION');
+    const agr_a = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_A', 'EVALUATION');
+    const agr_b = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(cons_a.maxTradesPerDay).toBe(2);
+    expect(cons_b.maxTradesPerDay).toBe(2);
+    expect(cons_c.maxTradesPerDay).toBe(2);
+    expect(agr_a.maxTradesPerDay).toBe(1);
+    expect(agr_b.maxTradesPerDay).toBe(1);
   });
 
-  it('targetPerTrade = stopPerTrade × rrMinimum', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    expect(plan.targetPerTrade).toBeCloseTo(plan.stopPerTrade * plan.rrMinimum, 2);
+  it('lossesToBust DECRESCE quando RO cresce', () => {
+    const a = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION');
+    const e = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(a.lossesToBust).toBeGreaterThan(e.lossesToBust);
   });
 
-  it('aluno fraco recebe RO com mais overhead', () => {
-    const strong = calculateAttackPlan(APEX_EOD_25K, PROFILE_4D_STRONG, null, 'conservative', 'EVALUATION', 'MNQ');
-    const weak = calculateAttackPlan(APEX_EOD_25K, PROFILE_4D_WEAK, null, 'conservative', 'EVALUATION', 'MNQ');
-    // Stop é o mesmo (depende do instrumento), mas RO do weak tem overhead maior
-    expect(weak.roPerTrade).toBeGreaterThanOrEqual(strong.roPerTrade);
+  it('EV cresce com RO (dado WR fixo)', () => {
+    const a = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_A', 'EVALUATION');
+    const e = calculateAttackPlan(APEX_EOD_25K, null, null, 'AGRES_B', 'EVALUATION');
+    expect(e.evPerTrade).toBeGreaterThan(a.evPerTrade);
+  });
+
+  it('RR sempre 1:2 em todos os perfis', () => {
+    for (const code of ['CONS_A', 'CONS_B', 'CONS_C', 'AGRES_A', 'AGRES_B']) {
+      const plan = calculateAttackPlan(APEX_EOD_25K, null, null, code, 'EVALUATION');
+      expect(plan.rrMinimum).toBe(2);
+    }
   });
 });
 
 // ============================================
-// calculateAttackPlan — hard constraints
+// calculateAttackPlan — hard constraints invioláveis (sweep)
 // ============================================
-describe('calculateAttackPlan — hard constraints invioláveis', () => {
+describe('calculateAttackPlan — hard constraints (modo execution viável)', () => {
   const fixtures = [
-    { name: 'Apex 25K conservador MNQ', t: APEX_EOD_25K, profile: 'conservative', sym: 'MNQ' },
-    { name: 'Apex 25K agressivo MNQ', t: APEX_EOD_25K, profile: 'aggressive', sym: 'MNQ' },
-    { name: 'Apex 50K conservador MNQ', t: APEX_EOD_50K, profile: 'conservative', sym: 'MNQ' },
-    { name: 'Apex 50K conservador ES', t: APEX_EOD_50K, profile: 'conservative', sym: 'ES' },
-    { name: 'Apex 50K agressivo MES', t: APEX_EOD_50K, profile: 'aggressive', sym: 'MES' }
+    { name: 'Apex 25K CONS_A MNQ', t: APEX_EOD_25K, profile: 'CONS_A', sym: 'MNQ' },
+    { name: 'Apex 25K CONS_B MNQ', t: APEX_EOD_25K, profile: 'CONS_B', sym: 'MNQ' },
+    { name: 'Apex 25K CONS_C MNQ', t: APEX_EOD_25K, profile: 'CONS_C', sym: 'MNQ' },
+    { name: 'Apex 25K AGRES_A MNQ', t: APEX_EOD_25K, profile: 'AGRES_A', sym: 'MNQ' },
+    { name: 'Apex 25K AGRES_B MNQ', t: APEX_EOD_25K, profile: 'AGRES_B', sym: 'MNQ' },
+    { name: 'Apex 50K CONS_B NQ', t: APEX_EOD_50K, profile: 'CONS_B', sym: 'NQ' }
   ];
 
   for (const fx of fixtures) {
-    it(`${fx.name} — todas as 4 constraints respeitadas`, () => {
+    it(`${fx.name} — viável e respeita constraints`, () => {
       const plan = calculateAttackPlan(fx.t, null, null, fx.profile, 'EVALUATION', fx.sym);
-      if (plan.incompatible) return; // skip se incompatível (já é safety)
+      if (plan.incompatible) return;
 
-      // C1: roPerTrade <= dailyLossLimit
+      // C1: RO ≤ daily loss
       expect(plan.roPerTrade).toBeLessThanOrEqual(plan.dailyLossLimit);
-      // C2: stopPerTrade <= dailyLossLimit
-      expect(plan.stopPerTrade).toBeLessThanOrEqual(plan.dailyLossLimit);
-      // C3: roPerTrade × maxTradesPerDay <= dailyLossLimit
+      // C2: RO × maxTrades ≤ daily loss
       expect(plan.roPerTrade * plan.maxTradesPerDay).toBeLessThanOrEqual(plan.dailyLossLimit);
-      // C4: dailyTarget × evalBusinessDays >= profitTarget
+      // C3: stop em pontos ≥ minViable
+      expect(plan.stopPoints).toBeGreaterThanOrEqual(plan.instrument.minViableStop);
+      // C4: stop ≤ 75% do range NY
+      expect(plan.stopNyPct).toBeLessThanOrEqual(75);
+      // C5: dailyTarget × dias ≥ profitTarget
       expect(plan.dailyTarget * plan.evalBusinessDays).toBeGreaterThanOrEqual(plan.profitTarget);
-      // Sem violations registradas
-      expect(plan.constraintsViolated).toEqual([]);
+      // C6: RR fixo 1:2
+      expect(plan.rrMinimum).toBe(2);
     });
   }
 });
 
 // ============================================
-// calculateAttackPlan — cap operacional
+// calculateAttackPlan — restrição de sessão NY (stop pequeno)
 // ============================================
-describe('calculateAttackPlan — cap max trades', () => {
-  it('conservador cap 8', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    if (!plan.incompatible) {
-      expect(plan.maxTradesPerDay).toBeLessThanOrEqual(8);
-    }
+describe('calculateAttackPlan — restrição de sessão NY', () => {
+  it('NQ Apex 50K CONS_B (stop 18.75pts ≈5.7% NY com ATR real) — operar fora de NY', () => {
+    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'CONS_B', 'EVALUATION', 'NQ');
+    expect(plan.incompatible).toBe(false); // viável (stop ≥ 15 minViable)
+    expect(plan.stopPoints).toBe(18.75);
+    expect(plan.stopNyPct).toBeLessThan(12.5);
+    expect(plan.nySessionViable).toBe(false);
+    expect(plan.sessionRestricted).toBe(true);
+    expect(plan.recommendedSessions).toEqual(['london', 'asia']);
   });
 
-  it('agressivo cap 10', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'aggressive', 'EVALUATION', 'MNQ');
-    if (!plan.incompatible) {
-      expect(plan.maxTradesPerDay).toBeLessThanOrEqual(10);
-    }
+  it('NQ Apex 50K CONS_C (stop 25pts ≈7.6% NY) — operar fora de NY', () => {
+    const plan = calculateAttackPlan(APEX_EOD_50K, null, null, 'CONS_C', 'EVALUATION', 'NQ');
+    expect(plan.stopPoints).toBe(25);
+    expect(plan.stopNyPct).toBeLessThan(12.5);
+    expect(plan.nySessionViable).toBe(false);
+    expect(plan.recommendedSessions).toContain('london');
+    expect(plan.recommendedSessions).not.toContain('ny');
   });
-});
 
-// ============================================
-// calculateAttackPlan — incompatibilidade e sugestão de micro
-// ============================================
-describe('calculateAttackPlan — incompatibilidade', () => {
-  it('quando incompatível, maxTrades=0 e sizing=0', () => {
-    // Forçar instrumento muito caro para mesa pequena
-    // CL stop 0.20 pts × $1000 = $200, RO ~$220 — viável em 25K? daily $500 = sim
-    // Vamos forçar com algo caro: MBT (Bitcoin) tem stop 200 × $0.10 = $20 — viável
-    // GC stop 3 × $100 = $300, RO ~$330 — em 25K daily $500: viável mas só 1 trade
-    // SI stop 0.05 × $5000 = $250, RO ~$275 — viável também
-    // Vamos usar template menor: dailyLoss $100 hipotético
-    const tinyTemplate = { ...APEX_EOD_25K, dailyLossLimit: 100 };
-    const plan = calculateAttackPlan(tinyTemplate, null, null, 'conservative', 'EVALUATION', 'NQ');
+  it('NQ Apex 100K AGRES_B (stop 45pts ≈13.7% NY) — NY viável', () => {
+    // Com ATR real NQ=549, NY range=329.4. Threshold 12.5% = 41.175 pts.
+    // Apex 100K (DD $3000) AGRES_B → RO $900, /20 = 45 pts. 45/329.4 = 13.66% > 12.5 ✓
+    const APEX_100K = {
+      firm: 'APEX',
+      drawdown: { type: 'TRAILING_EOD', maxAmount: 3000 },
+      dailyLossLimit: 1500,
+      profitTarget: 6000,
+      evalTimeLimit: 30
+    };
+    const plan = calculateAttackPlan(APEX_100K, null, null, 'AGRES_B', 'EVALUATION', 'NQ');
+    expect(plan.stopPoints).toBe(45);
+    expect(plan.stopNyPct).toBeGreaterThanOrEqual(12.5);
+    expect(plan.nySessionViable).toBe(true);
+    expect(plan.sessionRestricted).toBe(false);
+    expect(plan.recommendedSessions).toContain('ny');
+  });
+
+  it('MNQ Apex 25K CONS_B (75pts ≈22.8% NY com ATR real) — NY viável', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'MNQ');
+    expect(plan.nySessionViable).toBe(true);
+    expect(plan.sessionRestricted).toBe(false);
+    expect(plan.recommendedSessions[0]).toBe('ny');
+  });
+
+  it('threshold NY exato 12.5% — limite operacional para NQ é ~41pts (ATR real)', () => {
+    // NQ NY range = 549 × 0.6 = 329.4. 12.5% = 41.175 pts. RO = 41.175 × 20 = $823.5.
+    // CONS_B (15%) → drawdown necessário = 5490
+    const tplNQ41 = {
+      firm: 'APEX',
+      drawdown: { type: 'TRAILING_EOD', maxAmount: 5490 },
+      dailyLossLimit: 1500,
+      profitTarget: 6000,
+      evalTimeLimit: 30
+    };
+    const plan = calculateAttackPlan(tplNQ41, null, null, 'CONS_B', 'EVALUATION', 'NQ');
+    expect(plan.stopPoints).toBe(41.175);
+    expect(plan.stopNyPct).toBe(12.5);
+    expect(plan.nySessionViable).toBe(true); // exatamente no limite
+  });
+
+  it('plano abstract não tem restrição de sessão', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION');
+    expect(plan.mode).toBe('abstract');
+    expect(plan.nySessionViable).toBeUndefined(); // só existe em mode=execution
+  });
+
+  it('incompatível não recomenda sessões', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'NQ');
     expect(plan.incompatible).toBe(true);
-    expect(plan.maxTradesPerDay).toBe(0);
-    expect(plan.sizing).toBe(0);
-    // Sugere MNQ
-    expect(plan.microSuggestion).toBe('MNQ');
-  });
-
-  it('micro variant não tem sugestão de outro micro', () => {
-    const tinyTemplate = { ...APEX_EOD_25K, dailyLossLimit: 1 };
-    const plan = calculateAttackPlan(tinyTemplate, null, null, 'conservative', 'EVALUATION', 'MNQ');
-    if (plan.incompatible) {
-      // MNQ já é micro, não deve sugerir nada
-      expect(plan.microSuggestion).toBeNull();
-    }
+    expect(plan.recommendedSessions).toEqual([]);
+    expect(plan.nySessionViable).toBe(false);
   });
 });
 
 // ============================================
-// calculateAttackPlan — sanidade Apex EOD 25K MNQ conservador
+// REGRESSÃO ATR v2 — MES CONS_B Apex 25K agora é VIÁVEL em NY
 // ============================================
-describe('VALIDAÇÃO OPERACIONAL — Apex EOD 25K MNQ conservador', () => {
-  it('valores fazem sentido operacional', () => {
-    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'conservative', 'EVALUATION', 'MNQ');
-
-    // Estrutura básica
+// Bug v1: ATR ES alucinado em 55 → MES com 30 pts dava 90.9% NY (INVIÁVEL).
+// Real ATR ES = 123 → NY range MES = 73.8 → 30 pts = 40.6% (VIÁVEL day trade).
+describe('REGRESSÃO ATR v2 — MES Apex 25K CONS_B', () => {
+  it('MES com 30 pts é VIÁVEL na NY (40.6% do range, não 90.9%)', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'MES');
     expect(plan.mode).toBe('execution');
+    expect(plan.instrument.symbol).toBe('MES');
+    expect(plan.roPerTrade).toBe(150); // 15% × $1000
+    expect(plan.stopPoints).toBe(30);  // $150 / $5 pt
+    expect(plan.stopPerTrade).toBe(150);
+    expect(plan.targetPoints).toBe(60); // 30 × 2 (RR fixo 1:2)
+    expect(plan.nyRangePoints).toBeCloseTo(73.8, 1); // 123 × 0.6
+    expect(plan.stopNyPct).toBeCloseTo(40.65, 1);
+    expect(plan.incompatible).toBe(false);
+    expect(plan.nySessionViable).toBe(true);
+    expect(plan.sessionRestricted).toBe(false);
+    expect(plan.recommendedSessions[0]).toBe('ny');
+  });
+});
+
+// ============================================
+// VALIDAÇÃO OPERACIONAL — Apex EOD 25K MNQ CONS_B (recomendado)
+// ============================================
+describe('VALIDAÇÃO OPERACIONAL — Apex EOD 25K MNQ CONS_B', () => {
+  it('valores casam com tabela determinística (75 pts, 2 trades/dia, EV $75)', () => {
+    const plan = calculateAttackPlan(APEX_EOD_25K, null, null, 'CONS_B', 'EVALUATION', 'MNQ');
+
+    expect(plan.mode).toBe('execution');
+    expect(plan.profile).toBe('CONS_B');
+    expect(plan.profileRecommended).toBe(true);
     expect(plan.instrument.symbol).toBe('MNQ');
     expect(plan.instrument.isMicro).toBe(true);
 
@@ -351,30 +507,32 @@ describe('VALIDAÇÃO OPERACIONAL — Apex EOD 25K MNQ conservador', () => {
     expect(plan.dailyLossLimit).toBe(500);
     expect(plan.profitTarget).toBe(1500);
 
-    // Stop natural NQ/MNQ = 20 pts (max(ATR 400 × 5%, minStop 20))
-    expect(plan.stopPoints).toBe(20);
-    expect(plan.stopPerTrade).toBe(40); // 20 × $2
+    // RO determinístico — 15% de $1000 = $150
+    expect(plan.roPerTrade).toBe(150);
+    expect(plan.roPct).toBe(0.15);
 
-    // RO com overhead — entre $44 e $60 (depende do adjustment)
-    expect(plan.roPerTrade).toBeGreaterThanOrEqual(44);
-    expect(plan.roPerTrade).toBeLessThanOrEqual(60);
+    // Stop back-calculado de $150 / $2/pt
+    expect(plan.stopPoints).toBe(75);
+    expect(plan.stopPerTrade).toBe(150);
+    expect(plan.targetPoints).toBe(150);
+    expect(plan.targetPerTrade).toBe(300);
 
-    // RR conservador = 1.5
-    expect(plan.rrMinimum).toBe(1.5);
-    expect(plan.targetPerTrade).toBe(60); // 40 × 1.5
+    // 2 trades/dia conservador → 150 × 2 = $300 ≤ $500 ✓
+    expect(plan.maxTradesPerDay).toBe(2);
+    expect(plan.roPerTrade * plan.maxTradesPerDay).toBeLessThanOrEqual(plan.dailyLossLimit);
 
-    // Max trades: cap 8 ou floor(500/RO)
-    // RO ~$48 → floor(500/48) = 10 → cap 8
-    expect(plan.maxTradesPerDay).toBe(8);
+    // Losses até bust
+    expect(plan.lossesToBust).toBe(6);
 
-    // Constraint cabe: 48 × 8 = 384 ≤ 500 ✓
-    expect(plan.roPerTrade * plan.maxTradesPerDay).toBeLessThanOrEqual(500);
+    // EV @ WR 50% = $75
+    expect(plan.evPerTrade).toBe(75);
+    expect(plan.wrBelowBreakeven).toBe(false);
 
-    // Meta diária $72, dias úteis 21
+    // Meta diária $72 × 21 dias = $1512 ≥ $1500 ✓
     expect(plan.dailyTarget).toBe(72);
     expect(plan.evalBusinessDays).toBe(21);
 
-    // Constraints violadas: zero
+    // Sem violations
     expect(plan.constraintsViolated).toEqual([]);
     expect(plan.incompatible).toBe(false);
   });

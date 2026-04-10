@@ -64,16 +64,144 @@ export const DAILY_LOSS_ACTIONS = {
   FAIL_ACCOUNT: 'FAIL_ACCOUNT'
 };
 
-// --- Attack plan profiles ---
+// --- Attack plan profiles (5 perfis) ---
+// Ref: Temp/attack-plan-deterministic-table.md v2.0
+//
+// Lógica invertida: quanto mais arrisca, MENOS opera. Disciplina forçada pelo sizing.
+// RO = percentual fixo do drawdown. RR fixo 1:2.
+//
+// Probabilidades de aprovação (Apex EOD 25K, 21 dias úteis, RR 1:2, 200k simulações):
+//   CONS_A: WR50% → 81.6% aprovação, bust 0.7%
+//   CONS_B: WR50% → 91.2% aprovação, bust 3.4%   ← RECOMENDADO
+//   CONS_C: WR50% → 89.5% aprovação, bust 8.8%
+//   AGRES_A: WR50% → 80.7% aprovação, bust 13.2%
+//   AGRES_B: WR50% → 83.0% aprovação, bust 13.1%
 export const ATTACK_PLAN_PROFILES = {
-  CONSERVATIVE: 'conservative',
-  AGGRESSIVE: 'aggressive'
+  CONS_A: 'CONS_A',
+  CONS_B: 'CONS_B',
+  CONS_C: 'CONS_C',
+  AGRES_A: 'AGRES_A',
+  AGRES_B: 'AGRES_B'
 };
 
 export const ATTACK_PLAN_PROFILE_LABELS = {
-  conservative: 'Conservador',
-  aggressive: 'Agressivo'
+  CONS_A: 'Conservador Leve',
+  CONS_B: 'Conservador Sweet Spot',
+  CONS_C: 'Conservador Firme',
+  AGRES_A: 'Agressivo',
+  AGRES_B: 'Agressivo Máximo'
 };
+
+export const ATTACK_PROFILES = {
+  CONS_A: {
+    code: 'CONS_A',
+    name: 'Conservador Leve',
+    family: 'conservative',
+    roPct: 0.10,             // 10% do drawdown
+    rr: 2,
+    maxTradesPerDay: 2,
+    description: 'Scalp com margem. Máxima resiliência.',
+    idealFor: 'Stage 1-2, emocional baixo, sem histórico consistente',
+    minWR: 0.40
+  },
+  CONS_B: {
+    code: 'CONS_B',
+    name: 'Conservador Sweet Spot',
+    family: 'conservative',
+    roPct: 0.15,             // 15% do drawdown
+    rr: 2,
+    maxTradesPerDay: 2,
+    description: 'Day trade clássico. Melhor relação aprovação/bust/tempo.',
+    idealFor: 'Stage 2-3, WR ≥ 45%',
+    minWR: 0.45,
+    recommended: true
+  },
+  CONS_C: {
+    code: 'CONS_C',
+    name: 'Conservador Firme',
+    family: 'conservative',
+    roPct: 0.20,             // 20% do drawdown
+    rr: 2,
+    maxTradesPerDay: 2,
+    description: 'Swing intraday. Mais rápido mas exige disciplina.',
+    idealFor: 'Stage 3+, WR ≥ 50%',
+    minWR: 0.50
+  },
+  AGRES_A: {
+    code: 'AGRES_A',
+    name: 'Agressivo',
+    family: 'aggressive',
+    roPct: 0.25,             // 25% do drawdown
+    rr: 2,
+    maxTradesPerDay: 1,
+    description: 'Swing com convicção. 1 trade/dia — o melhor setup.',
+    idealFor: 'Stage 3-4, WR ≥ 55%, disciplina comprovada',
+    minWR: 0.55
+  },
+  AGRES_B: {
+    code: 'AGRES_B',
+    name: 'Agressivo Máximo',
+    family: 'aggressive',
+    roPct: 0.30,             // 30% do drawdown
+    rr: 2,
+    maxTradesPerDay: 1,
+    description: 'Trade de convicção máxima. Sem margem para erro.',
+    idealFor: 'Stage 4+, WR ≥ 55%, controle emocional alto',
+    minWR: 0.55
+  }
+};
+
+export const DEFAULT_ATTACK_PROFILE = 'CONS_B';
+
+// --- Viabilidade do stop por tipo de instrumento ---
+// Ref: Temp/attack-plan-deterministic-table.md §3
+// Stop em pontos abaixo desses valores é "ruído" no instrumento — sugerir micro variant.
+export const MIN_VIABLE_STOP = {
+  equity_index: 15,    // pontos — abaixo disso é ruído no MNQ/MES
+  energy: 0.10,        // pontos — CL/MCL
+  metals: 3,           // pontos — GC/MGC
+  currency: 0.0003,    // pontos — 6E/6B/6J
+  agriculture: 3,      // pontos — ZC/ZW/ZS
+  crypto: 500          // pontos — MBT
+};
+
+// Stop > MAX_STOP_NY_PCT do range NY = inviável (vela única consome o stop).
+// Stop < MIN_STOP_NY_PCT do range NY = ruído puro.
+export const MAX_STOP_NY_PCT = 75;
+export const MIN_STOP_NY_PCT = 5;
+
+// Stop < NY_MIN_VIABLE_STOP_PCT do range NY = não viável NA SESSÃO NY,
+// mas viável em sessões mais calmas (Ásia/London).
+// Threshold 12.5% genérico — abaixo disso, NY consome o stop por volatilidade.
+// Calibração com ATR real (v2 09/04/2026): NQ NY range = 549 × 0.60 = 329.4 pts,
+// 12.5% = ~41 pts. Stops menores que 41 pts em NQ → operar Ásia/London.
+export const NY_MIN_VIABLE_STOP_PCT = 12.5;
+
+// Fração do ATR diário consumido pela sessão NY (usado para stopNyPct).
+// Ref: SESSION_PROFILES.ny.rangePct = 0.60.
+export const NY_RANGE_FRACTION = 0.60;
+
+// WR padrão quando o trader não tem indicadores nem 4D.
+export const DEFAULT_ASSUMED_WR = 0.50;
+
+// Breakeven com RR 1:2. Abaixo disso a EV é negativa — plano matematicamente inviável.
+export const RR2_BREAKEVEN_WR = 1 / 3;
+
+/**
+ * Normaliza chave de perfil — aceita os 5 novos códigos E os legados
+ * 'conservative'/'aggressive' (mapeados para CONS_B/AGRES_A respectivamente).
+ *
+ * @param {string|null|undefined} profileKey
+ * @returns {string} código de perfil válido (default: CONS_B)
+ */
+export function normalizeAttackProfile(profileKey) {
+  if (!profileKey) return DEFAULT_ATTACK_PROFILE;
+  if (ATTACK_PROFILES[profileKey]) return profileKey;
+  // Legacy mapping (Fase 1.5 → 5 profiles)
+  if (profileKey === 'conservative') return 'CONS_B';
+  if (profileKey === 'aggressive') return 'AGRES_A';
+  return DEFAULT_ATTACK_PROFILE;
+}
 
 // --- Attack plan data sources ---
 export const ATTACK_PLAN_DATA_SOURCES = {

@@ -1,76 +1,73 @@
 // ============================================
-// ATTACK PLAN CALCULATOR — Instrument-Aware
+// ATTACK PLAN CALCULATOR — Determinístico (5 perfis)
 // ============================================
 // Plano de ataque para conta prop firm. 100% rule-based.
 //
-// PRINCÍPIO FUNDAMENTAL:
-// As regras da mesa (drawdownMax, dailyLossLimit, profitTarget) são HARD CONSTRAINTS
-// absolutas. O instrumento operado define o stop natural realista (via ATR + minStop).
-// O plano back-calcula RO real partindo do stop natural × pointValue.
+// MODELO (Fase 1.5 v2 — 07/04/2026):
+//   RO por trade = drawdownMax × profile.roPct (10%, 15%, 20%, 25%, 30%)
+//   stopPoints   = roUSD / instrument.pointValue   ← back-calculado do RO
+//   targetPoints = stopPoints × profile.rr (RR fixo 1:2)
+//   maxTradesPerDay = profile.maxTradesPerDay (2 conservadores, 1 agressivos)
 //
-// CONSTRAINTS INVIOLÁVEIS:
-//   1. roPerTrade NUNCA pode exceder dailyLossLimit
-//   2. stopPerTrade NUNCA pode exceder dailyLossLimit
-//   3. roPerTrade × maxTradesPerDay NUNCA pode exceder dailyLossLimit
-//   4. metaDiaria × diasUteis deve ser >= profitTarget
+// INVERSÃO INTENCIONAL: quanto mais arrisca, MENOS opera.
+// Disciplina forçada pelo sizing.
 //
-// MODOS DE OPERAÇÃO:
-//   - SEM instrumento: retorna apenas constraints da mesa (modo 'abstract')
-//   - COM instrumento: retorna plano completo de execução (modo 'execution')
+// VIABILIDADE:
+//   - Se stopPoints < MIN_VIABLE_STOP[type] → INVIÁVEL → sugere micro
+//   - Se stopNyPct > MAX_STOP_NY_PCT (75%) → INVIÁVEL (vela única consome stop)
+//   - Se roUSD > dailyLossLimit → INVIÁVEL
+//   - Se roUSD × maxTradesPerDay > dailyLossLimit → reduz maxTradesPerDay
 //
-// Ref: issue #52 Fase 1.5, sessão revisão 06/04/2026
+// MODOS:
+//   - SEM instrumento: modo 'abstract' (apenas constraints da mesa + perfil)
+//   - COM instrumento: modo 'execution' (plano completo com sizing/stop/RO)
+//
+// Ref: issue #52 Fase 1.5, Temp/attack-plan-deterministic-table.md v2.0
 
 import {
-  ATTACK_PLAN_PROFILES,
+  ATTACK_PROFILES,
   ATTACK_PLAN_DATA_SOURCES,
-  PROP_FIRM_PHASES
+  PROP_FIRM_PHASES,
+  MIN_VIABLE_STOP,
+  MAX_STOP_NY_PCT,
+  MIN_STOP_NY_PCT,
+  NY_MIN_VIABLE_STOP_PCT,
+  NY_RANGE_FRACTION,
+  DEFAULT_ASSUMED_WR,
+  RR2_BREAKEVEN_WR,
+  DEFAULT_ATTACK_PROFILE,
+  normalizeAttackProfile
 } from '../constants/propFirmDefaults';
 import {
   getInstrument,
-  getRecommendedStop,
   suggestMicroAlternative,
   isInstrumentAllowed
 } from '../constants/instrumentsTable';
 
-// --- RR mínimo por perfil ---
-const RR_MINIMUM = {
-  [ATTACK_PLAN_PROFILES.CONSERVATIVE]: 1.5,
-  [ATTACK_PLAN_PROFILES.AGGRESSIVE]: 2.0
-};
-
-// --- Cap operacional de trades/dia (independe da fórmula matemática) ---
-const MAX_TRADES_CAP = {
-  [ATTACK_PLAN_PROFILES.CONSERVATIVE]: 8,
-  [ATTACK_PLAN_PROFILES.AGGRESSIVE]: 10
-};
-
-// --- Defaults de adjustmentFactor (sem 4D nem indicadores) ---
-const DEFAULT_ADJUSTMENT_FACTORS = {
-  [ATTACK_PLAN_PROFILES.CONSERVATIVE]: 0.3, // pessimista
-  [ATTACK_PLAN_PROFILES.AGGRESSIVE]: 0.6    // moderado
-};
-
-// --- Margem do RO sobre o stop natural (gordura para slippage) ---
-// roPerTrade = stopUSD × (1 + ROUND_UP_FACTOR). Ex: stop $40 + 25% = RO $50
-const RO_OVERHEAD = {
-  [ATTACK_PLAN_PROFILES.CONSERVATIVE]: 0.10, // +10% conservador (pouca gordura)
-  [ATTACK_PLAN_PROFILES.AGGRESSIVE]: 0.20    // +20% agressivo (mais espaço)
-};
-
-// --- Quando mesa não tem dailyLossLimit, usar fração do drawdown como proxy ---
+// Quando mesa não tem dailyLossLimit, usar fração do drawdown como proxy
 const DEFAULT_DAILY_LOSS_FRACTION = 0.25;
 
-// --- Conversão dias corridos → dias úteis ---
+// Conversão dias corridos → dias úteis
 const BUSINESS_DAYS_RATIO = 5 / 7;
+
+// Defaults de adjustmentFactor (transparência da calibragem, não usado no cálculo principal)
+const DEFAULT_ADJUSTMENT_FACTORS = {
+  conservative: 0.3, // pessimista
+  aggressive: 0.6    // moderado
+};
 
 // ============================================
 // resolveDataSource — cascata 4D > indicadores > defaults
 // ============================================
 
 /**
- * Resolve fonte de dados e calcula adjustmentFactor (0..1).
+ * Resolve fonte de dados, adjustmentFactor (0..1) e WR efetivo (para EV).
+ *
+ * @param {Object|null} profile4D
+ * @param {Object|null} indicators
+ * @param {string} profileFamily - 'conservative' | 'aggressive'
  */
-export function resolveDataSource(profile4D, indicators, planProfile) {
+export function resolveDataSource(profile4D, indicators, profileFamily = 'conservative') {
   // 1ª prioridade: Perfil 4D completo
   if (profile4D &&
       typeof profile4D.emotionalScore === 'number' &&
@@ -85,9 +82,15 @@ export function resolveDataSource(profile4D, indicators, planProfile) {
       (maturityFactor * 0.3) +
       (consistencyFactor * 0.3);
 
+    // WR pode vir de indicators se disponível, senão default
+    const assumedWR = (indicators && typeof indicators.winRate === 'number')
+      ? indicators.winRate
+      : DEFAULT_ASSUMED_WR;
+
     return {
       dataSource: ATTACK_PLAN_DATA_SOURCES.FULL_4D,
-      adjustmentFactor: clamp(adjustmentFactor, 0, 1)
+      adjustmentFactor: clamp(adjustmentFactor, 0, 1),
+      assumedWR
     };
   }
 
@@ -106,28 +109,23 @@ export function resolveDataSource(profile4D, indicators, planProfile) {
 
     return {
       dataSource: ATTACK_PLAN_DATA_SOURCES.INDICATORS,
-      adjustmentFactor: clamp(adjustmentFactor, 0, 1)
+      adjustmentFactor: clamp(adjustmentFactor, 0, 1),
+      assumedWR: indicators.winRate
     };
   }
 
   // 3ª prioridade: Defaults
   return {
     dataSource: ATTACK_PLAN_DATA_SOURCES.DEFAULTS,
-    adjustmentFactor: DEFAULT_ADJUSTMENT_FACTORS[planProfile]
+    adjustmentFactor: DEFAULT_ADJUSTMENT_FACTORS[profileFamily] ?? 0.3,
+    assumedWR: DEFAULT_ASSUMED_WR
   };
 }
 
 // ============================================
-// calculateMesaConstraints — modo abstract (sem instrumento)
+// calculateMesaConstraints — apenas constraints da mesa
 // ============================================
 
-/**
- * Calcula apenas as constraints da mesa, sem entrar em sizing/stop/RO.
- * Útil quando o aluno ainda não selecionou instrumento.
- *
- * @param {Object} templateRules - template da mesa
- * @returns {Object} constraints abstratas + dailyTarget
- */
 export function calculateMesaConstraints(templateRules) {
   if (!templateRules) {
     throw new Error('templateRules é obrigatório');
@@ -161,41 +159,47 @@ export function calculateMesaConstraints(templateRules) {
 }
 
 // ============================================
-// calculateAttackPlan — modo execution (com instrumento) ou abstract (sem)
+// calculateAttackPlan — modos abstract / execution
 // ============================================
 
 /**
- * Calcula plano de ataque.
+ * Calcula plano de ataque determinístico.
  *
- * @param {Object} templateRules - Template da mesa (propFirmTemplates doc)
- * @param {Object|null} profile4D - Perfil 4D do aluno
- * @param {Object|null} indicators - Indicadores derivados de trades
- * @param {string} planProfile - 'conservative' | 'aggressive'
- * @param {string} phase - Fase atual da conta
- * @param {string|null} instrumentSymbol - símbolo do instrumento (ex: 'MNQ', 'NQ', 'ES')
- *                                          OU null/undefined para modo abstract
- * @returns {Object} Plano de ataque
+ * @param {Object} templateRules - template da mesa
+ * @param {Object|null} profile4D
+ * @param {Object|null} indicators - { winRate, coefficientOfVariation, ... }
+ * @param {string} planProfile - código do perfil (CONS_A..AGRES_B). Aceita legados 'conservative'/'aggressive'
+ * @param {string} phase - fase da conta (EVALUATION/SIM_FUNDED/LIVE)
+ * @param {string|null} instrumentSymbol - símbolo do instrumento (null = modo abstract)
  */
 export function calculateAttackPlan(templateRules, profile4D, indicators, planProfile, phase, instrumentSymbol = null) {
   if (!templateRules) {
     throw new Error('templateRules é obrigatório');
   }
 
-  // Normalizar perfil/fase
-  const validProfile = Object.values(ATTACK_PLAN_PROFILES).includes(planProfile)
-    ? planProfile
-    : ATTACK_PLAN_PROFILES.CONSERVATIVE;
+  // Normalizar perfil (suporta legados) e fase
+  const profileKey = normalizeAttackProfile(planProfile);
+  const profile = ATTACK_PROFILES[profileKey] ?? ATTACK_PROFILES[DEFAULT_ATTACK_PROFILE];
 
   const validPhase = Object.values(PROP_FIRM_PHASES).includes(phase)
     ? phase
     : PROP_FIRM_PHASES.EVALUATION;
 
-  // Constraints da mesa (sempre presentes)
+  // Constraints da mesa
   const mesaConstraints = calculateMesaConstraints(templateRules);
   const { drawdownMax, dailyLossLimit, profitTarget, evalBusinessDays, dailyTarget } = mesaConstraints;
 
-  // Calibragem por perfil do aluno
-  const { dataSource, adjustmentFactor } = resolveDataSource(profile4D, indicators, validProfile);
+  // Calibragem por perfil do aluno (transparência + WR para EV)
+  const { dataSource, adjustmentFactor, assumedWR } = resolveDataSource(profile4D, indicators, profile.family);
+
+  // ============================================
+  // CÁLCULO DETERMINÍSTICO BASE (sem instrumento)
+  // ============================================
+  const roUSD = round(drawdownMax * profile.roPct, 2);
+  const winUSD = round(roUSD * profile.rr, 2);
+  const lossesToBust = roUSD > 0 ? Math.floor(drawdownMax / roUSD) : 0;
+  const evPerTrade = round((assumedWR * winUSD) - ((1 - assumedWR) * roUSD), 2);
+  const wrBelowBreakeven = assumedWR < RR2_BREAKEVEN_WR;
 
   // ============================================
   // MODO ABSTRACT — sem instrumento selecionado
@@ -203,29 +207,44 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
   if (!instrumentSymbol) {
     return {
       mode: 'abstract',
-      profile: validProfile,
+      profile: profileKey,
+      profileName: profile.name,
+      profileFamily: profile.family,
+      profileRecommended: profile.recommended === true,
       dataSource,
       adjustmentFactor: round(adjustmentFactor, 4),
+      assumedWR,
+      wrBelowBreakeven,
 
-      // Constraints da mesa (sempre presentes)
+      // Constraints da mesa
       drawdownMax,
       dailyLossLimit,
       profitTarget,
       evalBusinessDays,
       dailyTarget,
+      phase: validPhase,
 
-      // Sem instrumento, valores de execução são null
+      // Plano determinístico (sem instrumento — apenas USD)
+      roPerTrade: roUSD,
+      roPct: profile.roPct,
+      rrMinimum: profile.rr,
+      winUSD,
+      lossesToBust,
+      evPerTrade,
+      maxTradesPerDay: profile.maxTradesPerDay,
+
+      // Sem instrumento, valores em pontos são null
       instrument: null,
       stopPoints: null,
       stopPerTrade: null,
-      roPerTrade: null,
-      rrMinimum: RR_MINIMUM[validProfile],
-      maxTradesPerDay: null,
+      targetPoints: null,
+      targetPerTrade: null,
+      stopNyPct: null,
       sizing: null,
 
-      // Mensagem informativa
       message: 'Selecione um instrumento para gerar o plano de execução completo.',
-
+      incompatible: false,
+      microSuggestion: null,
       constraintsViolated: [],
       generatedAt: new Date().toISOString()
     };
@@ -238,7 +257,7 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
   if (!instrument) {
     return {
       mode: 'error',
-      profile: validProfile,
+      profile: profileKey,
       dataSource,
       error: `Instrumento '${instrumentSymbol}' não encontrado na tabela`,
       constraintsViolated: ['instrument_not_found'],
@@ -250,96 +269,106 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
   const firm = (templateRules.firm ?? '').toLowerCase();
   const allowed = !firm || isInstrumentAllowed(instrumentSymbol, firm);
 
-  // Stop natural recomendado (max(ATR×5%, minStop))
-  const stop = getRecommendedStop(instrument);
-  const stopPoints = stop.stopPoints;
-  const stopUSD = stop.stopUSD;
+  // Stop em pontos = back-calculated do RO em USD
+  const stopPoints = round(roUSD / instrument.pointValue, 4);
+  const targetPoints = round(stopPoints * profile.rr, 4);
 
-  // RR mínimo por perfil
-  const rrMinimum = RR_MINIMUM[validProfile];
+  // Stop como % do range esperado da sessão NY
+  const nyRange = instrument.avgDailyRange * NY_RANGE_FRACTION;
+  const stopNyPct = nyRange > 0 ? round((stopPoints / nyRange) * 100, 2) : 0;
 
-  // RO por trade = stop natural + overhead (gordura para slippage/comissão)
-  const overhead = RO_OVERHEAD[validProfile];
-  const adjustedOverhead = overhead * (1 + (1 - adjustmentFactor) * 0.5); // aluno fraco = mais gordura
-  let roPerTrade = Math.ceil(stopUSD * (1 + adjustedOverhead));
+  // Stop USD efetivo (idêntico a roUSD por construção, mas explícito)
+  const stopUSD = round(stopPoints * instrument.pointValue, 2);
+  const targetUSD = round(targetPoints * instrument.pointValue, 2);
 
   // ============================================
-  // VERIFICAR FACTIBILIDADE
+  // CHECAGENS DE VIABILIDADE
   // ============================================
-  // Se RO por trade > daily loss limit, instrumento é incompatível
-  // (1 trade já estoura o dia inteiro)
+  const minViableStop = MIN_VIABLE_STOP[instrument.type] ?? 0;
+  const constraintsViolated = [];
   let incompatible = false;
   let microSuggestion = null;
+  let inviabilityReason = null;
 
-  if (roPerTrade > dailyLossLimit) {
+  // V1: Stop em pontos abaixo do mínimo viável → ruído no instrumento
+  if (stopPoints < minViableStop) {
     incompatible = true;
-    // Sugerir micro variant se disponível
-    if (!instrument.isMicro) {
-      const micro = suggestMicroAlternative(instrumentSymbol);
-      if (micro && (!firm || isInstrumentAllowed(micro.symbol, firm))) {
-        microSuggestion = micro.symbol;
-      }
+    inviabilityReason = `stop ${stopPoints}pts abaixo do mínimo viável ${minViableStop}pts para ${instrument.type}`;
+    constraintsViolated.push('stop_below_min_viable');
+  }
+
+  // V2: Stop excede 75% do range NY → vela única consome
+  if (stopNyPct > MAX_STOP_NY_PCT) {
+    incompatible = true;
+    inviabilityReason = inviabilityReason
+      ?? `stop ${stopNyPct.toFixed(1)}% do range NY excede limite ${MAX_STOP_NY_PCT}%`;
+    constraintsViolated.push('stop_exceeds_ny_range');
+  }
+
+  // V3: RO maior que daily loss → 1 trade estoura o dia
+  if (roUSD > dailyLossLimit) {
+    incompatible = true;
+    inviabilityReason = inviabilityReason
+      ?? `RO $${roUSD} excede daily loss $${dailyLossLimit}`;
+    constraintsViolated.push('ro_exceeds_daily_loss');
+  }
+
+  // Sugerir micro alternative se incompatível e instrumento é full size
+  if (incompatible && !instrument.isMicro) {
+    const micro = suggestMicroAlternative(instrumentSymbol);
+    if (micro && (!firm || isInstrumentAllowed(micro.symbol, firm))) {
+      microSuggestion = micro.symbol;
     }
   }
 
-  // Max trades por dia: cap operacional + constraint do daily loss
-  const operationalCap = MAX_TRADES_CAP[validProfile];
-  let maxTradesPerDay = incompatible
-    ? 0
-    : Math.min(
-        operationalCap,
-        Math.max(1, Math.floor(dailyLossLimit / roPerTrade))
-      );
-
-  // CONSTRAINT: roPerTrade × maxTradesPerDay ≤ dailyLossLimit
-  // (já garantido pela divisão acima — sanity check)
-  if (!incompatible && roPerTrade * maxTradesPerDay > dailyLossLimit) {
-    roPerTrade = Math.floor(dailyLossLimit / maxTradesPerDay);
+  // V4: maxTradesPerDay × RO não pode exceder daily loss → reduzir
+  let maxTradesPerDay = incompatible ? 0 : profile.maxTradesPerDay;
+  if (!incompatible && roUSD * maxTradesPerDay > dailyLossLimit) {
+    maxTradesPerDay = Math.max(1, Math.floor(dailyLossLimit / roUSD));
   }
 
-  // Sizing: 1 contrato é o default seguro
-  // (escalar para mais contratos = aumentar pointValue efetivo, não entra na Fase 1.5)
+  // V5: instrumento não permitido na mesa
+  if (!allowed) {
+    constraintsViolated.push(`instrumento '${instrumentSymbol}' não permitido na mesa '${firm}'`);
+  }
+
+  // Stop notavelmente pequeno (< 5% do range NY) — warning, não inviabiliza
+  const stopIsNoise = !incompatible && stopNyPct < MIN_STOP_NY_PCT && stopNyPct > 0;
+
+  // Restrição de sessão: stop pequeno relativo ao range NY → operar fora de NY.
+  // Threshold 12.5% (≈30 pts no NQ). NY consome stops abaixo disso por volatilidade.
+  // Não inviabiliza — restringe sessões recomendadas.
+  const nySessionViable = !incompatible && stopNyPct >= NY_MIN_VIABLE_STOP_PCT;
+  const recommendedSessions = incompatible
+    ? []
+    : (nySessionViable ? ['ny', 'london', 'asia'] : ['london', 'asia']);
+  const sessionRestricted = !incompatible && !nySessionViable;
+
+  // Sizing: 1 contrato fixo (escalar = Fase futura)
   const sizing = incompatible ? 0 : 1;
 
-  // Days to target
+  // Days to target (sanity)
   const daysToTarget = dailyTarget > 0
     ? Math.ceil(profitTarget / dailyTarget)
     : evalBusinessDays;
   const bufferDays = Math.max(0, evalBusinessDays - daysToTarget);
 
-  // ============================================
-  // VALIDAÇÃO DAS CONSTRAINTS
-  // ============================================
-  const constraintsViolated = [];
-  if (!incompatible) {
-    if (roPerTrade > dailyLossLimit) {
-      constraintsViolated.push('roPerTrade excede dailyLossLimit');
-    }
-    if (stopUSD > dailyLossLimit) {
-      constraintsViolated.push('stopPerTrade excede dailyLossLimit');
-    }
-    if (roPerTrade * maxTradesPerDay > dailyLossLimit) {
-      constraintsViolated.push('roPerTrade × maxTradesPerDay excede dailyLossLimit');
-    }
-    if (dailyTarget * evalBusinessDays < profitTarget) {
-      constraintsViolated.push('metaDiaria × diasUteis < profitTarget');
-    }
-  }
-
-  if (!allowed) {
-    constraintsViolated.push(`instrumento '${instrumentSymbol}' não permitido na mesa '${firm}'`);
-  }
-
   return {
     mode: 'execution',
-    profile: validProfile,
+    profile: profileKey,
+    profileName: profile.name,
+    profileFamily: profile.family,
+    profileRecommended: profile.recommended === true,
     dataSource,
     adjustmentFactor: round(adjustmentFactor, 4),
+    assumedWR,
+    wrBelowBreakeven,
 
     // Hard limits da mesa
     drawdownMax,
     dailyLossLimit,
     profitTarget,
+    phase: validPhase,
 
     // Instrumento
     instrument: {
@@ -348,34 +377,44 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
       isMicro: instrument.isMicro,
       pointValue: instrument.pointValue,
       avgDailyRange: instrument.avgDailyRange,
-      type: instrument.type
+      type: instrument.type,
+      minViableStop
     },
 
-    // Por trade (instrument-aware)
-    stopPoints,                          // pontos no instrumento (ex: 20 pts MNQ)
-    stopPerTrade: round(stopUSD, 2),     // USD (ex: $40 MNQ, $400 NQ)
-    stopSource: stop.source,             // 'atr' ou 'min'
-    roPerTrade,                          // USD (stop + overhead, ex: $44 ou $48)
-    rrMinimum,
-    targetPerTrade: round(stopUSD * rrMinimum, 2), // USD esperado por trade ganho
+    // Por trade (back-calculated do RO)
+    roPct: profile.roPct,
+    roPerTrade: roUSD,
+    stopPoints,
+    stopPerTrade: stopUSD,
+    targetPoints,
+    targetPerTrade: targetUSD,
+    rrMinimum: profile.rr,
+    stopNyPct,
+    nyRangePoints: round(nyRange, 2),
 
-    // Diário
+    // Estatísticas e EV
+    winUSD,
+    lossesToBust,
+    evPerTrade,
     maxTradesPerDay,
-    dailyTarget,
 
-    // Total avaliação
+    // Diário / total
+    dailyTarget,
     evalBusinessDays,
     daysToTarget,
     bufferDays,
 
-    // Sizing (1 contrato fixo na Fase 1.5)
+    // Sizing
     sizing,
 
-    // Factibilidade
+    // Viabilidade
     incompatible,
+    inviabilityReason,
     microSuggestion,
-
-    // Validação
+    stopIsNoise,
+    nySessionViable,
+    sessionRestricted,
+    recommendedSessions,
     constraintsViolated,
 
     generatedAt: new Date().toISOString()

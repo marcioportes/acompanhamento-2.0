@@ -18,8 +18,9 @@ import {
   PROP_FIRM_LABELS,
   PROP_FIRM_PHASES,
   PROP_FIRM_PHASE_LABELS,
-  ATTACK_PLAN_PROFILES,
-  ATTACK_PLAN_PROFILE_LABELS,
+  ATTACK_PROFILES,
+  DEFAULT_ATTACK_PROFILE,
+  normalizeAttackProfile,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
@@ -54,7 +55,7 @@ const AddAccountModal = ({
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
-    attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE
+    attackProfile: DEFAULT_ATTACK_PROFILE
   });
 
   const [errors, setErrors] = useState({});
@@ -114,7 +115,7 @@ const AddAccountModal = ({
           selectedFirm: editAccount.propFirm.firmName || '',
           selectedTemplateId: editAccount.propFirm.templateId || '',
           phase: editAccount.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
-          attackProfile: editAccount.propFirm.suggestedPlan?.profile || ATTACK_PLAN_PROFILES.CONSERVATIVE
+          attackProfile: normalizeAttackProfile(editAccount.propFirm.suggestedPlan?.profile)
         });
       }
     } else {
@@ -129,7 +130,7 @@ const AddAccountModal = ({
         selectedFirm: '',
         selectedTemplateId: '',
         phase: PROP_FIRM_PHASES.EVALUATION,
-        attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE
+        attackProfile: DEFAULT_ATTACK_PROFILE
       });
     }
     setErrors({});
@@ -407,28 +408,36 @@ const AddAccountModal = ({
                   </select>
                 </div>
 
-                {/* Perfil do plano de ataque */}
+                {/* Perfil do plano de ataque (5 perfis) */}
                 {selectedTemplate && (
                   <div className="input-group">
                     <label className="input-label text-xs">Perfil do Plano de Ataque</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.entries(ATTACK_PLAN_PROFILE_LABELS).map(([key, label]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: key }))}
-                          className={`p-2 rounded-lg border text-xs font-medium transition-all ${
-                            propFirmData.attackProfile === key
-                              ? key === 'conservative'
-                                ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-                                : 'bg-orange-500/20 border-orange-500/50 text-orange-300'
-                              : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {Object.values(ATTACK_PROFILES).map((p) => {
+                        const selected = propFirmData.attackProfile === p.code;
+                        const isCons = p.family === 'conservative';
+                        return (
+                          <button
+                            key={p.code}
+                            type="button"
+                            onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
+                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}`}
+                            className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
+                              selected
+                                ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
+                                : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
+                            }`}
+                          >
+                            <div>{(p.roPct * 100).toFixed(0)}%</div>
+                            <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
+                            {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                          </button>
+                        );
+                      })}
                     </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
+                    </p>
                   </div>
                 )}
 

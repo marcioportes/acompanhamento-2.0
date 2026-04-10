@@ -23,7 +23,9 @@ import {
   PROP_FIRM_LABELS,
   PROP_FIRM_PHASES,
   PROP_FIRM_PHASE_LABELS,
-  ATTACK_PLAN_PROFILES,
+  ATTACK_PROFILES,
+  DEFAULT_ATTACK_PROFILE,
+  normalizeAttackProfile,
   ATTACK_PLAN_PROFILE_LABELS,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
@@ -123,7 +125,7 @@ const AccountsPage = () => {
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
-    attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE,
+    attackProfile: DEFAULT_ATTACK_PROFILE,
     selectedInstrument: '' // #52 Fase 1.5 — instrumento principal da conta
   });
 
@@ -242,11 +244,11 @@ const AccountsPage = () => {
           selectedFirm: account.propFirm.firmName || '',
           selectedTemplateId: account.propFirm.templateId || '',
           phase: account.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
-          attackProfile: account.propFirm.suggestedPlan?.profile || ATTACK_PLAN_PROFILES.CONSERVATIVE,
+          attackProfile: normalizeAttackProfile(account.propFirm.suggestedPlan?.profile),
           selectedInstrument: account.propFirm.selectedInstrument?.symbol || ''
         });
       } else {
-        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE, selectedInstrument: '' });
+        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
       }
       setIsModalOpen(true);
       setShowBrokerSuggestions(false);
@@ -263,7 +265,7 @@ const AccountsPage = () => {
         type: 'DEMO'
       });
     }
-    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: ATTACK_PLAN_PROFILES.CONSERVATIVE, selectedInstrument: '' });
+    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
     setIsModalOpen(true);
     setShowBrokerSuggestions(false);
   };
@@ -600,13 +602,13 @@ const AccountsPage = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-6 border-b border-slate-800">
               <h3 className="text-xl font-bold text-white">{editingAccount ? 'Editar Conta' : 'Nova Conta'}</h3>
               <button onClick={() => setIsModalOpen(false)}><X className="text-slate-400 hover:text-white" /></button>
             </div>
-            
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
               <div><label className="input-label mb-3">Tipo de Conta</label><div className="grid grid-cols-3 gap-3">{[{ id: 'REAL', icon: ShieldCheck, label: 'Real', color: 'emerald' }, { id: 'DEMO', icon: FlaskConical, label: 'Demo', color: 'yellow' }, { id: 'PROP', icon: Trophy, label: 'Mesa', color: 'purple' }].map(type => (<div key={type.id} onClick={() => setFormData({ ...formData, type: type.id })} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition-all ${formData.type === type.id ? `bg-${type.color}-500/10 border-${type.color}-500/50 text-white` : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><type.icon className={`w-6 h-6 ${formData.type === type.id ? `text-${type.color}-400` : 'text-slate-500'}`} /><span className="text-xs font-bold uppercase">{type.label}</span></div>))}</div></div>
               {/* Prop Firm — seletor condicional (#52) */}
               {formData.type === 'PROP' && (
@@ -615,90 +617,124 @@ const AccountsPage = () => {
                     <Trophy className="w-4 h-4 text-purple-400" />
                     <span className="text-xs font-semibold text-purple-300 uppercase">Configuração da Mesa</span>
                   </div>
-                  <div>
-                    <label className="input-label">Mesa Proprietária *</label>
-                    <select className="input-dark w-full" value={propFirmData.selectedFirm} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedFirm: e.target.value, selectedTemplateId: '' }))}>
-                      <option value="">Selecione a mesa</option>
-                      {firmList.map(firm => (<option key={firm} value={firm}>{PROP_FIRM_LABELS[firm] ?? firm}</option>))}
-                    </select>
-                  </div>
-                  {propFirmData.selectedFirm && (
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="input-label">Produto *</label>
-                      <select className="input-dark w-full" value={propFirmData.selectedTemplateId} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedTemplateId: e.target.value }))}>
-                        <option value="">Selecione o produto</option>
-                        {productsForFirm.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                      <label className="input-label">Mesa Proprietária *</label>
+                      <select className="input-dark w-full" value={propFirmData.selectedFirm} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedFirm: e.target.value, selectedTemplateId: '' }))}>
+                        <option value="">Selecione a mesa</option>
+                        {firmList.map(firm => (<option key={firm} value={firm}>{PROP_FIRM_LABELS[firm] ?? firm}</option>))}
                       </select>
                     </div>
-                  )}
+                    {propFirmData.selectedFirm && (
+                      <div>
+                        <label className="input-label">Produto *</label>
+                        <select className="input-dark w-full" value={propFirmData.selectedTemplateId} onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedTemplateId: e.target.value }))}>
+                          <option value="">Selecione o produto</option>
+                          {productsForFirm.map(t => (<option key={t.id} value={t.id}>{t.name}</option>))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                   {selectedTemplate && (
                     <>
-                      <div>
-                        <label className="input-label">Fase da Conta</label>
-                        <select className="input-dark w-full" value={propFirmData.phase} onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}>
-                          {Object.entries(PROP_FIRM_PHASE_LABELS).map(([k, v]) => (<option key={k} value={k}>{v}</option>))}
-                        </select>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="input-label">Fase da Conta</label>
+                          <select className="input-dark w-full" value={propFirmData.phase} onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}>
+                            {Object.entries(PROP_FIRM_PHASE_LABELS).map(([k, v]) => (<option key={k} value={k}>{v}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="input-label">Instrumento Principal</label>
+                          <select
+                            className="input-dark w-full"
+                            value={propFirmData.selectedInstrument}
+                            onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
+                          >
+                            <option value="">— Sem instrumento (plano abstrato)</option>
+                            {allowedInstruments.map(inst => (
+                              <option key={inst.symbol} value={inst.symbol}>
+                                {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                       <div>
                         <label className="input-label">Perfil do Plano de Ataque</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(ATTACK_PLAN_PROFILE_LABELS).map(([k, v]) => (
-                            <button key={k} type="button" onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: k }))}
-                              className={`p-2 rounded-lg border text-xs font-medium transition-all ${propFirmData.attackProfile === k ? (k === 'conservative' ? 'bg-blue-500/20 border-blue-500/50 text-blue-300' : 'bg-orange-500/20 border-orange-500/50 text-orange-300') : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
-                            >{v}</button>
-                          ))}
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {Object.values(ATTACK_PROFILES).map((p) => {
+                            const selected = propFirmData.attackProfile === p.code;
+                            const isCons = p.family === 'conservative';
+                            return (
+                              <button
+                                key={p.code}
+                                type="button"
+                                onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
+                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}`}
+                                className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
+                                  selected
+                                    ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
+                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                }`}
+                              >
+                                <div>{(p.roPct * 100).toFixed(0)}%</div>
+                                <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
+                                {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                              </button>
+                            );
+                          })}
                         </div>
-                      </div>
-                      {/* Seletor de instrumento (Fase 1.5) */}
-                      <div>
-                        <label className="input-label">Instrumento Principal</label>
-                        <select
-                          className="input-dark w-full"
-                          value={propFirmData.selectedInstrument}
-                          onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
-                        >
-                          <option value="">— Sem instrumento (plano abstrato)</option>
-                          {allowedInstruments.map(inst => (
-                            <option key={inst.symbol} value={inst.symbol}>
-                              {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
-                            </option>
-                          ))}
-                        </select>
                         <p className="text-[10px] text-slate-500 mt-1">
-                          O instrumento define o stop natural realista para o cálculo do plano.
+                          {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
+                          {' · '}{ATTACK_PROFILES[propFirmData.attackProfile]?.maxTradesPerDay ?? '—'} trade(s)/dia · RR 1:2
                         </p>
                       </div>
 
                       {attackPlan && attackPlan.mode === 'abstract' && (
-                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
+                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
                           <span className="text-[10px] text-slate-500 uppercase font-semibold">Constraints da mesa (abstrato — sem instrumento)</span>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                            <span className="text-slate-500">DD total:</span><span className="text-slate-300">${attackPlan.drawdownMax.toLocaleString()}</span>
-                            <span className="text-slate-500">Daily loss limit:</span><span className="text-slate-300">${attackPlan.dailyLossLimit.toLocaleString()}</span>
-                            <span className="text-slate-500">Profit target:</span><span className="text-slate-300">${attackPlan.profitTarget.toLocaleString()}</span>
-                            <span className="text-slate-500">Meta diária:</span><span className="text-slate-300">${attackPlan.dailyTarget.toLocaleString()}</span>
-                            <span className="text-slate-500">Dias úteis:</span><span className="text-slate-300">{attackPlan.evalBusinessDays}</span>
-                            <span className="text-slate-500">RR mínimo:</span><span className="text-slate-300">{attackPlan.rrMinimum}:1</span>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                            <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Daily loss limit</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toLocaleString()}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">RR mínimo</div><div className="text-slate-200 font-mono">{attackPlan.rrMinimum}:1</div></div>
                           </div>
-                          <p className="text-[10px] text-amber-400/80 mt-1 italic">{attackPlan.message}</p>
+                          <p className="text-[10px] text-amber-400/80 italic">{attackPlan.message}</p>
                         </div>
                       )}
 
                       {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (
-                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
+                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
                           <span className="text-[10px] text-slate-500 uppercase font-semibold">
-                            Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name})
+                            Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name}) · {attackPlan.profileName}
                           </span>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                            <span className="text-slate-500">Stop sugerido:</span><span className="text-slate-300">{attackPlan.stopPoints} pts (${attackPlan.stopPerTrade.toFixed(2)})</span>
-                            <span className="text-slate-500">RO/trade:</span><span className="text-slate-300">${attackPlan.roPerTrade.toFixed(2)}</span>
-                            <span className="text-slate-500">Target/trade:</span><span className="text-slate-300">${attackPlan.targetPerTrade.toFixed(2)}</span>
-                            <span className="text-slate-500">RR mínimo:</span><span className="text-slate-300">{attackPlan.rrMinimum}:1</span>
-                            <span className="text-slate-500">Max trades/dia:</span><span className="text-slate-300">{attackPlan.maxTradesPerDay}</span>
-                            <span className="text-slate-500">Meta diária:</span><span className="text-slate-300">${attackPlan.dailyTarget.toFixed(2)}</span>
-                            <span className="text-slate-500">Dias úteis:</span><span className="text-slate-300">{attackPlan.evalBusinessDays}</span>
-                            <span className="text-slate-500">Sizing:</span><span className="text-slate-300">{attackPlan.sizing} contrato</span>
+                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                            <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${attackPlan.roPerTrade.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">Stop</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">Target</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
+                            <div><div className="text-slate-500 text-[10px]">RR</div><div className="text-slate-200 font-mono">1:{attackPlan.rrMinimum}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{attackPlan.maxTradesPerDay}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%</div><div className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${attackPlan.evPerTrade.toFixed(2)}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toFixed(0)}</div></div>
+                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
                           </div>
+                          {attackPlan.wrBelowBreakeven && (
+                            <p className="text-[10px] text-amber-400 mt-1">⚠ WR assumido abaixo do breakeven (33.3%). EV negativa — plano matematicamente inviável.</p>
+                          )}
+                          {attackPlan.sessionRestricted && (
+                            <p className="text-[10px] text-amber-400 mt-1">
+                              ⚠ Stop {attackPlan.stopPoints} pts ({attackPlan.stopNyPct}% do range NY) — <strong>operar somente Ásia/London</strong>. NY consome esse stop por volatilidade.
+                            </p>
+                          )}
+                          {attackPlan.stopIsNoise && (
+                            <p className="text-[10px] text-amber-400/80 mt-1">⚠ Stop muito pequeno relativo ao range NY ({attackPlan.stopNyPct}%) — risco de ruído.</p>
+                          )}
                         </div>
                       )}
 
@@ -706,12 +742,11 @@ const AccountsPage = () => {
                         <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">
                           <div className="flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4 text-red-400" />
-                            <span className="text-xs font-semibold text-red-300">Instrumento incompatível com tamanho da conta</span>
+                            <span className="text-xs font-semibold text-red-300">Instrumento incompatível com este perfil/conta</span>
                           </div>
                           <p className="text-[11px] text-red-200/80">
-                            O stop natural de <strong>{attackPlan.instrument.symbol}</strong> ({attackPlan.stopPoints} pts × ${attackPlan.instrument.pointValue}/pt = ${attackPlan.stopPerTrade.toFixed(2)})
-                            excede o daily loss limit de ${attackPlan.dailyLossLimit.toLocaleString()}.
-                            Um único trade pode estourar o dia inteiro.
+                            <strong>{attackPlan.instrument.symbol}</strong>: RO ${attackPlan.roPerTrade.toFixed(0)} resulta em stop {attackPlan.stopPoints} pts.
+                            {' '}{attackPlan.inviabilityReason}.
                           </p>
                           {attackPlan.microSuggestion && (
                             <button
@@ -738,15 +773,16 @@ const AccountsPage = () => {
                   )}
                 </div>
               )}
-              <div><label className="input-label">Nome da Conta *</label><input required className="input-dark w-full" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
-              <div className="relative"><label className="input-label">Corretora / Mesa *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input required className="input-dark w-full pl-10" value={formData.broker} onChange={e => { setFormData({ ...formData, broker: e.target.value }); setShowBrokerSuggestions(true); }} /></div>{showBrokerSuggestions && filteredBrokers.length > 0 && (<div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">{filteredBrokers.map(broker => (<button key={broker} type="button" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2" onClick={() => { setFormData({ ...formData, broker: broker }); setShowBrokerSuggestions(false); }}><Search className="w-3 h-3 opacity-50" /> {broker}</button>))}</div>)}</div>
-              
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="input-label">Moeda</label><select className="input-dark w-full" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}><option value="BRL">BRL (R$)</option><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
-                <div><label className="input-label">Saldo Inicial *</label><input required type="number" step="0.01" min="0" className="input-dark w-full" value={formData.initialBalance} onChange={e => setFormData({ ...formData, initialBalance: e.target.value })} /></div>
+                <div><label className="input-label">Nome da Conta *</label><input required className="input-dark w-full" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></div>
+                <div className="relative"><label className="input-label">Corretora / Mesa *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" /><input required className="input-dark w-full pl-10" value={formData.broker} onChange={e => { setFormData({ ...formData, broker: e.target.value }); setShowBrokerSuggestions(true); }} /></div>{showBrokerSuggestions && filteredBrokers.length > 0 && (<div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">{filteredBrokers.map(broker => (<button key={broker} type="button" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2" onClick={() => { setFormData({ ...formData, broker: broker }); setShowBrokerSuggestions(false); }}><Search className="w-3 h-3 opacity-50" /> {broker}</button>))}</div>)}</div>
               </div>
 
-              <div><label className="input-label flex items-center gap-2"><Calendar className="w-3 h-3" /> Data de Abertura / Início</label><input type="date" className="input-dark w-full" value={formData.createdAt} onChange={e => setFormData({ ...formData, createdAt: e.target.value })} /></div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><label className="input-label">Moeda</label><select className="input-dark w-full" value={formData.currency} onChange={e => setFormData({ ...formData, currency: e.target.value })}><option value="BRL">BRL (R$)</option><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
+                <div><label className="input-label">Saldo Inicial *</label><input required type="number" step="0.01" min="0" className="input-dark w-full" value={formData.initialBalance} onChange={e => setFormData({ ...formData, initialBalance: e.target.value })} /></div>
+                <div><label className="input-label flex items-center gap-2"><Calendar className="w-3 h-3" /> Data de Abertura</label><input type="date" className="input-dark w-full" value={formData.createdAt} onChange={e => setFormData({ ...formData, createdAt: e.target.value })} /></div>
+              </div>
 
               {editingAccount && (
                 <div className={`mt-4 border rounded-xl p-4 transition-all ${auditState.status === 'issue' ? 'bg-amber-500/10 border-amber-500/30' : auditState.status === 'ok' ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800/50 border-slate-700'}`}>

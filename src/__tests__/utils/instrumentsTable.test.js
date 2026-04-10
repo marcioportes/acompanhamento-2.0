@@ -166,17 +166,17 @@ describe('getInstrument', () => {
 // getSessionRange
 // ============================================
 describe('getSessionRange', () => {
-  it('NQ NY = ATR(400) × 0.60 = 240 pts', () => {
+  it('NQ NY = ATR(549) × 0.60 = 329.4 pts (ATR real v2)', () => {
     const range = getSessionRange('NQ', 'ny');
-    expect(range.rangePoints).toBe(240);
-    expect(range.rangeUSD).toBe(240 * 20); // $4800
+    expect(range.rangePoints).toBeCloseTo(329.4, 1);
+    expect(range.rangeUSD).toBeCloseTo(329.4 * 20, 0); // $6588
     expect(range.sessionName).toBe('New York');
   });
 
-  it('ES London = ATR(55) × 0.23 ≈ 12.65 pts', () => {
+  it('ES London = ATR(123) × 0.23 ≈ 28.29 pts (ATR real v2)', () => {
     const range = getSessionRange('ES', 'london');
-    expect(range.rangePoints).toBeCloseTo(12.65, 2);
-    expect(range.rangeUSD).toBeCloseTo(632.5, 1);
+    expect(range.rangePoints).toBeCloseTo(28.29, 2);
+    expect(range.rangeUSD).toBeCloseTo(1414.5, 1);
   });
 
   it('MNQ herda mesmo ATR de NQ', () => {
@@ -325,41 +325,47 @@ describe('suggestMicroAlternative', () => {
 // ============================================
 // getRecommendedStop
 // ============================================
+// NOTA: getRecommendedStop é helper legado — não mais usado pelo calculator novo
+// (5 perfis usa MIN_VIABLE_STOP do propFirmDefaults). Mantido para retrocompatibilidade
+// e estes testes garantem que ainda funciona com ATR real v2 (09/04/2026).
 describe('getRecommendedStop', () => {
-  it('NQ: ATR 400 × 5% = 20pts (igual ao minStop)', () => {
+  it('NQ: ATR 549 × 5% = 27.45pts (atr prevalece sobre minStop 20)', () => {
     const nq = getInstrument('NQ');
     const stop = getRecommendedStop(nq);
-    expect(stop.stopPoints).toBe(20);
-    expect(stop.stopUSD).toBe(400); // 20 × $20
+    expect(stop.stopPoints).toBeCloseTo(27.45, 2);
+    expect(stop.stopUSD).toBeCloseTo(549, 0); // 27.45 × $20
+    expect(stop.source).toBe('atr');
   });
 
   it('MNQ: mesmo stopPoints, mas USD diferente', () => {
     const mnq = getInstrument('MNQ');
     const stop = getRecommendedStop(mnq);
-    expect(stop.stopPoints).toBe(20);
-    expect(stop.stopUSD).toBe(40); // 20 × $2
+    expect(stop.stopPoints).toBeCloseTo(27.45, 2);
+    expect(stop.stopUSD).toBeCloseTo(54.9, 1); // 27.45 × $2
   });
 
-  it('ES: ATR 55 × 5% = 2.75 → minStop 4 prevalece', () => {
+  it('ES: ATR 123 × 5% = 6.15pts (atr prevalece sobre minStop 4)', () => {
     const es = getInstrument('ES');
     const stop = getRecommendedStop(es);
-    expect(stop.stopPoints).toBe(4);
-    expect(stop.stopUSD).toBe(200); // 4 × $50
-    expect(stop.source).toBe('min'); // minStop prevaleceu
+    expect(stop.stopPoints).toBeCloseTo(6.15, 2);
+    expect(stop.stopUSD).toBeCloseTo(307.5, 1); // 6.15 × $50
+    expect(stop.source).toBe('atr');
   });
 
-  it('YM: ATR 420 × 5% = 21 → maior que minStop 25? Não, 21 < 25, então minStop 25', () => {
+  it('YM: ATR 856 × 5% = 42.8pts (atr prevalece sobre minStop 25)', () => {
     const ym = getInstrument('YM');
     const stop = getRecommendedStop(ym);
-    expect(stop.stopPoints).toBe(25); // minStop prevalece
-    expect(stop.stopUSD).toBe(125); // 25 × $5
-    expect(stop.source).toBe('min');
+    expect(stop.stopPoints).toBeCloseTo(42.8, 2);
+    expect(stop.stopUSD).toBeCloseTo(214, 0); // 42.8 × $5
+    expect(stop.source).toBe('atr');
   });
 
-  it('source = "atr" quando ATR × 5% > minStop', () => {
-    // NQ: ATR 400, ATR×5% = 20, minStop = 20 → empate, atr ganha (>=)
-    const nq = getInstrument('NQ');
-    expect(getRecommendedStop(nq).source).toBe('atr');
+  it('6E: ATR 0.0090 × 5% = 0.00045 → minStop 0.0008 prevalece', () => {
+    // Cenário onde minStop AINDA ganha (instrumento de range pequeno)
+    const eur = getInstrument('6E');
+    const stop = getRecommendedStop(eur);
+    expect(stop.stopPoints).toBeCloseTo(0.0008, 5);
+    expect(stop.source).toBe('min');
   });
 
   it('retorna null para instrument null', () => {
