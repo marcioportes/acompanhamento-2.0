@@ -27,6 +27,7 @@ import {
   Lock
 } from 'lucide-react';
 import { formatCurrencyDynamic } from '../utils/currency';
+import TradeStatusBadges from './TradeStatusBadges';
 
 /**
  * Formatadores Visuais (Helpers)
@@ -172,15 +173,16 @@ const TradesList = ({
                   </td>
                 )}
 
-                {/* TICKER + EXCHANGE */}
+                {/* TICKER + EXCHANGE + BADGES */}
                 <td className="p-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-white">{trade.ticker}</span>
                     {trade.exchange && (
                       <span className="text-[10px] text-slate-500 border border-slate-700 px-1 rounded">
                         {trade.exchange}
                       </span>
                     )}
+                    <TradeStatusBadges trade={trade} />
                   </div>
                 </td>
 

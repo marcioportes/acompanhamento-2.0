@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
+import TradeStatusBadges from '../components/TradeStatusBadges';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -98,10 +99,11 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
             {isWin ? <TrendingUp className="w-6 h-6 text-emerald-400" /> : <TrendingDown className="w-6 h-6 text-red-400" />}
           </div>
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-2xl font-bold text-white">{trade.ticker}</h2>
               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{trade.side}</span>
               {trade.exchange && <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded">{trade.exchange}</span>}
+              <TradeStatusBadges trade={trade} />
             </div>
             <p className="text-slate-400 mt-1">{trade.studentName || trade.studentEmail?.split('@')[0]}</p>
           </div>

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
+import TradeStatusBadges from '../TradeStatusBadges';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
 const fmtTime = (iso) => {
@@ -219,12 +220,13 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   <span className="text-[9px] text-slate-500 ml-1">{fmtTime(trade.entryTime)}</span>
                 </td>
 
-                {/* Ativo + Side (superscript compacto) */}
+                {/* Ativo + Side (superscript compacto) + badges (icon variant) */}
                 <td className="px-2 py-1.5 whitespace-nowrap">
                   <span className="text-white font-bold text-xs">{trade.ticker}</span>
                   <sup className={`text-[8px] ml-0.5 font-bold ${
                     trade.side === 'LONG' ? 'text-emerald-500' : 'text-red-500'
                   }`}>{trade.side === 'LONG' ? 'L' : 'S'}</sup>
+                  <TradeStatusBadges trade={trade} variant="icon" />
                 </td>
 
                 {/* Emoção — só emojis, tooltip com nomes completos */}
