@@ -1013,3 +1013,127 @@ describe('calculateDrawdownState — TRAILING_TO_STATIC (Ylos freeze)', () => {
     expect(r.trailFrozen).toBe(false);
   });
 });
+
+// ============================================
+// Phase-aware drawdown (Ylos fundedDrawdown) — issue #136 Fase C
+// ============================================
+const YLOS_25K_PHASE_AWARE = {
+  firm: 'YLOS',
+  accountSize: 25000,
+  dailyLossLimit: null,
+  profitTarget: 1500,
+  evalTimeLimit: 30,
+  // EVALUATION (Challenge): TRAILING_EOD, sem lock
+  drawdown: {
+    type: DRAWDOWN_TYPES.TRAILING_EOD,
+    maxAmount: 1500,
+    lockAt: null,
+    lockFormula: null
+  },
+  // SIM_FUNDED/LIVE: TRAILING_TO_STATIC com freeze
+  fundedDrawdown: {
+    type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+    maxAmount: 1500,
+    staticTrigger: 100,
+    lockAt: null,
+    lockFormula: null
+  }
+};
+
+describe('calculateDrawdownState — phase-aware (fundedDrawdown)', () => {
+  const accountSize = 25000;
+
+  it('phase EVALUATION: Ylos lê template.drawdown (TRAILING_EOD), não fundedDrawdown', () => {
+    const state = freshState(YLOS_25K_PHASE_AWARE);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_25K_PHASE_AWARE,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 2000, // 27000 — acima do trigger funded, mas EVAL não aplica
+      tradeDate: '2026-04-10',
+      phase: 'EVALUATION'
+    });
+    expect(r.trailFrozen).toBe(false);
+    expect(r.flags).not.toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+    // EOD não atualiza peak intraday no primeiro trade
+    expect(r.peakBalance).toBe(25000);
+  });
+
+  it('phase SIM_FUNDED: Ylos lê fundedDrawdown (TRAILING_TO_STATIC), freeze dispara', () => {
+    const state = freshState(YLOS_25K_PHASE_AWARE);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_25K_PHASE_AWARE,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 2000, // 27000 — acima do trigger
+      tradeDate: '2026-04-10',
+      phase: 'SIM_FUNDED'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.currentDrawdownThreshold).toBe(25500);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('phase LIVE: mesma lógica de SIM_FUNDED', () => {
+    const state = freshState(YLOS_25K_PHASE_AWARE);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_25K_PHASE_AWARE,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 2000,
+      tradeDate: '2026-04-10',
+      phase: 'LIVE'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('phase ausente: default EVALUATION (back-compat com chamadas antigas)', () => {
+    const state = freshState(YLOS_25K_PHASE_AWARE);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_25K_PHASE_AWARE,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 2000,
+      tradeDate: '2026-04-10'
+      // phase omitido
+    });
+    expect(r.trailFrozen).toBe(false); // EVAL default → usa drawdown (EOD)
+  });
+
+  it('template sem fundedDrawdown (Apex) em phase SIM_FUNDED: cai no drawdown default', () => {
+    const state = freshState(APEX_EOD_25K);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: APEX_EOD_25K,
+      accountSize: 25000,
+      balanceBefore: 25000,
+      tradeNet: 500,
+      tradeDate: '2026-04-10',
+      phase: 'SIM_FUNDED'
+    });
+    // Apex não tem fundedDrawdown → usa template.drawdown (TRAILING_EOD) normal
+    expect(r.trailFrozen).toBe(false);
+    expect(r.flags).not.toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('phase SIM_FUNDED: trail sobe antes do trigger Ylos', () => {
+    const state = freshState(YLOS_25K_PHASE_AWARE);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_25K_PHASE_AWARE,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 1000, // 26000, abaixo do trigger 26600
+      tradeDate: '2026-04-10',
+      phase: 'SIM_FUNDED'
+    });
+    expect(r.peakBalance).toBe(26000); // intraday, trail ativo
+    expect(r.currentDrawdownThreshold).toBe(24500);
+    expect(r.trailFrozen).toBe(false);
+  });
+});

@@ -355,13 +355,15 @@ const recalculatePropFirmState = async (accountId, trade, tradeId) => {
       accountSize,
       balanceBefore,
       tradeNet: trade.result,
-      tradeDate: trade.date
+      tradeDate: trade.date,
+      phase: propFirm.phase
     });
 
     t.update(accountRef, {
       'propFirm.peakBalance': result.peakBalance,
       'propFirm.currentDrawdownThreshold': result.currentDrawdownThreshold,
       'propFirm.lockLevel': result.lockLevel,
+      'propFirm.trailFrozen': result.trailFrozen,
       'propFirm.isDayPaused': result.isDayPaused,
       'propFirm.tradingDays': result.tradingDays,
       'propFirm.dailyPnL': result.dailyPnL,

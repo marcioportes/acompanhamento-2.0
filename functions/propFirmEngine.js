@@ -47,6 +47,15 @@ function resolveLockAt(template, accountSize) {
   return null;
 }
 
+function getActiveDrawdown(template, phase) {
+  const activePhase = phase || 'EVALUATION';
+  const isFunded = activePhase === 'SIM_FUNDED' || activePhase === 'LIVE';
+  if (isFunded && template && template.fundedDrawdown) {
+    return template.fundedDrawdown;
+  }
+  return template && template.drawdown;
+}
+
 function getPeakUpdateMode(type) {
   if (type === DRAWDOWN_TYPES.STATIC) return 'never';
   if (type === DRAWDOWN_TYPES.TRAILING_EOD) return 'eod';
@@ -77,7 +86,8 @@ function calculateDrawdownState(args) {
     accountSize,
     balanceBefore,
     tradeNet,
-    tradeDate
+    tradeDate,
+    phase
   } = args;
 
   if (!template || !template.drawdown) {
@@ -96,8 +106,14 @@ function calculateDrawdownState(args) {
     throw new Error('tradeDate (YYYY-MM-DD) é obrigatório');
   }
 
-  const drawdownType = template.drawdown.type;
-  const drawdownMax = template.drawdown.maxAmount || 0;
+  const activePhase = phase || (propFirm && propFirm.phase) || 'EVALUATION';
+  const activeDrawdown = getActiveDrawdown(template, activePhase);
+  if (!activeDrawdown) {
+    throw new Error('activeDrawdown não resolvido — template sem drawdown ou fundedDrawdown');
+  }
+
+  const drawdownType = activeDrawdown.type;
+  const drawdownMax = activeDrawdown.maxAmount || 0;
   const dailyLossLimit = template.dailyLossLimit || 0;
   const peakMode = getPeakUpdateMode(drawdownType);
 
@@ -130,13 +146,18 @@ function calculateDrawdownState(args) {
     peakBalance = Math.max(peakBalance, newBalance);
   }
 
-  const lockAt = resolveLockAt(template, accountSize);
+  let lockAt = null;
+  if (typeof activeDrawdown.lockAt === 'number') {
+    lockAt = activeDrawdown.lockAt;
+  } else if (activeDrawdown.lockFormula === 'BALANCE + DD + 100') {
+    lockAt = accountSize + drawdownMax + 100;
+  }
   if (lockAt !== null && lockLevel === null && peakBalance >= lockAt) {
     lockLevel = accountSize;
   }
 
   if (isTrailToStatic && !trailFrozen) {
-    const staticTrigger = (template.drawdown.staticTrigger != null) ? template.drawdown.staticTrigger : 100;
+    const staticTrigger = (activeDrawdown.staticTrigger != null) ? activeDrawdown.staticTrigger : 100;
     const triggerBalance = accountSize + drawdownMax + staticTrigger;
     if (newBalance >= triggerBalance) {
       trailFrozen = true;
@@ -221,6 +242,7 @@ module.exports = {
   DRAWDOWN_FLAGS,
   DD_NEAR_THRESHOLD,
   resolveLockAt,
+  getActiveDrawdown,
   getPeakUpdateMode,
   initializePropFirmState,
   calculateDrawdownState,

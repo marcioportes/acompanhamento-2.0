@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.26.3: feat: Templates Ylos Trading + engine phase-aware — 7 templates (6 Challenge + Freedom 50K), fundedDrawdown opcional por template, resolução automática por account.propFirm.phase (EVAL→drawdown, SIM_FUNDED/LIVE→fundedDrawdown), CF persiste trailFrozen (gap Fase B), 6 testes phase-aware (issue #136 Fase C E4)
  * - 1.26.2: feat: Engine drawdown TRAILING_TO_STATIC (Ylos Funded freeze) — novo tipo + flag TRAIL_FROZEN + campo account.propFirm.trailFrozen, espelhado em functions/propFirmEngine.js, 10 testes novos, regressão Apex zero (issue #136 Fase B E5)
  * - 1.26.1: fix: Plano sugerido PROP Fase A — stop período derivado (maxTrades × RO), tooltip meta diária, resumo coerente com daily loss mesa condicional (issue #136 E1+E2+E3)
  * - 1.26.0: feat: Order Import V1.1 redesign — criação automática de trades, confronto enriquecido (updateDoc), categorização 3 grupos (ghost/confront/ambígua), throttling >20, lowResolution flag, badges "Importado"/"Complemento pendente", labels STEP DONE corretas (issue #093 redesign, epic #128)
@@ -42,10 +43,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.26.2',
+  version: '1.26.3',
   build: '20260411',
-  display: 'v1.26.2',
-  full: '1.26.2+20260411',
+  display: 'v1.26.3',
+  full: '1.26.3+20260411',
 };
 export default VERSION;
 export { VERSION };
