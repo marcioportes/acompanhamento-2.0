@@ -83,8 +83,14 @@ Toda modificação do PROJECT.md **DEVE**: (1) incrementar versão no header (se
 ### INV-15: Aprovação Obrigatória para Persistência
 Toda criação de collection, subcollection, ou campo novo no Firestore exige: (1) justificativa escrita com análise de dependência conceitual, (2) parecer técnico com prós/contras das opções de modelagem, (3) aprovação explícita do Marcio. Nenhuma estrutura de dados é criada sem passar por este gate.
 
-### INV-16: Isolamento de Sessões Paralelas via Worktree
-Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado (`git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk. Worktrees são removidos após merge.
+### INV-16: Isolamento de Sessões Paralelas via Worktree (OBRIGATÓRIO SEMPRE)
+**Toda sessão de código — paralela ou não — opera DENTRO de um git worktree dedicado. Sem exceção.** Trabalho direto na working tree principal (`~/projects/acompanhamento-2.0`) é **PROIBIDO** para qualquer modificação de código. O repo principal é trunk exclusivo — só recebe merges.
+
+**Padrão de nome (único e inequívoco):** `~/projects/issue-{NNN}`
+**Comando:** `git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao`
+**Remoção:** após merge confirmado — `git worktree remove ~/projects/issue-{NNN}` (passo §4.3 obrigatório)
+
+A criação do worktree é um passo do protocolo §4.0 Abertura de Sessão e **não pode ser omitida nem adiada**. Se você está prestes a editar um arquivo de código e não está dentro de `~/projects/issue-{NNN}`, PARE — crie o worktree primeiro.
 
 ---
 
@@ -100,14 +106,14 @@ Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção
    - Se algum chunk está LOCKED: **PARAR**. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    - Se chunk não existe no registry: **PARAR**. Propor novo chunk ao Marcio
 5. **Registrar lock** no registry: chunk + issue + branch + data
-6. Criar/verificar arquivo de controle em `docs/dev/issues/`
-7. Criar/verificar branch (`tipo/issue-NNN-descricao`)
+6. **Criar worktree isolado** (INV-16 — OBRIGATÓRIO, NUNCA OMITIR): `git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao`
+7. Criar/verificar arquivo de controle em `docs/dev/issues/` (dentro do worktree)
 8. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
 
 - Se o issue **não existir** no GitHub → perguntar ao usuário se deseja criá-lo
 - Se o arquivo de controle **não existir** → criá-lo a partir do template (PROJECT.md §4.0), incluindo seção 6 (Chunks)
-- Se a branch **não existir** → criá-la
-- **Nunca pular etapas**
+- Se o **worktree não existir** → criá-lo imediatamente (passo 6). **Nunca começar a editar código fora do worktree.**
+- **Nunca pular etapas** — o passo do worktree é tão obrigatório quanto o arquivo de controle e o lock
 
 > **Modo leitura** de chunk não requer lock — a sessão pode consultar arquivos de qualquer chunk.
 > **Modo escrita** requer lock exclusivo — apenas uma sessão por chunk.

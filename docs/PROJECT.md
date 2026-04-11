@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.12.0  
-> **Última atualização:** 10/04/2026 — Order Import V1.1 redesign (#93), DEC-063 a DEC-067, v1.26.0  
+> **Versão:** 0.12.1  
+> **Última atualização:** 11/04/2026 — INV-16 reforçada + padrão único de nome worktree `~/projects/issue-{NNN}`  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -35,6 +35,7 @@ Este documento segue versionamento semântico:
 | 0.10.1 | 05/04/2026 | Encerramento #122/#123 | DEC-060/061/062 adicionados, locks CHUNK-02/16 registrados retroativamente em §6.3 |
 | 0.10.2 | 06/04/2026 | #122/#123 mergeados | PR #124 mergeado, locks CHUNK-02/16 liberados (AVAILABLE), removidos de Locks ativos |
 | 0.12.0 | 10/04/2026 | Order Import V1.1 redesign | #93 v1.26.0, DEC-063 a DEC-067, criação automática + confronto enriquecido |
+| 0.12.1 | 11/04/2026 | Reforço INV-16 worktree | INV-16 reescrita (obrigatória sempre), padrão único `~/projects/issue-{NNN}`, passo worktree explícito em §4.0 e CLAUDE.md §Ativação Automática |
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 
 **Regra de uso:**
@@ -313,8 +314,23 @@ Toda modificação deste documento DEVE: (1) incrementar a versão no header (se
 ### INV-15: Aprovação Obrigatória para Persistência
 Toda criação de collection, subcollection, ou campo novo no Firestore exige: (1) justificativa escrita com análise de dependência conceitual (a entidade existe sozinha ou depende de outra?), (2) parecer técnico com prós/contras das opções de modelagem (collection raiz vs subcollection vs field inline), (3) aprovação explícita do Marcio antes de implementar. Nenhuma estrutura de dados é criada sem passar por este gate.
 
-### INV-16: Isolamento de Sessões Paralelas via Worktree
-Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cria um git worktree dedicado para sua branch (`git worktree add ~/projects/issue-{NNN} feature/issue-NNN-descricao`). O repo principal é o trunk — sessões trabalham exclusivamente no worktree. Worktrees são removidos após merge. Trabalho direto na working tree principal é proibido para sessões de código.
+### INV-16: Isolamento via Worktree — OBRIGATÓRIO SEMPRE
+**Toda sessão de código opera dentro de um git worktree dedicado. Sem exceção — paralela ou não.** Editar código na working tree principal (`~/projects/acompanhamento-2.0`) é **PROIBIDO**. O repo principal é trunk exclusivo: recebe merges, nunca edições diretas.
+
+**Padrão único e inequívoco de nome:** `~/projects/issue-{NNN}`
+(nomes antigos como `acomp-{NNN}` estão **descontinuados**)
+
+**Comando de criação (passo §4.0 obrigatório):**
+```
+git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao
+```
+
+**Comando de remoção (passo §4.3 obrigatório após merge):**
+```
+git worktree remove ~/projects/issue-{NNN}
+```
+
+**Gate de verificação antes de qualquer edição de código:** se `pwd` não retorna `~/projects/issue-{NNN}`, PARE — o worktree não foi criado ou você está no diretório errado. Crie/entre no worktree antes de prosseguir. A criação do worktree **não pode ser omitida nem adiada** sob nenhuma justificativa.
 
 ---
 
@@ -331,9 +347,9 @@ Sessões paralelas de código NUNCA operam no mesmo diretório. Cada sessão cri
    → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
 □ Registrar lock no registry: chunk + issue + branch + data
-□ Criar worktree isolado: git worktree add ~/projects/acomp-{NNN} feature/issue-NNN-descricao (INV-16)
+□ Criar worktree isolado: git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao (INV-16 — OBRIGATÓRIO, PADRÃO ÚNICO DE NOME)
 □ Criar arquivo docs/dev/issues/issue-NNN-descricao.md a partir do template abaixo
-□ Registrar branch: git checkout -b tipo/issue-NNN-descricao (dentro do worktree)
+□ Branch criada automaticamente pelo -b acima; confirmar que está dentro do worktree (pwd deve ser ~/projects/issue-{NNN})
 □ Preencher seções 1 (Contexto), 2 (Acceptance Criteria), 3 (Análise de Impacto) e 6 (Chunks)
 □ Só então iniciar Gate Pré-Código (seção 4.1)
 ```
@@ -469,7 +485,7 @@ Ao final de cada sessão, antes de encerrar:
 
 4. **Liberar locks de chunks desta sessão** no registry (seção 6.3) — liberar APENAS os locks registrados por esta sessão/issue. Nunca tocar em locks de outras sessões.
 
-5. **Remover worktree** após merge confirmado: `git worktree remove ~/projects/acomp-{NNN}` (INV-16)
+5. **Remover worktree** após merge confirmado: `git worktree remove ~/projects/issue-{NNN}` (INV-16 — padrão único de nome)
 
 6. **Mover issue file para archive** após merge confirmado:
    `mv docs/dev/issues/issue-NNN-nome.md docs/archive/`
