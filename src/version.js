@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.26.2: feat: Engine drawdown TRAILING_TO_STATIC (Ylos Funded freeze) — novo tipo + flag TRAIL_FROZEN + campo account.propFirm.trailFrozen, espelhado em functions/propFirmEngine.js, 10 testes novos, regressão Apex zero (issue #136 Fase B E5)
  * - 1.26.1: fix: Plano sugerido PROP Fase A — stop período derivado (maxTrades × RO), tooltip meta diária, resumo coerente com daily loss mesa condicional (issue #136 E1+E2+E3)
  * - 1.26.0: feat: Order Import V1.1 redesign — criação automática de trades, confronto enriquecido (updateDoc), categorização 3 grupos (ghost/confront/ambígua), throttling >20, lowResolution flag, badges "Importado"/"Complemento pendente", labels STEP DONE corretas (issue #093 redesign, epic #128)
  * - 1.25.0: feat: Prop Firm Engine (#52) — Fase 1 templates/config/plano rule-based, Fase 1.5 instrumentsTable curada + 5 perfis determinísticos instrument-aware + viabilidade + restrição sessão NY, Fase 2 engine drawdown puro + CF onTrade* integrada + subcollection drawdownHistory + notificações throttled, correção crítica ATR v2 (TradingView real), DEC-060/061/062, DT-034
@@ -41,10 +42,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.26.1',
+  version: '1.26.2',
   build: '20260411',
-  display: 'v1.26.1',
-  full: '1.26.1+20260411',
+  display: 'v1.26.2',
+  full: '1.26.2+20260411',
 };
 export default VERSION;
 export { VERSION };

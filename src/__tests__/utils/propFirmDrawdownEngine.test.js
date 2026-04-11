@@ -829,3 +829,187 @@ describe('Cenário integrado — Apex EOD 25K eval realista', () => {
     expect(r.flags).toContain(DRAWDOWN_FLAGS.ACCOUNT_BUST);
   });
 });
+
+// ============================================
+// TRAILING_TO_STATIC (Ylos Funded) — issue #136 Fase B
+// ============================================
+const YLOS_FUNDED_25K = {
+  drawdown: {
+    type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+    maxAmount: 1500,
+    staticTrigger: 100,
+    lockAt: null,
+    lockFormula: null
+  },
+  dailyLossLimit: null,
+  profitTarget: 1500,
+  evalTimeLimit: 30,
+  accountSize: 25000
+};
+
+describe('calculateDrawdownState — TRAILING_TO_STATIC (Ylos freeze)', () => {
+  const accountSize = 25000;
+
+  it('trail sobe normalmente antes do trigger', () => {
+    const state = freshState(YLOS_FUNDED_25K);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_FUNDED_25K,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 1000,
+      tradeDate: '2026-04-10'
+    });
+    expect(r.peakBalance).toBe(26000);
+    expect(r.currentDrawdownThreshold).toBe(24500);
+    expect(r.trailFrozen).toBe(false);
+    expect(r.flags).not.toContain('TRAIL_FROZEN');
+  });
+
+  it('freeze exato no trigger (balance == accountSize + DD + staticTrigger)', () => {
+    const state = freshState(YLOS_FUNDED_25K);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_FUNDED_25K,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 1600,
+      tradeDate: '2026-04-10'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.currentDrawdownThreshold).toBe(25100);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('freeze após salto grande (balance ultrapassa trigger)', () => {
+    const state = freshState(YLOS_FUNDED_25K);
+    const r = calculateDrawdownState({
+      propFirm: state,
+      template: YLOS_FUNDED_25K,
+      accountSize,
+      balanceBefore: 25000,
+      tradeNet: 2000,
+      tradeDate: '2026-04-10'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.currentDrawdownThreshold).toBe(25500);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('balance cai após freeze: threshold permanece, peak não se move', () => {
+    let state = freshState(YLOS_FUNDED_25K);
+    let r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 25000, tradeNet: 2000, tradeDate: '2026-04-10'
+    });
+    state = { ...state, ...r };
+
+    r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 27000, tradeNet: -1000, tradeDate: '2026-04-10'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.peakBalance).toBe(27000);
+    expect(r.currentDrawdownThreshold).toBe(25500);
+    expect(r.flags).not.toContain('TRAIL_FROZEN');
+  });
+
+  it('balance sobe após freeze: threshold NÃO sobe mais (congelado)', () => {
+    let state = freshState(YLOS_FUNDED_25K);
+    let r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 25000, tradeNet: 2000, tradeDate: '2026-04-10'
+    });
+    state = { ...state, ...r };
+
+    r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 27000, tradeNet: 1000, tradeDate: '2026-04-10'
+    });
+    expect(r.trailFrozen).toBe(true);
+    expect(r.peakBalance).toBe(27000);
+    expect(r.currentDrawdownThreshold).toBe(25500);
+  });
+
+  it('bust detection após freeze: balance abaixo do threshold congelado', () => {
+    let state = freshState(YLOS_FUNDED_25K);
+    let r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 25000, tradeNet: 2000, tradeDate: '2026-04-10'
+    });
+    state = { ...state, ...r };
+
+    r = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 27000, tradeNet: -2000, tradeDate: '2026-04-10'
+    });
+    expect(r.newBalance).toBe(25000);
+    expect(r.currentDrawdownThreshold).toBe(25500);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.ACCOUNT_BUST);
+  });
+
+  it('flag TRAIL_FROZEN emitida uma única vez', () => {
+    let state = freshState(YLOS_FUNDED_25K);
+    let r1 = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 25000, tradeNet: 2000, tradeDate: '2026-04-10'
+    });
+    state = { ...state, ...r1 };
+    expect(r1.flags).toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+
+    const r2 = calculateDrawdownState({
+      propFirm: state, template: YLOS_FUNDED_25K, accountSize,
+      balanceBefore: 27000, tradeNet: 500, tradeDate: '2026-04-10'
+    });
+    expect(r2.flags).not.toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+  });
+
+  it('staticTrigger custom (500) desloca o trigger', () => {
+    const tplCustom = {
+      ...YLOS_FUNDED_25K,
+      drawdown: { ...YLOS_FUNDED_25K.drawdown, staticTrigger: 500 }
+    };
+    const state = freshState(tplCustom);
+    const rBefore = calculateDrawdownState({
+      propFirm: state, template: tplCustom, accountSize,
+      balanceBefore: 25000, tradeNet: 1999, tradeDate: '2026-04-10'
+    });
+    expect(rBefore.trailFrozen).toBe(false);
+
+    const rAt = calculateDrawdownState({
+      propFirm: state, template: tplCustom, accountSize,
+      balanceBefore: 25000, tradeNet: 2000, tradeDate: '2026-04-10'
+    });
+    expect(rAt.trailFrozen).toBe(true);
+  });
+
+  it('staticTrigger ausente → default 100', () => {
+    const tplNoTrigger = {
+      ...YLOS_FUNDED_25K,
+      drawdown: { type: DRAWDOWN_TYPES.TRAILING_TO_STATIC, maxAmount: 1500, lockAt: null, lockFormula: null }
+    };
+    const state = freshState(tplNoTrigger);
+    const r = calculateDrawdownState({
+      propFirm: state, template: tplNoTrigger, accountSize,
+      balanceBefore: 25000, tradeNet: 1600, tradeDate: '2026-04-10'
+    });
+    expect(r.trailFrozen).toBe(true);
+  });
+
+  it('regressão Apex EOD 25K: path antigo intocado — lock Apex não afetado', () => {
+    let state = freshState(APEX_EOD_25K);
+    let r = calculateDrawdownState({
+      propFirm: state, template: APEX_EOD_25K, accountSize: 25000,
+      balanceBefore: 25000, tradeNet: 1200, tradeDate: '2026-04-10'
+    });
+    state = { ...state, ...r };
+    r = calculateDrawdownState({
+      propFirm: state, template: APEX_EOD_25K, accountSize: 25000,
+      balanceBefore: 26200, tradeNet: 0, tradeDate: '2026-04-11'
+    });
+    expect(r.lockLevel).toBe(25000);
+    expect(r.flags).toContain(DRAWDOWN_FLAGS.LOCK_ACTIVATED);
+    expect(r.flags).not.toContain(DRAWDOWN_FLAGS.TRAIL_FROZEN);
+    expect(r.trailFrozen).toBe(false);
+  });
+});

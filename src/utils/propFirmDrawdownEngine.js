@@ -39,7 +39,8 @@ export const DRAWDOWN_FLAGS = {
   DAILY_LOSS_HIT: 'DAILY_LOSS_HIT',         // dailyPnL atingiu daily loss limit
   ACCOUNT_BUST: 'ACCOUNT_BUST',             // newBalance ≤ currentDrawdownThreshold
   DD_NEAR: 'DD_NEAR',                       // distanceToDD < 20%
-  LOCK_ACTIVATED: 'LOCK_ACTIVATED',         // lockLevel ativado neste trade
+  LOCK_ACTIVATED: 'LOCK_ACTIVATED',         // lockLevel ativado neste trade (Apex)
+  TRAIL_FROZEN: 'TRAIL_FROZEN',             // trail congelado neste trade (Ylos TRAILING_TO_STATIC)
   EVAL_DEADLINE_NEAR: 'EVAL_DEADLINE_NEAR'  // (helper separado)
 };
 
@@ -106,6 +107,7 @@ export function initializePropFirmState(template, accountSize) {
     peakBalance: accountSize,
     currentDrawdownThreshold: accountSize - drawdownMax,
     lockLevel: null,
+    trailFrozen: false,
     isDayPaused: false,
     tradingDays: 0,
     dailyPnL: 0,
@@ -168,7 +170,10 @@ export function calculateDrawdownState({
   let tradingDays = propFirm?.tradingDays ?? 0;
   let lockLevel = propFirm?.lockLevel ?? null;
   const previousLockLevel = lockLevel;
+  let trailFrozen = propFirm?.trailFrozen ?? false;
+  const previousTrailFrozen = trailFrozen;
   const lastTradeDate = propFirm?.lastTradeDate ?? null;
+  const isTrailToStatic = drawdownType === DRAWDOWN_TYPES.TRAILING_TO_STATIC;
 
   // ============================================
   // 1. Detectar novo dia
@@ -196,14 +201,14 @@ export function calculateDrawdownState({
   dailyPnL = round(dailyPnL + tradeNet, 2);
 
   // ============================================
-  // 3. Atualizar peak (intraday) — não atualiza após lock
+  // 3. Atualizar peak (intraday) — não atualiza após lock ou freeze
   // ============================================
-  if (peakMode === 'intraday' && lockLevel === null) {
+  if (peakMode === 'intraday' && lockLevel === null && !trailFrozen) {
     peakBalance = Math.max(peakBalance, newBalance);
   }
 
   // ============================================
-  // 4. Verificar lock
+  // 4a. Verificar lock Apex (fórmula fixa → lockLevel = accountSize)
   // ============================================
   const lockAt = resolveLockAt(template, accountSize);
   if (lockAt !== null && lockLevel === null && peakBalance >= lockAt) {
@@ -212,11 +217,28 @@ export function calculateDrawdownState({
   }
 
   // ============================================
+  // 4b. Verificar freeze Ylos (TRAILING_TO_STATIC) — captura threshold do momento
+  // ============================================
+  if (isTrailToStatic && !trailFrozen) {
+    const staticTrigger = template.drawdown.staticTrigger ?? 100;
+    const triggerBalance = accountSize + drawdownMax + staticTrigger;
+    if (newBalance >= triggerBalance) {
+      trailFrozen = true;
+    }
+  }
+
+  // ============================================
   // 5. Calcular currentDrawdownThreshold
   // ============================================
   let currentDrawdownThreshold;
   if (drawdownType === DRAWDOWN_TYPES.STATIC) {
     currentDrawdownThreshold = accountSize - drawdownMax;
+  } else if (isTrailToStatic && trailFrozen) {
+    // Primeiro trade em estado frozen: captura threshold com base no peak atual.
+    // Trades subsequentes: mantém valor já persistido em propFirm.
+    currentDrawdownThreshold = previousTrailFrozen
+      ? (propFirm?.currentDrawdownThreshold ?? (peakBalance - drawdownMax))
+      : (peakBalance - drawdownMax);
   } else if (lockLevel !== null) {
     currentDrawdownThreshold = lockLevel;
   } else {
@@ -245,12 +267,14 @@ export function calculateDrawdownState({
   if (newBalance <= currentDrawdownThreshold) flags.push(DRAWDOWN_FLAGS.ACCOUNT_BUST);
   if (distanceToDD < DD_NEAR_THRESHOLD && distanceToDD > 0) flags.push(DRAWDOWN_FLAGS.DD_NEAR);
   if (lockLevel !== null && previousLockLevel === null) flags.push(DRAWDOWN_FLAGS.LOCK_ACTIVATED);
+  if (trailFrozen && !previousTrailFrozen) flags.push(DRAWDOWN_FLAGS.TRAIL_FROZEN);
 
   return {
     // Estado novo (escrito pela CF em account.propFirm.*)
     peakBalance: round(peakBalance, 2),
     currentDrawdownThreshold: round(currentDrawdownThreshold, 2),
     lockLevel: lockLevel !== null ? round(lockLevel, 2) : null,
+    trailFrozen,
     isDayPaused,
     tradingDays,
     dailyPnL,
