@@ -31,6 +31,7 @@ import {
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { computePropPlanDefaults } from '../utils/propPlanDefaults';
 import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
@@ -459,26 +460,10 @@ const AccountsPage = () => {
         }
         const newAccountId = await addAccount(createPayload);
 
-        // Auto-abrir modal de plano para conta PROP com defaults do attackPlan (#52 + Fase 1.5)
+        // Auto-abrir modal de plano para conta PROP com defaults do attackPlan (#52 + Fase 1.5 + #136)
         if (formData.type === 'PROP' && attackPlan && selectedTemplate && newAccountId) {
           const pl = Number(formData.initialBalance);
-          const isExecution = attackPlan.mode === 'execution' && !attackPlan.incompatible;
-
-          // Conversão valores absolutos → percentuais do PL (para o plan modal)
-          const toPct = (absValue) => pl > 0 && absValue > 0
-            ? Math.round((absValue / pl) * 1000) / 10
-            : 0;
-
-          // Constraints da mesa sempre presentes (mode abstract OU execution)
-          const cycleGoalPct = toPct(attackPlan.profitTarget) || 10.0;
-          const cycleStopPct = toPct(attackPlan.drawdownMax) || 10.0;
-          const periodGoalPct = toPct(attackPlan.dailyTarget) || 1.0;
-          const periodStopPct = toPct(attackPlan.dailyLossLimit) || 2.0;
-
-          // riskPerOperation: se execution, usa roPerTrade real; se abstract, default conservador
-          const riskPctPerOp = isExecution
-            ? toPct(attackPlan.roPerTrade) || 0.5
-            : 0.5; // sem instrumento → default 0.5% até refinar
+          const defaults = computePropPlanDefaults(attackPlan, pl);
 
           setPropPlanDefaults({
             __isDefaults: true,
@@ -488,13 +473,13 @@ const AccountsPage = () => {
             pl,
             currency: formData.currency,
             adjustmentCycle: 'Mensal',
-            cycleGoal: cycleGoalPct,
-            cycleStop: cycleStopPct,
+            cycleGoal: defaults.cycleGoalPct,
+            cycleStop: defaults.cycleStopPct,
             operationPeriod: 'Diário',
-            periodGoal: periodGoalPct,
-            periodStop: periodStopPct,
-            riskPerOperation: riskPctPerOp,
-            rrTarget: attackPlan.rrMinimum ?? 1.5
+            periodGoal: defaults.periodGoalPct,
+            periodStop: defaults.periodStopPct,
+            riskPerOperation: defaults.riskPctPerOp,
+            rrTarget: defaults.rrTarget
           });
           setIsModalOpen(false);
           setTimeout(() => {

@@ -11,6 +11,7 @@ import {
   Trophy,
   Info
 } from 'lucide-react';
+import DebugBadge from './DebugBadge';
 import { ACCOUNT_TYPES } from '../firebase';
 import { useMasterData } from '../hooks/useMasterData';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
@@ -455,7 +456,12 @@ const AddAccountModal = ({
                       <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
                       <div className="text-slate-500">Profit target:</div>
                       <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
-                      <div className="text-slate-500">Meta diária:</div>
+                      <div
+                        className="text-slate-500 flex items-center gap-1 cursor-help"
+                        title={`Ritmo médio de acumulação para atingir o profit target ($${attackPlan.profitTarget?.toLocaleString() ?? '—'}) no prazo da avaliação. NÃO é o alvo por trade — seu target por trade é definido pelo RR ${attackPlan.rrMinimum}:1.`}
+                      >
+                        Meta diária: <Info className="w-3 h-3 text-slate-600" />
+                      </div>
                       <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
                       <div className="text-slate-500">RR mínimo:</div>
                       <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
@@ -583,6 +589,7 @@ const AddAccountModal = ({
             </div>
           </form>
         </div>
+        <DebugBadge component="AddAccountModal" />
       </div>
     </>
   );

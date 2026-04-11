@@ -16,6 +16,7 @@ import {
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { formatCurrency } from '../utils/calculations';
+import DebugBadge from './DebugBadge';
 
 const PLAN_TYPES = ['Day Trade', 'Swing Trade', 'Position', 'Opções', 'Crypto Spot', 'Forex'];
 const CYCLES = ['Semanal', 'Mensal', 'Trimestral', 'Anual'];
@@ -379,6 +380,14 @@ const PlanManagementModal = ({
                           <span className="text-red-400 font-mono text-xs">{formData.periodStop}% · -{formatCurrency(calcValue(formData.periodStop), accountCurrency)}</span>
                         </div>
                       </div>
+                      {selectedAccount?.propFirm?.suggestedPlan?.dailyLossLimit > 0 && (
+                        <div className="flex justify-between mt-1 pt-1 border-t border-slate-700/30">
+                          <span className="text-slate-500 text-[10px]">Daily loss mesa (hard limit):</span>
+                          <span className="text-slate-500 font-mono text-[10px]">
+                            -{formatCurrency(selectedAccount.propFirm.suggestedPlan.dailyLossLimit, accountCurrency)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="border-t border-slate-700/50 pt-2">
                       <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2">Ciclo ({formData.adjustmentCycle})</p>
@@ -434,6 +443,7 @@ const PlanManagementModal = ({
         .input-dark:focus { border-color: rgb(59 130 246); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
         .error-msg { font-size: 0.75rem; color: rgb(248 113 113); margin-top: 0.25rem; display: block; }
       `}</style>
+      <DebugBadge component="PlanManagementModal" />
     </div>
   );
 };
