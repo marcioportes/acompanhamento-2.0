@@ -676,52 +676,131 @@ const AccountsPage = () => {
                         </p>
                       </div>
 
-                      {attackPlan && attackPlan.mode === 'abstract' && (
-                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold">Constraints da mesa (abstrato — sem instrumento)</span>
-                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                            <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Daily loss limit</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toLocaleString()}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">RR mínimo</div><div className="text-slate-200 font-mono">{attackPlan.rrMinimum}:1</div></div>
-                          </div>
-                          <p className="text-[10px] text-amber-400/80 italic">{attackPlan.message}</p>
-                        </div>
-                      )}
+                      {/* Preview do plano de ataque em 3 blocos semanticamente distintos (issue #136):
+                          1. Constraints da mesa (hard limits imutáveis)
+                          2. Mecânica do plano (meta/stop operacional derivados de RO × RR, simétricos)
+                          3. Ritmo de acumulação (EV estatístico rotulado como contexto, NÃO meta) */}
+                      {attackPlan && attackPlan.mode === 'abstract' && (() => {
+                        const ro = attackPlan.roPerTrade ?? 0;
+                        const maxT = attackPlan.maxTradesPerDay ?? 0;
+                        const rr = attackPlan.rrMinimum ?? 2;
+                        const dailyStop = ro * maxT;
+                        const dailyGoal = dailyStop * rr;
+                        return (
+                          <div className="p-3 bg-slate-800/50 rounded-lg space-y-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">Constraints da mesa</div>
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Prazo eval</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays} dias</div></div>
+                                {attackPlan.dailyLossLimit > 0 && (
+                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
+                                )}
+                              </div>
+                            </div>
 
-                      {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (
-                        <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
-                          <span className="text-[10px] text-slate-500 uppercase font-semibold">
-                            Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name}) · {attackPlan.profileName}
-                          </span>
-                          <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                            <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${attackPlan.roPerTrade.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
-                            <div><div className="text-slate-500 text-[10px]">Stop</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
-                            <div><div className="text-slate-500 text-[10px]">Target</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
-                            <div><div className="text-slate-500 text-[10px]">RR</div><div className="text-slate-200 font-mono">1:{attackPlan.rrMinimum}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{attackPlan.maxTradesPerDay}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%</div><div className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${attackPlan.evPerTrade.toFixed(2)}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Meta diária</div><div className="text-slate-200 font-mono">${attackPlan.dailyTarget.toFixed(0)}</div></div>
-                            <div><div className="text-slate-500 text-[10px]">Dias úteis</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays}</div></div>
+                            <div className="pt-2 border-t border-slate-700/50">
+                              <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                                <div><div className="text-slate-500 text-[10px]">RO por trade</div><div className="text-slate-200 font-mono">${ro.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">RR por trade</div><div className="text-slate-200 font-mono">{rr}:1</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
+                              </div>
+                              <p className="text-[10px] text-slate-500 italic mt-1">Stops em pontos a definir conforme instrumento.</p>
+                            </div>
+
+                            {attackPlan.dailyTarget > 0 && (
+                              <div className="pt-2 border-t border-slate-700/50">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">Ritmo de acumulação (contexto, não meta)</div>
+                                <div className="text-[11px] text-slate-400">
+                                  EV esperado: <span className="font-mono">${attackPlan.dailyTarget.toLocaleString()}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. <span className="text-slate-500">Não é o alvo do dia.</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {attackPlan.message && (
+                              <p className="text-[10px] text-amber-400/80 italic pt-1">{attackPlan.message}</p>
+                            )}
                           </div>
-                          {attackPlan.wrBelowBreakeven && (
-                            <p className="text-[10px] text-amber-400 mt-1">⚠ WR assumido abaixo do breakeven (33.3%). EV negativa — plano matematicamente inviável.</p>
-                          )}
-                          {attackPlan.sessionRestricted && (
-                            <p className="text-[10px] text-amber-400 mt-1">
-                              ⚠ Stop {attackPlan.stopPoints} pts ({attackPlan.stopNyPct}% do range NY) — <strong>operar somente Ásia/London</strong>. NY consome esse stop por volatilidade.
-                            </p>
-                          )}
-                          {attackPlan.stopIsNoise && (
-                            <p className="text-[10px] text-amber-400/80 mt-1">⚠ Stop muito pequeno relativo ao range NY ({attackPlan.stopNyPct}%) — risco de ruído.</p>
-                          )}
-                        </div>
-                      )}
+                        );
+                      })()}
+
+                      {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (() => {
+                        const ro = attackPlan.roPerTrade ?? 0;
+                        const maxT = attackPlan.maxTradesPerDay ?? 0;
+                        const rr = attackPlan.rrMinimum ?? 2;
+                        const dailyStop = ro * maxT;
+                        const dailyGoal = dailyStop * rr;
+                        return (
+                          <div className="p-3 bg-slate-800/50 rounded-lg space-y-3">
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">
+                                Plano de execução — {attackPlan.instrument.symbol} ({attackPlan.instrument.name}) · {attackPlan.profileName}
+                              </div>
+                            </div>
+
+                            {/* BLOCO 1 — Constraints da mesa */}
+                            <div>
+                              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">Constraints da mesa</div>
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Prazo eval</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays} dias</div></div>
+                                {attackPlan.dailyLossLimit > 0 && (
+                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* BLOCO 2 — Mecânica do plano */}
+                            <div className="pt-2 border-t border-slate-700/50">
+                              <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
+                              <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
+                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">Stop/trade</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">RR/trade</div><div className="text-slate-200 font-mono">1:{rr}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
+                              </div>
+                              {maxT > 1 && (
+                                <p className="text-[10px] text-slate-500 leading-snug mt-2">
+                                  Execução: <span className="text-slate-400">{maxT} trades × 1 contrato</span> OU <span className="text-slate-400">1 trade × {maxT} contratos</span> — mesma distância em pontos. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
+                                </p>
+                              )}
+                            </div>
+
+                            {/* BLOCO 3 — Ritmo de acumulação (contexto, NÃO meta) */}
+                            {attackPlan.dailyTarget > 0 && (
+                              <div className="pt-2 border-t border-slate-700/50">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">Ritmo de acumulação (contexto, não meta)</div>
+                                <div className="text-[11px] text-slate-400">
+                                  EV diário: <span className="font-mono">${attackPlan.dailyTarget.toFixed(0)}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%: <span className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${attackPlan.evPerTrade.toFixed(2)}</span>. <span className="text-slate-500">Não é o alvo do dia.</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {attackPlan.wrBelowBreakeven && (
+                              <p className="text-[10px] text-amber-400 mt-1">⚠ WR assumido abaixo do breakeven (33.3%). EV negativa — plano matematicamente inviável.</p>
+                            )}
+                            {attackPlan.sessionRestricted && (
+                              <p className="text-[10px] text-amber-400 mt-1">
+                                ⚠ Stop {attackPlan.stopPoints} pts ({attackPlan.stopNyPct}% do range NY) — <strong>operar somente Ásia/London</strong>. NY consome esse stop por volatilidade.
+                              </p>
+                            )}
+                            {attackPlan.stopIsNoise && (
+                              <p className="text-[10px] text-amber-400/80 mt-1">⚠ Stop muito pequeno relativo ao range NY ({attackPlan.stopNyPct}%) — risco de ruído.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {attackPlan && attackPlan.mode === 'execution' && attackPlan.incompatible && (
                         <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1">

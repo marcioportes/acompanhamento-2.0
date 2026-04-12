@@ -766,7 +766,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 **Fase:** Revisão Fase A — correção de bug crítico identificado na validação.
 #### Corrigido
 - **Bug crítico:** `periodGoalPct` estava derivado de `attackPlan.dailyTarget` (EV estatístico para passar a conta em N dias). Resultado: Apex EOD 25K CONS_B mostrava meta diária 0.3% ($75) com stop diário 1.2% ($300) — RR invertido 1:4 dentro do plano, semanticamente absurdo. Correção: `periodGoalPct = (roPerTrade × maxTradesPerDay × rrMinimum) / initialBalance`. Apex CONS_B agora mostra meta 2.4% ($600) / stop 1.2% ($300) — day RR 2:1 === per-trade RR 2:1 (simetria mecânica pura)
-- **Preview do attack plan (AddAccountModal)** reescrito em 3 blocos semanticamente separados:
+- **Preview do attack plan (AccountsPage.jsx, blocos abstract + execution)** reescrito em 3 blocos semanticamente separados:
   1. **Constraints da mesa** — DD total, profit target, prazo eval, daily loss (hard limit, só se existir)
   2. **Mecânica do plano** — RO/RR por trade, max trades/dia, stop operacional diário (vermelho), meta operacional diária (verde), texto de execução explicando "{N} trades × 1 contrato OU 1 trade × {N} contratos — mesma distância em pontos — não reduzir stop/target para compensar"
   3. **Ritmo de acumulação** — EV diário rotulado explicitamente como "contexto, não meta"
