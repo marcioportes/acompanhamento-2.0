@@ -102,7 +102,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'MES', microPointValue: 5.00, microTickValue: 1.25,
     avgDailyRange: 123,
     minStopPoints: 4, // ~$200 full / ~$20 micro
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: 'NQ', name: 'Nasdaq 100 E-mini', exchange: 'CME', type: 'equity_index',
@@ -110,7 +110,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'MNQ', microPointValue: 2.00, microTickValue: 0.50,
     avgDailyRange: 549,
     minStopPoints: 20, // ~$400 full / ~$40 micro
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: 'YM', name: 'Dow Jones E-mini', exchange: 'CBOT', type: 'equity_index',
@@ -118,7 +118,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'MYM', microPointValue: 0.50, microTickValue: 0.50,
     avgDailyRange: 856,
     minStopPoints: 25, // ~$125 full / ~$12.50 micro
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: 'RTY', name: 'Russell 2000 E-mini', exchange: 'CME', type: 'equity_index',
@@ -126,7 +126,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'M2K', microPointValue: 5.00, microTickValue: 0.50,
     avgDailyRange: 70,
     minStopPoints: 3, // ~$150 full / ~$15 micro
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
 
   // ==================== ENERGY ====================
@@ -136,7 +136,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'MCL', microPointValue: 100.00, microTickValue: 1.00,
     avgDailyRange: 9.11,
     minStopPoints: 0.20, // ~$200 full / ~$20 micro
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: 'NG', name: 'Natural Gas', exchange: 'NYMEX', type: 'energy',
@@ -145,7 +145,7 @@ export const INSTRUMENTS_TABLE = [
     // ATR pendente de recaptura no TradingView (não incluído em v2 09/04/2026)
     avgDailyRange: 0.20,
     minStopPoints: 0.020, // ~$200
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: false }
   },
 
   // ==================== METALS (Apex suspended Apr/2026) ====================
@@ -155,7 +155,7 @@ export const INSTRUMENTS_TABLE = [
     micro: 'MGC', microPointValue: 10.00, microTickValue: 1.00,
     avgDailyRange: 180,
     minStopPoints: 3, // ~$300 full / ~$30 micro
-    availability: { apex: false, mff: true, lucid: true, tradeify: true },
+    availability: { apex: false, mff: true, lucid: true, tradeify: true, ylos: true },
     note: 'Suspenso na Apex desde Abr/2026 por volatilidade extrema'
   },
   {
@@ -164,7 +164,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 5.69,
     minStopPoints: 0.05, // ~$250
-    availability: { apex: false, mff: true, lucid: true, tradeify: true },
+    availability: { apex: false, mff: true, lucid: true, tradeify: true, ylos: true },
     note: 'Suspenso na Apex desde Abr/2026'
   },
   {
@@ -174,7 +174,7 @@ export const INSTRUMENTS_TABLE = [
     // ATR pendente de recaptura no TradingView (não incluído em v2 09/04/2026)
     avgDailyRange: 0.08,
     minStopPoints: 0.005, // ~$125
-    availability: { apex: false, mff: false, lucid: true, tradeify: true },
+    availability: { apex: false, mff: false, lucid: true, tradeify: true, ylos: false },
     note: 'Suspenso na Apex desde Abr/2026'
   },
 
@@ -185,7 +185,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 0.0090,
     minStopPoints: 0.0008, // ~$100
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: '6B', name: 'British Pound', exchange: 'CME', type: 'currency',
@@ -193,7 +193,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 0.0117,
     minStopPoints: 0.0010, // ~$62.50
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: true }
   },
   {
     symbol: '6J', name: 'Japanese Yen', exchange: 'CME', type: 'currency',
@@ -201,7 +201,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 0.000046,
     minStopPoints: 0.000060, // ~$750
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: false }
   },
   {
     symbol: '6A', name: 'Australian Dollar', exchange: 'CME', type: 'currency',
@@ -210,7 +210,7 @@ export const INSTRUMENTS_TABLE = [
     // ATR pendente de recaptura no TradingView (não incluído em v2 09/04/2026)
     avgDailyRange: 0.0070,
     minStopPoints: 0.0006, // ~$60
-    availability: { apex: true, mff: false, lucid: true, tradeify: false }
+    availability: { apex: true, mff: false, lucid: true, tradeify: false, ylos: false }
   },
 
   // ==================== AGRICULTURE ====================
@@ -220,7 +220,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 8.87,
     minStopPoints: 1, // ~$50
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: false }
   },
   {
     symbol: 'ZW', name: 'Wheat', exchange: 'CBOT', type: 'agriculture',
@@ -228,7 +228,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 17.75,
     minStopPoints: 1.5, // ~$75
-    availability: { apex: true, mff: true, lucid: false, tradeify: true }
+    availability: { apex: true, mff: true, lucid: false, tradeify: true, ylos: false }
   },
   {
     symbol: 'ZS', name: 'Soybeans', exchange: 'CBOT', type: 'agriculture',
@@ -236,7 +236,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 19.15,
     minStopPoints: 2, // ~$100
-    availability: { apex: true, mff: true, lucid: true, tradeify: true }
+    availability: { apex: true, mff: true, lucid: true, tradeify: true, ylos: false }
   },
 
   // ==================== CRYPTO ====================
@@ -246,7 +246,7 @@ export const INSTRUMENTS_TABLE = [
     micro: null, microPointValue: null, microTickValue: null,
     avgDailyRange: 3201,
     minStopPoints: 200, // ~$20
-    availability: { apex: true, mff: false, lucid: false, tradeify: true }
+    availability: { apex: true, mff: false, lucid: false, tradeify: true, ylos: false }
   }
 ];
 
