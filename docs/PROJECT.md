@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.12.1  
-> **Última atualização:** 11/04/2026 — INV-16 reforçada + padrão único de nome worktree `~/projects/issue-{NNN}`  
+> **Versão:** 0.13.0  
+> **Última atualização:** 12/04/2026 — #136 v1.26.4, DEC-068 a DEC-073, Ylos Trading templates + engine TRAILING_TO_STATIC phase-aware, semântica mecânica do plano PROP  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -36,6 +36,7 @@ Este documento segue versionamento semântico:
 | 0.10.2 | 06/04/2026 | #122/#123 mergeados | PR #124 mergeado, locks CHUNK-02/16 liberados (AVAILABLE), removidos de Locks ativos |
 | 0.12.0 | 10/04/2026 | Order Import V1.1 redesign | #93 v1.26.0, DEC-063 a DEC-067, criação automática + confronto enriquecido |
 | 0.12.1 | 11/04/2026 | Reforço INV-16 worktree | INV-16 reescrita (obrigatória sempre), padrão único `~/projects/issue-{NNN}`, passo worktree explícito em §4.0 e CLAUDE.md §Ativação Automática |
+| 0.13.0 | 12/04/2026 | #136 Prop Plan semântica + Ylos | DEC-068 a DEC-073, CHANGELOG v1.26.1-v1.26.4, templates Ylos + engine TRAILING_TO_STATIC phase-aware, correção semântica mecânica plano PROP, locks CHUNK-03/17 |
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 
 **Regra de uso:**
@@ -701,6 +702,12 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-065 | **Categorização de ops em 3 grupos**: toCreate (0 correlações) / toConfront (1 trade) / ambiguous (2+ trades). Lookup por `_rowIndex` — sem fallback por instrumento que causa falsos positivos. Ops mistas nunca caem em limbo | #93 | 10/04/2026 |
 | DEC-066 | **Throttling de criação em batch**: ≤20 → Promise.allSettled paralelo; >20 → for/await sequencial com progresso dinâmico ("Criando trade N de M...") | #93 | 10/04/2026 |
 | DEC-067 | **Badges "Importado" + "Complemento pendente"** em 4 componentes do diário. "Importado" (blue, permanente) = `source === 'order_import'`. "Pendente" (amber, transitório) = `!(emotionEntry\|\|emotion) \|\| !setup`. emotionExit não entra no critério | #93 | 10/04/2026 |
+| DEC-068 | **Renomear `masterRules` → `fundedDrawdown`** no schema do template. Nomenclatura Ylos usa "Funded", não "Master". Campo `fundedDrawdown` é drawdown ativo quando `phase === 'SIM_FUNDED' \|\| 'LIVE'`; ausente (Apex) → cai em `template.drawdown` | #136 | 11/04/2026 |
+| DEC-069 | **Plano é mecânica, não estatística.** `periodStop = maxTrades × RO`, `periodGoal = maxTrades × RO × RR`. Day RR === per-trade RR por construção. `dailyTarget` (EV profitTarget÷evalDays) é contexto de acumulação, NUNCA meta do plano | #136 | 11/04/2026 |
+| DEC-070 | **Daily loss mesa no resumo do plano é condicional** — só aparece quando `suggestedPlan.dailyLossLimit > 0`. Contas Ylos Challenge (null) não mostram linha | #136 | 11/04/2026 |
+| DEC-071 | **Engine phase-aware.** `calculateDrawdownState` aceita arg `phase`, resolve `activeDrawdown = getActiveDrawdown(template, phase)`. EVAL → `template.drawdown`, SIM_FUNDED/LIVE → `template.fundedDrawdown ?? template.drawdown`. Back-compat Apex (sem fundedDrawdown) | #136 | 12/04/2026 |
+| DEC-072 | **`riskPerOperation = periodStopPct`** (teto diário por trade), não `roPerTrade/pl` (sizing mínimo de 1 contrato). Permite Path A (N trades × 1 contrato) e Path B (1 trade × N contratos) sem flag compliance | #136 | 12/04/2026 |
+| DEC-073 | **Preview attack plan em 3 blocos**: (1) Constraints da mesa, (2) Mecânica do plano com stop/meta operacional + caminhos de execução, (3) Ritmo de acumulação rotulado como contexto | #136 | 12/04/2026 |
 
 ---
 
@@ -759,6 +766,66 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.26.4] - 11/04/2026
+**Issue:** #136 (fix: correção semântica periodGoal + reescrita preview attack plan)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fase:** Revisão Fase A — correção de bug crítico identificado na validação.
+#### Corrigido
+- **Bug crítico:** `periodGoalPct` estava derivado de `attackPlan.dailyTarget` (EV estatístico para passar a conta em N dias). Resultado: Apex EOD 25K CONS_B mostrava meta diária 0.3% ($75) com stop diário 1.2% ($300) — RR invertido 1:4 dentro do plano, semanticamente absurdo. Correção: `periodGoalPct = (roPerTrade × maxTradesPerDay × rrMinimum) / initialBalance`. Apex CONS_B agora mostra meta 2.4% ($600) / stop 1.2% ($300) — day RR 2:1 === per-trade RR 2:1 (simetria mecânica pura)
+- **Preview do attack plan (AccountsPage.jsx, blocos abstract + execution)** reescrito em 3 blocos semanticamente separados:
+  1. **Constraints da mesa** — DD total, profit target, prazo eval, daily loss (hard limit, só se existir)
+  2. **Mecânica do plano** — RO/RR por trade, max trades/dia, stop operacional diário (vermelho), meta operacional diária (verde), texto de execução explicando "{N} trades × 1 contrato OU 1 trade × {N} contratos — mesma distância em pontos — não reduzir stop/target para compensar"
+  3. **Ritmo de acumulação** — EV diário rotulado explicitamente como "contexto, não meta"
+- Tooltip `Info` supérfluo removido da "Meta diária" (texto dos 3 blocos torna a explicação redundante)
+#### Adicionado
+- 4 testes novos em `propPlanDefaults.test.js` cobrindo: periodGoal Apex CONS_B 2.4%, Ylos Challenge 2.4%, rejeita 0.3% (EV), abstract mode fallback `periodStop × RR = 4%`. Total de testes do arquivo: 14 (era 10)
+
+### [1.26.3] - 11/04/2026
+**Issue:** #136 (fix: Plano sugerido em contas PROP — Fase C templates Ylos + engine phase-aware)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fase:** C (E4) — encerramento de #136. Último commit antes do PR único A+B+C.
+#### Adicionado
+- **`PROP_FIRMS.YLOS`** + label "Ylos Trading" + `YLOS_BASE` (feeModel ONE_TIME, consistência Funded 40%, min 10 trading days, 7 qualifying days com $50+ min profit, payout 100% até $15K / 90% após, min balance saque DD + $100)
+- **7 templates Ylos em `DEFAULT_TEMPLATES`**: 6 Challenge (25K/50K/100K/150K/250K/300K) com `drawdown: TRAILING_EOD` e `fundedDrawdown: TRAILING_TO_STATIC` (staticTrigger 100); 1 Freedom 50K com EOD em ambas fases e consistência/newsTrading afrouxados
+- **`getActiveDrawdown(template, phase)`** — helper que resolve qual config de drawdown está ativa baseado na fase da conta. EVALUATION → `template.drawdown`. SIM_FUNDED/LIVE → `template.fundedDrawdown ?? template.drawdown` (back-compat para Apex e mesas sem funded diferenciado)
+- **Engine `calculateDrawdownState` aceita `phase` como arg** — default cascata `phase arg → propFirm.phase → 'EVALUATION'`. Todas as leituras de `drawdownType/maxAmount/lockAt/lockFormula/staticTrigger` passam a consumir `activeDrawdown` resolvido (não mais `template.drawdown.*` direto)
+- 6 testes phase-aware: EVAL lê drawdown, SIM_FUNDED lê fundedDrawdown, LIVE idem, phase ausente cai em EVAL, Apex sem fundedDrawdown em phase SIM_FUNDED usa drawdown default (regressão zero), trail sobe antes do trigger em Ylos SIM_FUNDED
+#### Corrigido
+- **Gap de Fase B:** `functions/index.js:361-374` não persistia `trailFrozen` em `account.propFirm.trailFrozen` — CF agora grava o campo junto com os demais via `t.update` (conta perderia o estado congelado ao reiniciar engine sem isto)
+- **CF passa `phase: propFirm.phase`** ao chamar `calculateDrawdownState` — contas existentes com phase `'EVALUATION'` preservam comportamento, contas Ylos em SIM_FUNDED/LIVE passam a usar `fundedDrawdown` automaticamente
+#### Alterado
+- Módulo exportado de `functions/propFirmEngine.js` inclui `getActiveDrawdown` (simetria com `src/utils/`)
+
+### [1.26.2] - 11/04/2026
+**Issue:** #136 (fix: Plano sugerido em contas PROP — Fase B engine TRAILING_TO_STATIC)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fase:** B (E5) — novo tipo de drawdown para contas Funded Ylos (Standard/No Fee). Fase C (templates Ylos) em sequência.
+#### Adicionado
+- **`DRAWDOWN_TYPES.TRAILING_TO_STATIC`** — novo tipo de drawdown. Comporta-se como `TRAILING_INTRADAY` até `newBalance >= accountSize + drawdownMax + staticTrigger`; nesse momento captura `currentDrawdownThreshold = peakBalance - drawdownMax` e congela — threshold não se move mais, peak não se move mais (DEC-PENDING-2)
+- **`DRAWDOWN_FLAGS.TRAIL_FROZEN`** — flag emitida uma única vez, no trade em que o trigger é atingido
+- **Campo runtime `account.propFirm.trailFrozen: boolean`** (default `false`) — INV-15 aprovado 11/04/2026, extensão do objeto `propFirm` existente
+- **Campo template `template.drawdown.staticTrigger: number`** (opcional, default 100) — distância em USD acima do lucro mínimo viável que dispara o freeze
+- 10 testes novos cobrindo: trail sobe antes do trigger, freeze exato no trigger, freeze após salto, balance cai após freeze, balance sobe após freeze (não reabre), bust detection com threshold congelado, flag emitida uma única vez, staticTrigger custom, staticTrigger ausente (default 100), regressão Apex EOD (path antigo intocado)
+#### Alterado
+- `calculateDrawdownState` ganha branches condicionais isoladas para TRAILING_TO_STATIC — paths existentes (STATIC, TRAILING_INTRADAY, TRAILING_EOD, TRAILING_WITH_LOCK) **permanecem intocados** (regressão zero confirmada por teste dedicado)
+- `functions/propFirmEngine.js` espelha o novo branch (DT-034 — duplicação consciente até monorepo workspace)
+
+### [1.26.1] - 11/04/2026
+**Issue:** #136 (fix: Plano sugerido em contas PROP — incoerência semântica meta vs RO + inclusão Ylos)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fase:** A (E1+E2+E3) — correção semântica UI. Fases B (engine TRAILING_TO_STATIC) e C (templates Ylos) em sequência.
+#### Adicionado
+- `src/utils/propPlanDefaults.js` — função pura `computePropPlanDefaults(attackPlan, initialBalance)` deriva defaults do plano a partir do attack plan da conta PROP (DEC-PENDING-1)
+- Tooltip `Info` na "Meta diária" do preview do attack plan (AddAccountModal) — explica que é ritmo médio de acumulação, não target por trade (E2)
+- Linha condicional "Daily loss mesa (hard limit)" no resumo do plano (PlanManagementModal passo 3) — aparece apenas quando `suggestedPlan.dailyLossLimit > 0`, oculta em contas Ylos Challenge (E3)
+- `DebugBadge` em `AddAccountModal` e `PlanManagementModal` (INV-04 — dívida antiga quitada)
+- 10 testes unitários para `computePropPlanDefaults` cobrindo Apex execution, Ylos execution, modo abstract Apex, modo abstract Ylos, fallback chain, rrTarget, riskPctPerOp
+#### Corrigido
+- **Semântica crítica:** `periodStopPct` do plano PROP agora é derivado de `roPerTrade × maxTradesPerDay` (attack plan), não mais `dailyLossLimit` da mesa. Cenário Apex EOD 25K MNQ CONS_B agora mostra stop diário de 1.2% ($300) em vez de 2% ($500) — aluno não opera mais com RR invertido (E1, AccountsPage.jsx:472-476)
+- Ylos Challenge (sem daily loss) passa a ter `periodStopPct` correto (1.2% no cenário 25K) em vez do fallback arbitrário 2%
+#### Alterado
+- `AccountsPage.jsx` auto-abertura do modal de plano após criação de conta PROP consome `computePropPlanDefaults` (função extraída, testável)
 
 ### [1.26.0] - 10/04/2026
 **Issue:** #93 (feat: Order Import V1.1 redesign)

@@ -22,7 +22,8 @@ const DRAWDOWN_TYPES = {
   TRAILING_INTRADAY: 'TRAILING_INTRADAY',
   TRAILING_EOD: 'TRAILING_EOD',
   STATIC: 'STATIC',
-  TRAILING_WITH_LOCK: 'TRAILING_WITH_LOCK'
+  TRAILING_WITH_LOCK: 'TRAILING_WITH_LOCK',
+  TRAILING_TO_STATIC: 'TRAILING_TO_STATIC'
 };
 
 const DD_NEAR_THRESHOLD = 0.20;
@@ -32,6 +33,7 @@ const DRAWDOWN_FLAGS = {
   ACCOUNT_BUST: 'ACCOUNT_BUST',
   DD_NEAR: 'DD_NEAR',
   LOCK_ACTIVATED: 'LOCK_ACTIVATED',
+  TRAIL_FROZEN: 'TRAIL_FROZEN',
   EVAL_DEADLINE_NEAR: 'EVAL_DEADLINE_NEAR'
 };
 
@@ -43,6 +45,15 @@ function resolveLockAt(template, accountSize) {
     return accountSize + (dd.maxAmount || 0) + 100;
   }
   return null;
+}
+
+function getActiveDrawdown(template, phase) {
+  const activePhase = phase || 'EVALUATION';
+  const isFunded = activePhase === 'SIM_FUNDED' || activePhase === 'LIVE';
+  if (isFunded && template && template.fundedDrawdown) {
+    return template.fundedDrawdown;
+  }
+  return template && template.drawdown;
 }
 
 function getPeakUpdateMode(type) {
@@ -60,6 +71,7 @@ function initializePropFirmState(template, accountSize) {
     peakBalance: accountSize,
     currentDrawdownThreshold: accountSize - drawdownMax,
     lockLevel: null,
+    trailFrozen: false,
     isDayPaused: false,
     tradingDays: 0,
     dailyPnL: 0,
@@ -74,7 +86,8 @@ function calculateDrawdownState(args) {
     accountSize,
     balanceBefore,
     tradeNet,
-    tradeDate
+    tradeDate,
+    phase
   } = args;
 
   if (!template || !template.drawdown) {
@@ -93,8 +106,14 @@ function calculateDrawdownState(args) {
     throw new Error('tradeDate (YYYY-MM-DD) é obrigatório');
   }
 
-  const drawdownType = template.drawdown.type;
-  const drawdownMax = template.drawdown.maxAmount || 0;
+  const activePhase = phase || (propFirm && propFirm.phase) || 'EVALUATION';
+  const activeDrawdown = getActiveDrawdown(template, activePhase);
+  if (!activeDrawdown) {
+    throw new Error('activeDrawdown não resolvido — template sem drawdown ou fundedDrawdown');
+  }
+
+  const drawdownType = activeDrawdown.type;
+  const drawdownMax = activeDrawdown.maxAmount || 0;
   const dailyLossLimit = template.dailyLossLimit || 0;
   const peakMode = getPeakUpdateMode(drawdownType);
 
@@ -104,7 +123,10 @@ function calculateDrawdownState(args) {
   let tradingDays = (propFirm && propFirm.tradingDays != null) ? propFirm.tradingDays : 0;
   let lockLevel = (propFirm && propFirm.lockLevel != null) ? propFirm.lockLevel : null;
   const previousLockLevel = lockLevel;
+  let trailFrozen = (propFirm && propFirm.trailFrozen != null) ? propFirm.trailFrozen : false;
+  const previousTrailFrozen = trailFrozen;
   const lastTradeDate = (propFirm && propFirm.lastTradeDate) ? propFirm.lastTradeDate : null;
+  const isTrailToStatic = drawdownType === DRAWDOWN_TYPES.TRAILING_TO_STATIC;
 
   const isNewDay = lastTradeDate !== tradeDate;
 
@@ -120,18 +142,35 @@ function calculateDrawdownState(args) {
   const newBalance = round(balanceBefore + tradeNet, 2);
   dailyPnL = round(dailyPnL + tradeNet, 2);
 
-  if (peakMode === 'intraday' && lockLevel === null) {
+  if (peakMode === 'intraday' && lockLevel === null && !trailFrozen) {
     peakBalance = Math.max(peakBalance, newBalance);
   }
 
-  const lockAt = resolveLockAt(template, accountSize);
+  let lockAt = null;
+  if (typeof activeDrawdown.lockAt === 'number') {
+    lockAt = activeDrawdown.lockAt;
+  } else if (activeDrawdown.lockFormula === 'BALANCE + DD + 100') {
+    lockAt = accountSize + drawdownMax + 100;
+  }
   if (lockAt !== null && lockLevel === null && peakBalance >= lockAt) {
     lockLevel = accountSize;
+  }
+
+  if (isTrailToStatic && !trailFrozen) {
+    const staticTrigger = (activeDrawdown.staticTrigger != null) ? activeDrawdown.staticTrigger : 100;
+    const triggerBalance = accountSize + drawdownMax + staticTrigger;
+    if (newBalance >= triggerBalance) {
+      trailFrozen = true;
+    }
   }
 
   let currentDrawdownThreshold;
   if (drawdownType === DRAWDOWN_TYPES.STATIC) {
     currentDrawdownThreshold = accountSize - drawdownMax;
+  } else if (isTrailToStatic && trailFrozen) {
+    currentDrawdownThreshold = previousTrailFrozen
+      ? ((propFirm && propFirm.currentDrawdownThreshold != null) ? propFirm.currentDrawdownThreshold : (peakBalance - drawdownMax))
+      : (peakBalance - drawdownMax);
   } else if (lockLevel !== null) {
     currentDrawdownThreshold = lockLevel;
   } else {
@@ -151,11 +190,13 @@ function calculateDrawdownState(args) {
   if (newBalance <= currentDrawdownThreshold) flags.push(DRAWDOWN_FLAGS.ACCOUNT_BUST);
   if (distanceToDD < DD_NEAR_THRESHOLD && distanceToDD > 0) flags.push(DRAWDOWN_FLAGS.DD_NEAR);
   if (lockLevel !== null && previousLockLevel === null) flags.push(DRAWDOWN_FLAGS.LOCK_ACTIVATED);
+  if (trailFrozen && !previousTrailFrozen) flags.push(DRAWDOWN_FLAGS.TRAIL_FROZEN);
 
   return {
     peakBalance: round(peakBalance, 2),
     currentDrawdownThreshold: round(currentDrawdownThreshold, 2),
     lockLevel: lockLevel !== null ? round(lockLevel, 2) : null,
+    trailFrozen,
     isDayPaused,
     tradingDays,
     dailyPnL,
@@ -201,6 +242,7 @@ module.exports = {
   DRAWDOWN_FLAGS,
   DD_NEAR_THRESHOLD,
   resolveLockAt,
+  getActiveDrawdown,
   getPeakUpdateMode,
   initializePropFirmState,
   calculateDrawdownState,

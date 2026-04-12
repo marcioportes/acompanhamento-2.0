@@ -39,7 +39,8 @@ export const DRAWDOWN_FLAGS = {
   DAILY_LOSS_HIT: 'DAILY_LOSS_HIT',         // dailyPnL atingiu daily loss limit
   ACCOUNT_BUST: 'ACCOUNT_BUST',             // newBalance ≤ currentDrawdownThreshold
   DD_NEAR: 'DD_NEAR',                       // distanceToDD < 20%
-  LOCK_ACTIVATED: 'LOCK_ACTIVATED',         // lockLevel ativado neste trade
+  LOCK_ACTIVATED: 'LOCK_ACTIVATED',         // lockLevel ativado neste trade (Apex)
+  TRAIL_FROZEN: 'TRAIL_FROZEN',             // trail congelado neste trade (Ylos TRAILING_TO_STATIC)
   EVAL_DEADLINE_NEAR: 'EVAL_DEADLINE_NEAR'  // (helper separado)
 };
 
@@ -67,6 +68,28 @@ export function resolveLockAt(template, accountSize) {
   }
 
   return null;
+}
+
+// ============================================
+// getActiveDrawdown — resolve config de drawdown ativo por fase
+// ============================================
+
+/**
+ * Retorna a config de drawdown ativa no template baseado na fase da conta.
+ * Fases EVALUATION usam template.drawdown (default).
+ * Fases SIM_FUNDED e LIVE usam template.fundedDrawdown se presente, senão caem em template.drawdown.
+ * Permite que um único template de mesa tenha regras distintas entre Challenge e Funded (ex: Ylos).
+ *
+ * @param {Object} template - propFirmTemplates doc
+ * @param {string} [phase='EVALUATION'] - fase da conta (EVALUATION | SIM_FUNDED | LIVE)
+ * @returns {Object} config de drawdown ativa
+ */
+export function getActiveDrawdown(template, phase = 'EVALUATION') {
+  const isFunded = phase === 'SIM_FUNDED' || phase === 'LIVE';
+  if (isFunded && template?.fundedDrawdown) {
+    return template.fundedDrawdown;
+  }
+  return template?.drawdown;
 }
 
 // ============================================
@@ -106,6 +129,7 @@ export function initializePropFirmState(template, accountSize) {
     peakBalance: accountSize,
     currentDrawdownThreshold: accountSize - drawdownMax,
     lockLevel: null,
+    trailFrozen: false,
     isDayPaused: false,
     tradingDays: 0,
     dailyPnL: 0,
@@ -130,6 +154,7 @@ export function initializePropFirmState(template, accountSize) {
  * @param {number} args.balanceBefore - saldo da conta ANTES deste trade
  * @param {number} args.tradeNet - P&L net do trade (positivo win, negativo loss)
  * @param {string} args.tradeDate - data do trade no formato YYYY-MM-DD
+ * @param {string} [args.phase] - fase da conta (EVALUATION|SIM_FUNDED|LIVE). Default: propFirm.phase ou EVALUATION
  * @returns {Object} novo estado + newBalance + distanceToDD + flags + transitions
  */
 export function calculateDrawdownState({
@@ -138,7 +163,8 @@ export function calculateDrawdownState({
   accountSize,
   balanceBefore,
   tradeNet,
-  tradeDate
+  tradeDate,
+  phase
 }) {
   if (!template || !template.drawdown) {
     throw new Error('template.drawdown é obrigatório');
@@ -156,8 +182,15 @@ export function calculateDrawdownState({
     throw new Error('tradeDate (YYYY-MM-DD) é obrigatório');
   }
 
-  const drawdownType = template.drawdown.type;
-  const drawdownMax = template.drawdown.maxAmount ?? 0;
+  // Resolve fase ativa (explícita > propFirm.phase > EVALUATION)
+  const activePhase = phase ?? propFirm?.phase ?? 'EVALUATION';
+  const activeDrawdown = getActiveDrawdown(template, activePhase);
+  if (!activeDrawdown) {
+    throw new Error('activeDrawdown não resolvido — template sem drawdown ou fundedDrawdown');
+  }
+
+  const drawdownType = activeDrawdown.type;
+  const drawdownMax = activeDrawdown.maxAmount ?? 0;
   const dailyLossLimit = template.dailyLossLimit ?? 0;
   const peakMode = getPeakUpdateMode(drawdownType);
 
@@ -168,7 +201,10 @@ export function calculateDrawdownState({
   let tradingDays = propFirm?.tradingDays ?? 0;
   let lockLevel = propFirm?.lockLevel ?? null;
   const previousLockLevel = lockLevel;
+  let trailFrozen = propFirm?.trailFrozen ?? false;
+  const previousTrailFrozen = trailFrozen;
   const lastTradeDate = propFirm?.lastTradeDate ?? null;
+  const isTrailToStatic = drawdownType === DRAWDOWN_TYPES.TRAILING_TO_STATIC;
 
   // ============================================
   // 1. Detectar novo dia
@@ -196,19 +232,35 @@ export function calculateDrawdownState({
   dailyPnL = round(dailyPnL + tradeNet, 2);
 
   // ============================================
-  // 3. Atualizar peak (intraday) — não atualiza após lock
+  // 3. Atualizar peak (intraday) — não atualiza após lock ou freeze
   // ============================================
-  if (peakMode === 'intraday' && lockLevel === null) {
+  if (peakMode === 'intraday' && lockLevel === null && !trailFrozen) {
     peakBalance = Math.max(peakBalance, newBalance);
   }
 
   // ============================================
-  // 4. Verificar lock
+  // 4a. Verificar lock Apex (fórmula fixa → lockLevel = accountSize)
   // ============================================
-  const lockAt = resolveLockAt(template, accountSize);
+  let lockAt = null;
+  if (typeof activeDrawdown.lockAt === 'number') {
+    lockAt = activeDrawdown.lockAt;
+  } else if (activeDrawdown.lockFormula === 'BALANCE + DD + 100') {
+    lockAt = accountSize + drawdownMax + 100;
+  }
   if (lockAt !== null && lockLevel === null && peakBalance >= lockAt) {
     // Lock ativado: threshold congela em accountSize (sai do drawdown trailing)
     lockLevel = accountSize;
+  }
+
+  // ============================================
+  // 4b. Verificar freeze Ylos (TRAILING_TO_STATIC) — captura threshold do momento
+  // ============================================
+  if (isTrailToStatic && !trailFrozen) {
+    const staticTrigger = activeDrawdown.staticTrigger ?? 100;
+    const triggerBalance = accountSize + drawdownMax + staticTrigger;
+    if (newBalance >= triggerBalance) {
+      trailFrozen = true;
+    }
   }
 
   // ============================================
@@ -217,6 +269,12 @@ export function calculateDrawdownState({
   let currentDrawdownThreshold;
   if (drawdownType === DRAWDOWN_TYPES.STATIC) {
     currentDrawdownThreshold = accountSize - drawdownMax;
+  } else if (isTrailToStatic && trailFrozen) {
+    // Primeiro trade em estado frozen: captura threshold com base no peak atual.
+    // Trades subsequentes: mantém valor já persistido em propFirm.
+    currentDrawdownThreshold = previousTrailFrozen
+      ? (propFirm?.currentDrawdownThreshold ?? (peakBalance - drawdownMax))
+      : (peakBalance - drawdownMax);
   } else if (lockLevel !== null) {
     currentDrawdownThreshold = lockLevel;
   } else {
@@ -245,12 +303,14 @@ export function calculateDrawdownState({
   if (newBalance <= currentDrawdownThreshold) flags.push(DRAWDOWN_FLAGS.ACCOUNT_BUST);
   if (distanceToDD < DD_NEAR_THRESHOLD && distanceToDD > 0) flags.push(DRAWDOWN_FLAGS.DD_NEAR);
   if (lockLevel !== null && previousLockLevel === null) flags.push(DRAWDOWN_FLAGS.LOCK_ACTIVATED);
+  if (trailFrozen && !previousTrailFrozen) flags.push(DRAWDOWN_FLAGS.TRAIL_FROZEN);
 
   return {
     // Estado novo (escrito pela CF em account.propFirm.*)
     peakBalance: round(peakBalance, 2),
     currentDrawdownThreshold: round(currentDrawdownThreshold, 2),
     lockLevel: lockLevel !== null ? round(lockLevel, 2) : null,
+    trailFrozen,
     isDayPaused,
     tradingDays,
     dailyPnL,

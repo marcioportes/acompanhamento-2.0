@@ -25,14 +25,16 @@ export const DRAWDOWN_TYPES = {
   TRAILING_INTRADAY: 'TRAILING_INTRADAY',
   TRAILING_EOD: 'TRAILING_EOD',
   STATIC: 'STATIC',
-  TRAILING_WITH_LOCK: 'TRAILING_WITH_LOCK'
+  TRAILING_WITH_LOCK: 'TRAILING_WITH_LOCK',
+  TRAILING_TO_STATIC: 'TRAILING_TO_STATIC'
 };
 
 export const DRAWDOWN_TYPE_LABELS = {
   TRAILING_INTRADAY: 'Trailing Intraday',
   TRAILING_EOD: 'Trailing EOD',
   STATIC: 'Estático',
-  TRAILING_WITH_LOCK: 'Trailing com Lock'
+  TRAILING_WITH_LOCK: 'Trailing com Lock',
+  TRAILING_TO_STATIC: 'Trailing → Static (freeze)'
 };
 
 // --- Firmas ---
@@ -41,6 +43,7 @@ export const PROP_FIRMS = {
   MFF: 'MFF',
   LUCID: 'LUCID',
   TRADEIFY: 'TRADEIFY',
+  YLOS: 'YLOS',
   CUSTOM: 'CUSTOM'
 };
 
@@ -49,6 +52,7 @@ export const PROP_FIRM_LABELS = {
   MFF: 'MyFundedFutures',
   LUCID: 'Lucid Markets',
   TRADEIFY: 'Tradeify',
+  YLOS: 'Ylos Trading',
   CUSTOM: 'Personalizada'
 };
 
@@ -297,6 +301,32 @@ const TRADEIFY_BASE = {
     split: 0.80,
     firstTierAmount: null,
     firstTierSplit: null
+  }
+};
+
+// Ylos Trading base
+// Challenge = TRAILING_EOD. Funded (Standard/No Activation Fee) = TRAILING_TO_STATIC com freeze em DD + $100.
+// Freedom 50K é produto à parte (EOD em ambas fases, sem consistency) — template próprio abaixo.
+// Daily loss: NÃO EXISTE no Challenge Ylos — apenas drawdown total.
+// Payout: 100% até $15K, 90% após. Min balance saque: DD + $100.
+// Ref: issue #136 Fase C, dados confirmados 11/04/2026
+const YLOS_BASE = {
+  firm: PROP_FIRMS.YLOS,
+  feeModel: FEE_MODELS.ONE_TIME,
+  bracketOrderRequired: false,
+  newsTrading: false, // Standard/No Fee: não pode segurar posição em notícias
+  dcaAllowed: true,
+  restrictedInstruments: [],
+  tradingHours: { close: '16:59', timezone: 'America/New_York' },
+  phases: ['EVALUATION', 'SIM_FUNDED', 'LIVE'],
+  consistency: { evalRule: null, fundedRule: 0.40 }, // 40% Standard/No Fee
+  payout: {
+    minAmount: 0,
+    minTradingDays: 10, // Standard/No Fee (Instant=5)
+    qualifyingDays: { count: 7, minProfit: 50, maxProfit: null }, // 7 winning days $50+
+    split: 0.90,
+    firstTierAmount: 15000,
+    firstTierSplit: 1.00
   }
 };
 
@@ -755,6 +785,198 @@ export const DEFAULT_TEMPLATES = [
     evalTimeLimit: null,
     evalMinTradingDays: 3,
     contracts: { max: 12, scalingRule: null, scalingThreshold: null }
+  },
+
+  // ==================== YLOS TRADING ====================
+  // 6 Challenge (Standard/No Activation Fee): EOD na Challenge, TRAILING_TO_STATIC na Funded
+  // 1 Freedom 50K: EOD em ambas fases, sem regras de consistência
+  // Ref: issue #136 Fase C, dados confirmados 11/04/2026
+  {
+    id: 'ylos-challenge-25k',
+    name: 'Ylos Challenge 25K',
+    ...YLOS_BASE,
+    accountSize: 25000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 1500,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 1500,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 1500,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 4, scalingRule: null, scalingThreshold: null }
+  },
+  {
+    id: 'ylos-challenge-50k',
+    name: 'Ylos Challenge 50K',
+    ...YLOS_BASE,
+    accountSize: 50000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 2500,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 2500,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 3000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 10, scalingRule: null, scalingThreshold: null }
+  },
+  {
+    id: 'ylos-challenge-100k',
+    name: 'Ylos Challenge 100K',
+    ...YLOS_BASE,
+    accountSize: 100000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 3000,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 3000,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 6000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 14, scalingRule: null, scalingThreshold: null }
+  },
+  {
+    id: 'ylos-challenge-150k',
+    name: 'Ylos Challenge 150K',
+    ...YLOS_BASE,
+    accountSize: 150000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 5000,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 5000,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 9000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 17, scalingRule: null, scalingThreshold: null }
+  },
+  {
+    id: 'ylos-challenge-250k',
+    name: 'Ylos Challenge 250K',
+    ...YLOS_BASE,
+    accountSize: 250000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 6500,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 6500,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 15000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 27, scalingRule: null, scalingThreshold: null }
+  },
+  {
+    id: 'ylos-challenge-300k',
+    name: 'Ylos Challenge 300K',
+    ...YLOS_BASE,
+    accountSize: 300000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 7500,
+      lockAt: null,
+      lockFormula: null
+    },
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_TO_STATIC,
+      maxAmount: 7500,
+      staticTrigger: 100,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 20000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 35, scalingRule: null, scalingThreshold: null }
+  },
+  // Freedom 50K: produto distinto — EOD em ambas fases, sem consistência/mediana/notícias
+  {
+    id: 'ylos-freedom-50k',
+    name: 'Ylos Freedom 50K',
+    ...YLOS_BASE,
+    // Override consistency e newsTrading para Freedom (regras afrouxadas)
+    consistency: { evalRule: null, fundedRule: null },
+    newsTrading: true,
+    accountSize: 50000,
+    drawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 1200,
+      lockAt: null,
+      lockFormula: null
+    },
+    // Funded Freedom também é EOD (não TRAILING_TO_STATIC) — mas incluímos fundedDrawdown
+    // explícito para documentar a decisão e permitir evolução futura sem quebrar schema
+    fundedDrawdown: {
+      type: DRAWDOWN_TYPES.TRAILING_EOD,
+      maxAmount: 1200,
+      lockAt: null,
+      lockFormula: null
+    },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 3000,
+    evalTimeLimit: 30,
+    evalMinTradingDays: 0,
+    contracts: { max: 4, scalingRule: null, scalingThreshold: null }
   }
 ];
 
