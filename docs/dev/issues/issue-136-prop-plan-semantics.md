@@ -107,21 +107,69 @@ Paralelamente, o aluno assinou conta Ylos Trading — precisa de templates e nov
 
 | ID | Decisão | Justificativa |
 |----|---------|---------------|
-| DEC-PENDING | Renomear `masterRules` → `fundedRules` no schema do template | Nomenclatura Ylos usa "Funded", não "Master" — reduz ambiguidade |
-| DEC-PENDING | Stop do período plano = `maxTrades × RO` (derivado attack plan), não `dailyLossLimit` | Daily loss da mesa é hard limit separado, não parâmetro do plano. Ylos Challenge sequer tem daily loss |
-| DEC-PENDING | Linha "Daily loss mesa" no resumo é condicional (`if template.dailyLossLimit != null`) | Contas Ylos Challenge não têm — esconder a linha evita confusão |
+| DEC-068 | Renomear `masterRules` → `fundedRules`/`fundedDrawdown` no schema do template | Nomenclatura Ylos usa "Funded", não "Master" — reduz ambiguidade |
+| DEC-069 | Stop do período plano = `maxTrades × RO`, meta do período = `maxTrades × RO × RR` (mecânica) | Plano é mecânica de risco/retorno, NÃO média estatística de acumulação. `dailyTarget` (EV) é contexto, nunca meta |
+| DEC-070 | Linha "Daily loss mesa" no resumo do PlanManagementModal é condicional | Contas Ylos Challenge não têm dailyLossLimit — ocultar evita confusão |
+| DEC-071 | Engine `calculateDrawdownState` aceita `phase` e resolve `activeDrawdown` por fase | Ylos Challenge (EVAL) = TRAILING_EOD, Ylos Funded (SIM_FUNDED/LIVE) = TRAILING_TO_STATIC. Template único, engine phase-aware |
+| DEC-072 | `riskPerOperation = periodStopPct` (teto diário por trade), não `roPerTrade/pl` (sizing mínimo) | Permite Path A (N trades × 1 contrato) e Path B (1 trade × N contratos) sem flag compliance |
+| DEC-073 | Preview do attack plan em 3 blocos: Constraints/Mecânica/Acumulação | Evita alucinação semântica — separa visualmente o que é hard limit, o que é plano, o que é estatística |
 
-**Pendências para próxima ação:**
-- Apresentar Gate Pré-Código Fase A → aguardar aprovação do Marcio antes de tocar código
+**Sessão 2 — 11-12/04/2026 (implementação + validação + revisão)**
+
+**O que foi feito:**
+- **Fase A** (bc4bb1be): `computePropPlanDefaults` extraído, periodStop derivado, DebugBadge em PlanManagementModal, 10 testes
+- **Fase B** (cf6a8213): `TRAILING_TO_STATIC` no engine + espelho CF, flag `TRAIL_FROZEN`, campo `trailFrozen`, 10 testes
+- **Fase C** (2d8faebe): 7 templates Ylos + `YLOS` enum/label/base, `getActiveDrawdown` phase-aware, CF passa `phase` e persiste `trailFrozen`, 6 testes
+- **Revisão Fase A** (822a6b5d): `periodGoalPct = maxTrades × RO × RR` (2.4% Apex CONS_B, não 0.3% EV). Preview attack plan reescrito em 3 blocos (Constraints/Mecânica/Acumulação). Tooltip Info removido.
+- **Hotfix localização** (b2e0ba51): Preview estava em `AddAccountModal.jsx` (código morto). Movido para `AccountsPage.jsx` (blocos abstract + execution). Revertido AddAccountModal ao estado original.
+- **riskPerOperation** (3b822949): Alterado de `roPerTrade/pl` (0.6%) para `periodStopPct` (1.2%) — teto diário por trade, permite Path A e Path B.
+- **instrumentsTable Ylos** (29db3523): Adicionado `ylos: true/false` nos 17 instrumentos. Permitidos: ES/NQ/YM/RTY/CL/GC/SI/6E/6B. Restritos: NG/HG/6J/6A/ZC/ZW/ZS/MBT.
+- **Issue #133 atualizado**: referência cruzada ao #136, 6 correções pendentes no prompt IA documentadas
+
+**Arquivos tocados:**
+- `src/utils/propPlanDefaults.js` (novo)
+- `src/__tests__/utils/propPlanDefaults.test.js` (novo, 14 testes)
+- `src/__tests__/utils/propFirmDrawdownEngine.test.js` (+16 testes: 10 TRAILING_TO_STATIC + 6 phase-aware)
+- `src/utils/propFirmDrawdownEngine.js` (TRAIL_FROZEN, trailFrozen, getActiveDrawdown, phase arg, activeDrawdown)
+- `functions/propFirmEngine.js` (espelho: TRAIL_FROZEN, trailFrozen, getActiveDrawdown, phase, activeDrawdown)
+- `functions/index.js` (CF passa phase, persiste trailFrozen)
+- `src/constants/propFirmDefaults.js` (YLOS enum/label/base, TRAILING_TO_STATIC, 7 templates, DRAWDOWN_TYPE_LABELS)
+- `src/constants/instrumentsTable.js` (+ylos availability em 17 instrumentos)
+- `src/pages/AccountsPage.jsx` (computePropPlanDefaults, preview 3 blocos abstract + execution)
+- `src/components/PlanManagementModal.jsx` (DebugBadge, linha condicional daily loss mesa)
+- `src/components/AddAccountModal.jsx` (revertido — código morto identificado)
+- `src/version.js` (1.26.0 → 1.26.4)
+- `docs/PROJECT.md` (CHANGELOG v1.26.1-v1.26.4, locks CHUNK-03/17)
+- `docs/dev/issues/issue-136-prop-plan-semantics.md` (arquivo de controle)
+
+**Testes:** 1186/1186 (era 1152 no início da sessão, +34 novos). 52/52 test files. Zero regressão.
+
+**Commits:**
+```
+29db3523 fix: #136 adicionar ylos em instrumentsTable.availability
+3b822949 fix: #136 riskPerOperation = periodStopPct
+b2e0ba51 fix: #136 hotfix — rewrite preview no arquivo correto (AccountsPage)
+822a6b5d fix: #136 revisão — periodGoal mecânico + preview attack plan em 3 blocos
+2d8faebe feat: Fase C #136 — templates Ylos Trading + engine phase-aware
+0ba3dad4 chore: remover symlink node_modules do tracking
+cf6a8213 feat: Fase B #136 — engine TRAILING_TO_STATIC (Ylos Funded freeze)
+bc4bb1be fix: Fase A #136 — semântica stop plano PROP + tooltip meta diária + resumo coerente
+60d3a857 docs: arquivo de controle issue-136 — abertura de sessão
+```
+
+**Observações:**
+- `AddAccountModal.jsx` é código morto (não importado em nenhum lugar). Candidato a deletar em follow-up issue.
+- Issue #133 (AI Approach Plan) body atualizado com 6 correções pendentes no prompt v1.0 para evitar mesma alucinação semântica.
+- Instrumentos restritos na Ylos e regra de corretagem na Funded ainda pendentes de verificação com aluno (seção 6 do issue body).
 
 ## 5. ENCERRAMENTO
 
-**Status:** 🔵 Em andamento
+**Status:** ✅ Encerrado — aguardando PR merge
 
 **Checklist final:**
-- [ ] Acceptance criteria atendidos (E1-E5)
-- [ ] Testes passando (+ regressão Apex zero)
-- [ ] PROJECT.md atualizado (DECs, CHANGELOG, liberar locks CHUNK-03/17)
+- [x] Acceptance criteria atendidos (E1-E5 + revisões semânticas)
+- [x] Testes passando (1186/1186, +34 novos, regressão Apex zero)
+- [x] PROJECT.md atualizado (DEC-068 a DEC-073, CHANGELOG v1.26.1-v1.26.4)
 - [ ] PR aberto e mergeado
 - [ ] Issue #136 fechado no GitHub
 - [ ] Worktree removido: `git worktree remove ~/projects/issue-136`
@@ -132,7 +180,7 @@ Paralelamente, o aluno assinou conta Ylos Trading — precisa de templates e nov
 
 | Chunk | Modo | Motivo |
 |-------|------|--------|
-| CHUNK-03 | escrita | `PlanManagementModal.jsx` — passo 2 (defaults stop período) e passo 3 (resumo coerente) — E1/E3 |
-| CHUNK-17 | escrita | `AddAccountModal.jsx` (defaults + tooltip), `propFirmDrawdownEngine.js` (TRAILING_TO_STATIC), `functions/propFirmEngine.js` (espelho), `propFirmTemplates` (templates Ylos) — E1/E2/E4/E5 |
+| CHUNK-03 | escrita | `PlanManagementModal.jsx` — DebugBadge + daily loss mesa condicional (E3) |
+| CHUNK-17 | escrita | `AccountsPage.jsx` (computePropPlanDefaults + preview 3 blocos), `propFirmDrawdownEngine.js` (TRAILING_TO_STATIC + phase-aware), `functions/propFirmEngine.js` (espelho + CF persiste trailFrozen), `propFirmDefaults.js` (YLOS + 7 templates), `instrumentsTable.js` (ylos availability) |
 
 **Locks registrados em main:** PROJECT.md §6.3 commit `005d4bbb` (11/04/2026).
