@@ -114,14 +114,16 @@ describe('computePropPlanDefaults', () => {
     expect(Number.isFinite(result.periodGoalPct)).toBe(true);
   });
 
-  it('riskPctPerOp execution: usa roPerTrade / initialBalance', () => {
+  it('riskPctPerOp = periodStopPct (teto diário por trade, não sizing mínimo)', () => {
     const result = computePropPlanDefaults(baseApexEod25k, 25000);
-    expect(result.riskPctPerOp).toBe(0.6);
+    // periodStopPct = 1.2% → riskPctPerOp = 1.2% (permite Path A e Path B sem flag compliance)
+    expect(result.riskPctPerOp).toBe(1.2);
+    expect(result.riskPctPerOp).toBe(result.periodStopPct);
   });
 
-  it('riskPctPerOp abstract: default 0.5 (sem instrumento)', () => {
+  it('riskPctPerOp abstract: periodStopPct fallback (dailyLossLimit 2% para Apex)', () => {
     const result = computePropPlanDefaults(baseAbstractApex, 25000);
-    expect(result.riskPctPerOp).toBe(0.5);
+    expect(result.riskPctPerOp).toBe(2); // periodStopPct = toPct(dailyLossLimit)
   });
 
   it('rrTarget: usa attackPlan.rrMinimum', () => {

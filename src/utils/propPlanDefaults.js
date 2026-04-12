@@ -51,9 +51,9 @@ export function computePropPlanDefaults(attackPlan, initialBalance) {
     (periodStopPct * rrMinimum) ||
     DEFAULT_PERIOD_GOAL_PCT;
 
-  const riskPctPerOp = isExecution
-    ? toPct(attackPlan.roPerTrade, pl) || DEFAULT_RISK_PCT
-    : DEFAULT_RISK_PCT;
+  // RO% por trade = teto diário (periodStopPct), não o sizing mínimo de 1 contrato.
+  // Permite Path A (2 trades × 0.6%) e Path B (1 trade × 1.2%) sem flagrar compliance.
+  const riskPctPerOp = periodStopPct || DEFAULT_RISK_PCT;
 
   const rrTarget = rrMinimum;
 
