@@ -442,34 +442,90 @@ const AddAccountModal = ({
                   </div>
                 )}
 
-                {/* Preview do plano de ataque (Fase 1.5: instrument-aware, modo abstract) */}
-                {attackPlan && attackPlan.mode === 'abstract' && (
-                  <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
-                    <div className="flex items-center gap-1 mb-2">
-                      <Info className="w-3 h-3 text-slate-400" />
-                      <span className="text-xs text-slate-400">Constraints da mesa (sem instrumento)</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <div className="text-slate-500">DD total:</div>
-                      <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
-                      <div className="text-slate-500">Daily loss:</div>
-                      <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
-                      <div className="text-slate-500">Profit target:</div>
-                      <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
-                      <div
-                        className="text-slate-500 flex items-center gap-1 cursor-help"
-                        title={`Ritmo médio de acumulação para atingir o profit target ($${attackPlan.profitTarget?.toLocaleString() ?? '—'}) no prazo da avaliação. NÃO é o alvo por trade — seu target por trade é definido pelo RR ${attackPlan.rrMinimum}:1.`}
-                      >
-                        Meta diária: <Info className="w-3 h-3 text-slate-600" />
+                {/* Preview do plano de ataque (3 blocos semanticamente separados — issue #136 revisão)
+                    BLOCO 1: Constraints da mesa (hard limits imutáveis)
+                    BLOCO 2: Mecânica do plano (meta/stop derivados do RO × RR, caminhos de execução)
+                    BLOCO 3: Ritmo de acumulação (EV estatístico, NUNCA meta operacional) */}
+                {attackPlan && attackPlan.mode === 'abstract' && (() => {
+                  const ro = attackPlan.roPerTrade ?? 0;
+                  const maxT = attackPlan.maxTradesPerDay ?? 0;
+                  const rr = attackPlan.rrMinimum ?? 2;
+                  const dailyStop = ro * maxT;
+                  const dailyGoal = dailyStop * rr;
+                  const roPctOfDD = attackPlan.drawdownMax > 0
+                    ? Math.round((ro / attackPlan.drawdownMax) * 100)
+                    : null;
+                  return (
+                    <div className="p-3 bg-slate-800/50 rounded-lg space-y-3">
+                      {/* BLOCO 1 — Constraints da mesa */}
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">
+                          Constraints da mesa
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          <div className="text-slate-500">DD total:</div>
+                          <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
+                          <div className="text-slate-500">Profit target:</div>
+                          <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
+                          {attackPlan.evalBusinessDays > 0 && (
+                            <>
+                              <div className="text-slate-500">Prazo eval:</div>
+                              <div className="text-slate-300">{attackPlan.evalBusinessDays} dias úteis</div>
+                            </>
+                          )}
+                          {attackPlan.dailyLossLimit > 0 && (
+                            <>
+                              <div className="text-slate-500">Daily loss:</div>
+                              <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString()} <span className="text-slate-600">(hard limit)</span></div>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
-                      <div className="text-slate-500">RR mínimo:</div>
-                      <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
-                      <div className="text-slate-500">Sizing:</div>
-                      <div className="text-slate-400 italic text-[10px]">a definir conforme instrumento</div>
+
+                      {/* BLOCO 2 — Mecânica do plano */}
+                      <div className="pt-2 border-t border-slate-700/50">
+                        <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">
+                          Mecânica do plano
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                          <div className="text-slate-500">RO por trade:</div>
+                          <div className="text-slate-300">
+                            ${ro.toLocaleString()}
+                            {roPctOfDD !== null && <span className="text-slate-600"> ({roPctOfDD}% do DD)</span>}
+                          </div>
+                          <div className="text-slate-500">RR por trade:</div>
+                          <div className="text-slate-300">{rr}:1</div>
+                          <div className="text-slate-500">Max trades/dia:</div>
+                          <div className="text-slate-300">{maxT}</div>
+                          <div className="text-red-400/70">Stop operacional:</div>
+                          <div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div>
+                          <div className="text-emerald-400/70">Meta operacional:</div>
+                          <div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div>
+                        </div>
+                        {maxT > 1 && (
+                          <div className="mt-2 text-[10px] text-slate-500 leading-snug">
+                            Execução: {maxT} trades de 1 contrato <span className="text-slate-400">OU</span> 1 trade de {maxT} contratos — mesma distância em pontos. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
+                          </div>
+                        )}
+                        <div className="mt-1 text-[10px] text-slate-500 italic">
+                          Stops em pontos a definir conforme instrumento.
+                        </div>
+                      </div>
+
+                      {/* BLOCO 3 — Ritmo de acumulação (contexto, NÃO meta) */}
+                      {attackPlan.dailyTarget > 0 && (
+                        <div className="pt-2 border-t border-slate-700/50">
+                          <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">
+                            Ritmo de acumulação (contexto, não meta)
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            EV esperado: <span className="font-mono">${attackPlan.dailyTarget?.toLocaleString()}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays ?? '—'} dias úteis. <span className="text-slate-500">Não é o alvo do dia.</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Template info */}
                 {selectedTemplate && (

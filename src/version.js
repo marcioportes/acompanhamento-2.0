@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.26.4: fix: Correção semântica #136 — periodGoal agora é mecânico (maxTrades × RO × RR = 2.4% Apex CONS_B), não mais o EV/dailyTarget (0.3%). Preview do attack plan reescrito em 3 blocos (constraints da mesa / mecânica do plano / ritmo de acumulação), com caminhos de execução explícitos (2 trades × 1 contrato OU 1 trade × 2 contratos). Remove tooltip Info supérfluo. 4 testes novos (issue #136 revisão Fase A)
  * - 1.26.3: feat: Templates Ylos Trading + engine phase-aware — 7 templates (6 Challenge + Freedom 50K), fundedDrawdown opcional por template, resolução automática por account.propFirm.phase (EVAL→drawdown, SIM_FUNDED/LIVE→fundedDrawdown), CF persiste trailFrozen (gap Fase B), 6 testes phase-aware (issue #136 Fase C E4)
  * - 1.26.2: feat: Engine drawdown TRAILING_TO_STATIC (Ylos Funded freeze) — novo tipo + flag TRAIL_FROZEN + campo account.propFirm.trailFrozen, espelhado em functions/propFirmEngine.js, 10 testes novos, regressão Apex zero (issue #136 Fase B E5)
  * - 1.26.1: fix: Plano sugerido PROP Fase A — stop período derivado (maxTrades × RO), tooltip meta diária, resumo coerente com daily loss mesa condicional (issue #136 E1+E2+E3)
@@ -43,10 +44,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.26.3',
+  version: '1.26.4',
   build: '20260411',
-  display: 'v1.26.3',
-  full: '1.26.3+20260411',
+  display: 'v1.26.4',
+  full: '1.26.4+20260411',
 };
 export default VERSION;
 export { VERSION };

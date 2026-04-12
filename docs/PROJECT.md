@@ -760,6 +760,20 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
+### [1.26.4] - 11/04/2026
+**Issue:** #136 (fix: correção semântica periodGoal + reescrita preview attack plan)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fase:** Revisão Fase A — correção de bug crítico identificado na validação.
+#### Corrigido
+- **Bug crítico:** `periodGoalPct` estava derivado de `attackPlan.dailyTarget` (EV estatístico para passar a conta em N dias). Resultado: Apex EOD 25K CONS_B mostrava meta diária 0.3% ($75) com stop diário 1.2% ($300) — RR invertido 1:4 dentro do plano, semanticamente absurdo. Correção: `periodGoalPct = (roPerTrade × maxTradesPerDay × rrMinimum) / initialBalance`. Apex CONS_B agora mostra meta 2.4% ($600) / stop 1.2% ($300) — day RR 2:1 === per-trade RR 2:1 (simetria mecânica pura)
+- **Preview do attack plan (AddAccountModal)** reescrito em 3 blocos semanticamente separados:
+  1. **Constraints da mesa** — DD total, profit target, prazo eval, daily loss (hard limit, só se existir)
+  2. **Mecânica do plano** — RO/RR por trade, max trades/dia, stop operacional diário (vermelho), meta operacional diária (verde), texto de execução explicando "{N} trades × 1 contrato OU 1 trade × {N} contratos — mesma distância em pontos — não reduzir stop/target para compensar"
+  3. **Ritmo de acumulação** — EV diário rotulado explicitamente como "contexto, não meta"
+- Tooltip `Info` supérfluo removido da "Meta diária" (texto dos 3 blocos torna a explicação redundante)
+#### Adicionado
+- 4 testes novos em `propPlanDefaults.test.js` cobrindo: periodGoal Apex CONS_B 2.4%, Ylos Challenge 2.4%, rejeita 0.3% (EV), abstract mode fallback `periodStop × RR = 4%`. Total de testes do arquivo: 14 (era 10)
+
 ### [1.26.3] - 11/04/2026
 **Issue:** #136 (fix: Plano sugerido em contas PROP — Fase C templates Ylos + engine phase-aware)
 **Milestone:** v1.1.0 — Espelho Self-Service

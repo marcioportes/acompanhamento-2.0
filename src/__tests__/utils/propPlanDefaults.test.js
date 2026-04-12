@@ -71,20 +71,47 @@ describe('computePropPlanDefaults', () => {
     expect(result.periodStopPct).toBe(2);
   });
 
-  it('Apex EOD 25K: cycleGoal/cycleStop/periodGoal mantidos corretos', () => {
+  it('Apex EOD 25K: cycleGoal/cycleStop corretos', () => {
     const result = computePropPlanDefaults(baseApexEod25k, 25000);
     expect(result.cycleGoalPct).toBe(6);
     expect(result.cycleStopPct).toBe(4);
-    expect(result.periodGoalPct).toBe(0.3);
+  });
+
+  it('Apex EOD 25K execution: periodGoal = maxTrades × RO × RR (2.4%), simétrico ao periodStop (1.2%) pelo RR 1:2', () => {
+    const result = computePropPlanDefaults(baseApexEod25k, 25000);
+    expect(result.periodGoalPct).toBe(2.4);
+    expect(result.periodStopPct).toBe(1.2);
+    // Day RR = periodGoal / periodStop === per-trade RR (simetria mecânica)
+    expect(result.periodGoalPct / result.periodStopPct).toBe(2);
+  });
+
+  it('Ylos Challenge 25K execution: periodGoal 2.4% / periodStop 1.2% (mesma mecânica, sem daily loss)', () => {
+    const result = computePropPlanDefaults(baseYlosChallenge25k, 25000);
+    expect(result.periodGoalPct).toBe(2.4);
+    expect(result.periodStopPct).toBe(1.2);
+  });
+
+  it('Apex EOD 25K: periodGoal NÃO usa dailyTarget (EV/acumulação) — rejeita 0.3%', () => {
+    const result = computePropPlanDefaults(baseApexEod25k, 25000);
+    expect(result.periodGoalPct).not.toBe(0.3);
+  });
+
+  it('Modo abstract Apex (roPerTrade=0): periodGoal cai em periodStop × RR = 4%', () => {
+    // Com roPerTrade=0 o plannedDailyLossUsd fica 0, periodStopPct vai pra 2% via dailyLossLimit,
+    // e periodGoalPct = 2% × 2 = 4%
+    const result = computePropPlanDefaults(baseAbstractApex, 25000);
+    expect(result.periodStopPct).toBe(2);
+    expect(result.periodGoalPct).toBe(4);
   });
 
   it('initialBalance=0: retorna todos valores em fallback padrão (não NaN/Infinity)', () => {
     const result = computePropPlanDefaults(baseApexEod25k, 0);
     expect(result.cycleGoalPct).toBe(10);
     expect(result.cycleStopPct).toBe(10);
-    expect(result.periodGoalPct).toBe(1);
     expect(result.periodStopPct).toBe(2);
+    expect(result.periodGoalPct).toBe(4); // 2 × rrMinimum 2
     expect(Number.isFinite(result.cycleGoalPct)).toBe(true);
+    expect(Number.isFinite(result.periodGoalPct)).toBe(true);
   });
 
   it('riskPctPerOp execution: usa roPerTrade / initialBalance', () => {

@@ -3,14 +3,16 @@
  * @description Deriva os defaults do PlanManagementModal a partir do attackPlan de uma conta PROP.
  *
  * Regra semântica crítica (issue #136):
- * - Stop do período do PLANO = maxTrades × RO (derivado do attack plan)
- * - NÃO é o dailyLossLimit da mesa — esse é hard limit, não parâmetro do plano
- * - Contas sem dailyLossLimit (ex: Ylos Challenge) usam o mesmo cálculo
+ * - Plano é MECÂNICA de risco/retorno, NÃO média estatística de acumulação.
+ * - periodStop (diário) = maxTrades × RO                       → pior caso: todos trades batem stop
+ * - periodGoal (diário) = maxTrades × RO × rrMinimum           → melhor caso: todos trades batem target
+ * - O day RR resultante === rrMinimum por construção (simetria mecânica com o per-trade RR).
+ * - O EV/dailyTarget ($72/dia no exemplo Apex) é CONTEXTO estatístico de acumulação, nunca meta do plano.
  *
- * Fallback chain para periodStopPct quando cálculo derivado não é possível:
- *   1. plannedDailyLoss = roPerTrade × maxTradesPerDay  (caminho feliz)
- *   2. dailyLossLimit da mesa  (modo abstract com mesa que tem hard limit)
- *   3. 2.0%  (modo abstract Ylos — aluno edita manualmente)
+ * Fallback chain para period*Pct quando cálculo derivado não é possível:
+ *   1. maxTrades × RO (× RR para goal)                          — caminho feliz
+ *   2. dailyLossLimit (stop) / periodStopPct × RR (goal)        — abstract mode com dados parciais
+ *   3. defaults fixos (stop 2%, goal 1%)                        — último fallback
  */
 
 const DEFAULT_CYCLE_GOAL_PCT = 10;
@@ -28,11 +30,12 @@ const toPct = (absValue, pl) =>
 export function computePropPlanDefaults(attackPlan, initialBalance) {
   const pl = Number(initialBalance) || 0;
   const isExecution = attackPlan.mode === 'execution' && !attackPlan.incompatible;
+  const rrMinimum = attackPlan.rrMinimum ?? DEFAULT_RR_TARGET;
 
   const cycleGoalPct = toPct(attackPlan.profitTarget, pl) || DEFAULT_CYCLE_GOAL_PCT;
   const cycleStopPct = toPct(attackPlan.drawdownMax, pl) || DEFAULT_CYCLE_STOP_PCT;
-  const periodGoalPct = toPct(attackPlan.dailyTarget, pl) || DEFAULT_PERIOD_GOAL_PCT;
 
+  // periodStop: risco máximo do dia se todos os trades planejados baterem stop
   const plannedDailyLossUsd =
     (attackPlan.roPerTrade ?? 0) * (attackPlan.maxTradesPerDay ?? 0);
   const periodStopPct =
@@ -40,11 +43,19 @@ export function computePropPlanDefaults(attackPlan, initialBalance) {
     toPct(attackPlan.dailyLossLimit, pl) ||
     DEFAULT_PERIOD_STOP_PCT;
 
+  // periodGoal: meta do dia se todos os trades planejados baterem target
+  // Simetria mecânica: periodGoal === periodStop × rrMinimum
+  const plannedDailyGainUsd = plannedDailyLossUsd * rrMinimum;
+  const periodGoalPct =
+    toPct(plannedDailyGainUsd, pl) ||
+    (periodStopPct * rrMinimum) ||
+    DEFAULT_PERIOD_GOAL_PCT;
+
   const riskPctPerOp = isExecution
     ? toPct(attackPlan.roPerTrade, pl) || DEFAULT_RISK_PCT
     : DEFAULT_RISK_PCT;
 
-  const rrTarget = attackPlan.rrMinimum ?? DEFAULT_RR_TARGET;
+  const rrTarget = rrMinimum;
 
   return {
     cycleGoalPct,
