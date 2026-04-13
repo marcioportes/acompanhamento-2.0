@@ -18,7 +18,7 @@ import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } from '../../utils/propFirmDrawdownEngine';
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
 import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS } from '../../constants/propFirmDefaults';
-import DebugBadge from '../DebugBadge';
+import VERSION from '../../version';
 
 // ============================================
 // Helpers visuais
@@ -437,7 +437,10 @@ const PropAccountCard = ({ account, template, drawdownHistory }) => {
         )}
       </div>
 
-      <DebugBadge component="PropAccountCard" />
+      {/* DebugBadge embedded — relativo ao card, não fixed */}
+      <div className="text-right pr-2 pb-1 opacity-50 text-[10px] font-mono text-slate-600 select-none">
+        PropAccountCard • {VERSION.display}
+      </div>
     </div>
   );
 };
