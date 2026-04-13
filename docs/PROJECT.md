@@ -38,6 +38,7 @@ Este documento segue versionamento semântico:
 | 0.12.1 | 11/04/2026 | Reforço INV-16 worktree | INV-16 reescrita (obrigatória sempre), padrão único `~/projects/issue-{NNN}`, passo worktree explícito em §4.0 e CLAUDE.md §Ativação Automática |
 | 0.13.0 | 12/04/2026 | #136 Prop Plan semântica + Ylos | DEC-068 a DEC-073, CHANGELOG v1.26.1-v1.26.4, templates Ylos + engine TRAILING_TO_STATIC phase-aware, correção semântica mecânica plano PROP, locks CHUNK-03/17 |
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
+| 0.14.0 | 13/04/2026 | #134 Prop Dashboard v1.27.0 | PropAccountCard gauges + PropAlertsBanner 3 níveis + sparkline drawdownHistory + tempo médio trades universal + PropPayoutTracker (qualifying days, eligibility, simulador saque), CHUNK-02/17 lock, 77 testes novos |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -594,6 +595,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-17 | #134 | feat/issue-134-prop-dashboard-payout | 13/04/2026 | Prop Dashboard + Payout |
+| CHUNK-02 | #134 | feat/issue-134-prop-dashboard-payout | 13/04/2026 | Prop Dashboard + Payout |
 
 ### 6.4 Checklist de Check-Out
 
@@ -764,6 +767,22 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.27.0] - 13/04/2026
+**Issue:** #134 (feat: Dashboard card prop + alertas visuais + payout tracking — Fases 3/4 do epic #52)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fases:** A (card core), B (alertas aprofundados), C (sparkline + tempo médio)
+#### Adicionado
+- **`PropAccountCard`** — card dedicado para conta PROP no StudentDashboard: phase badge (Avaliação/Simulado/Live/Expirada), gauges de drawdown utilizado e profit vs target, daily P&L com mini-barra vs daily loss limit, eval countdown com cores, consistency check visual, ícones de status (Pause/Lock/Snowflake)
+- **`PropAlertsBanner`** — banner persistente no topo do dashboard quando há alertas vermelhos (DD_NEAR, ACCOUNT_BUST, DAILY_LOSS_HIT). Não dismissível. Mentor e aluno veem
+- **`propFirmAlerts.js`** — lógica pura de derivação de alertas 3 níveis: danger (mesa), warning (plano — consistency > 40% target, eval deadline < 7d com profit < 50%), info (nudge operacional — countdown, lock, trail freeze)
+- **`DrawdownSparkline`** — mini gráfico SVG da evolução do currentDrawdownThreshold ao longo dos trades (subcollection drawdownHistory)
+- **`useDrawdownHistory`** — hook para leitura real-time da subcollection `accounts/{id}/drawdownHistory`, ordenado cronologicamente, limit 100 docs, query condicional (só PROP)
+- **Tempo médio de trades** no `MetricsCards` — métrica universal (todas as contas). Classificação: < 5min Scalping, 5-60min Day Trade, > 60min Swing. Win/Loss breakdown
+- **`avgTradeDuration`** em `useDashboardMetrics` — calcula média a partir do campo `duration` (já populado pelo tradeGateway)
+- **`PropPayoutTracker`** — painel collapsible de payout tracking: eligibility checklist (5 critérios), qualifying days com barra de progresso, simulador de saque interativo (split tiers, impacto no threshold), histórico de withdrawals derivado de movements
+- **`propFirmPayout.js`** — lógica pura: `calculateQualifyingDays` (agrupa drawdownHistory por data), `calculatePayoutEligibility` (5 checks), `simulateWithdrawal` (impacto no DD com tiers de split), `getWithdrawalHistory` (filtra movements WITHDRAWAL)
+- 77 testes novos: propFirmAlerts (28), propDashboardPhaseC (24), propFirmPayout (29 — qualifying days, eligibility, simulador, withdrawal history), propAccountCard Fase A (26 — mantidos). Total suite: 1289 testes
 
 ### [1.26.4] - 11/04/2026
 **Issue:** #136 (fix: correção semântica periodGoal + reescrita preview attack plan)

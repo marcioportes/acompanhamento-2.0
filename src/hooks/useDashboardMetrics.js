@@ -222,6 +222,24 @@ const useDashboardMetrics = ({
     return { winsNoStop, winsTotal: wins.length, lossesOverRisk, lossesTotal: losses.length };
   }, [riskAsymmetry, filteredTrades]);
 
+  // === Tempo Médio de Trades (Fase C — #134) ===
+  const avgTradeDuration = useMemo(() => {
+    const withDuration = filteredTrades.filter(t => typeof t.duration === 'number' && t.duration > 0);
+    if (withDuration.length === 0) return null;
+
+    const wins = withDuration.filter(t => (t.result ?? 0) > 0);
+    const losses = withDuration.filter(t => (t.result ?? 0) < 0);
+
+    const avg = (arr) => arr.length > 0 ? arr.reduce((s, t) => s + t.duration, 0) / arr.length : null;
+
+    return {
+      all: avg(withDuration),
+      win: avg(wins),
+      loss: avg(losses),
+      count: withDuration.length,
+    };
+  }, [filteredTrades]);
+
   // === P&L Contextual (B5 — Issue #71) ===
   const plContext = useMemo(() => {
     // Prioridade 1: filtro de período ativo
@@ -276,6 +294,8 @@ const useDashboardMetrics = ({
     asymmetryDiagnostic,
     // Contexto P&L (B5)
     plContext,
+    // Tempo médio (Fase C — #134)
+    avgTradeDuration,
   };
 };
 

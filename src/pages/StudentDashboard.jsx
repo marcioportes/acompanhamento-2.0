@@ -23,6 +23,9 @@ import { Wallet, X, Activity, Upload } from 'lucide-react';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
 import PlanCardGrid from '../components/dashboard/PlanCardGrid';
 import MetricsCards from '../components/dashboard/MetricsCards';
+import PropAccountCard from '../components/dashboard/PropAccountCard';
+import PropAlertsBanner from '../components/dashboard/PropAlertsBanner';
+import PropPayoutTracker from '../components/dashboard/PropPayoutTracker';
 
 // Componentes existentes
 import TradingCalendar from '../components/TradingCalendar';
@@ -64,10 +67,14 @@ import useOrders from '../hooks/useOrders';
 import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
+import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
+import { useDrawdownHistory } from '../hooks/useDrawdownHistory';
+import { useMovements } from '../hooks/useMovements';
 
 // Utils
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
+import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
 
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
@@ -87,6 +94,16 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   // Master data (emotions, tickers) + setups
   const { emotions, tickers: masterTickers } = useMasterData();
   const { setups } = useSetups();
+
+  // Prop firm templates + drawdown history (para PropAccountCard)
+  const { getTemplateById } = usePropFirmTemplates();
+  const selectedPropAccountId = (() => {
+    if (filters.accountId === 'all') return null;
+    const acc = accounts.find(a => a.id === filters.accountId);
+    return acc?.type === 'PROP' ? acc.id : null;
+  })();
+  const { history: drawdownHistory } = useDrawdownHistory(selectedPropAccountId);
+  const { movements: propMovements } = useMovements(selectedPropAccountId);
 
   // CSV Staging
   const {
@@ -162,6 +179,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
     payoff,
     asymmetryDiagnostic,
     plContext,
+    avgTradeDuration,
   } = metrics;
 
   // === Handlers ===
@@ -327,6 +345,68 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         </div>
       )}
 
+      {/* Prop Firm: Banner de alertas vermelhos + Card da conta */}
+      {(() => {
+        const selectedAccount = filters.accountId !== 'all'
+          ? accounts.find(a => a.id === filters.accountId)
+          : null;
+        if (!selectedAccount || selectedAccount.type !== 'PROP') return null;
+        const propTemplate = selectedAccount.propFirm?.templateId
+          ? getTemplateById(selectedAccount.propFirm.templateId)
+          : null;
+        const propFirm = selectedAccount.propFirm;
+        const accountSize = propTemplate?.accountSize ?? selectedAccount.initialBalance ?? 0;
+        const drawdownMax = propTemplate?.drawdown?.maxAmount ?? 0;
+        const currentBalance = selectedAccount.currentBalance ?? accountSize;
+        const currentProfit = currentBalance - accountSize;
+        const profitTarget = propTemplate?.profitTarget ?? 0;
+        const distanceToDD = propFirm?.distanceToDD
+          ?? (drawdownMax > 0 ? (currentBalance - (propFirm?.currentDrawdownThreshold ?? (accountSize - drawdownMax))) / drawdownMax : 1);
+
+        const alerts = derivePropAlerts({
+          flags: propFirm?.flags ?? [],
+          distanceToDD,
+          isDayPaused: propFirm?.isDayPaused ?? false,
+          dailyPnL: propFirm?.dailyPnL ?? 0,
+          currentBalance,
+          currentDrawdownThreshold: propFirm?.currentDrawdownThreshold ?? (accountSize - drawdownMax),
+          currentProfit,
+          profitTarget,
+          profitRatio: profitTarget > 0 ? Math.max(0, currentProfit / profitTarget) : 0,
+          evalDaysRemaining: null, // banner usa flags — countdown calculado no card
+          bestDayProfit: propFirm?.bestDayProfit ?? 0,
+          consistencyRule: propTemplate?.consistency?.evalRule ?? null,
+          consistencyThreshold: propTemplate?.consistency?.evalRule && profitTarget > 0
+            ? profitTarget * propTemplate.consistency.evalRule : null,
+          lockLevel: propFirm?.lockLevel ?? null,
+          trailFrozen: propFirm?.trailFrozen ?? false,
+          currency: selectedAccount.currency ?? 'USD',
+          fmt: formatCurrencyDynamic,
+        });
+        const dangerAlerts = getDangerAlerts(alerts);
+
+        return (
+          <>
+            <PropAlertsBanner
+              dangerAlerts={dangerAlerts}
+              firmName={propFirm?.firmName}
+              productName={propFirm?.productName}
+            />
+            <PropAccountCard
+              account={selectedAccount}
+              template={propTemplate}
+              drawdownHistory={drawdownHistory}
+            />
+            <PropPayoutTracker
+              account={selectedAccount}
+              template={propTemplate}
+              drawdownHistory={drawdownHistory}
+              movements={propMovements}
+            />
+          </>
+        );
+      })()}
+
       {/* Cards de Planos */}
       <PlanCardGrid
         availablePlans={availablePlans}
@@ -364,6 +444,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         payoff={payoff}
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
+        avgTradeDuration={avgTradeDuration}
       />
 
       {/* Gráficos */}
