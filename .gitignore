@@ -57,6 +57,8 @@ functions/diff_index.txt
 # Misc
 # ==============================
 coverage/
+html/
+playwright-report/
 Temp/
 docs/CONTINUITY-*
 test-results/
