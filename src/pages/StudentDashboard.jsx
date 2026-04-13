@@ -95,15 +95,8 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   const { emotions, tickers: masterTickers } = useMasterData();
   const { setups } = useSetups();
 
-  // Prop firm templates + drawdown history (para PropAccountCard)
+  // Prop firm templates (para PropAccountCard)
   const { getTemplateById } = usePropFirmTemplates();
-  const selectedPropAccountId = (() => {
-    if (filters.accountId === 'all') return null;
-    const acc = accounts.find(a => a.id === filters.accountId);
-    return acc?.type === 'PROP' ? acc.id : null;
-  })();
-  const { history: drawdownHistory } = useDrawdownHistory(selectedPropAccountId);
-  const { movements: propMovements } = useMovements(selectedPropAccountId);
 
   // CSV Staging
   const {
@@ -137,6 +130,15 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
   const [showOrderImport, setShowOrderImport] = useState(false);
+
+  // Prop firm drawdown history + movements (após filters useState)
+  const selectedPropAccountId = (() => {
+    if (filters.accountId === 'all') return null;
+    const acc = accounts.find(a => a.id === filters.accountId);
+    return acc?.type === 'PROP' ? acc.id : null;
+  })();
+  const { history: drawdownHistory } = useDrawdownHistory(selectedPropAccountId);
+  const { movements: propMovements } = useMovements(selectedPropAccountId);
 
   // Reabrir extrato ao voltar do feedback (só quando veio do extrato — _fromLedgerPlanId)
   useEffect(() => {
