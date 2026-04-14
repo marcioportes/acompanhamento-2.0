@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.14.2  
-> **Última atualização:** 13/04/2026 — encerramento #134 v1.27.0 (Prop Firm Dashboard + Payout), protocolo §4.3 reforçado com `rm -rf` do worktree físico  
+> **Versão:** 0.15.0  
+> **Última atualização:** 13/04/2026 — AP-08 Build Verde App Quebrada, §4.0 reordenado (shared files antes do worktree), §4.2 validação browser obrigatória  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -41,6 +41,7 @@ Este documento segue versionamento semântico:
 | 0.14.0 | 13/04/2026 | #134 Prop Dashboard v1.27.0 | PropAccountCard gauges + PropAlertsBanner 3 níveis + sparkline drawdownHistory + tempo médio trades universal + PropPayoutTracker (qualifying days, eligibility, simulador saque), CHUNK-02/17 lock, 77 testes novos |
 | 0.14.1 | 13/04/2026 | Encerramento #134 | PR #138 mergeado, locks CHUNK-02/17 liberados (AVAILABLE), issue doc movida para archive, DEC adicional: PhaseSelector (transição de fase semântica) + DebugBadge `embedded` prop |
 | 0.14.2 | 13/04/2026 | Protocolo §4.3 — rm -rf worktree | Adicionada 2ª etapa obrigatória no passo 5 de encerramento: `rm -rf ~/projects/issue-{NNN}` após `git worktree remove` para limpar diretório físico residual (cache .vite, etc.) |
+| 0.15.0 | 13/04/2026 | Encerramento #134 + reforço protocolo | AP-08 Build Verde App Quebrada, §4.0 reordenado (shared files antes do worktree), §4.2 validação browser obrigatória |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -344,17 +345,19 @@ rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residu
 ### 4.0 Abertura de Sessão (obrigatório, antes de tudo — starta automaticamente em sessões de codificação)
 
 ```
-□ Ler PROJECT.md do repo — verificar versão no header (INV-14)
+□ Ler PROJECT.md do repo (main) — verificar versão no header (INV-14)
    → Se versão diverge do que a sessão tem em contexto: PARAR, reler o arquivo fresh
 □ Ler o issue no GitHub (gh issue view NNN)
 □ Identificar campo "Chunks necessários" no body do issue
 □ Consultar Registry de Chunks (seção 6.3) — verificar que TODOS estão AVAILABLE
    → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
-□ Registrar lock no registry: chunk + issue + branch + data
-□ Criar worktree isolado: git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao (INV-16 — OBRIGATÓRIO, PADRÃO ÚNICO DE NOME)
-□ Criar arquivo docs/dev/issues/issue-NNN-descricao.md a partir do template abaixo
-□ Branch criada automaticamente pelo -b acima; confirmar que está dentro do worktree (pwd deve ser ~/projects/issue-{NNN})
+□ AINDA NO MAIN: registrar locks na tabela §6.3 (chunk + issue + branch + data)
+□ AINDA NO MAIN: commit — "docs: registrar locks CHUNK-XX para issue-NNN"
+□ Criar worktree: git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao (INV-16)
+   (worktree nasce com locks já commitados — zero conflito no merge)
+□ Criar arquivo docs/dev/issues/issue-NNN-descricao.md DENTRO do worktree a partir do template abaixo
+□ Confirmar pwd = ~/projects/issue-{NNN}
 □ Preencher seções 1 (Contexto), 2 (Acceptance Criteria), 3 (Análise de Impacto) e 6 (Chunks)
 □ Só então iniciar Gate Pré-Código (seção 4.1)
 ```
@@ -362,6 +365,8 @@ rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residu
 **Regra:** sem issue no GitHub + chunks verificados + arquivo de controle em `docs/dev/issues/`, nenhuma linha de código é escrita. Se a sessão for perdida, outra sessão reconstrói o contexto completo a partir do arquivo de issue.
 
 **Regra de chunks:** o campo "Chunks necessários" no issue do GitHub é OBRIGATÓRIO para issues de código. A sessão NÃO infere chunks — lê do issue. Se o campo estiver ausente, a sessão preenche antes de prosseguir (grep no código + análise de impacto → propõe chunks → aguarda aprovação).
+
+**Regra de shared files:** locks e edições em shared files (PROJECT.md §6.3, etc.) são feitos e commitados no main ANTES da criação do worktree. Dentro do worktree, shared files nunca são editados diretamente — apenas deltas propostos no arquivo de controle do issue. O integrador aplica os deltas no merge.
 
 #### Template: `docs/dev/issues/issue-NNN-descricao.md`
 
@@ -461,6 +466,7 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 □ CHANGELOG (seção 10) com entrada da versão
 □ Testes para toda lógica nova criados e passando
 □ DebugBadge em todos os componentes novos/tocados com component="NomeExato"
+□ Rodar npm run dev e confirmar no browser que telas afetadas renderizam sem erros no console
 □ Commit via Claude Code ou git direto (commits em linha única)
 □ PARAR — aguardar confirmação do Marcio
 ```
@@ -741,6 +747,9 @@ Claude assume como o banco funciona em vez de verificar. Nunca criar subcollecti
 
 ### AP-07: Inferência Superficial
 Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implementação baseado em leitura parcial ou nomes de variáveis, sem rastrear o fluxo real. Regra: se não leu todos os arquivos relevantes, não afirma.
+
+### AP-08: Build Verde, App Quebrada
+`vite build` e `vitest run` passam mas o app não renderiza no browser. Build faz tree-shaking estático, testes com jsdom não executam a ordem real de hooks/variáveis no componente completo. Erros de TDZ (temporal dead zone), ordenação de hooks, e dependências circulares só aparecem no browser. Regra: antes de apresentar gate pré-entrega, rodar `npm run dev` e confirmar que as telas afetadas renderizam. Console do browser limpo (sem erros vermelhos) é evidência obrigatória.
 
 ---
 
