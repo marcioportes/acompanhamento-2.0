@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.15.0  
-> **Última atualização:** 13/04/2026 — AP-08 Build Verde App Quebrada, §4.0 reordenado (shared files antes do worktree), §4.2 validação browser obrigatória  
+> **Versão:** 0.16.0  
+> **Última atualização:** 14/04/2026 — Encerramento #129 v1.28.0 Shadow Behavior Analysis (15 padrões), DEC-074 a DEC-079, CHANGELOG [1.28.0]  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -42,6 +42,7 @@ Este documento segue versionamento semântico:
 | 0.14.1 | 13/04/2026 | Encerramento #134 | PR #138 mergeado, locks CHUNK-02/17 liberados (AVAILABLE), issue doc movida para archive, DEC adicional: PhaseSelector (transição de fase semântica) + DebugBadge `embedded` prop |
 | 0.14.2 | 13/04/2026 | Protocolo §4.3 — rm -rf worktree | Adicionada 2ª etapa obrigatória no passo 5 de encerramento: `rm -rf ~/projects/issue-{NNN}` após `git worktree remove` para limpar diretório físico residual (cache .vite, etc.) |
 | 0.15.0 | 13/04/2026 | Encerramento #134 + reforço protocolo | AP-08 Build Verde App Quebrada, §4.0 reordenado (shared files antes do worktree), §4.2 validação browser obrigatória |
+| 0.16.0 | 14/04/2026 | Encerramento #129 Shadow Behavior | v1.28.0, 15 padrões comportamentais, CF callable analyzeShadowBehavior, DEC-074 a DEC-079, CHANGELOG [1.28.0], lock CHUNK-04 liberado |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -721,6 +722,12 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-071 | **Engine phase-aware.** `calculateDrawdownState` aceita arg `phase`, resolve `activeDrawdown = getActiveDrawdown(template, phase)`. EVAL → `template.drawdown`, SIM_FUNDED/LIVE → `template.fundedDrawdown ?? template.drawdown`. Back-compat Apex (sem fundedDrawdown) | #136 | 12/04/2026 |
 | DEC-072 | **`riskPerOperation = periodStopPct`** (teto diário por trade), não `roPerTrade/pl` (sizing mínimo de 1 contrato). Permite Path A (N trades × 1 contrato) e Path B (1 trade × N contratos) sem flag compliance | #136 | 12/04/2026 |
 | DEC-073 | **Preview attack plan em 3 blocos**: (1) Constraints da mesa, (2) Mecânica do plano com stop/meta operacional + caminhos de execução, (3) Ritmo de acumulação rotulado como contexto | #136 | 12/04/2026 |
+| DEC-074 | **Shadow Behavior em 3 camadas de resolução** (LOW/MEDIUM/HIGH). Camada 1 (todos os trades, parciais + contexto inter-trade) sempre ativa — shadow nunca fica vazio. Camada 2 (orders brutas) enriquece quando disponíveis. Trades manuais recebem análise LOW; trades importados recebem HIGH | #129 | 13/04/2026 |
+| DEC-075 | **Guard `onTradeUpdated:1033` já cobre `shadowBehavior`** — early return automático quando só `shadowBehavior` muda (resultChanged/planChanged/complianceChanged todos false). Zero edição na CF para o guard | #129 | 13/04/2026 |
+| DEC-076 | **`ShadowBehaviorPanel` em `src/components/Trades/`** (não OrderImport) — domínio de trades, consumido por TradeDetailModal e FeedbackPage | #129 | 13/04/2026 |
+| DEC-077 | **Engine shadow puro espelhado em `functions/analyzeShadowBehavior.js`** — mesmo padrão DT-034 do propFirmEngine. Header de aviso obrigatório nos dois arquivos | #129 | 13/04/2026 |
+| DEC-078 | **DIRECTION_FLIP** (14º padrão, Layer 1, janela 120min) — virada de mão no mesmo instrumento após loss. Mapeamento: CONFUSION. Adicionado em validação real após algoritmo retornar vazio para 2 losses opostas | #129 | 14/04/2026 |
+| DEC-079 | **UNDERSIZED_TRADE** (15º padrão, Layer 1) — risco real <50% do RO planejado. Mapeamento: AVOIDANCE. Caller enriquece trade com `planRoPct`. Detecta disfunção financeira: subdimensionar silenciosamente em vez de renegociar o plano | #129 | 14/04/2026 |
 
 ---
 
@@ -782,6 +789,29 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.28.0] - 14/04/2026
+**Issue:** #129 (feat: Shadow Trade + Padrões Comportamentais)
+**Epic:** #128 (Pipeline Unificado de Import de Ordens)
+**Milestone:** v1.2.0 — Mentor Cockpit
+#### Adicionado
+- **`src/utils/shadowBehaviorAnalysis.js`** — engine puro, função `analyzeShadowForTrade(trade, adjacentTrades, orders?, config?)` + `analyzeShadowBatch`. 15 detectores determinísticos em 2 camadas
+- **Camada 1 (todos os trades, parciais + contexto inter-trade):** HOLD_ASYMMETRY, REVENGE_CLUSTER, GREED_CLUSTER, OVERTRADING, IMPULSE_CLUSTER, CLEAN_EXECUTION, TARGET_HIT, **DIRECTION_FLIP** (DEC-078), **UNDERSIZED_TRADE** (DEC-079)
+- **Camada 2 (quando orders existem, enriquecimento):** HESITATION, STOP_PANIC, FOMO_ENTRY, EARLY_EXIT, LATE_EXIT, AVERAGING_DOWN
+- **3 níveis de resolução** (DEC-074): LOW (parciais + contexto), MEDIUM (parciais enriquecidas), HIGH (orders brutas). Shadow nunca vazio
+- **`functions/analyzeShadowBehavior.js`** — CF callable v2 (us-central1, Node 22 2nd Gen). Mentor dispara análise retroativa por studentId + período. Fetch trades + plans + orders, enriquece com planRoPct, batch commit. Engine espelhado (DEC-077, DT-034)
+- **`src/components/Trades/ShadowBehaviorPanel.jsx`** (DEC-076) — UI mentor-only com severity badges, evidence colapsável, marketContext (ATR + sessão + instrumento). Consumido em TradeDetailModal e FeedbackPage
+- **Hook `useShadowAnalysis`** — wrapper de httpsCallable com loading/error state
+- **Botão "Analisar comportamento"** na FeedbackPage (mentor-only) — dispara CF callable para o dia do trade. Re-análise silenciosa sobrescreve shadowBehavior anterior
+- **Integração pós-import** — passo 10 no OrderImportPage: após staging confirm, analisa trades criados/enriquecidos com resolution HIGH, enriquecendo com planRoPct
+- 78 testes novos (73 engine + 5 hook), 1367 total (58 suites), zero regressão
+#### Decisões
+- DEC-074 a DEC-079 (shadow em 3 camadas, guard onTradeUpdated reaproveitado, panel em src/components/Trades/, engine espelhado, DIRECTION_FLIP, UNDERSIZED_TRADE)
+#### Validação
+- AP-08 validado no browser: FeedbackPage standalone + embedded, botão dispara CF, panel renderiza padrões corretamente
+- CF deployada em produção e validada end-to-end com aluno real
+#### Excecões
+- §6.2 autorizada para `functions/index.js` (export da CF) durante validação browser AP-08
 
 ### [1.27.0] - 13/04/2026
 **Issue:** #134 (feat: Dashboard card prop + alertas visuais + payout tracking — Fases 3/4 do epic #52)
