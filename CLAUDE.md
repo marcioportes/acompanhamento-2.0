@@ -105,10 +105,13 @@ Quando o usuário mencionar um issue, feature, fix, debt, ou qualquer intenção
 4. **Consultar Registry de Chunks** (PROJECT.md §6.3) — verificar que todos os chunks com modo ESCRITA estão AVAILABLE
    - Se algum chunk está LOCKED: **PARAR**. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    - Se chunk não existe no registry: **PARAR**. Propor novo chunk ao Marcio
-5. **Registrar lock** no registry: chunk + issue + branch + data
-6. **Criar worktree isolado** (INV-16 — OBRIGATÓRIO, NUNCA OMITIR): `git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao`
-7. Criar/verificar arquivo de controle em `docs/dev/issues/` (dentro do worktree)
-8. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
+5. **Registrar lock NO REPO MAIN** (`~/projects/acompanhamento-2.0`) editando PROJECT.md §6.3: chunk + issue + branch + data. Qualquer outro shared file necessário (bump de versão reservada, CHANGELOG placeholder, etc.) também é editado AQUI, no main.
+6. **Commit no main** em linha única: `docs: registrar lock CHUNK-XX para issue-NNN`. Worktree só nasce a partir de um main já atualizado — zero shared-file edit dentro do worktree depois.
+7. **Criar worktree isolado** (INV-16 — OBRIGATÓRIO, NUNCA OMITIR): `git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao`. A partir daqui, a sessão "desce" para o worktree e se isola.
+8. Criar/verificar arquivo de controle em `docs/dev/issues/` (dentro do worktree)
+9. Executar o Gate Pré-Código antes de tocar em qualquer arquivo de código
+
+> **Regra inviolável de ordem:** primeiro registra-se o que vai fazer no main (lock + deltas iniciais de shared files) e commita-se; só depois cria-se o worktree e se isola. Shared files nunca são editados dentro do worktree — apenas deltas propostos no arquivo de controle para aplicação posterior no main via PR. (Exceção: o próprio arquivo de controle `docs/dev/issues/issue-NNN-*.md` é criado no worktree.)
 
 - Se o issue **não existir** no GitHub → perguntar ao usuário se deseja criá-lo
 - Se o arquivo de controle **não existir** → criá-lo a partir do template (PROJECT.md §4.0), incluindo seção 6 (Chunks)
