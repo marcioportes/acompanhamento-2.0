@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.13.0  
-> **Última atualização:** 12/04/2026 — #136 v1.26.4, DEC-068 a DEC-073, Ylos Trading templates + engine TRAILING_TO_STATIC phase-aware, semântica mecânica do plano PROP  
+> **Versão:** 0.14.2  
+> **Última atualização:** 13/04/2026 — encerramento #134 v1.27.0 (Prop Firm Dashboard + Payout), protocolo §4.3 reforçado com `rm -rf` do worktree físico  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -40,6 +40,7 @@ Este documento segue versionamento semântico:
 | 0.11.0 | 09/04/2026 | Prop Firm Engine deployado | #52 Fases 1/1.5/2 v1.25.0, DEC-060/061/062, DT-034/035, correção ATR v2 |
 | 0.14.0 | 13/04/2026 | #134 Prop Dashboard v1.27.0 | PropAccountCard gauges + PropAlertsBanner 3 níveis + sparkline drawdownHistory + tempo médio trades universal + PropPayoutTracker (qualifying days, eligibility, simulador saque), CHUNK-02/17 lock, 77 testes novos |
 | 0.14.1 | 13/04/2026 | Encerramento #134 | PR #138 mergeado, locks CHUNK-02/17 liberados (AVAILABLE), issue doc movida para archive, DEC adicional: PhaseSelector (transição de fase semântica) + DebugBadge `embedded` prop |
+| 0.14.2 | 13/04/2026 | Protocolo §4.3 — rm -rf worktree | Adicionada 2ª etapa obrigatória no passo 5 de encerramento: `rm -rf ~/projects/issue-{NNN}` após `git worktree remove` para limpar diretório físico residual (cache .vite, etc.) |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -328,9 +329,10 @@ Toda criação de collection, subcollection, ou campo novo no Firestore exige: (
 git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao
 ```
 
-**Comando de remoção (passo §4.3 obrigatório após merge):**
+**Comando de remoção (passo §4.3 obrigatório após merge — duas etapas):**
 ```
-git worktree remove ~/projects/issue-{NNN}
+git worktree remove ~/projects/issue-{NNN}    # desregistra do git
+rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residual
 ```
 
 **Gate de verificação antes de qualquer edição de código:** se `pwd` não retorna `~/projects/issue-{NNN}`, PARE — o worktree não foi criado ou você está no diretório errado. Crie/entre no worktree antes de prosseguir. A criação do worktree **não pode ser omitida nem adiada** sob nenhuma justificativa.
@@ -488,10 +490,15 @@ Ao final de cada sessão, antes de encerrar:
 
 4. **Liberar locks de chunks desta sessão** no registry (seção 6.3) — liberar APENAS os locks registrados por esta sessão/issue. Nunca tocar em locks de outras sessões.
 
-5. **Remover worktree** após merge confirmado: `git worktree remove ~/projects/issue-{NNN}` (INV-16 — padrão único de nome)
+5. **Remover worktree** após merge confirmado (duas etapas — ambas obrigatórias):
+   ```bash
+   git worktree remove ~/projects/issue-{NNN}           # desregistra do git
+   rm -rf ~/projects/issue-{NNN}                        # remove diretório físico residual (cache .vite, node_modules stale, etc.)
+   ```
+   `git worktree remove` pode deixar o diretório pai com artefatos não-tracked (ex: `.vite/`). O `rm -rf` garante limpeza completa. Verificar com `ls -d ~/projects/issue-{NNN}` — deve retornar "No such file or directory".
 
 6. **Mover issue file para archive** após merge confirmado:
-   `mv docs/dev/issues/issue-NNN-nome.md docs/archive/`
+   `git mv docs/dev/issues/issue-NNN-nome.md docs/archive/`
 
 ### 4.4 Diretriz Crítica de Verificação
 
