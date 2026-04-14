@@ -609,7 +609,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-04 | #129 | feat/issue-129-shadow-trade | 13/04/2026 | shadow-trade |
 
 ### 6.4 Checklist de Check-Out
 

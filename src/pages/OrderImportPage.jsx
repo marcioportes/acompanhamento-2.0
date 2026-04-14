@@ -37,7 +37,8 @@ import { createTradesBatch } from '../utils/orderTradeBatch';
 import { compareOperationWithTrade } from '../utils/orderTradeComparison';
 import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { analyzeShadowBatch } from '../utils/shadowBehaviorAnalysis';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // ============================================
@@ -333,6 +334,60 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       // 9. Persistir ambíguas (Fase 5 cria o painel de decisão manual)
       if (ambiguous.length > 0) {
         setAmbiguousData(ambiguous);
+      }
+
+      // 10. Shadow Behavior Analysis (pós-import) — upgrade LOW→HIGH
+      //     Re-lê trades do plano para ter docs completos (batchResult.created só tem resumo).
+      //     Trades com ordens correlacionadas recebem resolution HIGH, demais LOW.
+      try {
+        setProgress('Analisando comportamento...');
+        const tradesSnap = await getDocs(query(
+          collection(db, 'trades'),
+          where('planId', '==', selectedPlanId)
+        ));
+        const freshTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Enrich trades with planRoPct (para detector UNDERSIZED_TRADE — issue #129)
+        const planSnap = await getDocs(query(
+          collection(db, 'plans'),
+          where('__name__', '==', selectedPlanId)
+        ));
+        const planDoc = planSnap.docs[0];
+        const planRoPct = planDoc?.data()?.riskPerOperation ?? null;
+        const uniqueTrades = freshTrades.map(t => ({ ...t, planRoPct }));
+
+        if (uniqueTrades.length > 0) {
+          // Build orders-by-trade map from correlation results
+          const ordersByTradeId = {};
+          if (correlations) {
+            for (const corr of (correlations ?? [])) {
+              if (corr.tradeId && corr.matchType !== 'ghost') {
+                const orderIndex = corr.orderIndex;
+                const order = confirmedOrders.find(o => o._rowIndex === orderIndex);
+                if (order) {
+                  if (!ordersByTradeId[corr.tradeId]) ordersByTradeId[corr.tradeId] = [];
+                  ordersByTradeId[corr.tradeId].push(order);
+                }
+              }
+            }
+          }
+
+          const shadowResults = analyzeShadowBatch(uniqueTrades, ordersByTradeId);
+
+          // Write shadowBehavior to each trade
+          for (const [tradeId, shadow] of shadowResults) {
+            try {
+              const tradeRef = doc(db, 'trades', tradeId);
+              await updateDoc(tradeRef, { shadowBehavior: shadow });
+            } catch (shadowErr) {
+              console.warn(`[OrderImportPage] Shadow write failed for ${tradeId}:`, shadowErr.message);
+            }
+          }
+          console.log(`[OrderImportPage] Shadow behavior: ${shadowResults.size} trades analisados`);
+        }
+      } catch (shadowErr) {
+        // Shadow analysis failure is non-blocking — log and continue
+        console.warn('[OrderImportPage] Shadow behavior analysis failed:', shadowErr.message);
       }
 
       setStep(STEPS.DONE);

@@ -1372,3 +1372,8 @@ exports.generateAssessmentReport = require("./assessment/generateAssessmentRepor
 // SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)
 // ============================================
 exports.checkSubscriptions = require("./subscriptions/checkSubscriptions");
+
+// ============================================
+// SHADOW BEHAVIOR — Padrões comportamentais (CHUNK-04, issue #129)
+// ============================================
+exports.analyzeShadowBehavior = require("./analyzeShadowBehavior");

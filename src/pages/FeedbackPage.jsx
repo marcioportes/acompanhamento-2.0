@@ -30,11 +30,13 @@ import {
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
   Calendar, TrendingUp, TrendingDown, Clock, AlertCircle, AlertTriangle,
   BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2,
-  Layers, ArrowDownRight, ArrowUpRight, ImageIcon
+  Layers, ArrowDownRight, ArrowUpRight, ImageIcon, Activity
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
+import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
+import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -403,6 +405,26 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const userIsMentor = isMentor();
   const status = trade?.status || STATUS.OPEN;
 
+  // Shadow analysis — mentor dispara analise do dia do trade (#129)
+  const { analyze: analyzeShadow, loading: shadowLoading, error: shadowError } = useShadowAnalysis();
+  const [shadowMessage, setShadowMessage] = useState(null);
+
+  const handleAnalyzeShadow = async () => {
+    if (!trade?.studentId || !trade?.date) return;
+    setShadowMessage(null);
+    try {
+      const result = await analyzeShadow({
+        studentId: trade.studentId,
+        dateFrom: trade.date,
+        dateTo: trade.date,
+      });
+      setShadowMessage({ type: 'success', text: `${result.analyzed}/${result.total} trades analisados.` });
+      setTimeout(() => setShadowMessage(null), 5000);
+    } catch (err) {
+      setShadowMessage({ type: 'error', text: err.message || 'Erro ao analisar comportamento.' });
+    }
+  };
+
   // ========== HANDLERS ==========
 
   // Paste handler — intercepta imagem colada no textarea (mentor only)
@@ -541,6 +563,27 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           {/* Coluna Esquerda - Info do Trade */}
           <div className="lg:sticky lg:top-0 lg:self-start">
             <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+            {userIsMentor && (
+              <div className="mt-3">
+                <button
+                  onClick={handleAnalyzeShadow}
+                  disabled={shadowLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+                  title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+                >
+                  {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+                  {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+                </button>
+                {shadowMessage && (
+                  <div className={`mt-2 text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+                    {shadowMessage.text}
+                  </div>
+                )}
+              </div>
+            )}
+            {userIsMentor && trade.shadowBehavior && (
+              <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} embedded />
+            )}
           </div>
 
           {/* Coluna Direita - Chat */}
@@ -684,14 +727,35 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             </h1>
             <p className="text-slate-400 mt-1">{trade.ticker} • {formatDate(trade.date)} • {trade.studentName || trade.studentEmail?.split('@')[0]}</p>
           </div>
-          <StatusBadge status={status} />
+          <div className="flex items-center gap-3">
+            {userIsMentor && (
+              <button
+                onClick={handleAnalyzeShadow}
+                disabled={shadowLoading}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+                title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+              >
+                {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+                {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+              </button>
+            )}
+            <StatusBadge status={status} />
+          </div>
         </div>
+        {shadowMessage && (
+          <div className={`mt-3 text-xs px-3 py-2 rounded-lg ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/10 text-red-300 border border-red-500/30'}`}>
+            {shadowMessage.text}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna Esquerda - Info do Trade */}
         <div className="lg:sticky lg:top-6 lg:self-start">
           <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+          {userIsMentor && trade.shadowBehavior && (
+            <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} />
+          )}
         </div>
 
         {/* Coluna Direita - Chat */}
