@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.28.0: feat: Shadow Behavior Analysis (#129) — engine 13 padroes deterministicos em 2 camadas (parciais + ordens), 3 niveis de resolucao (LOW/MEDIUM/HIGH), CF callable analyzeShadowBehavior, ShadowBehaviorPanel mentor-only consumido em TradeDetailModal + FeedbackPage, integracao pos-import, 57 testes novos
  * - 1.27.0: feat: Prop Firm Dashboard (#134) — PropAccountCard com gauges (DD, profit/target, eval countdown, daily P&L), PropAlertsBanner persistente 3 níveis (danger/warning/info), sparkline drawdownHistory, tempo médio de trades universal no MetricsCards, PropPayoutTracker (qualifying days, eligibility checklist, simulador de saque, histórico de withdrawals), hooks useDrawdownHistory e useMovements, lógica pura em propFirmAlerts.js e propFirmPayout.js (epic #52 Fases 3/4 completas)
  * - 1.26.4: fix: Correção semântica #136 — periodGoal agora é mecânico (maxTrades × RO × RR = 2.4% Apex CONS_B), não mais o EV/dailyTarget (0.3%). Preview do attack plan reescrito em 3 blocos (constraints da mesa / mecânica do plano / ritmo de acumulação), com caminhos de execução explícitos (2 trades × 1 contrato OU 1 trade × 2 contratos). Remove tooltip Info supérfluo. 4 testes novos (issue #136 revisão Fase A)
  * - 1.26.3: feat: Templates Ylos Trading + engine phase-aware — 7 templates (6 Challenge + Freedom 50K), fundedDrawdown opcional por template, resolução automática por account.propFirm.phase (EVAL→drawdown, SIM_FUNDED/LIVE→fundedDrawdown), CF persiste trailFrozen (gap Fase B), 6 testes phase-aware (issue #136 Fase C E4)
@@ -45,10 +46,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.27.0',
+  version: '1.28.0',
   build: '20260413',
-  display: 'v1.27.0',
-  full: '1.27.0+20260413',
+  display: 'v1.28.0',
+  full: '1.28.0+20260413',
 };
 export default VERSION;
 export { VERSION };

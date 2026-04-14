@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
+import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -418,6 +419,11 @@ const TradeDetailModal = ({
 
             {/* Ordens da Corretora (V1.1c — issue #93) */}
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
+
+            {/* Shadow Behavior — mentor-only (#129) */}
+            {isMentor && trade.shadowBehavior && (
+              <ShadowBehaviorPanel trade={trade} isMentor={isMentor} embedded />
+            )}
 
             {/* Observações do Aluno */}
             {notes && (
