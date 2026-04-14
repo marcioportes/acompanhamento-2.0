@@ -11,7 +11,7 @@
  *   v1.0.0: Extraido do StudentDashboard.
  */
 
-import { DollarSign, Target, BarChart3, Info, AlertTriangle } from 'lucide-react';
+import { DollarSign, Target, BarChart3, Info, AlertTriangle, Clock } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
@@ -102,6 +102,24 @@ const InfoBtn = ({ name, openTooltip, toggle }) => (
   </button>
 );
 
+/** Classifica duração média em minutos */
+const classifyDuration = (avgMinutes) => {
+  if (avgMinutes == null || isNaN(avgMinutes)) return { label: '-', color: 'text-slate-400' };
+  if (avgMinutes < 5) return { label: 'Scalping', color: 'text-purple-400' };
+  if (avgMinutes <= 60) return { label: 'Day Trade', color: 'text-blue-400' };
+  return { label: 'Swing', color: 'text-emerald-400' };
+};
+
+/** Formata minutos para texto legível */
+const formatDuration = (minutes) => {
+  if (minutes == null || isNaN(minutes)) return '-';
+  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
+  if (minutes < 60) return `${Math.round(minutes)}min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+};
+
 const MetricsCards = ({
   stats,
   aggregatedCurrentBalance,
@@ -116,6 +134,7 @@ const MetricsCards = ({
   payoff,
   asymmetryDiagnostic,
   plContext,
+  avgTradeDuration,
 }) => {
   const [openTooltip, setOpenTooltip] = useState(null);
   const toggle = (name) => setOpenTooltip(prev => prev === name ? null : name);
@@ -375,6 +394,36 @@ const MetricsCards = ({
           )}
         </div>
       </div>
+
+      {/* Tempo médio de trades (universal — Fase C) */}
+      {avgTradeDuration != null && avgTradeDuration.all > 0 && (() => {
+        const avgAll = avgTradeDuration.all;
+        const winDur = avgTradeDuration.win;
+        const lossDur = avgTradeDuration.loss;
+        const allClass = classifyDuration(avgAll);
+        return (
+          <div className="glass-card px-4 py-3 flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-slate-500" />
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Tempo Medio</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={`text-sm font-bold ${allClass.color}`}>
+                {formatDuration(avgAll)}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${allClass.color} bg-slate-800/50`}>
+                {allClass.label}
+              </span>
+            </div>
+            {winDur != null && lossDur != null && (
+              <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(winDur)}</span></span>
+                <span>L: <span className="font-mono text-red-400/80">{formatDuration(lossDur)}</span></span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <DebugBadge component="MetricsCards" />
     </div>
