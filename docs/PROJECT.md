@@ -610,6 +610,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-17 | #133 | feat/issue-133-ai-approach-plan | 14/04/2026 | AI Approach Plan Sonnet 4.6 (Prop Firm #52 Fase 2.5) |
 
 ### 6.4 Checklist de Check-Out
 
