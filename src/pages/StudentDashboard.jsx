@@ -88,7 +88,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
 
   // === Data hooks ===
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, setSuspendListener, getPartials } = useTrades(overrideStudentId);
-  const { accounts, loading: accountsLoading, addAccount } = useAccounts(overrideStudentId);
+  const { accounts, loading: accountsLoading, addAccount, updateAccount } = useAccounts(overrideStudentId);
   const { plans, loading: plansLoading, addPlan, updatePlan, deletePlan, auditPlan, diagnosePlan } = usePlans(overrideStudentId);
 
   // Master data (emotions, tickers) + setups
@@ -398,6 +398,15 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
               account={selectedAccount}
               template={propTemplate}
               drawdownHistory={drawdownHistory}
+              onUpdatePhase={async (newPhase) => {
+                try {
+                  await updateAccount(selectedAccount.id, {
+                    propFirm: { phase: newPhase, phaseStartDate: new Date().toISOString() },
+                  });
+                } catch (err) {
+                  alert('Erro ao alterar fase: ' + err.message);
+                }
+              }}
             />
             <PropPayoutTracker
               account={selectedAccount}

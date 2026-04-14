@@ -14,16 +14,20 @@
 import { useState } from 'react';
 import VERSION from '../version';
 
-const DebugBadge = ({ component }) => {
+const DebugBadge = ({ component, embedded = false }) => {
   const [expanded, setExpanded] = useState(false);
 
-  const buildDate = VERSION.build 
+  const buildDate = VERSION.build
     ? `${VERSION.build.slice(6,8)}/${VERSION.build.slice(4,6)}/${VERSION.build.slice(0,4)}`
     : '-';
 
+  const positionClass = embedded
+    ? 'relative mt-1 flex justify-end pr-2 pb-1 opacity-50 select-none cursor-pointer'
+    : 'fixed bottom-2 right-2 z-50 select-none cursor-pointer';
+
   return (
-    <div 
-      className="fixed bottom-2 right-2 z-50 select-none cursor-pointer"
+    <div
+      className={positionClass}
       onClick={() => setExpanded(!expanded)}
     >
       {expanded ? (

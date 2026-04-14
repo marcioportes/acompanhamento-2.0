@@ -12,13 +12,13 @@
  * Ref: issue #134, epic #52 Fases 3/4
  */
 
-import { Shield, Clock, AlertTriangle, Target, Zap, Pause, Lock, Snowflake } from 'lucide-react';
-import { useMemo } from 'react';
+import { Shield, Clock, AlertTriangle, Target, Zap, Pause, Lock, Snowflake, ChevronDown } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } from '../../utils/propFirmDrawdownEngine';
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
 import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS } from '../../constants/propFirmDefaults';
-import VERSION from '../../version';
+import DebugBadge from '../DebugBadge';
 
 // ============================================
 // Helpers visuais
@@ -183,7 +183,105 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
   );
 };
 
-const PropAccountCard = ({ account, template, drawdownHistory }) => {
+// ============================================
+// PhaseSelector — transição de fase com ações semânticas
+// ============================================
+
+const PHASE_TRANSITIONS = {
+  EVALUATION: [
+    {
+      target: 'SIM_FUNDED',
+      label: 'Aprovado na Avaliação',
+      icon: '✓',
+      color: 'text-emerald-400 hover:bg-emerald-500/10',
+      confirm: 'Parabéns! Você foi aprovado na avaliação.\n\nSua conta será promovida para Simulado Funded. As regras de drawdown podem mudar conforme a mesa.\n\nConfirma a transição?',
+    },
+    {
+      target: 'EXPIRED',
+      label: 'Reprovado / Expirado',
+      icon: '✕',
+      color: 'text-red-400 hover:bg-red-500/10',
+      confirm: 'Conta reprovada ou expirada na avaliação.\n\nEsta ação marca a conta como encerrada.\n\nConfirma?',
+    },
+  ],
+  SIM_FUNDED: [
+    {
+      target: 'LIVE',
+      label: 'Promovido para Live',
+      icon: '↑',
+      color: 'text-emerald-400 hover:bg-emerald-500/10',
+      confirm: 'Conta promovida para Live!\n\nA partir de agora os resultados são com capital real da mesa.\n\nConfirma a transição?',
+    },
+    {
+      target: 'EXPIRED',
+      label: 'Conta Encerrada',
+      icon: '✕',
+      color: 'text-red-400 hover:bg-red-500/10',
+      confirm: 'Encerrar conta Simulado Funded?\n\nEsta ação marca a conta como encerrada.\n\nConfirma?',
+    },
+  ],
+  LIVE: [
+    {
+      target: 'EXPIRED',
+      label: 'Conta Encerrada',
+      icon: '✕',
+      color: 'text-red-400 hover:bg-red-500/10',
+      confirm: 'Encerrar conta Live?\n\nEsta ação marca a conta como encerrada.\n\nConfirma?',
+    },
+  ],
+  EXPIRED: [],
+};
+
+const PhaseSelector = ({ currentPhase, onChangePhase }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const transitions = PHASE_TRANSITIONS[currentPhase] ?? [];
+  const canTransition = onChangePhase && transitions.length > 0;
+
+  const handleSelect = (transition) => {
+    setOpen(false);
+    if (confirm(transition.confirm)) {
+      onChangePhase(transition.target);
+    }
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={canTransition ? () => setOpen(!open) : undefined}
+        className={`px-2 py-0.5 rounded text-[11px] font-medium border flex items-center gap-1 transition-all ${PHASE_COLORS[currentPhase] ?? PHASE_COLORS.EVALUATION} ${canTransition ? 'cursor-pointer hover:brightness-125' : 'cursor-default'}`}
+      >
+        {PROP_FIRM_PHASE_LABELS[currentPhase] ?? currentPhase}
+        {canTransition && <ChevronDown className="w-3 h-3" />}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 min-w-[200px] py-1">
+          <p className="px-3 py-1.5 text-[10px] text-slate-600 uppercase tracking-wider">Alterar fase</p>
+          {transitions.map((t) => (
+            <button
+              key={t.target}
+              onClick={() => handleSelect(t)}
+              className={`w-full text-left px-3 py-2 text-[11px] flex items-center gap-2 transition-colors ${t.color}`}
+            >
+              <span className="w-4 text-center">{t.icon}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) => {
   const propFirm = account?.propFirm;
 
   if (!propFirm || account?.type !== 'PROP') return null;
@@ -296,10 +394,8 @@ const PropAccountCard = ({ account, template, drawdownHistory }) => {
                 <Snowflake className="w-3 h-3" />
               </span>
             )}
-            {/* Phase badge */}
-            <span className={`px-2 py-0.5 rounded text-[11px] font-medium border ${PHASE_COLORS[phase] ?? PHASE_COLORS.EVALUATION}`}>
-              {PROP_FIRM_PHASE_LABELS[phase] ?? phase}
-            </span>
+            {/* Phase badge / selector */}
+            <PhaseSelector currentPhase={phase} onChangePhase={onUpdatePhase} />
           </div>
         </div>
       </div>
@@ -437,10 +533,7 @@ const PropAccountCard = ({ account, template, drawdownHistory }) => {
         )}
       </div>
 
-      {/* DebugBadge embedded — relativo ao card, não fixed */}
-      <div className="text-right pr-2 pb-1 opacity-50 text-[10px] font-mono text-slate-600 select-none">
-        PropAccountCard • {VERSION.display}
-      </div>
+      <DebugBadge component="PropAccountCard" embedded />
     </div>
   );
 };

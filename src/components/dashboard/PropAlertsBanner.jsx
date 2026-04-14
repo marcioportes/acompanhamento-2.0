@@ -9,7 +9,7 @@
  */
 
 import { AlertTriangle, Shield } from 'lucide-react';
-import VERSION from '../../version';
+import DebugBadge from '../DebugBadge';
 
 const PropAlertsBanner = ({ dangerAlerts, firmName, productName }) => {
   if (!dangerAlerts || dangerAlerts.length === 0) return null;
@@ -41,10 +41,7 @@ const PropAlertsBanner = ({ dangerAlerts, firmName, productName }) => {
           </div>
         </div>
       </div>
-      {/* DebugBadge embedded */}
-      <div className="text-right opacity-50 text-[10px] font-mono text-slate-600 select-none mt-1">
-        PropAlertsBanner • {VERSION.display}
-      </div>
+      <DebugBadge component="PropAlertsBanner" embedded />
     </div>
   );
 };

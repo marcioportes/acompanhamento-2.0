@@ -155,3 +155,47 @@ Locks registrados em PROJECT.md §6.3: CHUNK-17, CHUNK-02 (escrita).
 | Conta PROP sem template (templateId inválido) | BAIXA | Guard: fallback para dados raw de account.propFirm |
 | Performance: sparkline com muitos pontos | BAIXA | Limitar query a últimos 100 docs da subcollection |
 | Fase D (payout) requer campo novo em account.propFirm | MÉDIA | INV-15 gate: propor e aguardar aprovação antes de implementar |
+
+---
+
+## 8. AJUSTES NÃO PREVISTOS (aprovados em sessão 13/04/2026)
+
+Modificações que surgiram durante a implementação e foram incorporadas ao escopo do issue via aprovação explícita do Marcio. Documentadas aqui para rastreabilidade.
+
+### 8.1 INV-15 Gate: Fase D sem estrutura Firestore nova
+
+**Contexto original do issue:** Fase 4 previa "registro de payouts realizados" (possível campo novo em `account.propFirm` ou subcollection).
+
+**Decisão em sessão:** Payout é um movement tipo `WITHDRAWAL` — infraestrutura já existe (useMovements, collection `movements`). Fase D implementada 100% com lógica de leitura, zero campos Firestore novos. INV-15 dispensado.
+
+**Impacto:** `getWithdrawalHistory()` deriva histórico de saques filtrando `movements` por `type === 'WITHDRAWAL'`. Simulador e eligibility calc são funções puras sem persistência.
+
+### 8.2 Transição de fase da conta prop (EVALUATION → SIM_FUNDED → LIVE → EXPIRED)
+
+**Contexto:** Marcio identificou que não havia UI para transição de fase. Aluno aprovado na eval não tinha como promover a conta para Simulado Funded.
+
+**Decisão em sessão:** Adicionado componente `PhaseSelector` no header do PropAccountCard com ações semânticas (não dropdown genérico):
+- **EVALUATION:** "Aprovado na Avaliação" (→ SIM_FUNDED, verde) ou "Reprovado / Expirado" (→ EXPIRED, vermelho)
+- **SIM_FUNDED:** "Promovido para Live" (→ LIVE, verde) ou "Conta Encerrada" (→ EXPIRED, vermelho)
+- **LIVE:** "Conta Encerrada" (→ EXPIRED, vermelho)
+- **EXPIRED:** badge estático, sem transições
+
+Cada transição mostra `confirm()` com mensagem contextual ("Parabéns! Você foi aprovado..." / "Conta reprovada ou expirada..."). Atualiza `account.propFirm.phase` + `phaseStartDate` via `updateAccount`. O engine já resolve `fundedDrawdown` vs `drawdown` via `getActiveDrawdown(template, phase)` (DEC-071, phase-aware introduzido no #136).
+
+**Arquivos afetados:** `PropAccountCard.jsx` (+PhaseSelector component, prop `onUpdatePhase`), `StudentDashboard.jsx` (destructure `updateAccount`, wire handler).
+
+### 8.3 DebugBadge embedded
+
+**Problema identificado pelo Marcio:** Múltiplos DebugBadge (PropAccountCard, PropAlertsBanner, PropPayoutTracker, StudentDashboard) usavam `fixed bottom-2 right-2 z-50` — empilhavam no mesmo canto do viewport.
+
+**Decisão em sessão:** Adicionada prop `embedded` ao `DebugBadge.jsx`. Quando `embedded={true}`, badge renderiza relativo ao card (`relative mt-1 flex justify-end pr-2 pb-1 opacity-50`) em vez de fixed ao viewport. Mantém funcionalidade de clicar para expandir. Os 3 componentes prop usam `embedded`; StudentDashboard continua fixed global.
+
+**Arquivo afetado:** `src/components/DebugBadge.jsx` (prop opcional, backward compatible).
+
+### 8.4 Fixes de integração
+
+- **`ReferenceError: Cannot access 'filters' before initialization`** — bloco que derivava `selectedPropAccountId` de `filters.accountId` estava antes da declaração do `useState(filters)`. Movido para depois das declarações. Commit `387c247c`.
+
+### 8.5 Housekeeping (commit direto em main — aprovado)
+
+Remoção de `html/` e `playwright-report/` do tracking + adição ao `.gitignore`. Artefatos de Vitest HTML reporter e Playwright commitados acidentalmente no bulk "Base estável (histórico resetado)" de 31/03/2026. Sem relação com #134. Commitado direto em main (commit `380c724b`) por ser documentação/lixo de build.

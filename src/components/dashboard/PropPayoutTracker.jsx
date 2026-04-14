@@ -17,7 +17,7 @@ import {
   simulateWithdrawal,
   getWithdrawalHistory,
 } from '../../utils/propFirmPayout';
-import VERSION from '../../version';
+import DebugBadge from '../DebugBadge';
 
 // ============================================
 // EligibilityCheck — item do checklist
@@ -282,10 +282,7 @@ const PropPayoutTracker = ({ account, template, drawdownHistory, movements }) =>
         </div>
       )}
 
-      {/* DebugBadge embedded — relativo ao card, não fixed */}
-      <div className="text-right pr-2 pb-1 opacity-50 text-[10px] font-mono text-slate-600 select-none">
-        PropPayoutTracker • {VERSION.display}
-      </div>
+      <DebugBadge component="PropPayoutTracker" embedded />
     </div>
   );
 };
