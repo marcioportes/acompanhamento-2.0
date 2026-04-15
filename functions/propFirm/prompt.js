@@ -162,7 +162,62 @@ INSTRUÇÕES:
 5. Recomende sessões e daily profiles adequados ao perfil.
 6. Se WR do trader < 33.3%, alerte explicitamente que o plano é matematicamente inviável.
 7. Se há flags comportamentais (hold time asymmetry, revenge), integre nas recomendações.
-8. Ofereça os dois caminhos de execução (Path A: ${plan.maxTradesPerDay}×1 contrato, Path B: 1×N contratos) quando aplicável — NUNCA Path C (N×N).`;
+8. Ofereça os dois caminhos de execução (Path A: ${plan.maxTradesPerDay}×1 contrato, Path B: 1×N contratos) quando aplicável — NUNCA Path C (N×N).
+
+SCHEMA OBRIGATÓRIO (TODOS os campos abaixo são obrigatórios — omissão invalida a resposta):
+
+\`\`\`json
+{
+  "approach": {
+    "summary": "string",
+    "profileOverride": null,
+    "sessionRecommendation": { "primary": "ny", "secondary": "london", "avoid": null, "reasoning": "string" },
+    "dailyProfiles": { "recommended": ["LONDON_REVERSAL"], "avoid": [], "reasoning": "string" }
+  },
+  "executionPlan": {
+    "stopPoints": ${plan.stopPoints},
+    "targetPoints": ${plan.targetPoints},
+    "maxTradesPerDay": ${plan.maxTradesPerDay},
+    "roUSD": ${plan.roUSD},
+    "contracts": ${plan.contracts ?? 1},
+    "tradingStyle": "string",
+    "entryStrategy": "string",
+    "exitStrategy": "string",
+    "pathRecommendation": "string"
+  },
+  "scenarios": [
+    { "name": "Dia ideal", "description": "string", "trades": ${plan.maxTradesPerDay}, "result": ${plan.dailyGoal}, "cumulative": "string" },
+    { "name": "Dia médio", "description": "string", "trades": 2, "result": 0, "cumulative": "string" },
+    { "name": "Dia ruim", "description": "string", "trades": ${plan.maxTradesPerDay}, "result": ${-plan.dailyStop}, "cumulative": "string" },
+    { "name": "Sequência de losses", "description": "string", "trades": 2, "result": ${-plan.roUSD * 2}, "cumulative": "string" }
+  ],
+  "behavioralGuidance": {
+    "preSession": "string",
+    "duringSession": "string",
+    "afterLoss": "string",
+    "afterWin": "string",
+    "deadlineManagement": "string",
+    "personalWarnings": ["string"]
+  },
+  "milestones": [
+    { "day": 1, "targetBalance": 0, "description": "string" }
+  ],
+  "metadata": {
+    "model": "${MODEL}",
+    "promptVersion": "${PROMPT_VERSION}",
+    "dataSource": "${dataSource}",
+    "generatedAt": "ISO timestamp"
+  }
+}
+\`\`\`
+
+REGRAS CRÍTICAS:
+- Ecoe os números determinísticos em executionPlan EXATAMENTE (stopPoints=${plan.stopPoints}, targetPoints=${plan.targetPoints}, roUSD=${plan.roUSD}, maxTradesPerDay=${plan.maxTradesPerDay}, contracts=${plan.contracts ?? 1})
+- scenarios[0].result DEVE ser EXATAMENTE ${plan.dailyGoal} (dailyGoal)
+- scenarios[2].result DEVE ser EXATAMENTE ${-plan.dailyStop} (-dailyStop)
+- TODOS os 6 campos top-level (approach, executionPlan, scenarios, behavioralGuidance, milestones, metadata) são OBRIGATÓRIOS — nenhum pode ser omitido
+- milestones deve ter pelo menos 1 entrada
+- Retorne APENAS o JSON, sem backticks, sem texto antes ou depois.`;
 }
 
 // ── TRADER PROFILE BLOCK BUILDER ────────────────────────────────

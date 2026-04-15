@@ -18,7 +18,8 @@ import { functions } from '../firebase';
 const MAX_GENERATIONS = 5;
 
 function resolveDataSource({ trader4DProfile, traderIndicators }) {
-  if (trader4DProfile && traderIndicators) return '4d_full';
+  // 4D basta para personalizar — indicadores são bônus (conta nova tem 0 trades, mas pode ter assessment)
+  if (trader4DProfile) return '4d_full';
   if (traderIndicators) return 'indicators';
   return 'defaults';
 }

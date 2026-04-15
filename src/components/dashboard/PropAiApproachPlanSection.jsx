@@ -211,16 +211,27 @@ const PropAiApproachPlanSection = ({ account, template, trader4DProfile, traderI
             </div>
           )}
 
+          {/* Loading state prominente — CF pode levar 30-60s */}
+          {loading && (
+            <div className="p-4 rounded border border-purple-500/40 bg-purple-500/10 flex items-start gap-3 animate-pulse">
+              <Loader2 className="w-5 h-5 text-purple-300 animate-spin flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium text-purple-200">Gerando plano com IA…</p>
+                <p className="text-[11px] text-purple-300/70 mt-1">Claude Sonnet 4.6 está analisando seu perfil + a mesa. Pode levar 30–60 segundos (a IA valida coerência mecânica e refaz se necessário).</p>
+              </div>
+            </div>
+          )}
+
           {/* Controles */}
-          {!hasPlan && (
+          {!hasPlan && !loading && (
             <button
               type="button"
               onClick={generate}
-              disabled={loading || limitReached}
+              disabled={limitReached}
               className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded border border-purple-500/40 bg-purple-500/10 text-purple-200 text-[12px] font-medium hover:bg-purple-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {loading ? 'Gerando plano...' : isDefaultsScenario ? 'Gerar plano determinístico' : 'Gerar plano com IA'}
+              <Sparkles className="w-4 h-4" />
+              {isDefaultsScenario ? 'Gerar plano determinístico' : 'Gerar plano com IA'}
             </button>
           )}
 
@@ -232,7 +243,7 @@ const PropAiApproachPlanSection = ({ account, template, trader4DProfile, traderI
               <button
                 type="button"
                 onClick={generate}
-                disabled={loading || limitReached}
+                disabled={limitReached}
                 className="px-2 py-1 rounded border border-slate-600/50 text-slate-300 text-[10px] hover:bg-slate-700/40 disabled:opacity-50"
               >
                 {limitReached ? 'Limite atingido' : 'Regenerar'}

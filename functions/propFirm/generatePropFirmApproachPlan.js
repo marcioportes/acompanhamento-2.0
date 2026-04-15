@@ -59,8 +59,10 @@ const MAX_VALIDATION_RETRIES = 3;
 const client = new Anthropic();
 
 module.exports = onCall(
-  { maxInstances: 5, secrets: ['ANTHROPIC_API_KEY'] },
+  { maxInstances: 5, timeoutSeconds: 300, secrets: ['ANTHROPIC_API_KEY'] },
   async (request) => {
+    const t0 = Date.now();
+    console.log('[generatePropFirmApproachPlan] ▶ invoked', { accountId: request.data?.accountId, dataSource: request.data?.context?.dataSource });
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Autenticação necessária');
     }
@@ -115,6 +117,8 @@ module.exports = onCall(
         userPrompt += `\n\n⚠️ TENTATIVA ${attempt}/${MAX_VALIDATION_RETRIES} — a resposta anterior falhou validação:\n${lastErrors.map((e) => `- ${e}`).join('\n')}\n\nCorrija esses problemas e retorne um JSON válido.`;
       }
 
+      const tAttempt = Date.now();
+      console.log(`[generatePropFirmApproachPlan] → calling Claude (attempt ${attempt}/${MAX_VALIDATION_RETRIES})`);
       let response;
       try {
         response = await client.messages.create({
@@ -124,8 +128,9 @@ module.exports = onCall(
           system: SYSTEM_PROMPT,
           messages: [{ role: 'user', content: userPrompt }],
         });
+        console.log(`[generatePropFirmApproachPlan] ← Claude responded (attempt ${attempt}) in ${Date.now() - tAttempt}ms`);
       } catch (err) {
-        console.error(`[generatePropFirmApproachPlan] API error (attempt ${attempt}):`, err.message);
+        console.error(`[generatePropFirmApproachPlan] ✗ API error (attempt ${attempt}):`, err.message);
         lastErrors = [`API error: ${err.message}`];
         continue;
       }
@@ -179,6 +184,7 @@ module.exports = onCall(
     await accountRef.update(updatePayload);
 
     const newCount = aiPlan ? currentCount + 1 : currentCount;
+    console.log(`[generatePropFirmApproachPlan] ✓ done in ${Date.now() - t0}ms — aiUnavailable=${aiUnavailable}, count=${newCount}`);
 
     return {
       plan: finalPlan,
