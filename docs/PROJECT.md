@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.17.0  
-> **Última atualização:** 15/04/2026 — #133 v1.29.0 AI Approach Plan Sonnet 4.6 (epic #52 Fase 2.5), CHANGELOG [1.29.0], CF generatePropFirmApproachPlan + validação coerência mecânica + seção colapsável PropAccountCard  
+> **Versão:** 0.17.1  
+> **Última atualização:** 15/04/2026 — Encerramento #133 PR #140 mergeado, lock CHUNK-17 liberado, issue doc arquivada  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -44,6 +44,7 @@ Este documento segue versionamento semântico:
 | 0.15.0 | 13/04/2026 | Encerramento #134 + reforço protocolo | AP-08 Build Verde App Quebrada, §4.0 reordenado (shared files antes do worktree), §4.2 validação browser obrigatória |
 | 0.16.0 | 14/04/2026 | Encerramento #129 Shadow Behavior | v1.28.0, 15 padrões comportamentais, CF callable analyzeShadowBehavior, DEC-074 a DEC-079, CHANGELOG [1.28.0], lock CHUNK-04 liberado |
 | 0.17.0 | 15/04/2026 | #133 AI Approach Plan v1.29.0 | CF generatePropFirmApproachPlan Sonnet 4.6, prompt v1.1 com 6 correções #136 (MECÂNICA DIÁRIA, RITMO DE ACUMULAÇÃO, read-only, coerência mecânica, Path A/B), validate.js com 7 grupos incluindo coerência mecânica, fallback determinístico sem consumo de cota, UI seção colapsável PropAccountCard, 24 testes novos, lock CHUNK-17 |
+| 0.17.1 | 15/04/2026 | Encerramento #133 | PR #140 mergeado, lock CHUNK-17 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -611,7 +612,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-17 | #133 | feat/issue-133-ai-approach-plan | 14/04/2026 | AI Approach Plan Sonnet 4.6 (Prop Firm #52 Fase 2.5) |
 | CHUNK-13 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
 | CHUNK-02 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
 
