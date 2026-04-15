@@ -625,6 +625,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-10 | #142 | feat/issue-142-tradovate-orders | 15/04/2026 | Order Import Tradovate Orders — parser adhoc + remove gatekeep (v1.31.0 reservada) |
 
 ### 6.4 Checklist de Check-Out
 
