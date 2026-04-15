@@ -1377,3 +1377,8 @@ exports.checkSubscriptions = require("./subscriptions/checkSubscriptions");
 // SHADOW BEHAVIOR — Padrões comportamentais (CHUNK-04, issue #129)
 // ============================================
 exports.analyzeShadowBehavior = require("./analyzeShadowBehavior");
+
+// ============================================
+// PROP FIRM — AI Approach Plan (CHUNK-17, issue #133)
+// ============================================
+exports.generatePropFirmApproachPlan = require("./propFirm/generatePropFirmApproachPlan");
