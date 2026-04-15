@@ -72,6 +72,11 @@ import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import { useDrawdownHistory } from '../hooks/useDrawdownHistory';
 import { useMovements } from '../hooks/useMovements';
 
+// Contexto unificado (issue #118 — DEC-047)
+import StudentContextProvider from '../contexts/StudentContextProvider';
+import useStudentContext from '../hooks/useStudentContext';
+import ContextBar from '../components/ContextBar';
+
 // Utils
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
@@ -83,9 +88,17 @@ import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
  * @param {string|null} returnToPlanId - PlanId do extrato a reabrir ao voltar do feedback (só quando veio do extrato)
  * @param {Function} onReturnConsumed - Callback para limpar o returnToPlanId após consumir
  */
-const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId = null, onReturnConsumed }) => {
+/**
+ * StudentDashboardBody — corpo original do dashboard.
+ * Envolvido pelo wrapper StudentDashboard que instancia o StudentContextProvider (issue #118).
+ * Consome useStudentContext() para conta/plano/ciclo/período globais.
+ */
+const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPlanId = null, onReturnConsumed }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
+
+  // Contexto unificado (issue #118) — fonte de verdade para conta/plano/ciclo/período
+  const studentCtx = useStudentContext();
 
   // === Data hooks ===
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, setSuspendListener, getPartials } = useTrades(overrideStudentId);
@@ -136,7 +149,26 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   const [showCsvManager, setShowCsvManager] = useState(false);
   const [showOrderImport, setShowOrderImport] = useState(false);
 
-  // Prop firm drawdown history + movements (após filters useState)
+  // Sincronização bidirecional com StudentContext (issue #118 — DEC-047)
+  // filters.accountId é fonte local para consumers prop-drilled; contexto é fonte de verdade global.
+  // Contexto usa 'all' como null; filters usa 'all' como string 'all'.
+  useEffect(() => {
+    const ctxAccountId = studentCtx.accountId ?? 'all';
+    if (filters.accountId !== ctxAccountId) {
+      setFilters(prev => ({ ...prev, accountId: ctxAccountId }));
+    }
+  }, [studentCtx.accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const ctxPlanId = studentCtx.planId ?? null;
+    if (selectedPlanId !== ctxPlanId) {
+      setSelectedPlanId(ctxPlanId);
+    }
+  }, [studentCtx.planId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prop firm drawdown history + movements — usa filters.accountId (que reflete contexto)
+  // Adaptador temporário para #134 (CHUNK-17 locked pelo #133) — PropAccountCard/Banner/Tracker
+  // continuam via props. Migração para consumir contexto direto fica para sessão pós-#133.
   const selectedPropAccountId = (() => {
     if (filters.accountId === 'all') return null;
     const acc = accounts.find(a => a.id === filters.accountId);
@@ -320,6 +352,9 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
   // === Render ===
   return (
     <div className="p-6 lg:p-8 space-y-6">
+      {/* Barra de Contexto Unificado (issue #118 — DEC-047) */}
+      <ContextBar accounts={accounts} plans={plans} trades={trades} />
+
       {/* Header + AccountFilterBar + Card informativo */}
       <DashboardHeader
         viewAs={viewAs}
@@ -333,7 +368,11 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         accountTypeFilter={accountTypeFilter}
         onAccountTypeChange={setAccountTypeFilter}
         selectedAccountId={filters.accountId}
-        onAccountSelect={(id) => { setFilters(prev => ({ ...prev, accountId: id })); setSelectedPlanId(null); }}
+        onAccountSelect={(id) => {
+          // Fluxo de conta: delega para StudentContextProvider (que reseta plano/ciclo/período em cascata).
+          // Sync bidirecional propaga 'all' ↔ null automaticamente.
+          studentCtx.setAccount(id === 'all' ? null : id);
+        }}
         filteredAccountsByType={filteredAccountsByType}
         aggregatedCurrentBalance={aggregatedCurrentBalance}
         dominantCurrency={dominantCurrency}
@@ -466,7 +505,7 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
         trades={trades}
         selectedPlanId={selectedPlanId}
         viewAs={viewAs}
-        onSelectPlan={setSelectedPlanId}
+        onSelectPlan={(id) => studentCtx.setPlan(id)}
         onOpenLedger={setLedgerPlan}
         onEditPlan={(plan) => { setEditingPlan(plan); setShowPlanModal(true); }}
         onDeletePlan={handleDeletePlan}
@@ -632,6 +671,36 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
 
       <DebugBadge component="StudentDashboard" />
     </div>
+  );
+};
+
+/**
+ * StudentDashboard — wrapper que instancia StudentContextProvider (issue #118).
+ * `key={scopeStudentId}` força remount quando mentor troca de aluno em modo viewAs (E5).
+ * Accounts/plans são carregados aqui e passados ao Provider para inicialização do contexto.
+ *
+ * NOTA: o Provider é instanciado dentro da página (não em App.jsx) nesta sessão para manter
+ * o refactor atômico contido em CHUNK-02+CHUNK-13. Migração para App.jsx acontece quando
+ * outros consumidores (fora do StudentDashboard) precisarem do contexto — fica como delta
+ * no issue file #118.
+ */
+const StudentDashboard = (props) => {
+  const { user } = useAuth();
+  const overrideStudentId = props.viewAs?.uid || null;
+  const scopeStudentId = overrideStudentId || user?.uid || 'anon';
+
+  const { accounts } = useAccounts(overrideStudentId);
+  const { plans } = usePlans(overrideStudentId);
+
+  return (
+    <StudentContextProvider
+      key={scopeStudentId}
+      scopeStudentId={scopeStudentId}
+      accounts={accounts}
+      plans={plans}
+    >
+      <StudentDashboardBody {...props} />
+    </StudentContextProvider>
   );
 };
 
