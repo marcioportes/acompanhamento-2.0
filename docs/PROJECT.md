@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.18.0  
-> **Última atualização:** 15/04/2026 — Encerramento #118 v1.30.0 Barra de Contexto Unificado, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code, locks CHUNK-02/13 liberados  
+> **Versão:** 0.18.1  
+> **Última atualização:** 15/04/2026 — §4.0 regra de reserva de versão na abertura (Fase 3); §4.2 passa a aplicar versão reservada (não mais bumpar no gate)  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -46,6 +46,7 @@ Este documento segue versionamento semântico:
 | 0.17.0 | 15/04/2026 | #133 AI Approach Plan v1.29.0 | CF generatePropFirmApproachPlan Sonnet 4.6, prompt v1.1 com 6 correções #136 (MECÂNICA DIÁRIA, RITMO DE ACUMULAÇÃO, read-only, coerência mecânica, Path A/B), validate.js com 7 grupos incluindo coerência mecânica, fallback determinístico sem consumo de cota, UI seção colapsável PropAccountCard, 24 testes novos, lock CHUNK-17 |
 | 0.17.1 | 15/04/2026 | Encerramento #133 | PR #140 mergeado, lock CHUNK-17 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
 | 0.18.0 | 15/04/2026 | #118 Barra de Contexto Unificado + encerramento | v1.30.0, StudentContextProvider + ContextBar + cycleResolver, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code (autorização permanente de leitura), 46 testes novos, locks CHUNK-02/13 liberados, PR #141 mergeado |
+| 0.18.1 | 15/04/2026 | §4.0 reserva de versão na abertura | Fase 3 ler `version.js` + reservar próximo minor + commitar junto com locks. §4.2 passa a aplicar versão reservada. Elimina conflito de versão na origem (lição aprendida após rebase #118 ter precisado bumpar 1.29→1.30 em cima do #133) |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -357,9 +358,10 @@ rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residu
    → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
 □ AINDA NO MAIN: registrar locks na tabela §6.3 (chunk + issue + branch + data)
-□ AINDA NO MAIN: commit — "docs: registrar locks CHUNK-XX para issue-NNN"
+□ AINDA NO MAIN: ler `src/version.js` e reservar o próximo minor disponível (ex: v1.30.0 → reservar v1.31.0)
+□ AINDA NO MAIN: commit único — "docs: registrar locks CHUNK-XX + reservar vX.Y.Z para issue-NNN"
 □ Criar worktree: git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao (INV-16)
-   (worktree nasce com locks já commitados — zero conflito no merge)
+   (worktree nasce com locks e versão já commitados — zero conflito no merge)
 □ Criar arquivo docs/dev/issues/issue-NNN-descricao.md DENTRO do worktree a partir do template abaixo
 □ Confirmar pwd = ~/projects/issue-{NNN}
 □ Preencher seções 1 (Contexto), 2 (Acceptance Criteria), 3 (Análise de Impacto) e 6 (Chunks)
@@ -474,14 +476,16 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 ### 4.2 Gate Pré-Entrega (obrigatório, antes de cada entrega)
 
 ```
-□ version.js atualizado com nova versão e build date
-□ CHANGELOG (seção 10) com entrada da versão
+□ version.js aplicado com a versão reservada na abertura (Fase 3) + build date atualizado
+□ CHANGELOG (seção 10) com entrada da versão reservada
 □ Testes para toda lógica nova criados e passando
 □ DebugBadge em todos os componentes novos/tocados com component="NomeExato"
 □ Rodar npm run dev e confirmar no browser que telas afetadas renderizam sem erros no console
 □ Commit via Claude Code ou git direto (commits em linha única)
 □ PARAR — aguardar confirmação do Marcio
 ```
+
+> **Regra de versão (Fase 3 → Gate Pré-Entrega):** a versão é reservada no main no ato de abertura da sessão (lida de `src/version.js` + próximo minor), commitada junto com os locks. A próxima sessão lê o main, vê a versão reservada, e reserva o próximo. Conflito de versão eliminado na origem — no gate pré-entrega a versão já está decidida, só aplica no `version.js` + CHANGELOG. Se a sessão da frente mergear primeiro (raro), rebase resolve a versão; se a própria sessão descobrir que precisa bumpar major, renegocia com Marcio.
 
 ### 4.3 Protocolo de Encerramento de Sessão
 
