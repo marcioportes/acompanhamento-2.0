@@ -612,6 +612,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-17 | #133 | feat/issue-133-ai-approach-plan | 14/04/2026 | AI Approach Plan Sonnet 4.6 (Prop Firm #52 Fase 2.5) |
+| CHUNK-13 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
+| CHUNK-02 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
 
 ### 6.4 Checklist de Check-Out
 

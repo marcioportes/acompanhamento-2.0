@@ -361,3 +361,9 @@ docs/
 ```
 
 GitHub é SSoT para numeração de issues — PROJECT.md reflete o GitHub, nunca o contrário (DEC-039).
+
+## Permissões operacionais
+
+Autorização permanente para leitura completa sem confirmação: grep, cat, ls, find, view, gh issue view, git log/status/diff, npm test, npm run build, head, tail, wc, du, df, ps, free.
+
+Parar para confirmar APENAS em operações destrutivas ou que afetem estado compartilhado: commit, push, deploy, delete, rm -rf, git reset, firebase deploy.
