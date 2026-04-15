@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.17.1  
-> **Última atualização:** 15/04/2026 — Encerramento #133 PR #140 mergeado, lock CHUNK-17 liberado, issue doc arquivada  
+> **Versão:** 0.18.0  
+> **Última atualização:** 15/04/2026 — Encerramento #118 v1.30.0 Barra de Contexto Unificado, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code, locks CHUNK-02/13 liberados  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -45,6 +45,7 @@ Este documento segue versionamento semântico:
 | 0.16.0 | 14/04/2026 | Encerramento #129 Shadow Behavior | v1.28.0, 15 padrões comportamentais, CF callable analyzeShadowBehavior, DEC-074 a DEC-079, CHANGELOG [1.28.0], lock CHUNK-04 liberado |
 | 0.17.0 | 15/04/2026 | #133 AI Approach Plan v1.29.0 | CF generatePropFirmApproachPlan Sonnet 4.6, prompt v1.1 com 6 correções #136 (MECÂNICA DIÁRIA, RITMO DE ACUMULAÇÃO, read-only, coerência mecânica, Path A/B), validate.js com 7 grupos incluindo coerência mecânica, fallback determinístico sem consumo de cota, UI seção colapsável PropAccountCard, 24 testes novos, lock CHUNK-17 |
 | 0.17.1 | 15/04/2026 | Encerramento #133 | PR #140 mergeado, lock CHUNK-17 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
+| 0.18.0 | 15/04/2026 | #118 Barra de Contexto Unificado + encerramento | v1.30.0, StudentContextProvider + ContextBar + cycleResolver, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code (autorização permanente de leitura), 46 testes novos, locks CHUNK-02/13 liberados, PR #141 mergeado |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -371,6 +372,14 @@ rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residu
 
 **Regra de shared files:** locks e edições em shared files (PROJECT.md §6.3, etc.) são feitos e commitados no main ANTES da criação do worktree. Dentro do worktree, shared files nunca são editados diretamente — apenas deltas propostos no arquivo de controle do issue. O integrador aplica os deltas no merge.
 
+> **Diretiva operacional para Claude Code — autorização permanente de leitura:**
+> Operações de leitura completa NÃO requerem confirmação: `grep`, `cat`, `ls`, `find`, `view`,
+> `gh issue view`, `git log/status/diff`, `npm test`, `npm run build`, `head`, `tail`, `wc`,
+> `du`, `df`, `ps`, `free`.
+>
+> Parar para confirmar APENAS em operações destrutivas ou que afetem estado compartilhado:
+> `commit`, `push`, `deploy`, `delete`, `rm -rf`, `git reset`, `firebase deploy`.
+
 #### Template: `docs/dev/issues/issue-NNN-descricao.md`
 
 ```markdown
@@ -612,8 +621,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-13 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
-| CHUNK-02 | #118 | feat/issue-118-context-bar | 15/04/2026 | Context Bar (fundação + refactor StudentDashboard; refactor prop #134 pós-#133) |
 
 ### 6.4 Checklist de Check-Out
 
@@ -732,6 +739,10 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-077 | **Engine shadow puro espelhado em `functions/analyzeShadowBehavior.js`** — mesmo padrão DT-034 do propFirmEngine. Header de aviso obrigatório nos dois arquivos | #129 | 13/04/2026 |
 | DEC-078 | **DIRECTION_FLIP** (14º padrão, Layer 1, janela 120min) — virada de mão no mesmo instrumento após loss. Mapeamento: CONFUSION. Adicionado em validação real após algoritmo retornar vazio para 2 losses opostas | #129 | 14/04/2026 |
 | DEC-079 | **UNDERSIZED_TRADE** (15º padrão, Layer 1) — risco real <50% do RO planejado. Mapeamento: AVOIDANCE. Caller enriquece trade com `planRoPct`. Detecta disfunção financeira: subdimensionar silenciosamente em vez de renegociar o plano | #129 | 14/04/2026 |
+| DEC-080 | **StudentContextProvider instanciado DENTRO do StudentDashboard.jsx** (não em App.jsx). Mantém refactor atômico contido. Delta para App.jsx fica como follow-up quando outros consumidores (fora do StudentDashboard) precisarem do contexto | #118 | 15/04/2026 |
+| DEC-081 | **Sincronização bidirecional `filters.accountId ↔ ctx.accountId` via useEffect** — contexto é fonte de verdade para conta; `filters` multi-campo local (period/ticker/setup/emotion/etc.) preserva estrutura original sem ripple nos consumidores prop-drilled | #118 | 15/04/2026 |
+| DEC-082 | **Adaptador temporário `selectedPropAccountId` para #134** — CHUNK-17 liberado após merge #133 (15/04/2026 tarde). Derivation mantida no commit de #118; migração dos componentes PROP (PropAccountCard, PropAlertsBanner, PropPayoutTracker) + hooks (useDrawdownHistory, useMovements) para consumir contexto direto fica em sessão subsequente | #118 | 15/04/2026 |
+| DEC-083 | **cycleKey canônico:** "YYYY-MM" (Mensal) ou "YYYY-Qn" (Trimestral). Formato determinístico, parseável, ordenável por string DESC. Evita Dates com timezones em localStorage | #118 | 15/04/2026 |
 
 ---
 
@@ -793,6 +804,26 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.30.0] - 15/04/2026
+**Issue:** #118 (arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período)
+**Epic:** #3 (Dashboard-Aluno MVP) — fundação arquitetural DEC-047
+**Milestone:** v1.1.0 — Espelho Self-Service
+#### Adicionado
+- **`src/utils/cycleResolver.js`** — utils puros: `getCycleKey`, `parseCycleKey`, `detectActiveCycle`, `resolveCycle`, `getPeriodRange`, `getDefaultContext`, `getDefaultPlanForAccount`
+- **`src/contexts/StudentContextProvider.jsx`** — provider com state persistido (localStorage versionada `studentContext_v1_{scopeStudentId}`), actions encadeadas (setAccount → setPlan → setCycleKey → setPeriodKind), rescope por aluno via `key={scopeStudentId}` (DEC-080)
+- **`src/hooks/useStudentContext.js`** + **`src/hooks/useLocalStorage.js`**
+- **`src/components/ContextBar.jsx`** — UI top-level com 4 dropdowns encadeados + opção "Todas as contas" (value: null) + badge "ciclo finalizado" para read-only
+- 46 testes novos (29 cycleResolver + 17 provider), 1437 total (61 suites), zero regressão
+#### Alterado
+- **`src/pages/StudentDashboard.jsx`** — corpo renomeado para `StudentDashboardBody`, novo wrapper instancia Provider com `key={scopeStudentId}`. Sincronização bidirecional `filters.accountId ↔ ctx.accountId` e `selectedPlanId ↔ ctx.planId` via useEffect (DEC-081). `onAccountSelect` e `onSelectPlan` delegam ao contexto. ContextBar renderizado no topo
+#### Decisões
+- DEC-080 a DEC-083 (Provider dentro da página, sync bidirecional, adaptador `selectedPropAccountId`, cycleKey canônico YYYY-MM / YYYY-Qn)
+- Decisões de produto E1–E6 aplicadas: localStorage persiste, default conta com plano mais recente, ciclo ativo por datas, períodos CYCLE/WEEK/MONTH, escopo aluno + mentor viewAs, refactor atômico num PR
+#### Pendente (sessão subsequente)
+- Migração dos componentes do #134 (PropAccountCard, PropAlertsBanner, PropPayoutTracker) + hooks (useDrawdownHistory, useMovements) para consumir contexto direto — CHUNK-17 liberado após merge #133 (15/04/2026 tarde). Atualmente o adaptador `selectedPropAccountId` preserva comportamento via prop drilling
+#### Diretiva operacional nova em §4.0
+- Claude Code: autorização permanente de leitura sem confirmação (grep, cat, ls, find, view, gh issue view, git log/status/diff, npm test, npm run build, head, tail, wc, du, df, ps, free). Parar para confirmar apenas em operações destrutivas ou que afetem estado compartilhado (commit, push, deploy, delete, rm -rf, git reset, firebase deploy)
 
 ### [1.29.0] - 15/04/2026
 **Issue:** #133 (feat: AI Approach Plan com Sonnet 4.6 — Prop Firm #52 Fase 2.5)
