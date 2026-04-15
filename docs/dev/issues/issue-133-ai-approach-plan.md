@@ -253,3 +253,18 @@ Entrada `[1.29.0] — 14/04/2026` com a feature.
   - `src/__tests__/utils/propFirmAiValidate.test.js` — **24 testes, todos passando** (shape 3, read-only 6, constraints 2, viabilidade 3, coerência mecânica 4, nomes 2, metadata 2, fallback 2)
   - Erro de protocolo detectado e corrigido: editei `functions/index.js` direto no worktree; revertido e documentado como delta §9.1 (aplicar no main ao encerrar via PR)
   - Próximo: Fase C — UI (seção colapsável no `PropAccountCard`)
+
+- **15/04/2026 — Fase C concluída** — UI + integração:
+  - `src/hooks/useAiApproachPlan.js` — hook que monta contexto da CF a partir de account+template+profile opcional, detecta dataSource (`4d_full`|`indicators`|`defaults`), chama `httpsCallable('generatePropFirmApproachPlan')`, expõe `{generate, loading, error, plan, aiUnavailable, generationCount, remaining, limitReached, dataSource}`
+  - `src/components/dashboard/PropAiApproachPlanSection.jsx` — seção colapsável com:
+    - Header: ícone Sparkles, badge "IA"/"determinístico", contador `N/5`, chevron
+    - Aviso amber quando `dataSource === 'defaults'` (incentiva completar 4D)
+    - Botão "Gerar plano com IA" (ou "determinístico" em cenário defaults), spinner durante loading
+    - Após gerar: summary narrativo + sub-seções colapsáveis (Approach, Execução, Cenários, Guidance, Milestones)
+    - Cenários com ícones por tipo (CheckCircle/MinusCircle/XCircle/AlertCircle) e cor do resultado
+    - Botão "Regenerar" / "Limite atingido" conforme cota
+    - Erro handling (quota, rede)
+  - `PropAccountCard.jsx` integrado — novas props `trader4DProfile`, `traderIndicators`; seção inserida após Alertas, antes do DebugBadge
+  - **Regressão:** `npm run test` → 1391/1391 testes passando
+  - **Build:** `npm run build` → OK (10.95s, sem erros TS/lint)
+  - Nenhum shared file tocado no worktree
