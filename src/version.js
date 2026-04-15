@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.30.0: arch: Barra de Contexto Unificado (#118) — StudentContextProvider com Conta > Plano > Ciclo > Período persistido em localStorage versionado por aluno (E1/E5), cycleResolver puro (detectActiveCycle por datas E3, getDefaultContext conta com plano mais recente E2, períodos predefinidos CYCLE/WEEK/MONTH E4), ContextBar com 4 dropdowns encadeados + opção "Todas as contas" + badge read-only para ciclos finalizados, refactor StudentDashboard com sincronização bidirecional filters↔contexto. Adaptador temporário para PropAccountCard/Banner/Tracker (#134, CHUNK-17 liberado após merge #133 — migração em sessão subsequente). 46 testes novos, zero regressão
  * - 1.29.0: feat: AI Approach Plan Sonnet 4.6 (#133 — epic #52 Fase 2.5) — CF callable generatePropFirmApproachPlan gera narrativa estrategica sobre o plano deterministico (approach, execution, 4 cenarios, guidance comportamental, milestones), validacao pos-processamento com coerencia mecanica (Dia ideal === +dailyGoal, Dia ruim === -dailyStop) e read-only enforcement em numeros deterministicos, retry 3x com self-correction, fallback deterministico sem consumo de cota em falhas, rate limit 5 geracoes/conta (reset manual pelo mentor), seção colapsável no PropAccountCard existente com contador/badge/aviso cenario defaults, 24 testes novos em propFirmAiValidate
  * - 1.28.0: feat: Shadow Behavior Analysis (#129) — engine 13 padroes deterministicos em 2 camadas (parciais + ordens), 3 niveis de resolucao (LOW/MEDIUM/HIGH), CF callable analyzeShadowBehavior, ShadowBehaviorPanel mentor-only consumido em TradeDetailModal + FeedbackPage, integracao pos-import, 57 testes novos
  * - 1.27.0: feat: Prop Firm Dashboard (#134) — PropAccountCard com gauges (DD, profit/target, eval countdown, daily P&L), PropAlertsBanner persistente 3 níveis (danger/warning/info), sparkline drawdownHistory, tempo médio de trades universal no MetricsCards, PropPayoutTracker (qualifying days, eligibility checklist, simulador de saque, histórico de withdrawals), hooks useDrawdownHistory e useMovements, lógica pura em propFirmAlerts.js e propFirmPayout.js (epic #52 Fases 3/4 completas)
@@ -47,10 +48,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.29.0',
+  version: '1.30.0',
   build: '20260415',
-  display: 'v1.29.0',
-  full: '1.29.0+20260415',
+  display: 'v1.30.0',
+  full: '1.30.0+20260415',
 };
 export default VERSION;
 export { VERSION };
