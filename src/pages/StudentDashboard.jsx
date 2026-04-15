@@ -61,6 +61,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { useAuth } from '../contexts/AuthContext';
 import useDashboardMetrics from '../hooks/useDashboardMetrics';
+import { useAssessment } from '../hooks/useAssessment';
 import useCsvStaging from '../hooks/useCsvStaging';
 import useOrderStaging from '../hooks/useOrderStaging';
 import useOrders from '../hooks/useOrders';
@@ -97,6 +98,10 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
 
   // Prop firm templates (para PropAccountCard)
   const { getTemplateById } = usePropFirmTemplates();
+
+  // Assessment 4D (para PropAccountCard → AI Approach Plan — #133)
+  const assessmentStudentId = overrideStudentId || user?.uid || null;
+  const { initialAssessment } = useAssessment(assessmentStudentId);
 
   // CSV Staging
   const {
@@ -398,6 +403,42 @@ const StudentDashboard = ({ viewAs = null, onNavigateToFeedback, returnToPlanId 
               account={selectedAccount}
               template={propTemplate}
               drawdownHistory={drawdownHistory}
+              trader4DProfile={(() => {
+                // Shape real do Firestore: dimensões são top-level no doc initial_assessment
+                // (emotional, financial, operational, experience) — não sob .scores
+                if (!initialAssessment) return null;
+                const sd = initialAssessment.stage_diagnosis ?? initialAssessment.stageDiagnosis;
+                const emotionalScore = initialAssessment.emotional?.score ?? null;
+                const riskScore = initialAssessment.financial?.score ?? null;
+                const disciplineScore = initialAssessment.operational?.fit_score ?? initialAssessment.operational?.score ?? null;
+                const techScore = initialAssessment.experience?.score ?? initialAssessment.experience?.fit_score ?? null;
+                if (techScore == null && emotionalScore == null && disciplineScore == null && riskScore == null) return null;
+                return {
+                  stage: sd?.stage ?? null,
+                  stageName: sd?.stageName ?? sd?.name ?? null,
+                  compositeScore: initialAssessment.composite_score ?? null,
+                  compositeLabel: initialAssessment.composite_label ?? null,
+                  techScore,
+                  emotionalScore,
+                  disciplineScore,
+                  riskScore,
+                };
+              })()}
+              traderIndicators={(() => {
+                const hasData = metrics?.stats?.totalTrades > 0;
+                if (!hasData) return null;
+                return {
+                  wr: Math.round(metrics.stats.winRate ?? 0),
+                  payoff: Number((metrics.payoff?.value ?? 0).toFixed(2)),
+                  pf: Number((metrics.stats.profitFactor ?? 0).toFixed(2)),
+                  ev: Number((metrics.stats.avgPl ?? 0).toFixed(2)),
+                  cv: null,
+                  avgWinHold: metrics.avgTradeDuration?.win ?? null,
+                  avgLossHold: metrics.avgTradeDuration?.loss ?? null,
+                  holdTimeAsymmetry: null,
+                  behaviorFlags: null,
+                };
+              })()}
               onUpdatePhase={async (newPhase) => {
                 try {
                   await updateAccount(selectedAccount.id, {
