@@ -314,7 +314,13 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
   const distanceToDD = propFirm.distanceToDD ?? (drawdownMax > 0 ? (currentBalance - currentDrawdownThreshold) / drawdownMax : 1);
   const isDayPaused = propFirm.isDayPaused ?? false;
   const dailyPnL = propFirm.dailyPnL ?? 0;
-  const tradingDays = propFirm.tradingDays ?? 0;
+  // tradingDays: derivar de drawdownHistory (datas únicas) — fix contagem errada da CF com imports (issue #145)
+  const tradingDays = useMemo(() => {
+    if (drawdownHistory && drawdownHistory.length > 0) {
+      return new Set(drawdownHistory.map(h => h.date)).size;
+    }
+    return propFirm.tradingDays ?? 0;
+  }, [drawdownHistory, propFirm.tradingDays]);
   const lockLevel = propFirm.lockLevel ?? null;
   const trailFrozen = propFirm.trailFrozen ?? false;
   const flags = propFirm.flags ?? [];
