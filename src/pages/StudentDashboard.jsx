@@ -363,7 +363,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
         onCsvImport={() => setShowCsvWizard(true)}
         onOrderImport={() => setShowOrderImport(true)}
-        onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
         accounts={accounts}
         accountTypeFilter={accountTypeFilter}
         onAccountTypeChange={setAccountTypeFilter}
@@ -509,7 +508,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
         onOpenLedger={setLedgerPlan}
         onEditPlan={(plan) => { setEditingPlan(plan); setShowPlanModal(true); }}
         onDeletePlan={handleDeletePlan}
-        onCreatePlan={() => { setEditingPlan(null); setShowPlanModal(true); }}
         onAuditPlan={handleAuditPlan}
       />
 
