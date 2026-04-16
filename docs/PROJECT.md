@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.19.1  
-> **Última atualização:** 15/04/2026 — Encerramento #142 PR #143 mergeado, lock CHUNK-10 liberado, issue doc arquivada  
+> **Versão:** 0.20.0  
+> **Última atualização:** 15/04/2026 — Abertura #145 v1.32.0 (reservada), locks CHUNK-02/17, Página dedicada Mesa Prop  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -49,6 +49,7 @@ Este documento segue versionamento semântico:
 | 0.18.1 | 15/04/2026 | §4.0 reserva de versão na abertura | Fase 3 ler `version.js` + reservar próximo minor + commitar junto com locks. §4.2 passa a aplicar versão reservada. Elimina conflito de versão na origem (lição aprendida após rebase #118 ter precisado bumpar 1.29→1.30 em cima do #133) |
 | 0.19.0 | 15/04/2026 | #142 Order Import Tradovate v1.31.0 | FORMAT_REGISTRY extensível em orderParsers.js, auto-detect ProfitChart vs Tradovate por header signature (threshold 0.5 / 0.6), parser parseTradovateOrders com Papa.parse quote-aware, remove gatekeep hardcoded em OrderImportPage.jsx, detecção multi-delimitador (; e ,), shape canônico idêntico entre parsers, downstream agnóstico inalterado, 19 testes novos (2 Fase A + 17 Fase B), fixtures reais april/feb conta Apex, validado em browser |
 | 0.19.1 | 15/04/2026 | Encerramento #142 | PR #143 mergeado, lock CHUNK-10 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
+| 0.20.0 | 15/04/2026 | Abertura #145 Mesa Prop v1.32.0 | Locks CHUNK-02/17, v1.32.0 reservada em version.js, Página dedicada Mesa Prop — extrair componentes prop do Dashboard (epic #144) |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
