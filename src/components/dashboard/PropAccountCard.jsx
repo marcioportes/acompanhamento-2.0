@@ -457,27 +457,8 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
           />
         )}
 
-        {/* Row 2: Daily P&L + Eval Countdown + Trading Days */}
-        <div className="grid grid-cols-3 gap-4 pt-2 border-t border-slate-700/50">
-          {/* Daily P&L */}
-          <div>
-            <p className="text-[11px] text-slate-600 mb-1">
-              P&L dia
-              {dailyLossLimit > 0 && <span className="text-slate-700"> / -{formatCurrencyDynamic(dailyLossLimit, currency)}</span>}
-            </p>
-            <p className={`text-base font-bold font-mono ${dailyPnL >= 0 ? 'text-emerald-400' : isDayPaused ? 'text-red-500' : 'text-red-400'}`}>
-              {dailyPnL >= 0 ? '+' : ''}{formatCurrencyDynamic(dailyPnL, currency)}
-            </p>
-            {dailyLossLimit > 0 && (
-              <div className="mt-1 h-1 rounded-full bg-slate-700/50 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${isDayPaused ? 'bg-red-500' : dailyPnL < 0 ? 'bg-amber-400' : 'bg-slate-600'}`}
-                  style={{ width: `${Math.min(100, Math.abs(dailyPnL) / dailyLossLimit * 100)}%` }}
-                />
-              </div>
-            )}
-          </div>
-
+        {/* Row 2: Eval Countdown + Trading Days (P&L dia removido — dado stale sem reset, issue #145) */}
+        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-700/50">
           {/* Eval countdown */}
           <div>
             <p className="text-[11px] text-slate-600 mb-1">
@@ -523,17 +504,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
           </div>
         )}
 
-        {/* Sparkline drawdown (Fase C) */}
-        {drawdownHistory && (
-          <div className="pt-2 border-t border-slate-700/50">
-            <DrawdownSparkline
-              history={drawdownHistory}
-              drawdownMax={drawdownMax}
-              accountSize={accountSize}
-              currency={currency}
-            />
-          </div>
-        )}
+        {/* Sparkline DD removida — sem escala/contexto, inútil como mini-dashboard (issue #145) */}
 
         {/* Alertas */}
         {alerts.length > 0 && (
