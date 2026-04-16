@@ -158,7 +158,7 @@ function PlanView({ plan, currency }) {
   );
 }
 
-const PropAiApproachPlanSection = ({ account, template, trader4DProfile, traderIndicators }) => {
+const PropAiApproachPlanSection = ({ account, template, trader4DProfile, traderIndicators, phase = 'EVALUATION' }) => {
   const [open, setOpen] = useState(false);
   const {
     generate,
@@ -171,7 +171,7 @@ const PropAiApproachPlanSection = ({ account, template, trader4DProfile, traderI
     limitReached,
     dataSource,
     MAX_GENERATIONS,
-  } = useAiApproachPlan({ account, template, trader4DProfile, traderIndicators });
+  } = useAiApproachPlan({ account, template, trader4DProfile, traderIndicators, phase });
 
   const currency = account?.currency ?? 'USD';
   const hasPlan = Boolean(plan);

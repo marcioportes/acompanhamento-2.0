@@ -43,6 +43,7 @@ import {
   suggestMicroAlternative,
   isInstrumentAllowed
 } from '../constants/instrumentsTable';
+import { getActiveDrawdown } from './propFirmDrawdownEngine';
 
 // Quando mesa não tem dailyLossLimit, usar fração do drawdown como proxy
 const DEFAULT_DAILY_LOSS_FRACTION = 0.25;
@@ -126,12 +127,14 @@ export function resolveDataSource(profile4D, indicators, profileFamily = 'conser
 // calculateMesaConstraints — apenas constraints da mesa
 // ============================================
 
-export function calculateMesaConstraints(templateRules) {
+export function calculateMesaConstraints(templateRules, phase = 'EVALUATION') {
   if (!templateRules) {
     throw new Error('templateRules é obrigatório');
   }
 
-  const drawdownMax = templateRules.drawdown?.maxAmount ?? 0;
+  // Phase-aware: SIM_FUNDED/LIVE usa fundedDrawdown se disponível (issue #145 Fase C)
+  const activeDrawdown = getActiveDrawdown(templateRules, phase);
+  const drawdownMax = activeDrawdown?.maxAmount ?? 0;
   const profitTarget = templateRules.profitTarget ?? 0;
   const evalTimeLimit = templateRules.evalTimeLimit ?? 30;
 
@@ -185,8 +188,8 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
     ? phase
     : PROP_FIRM_PHASES.EVALUATION;
 
-  // Constraints da mesa
-  const mesaConstraints = calculateMesaConstraints(templateRules);
+  // Constraints da mesa — phase-aware (issue #145 Fase C)
+  const mesaConstraints = calculateMesaConstraints(templateRules, validPhase);
   const { drawdownMax, dailyLossLimit, profitTarget, evalBusinessDays, dailyTarget } = mesaConstraints;
 
   // Calibragem por perfil do aluno (transparência + WR para EV)

@@ -134,10 +134,10 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
     return Math.max(0, Math.min(1, normalized));
   });
 
-  // SVG sparkline
+  // SVG sparkline — height increased from 32 to 56 for legibility (issue #145 Fase C)
   const width = 200;
-  const height = 32;
-  const padding = 2;
+  const height = 56;
+  const padding = 4;
   const usableW = width - padding * 2;
   const usableH = height - padding * 2;
 
@@ -160,7 +160,18 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
           {history.length} trades · último: {formatCurrencyDynamic(lastThreshold, currency)}
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-8" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-14" preserveAspectRatio="none">
+        {/* Danger zone: bottom 30% of range */}
+        <rect
+          x={padding} y={padding + usableH * 0.7}
+          width={usableW} height={usableH * 0.3}
+          fill="rgba(239,68,68,0.06)"
+        />
+        <line
+          x1={padding} y1={padding + usableH * 0.7}
+          x2={padding + usableW} y2={padding + usableH * 0.7}
+          stroke="rgba(239,68,68,0.25)" strokeWidth="0.5" strokeDasharray="3,3"
+        />
         {/* Area fill */}
         <path
           d={`M${pathPoints[0]} ${pathPoints.join(' L')} L${padding + usableW},${height} L${padding},${height} Z`}
@@ -177,7 +188,7 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
         {/* Last point dot */}
         {pathPoints.length > 0 && (() => {
           const [lx, ly] = pathPoints[pathPoints.length - 1].split(',');
-          return <circle cx={lx} cy={ly} r="2" fill={lastPoint < 0.3 ? '#ef4444' : '#3b82f6'} />;
+          return <circle cx={lx} cy={ly} r="3" fill={lastPoint < 0.3 ? '#ef4444' : '#3b82f6'} />;
         })()}
       </svg>
     </div>
@@ -539,6 +550,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
           template={template}
           trader4DProfile={trader4DProfile}
           traderIndicators={traderIndicators}
+          phase={phase}
         />
       </div>
 
