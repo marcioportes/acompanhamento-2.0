@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.19.0  
-> **Última atualização:** 15/04/2026 — #142 v1.31.0 Order Import Tradovate (FORMAT_REGISTRY extensível, auto-detect ProfitChart vs Tradovate, parser parseTradovateOrders, remove gatekeep, 19 testes novos)  
+> **Versão:** 0.19.1  
+> **Última atualização:** 15/04/2026 — Encerramento #142 PR #143 mergeado, lock CHUNK-10 liberado, issue doc arquivada  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -48,6 +48,7 @@ Este documento segue versionamento semântico:
 | 0.18.0 | 15/04/2026 | #118 Barra de Contexto Unificado + encerramento | v1.30.0, StudentContextProvider + ContextBar + cycleResolver, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code (autorização permanente de leitura), 46 testes novos, locks CHUNK-02/13 liberados, PR #141 mergeado |
 | 0.18.1 | 15/04/2026 | §4.0 reserva de versão na abertura | Fase 3 ler `version.js` + reservar próximo minor + commitar junto com locks. §4.2 passa a aplicar versão reservada. Elimina conflito de versão na origem (lição aprendida após rebase #118 ter precisado bumpar 1.29→1.30 em cima do #133) |
 | 0.19.0 | 15/04/2026 | #142 Order Import Tradovate v1.31.0 | FORMAT_REGISTRY extensível em orderParsers.js, auto-detect ProfitChart vs Tradovate por header signature (threshold 0.5 / 0.6), parser parseTradovateOrders com Papa.parse quote-aware, remove gatekeep hardcoded em OrderImportPage.jsx, detecção multi-delimitador (; e ,), shape canônico idêntico entre parsers, downstream agnóstico inalterado, 19 testes novos (2 Fase A + 17 Fase B), fixtures reais april/feb conta Apex, validado em browser |
+| 0.19.1 | 15/04/2026 | Encerramento #142 | PR #143 mergeado, lock CHUNK-10 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -626,7 +627,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-10 | #142 | feat/issue-142-tradovate-orders | 15/04/2026 | Order Import Tradovate Orders — parser adhoc + remove gatekeep (v1.31.0 reservada) |
 
 ### 6.4 Checklist de Check-Out
 
