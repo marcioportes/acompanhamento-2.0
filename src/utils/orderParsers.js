@@ -132,28 +132,56 @@ const stripAccents = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 // ============================================
 
 /**
- * Detecta formato da corretora a partir dos headers.
- * @param {string[]} headers
- * @returns {{ format: 'profitchart_pro'|'generic', confidence: number }}
+ * Registry de formatos suportados. Adicionar um formato novo = adicionar uma entrada aqui
+ * com signature (headers esperados), threshold (confidence mínima) e parser (função).
+ *
+ * O parser correspondente é referenciado lazy via getter para evitar TDZ — as funções de
+ * parse ainda não foram declaradas quando o objeto é construído.
+ */
+const FORMAT_REGISTRY = {
+  profitchart_pro: {
+    signature: PROFITCHART_HEADER_SIGNATURE,
+    threshold: PROFITCHART_DETECTION_THRESHOLD,
+    get parser() { return parseProfitChartPro; },
+  },
+  // Novos formatos entram aqui (ex: tradovate — Fase B do issue #142)
+};
+
+/**
+ * Detecta o formato do CSV a partir dos headers.
+ * Itera o registry, retorna o melhor match acima do threshold.
+ *
+ * @param {string[]} headers — linha de headers já tokenizada
+ * @returns {{ format: string, confidence: number, parser: Function|null }}
+ *   - format: 'profitchart_pro' | 'tradovate' | ... | 'generic' (nenhum match)
+ *   - confidence: 0..1
+ *   - parser: função correspondente (ou null se 'generic')
  */
 export const detectOrderFormat = (headers) => {
-  if (!headers?.length) return { format: 'generic', confidence: 0 };
+  if (!headers?.length) return { format: 'generic', confidence: 0, parser: null };
 
   const normalized = headers.map(h => stripAccents(h.toLowerCase().trim()));
 
-  let matched = 0;
-  for (const sig of PROFITCHART_HEADER_SIGNATURE) {
-    if (normalized.some(n => n === sig || n.includes(sig) || sig.includes(n))) {
-      matched++;
+  let bestFormat = 'generic';
+  let bestConfidence = 0;
+  let bestParser = null;
+
+  for (const [formatKey, def] of Object.entries(FORMAT_REGISTRY)) {
+    let matched = 0;
+    for (const sig of def.signature) {
+      if (normalized.some(n => n === sig || n.includes(sig) || sig.includes(n))) {
+        matched++;
+      }
+    }
+    const confidence = matched / def.signature.length;
+    if (confidence >= def.threshold && confidence > bestConfidence) {
+      bestFormat = formatKey;
+      bestConfidence = confidence;
+      bestParser = def.parser;
     }
   }
 
-  const confidence = matched / PROFITCHART_HEADER_SIGNATURE.length;
-  if (confidence >= PROFITCHART_DETECTION_THRESHOLD) {
-    return { format: 'profitchart_pro', confidence };
-  }
-
-  return { format: 'generic', confidence };
+  return { format: bestFormat, confidence: bestConfidence, parser: bestParser };
 };
 
 // ============================================

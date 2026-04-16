@@ -26,7 +26,7 @@ import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 import AmbiguousOperationsPanel from '../components/OrderImport/AmbiguousOperationsPanel';
 
-import { parseProfitChartPro, detectOrderFormat } from '../utils/orderParsers';
+import { detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
@@ -114,21 +114,29 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     if (!result.text) return;
 
-    // Detect format
+    // Detect format — tenta múltiplos delimitadores (ProfitChart usa ';', Tradovate usa ',')
     const lines = result.text.replace(/\r\n/g, '\n').split('\n');
-    const headerLine = lines.find(l => (l.match(/;/g) || []).length >= 10);
-    const headers = headerLine ? headerLine.split(';').map(h => h.trim()) : [];
+    const DELIMITERS = [';', ','];
+    let headers = [];
+    for (const delim of DELIMITERS) {
+      const re = new RegExp(delim === ';' ? ';' : ',', 'g');
+      const candidate = lines.find(l => (l.match(re) || []).length >= 10);
+      if (candidate) {
+        const tokens = candidate.split(delim).map(h => h.trim());
+        if (tokens.length > headers.length) headers = tokens;
+      }
+    }
     const detection = detectOrderFormat(headers);
 
     setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-    // Validação de formato — bloqueio explícito quando não é arquivo de ordens
-    if (detection.format !== 'profitchart_pro') {
+    // Validação de formato — bloqueia apenas quando nenhum parser registrado reconhece
+    if (!detection.parser) {
       const headerHint = headers.length > 0
         ? ` Cabeçalho detectado: "${headers.slice(0, 5).join(', ')}${headers.length > 5 ? '...' : ''}"`
         : '';
       setError(
-        `Este arquivo NÃO é um CSV de ordens reconhecido (formato esperado: ProfitChart-Pro). ` +
+        `Este arquivo NÃO é um CSV de ordens reconhecido. Formatos suportados: ProfitChart-Pro, Tradovate. ` +
         `Confira se você não está subindo um arquivo de performance/trades por engano.${headerHint}`
       );
       setParseErrors([]);
@@ -137,8 +145,8 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       return;
     }
 
-    // Parse
-    const parsed = parseProfitChartPro(result.text);
+    // Parse — roteia pelo parser detectado no registry
+    const parsed = detection.parser(result.text);
     setParseErrors(parsed.errors || []);
 
     // Normalize + dedup
