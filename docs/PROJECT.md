@@ -629,6 +629,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 |-------|-------|--------|------|--------|
 | CHUNK-02 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — extrair componentes prop do Dashboard |
 | CHUNK-17 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — PropFirmPage, adaptador contexto |
+| CHUNK-16 | #102 | feat/issue-102-revisao-semanal | 15/04/2026 | Revisão Semanal — Fases A-D (PlanLedgerExtract + reviews + SWOT IA + integração mentor/aluno) |
 
 ### 6.4 Checklist de Check-Out
 
