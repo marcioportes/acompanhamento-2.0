@@ -27,6 +27,7 @@
  *   PROFITCHART_HEADER_SIGNATURE
  */
 
+import Papa from 'papaparse';
 import { parseDateTime, parseNumericValue } from './csvMapper.js';
 import { detectLowResolution } from './orderTemporalResolution.js';
 
@@ -44,6 +45,30 @@ export const PROFITCHART_HEADER_SIGNATURE = [
 ];
 
 const PROFITCHART_DETECTION_THRESHOLD = 0.5;
+
+/**
+ * Header signature do Tradovate Orders tab (formato EN, flat, 1 linha = 1 ordem).
+ * Headers únicos que não aparecem no ProfitChart para separação confiável.
+ */
+const TRADOVATE_HEADER_SIGNATURE = [
+  'orderid', 'account', 'b/s', 'contract', 'filledqty',
+  'fill time', 'avg fill price', 'notional value', 'timestamp', 'venue',
+];
+
+const TRADOVATE_DETECTION_THRESHOLD = 0.6;
+
+/** Mapeamento de status EN (Tradovate) → enum interno. Valores já vêm com leading space; normalizer faz trim. */
+const TRADOVATE_STATUS_MAP = {
+  'filled': 'FILLED',
+  'canceled': 'CANCELLED',
+  'cancelled': 'CANCELLED',
+  'rejected': 'REJECTED',
+  'working': 'SUBMITTED',
+  'accepted': 'SUBMITTED',
+  'pending': 'SUBMITTED',
+  'expired': 'EXPIRED',
+  'partial': 'PARTIALLY_FILLED',
+};
 
 /** Mapeamento de status PT-BR → enum interno */
 const PROFITCHART_STATUS_MAP = {
@@ -132,6 +157,11 @@ const stripAccents = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 // ============================================
 
 /**
+ * Detecta formato da corretora a partir dos headers.
+ * @param {string[]} headers
+ * @returns {{ format: 'profitchart_pro'|'generic', confidence: number }}
+ */
+/**
  * Registry de formatos suportados. Adicionar um formato novo = adicionar uma entrada aqui
  * com signature (headers esperados), threshold (confidence mínima) e parser (função).
  *
@@ -144,7 +174,11 @@ const FORMAT_REGISTRY = {
     threshold: PROFITCHART_DETECTION_THRESHOLD,
     get parser() { return parseProfitChartPro; },
   },
-  // Novos formatos entram aqui (ex: tradovate — Fase B do issue #142)
+  tradovate: {
+    signature: TRADOVATE_HEADER_SIGNATURE,
+    threshold: TRADOVATE_DETECTION_THRESHOLD,
+    get parser() { return parseTradovateOrders; },
+  },
 };
 
 /**
@@ -425,4 +459,146 @@ export const parseGenericOrders = (rows, columnMapping) => {
   const lowResolution = detectLowResolution(orders);
 
   return { orders, errors, lowResolution };
+};
+
+// ============================================
+// TRADOVATE — ORDERS TAB PARSER (issue #142 Fase B)
+// ============================================
+
+/**
+ * Parse CSV de ordens do Tradovate (tab Orders).
+ * Estrutura flat: 1 linha = 1 ordem (diferente do ProfitChart que tem master+events).
+ * Delimitador `,`, datas MM/DD/YYYY HH:MM:SS, números US (`.` decimal, `,` thousands).
+ * Valores em B/S, Status, Type vêm com leading space — trim obrigatório.
+ *
+ * @param {string} text — conteúdo CSV (UTF-8)
+ * @returns {{
+ *   orders: OrderRecord[],
+ *   meta: { account, totalOrders },
+ *   errors: Array<{ row: number, message: string }>,
+ *   lowResolution: boolean
+ * }}
+ */
+export const parseTradovateOrders = (text) => {
+  if (!text || !text.trim()) {
+    return { orders: [], meta: {}, errors: [{ row: 0, message: 'Arquivo vazio' }], lowResolution: false };
+  }
+
+  const parsed = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter: ',',
+  });
+
+  const errors = (parsed.errors || []).map((e) => ({
+    row: (e.row ?? 0) + 1,
+    message: e.message,
+  }));
+
+  const rows = parsed.data || [];
+  if (!rows.length) {
+    return { orders: [], meta: {}, errors: [...errors, { row: 0, message: 'CSV sem linhas de dados' }], lowResolution: false };
+  }
+
+  const normalizeStatus = (raw) => {
+    if (!raw) return null;
+    const key = String(raw).trim().toLowerCase();
+    return TRADOVATE_STATUS_MAP[key] ?? null;
+  };
+
+  const orders = [];
+  const accounts = new Set();
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowIndex = i + 2; // +1 for header, +1 for 1-indexed
+
+    const externalOrderId = row['orderId']?.trim() || row['Order ID']?.trim() || null;
+    const account = row['Account']?.trim() || null;
+    const instrument = row['Contract']?.trim()?.toUpperCase() || null;
+    const side = normalizeSide(row['B/S']);
+    const status = normalizeStatus(row['Status']);
+    const orderType = normalizeOrderType(row['Type']);
+
+    if (!instrument || (!side && !status)) {
+      errors.push({ row: rowIndex, message: 'Linha sem contract + (side ou status) — ignorada' });
+      continue;
+    }
+
+    if (account) accounts.add(account);
+
+    const submittedAt = parseDateTime(row['Timestamp']?.trim(), 'MM/DD/YYYY');
+    const filledAtRaw = row['Fill Time']?.trim();
+    const filledAt = filledAtRaw ? parseDateTime(filledAtRaw, 'MM/DD/YYYY') : null;
+
+    const quantity = parseNumericValue(row['Quantity']);
+    const filledQuantity = parseNumericValue(row['Filled Qty']);
+    const limitPrice = parseNumericValue(row['Limit Price']);
+    const stopPrice = parseNumericValue(row['Stop Price']);
+    const avgFillPrice = parseNumericValue(row['Avg Fill Price']) ?? parseNumericValue(row['avgPrice']);
+    const totalValue = parseNumericValue(row['Notional Value']);
+
+    // Price canônico: limit se LIMIT/STOP_LIMIT, stop se STOP sem limit, fill se MARKET
+    const price = limitPrice ?? (orderType === 'MARKET' ? avgFillPrice : null);
+
+    const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT' ||
+                        (stopPrice != null && stopPrice > 0);
+
+    // Eventos: Tradovate é flat, mas se a ordem foi Filled, reconstrói 1 evento de trade
+    const events = [];
+    if (status === 'FILLED' && filledAt) {
+      events.push({
+        type: 'TRADE_EVENT',
+        timestamp: filledAt,
+        price: avgFillPrice ?? limitPrice ?? stopPrice,
+        quantity: filledQuantity ?? quantity,
+      });
+    } else if (status === 'CANCELLED') {
+      events.push({
+        type: 'CANCEL_EVENT',
+        timestamp: filledAt ?? submittedAt,
+        price: null,
+        quantity: null,
+      });
+    }
+
+    orders.push({
+      _rowIndex: rowIndex,
+      externalOrderId,
+      account,
+      instrument,
+      side,
+      status,
+      orderType,
+      submittedAt,
+      filledAt,
+      cancelledAt: status === 'CANCELLED' ? filledAt : null,
+      price,
+      stopPrice,
+      quantity,
+      filledQuantity,
+      filledPrice: avgFillPrice,
+      avgFillPrice,
+      lastUpdatedAt: filledAt ?? submittedAt,
+      isStopOrder,
+      events,
+      // Tradovate-specific (opcional, não usado downstream)
+      origin: row['Text']?.trim() || null,
+      exchange: row['Venue']?.trim() || null,
+      strategy: null,
+      totalValue,
+      totalExecutedValue: totalValue,
+    });
+  }
+
+  const meta = {
+    corretora: 'Tradovate',
+    conta: accounts.size === 1 ? [...accounts][0] : null,
+    totalOrders: orders.length,
+    totalEvents: orders.reduce((sum, o) => sum + (o.events?.length || 0), 0),
+  };
+
+  const lowResolution = detectLowResolution(orders);
+
+  return { orders, meta, errors, lowResolution };
 };
