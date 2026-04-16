@@ -549,7 +549,7 @@ const AccountsPage = () => {
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
-    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} planSubmitting={planSubmitting} />;
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={addPlan} planSubmitting={planSubmitting} />;
   }
 
   return (

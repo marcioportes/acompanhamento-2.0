@@ -1,9 +1,13 @@
 /**
  * AccountDetailPage
- * @version 7.0.0 (Plans View + Mentor Edit)
+ * @version 8.0.0 (Plans View + Create + Mentor Edit)
  * @description Extrato com cálculo reverso (Reverse Ledger) + Planos vinculados.
  * 
  * CHANGELOG:
+ * - 8.0.0: Issue #146 — Botão "Novo Plano" + criação de plano (movido do DashboardHeader)
+ *   - Seção "Planos Vinculados" sempre visível (com empty state)
+ *   - PlanManagementModal desbloqueado do gate isMentor() para criação
+ *   - Prop onCreatePlan + defaultAccountId pré-setado
  * - 7.0.0: Issue #43 — Seção "Planos Vinculados" com indicadores estratégicos
  *   - Mentor vê e edita planos do aluno
  *   - Indicadores: PL, RO, Stop Período, Stop Ciclo, Meta
@@ -48,7 +52,7 @@ const translateType = (type) => {
   return map[type] || type;
 };
 
-const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubmitting = false }) => {
+const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
   const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
   const { user, isMentor } = useAuth();
   
@@ -190,14 +194,17 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubm
     return amount >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-400" /> : <TrendingDown className="w-4 h-4 text-red-400" />;
   };
 
-  // Handler: Mentor salva edição do plano com audit trail
-  const handleMentorSavePlan = async (planData) => {
-    if (!editingPlan || !onUpdatePlan) return;
-    
-    const auditInfo = buildAuditInfo(user?.email, editingPlan, planData);
-
+  // Handler: salva plano (criação ou edição mentor com audit trail)
+  const handleSavePlan = async (planData) => {
     try {
-      await onUpdatePlan(editingPlan.id, planData, auditInfo);
+      if (editingPlan) {
+        if (!onUpdatePlan) return;
+        const auditInfo = buildAuditInfo(user?.email, editingPlan, planData);
+        await onUpdatePlan(editingPlan.id, planData, auditInfo);
+      } else {
+        if (!onCreatePlan) return;
+        await onCreatePlan(planData);
+      }
       setShowPlanModal(false);
       setEditingPlan(null);
     } catch (err) {
@@ -228,13 +235,23 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubm
         </div>
       </div>
 
-      {/* === PLANOS VINCULADOS (Issue #43) === */}
-      {accountPlans.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+      {/* === PLANOS VINCULADOS (Issue #43 + #146) === */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Target className="w-5 h-5 text-blue-400" /> Planos Vinculados
-            <span className="text-sm font-normal text-slate-500">({accountPlans.length})</span>
+            {accountPlans.length > 0 && <span className="text-sm font-normal text-slate-500">({accountPlans.length})</span>}
           </h2>
+          {onCreatePlan && (
+            <button
+              onClick={() => { setEditingPlan(null); setShowPlanModal(true); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:border-blue-500/50 hover:bg-blue-500/20 text-xs font-bold text-blue-400 hover:text-blue-300 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" /> Novo Plano
+            </button>
+          )}
+        </div>
+        {accountPlans.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {accountPlans.map(plan => {
               const plInitial = plan.pl || 0;
@@ -296,8 +313,13 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubm
               );
             })}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="glass-card p-8 text-center">
+            <Target className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+            <p className="text-slate-500 text-sm">Nenhum plano vinculado a esta conta.</p>
+          </div>
+        )}
+      </div>
 
       {/* EXTRATO CARD */}
       <div className="glass-card">
@@ -466,16 +488,15 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, planSubm
           </div>
         </div>
       )}
-      {/* MODAL PLANO (Mentor Edit) */}
-      {isMentor() && (
-        <PlanManagementModal
-          isOpen={showPlanModal}
-          onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
-          onSubmit={handleMentorSavePlan}
-          editingPlan={editingPlan}
-          isSubmitting={planSubmitting}
-        />
-      )}
+      {/* MODAL PLANO (Criação + Mentor Edit) — issue #146 */}
+      <PlanManagementModal
+        isOpen={showPlanModal}
+        onClose={() => { setShowPlanModal(false); setEditingPlan(null); }}
+        onSubmit={handleSavePlan}
+        editingPlan={editingPlan}
+        defaultAccountId={account?.id}
+        isSubmitting={planSubmitting}
+      />
       <DebugBadge component="AccountDetailPage" />
     </div>
   );
