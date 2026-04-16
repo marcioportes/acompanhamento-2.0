@@ -153,4 +153,26 @@ Notional Value, Currency
   - Commit `fec42493` em main: lock CHUNK-10 + reserva v1.31.0
   - Worktree criado a partir do main atualizado
   - Arquivo de controle gerado
-  - Aguardando aprovação Pré-Código para iniciar Fase A (refactor gatekeep + auto-detect, não depende do sample)
+  - Aguardando aprovação Pré-Código para iniciar Fase A
+
+- **15/04/2026 — Fase A concluída** (commit `addd49b8`):
+  - `FORMAT_REGISTRY` extensível em orderParsers.js (getter lazy para evitar TDZ)
+  - `detectOrderFormat` retorna `{ format, confidence, parser }` — parser é referência direta
+  - OrderImportPage.jsx: detecção multi-delim (`;` e `,`), remove gatekeep, roteia por parser
+  - 2 testes novos: parser referenciado, null quando genérico
+  - 1439/1439 testes passando, zero regressão
+
+- **15/04/2026 — Fase B concluída** (commit próximo):
+  - `parseTradovateOrders` com Papa.parse quote-aware (lida com `"47,862.00"`)
+  - `TRADOVATE_HEADER_SIGNATURE` + `TRADOVATE_STATUS_MAP` + threshold 0.6
+  - Registrado em FORMAT_REGISTRY (getter lazy)
+  - Shape canônico idêntico ao ProfitChart — downstream inalterado
+  - Eventos reconstruídos: FILLED → TRADE_EVENT, CANCELLED → CANCEL_EVENT
+  - Fixtures reais `april.csv` + `feb.csv` (conta Apex PAAPEX2604610000005, contratos MNQM6/NQM6)
+  - 17 testes novos: detecção, shape, datas US, thousands, eventos, cancelados, edge cases
+  - 1456/1456 testes passando
+
+- **15/04/2026 — Fase C concluída** (commit próximo):
+  - `src/version.js` bump 1.30.0 → 1.31.0
+  - `docs/PROJECT.md` header v0.18.1 → v0.19.0, entrada histórica, CHANGELOG §10 [1.31.0]
+  - **Validação browser end-to-end**: import real dos CSVs April + Feb funcionou, auto-detecção rotea corretamente Tradovate, ProfitChart continua funcionando sem mudança
