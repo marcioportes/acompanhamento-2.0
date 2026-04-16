@@ -627,6 +627,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-02 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — extrair componentes prop do Dashboard |
+| CHUNK-17 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — PropFirmPage, adaptador contexto |
 
 ### 6.4 Checklist de Check-Out
 
