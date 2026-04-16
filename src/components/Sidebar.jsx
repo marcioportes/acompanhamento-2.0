@@ -10,8 +10,8 @@
  * - 1.1.0: Adicionado item "Feedback" no menu do aluno
  */
 
-import { 
-  LayoutDashboard, 
+import {
+  LayoutDashboard,
   Users,
   User,
   LogOut,
@@ -25,7 +25,8 @@ import {
   LineChart,
   Settings,
   Brain,
-  CreditCard
+  CreditCard,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -40,6 +41,7 @@ const Sidebar = ({
   emotionalAlerts = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
+  hasPropAccount = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -55,6 +57,8 @@ const Sidebar = ({
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     { id: 'accounts', label: 'Contas', icon: Wallet },
+    // Mesa Prop — só aparece se aluno tem conta type PROP
+    ...(hasPropAccount ? [{ id: 'propfirm', label: 'Mesa Prop', icon: Shield }] : []),
     // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
     ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
   ];

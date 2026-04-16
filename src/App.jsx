@@ -17,6 +17,7 @@ import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
+import PropFirmPage from './pages/PropFirmPage';
 import MentorDashboard from './pages/MentorDashboard';
 import AccountsPage from './pages/AccountsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -33,6 +34,7 @@ import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
 import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
 import { useAssessment } from './hooks/useAssessment';
+import { useAccounts } from './hooks/useAccounts';
 import BaselineReport from './components/Onboarding/BaselineReport';
 
 // Banner de "Visualizando como Aluno"
@@ -101,6 +103,14 @@ const AppContent = () => {
   const studentAssessmentId = !isMentor() ? user?.uid : null;
   const { initialAssessment: studentInitialAssessment } = useAssessment(studentAssessmentId);
   const hasBaseline = !!studentInitialAssessment;
+
+  // Mesa Prop — para exibir item no Sidebar (só alunos logados)
+  const studentAccountsId = !isMentor() ? user?.uid : null;
+  const { accounts: studentAccounts } = useAccounts(studentAccountsId);
+  const hasPropAccount = useMemo(() => {
+    if (isMentor()) return false;
+    return studentAccounts?.some(a => a.type === 'PROP') ?? false;
+  }, [studentAccounts]);
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -291,8 +301,10 @@ const AppContent = () => {
               />
             </div>
           );
+        case 'propfirm':
+          return <PropFirmPage />;
         case 'dashboard':
-        default: 
+        default:
           return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
       }
     }
@@ -322,6 +334,7 @@ const AppContent = () => {
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
+        hasPropAccount={hasPropAccount}
       />
 
       {/* Conteúdo principal */}
