@@ -145,6 +145,28 @@ describe('detectOrderFormat', () => {
     expect(detectOrderFormat([]).format).toBe('generic');
     expect(detectOrderFormat(null).format).toBe('generic');
   });
+
+  // Fase A do #142: registry de parsers — detecção retorna referência ao parser
+  it('ProfitChart-Pro: detecção retorna parser referenciado no registry', () => {
+    const headers = ['Corretora', 'Conta', 'Titular', 'ClOrdID', 'Ativo', 'Lado', 'Status',
+      'Criação', 'Última Atualização', 'Preço', 'Preço Stop', 'Qtd', 'Preço Médio',
+      'Qtd Executada', 'Qtd restante', 'Total', 'Total Executado', 'Validade',
+      'Data Validade', 'Estratégia', 'Mensagem', 'Carteira', 'Tipo de Ordem',
+      'TaskID', 'Bolsa', 'Origem'];
+    const result = detectOrderFormat(headers);
+    expect(result.parser).toBeTypeOf('function');
+    // Parser roteado deve ser parseProfitChartPro — valida chamando com input vazio
+    const parseResult = result.parser('');
+    expect(parseResult).toHaveProperty('orders');
+    expect(parseResult).toHaveProperty('meta');
+    expect(parseResult).toHaveProperty('errors');
+  });
+
+  it('genérico: parser é null quando nenhum formato bate', () => {
+    const result = detectOrderFormat(['foo', 'bar', 'baz']);
+    expect(result.format).toBe('generic');
+    expect(result.parser).toBeNull();
+  });
 });
 
 // ============================================

@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.18.1  
-> **Última atualização:** 15/04/2026 — §4.0 regra de reserva de versão na abertura (Fase 3); §4.2 passa a aplicar versão reservada (não mais bumpar no gate)  
+> **Versão:** 0.19.0  
+> **Última atualização:** 15/04/2026 — #142 v1.31.0 Order Import Tradovate (FORMAT_REGISTRY extensível, auto-detect ProfitChart vs Tradovate, parser parseTradovateOrders, remove gatekeep, 19 testes novos)  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -47,6 +47,7 @@ Este documento segue versionamento semântico:
 | 0.17.1 | 15/04/2026 | Encerramento #133 | PR #140 mergeado, lock CHUNK-17 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
 | 0.18.0 | 15/04/2026 | #118 Barra de Contexto Unificado + encerramento | v1.30.0, StudentContextProvider + ContextBar + cycleResolver, DEC-080 a DEC-083, CHANGELOG [1.30.0], §4.0 diretiva operacional Claude Code (autorização permanente de leitura), 46 testes novos, locks CHUNK-02/13 liberados, PR #141 mergeado |
 | 0.18.1 | 15/04/2026 | §4.0 reserva de versão na abertura | Fase 3 ler `version.js` + reservar próximo minor + commitar junto com locks. §4.2 passa a aplicar versão reservada. Elimina conflito de versão na origem (lição aprendida após rebase #118 ter precisado bumpar 1.29→1.30 em cima do #133) |
+| 0.19.0 | 15/04/2026 | #142 Order Import Tradovate v1.31.0 | FORMAT_REGISTRY extensível em orderParsers.js, auto-detect ProfitChart vs Tradovate por header signature (threshold 0.5 / 0.6), parser parseTradovateOrders com Papa.parse quote-aware, remove gatekeep hardcoded em OrderImportPage.jsx, detecção multi-delimitador (; e ,), shape canônico idêntico entre parsers, downstream agnóstico inalterado, 19 testes novos (2 Fase A + 17 Fase B), fixtures reais april/feb conta Apex, validado em browser |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -809,6 +810,28 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.31.0] - 15/04/2026
+**Issue:** #142 (feat: Order Import Tradovate Orders — parser adhoc + remove gatekeep ProfitChart)
+**Milestone:** v1.1.0 — Espelho Self-Service
+**Fases:** A (FORMAT_REGISTRY + remove gatekeep), B (parser Tradovate), C (shared files + validação browser)
+#### Adicionado
+- **`FORMAT_REGISTRY`** em `src/utils/orderParsers.js` — registry extensível de formatos suportados. Cada entrada: `{ signature, threshold, get parser() }`. Adicionar formato novo = adicionar entrada no registry; nenhum código de roteamento precisa mudar
+- **`parseTradovateOrders(text)`** — parser do tab Orders do Tradovate (CSV flat, 1 linha = 1 ordem, delimiter `,`, encoding UTF-8, datas MM/DD/YYYY HH:MM:SS, números US com thousands). Usa Papa.parse quote-aware (lida com `"47,862.00"`). Retorna shape canônico idêntico ao `parseProfitChartPro` — downstream (normalize/validate/reconstruct/correlate) inalterado
+- **`TRADOVATE_HEADER_SIGNATURE`** (10 headers únicos: orderId, Account, B/S, Contract, filledQty, Fill Time, Avg Fill Price, Notional Value, Timestamp, Venue) + threshold 0.6 para detecção automática
+- **`TRADOVATE_STATUS_MAP`** (EN → enum interno: filled/canceled/working/rejected/expired/partial) com trim de leading space (Tradovate exporta ` Buy`, ` Filled`, ` Market`)
+- Reconstrução de eventos: status FILLED → TRADE_EVENT em `events[]`, CANCELLED → CANCEL_EVENT — compatível com reconstruction/correlation pipeline existente
+- **Detecção multi-delimitador** em `OrderImportPage.jsx` — tenta `;` e `,`, pega o que gera mais tokens no header line
+- **Remove gatekeep** em `OrderImportPage.jsx:126` que rejeitava tudo ≠ `profitchart_pro`. Agora bloqueia apenas quando nenhum parser no registry reconhece os headers — mensagem genérica: "Formatos suportados: ProfitChart-Pro, Tradovate"
+- **19 testes novos**: `orderParsers.test.js` +2 (parser referenciado no registry, null quando genérico), `tradovateOrderParser.test.js` +17 (detecção, shape, campos canônicos April/Feb, datas US, thousands, eventos, cancelados, edge cases)
+- **Fixtures reais**: `src/__tests__/fixtures/tradovate-orders/{april,feb}.csv` — conta Apex PAAPEX2604610000005, contratos MNQM6/NQM6
+#### Arquivos tocados
+- `src/utils/orderParsers.js` (+200 linhas — FORMAT_REGISTRY, TRADOVATE_* constants, parseTradovateOrders, detectOrderFormat refatorado)
+- `src/pages/OrderImportPage.jsx` (+10 / -15 — detecção multi-delim, remove gatekeep, roteia por parser)
+- `src/__tests__/utils/orderParsers.test.js` (+25 linhas — 2 testes)
+- `src/__tests__/utils/tradovateOrderParser.test.js` (NEW — 17 testes)
+- `src/__tests__/fixtures/tradovate-orders/april.csv` (NEW)
+- `src/__tests__/fixtures/tradovate-orders/feb.csv` (NEW)
 
 ### [1.30.0] - 15/04/2026
 **Issue:** #118 (arch: Barra de Contexto Unificado — Conta/Plano/Ciclo/Período)
