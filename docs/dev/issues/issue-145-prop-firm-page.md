@@ -143,10 +143,14 @@ case 'propfirm':
   - Build OK, 1456/1456 testes passando
   - Bug Rules of Hooks corrigido: early return em PropFirmPageBody movido para DEPOIS de todos os hooks (useAccounts, usePlans, usePropFirmTemplates, useDrawdownHistory, useMovements, useAssessment, useMemo×3)
 
-- **16/04/2026 — Sessão pausada (WSL fechando):**
-  - Fases A+B não commitadas — mudanças pendentes no worktree
-  - Fase C (sparkline fix + phase-aware) pendente
-  - Fase D (testes + validação browser) pendente
-  - Validação browser interrompida — PropFirmPage precisa testar: sidebar item, renderização completa, dashboard limpo
+- **16/04/2026 — Sessão retomada + Fase C concluída:**
+  - Fases A+B commitadas como `518e7fae`
+  - Rebase sobre main (incorporou fix #146 — botão Novo Plano)
+  - Fase C item 1 (sparkline): removida do card — sem escala/contexto, inútil como mini-dashboard
+  - Fase C item 2 (attack plan phase-aware): `calculateMesaConstraints` agora usa `getActiveDrawdown(template, phase)` — SIM_FUNDED/LIVE usam `fundedDrawdown`
+  - Fase C item 3 (AI approach plan phase-aware): `phase` threaded PropAccountCard → PropAiApproachPlanSection → useAiApproachPlan → prompt.js. Prompt condiciona narrativa e instrução 5 na fase
+  - Fix: P&L dia removido do card (dado stale sem reset diário)
+  - Fix: `tradingDays` derivado de `drawdownHistory` (datas únicas via `new Set`) — corrige contagem inflada por trades importados
+  - Build OK, 1456/1456 testes passando
 
 **Nota de protocolo (15/04/2026):** A partir desta sessão, a reserva de versão (`version.js` comment + `PROJECT.md` header bump + entrada na tabela histórica) é obrigatória na abertura §4.0 e deve ser commitada no main ANTES da criação do worktree, no mesmo commit dos locks (ou commit subsequente, desde que antes do worktree). O worktree nasce com a versão já reservada.
