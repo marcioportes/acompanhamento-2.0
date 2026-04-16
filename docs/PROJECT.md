@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.20.1  
-> **Última atualização:** 15/04/2026 — Abertura #102 v1.33.0 (reservada), lock CHUNK-16, Revisão Semanal Fases A-D  
+> **Versão:** 0.21.0  
+> **Última atualização:** 16/04/2026 — Abertura #146 v1.34.0 (reservada), locks CHUNK-02/03 (bypass #145), fix botão Novo Plano → AccountDetailPage  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -51,6 +51,7 @@ Este documento segue versionamento semântico:
 | 0.19.1 | 15/04/2026 | Encerramento #142 | PR #143 mergeado, lock CHUNK-10 liberado (AVAILABLE), issue doc movida para archive, worktree removido |
 | 0.20.0 | 15/04/2026 | Abertura #145 Mesa Prop v1.32.0 | Locks CHUNK-02/17, v1.32.0 reservada em version.js, Página dedicada Mesa Prop — extrair componentes prop do Dashboard (epic #144) |
 | 0.20.1 | 15/04/2026 | Abertura #102 Revisão Semanal v1.33.0 | Lock CHUNK-16, v1.33.0 reservada em version.js, Revisão Semanal Fases A-D (#106 absorvido como Fase A) |
+| 0.21.0 | 16/04/2026 | Abertura #146 fix Novo Plano v1.34.0 | Locks CHUNK-02/03 (bypass CHUNK-02 lock #145 — sessão solo autorizada), v1.34.0 reservada, mover criação de plano de DashboardHeader para AccountDetailPage |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -632,6 +633,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | CHUNK-02 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — extrair componentes prop do Dashboard |
 | CHUNK-17 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — PropFirmPage, adaptador contexto |
 | CHUNK-16 | #102 | feat/issue-102-revisao-semanal | 15/04/2026 | Revisão Semanal — Fases A-D (PlanLedgerExtract + reviews + SWOT IA + integração mentor/aluno) |
+| CHUNK-02 | #146 | fix/issue-146-novo-plano-account-detail | 16/04/2026 | Fix botão Novo Plano — bypass lock #145, sessão solo autorizada |
+| CHUNK-03 | #146 | fix/issue-146-novo-plano-account-detail | 16/04/2026 | Fix botão Novo Plano — mover criação de plano para AccountDetailPage |
 
 ### 6.4 Checklist de Check-Out
 

@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.34.0: fix: Botão Novo Plano inacessível (#146) — mover criação de plano de DashboardHeader para AccountDetailPage, limpar state órfão no StudentDashboard. [RESERVADO]
  * - 1.33.0: feat: Revisão Semanal (#102) — PlanLedgerExtract fundação + collection reviews + CF createWeeklyReview + CF generateWeeklySwot + WeeklyReviewModal + integração mentor/aluno. [RESERVADO]
  * - 1.32.0: arch: Pagina dedicada Mesa Prop (#145) — extrair PropAccountCard/AlertsBanner/PayoutTracker/AiApproachPlanSection do StudentDashboard para PropFirmPage, novo item condicional no Sidebar, ContextBar governa pagina, fix sparkline DD threshold, plano phase-aware (PA/SIM_FUNDED/LIVE). [RESERVADO]
  * - 1.31.0: feat: Order Import Tradovate Orders (#142) — parser parseTradovateOrders + FORMAT_REGISTRY extensivel em orderParsers.js + auto-detect ProfitChart vs Tradovate por header signature + remove gatekeep hardcoded em OrderImportPage.jsx + deteccao multi-delimitador (; e ,). Shape canonico identico entre parsers — downstream (normalize/validate/reconstruct/correlate) inalterado. Mapas EN inline (STATUS/SIDE/TYPE com trim de leading space), datas US (MM/DD/YYYY HH:MM:SS) via parseDateTime, numeros US (Papa quote-aware lida com thousands). 19 testes novos (2 Fase A + 17 Fase B), fixtures reais april/feb 2026 conta Apex. Validado em browser.
