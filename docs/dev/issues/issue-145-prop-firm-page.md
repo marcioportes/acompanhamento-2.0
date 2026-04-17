@@ -152,5 +152,20 @@ case 'propfirm':
   - Fix: P&L dia removido do card (dado stale sem reset diário)
   - Fix: `tradingDays` derivado de `drawdownHistory` (datas únicas via `new Set`) — corrige contagem inflada por trades importados
   - Build OK, 1456/1456 testes passando
+  - version.js atualizado para v1.32.0, CHANGELOG comment atualizado
+  - Gate pré-entrega apresentado — aguarda validação browser do Marcio
+
+- **17/04/2026 — Sessão pausada para retomada:**
+  - **Estado:** Fases A+B+C completas e commitadas. Fase D (validação browser) pendente.
+  - **Pendência única:** Marcio validar no browser → PR → merge → encerramento §4.3
+  - **Commits na branch (5):**
+    - `518e7fae` feat: PropFirmPage + Sidebar Mesa Prop + limpar Dashboard — Fases A+B
+    - `d8de79dd` feat: Fase C — attack plan/AI phase-aware
+    - `38996dc5` fix: remover P&L dia (stale) e sparkline DD (sem escala)
+    - `88fc0850` fix: tradingDays derivado de drawdownHistory
+    - `3f748c90` docs: atualizar issue doc + version.js para v1.32.0
+  - **Para retomar:** `cd ~/projects/issue-145`, subir dev server `npx vite --port 5174`, validar browser, criar PR com `Closes #145`, executar §4.3
+  - **Shared files pendentes no merge:** App.jsx (rota propfirm), Sidebar.jsx (item Mesa Prop), PROJECT.md (CHANGELOG [1.32.0])
+  - **Bugs fora do scope (registrados no issue body):** bestDayProfit $0 (CF/CHUNK-04), deadline-exceeded CF AI (CF layer)
 
 **Nota de protocolo (15/04/2026):** A partir desta sessão, a reserva de versão (`version.js` comment + `PROJECT.md` header bump + entrada na tabela histórica) é obrigatória na abertura §4.0 e deve ser commitada no main ANTES da criação do worktree, no mesmo commit dos locks (ou commit subsequente, desde que antes do worktree). O worktree nasce com a versão já reservada.
