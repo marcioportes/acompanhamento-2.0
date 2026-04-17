@@ -299,8 +299,7 @@ Marcio reportou bug de ciclo Anual quebrando como Mensal. `planStateMachine.js` 
 - Conflito possivel com #145 (toca App.jsx no `renderContent` switch mentor `case 'prop-accounts'`). Deltas sao em switches diferentes (aluno vs mentor) — conflito improvavel mas possivel na regiao das declaracoes de state/handlers.
 
 **Commits feitos nesta sessao (worktree):**
-- `<commit-hash-1>` "fix: Fase 0 #102 ledger como view + ciclos Anual/Semestral (1T BR) + contraste"
-- `<commit-hash-2>` "feat: Fase A #102 R1 label + R2 Acum Periodo + R3 Trades/WR + prop mode"
+- `ed8a9e6f` "feat: Fase 0 (view) + Fase A (R1/R2/R3/mode) + ciclos Anual/Semestral (#102)" — consolidado porque PlanLedgerExtract.jsx concentra as tres frentes (view, ciclos, Fase A) e os deltas se intercruzam; tentar separar por commit atomico exigiria reescrita por hunks ou reverte parcial. Mensagem do commit detalha as 3 frentes.
 
 **Estado do main:**
 - HEAD: `2bc38f57 docs: reservar v1.33.0 + PROJECT.md v0.20.1 para issue-102` (inalterado)
