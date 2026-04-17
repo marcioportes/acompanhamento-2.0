@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.21.1  
-> **Última atualização:** 16/04/2026 — Encerramento #146 v1.34.0, PR #147 mergeado, locks CHUNK-02/03 liberados  
+> **Versão:** 0.22.0  
+> **Última atualização:** 17/04/2026 — INV-17 (Gate de Arquitetura de Informação) + INV-18 (Spec Review Gate) adicionadas  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -53,6 +53,7 @@ Este documento segue versionamento semântico:
 | 0.20.1 | 15/04/2026 | Abertura #102 Revisão Semanal v1.33.0 | Lock CHUNK-16, v1.33.0 reservada em version.js, Revisão Semanal Fases A-D (#106 absorvido como Fase A) |
 | 0.21.0 | 16/04/2026 | Abertura #146 fix Novo Plano v1.34.0 | Locks CHUNK-02/03 (bypass CHUNK-02 lock #145 — sessão solo autorizada), v1.34.0 reservada, mover criação de plano de DashboardHeader para AccountDetailPage |
 | 0.21.1 | 16/04/2026 | Encerramento #146 v1.34.0 | PR #147 mergeado, locks CHUNK-02/03 liberados (AVAILABLE), issue doc arquivada, worktree removido, CHANGELOG [1.34.0] |
+| 0.22.0 | 17/04/2026 | INV-17 + INV-18 — gates de arquitetura e spec review | INV-17 (Gate de Arquitetura de Informação — nível/domínio/duplicação/budget + mapa de slots fixos) e INV-18 (Spec Review Gate — validação de entendimento obrigatória antes de codificar, formato por tipo UI/CF/lógica/Firestore) adicionadas a CLAUDE.md e §3 Invariantes. §4.1 Gate Pré-Código ganhou itens de checklist para INV-17/INV-18. §5 checklist de impacto atualizado para "INV-01 a INV-18" |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -349,6 +350,51 @@ rm -rf ~/projects/issue-{NNN}                 # remove diretório físico residu
 
 **Gate de verificação antes de qualquer edição de código:** se `pwd` não retorna `~/projects/issue-{NNN}`, PARE — o worktree não foi criado ou você está no diretório errado. Crie/entre no worktree antes de prosseguir. A criação do worktree **não pode ser omitida nem adiada** sob nenhuma justificativa.
 
+### INV-17: Gate de Arquitetura de Informação
+Antes de propor qualquer componente de UI novo ou modificação de tela existente, a sessão DEVE declarar:
+
+1. **Nível:** sidebar / tab / card / modal
+2. **Domínio:** Dashboard / Operação / Mesa Prop / Feedback / Análise / Contas / Revisão / Config
+3. **Duplicação:** se o mesmo dado já aparece em outra tela, justificar ou consolidar
+4. **Budget:** se a tela destino já tem 6+ seções visíveis, remover ou colapsar algo antes de adicionar
+
+**Mapa de domínios (slots fixos):**
+
+| Domínio | Sidebar | O que mora | O que NÃO mora |
+|---------|---------|-----------|---------------|
+| Dashboard | Sim | KPIs resumo, equity curve, calendário, SWOT | Detalhes prop, payout, AI plan |
+| Operação (Diário) | Sim | Registro e histórico de trades | Análises agregadas |
+| Mesa Prop | Sim (condicional) | Gauges DD, alertas, payout, AI plan, sparkline | KPIs genéricos |
+| Feedback | Sim | Chat mentor-aluno por trade | Shadow (mora no detalhe do trade) |
+| Análise | Futuro | Dashboard emocional, evolução temporal | Registro de trades |
+| Contas | Sim | CRUD contas e planos | Dados operacionais |
+| Revisão | Futuro | Revisão semanal, histórico de revisões | Tudo que não é revisão |
+| Config | Sim | Settings mentor, templates, compliance | Dados de aluno |
+
+Toda feature nova declara domínio + nível. "Seção colapsável no componente X" é sinal de puxadinho — a pergunta correta é "qual tela existente deveria mostrar isso, ou precisa de tela nova?"
+
+> Origem: auditoria de arquitetura de informação 15/04/2026 — 3 sessões paralelas mapearam telas, duplicações e puxadinhos.
+
+### INV-18: Spec Review Gate — Validação de Entendimento Obrigatória
+Nenhuma feature, Cloud Function ou modificação de UI é implementada sem validação explícita de entendimento entre o CC e Marcio. O gate NÃO é "entendi, posso codar?" — é "mostra o que você entendeu e eu confirmo".
+
+**Protocolo obrigatório:**
+1. Marcio descreve a ideia (verbal, texto, screenshot)
+2. CC escreve spec/mockup e APRESENTA de volta ao Marcio
+3. Marcio confronta: "é isso que eu quis dizer?" — aponta divergências
+4. CC corrige até alinhar — ciclo 2-3 repete quantas vezes necessário
+5. Só após confirmação explícita ("aprovado", "go", "sim") o CC codifica
+
+**Formato da validação por tipo:**
+- **UI:** mockup visual (descrição de tela com campos, layout, fluxo de navegação, onde cada dado aparece)
+- **Backend / CF:** schema JSON com exemplo concreto de input E output
+- **Lógica de negócio:** cenário de teste em linguagem natural ("se o aluno tem 3 trades no período com WR 66%, o acumulado do período mostra R$ 150 e o do ciclo mostra R$ 2.300")
+- **Dados / Firestore:** documento de exemplo com todos os campos, tipos e valores realistas
+
+**Anti-pattern:** CC diz "entendi" e sai codificando sem mostrar o que entendeu. Isso é VIOLAÇÃO da INV-18 — mesmo que o código resultante esteja tecnicamente correto, se não passou pelo gate de validação, deve ser revertido.
+
+> Origem: sessão de voz 15/04/2026 — diagnóstico do gap entre descrição verbal e interpretação do modelo como causa raiz de retrabalho sistemático.
+
 ---
 
 ## 4. PROTOCOLO DE SESSÃO
@@ -477,6 +523,12 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 □ Análise de impacto: collections, CFs, hooks, side-effects, dados parciais
 □ Proposta apresentada ao Marcio → AGUARDAR aprovação explícita
 □ Checklist de impacto (seção 5) executado mentalmente
+□ INV-17 cumprida: nível + domínio + duplicação + budget declarados (se a proposta toca UI)
+□ INV-18 cumprida: spec/mockup apresentada ao Marcio e aprovada explicitamente
+   → Se UI: mockup visual validado
+   → Se CF/backend: schema JSON com exemplo validado
+   → Se lógica: cenário de teste em linguagem natural validado
+   → Se Firestore: documento de exemplo com campos/tipos/valores validado
 ```
 
 ### 4.2 Gate Pré-Entrega (obrigatório, antes de cada entrega)
@@ -568,7 +620,7 @@ Antes de propor qualquer feature, executar mentalmente:
 3. Quais hooks/listeners são afetados? (re-renders, queries)
 4. Há side-effects em PL, compliance, emotional scoring?
 5. Dados parciais/inválidos podem entrar no caminho crítico?
-6. A feature respeita todas as INV-01 a INV-16?
+6. A feature respeita todas as INV-01 a INV-18?
 7. Qual o blast radius se algo der errado?
 8. Existe rollback viável?
 9. Quais testes existentes podem quebrar?

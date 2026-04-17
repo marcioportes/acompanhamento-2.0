@@ -92,6 +92,51 @@ Toda criação de collection, subcollection, ou campo novo no Firestore exige: (
 
 A criação do worktree é um passo do protocolo §4.0 Abertura de Sessão e **não pode ser omitida nem adiada**. Se você está prestes a editar um arquivo de código e não está dentro de `~/projects/issue-{NNN}`, PARE — crie o worktree primeiro.
 
+### INV-17: Gate de Arquitetura de Informação
+Antes de propor qualquer componente de UI novo ou modificação de tela existente, a sessão DEVE declarar:
+
+1. **Nível:** sidebar / tab / card / modal
+2. **Domínio:** Dashboard / Operação / Mesa Prop / Feedback / Análise / Contas / Revisão / Config
+3. **Duplicação:** se o mesmo dado já aparece em outra tela, justificar ou consolidar
+4. **Budget:** se a tela destino já tem 6+ seções visíveis, remover ou colapsar algo antes de adicionar
+
+**Mapa de domínios (slots fixos):**
+
+| Domínio | Sidebar | O que mora | O que NÃO mora |
+|---------|---------|-----------|---------------|
+| Dashboard | Sim | KPIs resumo, equity curve, calendário, SWOT | Detalhes prop, payout, AI plan |
+| Operação (Diário) | Sim | Registro e histórico de trades | Análises agregadas |
+| Mesa Prop | Sim (condicional) | Gauges DD, alertas, payout, AI plan, sparkline | KPIs genéricos |
+| Feedback | Sim | Chat mentor-aluno por trade | Shadow (mora no detalhe do trade) |
+| Análise | Futuro | Dashboard emocional, evolução temporal | Registro de trades |
+| Contas | Sim | CRUD contas e planos | Dados operacionais |
+| Revisão | Futuro | Revisão semanal, histórico de revisões | Tudo que não é revisão |
+| Config | Sim | Settings mentor, templates, compliance | Dados de aluno |
+
+Toda feature nova declara domínio + nível. "Seção colapsável no componente X" é sinal de puxadinho — a pergunta correta é "qual tela existente deveria mostrar isso, ou precisa de tela nova?"
+
+> Origem: auditoria de arquitetura de informação 15/04/2026 — 3 sessões paralelas mapearam telas, duplicações e puxadinhos.
+
+### INV-18: Spec Review Gate — Validação de Entendimento Obrigatória
+Nenhuma feature, Cloud Function ou modificação de UI é implementada sem validação explícita de entendimento entre o CC e Marcio. O gate NÃO é "entendi, posso codar?" — é "mostra o que você entendeu e eu confirmo".
+
+**Protocolo obrigatório:**
+1. Marcio descreve a ideia (verbal, texto, screenshot)
+2. CC escreve spec/mockup e APRESENTA de volta ao Marcio
+3. Marcio confronta: "é isso que eu quis dizer?" — aponta divergências
+4. CC corrige até alinhar — ciclo 2-3 repete quantas vezes necessário
+5. Só após confirmação explícita ("aprovado", "go", "sim") o CC codifica
+
+**Formato da validação por tipo:**
+- **UI:** mockup visual (descrição de tela com campos, layout, fluxo de navegação, onde cada dado aparece)
+- **Backend / CF:** schema JSON com exemplo concreto de input E output
+- **Lógica de negócio:** cenário de teste em linguagem natural ("se o aluno tem 3 trades no período com WR 66%, o acumulado do período mostra R$ 150 e o do ciclo mostra R$ 2.300")
+- **Dados / Firestore:** documento de exemplo com todos os campos, tipos e valores realistas
+
+**Anti-pattern:** CC diz "entendi" e sai codificando sem mostrar o que entendeu. Isso é VIOLAÇÃO da INV-18 — mesmo que o código resultante esteja tecnicamente correto, se não passou pelo gate de validação, deve ser revertido.
+
+> Origem: sessão de voz 15/04/2026 — diagnóstico do gap entre descrição verbal e interpretação do modelo como causa raiz de retrabalho sistemático.
+
 ---
 
 ## REGRA DE ATIVAÇÃO AUTOMÁTICA
@@ -185,7 +230,7 @@ Aplica-se a:
 3. Quais hooks/listeners são afetados? (re-renders, queries)
 4. Há side-effects em PL, compliance, emotional scoring?
 5. Dados parciais/inválidos podem entrar no caminho crítico?
-6. A feature respeita todas as INV-01 a INV-16?
+6. A feature respeita todas as INV-01 a INV-18?
 7. Qual o blast radius se algo der errado?
 8. Existe rollback viável?
 9. Quais testes existentes podem quebrar?
