@@ -26,6 +26,8 @@ import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { computePlanState, getAvailableCycles, getCycleStartDate, getCycleEndDate } from '../utils/planStateMachine';
+import { buildTableRows } from '../utils/extractTableRows';
+import { computeExtractSummaryMetrics } from '../utils/extractSummaryMetrics';
 import DebugBadge from './DebugBadge';
 
 // Sub-componentes
@@ -34,7 +36,7 @@ import ExtractCycleCard from './extract/ExtractCycleCard';
 import ExtractSummary from './extract/ExtractSummary';
 import ExtractTable from './extract/ExtractTable';
 
-const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigateToFeedback = null }) => {
+const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigateToFeedback = null, embedded = false, mode = 'live' }) => {
   const { getEmotionConfig } = useMasterData();
   const { detectionConfig, statusThresholds } = useComplianceRules();
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
@@ -110,64 +112,18 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     return planState.cycleState.periods.get(selectedPeriod) || null;
   }, [planState, selectedPeriod]);
 
-  // Rows para a tabela + saldo anterior (carry-over entre períodos)
-  // Também marca cycleEvent quando um trade causa CYCLE_GOAL_HIT ou CYCLE_STOP_HIT
-  const { tableRows, carryOver } = useMemo(() => {
-    if (!planState) return { tableRows: [], carryOver: 0 };
+  // Rows para a tabela + saldo anterior (carry-over entre períodos).
+  // R2 #102: cada row expõe dois acumulados — cumPnL (ciclo) e periodCumPnL (período).
+  const { tableRows, carryOver } = useMemo(
+    () => buildTableRows(planState, selectedPeriod),
+    [planState, selectedPeriod]
+  );
 
-    // Pré-computar: qual periodKey causou cycle event
-    const cycleEventByPeriod = {};
-    planState.cycleState.events?.forEach(e => {
-      cycleEventByPeriod[e.periodKey] = e.type;
-    });
-
-    // Computar acumulado do ciclo para cada trade (para detectar exatamente qual trade cruzou)
-    const cycleGoalVal = planState.cycleState.summary.goalVal;
-    const cycleStopVal = planState.cycleState.summary.stopVal;
-
-    if (selectedPeriod === null) {
-      // Ciclo inteiro
-      const allRows = [];
-      let runningTotal = 0;
-      let cycleTriggered = false;
-      for (const periodKey of planState.availablePeriods) {
-        const period = planState.cycleState.periods.get(periodKey);
-        if (!period) continue;
-        for (const row of period.rows) {
-          runningTotal += row.result;
-          let cycleEvent = null;
-          if (!cycleTriggered) {
-            if (cycleGoalVal > 0 && runningTotal >= cycleGoalVal) {
-              cycleEvent = 'CYCLE_GOAL_HIT';
-              cycleTriggered = true;
-            } else if (cycleStopVal > 0 && runningTotal <= -cycleStopVal) {
-              cycleEvent = 'CYCLE_STOP_HIT';
-              cycleTriggered = true;
-            }
-          }
-          allRows.push({ ...row, cumPnL: runningTotal, cycleEvent });
-        }
-      }
-      return { tableRows: allRows, carryOver: 0 };
-    }
-
-    // Período individual
-    let carry = 0;
-    for (const periodKey of planState.availablePeriods) {
-      if (periodKey === selectedPeriod) break;
-      const period = planState.cycleState.periods.get(periodKey);
-      if (period) carry += period.summary.totalPnL;
-    }
-
-    const periodRows = currentPeriodState?.rows || [];
-    const adjustedRows = periodRows.map(row => ({
-      ...row,
-      cumPnL: carry + row.cumPnL,
-      cycleEvent: null,
-    }));
-
-    return { tableRows: adjustedRows, carryOver: carry };
-  }, [planState, selectedPeriod, currentPeriodState]);
+  // R3 #102: métricas agregadas do recorte visível (Trades / WR).
+  const summaryMetrics = useMemo(
+    () => computeExtractSummaryMetrics(tableRows),
+    [tableRows]
+  );
 
   // Dados emocionais para o summary
   const emotionalData = useMemo(() => {
@@ -213,9 +169,16 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     }
   }, [onClose, onNavigateToFeedback]);
 
+  const outerClass = embedded
+    ? "h-full"
+    : "fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4";
+  const innerClass = embedded
+    ? "w-full h-screen flex flex-col bg-slate-900"
+    : "bg-slate-900 border border-slate-800 w-full max-w-7xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10";
+
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-7xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
+    <div className={outerClass}>
+      <div className={innerClass}>
 
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex justify-between items-start">
@@ -224,7 +187,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
               <ScrollText className="w-5 h-5 text-purple-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Extrato Emocional: {plan.name}</h2>
+              <h2 className="text-lg font-bold text-white">Extrato do Plano: {plan.name}</h2>
               <p className="text-xs text-slate-400">
                 {plan.operationPeriod || 'Diário'} · {plan.adjustmentCycle || 'Mensal'} · {fmt(startPL)}
               </p>
@@ -237,7 +200,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
 
         {/* Period Selector + Cycle Navigation */}
         {planState && (
-          <div className="px-5 py-3 border-b border-slate-800/50 bg-slate-800/10">
+          <div className="px-5 py-3 border-b border-slate-800 bg-slate-800/30">
             <ExtractPeriodSelector
               availablePeriods={planState.availablePeriods}
               selectedPeriod={selectedPeriod}
@@ -279,6 +242,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
               cycleSummary={planState?.cycleState?.summary || null}
               cycleStatus={planState?.cycleState?.status || 'IN_PROGRESS'}
               planRiskInfo={planRiskInfo}
+              summaryMetrics={summaryMetrics}
             />
 
             <ExtractTable

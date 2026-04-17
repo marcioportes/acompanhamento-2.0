@@ -27,6 +27,7 @@ const SCOPE_MAP = {
   'Semanal': 'week',
   'Mensal': 'month',
   'Trimestral': 'quarter',
+  'Semestral': 'half-year',
   'Anual': 'year',
   'Day Trade': 'today',
   'Swing Trade': 'week'

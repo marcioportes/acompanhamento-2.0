@@ -19,7 +19,7 @@ import { formatCurrency } from '../utils/calculations';
 import DebugBadge from './DebugBadge';
 
 const PLAN_TYPES = ['Day Trade', 'Swing Trade', 'Position', 'Opções', 'Crypto Spot', 'Forex'];
-const CYCLES = ['Semanal', 'Mensal', 'Trimestral', 'Anual'];
+const CYCLES = ['Mensal', 'Trimestral', 'Semestral', 'Anual'];
 const PERIODS = ['Diário', 'Semanal', 'Mensal'];
 const TOTAL_STEPS = 3;
 

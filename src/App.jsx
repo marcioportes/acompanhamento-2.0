@@ -166,6 +166,10 @@ const AppContent = () => {
     // Limpar extrato se navegando para outra view (Fase 0 #102)
     if (view !== 'ledger') {
       setLedgerPlanId(null);
+    } else if (!ledgerPlanId) {
+      // Clicou na sidebar sem plano pré-selecionado — escolhe o primeiro ativo
+      const firstActive = plans.find(p => p.active !== false) || plans[0];
+      if (firstActive) setLedgerPlanId(firstActive.id);
     }
 
     if (view === 'add-trade') {
@@ -323,7 +327,7 @@ const AppContent = () => {
             setLedgerPlanId(null);
             return null;
           }
-          const ledgerTrades = allTrades.filter(t => t.planId === ledgerPlanId);
+          const ledgerTrades = trades.filter(t => t.planId === ledgerPlanId);
           const ledgerCurrency = getPlanCurrency(ledgerPlan, accounts);
           return (
             <PlanLedgerExtract
@@ -332,6 +336,7 @@ const AppContent = () => {
               onClose={() => { setCurrentView('dashboard'); setLedgerPlanId(null); }}
               currency={ledgerCurrency}
               onNavigateToFeedback={(trade) => handleNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id })}
+              embedded
             />
           );
         }
