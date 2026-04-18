@@ -134,17 +134,31 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     };
   }, [emotional]);
 
-  // Eventos emocionais para matching inline na tabela
+  // Eventos emocionais para matching inline na tabela.
+  // tradeIds carrega os ids dos trades que pertencem à instância — previne
+  // bleed do badge REVENGE/TILT para trades do mesmo dia fora da sequência.
   const emotionalEvents = useMemo(() => {
     if (!emotional.isReady || !emotional.alerts) return [];
     return emotional.alerts
       .filter(a => ['TILT_DETECTED', 'REVENGE_DETECTED', 'STATUS_CRITICAL'].includes(a.type))
-      .map(a => ({
-        type: a.type,
-        date: a.timestamp?.split?.('T')?.[0] || '',
-        tradeId: a.tradeId || null,
-        message: a.message,
-      }));
+      .map(a => {
+        const tradeIds = [];
+        if (a.type === 'TILT_DETECTED' && Array.isArray(a.details?.trades)) {
+          for (const t of a.details.trades) if (t?.id) tradeIds.push(t.id);
+        } else if (a.type === 'REVENGE_DETECTED') {
+          if (a.details?.type === 'RAPID_SEQUENCE') {
+            if (Array.isArray(a.details.tradeIdsAfter)) tradeIds.push(...a.details.tradeIdsAfter);
+          } else if (a.details?.trade?.id) {
+            tradeIds.push(a.details.trade.id);
+          }
+        }
+        return {
+          type: a.type,
+          date: a.timestamp?.split?.('T')?.[0] || '',
+          tradeIds: tradeIds.length > 0 ? tradeIds : null,
+          message: a.message,
+        };
+      });
   }, [emotional]);
 
   // ==================== RENDER ====================

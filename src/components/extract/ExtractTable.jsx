@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
+import { matchEmotionalEventsToTrade } from '../../utils/extractInlineEvents';
 import TradeStatusBadges from '../TradeStatusBadges';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
@@ -68,29 +69,16 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
     events.push({ icon: Skull, color: 'text-orange-400', label: 'STOP!', sublabel: 'Ciclo' });
   }
 
-  // 2. Emotional events (TILT, REVENGE matched by tradeId or proximity)
-  if (emotionalEvents) {
-    const tradeEmotionalEvents = emotionalEvents.filter(e => {
-      if (e.tradeId && e.tradeId === trade.id) return true;
-      if (e.date === trade.date) return true;
-      return false;
-    });
-    for (const ee of tradeEmotionalEvents) {
-      if (ee.type === 'TILT_DETECTED' || ee.type === 'TILT') {
-        if (!events.some(ev => ev.label === 'TILT')) {
-          events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
-        }
-      }
-      if (ee.type === 'REVENGE_DETECTED' || ee.type === 'REVENGE') {
-        if (!events.some(ev => ev.label === 'REVENGE')) {
-          events.push({ icon: Zap, color: 'text-red-400', label: 'REVENGE', small: true });
-        }
-      }
-      if (ee.type === 'STATUS_CRITICAL') {
-        if (!events.some(ev => ev.label === 'CRÍTICO')) {
-          events.push({ icon: AlertTriangle, color: 'text-red-500', label: 'CRÍTICO', small: true });
-        }
-      }
+  // 2. Emotional events — match estrito por tradeId para TILT/REVENGE;
+  //    STATUS_CRITICAL preserva match por data (evento day-level).
+  const matchedTypes = matchEmotionalEventsToTrade(trade, emotionalEvents);
+  for (const type of matchedTypes) {
+    if (type === 'TILT_DETECTED' || type === 'TILT') {
+      events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
+    } else if (type === 'REVENGE_DETECTED' || type === 'REVENGE') {
+      events.push({ icon: Zap, color: 'text-red-400', label: 'REVENGE', small: true });
+    } else if (type === 'STATUS_CRITICAL') {
+      events.push({ icon: AlertTriangle, color: 'text-red-500', label: 'CRÍTICO', small: true });
     }
   }
 

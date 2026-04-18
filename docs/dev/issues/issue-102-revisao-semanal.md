@@ -164,43 +164,9 @@ Sidebar "Extrato do Plano" → currentView='ledger' → App.jsx renderiza PlanLe
 
 **Delta para PROJECT.md (aplicar no merge):**
 
-**1. Nova invariante INV-17 — Gate de Arquitetura de Informacao (adicionar apos INV-16 na secao 3):**
-```markdown
-### INV-17: Gate de Arquitetura de Informacao
-Antes de propor qualquer componente de UI novo ou modificacao de tela existente, declarar:
-1. **Nivel** — sidebar / tab / card / modal
-2. **Dominio** — Dashboard, Operacao, Mesa Prop, Feedback, Analise, Contas, Revisao, Config
-3. **Justificativa** se o dado ja aparece em outra tela
-4. **Budget** — se a tela destino ja tem 6+ secoes visiveis, remover ou colapsar algo antes de adicionar
+~~INV-17 (Gate de Arquitetura de Informacao) e mapa de dominios~~ — aplicado no main pela sessao paralela junto com INV-18. Sera incorporado via rebase. Declaracao AI do #102: Revisao mora no dominio **Revisao** (sidebar nivel 1); modo review do PlanLedgerExtract e nivel 2 dentro de Operacao.
 
-Resposta a "secao colapsavel no componente X" e sempre: "qual tela existente deveria mostrar isso, ou precisa de tela nova?"
-```
-
-**2. Mapa de dominios (adicionar ao §5 Checklist de Impacto, novo item 11):**
-```markdown
-11. Gate de AI (INV-17):
-    - Nivel do componente (sidebar/tab/card/modal)
-    - Dominio correto (ver mapa abaixo)
-    - Budget da tela destino (6+ secoes = remover/colapsar antes de adicionar)
-```
-
-**Mapa de dominios:**
-
-| Dominio | Sidebar | O que mora | O que NAO mora |
-|---------|---------|-----------|----------------|
-| Dashboard | Sim | KPIs resumo, equity curve, calendario, SWOT | Detalhes prop, payout, AI plan |
-| Operacao (Diario) | Sim | Registro e historico de trades | Analises agregadas |
-| Mesa Prop | Sim (condicional) | Gauges DD, alertas, payout, AI plan, sparkline | KPIs genericos |
-| Feedback | Sim | Chat mentor-aluno por trade | Shadow (mora no detalhe do trade) |
-| Analise | Futuro | Dashboard emocional (#131), evolucao temporal | Registro de trades |
-| Contas | Sim | CRUD contas e planos | Dados operacionais |
-| Revisao | Futuro | Revisao semanal (#102), historico de revisoes | Tudo que nao e revisao |
-| Config | Sim | Settings mentor, templates, compliance | Dados de aluno |
-
-**3. Declaracao AI para o #102:**
-Revisao Semanal mora no dominio **Revisao** — item novo no sidebar do mentor (nivel 1). Modo revisao do PlanLedgerExtract e nivel 2 (tab/modo dentro do dominio Operacao, acessivel via botao "Nova Revisao").
-
-**4. CHANGELOG [1.33.0] — template (adicionar no topo da secao 10):**
+**CHANGELOG [1.33.0] — template (adicionar no topo da secao 10):**
 (a preencher ao concluir codificacao das fases)
 
 ---
@@ -338,5 +304,30 @@ Marcio reportou bug de ciclo Anual quebrando como Mensal. `planStateMachine.js` 
 | CHUNK-16 | escrita | PlanLedgerExtract refactor + ReviewManager + WeeklyReviewModal + CFs |
 | CHUNK-04 | leitura | Trades para snapshot e ranking |
 | CHUNK-02 | leitura (Fase D: escrita) | Sidebar aluno — seção "Revisões". NOTA: CHUNK-02 LOCKED pelo #145 — Fase D pode precisar aguardar |
+| CHUNK-06 | escrita (JAQUE) | Extensão aditiva em detectRevengeV2 (`tradeIdsAfter` em RAPID_SEQUENCE) para fix badge REVENGE/TILT — autorizado via JAQUE. Lock a registrar em main quando a sessão paralela do INV-17/18 liberar PROJECT.md |
 
 > **Restrição operacional:** CHUNK-02 está LOCKED pelo #145 (sessão paralela). Fase D (sidebar aluno) pode precisar aguardar liberação. Fases A-C usam apenas CHUNK-16 (escrita) + CHUNK-04 (leitura).
+
+### Sessao 4 — 17/04/2026 (JAQUE: fix badge REVENGE/TILT bleed)
+
+**Bug reportado durante AP-08 da Fase A:** primeiro trade do dia aparecia classificado como REVENGE no extrato — o que é conceitualmente impossível (detecção exige loss anterior dentro da janela).
+
+**Causa raiz:** `src/components/extract/ExtractTable.jsx` tinha fallback por data no pareamento evento→trade. Quando o alerta emocional não carregava `tradeId` (caso comum — era sempre null no mapping em `PlanLedgerExtract.jsx`), o match caía em `e.date === trade.date`, fazendo TODOS os trades do dia herdarem o badge REVENGE/TILT. Bug pré-existente (introduzido por #93, commit `59b90993`).
+
+**Fix (JAQUE autorizado):**
+1. `src/utils/emotionalAnalysisV2.js` — `detectRevengeV2` RAPID_SEQUENCE agora expõe `tradeIdsAfter: string[]` (additivo, mantém `tradesAfter` como count)
+2. `src/components/PlanLedgerExtract.jsx` — mapping de `emotional.alerts` agora extrai `tradeIds` explícitos de `details` (TILT: `details.trades[].id`, REVENGE QTY_INCREASE/EXPLICIT_EMOTION: `details.trade.id`, REVENGE RAPID_SEQUENCE: `details.tradeIdsAfter`)
+3. `src/utils/extractInlineEvents.js` (novo) — helper `matchEmotionalEventsToTrade(trade, events)` com regra: TILT/REVENGE exigem match estrito por tradeId; STATUS_CRITICAL mantém match por data (evento day-level)
+4. `src/components/extract/ExtractTable.jsx` — consome o helper, remove fallback por data para TILT/REVENGE
+
+**Testes novos (14 total):**
+- `src/__tests__/utils/extractInlineEvents.test.js` — 10 testes (incluindo regressão explícita do bug: "first trade of day: REVENGE elsewhere does NOT bleed in")
+- `src/__tests__/utils/detectRevengeTradeIds.test.js` — 4 testes (RAPID_SEQUENCE expõe `tradeIdsAfter` + trades concorrentes não são revenge)
+
+**Segundo bug descoberto via AP-08 (mesma sessão):** trades concorrentes (abertos antes do trigger fechar) eram flagged como revenge. `detectRevengeV2` sorta por `exitTime` e filtra `slice(i+1)`, mas a condição de janela `(tradeTime - lossTime) <= windowMinutes` não exigia `tradeTime > lossTime`. Resultado: trade entrado ANTES do loss ser realizado caía na lista de revenge candidates. Mesma coisa em QTY_INCREASE que usava `getMinutesBetween` (Math.abs). Fix: filtro agora exige `currEntry > triggerExit` estritamente. Reproduzido em 2 testes dedicados antes do fix (red → green).
+
+**Resultado suite:** 1484/1484 passando (de 1470, +14). Zero regressão.
+
+**Chunk expansion:** CHUNK-06 entrou em modo escrita (extensão aditiva). Lock a registrar em main quando a sessão paralela do INV-17/18 liberar PROJECT.md.
+
+**Pendente:** AP-08 browser da Fase A + JAQUE.

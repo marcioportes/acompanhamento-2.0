@@ -344,9 +344,12 @@ export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETEC
     // Só após loss?
     if (config.afterLossOnly && prevTrade.result >= 0) continue;
 
-    // Intervalo dentro da janela?
-    const interval = getMinutesBetween(prevTrade, currTrade);
-    if (interval > config.windowMinutes) continue;
+    // currTrade precisa ter sido ENTRADO depois do prevTrade ter SAÍDO (loss realizado).
+    // Trade concorrente (entrada anterior ao exit do trigger) não é revenge.
+    const prevExit = new Date(prevTrade.exitTime || prevTrade.entryTime || prevTrade.date);
+    const currEntry = new Date(currTrade.entryTime || currTrade.date);
+    const interval = (currEntry - prevExit) / 60000;
+    if (interval <= 0 || interval > config.windowMinutes) continue;
 
     // Qty aumentou significativamente?
     const currQty = parseFloat(currTrade.qty || 0);
@@ -372,7 +375,11 @@ export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETEC
     const lossTime = new Date(sorted[i].exitTime || sorted[i].date);
     const tradesAfter = sorted.slice(i + 1).filter(t => {
       const tradeTime = new Date(t.entryTime || t.date);
-      return (tradeTime - lossTime) / 60000 <= config.windowMinutes;
+      const diffMinutes = (tradeTime - lossTime) / 60000;
+      // Trade precisa ter sido ENTRADO estritamente depois do loss ter saído.
+      // Sem essa guarda, trades concorrentes (exit posterior mas entry anterior)
+      // caem em slice(i+1) e são falsamente classificados como revenge.
+      return diffMinutes > 0 && diffMinutes <= config.windowMinutes;
     });
 
     if (tradesAfter.length >= config.tradesInWindow) {
@@ -380,6 +387,7 @@ export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETEC
         type: 'RAPID_SEQUENCE',
         triggerTrade: sorted[i],
         tradesAfter: tradesAfter.length,
+        tradeIdsAfter: tradesAfter.map(t => t.id).filter(Boolean),
         windowMinutes: config.windowMinutes,
         severity: 'HIGH'
       });
