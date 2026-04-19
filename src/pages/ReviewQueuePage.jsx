@@ -1,12 +1,13 @@
 /**
  * ReviewQueuePage
- * @version 1.0.0 (v1.33.0)
+ * @version 2.0.0 (v1.33.0)
  * @description Fila de Revisão (issue #102, Fase C/D — sidebar dedicada ao mentor).
  *
  * Fluxo:
  *   1. Lista alunos ativos com contagem de revisões por status (DRAFT/CLOSED/ARCHIVED).
  *   2. Expand de aluno carrega reviews dele via onSnapshot (subcollection).
- *   3. Click em revisão abre WeeklyReviewModal.
+ *   3. Click em revisão navega para o extrato do plano em mode='review'
+ *      (via onOpenReviewInLedger — prop injetada do App).
  */
 
 import { useEffect, useState, useMemo } from 'react';
@@ -14,7 +15,6 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { db } from '../firebase';
 import { ClipboardCheck, ChevronDown, ChevronRight, Clock, CheckCircle2, Archive, Loader2, Search, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import WeeklyReviewModal from '../components/reviews/WeeklyReviewModal';
 import DebugBadge from '../components/DebugBadge';
 
 const statusColor = {
@@ -127,15 +127,13 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
   );
 };
 
-const ReviewQueuePage = () => {
+const ReviewQueuePage = ({ onOpenReviewInLedger = null }) => {
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
-  // Guarda IDs — modal escuta o doc via onSnapshot pra refletir updates (SWOT, etc).
-  const [openReview, setOpenReview] = useState(null); // { studentId, reviewId }
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -222,21 +220,17 @@ const ReviewQueuePage = () => {
                 student={s}
                 expanded={expandedId === s.id}
                 onToggle={() => setExpandedId(prev => prev === s.id ? null : s.id)}
-                onOpenReview={(student, review) => setOpenReview({ studentId: student.id, reviewId: review.id })}
+                onOpenReview={(student, review) => {
+                  const planId = review.planId || review.frozenSnapshot?.planContext?.planId;
+                  if (onOpenReviewInLedger && planId) {
+                    onOpenReviewInLedger({ planId, reviewId: review.id });
+                  }
+                }}
               />
             ))}
           </div>
         );
       })()}
-
-      {openReview && (
-        <WeeklyReviewModal
-          reviewId={openReview.reviewId}
-          studentId={openReview.studentId}
-          previousReview={null}
-          onClose={() => setOpenReview(null)}
-        />
-      )}
 
       <DebugBadge component="ReviewQueuePage" />
     </div>

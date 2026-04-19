@@ -83,6 +83,8 @@ const AppContent = () => {
 
   // Estado do Extrato do Plano como view (Fase 0 #102 — modal → currentView)
   const [ledgerPlanId, setLedgerPlanId] = useState(null);
+  // Quando aberto vindo da Fila de Revisão → carrega PlanLedgerExtract em mode='review'
+  const [ledgerInitialReviewId, setLedgerInitialReviewId] = useState(null);
   
   // Hooks
   const { 
@@ -189,9 +191,17 @@ const AppContent = () => {
     setCurrentView('students');
   };
 
-  // Handler para abrir extrato do plano como view (Fase 0 #102)
+  // Handler para abrir extrato do plano como view (Fase 0 #102) — mode='live'
   const handleOpenLedger = (planId) => {
     setLedgerPlanId(planId);
+    setLedgerInitialReviewId(null);
+    setCurrentView('ledger');
+  };
+
+  // Handler para abrir extrato direto em mode='review' (vem da Fila de Revisão)
+  const handleOpenReviewInLedger = ({ planId, reviewId }) => {
+    setLedgerPlanId(planId);
+    setLedgerInitialReviewId(reviewId);
     setCurrentView('ledger');
   };
 
@@ -282,10 +292,11 @@ const AppContent = () => {
           <PlanLedgerExtract
             plan={ledgerPlan}
             trades={ledgerTrades}
-            onClose={() => { setCurrentView('dashboard'); setLedgerPlanId(null); }}
+            onClose={() => { setCurrentView('dashboard'); setLedgerPlanId(null); setLedgerInitialReviewId(null); }}
             currency={ledgerCurrency}
             onNavigateToFeedback={(trade) => handleNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id })}
             embedded
+            initialReviewId={ledgerInitialReviewId}
           />
         );
       }
@@ -306,7 +317,7 @@ const AppContent = () => {
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
     if (currentView === 'subscriptions' && isMentor()) return <SubscriptionsPage />;
-    if (currentView === 'reviews' && isMentor()) return <ReviewQueuePage />;
+    if (currentView === 'reviews' && isMentor()) return <ReviewQueuePage onOpenReviewInLedger={handleOpenReviewInLedger} />;
 
     // Student Onboarding — acessível pelo mentor via viewingAsStudent
     if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
