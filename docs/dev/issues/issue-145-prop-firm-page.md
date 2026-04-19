@@ -382,6 +382,30 @@ Atualizar comentário para refletir redesign, não apenas extração.
   - **Shared files pendentes no merge:** App.jsx (rota propfirm), Sidebar.jsx (item Mesa Prop), PROJECT.md (CHANGELOG [1.32.0])
   - **Bugs fora do scope (registrados no issue body):** bestDayProfit $0 (CF/CHUNK-04), deadline-exceeded CF AI (CF layer)
 
+- **19/04/2026 — Execução Fases D–G (spec v2):**
+  - Fase D (commit `bd41c68d`): removido PropAiApproachPlanSection da PropFirmPage + PropAccountCard (imports + props + render); reset de `phase` em prompt.js, useAiApproachPlan, PropAiApproachPlanSection para estado de main (3 linhas). attackPlanCalculator mantém phase-aware (mechanical plan, não IA — valor real preservado).
+  - Fase E (commit `c16d5039`): `useDrawdownHistory.MAX_DOCS = 100 → 1000` + exportação `DEFAULT_LIMIT` + segundo parâmetro `options.limit` para override (sparkline pode pedir menos). 5 testes novos em `src/__tests__/hooks/useDrawdownHistory.test.js`.
+  - Fase F (commit `0579fbde`): decomposição PropFirmPage em 4 zonas. Novos componentes:
+    - `src/utils/propViabilityBadge.js` — lógica pura (6 estados + phase-aware)
+    - `src/__tests__/utils/propViabilityBadge.test.js` — 11 testes
+    - `src/components/dashboard/PropViabilityBadge.jsx` — UI do badge
+    - `src/components/dashboard/TemplateCard.jsx` — regras da mesa (read-only)
+    - `src/components/dashboard/PlanoMecanicoCard.jsx` — plano determinístico + ViabilityBadge
+    - `src/components/dashboard/PropEquityCurve.jsx` — curva Recharts sobre drawdownHistory
+    - `src/components/dashboard/PropHistoricalKPIs.jsx` — dias operados / best / worst / consistency
+    - `PropFirmPage.jsx` refatorada com ZoneHeader + 4 sections + grid responsivo `grid-cols-1 md:grid-cols-2` na Zona 3. Calcula `attackPlan` via `calculateAttackPlan(template, null, null, profile, phase, symbol)`.
+  - Fase G (commit `dbfaa946`): label `"Simulador de Saque"` → `"Quando posso sacar?"` em PropPayoutTracker (linguagem de decisão, não simulação).
+  - Fase H em andamento: regressão suite 1472/1472 passando, build OK (18-30s), dev server rodando em :5174 para validação browser do Marcio.
+
+- **19/04/2026 — Hotfix #149 cancelada:**
+  - Abertura: diagnóstico inicial apontou `phase` ausente em desestruturação/propagação no handler da CF.
+  - Verificação profunda revelou: main/produção tem **zero** ocorrências de `phase` nos arquivos CF (prompt.js, generatePropFirmApproachPlan.js, validate.js). Último deploy foi v1.29.0 (#133). Bug só existia na branch issue-145 por causa de commit `92d52858` (Fase C original).
+  - Fix de 3 linhas seria no-op em prod; Opção C (Fase D) já removeu phase threading. Nada a fixar.
+  - Issue #149 fechada em GitHub com comentário explicativo; commit de lock/versão (`346990db`) revertido em main (`15bc8e64`).
+  - Queixa real do Marcio ("IA sempre indisponível") é UX: badge "Plano determinístico (IA indisponível)" idêntico em 3 cenários distintos (defaults / validação 3× / rate limit). Escopo movido para #148 (UX diferenciada de fallback agregada ao body da issue).
+  - Se homework Marcio (logs Firebase + query Firestore) revelar ≥10% de rejeição por arredondamento: abrir #150 isolado (1 linha: MONEY_TOLERANCE 1→5 em validate.js).
+  - Lição candidato a anti-pattern: "Premissa de produção assumida a partir de estado de worktree" — AP-09 potencial.
+
 - **17/04/2026 — Retomada e Spec Review Gate (INV-18) — Opção C acordada:**
   - Rebase sobre origin/main (incorporou INV-17 + INV-18 via commit `7de1797c`). Branch com 6 commits em cima, zero conflito.
   - Marcio subiu dev server, validou Fases A+B (OK) + crítica substantiva às Fases C:
