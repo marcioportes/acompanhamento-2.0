@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.0  
-> **Última atualização:** 17/04/2026 — INV-17 (Gate de Arquitetura de Informação) + INV-18 (Spec Review Gate) adicionadas  
+> **Versão:** 0.22.1  
+> **Última atualização:** 19/04/2026 — Encerramento #145 v1.32.0 (redesign Mesa Prop em 4 zonas) mergeado via PR #152, locks CHUNK-02/17 liberados  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -54,6 +54,7 @@ Este documento segue versionamento semântico:
 | 0.21.0 | 16/04/2026 | Abertura #146 fix Novo Plano v1.34.0 | Locks CHUNK-02/03 (bypass CHUNK-02 lock #145 — sessão solo autorizada), v1.34.0 reservada, mover criação de plano de DashboardHeader para AccountDetailPage |
 | 0.21.1 | 16/04/2026 | Encerramento #146 v1.34.0 | PR #147 mergeado, locks CHUNK-02/03 liberados (AVAILABLE), issue doc arquivada, worktree removido, CHANGELOG [1.34.0] |
 | 0.22.0 | 17/04/2026 | INV-17 + INV-18 — gates de arquitetura e spec review | INV-17 (Gate de Arquitetura de Informação — nível/domínio/duplicação/budget + mapa de slots fixos) e INV-18 (Spec Review Gate — validação de entendimento obrigatória antes de codificar, formato por tipo UI/CF/lógica/Firestore) adicionadas a CLAUDE.md e §3 Invariantes. §4.1 Gate Pré-Código ganhou itens de checklist para INV-17/INV-18. §5 checklist de impacto atualizado para "INV-01 a INV-18" |
+| 0.22.1 | 19/04/2026 | Encerramento #145 v1.32.0 | PR #152 mergeado (redesign Mesa Prop em 4 zonas: status agora / retrospectivo / contrato da mesa / payout). 5 componentes novos (PropEquityCurve, PropHistoricalKPIs, TemplateCard, PlanoMecanicoCard, PropViabilityBadge) + lógica pura propViabilityBadge (6 estados phase-aware). useDrawdownHistory MAX_DOCS 100→1000. AI Approach Plan migrou para #148 (RESERVADO, gate 4D+30 shadow trades). Hotfix #149 cancelada (bug só existia em branch). Locks CHUNK-02 + CHUNK-17 liberados. Issue doc arquivada em docs/archive/. Spec Review Gate INV-18 aplicado (iteração 3). 16 testes novos, 1567/1567 passando |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -683,8 +684,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-02 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — extrair componentes prop do Dashboard |
-| CHUNK-17 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — PropFirmPage, adaptador contexto |
 | CHUNK-16 | #102 | feat/issue-102-revisao-semanal | 15/04/2026 | Revisão Semanal — Fases A-D (PlanLedgerExtract + reviews + SWOT IA + integração mentor/aluno) |
 
 ### 6.4 Checklist de Check-Out
