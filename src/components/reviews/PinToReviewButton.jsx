@@ -81,16 +81,15 @@ const PinToReviewButton = ({ trade }) => {
     return { key: getISOWeekKey(today), range: getISOWeekRange(today) };
   }, []);
 
-  // DRAFT do plano atual para a semana ISO de hoje
+  // Qualquer DRAFT aberto desse plano — unicidade per-plano (1 rascunho por vez).
+  // Se existe (independente de janela ISO/custom), pin anota nele.
   const existingDraft = useMemo(() => {
-    if (!plan?.id || !todayISO) return null;
+    if (!plan?.id) return null;
     return (reviews || []).find(r =>
       r.status === 'DRAFT' &&
-      r.frozenSnapshot?.planContext?.planId === plan.id &&
-      r.weekStart === todayISO.range.weekStart &&
-      r.weekEnd === todayISO.range.weekEnd
+      r.frozenSnapshot?.planContext?.planId === plan.id
     ) || null;
-  }, [reviews, plan?.id, todayISO]);
+  }, [reviews, plan?.id]);
 
   const prefix = useMemo(() => fmtTradePrefix(trade), [trade]);
 
@@ -151,8 +150,11 @@ const PinToReviewButton = ({ trade }) => {
   if (!mentor) return null;
   if (!planId) return null;
 
+  const draftLabel = existingDraft?.periodKey
+    ? existingDraft.periodKey
+    : (todayISO?.key || 'semana');
   const label = existingDraft
-    ? `Anotar em ${todayISO?.key || 'semana'}`
+    ? `Anotar em ${draftLabel}`
     : `Criar rascunho ${todayISO?.key || 'semana'} + anotar`;
 
   return (
@@ -178,16 +180,20 @@ const PinToReviewButton = ({ trade }) => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-semibold text-white flex items-center gap-1.5">
               <PinIcon className="w-3 h-3 text-emerald-400" />
-              {existingDraft ? `Anotar em ${todayISO?.key}` : `Criar rascunho ${todayISO?.key} + anotar`}
+              {existingDraft ? `Anotar em ${draftLabel}` : `Criar rascunho ${todayISO?.key} + anotar`}
             </div>
             <button onClick={() => setOpen(false)} disabled={busy} className="text-slate-500 hover:text-slate-300">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {!existingDraft && (
+          {existingDraft ? (
+            <div className="text-[11px] text-emerald-400/90 bg-emerald-500/5 border border-emerald-500/20 rounded px-2 py-1.5 mb-2">
+              Anotando no rascunho aberto: {existingDraft.periodKey} ({existingDraft.weekStart} → {existingDraft.weekEnd}). 1 rascunho por plano — publique ou apague antes de abrir outro.
+            </div>
+          ) : (
             <div className="text-[11px] text-amber-400/90 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1.5 mb-2">
-              Nenhum rascunho para essa semana. Ao anotar, um rascunho será criado automaticamente com snapshot dos trades do plano em {todayISO?.range.weekStart} → {todayISO?.range.weekEnd}.
+              Nenhum rascunho aberto deste plano. Ao anotar, um rascunho será criado automaticamente com snapshot dos trades em {todayISO?.range.weekStart} → {todayISO?.range.weekEnd}.
             </div>
           )}
 

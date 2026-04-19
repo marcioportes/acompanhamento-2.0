@@ -83,15 +83,11 @@ const NewReviewDialog = ({
     [allTrades, periodInfo.weekStart, periodInfo.weekEnd]
   );
 
-  // Rascunho existente para essa mesma janela (plano + semana ISO / custom exato)
+  // Qualquer DRAFT aberto desse plano (unicidade per-plano — 1 rascunho por vez).
+  // Se existe, dialog força reabrir o existente em vez de criar outro com janela diferente.
   const existingDraftForWindow = useMemo(() => {
-    if (!periodInfo.weekStart || !periodInfo.weekEnd) return null;
-    return (existingReviews || []).find(r =>
-      r.status === 'DRAFT' &&
-      r.weekStart === periodInfo.weekStart &&
-      r.weekEnd === periodInfo.weekEnd
-    ) || null;
-  }, [existingReviews, periodInfo.weekStart, periodInfo.weekEnd]);
+    return (existingReviews || []).find(r => r.status === 'DRAFT') || null;
+  }, [existingReviews]);
 
   const canSubmit = mode === 'iso' || periodInfo.valid;
 
@@ -224,7 +220,7 @@ const NewReviewDialog = ({
 
           {existingDraftForWindow && (
             <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
-              Já existe rascunho para essa janela. Clicando abaixo, você reabre o existente em vez de duplicar.
+              Já existe um rascunho aberto deste plano ({existingDraftForWindow.periodKey}, {existingDraftForWindow.weekStart} → {existingDraftForWindow.weekEnd}). Regra: 1 rascunho por plano. Clicando abaixo, você reabre o existente. Para usar outra janela, publique ou apague o atual primeiro.
             </div>
           )}
 

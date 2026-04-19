@@ -74,24 +74,20 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     ) || null;
   }, [planReviews, openReview]);
 
-  // Rascunho da semana ISO atual deste plano, se existir
-  const currentWeekDraft = useMemo(() => {
-    const isoKey = getISOWeekKey(new Date());
-    const { weekStart, weekEnd } = getISOWeekRange(new Date());
-    return planReviews.find(
-      r => r.status === 'DRAFT' && r.weekStart === weekStart && r.weekEnd === weekEnd
-    ) || null;
+  // Qualquer DRAFT aberto desse plano (unicidade per-plano: 1 rascunho por vez).
+  const openDraft = useMemo(() => {
+    return planReviews.find(r => r.status === 'DRAFT') || null;
   }, [planReviews]);
 
-  // Handler do botão "Nova Revisão": se já existe DRAFT da semana atual, abre;
-  // senão, abre o dialog para escolher período.
+  // Handler do botão "Nova Revisão": se já existe QUALQUER DRAFT do plano, abre;
+  // senão, abre o dialog para escolher período. Publicar/apagar libera pra criar outra.
   const handleNewOrOpenReview = useCallback(() => {
-    if (currentWeekDraft) {
-      setOpenReviewId(currentWeekDraft.id);
+    if (openDraft) {
+      setOpenReviewId(openDraft.id);
     } else {
       setNewReviewOpen(true);
     }
-  }, [currentWeekDraft]);
+  }, [openDraft]);
 
   // Currency formatter parcial
   const fmt = useCallback((v) => formatCurrencyDynamic(v, currency), [currency]);
@@ -273,10 +269,10 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
               <button
                 onClick={handleNewOrOpenReview}
                 className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 flex items-center gap-1.5"
-                title={currentWeekDraft ? 'Rascunho da semana atual já existe — abrir' : 'Criar nova revisão semanal'}
+                title={openDraft ? `Rascunho aberto (${openDraft.periodKey}) — abrir para continuar` : 'Criar nova revisão semanal'}
               >
                 <FileCheck2 className="w-3.5 h-3.5" />
-                {currentWeekDraft ? 'Continuar rascunho' : 'Nova Revisão'}
+                {openDraft ? 'Continuar rascunho' : 'Nova Revisão'}
               </button>
             )}
             {mentor && mode === 'live' && planReviews.length > 0 && (

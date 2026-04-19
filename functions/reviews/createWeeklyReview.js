@@ -93,18 +93,17 @@ module.exports = onCall(
       throw new HttpsError('failed-precondition', 'Plan não pertence ao student informado');
     }
 
-    // GUARD DE UNICIDADE: 1 rascunho DRAFT por (student, plan, weekStart, weekEnd).
-    // Se já existe, retorna o existente em vez de duplicar (transparente para o cliente).
+    // GUARD DE UNICIDADE: UM rascunho DRAFT por (student, plan), independente da janela.
+    // Regra do ritual: 1 revisão por vez por plano. Se já existe QUALQUER DRAFT desse
+    // plano, retorna o existente — mentor publica ou apaga antes de criar outro.
     const dupeQuery = await studentRef.collection('reviews')
       .where('status', '==', 'DRAFT')
-      .where('weekStart', '==', weekStart)
-      .where('weekEnd', '==', weekEnd)
       .get();
     const duplicate = dupeQuery.docs
       .map(d => ({ id: d.id, data: d.data() }))
       .find(r => r.data?.frozenSnapshot?.planContext?.planId === planId);
     if (duplicate) {
-      console.log(`[createWeeklyReview] Duplicate DRAFT prevented — returning existing ${duplicate.id} for student ${studentId} plan ${planId}`);
+      console.log(`[createWeeklyReview] Duplicate DRAFT prevented (per-plan) — returning existing ${duplicate.id} for student ${studentId} plan ${planId}`);
       return { reviewId: duplicate.id, status: 'DRAFT', existing: true };
     }
 

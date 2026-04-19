@@ -164,13 +164,10 @@ const AppContent = () => {
       setFeedbackTrade(null);
     }
 
-    // Limpar extrato se navegando para outra view (Fase 0 #102)
+    // Limpar extrato se navegando para outra view.
+    // Entrada do extrato é exclusivamente pelo pergaminho do PlanCardGrid — sem sidebar.
     if (view !== 'ledger') {
       setLedgerPlanId(null);
-    } else if (!ledgerPlanId) {
-      // Clicou na sidebar sem plano pré-selecionado — escolhe o primeiro ativo
-      const firstActive = plans.find(p => p.active !== false) || plans[0];
-      if (firstActive) setLedgerPlanId(firstActive.id);
     }
 
     if (view === 'add-trade') {
@@ -396,7 +393,6 @@ const AppContent = () => {
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
-        hasPlans={plans.length > 0}
       />
 
       {/* Conteúdo principal */}
