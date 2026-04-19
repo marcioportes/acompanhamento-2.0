@@ -25,7 +25,8 @@ import {
   LineChart,
   Settings,
   Brain,
-  CreditCard
+  CreditCard,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -40,6 +41,7 @@ const Sidebar = ({
   emotionalAlerts = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
+  hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -54,6 +56,8 @@ const Sidebar = ({
       badgeColor: 'green'
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
+    // Extrato do Plano — só aparece se aluno tem planos (ou mentor em viewAs)
+    ...(hasPlans ? [{ id: 'ledger', label: 'Extrato do Plano', icon: FileText }] : []),
     { id: 'accounts', label: 'Contas', icon: Wallet },
     // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
     ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
