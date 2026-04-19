@@ -11,7 +11,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import {
-  Plus, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
+  Plus, PlusCircle, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
   TrendingUp, TrendingDown, RefreshCw, AlertTriangle, CheckCircle, ArrowRight, Calendar
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
@@ -578,7 +578,7 @@ const AccountsPage = () => {
                 {getAccountBadge(acc)}
                 <div className="mb-4"><div className="flex items-center gap-2 mb-1"><Wallet className="w-5 h-5 text-blue-400" /><h3 className="text-xl font-semibold text-white group-hover:text-emerald-400 transition-colors">{acc.name}</h3></div><p className="text-sm text-slate-400 flex items-center gap-2">{acc.broker || acc.brokerName || 'Broker não informado'}</p></div>
                 <div className="space-y-3"><div className="flex justify-between items-center"><span className="text-sm text-slate-400">Saldo Inicial</span><span className="text-white font-mono">{formatCurrency(saldoInicial, acc.currency)}</span></div><div className="flex justify-between items-center"><span className="text-sm text-slate-400">Saldo Atual</span><div className="flex items-center gap-2"><ProfitIcon className={`w-4 h-4 ${isProfitable ? 'text-emerald-400' : 'text-red-400'}`} /><span className={`font-bold font-mono ${isSolvent ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(saldoAtual, acc.currency)}</span></div></div></div>
-                <div className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}><button onClick={(e) => { e.stopPropagation(); openModal(acc); }} className="p-2 hover:bg-blue-500/20 rounded text-blue-400"><Edit2 className="w-4 h-4" /></button><button onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }} className="p-2 hover:bg-red-500/20 rounded text-red-400"><Trash2 className="w-4 h-4" /></button></div>
+                <div className="mt-6 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}><button onClick={(e) => { e.stopPropagation(); setSelectedAccount({ ...acc, _autoOpenPlanModal: true }); }} className="p-2 hover:bg-emerald-500/20 rounded text-emerald-400" title="Novo plano"><PlusCircle className="w-4 h-4" /></button><button onClick={(e) => { e.stopPropagation(); openModal(acc); }} className="p-2 hover:bg-blue-500/20 rounded text-blue-400" title="Editar conta"><Edit2 className="w-4 h-4" /></button><button onClick={(e) => { e.stopPropagation(); handleDelete(acc.id); }} className="p-2 hover:bg-red-500/20 rounded text-red-400" title="Excluir conta"><Trash2 className="w-4 h-4" /></button></div>
               </div>
             );
           })}

@@ -13,10 +13,10 @@
  */
 
 import { useState } from 'react';
-import { 
+import {
   ChevronDown, ChevronUp, User,
   TrendingUp, TrendingDown, Edit2, Eye, Wallet,
-  CheckCircle, Target, Trophy, Skull, Activity, Settings
+  CheckCircle, Target, Trophy, Skull, Activity, Settings, PlusCircle
 } from 'lucide-react';
 
 const StudentAccountGroup = ({ 
@@ -215,6 +215,16 @@ const StudentAccountGroup = ({
                         title={`${accPlans.length} plano${accPlans.length !== 1 ? 's' : ''}`}
                       >
                         <Target className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {/* Novo plano — Issue #154 (entrada atalho; modal mora em AccountDetailPage) */}
+                    {onAccountClick && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAccountClick({ ...acc, _autoOpenPlanModal: true }); }}
+                        className="p-1.5 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 group-hover/row:text-slate-400 transition-colors"
+                        title="Novo plano"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
                       </button>
                     )}
                     {onEditAccount && (

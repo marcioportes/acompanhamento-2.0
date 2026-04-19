@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.36.0: fix: Card de conta ganha botão "Novo plano" (#154) — atalho no card (AccountsPage visão aluno + StudentAccountGroup visão mentor) passa flag _autoOpenPlanModal para AccountDetailPage, que abre PlanManagementModal via useEffect. Preserva "casa do pai" (modal mora em AccountDetailPage, card só chama). Resolve workaround crítico: hoje aluno precisava criar conta Mesa → reverter para Real → corrigir plano.
  * - 1.34.0: fix: Botão Novo Plano inacessível (#146) — mover criação de plano de DashboardHeader para AccountDetailPage, limpar state órfão no StudentDashboard.
  * - 1.33.0: feat: Revisão Semanal (#102) — PlanLedgerExtract fundação + collection reviews + CF createWeeklyReview + CF generateWeeklySwot + WeeklyReviewModal + integração mentor/aluno. Inclui JAQUE: fix badge REVENGE/TILT vazando para trades do mesmo dia (match estrito por tradeId em ExtractTable, tradeIdsAfter em detectRevengeV2 RAPID_SEQUENCE, helper extractInlineEvents com 12 testes). [RESERVADO]
  * - 1.32.0: arch: Pagina dedicada Mesa Prop — redesign 4 zonas (#145) — Fases A-B extrair PropAccountCard/AlertsBanner/PayoutTracker do StudentDashboard para PropFirmPage + novo item condicional Sidebar + ContextBar governa pagina. Fase C fix attack plan phase-aware (PA/SIM_FUNDED/LIVE usam fundedDrawdown). Fase D remove AI Approach Plan da pagina (migra para #148 com gate 4D+30 shadow trades) + reset CF phase-aware para main. Fase E useDrawdownHistory MAX_DOCS 100->1000 + prop limit configuravel (suporta equity curve em conta com 500+ trades). Fase F decomposicao em 4 zonas semanticas (status agora / retrospectivo / contrato da mesa / payout) + novos componentes PropEquityCurve (Recharts) + TemplateCard + PlanoMecanicoCard + PropViabilityBadge (6 estados phase-aware) + PropHistoricalKPIs. Fase G renomear "Simulador de Saque" -> "Quando posso sacar?" (linguagem de decisao). Fase H fix 4 bugs phase-aware (dias operados denominador, dailyLossLimit null-safety, ViabilityBadge Infinity, prazo avaliacao condicional). Hotfix #149 cancelada (phase missing era bug de branch, nao de prod). 17 testes novos, 1567/1567 passando (inclui suite #102 mergeada). Spec Review Gate INV-18 iteracao 3.
@@ -52,10 +53,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.32.0',
-  build: '20260416',
-  display: 'v1.32.0',
-  full: '1.32.0+20260416',
+  version: '1.36.0',
+  build: '20260419',
+  display: 'v1.36.0',
+  full: '1.36.0+20260419',
 };
 export default VERSION;
 export { VERSION };
