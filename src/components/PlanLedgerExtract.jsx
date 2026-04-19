@@ -33,6 +33,7 @@ import { computeExtractSummaryMetrics } from '../utils/extractSummaryMetrics';
 import DebugBadge from './DebugBadge';
 import NewReviewDialog from './reviews/NewReviewDialog';
 import WeeklyReviewModal from './reviews/WeeklyReviewModal';
+import { getISOWeekKey, getISOWeekRange } from '../utils/weeklyReviewSnapshot';
 
 // Sub-componentes
 import ExtractPeriodSelector from './extract/ExtractPeriodSelector';
@@ -72,6 +73,25 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
       r => r.id !== openReview.id && r.weekStart < openReview.weekStart
     ) || null;
   }, [planReviews, openReview]);
+
+  // Rascunho da semana ISO atual deste plano, se existir
+  const currentWeekDraft = useMemo(() => {
+    const isoKey = getISOWeekKey(new Date());
+    const { weekStart, weekEnd } = getISOWeekRange(new Date());
+    return planReviews.find(
+      r => r.status === 'DRAFT' && r.weekStart === weekStart && r.weekEnd === weekEnd
+    ) || null;
+  }, [planReviews]);
+
+  // Handler do botão "Nova Revisão": se já existe DRAFT da semana atual, abre;
+  // senão, abre o dialog para escolher período.
+  const handleNewOrOpenReview = useCallback(() => {
+    if (currentWeekDraft) {
+      setOpenReviewId(currentWeekDraft.id);
+    } else {
+      setNewReviewOpen(true);
+    }
+  }, [currentWeekDraft]);
 
   // Currency formatter parcial
   const fmt = useCallback((v) => formatCurrencyDynamic(v, currency), [currency]);
@@ -251,13 +271,29 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
           <div className="flex items-center gap-2">
             {mentor && mode === 'live' && (
               <button
-                onClick={() => setNewReviewOpen(true)}
+                onClick={handleNewOrOpenReview}
                 className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 flex items-center gap-1.5"
-                title="Criar nova revisão semanal (mentor)"
+                title={currentWeekDraft ? 'Rascunho da semana atual já existe — abrir' : 'Criar nova revisão semanal'}
               >
                 <FileCheck2 className="w-3.5 h-3.5" />
-                Nova Revisão
+                {currentWeekDraft ? 'Continuar rascunho' : 'Nova Revisão'}
               </button>
+            )}
+            {mentor && mode === 'live' && planReviews.length > 0 && (
+              <select
+                onChange={(e) => { if (e.target.value) setOpenReviewId(e.target.value); e.target.value = ''; }}
+                defaultValue=""
+                className="text-xs bg-slate-800 border border-slate-700 text-slate-300 rounded-lg px-2 py-1.5 hover:border-slate-600"
+                title="Abrir revisão existente deste plano"
+              >
+                <option value="" disabled>Abrir revisão…</option>
+                {planReviews.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.status === 'DRAFT' ? '○ ' : r.status === 'CLOSED' ? '● ' : '■ '}
+                    {r.periodKey} · {r.weekStart.slice(5)}→{r.weekEnd.slice(5)}
+                  </option>
+                ))}
+              </select>
             )}
             <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white">
               <X className="w-5 h-5" />
@@ -333,6 +369,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
           allTrades={trades}
           cycleKey={selectedCycleKey}
           emotionalMetrics={emotional.metrics}
+          existingReviews={planReviews}
           createReview={createReview}
           onCreated={(reviewId) => setOpenReviewId(reviewId)}
           onClose={() => setNewReviewOpen(false)}

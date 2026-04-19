@@ -15,7 +15,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   X, Loader2, Sparkles, AlertTriangle, CheckCircle2,
-  TrendingUp, TrendingDown, Archive, Lock, FileText, Video, GitCompare,
+  TrendingUp, TrendingDown, Archive, Lock, FileText, Video, GitCompare, Trash2,
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
@@ -115,7 +115,7 @@ const KpiRow = ({ label, current, previous, fmt = fmtNum, invertColors = false }
 };
 
 const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }) => {
-  const { generateSwot, closeReview, archiveReview, actionLoading, error } = useWeeklyReviews(studentId);
+  const { generateSwot, closeReview, archiveReview, deleteReview, actionLoading, error } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
@@ -124,6 +124,7 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
   const [meetingLink, setMeetingLink] = useState(review?.meetingLink || '');
   const [videoLink, setVideoLink] = useState(review?.videoLink || '');
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setTakeaways(review?.takeaways || '');
@@ -138,6 +139,7 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
   const canGenerateSwot = canEdit && review?.status === 'DRAFT';
   const canClose = canEdit && review?.status === 'DRAFT';
   const canArchive = canEdit && review?.status === 'CLOSED';
+  const canDelete = mentor && review?.status !== 'ARCHIVED'; // rules bloqueiam ARCHIVED
 
   const takeawaysValidation = useMemo(() => validateTakeaways(takeaways), [takeaways]);
   const meetingLinkValidation = useMemo(() => validateReviewUrl(meetingLink), [meetingLink]);
@@ -171,6 +173,16 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
     if (!canArchive) return;
     try { await archiveReview(review.id); } catch { /* */ }
   }, [canArchive, archiveReview, review?.id]);
+
+  const handleDelete = useCallback(async () => {
+    if (!canDelete) return;
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    try {
+      await deleteReview(review.id);
+      onClose?.();
+    } catch { /* */ }
+    setConfirmDelete(false);
+  }, [canDelete, confirmDelete, deleteReview, review?.id, onClose]);
 
   const tabs = [
     { id: 'swot', label: 'SWOT', icon: Sparkles },
@@ -443,6 +455,37 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
             {error && <span className="text-red-400">{error}</span>}
           </div>
           <div className="flex items-center gap-2">
+            {canDelete && (
+              confirmDelete ? (
+                <>
+                  <span className="text-[11px] text-red-400">Apagar esta revisão?</span>
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={actionLoading}
+                    className="px-2.5 py-1 text-[11px] text-slate-400 hover:text-white disabled:opacity-40"
+                  >
+                    Não
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={actionLoading}
+                    className="px-2.5 py-1 text-[11px] font-medium bg-red-500/20 border border-red-500/40 text-red-300 rounded hover:bg-red-500/30 disabled:opacity-40"
+                  >
+                    {actionLoading ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
+                    Sim, apagar
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleDelete}
+                  disabled={actionLoading}
+                  className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 border border-transparent hover:border-red-500/30 hover:bg-red-500/10 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40"
+                  title="Apagar esta revisão (irreversível)"
+                >
+                  <Trash2 className="w-3 h-3" /> Apagar
+                </button>
+              )
+            )}
             {canClose && (
               <button
                 onClick={handleClose}

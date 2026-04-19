@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  doc, updateDoc, serverTimestamp,
+  doc, updateDoc, deleteDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -130,6 +130,21 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Deletar revisão (mentor-only, bloqueado em ARCHIVED via rules).
+  const deleteReview = useCallback(async (reviewId) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await deleteDoc(ref);
+    } catch (err) {
+      setError(err.message || 'Erro ao deletar revisão');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Pin rápido: anexa uma linha ao campo takeaways de uma revisão (DRAFT).
   // Usado pelo PinToReviewButton (FeedbackPage) — evita context switch.
   const appendTakeaway = useCallback(async (reviewId, line) => {
@@ -160,6 +175,7 @@ export const useWeeklyReviews = (studentId) => {
     generateSwot,
     closeReview,
     archiveReview,
+    deleteReview,
     appendTakeaway,
   };
 };

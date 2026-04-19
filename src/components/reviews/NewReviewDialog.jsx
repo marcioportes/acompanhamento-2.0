@@ -42,6 +42,7 @@ const NewReviewDialog = ({
   allTrades,
   cycleKey,
   emotionalMetrics,
+  existingReviews = [],  // reviews do plano (para detectar duplicata de semana)
   createReview,          // (payload) => {reviewId, status}
   onCreated,             // (reviewId) => void — parent abre WeeklyReviewModal
   onClose,
@@ -82,10 +83,26 @@ const NewReviewDialog = ({
     [allTrades, periodInfo.weekStart, periodInfo.weekEnd]
   );
 
+  // Rascunho existente para essa mesma janela (plano + semana ISO / custom exato)
+  const existingDraftForWindow = useMemo(() => {
+    if (!periodInfo.weekStart || !periodInfo.weekEnd) return null;
+    return (existingReviews || []).find(r =>
+      r.status === 'DRAFT' &&
+      r.weekStart === periodInfo.weekStart &&
+      r.weekEnd === periodInfo.weekEnd
+    ) || null;
+  }, [existingReviews, periodInfo.weekStart, periodInfo.weekEnd]);
+
   const canSubmit = mode === 'iso' || periodInfo.valid;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    // Se já existe rascunho pra essa janela do mesmo plano, reabre ao invés de duplicar.
+    if (existingDraftForWindow) {
+      onCreated?.(existingDraftForWindow.id);
+      onClose?.();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -115,7 +132,7 @@ const NewReviewDialog = ({
     } finally {
       setBusy(false);
     }
-  }, [canSubmit, plan, previewTrades, cycleKey, emotionalMetrics, periodInfo, createReview, onCreated, onClose]);
+  }, [canSubmit, existingDraftForWindow, plan, previewTrades, cycleKey, emotionalMetrics, periodInfo, createReview, onCreated, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
@@ -205,6 +222,12 @@ const NewReviewDialog = ({
             <div className="text-white font-mono text-sm">{previewTrades.length}</div>
           </div>
 
+          {existingDraftForWindow && (
+            <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+              Já existe rascunho para essa janela. Clicando abaixo, você reabre o existente em vez de duplicar.
+            </div>
+          )}
+
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
               {error}
@@ -226,7 +249,7 @@ const NewReviewDialog = ({
             className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 flex items-center gap-1.5"
           >
             {busy && <Loader2 className="w-3 h-3 animate-spin" />}
-            Criar revisão DRAFT
+            {existingDraftForWindow ? 'Abrir rascunho existente' : 'Criar revisão DRAFT'}
           </button>
         </div>
         <DebugBadge component="NewReviewDialog" />
