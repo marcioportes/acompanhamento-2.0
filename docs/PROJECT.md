@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.1  
-> **Última atualização:** 19/04/2026 — Encerramento #145 v1.32.0 (redesign Mesa Prop em 4 zonas) mergeado via PR #152, locks CHUNK-02/17 liberados  
+> **Versão:** 0.22.2  
+> **Última atualização:** 19/04/2026 — SPEC v1.0 + IMPACT v0.2 (#128) movidos para `docs/reference/` como material de referência; DT-036 registrada (shadowBehavior inline, ISSUE 7 cancelada)  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -55,6 +55,7 @@ Este documento segue versionamento semântico:
 | 0.21.1 | 16/04/2026 | Encerramento #146 v1.34.0 | PR #147 mergeado, locks CHUNK-02/03 liberados (AVAILABLE), issue doc arquivada, worktree removido, CHANGELOG [1.34.0] |
 | 0.22.0 | 17/04/2026 | INV-17 + INV-18 — gates de arquitetura e spec review | INV-17 (Gate de Arquitetura de Informação — nível/domínio/duplicação/budget + mapa de slots fixos) e INV-18 (Spec Review Gate — validação de entendimento obrigatória antes de codificar, formato por tipo UI/CF/lógica/Firestore) adicionadas a CLAUDE.md e §3 Invariantes. §4.1 Gate Pré-Código ganhou itens de checklist para INV-17/INV-18. §5 checklist de impacto atualizado para "INV-01 a INV-18" |
 | 0.22.1 | 19/04/2026 | Encerramento #145 v1.32.0 | PR #152 mergeado (redesign Mesa Prop em 4 zonas: status agora / retrospectivo / contrato da mesa / payout). 5 componentes novos (PropEquityCurve, PropHistoricalKPIs, TemplateCard, PlanoMecanicoCard, PropViabilityBadge) + lógica pura propViabilityBadge (6 estados phase-aware). useDrawdownHistory MAX_DOCS 100→1000. AI Approach Plan migrou para #148 (RESERVADO, gate 4D+30 shadow trades). Hotfix #149 cancelada (bug só existia em branch). Locks CHUNK-02 + CHUNK-17 liberados. Issue doc arquivada em docs/archive/. Spec Review Gate INV-18 aplicado (iteração 3). 16 testes novos, 1567/1567 passando |
+| 0.22.2 | 19/04/2026 | #128 deepdive — SPEC v1.0 + IMPACT v0.2 em referência | SPEC-importacao-plano-v1.0 e IMPACT-importacao-plano-v0.2 adicionados a `docs/reference/` como material de domínio citável (não protocolo formal). Deepdive produziu: 4 INVs (INV-19 a INV-22), 4 APs (AP-09 a AP-12), 7 DECs (DEC-084 a DEC-090), 6 issues derivadas (ISSUE 1-6). ISSUE 7 (migração shadowBehavior) cancelada, virou DT-036 com trigger de reconsideração em > 5000 trades. Framework de bundle formal INV-19 abandonado em favor de modo interativo (pair programming assíncrono com coder). Invariantes da spec ficam como vocabulário/referência, não como gate. |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -861,6 +862,7 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 | DT-031 | `balanceBefore`/`balanceAfter` incorretos em movements criados em batch — cada `addTrade` lê o "último movement" mas em batch todos leem o mesmo. Saldo final correto via `FieldValue.increment` na CF. Afeta apenas visualização do extrato em movements intermediários (cosmético) | BAIXA | — | #93 |
 | DT-034 | Engine prop firm duplicado entre `src/utils/propFirmDrawdownEngine.js` (ESM, testado) e `functions/propFirmEngine.js` (CommonJS, executado). Sincronização manual com header de aviso. Mudanças de lógica exigem atualização nos 2 arquivos. Refactoring futuro: build step (rollup/esbuild) ou monorepo workspace permitindo import compartilhado. Engine é estável (58 testes, lógica determinística) — mudanças raras justificam pragmatismo de v1 | BAIXA | — | #52 |
 | DT-035 | ATR de NG (Natural Gas), HG (Copper) e 6A (Australian Dollar) na `instrumentsTable.js` não foram incluídos na recaptura TradingView v2 (09/04/2026). Mantêm valores v1 (alucinados). Não são usados em nenhum template Apex/MFF/Lucid/Tradeify atual — impacto baixo. Remedir trimestralmente junto com os outros | BAIXA | — | #52 |
+| DT-036 | `shadowBehavior` persistido inline em `trades` viola separação fato/opinião (SPEC #128 INV-21 / AP-10). Origem #129 v1.28.0 via `functions/analyzeShadowBehavior.js:416`. Consumidores: `TradeDetailModal.jsx`, `FeedbackPage.jsx`, `ShadowBehaviorPanel.jsx`. Migração para `shadow/{studentId}/patterns/{patternId}` adiada — 246 trades × ~13 padrões × ~50B = ~160KB total, ganho marginal hoje. **Reconsiderar quando trades > 5000 OU reclamação de performance OU query complexa de shadow patterns vira prioridade.** ISSUE 7 cancelada 19/04/2026 | BAIXA | — | #129 |
 
 ---
 
