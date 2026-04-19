@@ -2,7 +2,7 @@
  * PropPayoutTracker
  * @version 1.0.0 (v1.27.0)
  * @description Painel de payout tracking para contas PROP.
- *   Qualifying days tracker, eligibility checklist, simulador de saque,
+ *   Qualifying days tracker, eligibility checklist, calculadora "quando posso sacar?",
  *   histórico de withdrawals.
  *
  * Ref: issue #134 Fase D, epic #52
@@ -36,7 +36,7 @@ const EligibilityCheck = ({ check }) => {
 };
 
 // ============================================
-// WithdrawalSimulator — simulador de saque
+// WithdrawalSimulator — calculadora "quando posso sacar?" (não executa saque)
 // ============================================
 
 const WithdrawalSimulator = ({ account, template, eligibility, totalWithdrawn, currency }) => {
@@ -68,7 +68,7 @@ const WithdrawalSimulator = ({ account, template, eligibility, totalWithdrawn, c
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Calculator className="w-3.5 h-3.5 text-slate-500" />
-        <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Simulador de Saque</span>
+        <span className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">Quando posso sacar?</span>
       </div>
 
       <div className="flex items-center gap-2">
