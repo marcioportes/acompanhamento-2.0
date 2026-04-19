@@ -156,6 +156,15 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
   const [videoLink, setVideoLink] = useState(review?.videoLink || '');
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [liveSnapshot, setLiveSnapshot] = useState(null);
+  const [liveRefreshing, setLiveRefreshing] = useState(false);
+
+  const swot = review?.swot || null;
+  const isDraft = review?.status === 'DRAFT';
+  // Em DRAFT, se já recomputamos snapshot live, usa; senão, fallback no stored.
+  // Em CLOSED/ARCHIVED, sempre usa o frozenSnapshot (foto congelada).
+  const snapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
+  const isCustomPeriod = !!review?.customPeriod;
 
   useEffect(() => {
     setTakeaways(review?.takeaways || '');
@@ -182,16 +191,6 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
     if (isDraft) refreshLiveSnapshot();
     else setLiveSnapshot(null);
   }, [review?.id, isDraft, refreshLiveSnapshot]);
-
-  const [liveSnapshot, setLiveSnapshot] = useState(null);
-  const [liveRefreshing, setLiveRefreshing] = useState(false);
-
-  const swot = review?.swot || null;
-  const isDraft = review?.status === 'DRAFT';
-  // Em DRAFT, se já recomputamos snapshot live, usa; senão, fallback no stored.
-  // Em CLOSED/ARCHIVED, sempre usa o frozenSnapshot (foto congelada).
-  const snapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
-  const isCustomPeriod = !!review?.customPeriod;
   const canEdit = mentor && review?.status !== 'ARCHIVED';
   const canGenerateSwot = canEdit && review?.status === 'DRAFT';
   const canClose = canEdit && review?.status === 'DRAFT';
