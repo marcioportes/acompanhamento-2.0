@@ -15,7 +15,7 @@
  * - 6.1.1: UI: Aumentado espaçamento da coluna 'Tipo' (w-32 -> w-40)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
@@ -73,6 +73,15 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreate
   // Modal Plano (mentor edit)
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState(null);
+
+  // Abre modal de novo plano automaticamente quando a conta chega com flag _autoOpenPlanModal
+  // (ponto de entrada: botão "Novo plano" no card de conta — issue #154)
+  useEffect(() => {
+    if (account?._autoOpenPlanModal && onCreatePlan) {
+      setEditingPlan(null);
+      setShowPlanModal(true);
+    }
+  }, [account?.id, account?._autoOpenPlanModal, onCreatePlan]);
 
   // Planos desta conta
   const accountPlans = useMemo(() => {
