@@ -395,7 +395,14 @@ Atualizar comentário para refletir redesign, não apenas extração.
     - `src/components/dashboard/PropHistoricalKPIs.jsx` — dias operados / best / worst / consistency
     - `PropFirmPage.jsx` refatorada com ZoneHeader + 4 sections + grid responsivo `grid-cols-1 md:grid-cols-2` na Zona 3. Calcula `attackPlan` via `calculateAttackPlan(template, null, null, profile, phase, symbol)`.
   - Fase G (commit `dbfaa946`): label `"Simulador de Saque"` → `"Quando posso sacar?"` em PropPayoutTracker (linguagem de decisão, não simulação).
-  - Fase H em andamento: regressão suite 1472/1472 passando, build OK (18-30s), dev server rodando em :5174 para validação browser do Marcio.
+  - Fase H (commits `435233bd` + `d468c7c6`): validação browser do Marcio encontrou 4 bugs + 1 detalhe:
+    - Bug 1: PropHistoricalKPIs "Dias operados 4/30" em conta PA (denominador é conceito de EVALUATION) → gated por fase
+    - Bug 2: TemplateCard "Daily loss limit $0" em Apex PA/Funded (null-safety) → "N/A (apenas Total Loss)" muted
+    - Bug 3: propViabilityBadge dailyStop/0 = NaN/Infinity quando mesa sem daily loss → branch alternativo usando reserva saudável (drawdownMax × 0.3), texto "Stop de $X em DD de $Y · margem N perdas"
+    - Bug 4: TemplateCard "Prazo avaliação 30 dias" visível em SIM_FUNDED → render condicional (só EVALUATION); consistency também gated por fase
+    - Extra: TemplateCard "Firma —" vazio → template usa `firm` (ex: "APEX"), não `firmName` (campo do account); fallback chain corrigido
+  - 2 testes novos em propViabilityBadge.test.js cobrindo `dailyLossLimit: null` (PA) e `dailyLossLimit: 0` (SIM_FUNDED). 1474/1474 passando.
+  - **19/04/2026 — Validação browser aprovada pelo Marcio.** Pronto para push + PR.
 
 - **19/04/2026 — Hotfix #149 cancelada:**
   - Abertura: diagnóstico inicial apontou `phase` ausente em desestruturação/propagação no handler da CF.
