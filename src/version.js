@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.34.1: fix: phase ausente em generatePropFirmApproachPlan (#149) — desestruturação + propagação de phase para buildUserPrompt, elimina fallback determinístico silencioso quando aluno tem assessment 4D completo. 3 linhas em functions/propFirm/generatePropFirmApproachPlan.js. [RESERVADO]
  * - 1.34.0: fix: Botão Novo Plano inacessível (#146) — mover criação de plano de DashboardHeader para AccountDetailPage, limpar state órfão no StudentDashboard.
  * - 1.33.0: feat: Revisão Semanal (#102) — PlanLedgerExtract fundação + collection reviews + CF createWeeklyReview + CF generateWeeklySwot + WeeklyReviewModal + integração mentor/aluno. [RESERVADO]
  * - 1.32.0: arch: Pagina dedicada Mesa Prop (#145) — extrair PropAccountCard/AlertsBanner/PayoutTracker/AiApproachPlanSection do StudentDashboard para PropFirmPage, novo item condicional no Sidebar, ContextBar governa pagina, fix sparkline DD threshold, plano phase-aware (PA/SIM_FUNDED/LIVE). [RESERVADO]
