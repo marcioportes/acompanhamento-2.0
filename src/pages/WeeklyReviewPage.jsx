@@ -19,11 +19,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  doc, onSnapshot, collection, query, where, orderBy, limit,
+  doc, onSnapshot, collection, query, where, orderBy, limit, getDoc, getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
+import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
 
 const statusBadge = (status) => {
   switch (status) {
@@ -194,12 +195,38 @@ const Placeholder = ({ label }) => (
   </div>
 );
 
+// Reconstrói snapshot live a partir das trades atuais do plano + período.
+// Usado em DRAFTs (rascunhos abertos atualizam KPIs/trades em tempo real).
+const rebuildSnapshotFromFirestore = async (review) => {
+  const planId = review?.planId || review?.frozenSnapshot?.planContext?.planId;
+  if (!planId) return null;
+  const planSnap = await getDoc(doc(db, 'plans', planId));
+  if (!planSnap.exists()) return null;
+  const plan = { id: planSnap.id, ...planSnap.data() };
+  const tradesQ = query(collection(db, 'trades'), where('planId', '==', planId));
+  const tradesSnap = await getDocs(tradesQ);
+  const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const weekTrades = allTrades.filter(t => {
+    const td = t.date || (t.entryTime ? t.entryTime.slice(0, 10) : null);
+    if (!td) return false;
+    return td >= review.weekStart && td <= review.weekEnd;
+  });
+  return buildClientSnapshot({
+    plan,
+    trades: weekTrades,
+    cycleKey: review.cycleKey || null,
+    emotionalMetrics: null,
+  });
+};
+
 const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
   const [review, setReview] = useState(null);
   const [student, setStudent] = useState(null);
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [liveSnapshot, setLiveSnapshot] = useState(null);
+  const [liveRefreshing, setLiveRefreshing] = useState(false);
 
   // Listener no doc da revisão — reflete updates live (SWOT, takeaways, etc.)
   useEffect(() => {
@@ -283,6 +310,33 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
     ) || null;
   }, [allStudentReviews, review, planId]);
 
+  // DRAFT: recomputa snapshot live ao montar e a pedido do mentor.
+  // CLOSED/ARCHIVED: usa frozenSnapshot persistido (G7 — foto congelada).
+  const isDraft = review?.status === 'DRAFT';
+  const refreshLive = async () => {
+    if (!isDraft || !review) return;
+    setLiveRefreshing(true);
+    try {
+      const snap = await rebuildSnapshotFromFirestore(review);
+      if (snap) setLiveSnapshot(snap);
+    } catch (e) {
+      console.error('[WeeklyReviewPage] refresh live snapshot failed', e);
+    } finally {
+      setLiveRefreshing(false);
+    }
+  };
+  useEffect(() => {
+    if (isDraft && review) {
+      refreshLive();
+    } else {
+      setLiveSnapshot(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [review?.id, isDraft]);
+
+  // Snapshot efetivo: live para DRAFT (se recomputado), senão o frozenSnapshot do doc.
+  const effectiveSnapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
+
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
 
@@ -326,21 +380,36 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
             <div className="flex items-start justify-between pb-3.5 border-b border-slate-800 mb-4">
               <div>
                 <div className="text-lg font-medium text-white flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-slate-400" />
+                  <FileText className="w-4 h-4 text-slate-300" />
                   Revisão semanal — {student?.name || student?.email || 'Aluno'}
                 </div>
-                <div className="text-xs text-slate-500 mt-1">{headerMeta}</div>
-                <div className="text-[10px] text-slate-600 mt-0.5">Fundação: PlanLedgerExtract (modo revisão)</div>
+                <div className="text-xs text-slate-300 mt-1">{headerMeta}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5">Fundação: PlanLedgerExtract (modo revisão)</div>
               </div>
               <span className={`text-[11px] px-2.5 py-1 rounded-lg font-medium ${badge.cls}`}>
                 {badge.label}
               </span>
             </div>
 
+            {/* Banner DRAFT: snapshot live com botão refresh */}
+            {isDraft && (
+              <div className="mb-4 px-3 py-2 bg-amber-500/5 border border-amber-500/20 rounded-lg text-[11px] flex items-center justify-between">
+                <span className="text-amber-400">● Rascunho em preparação — indicadores live, congelam ao publicar.</span>
+                <button
+                  onClick={refreshLive}
+                  disabled={liveRefreshing}
+                  className="text-amber-300 hover:text-amber-200 disabled:opacity-40 inline-flex items-center gap-1"
+                >
+                  {liveRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  Atualizar
+                </button>
+              </div>
+            )}
+
             {/* Subitem 1: Trades do período */}
             <Section num="1" title="Trades do período">
               <TradesSection
-                trades={review.frozenSnapshot?.periodTrades}
+                trades={effectiveSnapshot.periodTrades}
                 currency={currency}
               />
             </Section>
@@ -348,7 +417,7 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
             {/* Subitem 2: Snapshot KPIs */}
             <Section num="2" title="Snapshot de indicadores (congelado)">
               <SnapshotKpisSection
-                kpis={review.frozenSnapshot?.kpis}
+                kpis={effectiveSnapshot.kpis}
                 prevKpis={previousReview?.frozenSnapshot?.kpis}
                 currency={currency}
               />
