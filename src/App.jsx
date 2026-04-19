@@ -17,6 +17,7 @@ import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
+import PropFirmPage from './pages/PropFirmPage';
 import MentorDashboard from './pages/MentorDashboard';
 import AccountsPage from './pages/AccountsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -108,6 +109,14 @@ const AppContent = () => {
   const studentAssessmentId = !isMentor() ? user?.uid : null;
   const { initialAssessment: studentInitialAssessment } = useAssessment(studentAssessmentId);
   const hasBaseline = !!studentInitialAssessment;
+
+  // Mesa Prop — para exibir item no Sidebar (só alunos logados)
+  const studentAccountsId = !isMentor() ? user?.uid : null;
+  const { accounts: studentAccounts } = useAccounts(studentAccountsId);
+  const hasPropAccount = useMemo(() => {
+    if (isMentor()) return false;
+    return studentAccounts?.some(a => a.type === 'PROP') ?? false;
+  }, [studentAccounts]);
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -318,6 +327,8 @@ const AppContent = () => {
               />
             </div>
           );
+        case 'propfirm':
+          return <PropFirmPage />;
         case 'ledger': {
           // Extrato do Plano como view (Fase 0 #102 — modal → currentView)
           const ledgerPlan = ledgerPlanId ? plans.find(p => p.id === ledgerPlanId) : null;
@@ -342,7 +353,7 @@ const AppContent = () => {
         }
         case 'dashboard':
         default:
-          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} />;
+          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
       }
     }
   };
@@ -371,6 +382,7 @@ const AppContent = () => {
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
+        hasPropAccount={hasPropAccount}
         hasPlans={plans.length > 0}
       />
 

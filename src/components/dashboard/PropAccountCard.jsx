@@ -19,7 +19,6 @@ import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } fro
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
 import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS } from '../../constants/propFirmDefaults';
 import DebugBadge from '../DebugBadge';
-import PropAiApproachPlanSection from './PropAiApproachPlanSection';
 
 // ============================================
 // Helpers visuais
@@ -134,10 +133,10 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
     return Math.max(0, Math.min(1, normalized));
   });
 
-  // SVG sparkline
+  // SVG sparkline — height increased from 32 to 56 for legibility (issue #145 Fase C)
   const width = 200;
-  const height = 32;
-  const padding = 2;
+  const height = 56;
+  const padding = 4;
   const usableW = width - padding * 2;
   const usableH = height - padding * 2;
 
@@ -160,7 +159,18 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
           {history.length} trades · último: {formatCurrencyDynamic(lastThreshold, currency)}
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-8" preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-14" preserveAspectRatio="none">
+        {/* Danger zone: bottom 30% of range */}
+        <rect
+          x={padding} y={padding + usableH * 0.7}
+          width={usableW} height={usableH * 0.3}
+          fill="rgba(239,68,68,0.06)"
+        />
+        <line
+          x1={padding} y1={padding + usableH * 0.7}
+          x2={padding + usableW} y2={padding + usableH * 0.7}
+          stroke="rgba(239,68,68,0.25)" strokeWidth="0.5" strokeDasharray="3,3"
+        />
         {/* Area fill */}
         <path
           d={`M${pathPoints[0]} ${pathPoints.join(' L')} L${padding + usableW},${height} L${padding},${height} Z`}
@@ -177,7 +187,7 @@ const DrawdownSparkline = ({ history, drawdownMax, accountSize, currency }) => {
         {/* Last point dot */}
         {pathPoints.length > 0 && (() => {
           const [lx, ly] = pathPoints[pathPoints.length - 1].split(',');
-          return <circle cx={lx} cy={ly} r="2" fill={lastPoint < 0.3 ? '#ef4444' : '#3b82f6'} />;
+          return <circle cx={lx} cy={ly} r="3" fill={lastPoint < 0.3 ? '#ef4444' : '#3b82f6'} />;
         })()}
       </svg>
     </div>
@@ -282,7 +292,7 @@ const PhaseSelector = ({ currentPhase, onChangePhase }) => {
   );
 };
 
-const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, trader4DProfile, traderIndicators }) => {
+const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) => {
   const propFirm = account?.propFirm;
 
   if (!propFirm || account?.type !== 'PROP') return null;
@@ -303,7 +313,13 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
   const distanceToDD = propFirm.distanceToDD ?? (drawdownMax > 0 ? (currentBalance - currentDrawdownThreshold) / drawdownMax : 1);
   const isDayPaused = propFirm.isDayPaused ?? false;
   const dailyPnL = propFirm.dailyPnL ?? 0;
-  const tradingDays = propFirm.tradingDays ?? 0;
+  // tradingDays: derivar de drawdownHistory (datas únicas) — fix contagem errada da CF com imports (issue #145)
+  const tradingDays = useMemo(() => {
+    if (drawdownHistory && drawdownHistory.length > 0) {
+      return new Set(drawdownHistory.map(h => h.date)).size;
+    }
+    return propFirm.tradingDays ?? 0;
+  }, [drawdownHistory, propFirm.tradingDays]);
   const lockLevel = propFirm.lockLevel ?? null;
   const trailFrozen = propFirm.trailFrozen ?? false;
   const flags = propFirm.flags ?? [];
@@ -446,27 +462,8 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
           />
         )}
 
-        {/* Row 2: Daily P&L + Eval Countdown + Trading Days */}
-        <div className="grid grid-cols-3 gap-4 pt-2 border-t border-slate-700/50">
-          {/* Daily P&L */}
-          <div>
-            <p className="text-[11px] text-slate-600 mb-1">
-              P&L dia
-              {dailyLossLimit > 0 && <span className="text-slate-700"> / -{formatCurrencyDynamic(dailyLossLimit, currency)}</span>}
-            </p>
-            <p className={`text-base font-bold font-mono ${dailyPnL >= 0 ? 'text-emerald-400' : isDayPaused ? 'text-red-500' : 'text-red-400'}`}>
-              {dailyPnL >= 0 ? '+' : ''}{formatCurrencyDynamic(dailyPnL, currency)}
-            </p>
-            {dailyLossLimit > 0 && (
-              <div className="mt-1 h-1 rounded-full bg-slate-700/50 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${isDayPaused ? 'bg-red-500' : dailyPnL < 0 ? 'bg-amber-400' : 'bg-slate-600'}`}
-                  style={{ width: `${Math.min(100, Math.abs(dailyPnL) / dailyLossLimit * 100)}%` }}
-                />
-              </div>
-            )}
-          </div>
-
+        {/* Row 2: Eval Countdown + Trading Days (P&L dia removido — dado stale sem reset, issue #145) */}
+        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-700/50">
           {/* Eval countdown */}
           <div>
             <p className="text-[11px] text-slate-600 mb-1">
@@ -512,17 +509,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
           </div>
         )}
 
-        {/* Sparkline drawdown (Fase C) */}
-        {drawdownHistory && (
-          <div className="pt-2 border-t border-slate-700/50">
-            <DrawdownSparkline
-              history={drawdownHistory}
-              drawdownMax={drawdownMax}
-              accountSize={accountSize}
-              currency={currency}
-            />
-          </div>
-        )}
+        {/* Sparkline DD removida — sem escala/contexto, inútil como mini-dashboard (issue #145) */}
 
         {/* Alertas */}
         {alerts.length > 0 && (
@@ -532,14 +519,6 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
             ))}
           </div>
         )}
-
-        {/* AI Approach Plan (issue #133) */}
-        <PropAiApproachPlanSection
-          account={account}
-          template={template}
-          trader4DProfile={trader4DProfile}
-          traderIndicators={traderIndicators}
-        />
       </div>
 
       <DebugBadge component="PropAccountCard" embedded />
