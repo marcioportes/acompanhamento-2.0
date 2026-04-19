@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.1  
-> **Última atualização:** 18/04/2026 — Abertura hotfix #149 (phase ausente em CF AI), v1.34.1 reservada, lock CHUNK-17 bypass autorizado  
+> **Versão:** 0.22.0  
+> **Última atualização:** 17/04/2026 — INV-17 (Gate de Arquitetura de Informação) + INV-18 (Spec Review Gate) adicionadas  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -54,7 +54,6 @@ Este documento segue versionamento semântico:
 | 0.21.0 | 16/04/2026 | Abertura #146 fix Novo Plano v1.34.0 | Locks CHUNK-02/03 (bypass CHUNK-02 lock #145 — sessão solo autorizada), v1.34.0 reservada, mover criação de plano de DashboardHeader para AccountDetailPage |
 | 0.21.1 | 16/04/2026 | Encerramento #146 v1.34.0 | PR #147 mergeado, locks CHUNK-02/03 liberados (AVAILABLE), issue doc arquivada, worktree removido, CHANGELOG [1.34.0] |
 | 0.22.0 | 17/04/2026 | INV-17 + INV-18 — gates de arquitetura e spec review | INV-17 (Gate de Arquitetura de Informação — nível/domínio/duplicação/budget + mapa de slots fixos) e INV-18 (Spec Review Gate — validação de entendimento obrigatória antes de codificar, formato por tipo UI/CF/lógica/Firestore) adicionadas a CLAUDE.md e §3 Invariantes. §4.1 Gate Pré-Código ganhou itens de checklist para INV-17/INV-18. §5 checklist de impacto atualizado para "INV-01 a INV-18" |
-| 0.22.1 | 18/04/2026 | Abertura hotfix #149 | v1.34.1 reservada, lock CHUNK-17 bypass #145 autorizado (3 linhas, escopo isolado functions/propFirm/generatePropFirmApproachPlan.js). Fix: `phase` ausente em desestruturação/propagação → fallback determinístico silencioso em produção |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -686,7 +685,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 |-------|-------|--------|------|--------|
 | CHUNK-02 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — extrair componentes prop do Dashboard |
 | CHUNK-17 | #145 | arch/issue-145-prop-firm-page | 15/04/2026 | Página dedicada Mesa Prop — PropFirmPage, adaptador contexto |
-| CHUNK-17 | #149 | fix/issue-149-phase-missing-cf-ai | 18/04/2026 | Hotfix — phase ausente em generatePropFirmApproachPlan (bypass #145 autorizado, escopo isolado 3 linhas em functions/propFirm/generatePropFirmApproachPlan.js) |
 | CHUNK-16 | #102 | feat/issue-102-revisao-semanal | 15/04/2026 | Revisão Semanal — Fases A-D (PlanLedgerExtract + reviews + SWOT IA + integração mentor/aluno) |
 
 ### 6.4 Checklist de Check-Out
