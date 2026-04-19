@@ -9,7 +9,7 @@
  */
 
 const TOP_BOTTOM_FIELDS = [
-  'symbol', 'side', 'pnl', 'entryTime', 'closeTime',
+  'symbol', 'side', 'pnl', 'qty', 'entryTime', 'closeTime',
   'setup', 'emotionEntry', 'emotionExit', 'stopLoss',
 ];
 
@@ -63,10 +63,26 @@ const projectTrade = (trade) => {
   const out = { tradeId: trade.id };
   for (const k of TOP_BOTTOM_FIELDS) {
     if (k === 'pnl') out.pnl = Number(trade.result) || 0;
+    else if (k === 'qty') out.qty = Number(trade.qty) || 0;
     else if (k === 'closeTime') out.closeTime = trade.exitTime || null;
     else out[k] = trade[k] ?? null;
   }
   return out;
+};
+
+/**
+ * Projeção inline de TODOS os trades do período para frozenSnapshot.periodTrades.
+ * Usado na nova tela de Revisão Semanal (Subitem 1 — lista vertical).
+ */
+export const pickPeriodTrades = (trades) => {
+  if (!Array.isArray(trades) || trades.length === 0) return [];
+  return [...trades]
+    .sort((a, b) => {
+      const ta = new Date(a.entryTime || a.date).getTime();
+      const tb = new Date(b.entryTime || b.date).getTime();
+      return ta - tb;
+    })
+    .map(projectTrade);
 };
 
 /**

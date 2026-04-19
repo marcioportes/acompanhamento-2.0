@@ -19,10 +19,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  doc, onSnapshot, collection, query, where, onSnapshot as listen,
+  doc, onSnapshot, collection, query, where, orderBy, limit,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ChevronLeft, Loader2, FileText } from 'lucide-react';
+import { ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 
 const statusBadge = (status) => {
@@ -32,6 +32,146 @@ const statusBadge = (status) => {
     case 'ARCHIVED': return { label: 'arquivada', cls: 'bg-slate-500/15 text-slate-400' };
     default: return { label: status || '—', cls: 'bg-slate-500/15 text-slate-400' };
   }
+};
+
+// ===== Formatadores =====
+const fmtMoney = (v, currency = 'USD') => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, minimumFractionDigits: 2 }).format(n);
+};
+const fmtPct = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toFixed(1)}%`;
+};
+const fmtNum = (v, digits = 2) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return n.toFixed(digits);
+};
+const fmtTime = (iso) => {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+  catch { return ''; }
+};
+
+// ===== Delta KPI (current vs previous) =====
+const deltaText = (curr, prev, fmt = (v) => String(v), invertColors = false) => {
+  const c = Number(curr), p = Number(prev);
+  if (!Number.isFinite(p)) return null;
+  const d = c - p;
+  if (d === 0) return { text: '=', cls: 'text-slate-500' };
+  const up = d > 0;
+  const good = invertColors ? !up : up;
+  const sign = up ? '+' : '';
+  return {
+    text: `${sign}${fmt(d)}`,
+    cls: good ? 'text-emerald-400' : 'text-red-400',
+  };
+};
+
+// ===== Subitem 1: Trades do período =====
+const TradesSection = ({ trades, currency = 'USD' }) => {
+  if (!trades || trades.length === 0) {
+    return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
+      Sem trades no período.
+    </div>;
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {trades.map((t, i) => {
+        const isBuy = t.side === 'LONG' || t.side === 'BUY' || t.side === 'C';
+        const isWin = Number(t.pnl) > 0;
+        return (
+          <div key={t.tradeId || i} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
+            <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
+            <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+              {isBuy ? 'C' : 'V'}
+            </span>
+            <span className="text-slate-400 text-[12px]">
+              {t.qty || 0} {(t.qty || 0) === 1 ? 'ctr' : 'ctrs'} · {fmtTime(t.entryTime)}
+            </span>
+            <span className={`ml-auto font-medium ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+              {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
+            </span>
+            <span className="text-[12px] text-slate-500 min-w-[60px] text-right truncate" title={t.emotionEntry || ''}>
+              {t.emotionEntry || '—'}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ===== Subitem 2: Snapshot KPIs =====
+const KpiCard = ({ label, value, delta, prev }) => (
+  <div className="bg-white/5 rounded-lg px-3 py-2.5">
+    <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{label}</div>
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-lg font-medium text-white">{value}</span>
+      {delta && <span className={`text-[11px] font-medium ${delta.cls}`}>{delta.text}</span>}
+    </div>
+    {prev && <div className="text-[11px] text-slate-500 mt-0.5">{prev}</div>}
+  </div>
+);
+
+const SnapshotKpisSection = ({ kpis, prevKpis, currency = 'USD' }) => {
+  if (!kpis) return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">Snapshot indisponível.</div>;
+  const prev = prevKpis || {};
+  const c = kpis;
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+      <KpiCard
+        label="Win rate"
+        value={fmtPct(c.wr)}
+        delta={deltaText(c.wr, prev.wr, (d) => `${d.toFixed(1)}%`)}
+        prev={Number.isFinite(Number(prev.wr)) ? `anterior: ${fmtPct(prev.wr)}` : null}
+      />
+      <KpiCard
+        label="Payoff"
+        value={fmtNum(c.payoff, 2)}
+        delta={deltaText(c.payoff, prev.payoff, (d) => d.toFixed(2))}
+        prev={Number.isFinite(Number(prev.payoff)) ? `anterior: ${fmtNum(prev.payoff, 2)}` : null}
+      />
+      <KpiCard
+        label="Profit factor"
+        value={fmtNum(c.profitFactor, 2)}
+        delta={deltaText(c.profitFactor, prev.profitFactor, (d) => d.toFixed(2))}
+        prev={Number.isFinite(Number(prev.profitFactor)) ? `anterior: ${fmtNum(prev.profitFactor, 2)}` : null}
+      />
+      <KpiCard
+        label="EV / trade"
+        value={fmtMoney(c.evPerTrade, currency)}
+        delta={deltaText(c.evPerTrade, prev.evPerTrade, (d) => fmtMoney(d, currency))}
+        prev={Number.isFinite(Number(prev.evPerTrade)) ? `anterior: ${fmtMoney(prev.evPerTrade, currency)}` : null}
+      />
+      <KpiCard
+        label="RR médio"
+        value={c.avgRR ? `1:${fmtNum(c.avgRR, 2)}` : '—'}
+        prev="target: 1:2.0"
+      />
+      <KpiCard
+        label="Compliance"
+        value={fmtPct(c.compliance?.overall)}
+        delta={deltaText(c.compliance?.overall, prev.compliance?.overall, (d) => `${d.toFixed(1)}%`)}
+        prev={Number.isFinite(Number(prev.compliance?.overall)) ? `anterior: ${fmtPct(prev.compliance.overall)}` : null}
+      />
+      <KpiCard
+        label="Coef. variação"
+        value={fmtNum(c.coefVariation, 2)}
+        delta={deltaText(c.coefVariation, prev.coefVariation, (d) => d.toFixed(2), true)}
+        prev={Number.isFinite(Number(prev.coefVariation)) ? `anterior: ${fmtNum(prev.coefVariation, 2)}` : null}
+      />
+      <KpiCard
+        label="Tempo médio"
+        value={c.avgHoldTimeMin ? `${c.avgHoldTimeMin} min` : '—'}
+        prev={c.avgHoldTimeWinMin || c.avgHoldTimeLossMin ? `win: ${c.avgHoldTimeWinMin || 0}m · loss: ${c.avgHoldTimeLossMin || 0}m` : null}
+      />
+    </div>
+  );
 };
 
 // ====== Placeholder Section (Stage 1 apenas) ======
@@ -107,6 +247,42 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
     return () => unsub();
   }, [planId]);
 
+  // Load account for currency (via plan.accountId)
+  const accountId = plan?.accountId;
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    if (!accountId) return undefined;
+    const unsub = onSnapshot(doc(db, 'accounts', accountId), (snap) => {
+      if (snap.exists()) setAccount({ id: snap.id, ...snap.data() });
+    });
+    return () => unsub();
+  }, [accountId]);
+  const currency = account?.currency || 'USD';
+
+  // Revisão anterior do MESMO PLANO (para Δ KPI).
+  // Busca todas as revisões do aluno e filtra por planId + weekStart<current em memória.
+  const [allStudentReviews, setAllStudentReviews] = useState([]);
+  useEffect(() => {
+    if (!studentId) return undefined;
+    const q = query(
+      collection(db, 'students', studentId, 'reviews'),
+      orderBy('weekStart', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setAllStudentReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [studentId]);
+
+  const previousReview = useMemo(() => {
+    if (!review || !planId) return null;
+    return allStudentReviews.find(r =>
+      r.id !== review.id &&
+      (r.planId === planId || r.frozenSnapshot?.planContext?.planId === planId) &&
+      r.weekStart < review.weekStart
+    ) || null;
+  }, [allStudentReviews, review, planId]);
+
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
 
@@ -162,13 +338,20 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
             </div>
 
             {/* Subitem 1: Trades do período */}
-            <Section num="1" title="Trades do período" stage="2">
-              <Placeholder label="Lista vertical de trades (ticker · side · qty · time · resultado · emoção) — Stage 2" />
+            <Section num="1" title="Trades do período">
+              <TradesSection
+                trades={review.frozenSnapshot?.periodTrades}
+                currency={currency}
+              />
             </Section>
 
             {/* Subitem 2: Snapshot KPIs */}
-            <Section num="2" title="Snapshot de indicadores (congelado)" stage="2">
-              <Placeholder label="Grid 4×2: WR · Payoff · Profit Factor · EV/trade · RR médio · Compliance · Coef. variação · Tempo médio — Stage 2" />
+            <Section num="2" title="Snapshot de indicadores (congelado)">
+              <SnapshotKpisSection
+                kpis={review.frozenSnapshot?.kpis}
+                prevKpis={previousReview?.frozenSnapshot?.kpis}
+                currency={currency}
+              />
             </Section>
 
             {/* Subitem 3: SWOT */}

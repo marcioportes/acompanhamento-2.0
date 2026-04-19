@@ -134,4 +134,83 @@ describe('buildClientSnapshot', () => {
     const snap = buildClientSnapshot({ plan: { id: 'p', pl: 0 }, trades });
     expect(snap.kpis.avgRR).toBe(0);
   });
+
+  // === KPIs novos do mockup Revisão Semanal (Stage 2) ===
+
+  it('payoff = avgWin / avgLoss', () => {
+    // wins: 200, 100 (avg=150) / losses: 50 (avg=50) → payoff 3.0
+    const trades = [
+      mkTrade({ id: 'w1', result: 200 }),
+      mkTrade({ id: 'w2', result: 100 }),
+      mkTrade({ id: 'l1', result: -50 }),
+    ];
+    const snap = buildClientSnapshot({ plan, trades });
+    expect(snap.kpis.payoff).toBe(3);
+  });
+
+  it('payoff = 0 quando não há wins ou não há losses', () => {
+    const onlyWins = [mkTrade({ id: 'w', result: 100 })];
+    const onlyLosses = [mkTrade({ id: 'l', result: -100 })];
+    expect(buildClientSnapshot({ plan, trades: onlyWins }).kpis.payoff).toBe(0);
+    expect(buildClientSnapshot({ plan, trades: onlyLosses }).kpis.payoff).toBe(0);
+  });
+
+  it('profitFactor = sum(wins) / |sum(losses)|', () => {
+    // sum wins = 300, sum losses = 100 → PF 3.0
+    const trades = [
+      mkTrade({ id: 'w1', result: 200 }),
+      mkTrade({ id: 'w2', result: 100 }),
+      mkTrade({ id: 'l1', result: -50 }),
+      mkTrade({ id: 'l2', result: -50 }),
+    ];
+    const snap = buildClientSnapshot({ plan, trades });
+    expect(snap.kpis.profitFactor).toBe(3);
+  });
+
+  it('evPerTrade = pl / trades.length', () => {
+    const trades = [
+      mkTrade({ id: '1', result: 100 }),
+      mkTrade({ id: '2', result: 200 }),
+      mkTrade({ id: '3', result: -50 }),
+      mkTrade({ id: '4', result: 50 }),
+    ]; // pl=300, 4 trades → ev=75
+    const snap = buildClientSnapshot({ plan, trades });
+    expect(snap.kpis.evPerTrade).toBe(75);
+  });
+
+  it('evPerTrade = 0 com zero trades', () => {
+    const snap = buildClientSnapshot({ plan, trades: [] });
+    expect(snap.kpis.evPerTrade).toBe(0);
+  });
+
+  it('coefVariation — resultados homogêneos têm CoV baixo; heterogêneos, alto', () => {
+    const homog = [100, 102, 98, 100, 100].map((r, i) => mkTrade({ id: `h${i}`, result: r }));
+    const heterog = [200, -150, 500, -300, 100].map((r, i) => mkTrade({ id: `x${i}`, result: r }));
+    const snapHomog = buildClientSnapshot({ plan, trades: homog });
+    const snapHeterog = buildClientSnapshot({ plan, trades: heterog });
+    expect(snapHomog.kpis.coefVariation).toBeLessThan(snapHeterog.kpis.coefVariation);
+  });
+
+  it('avgHoldTime — overall + win/loss breakdown', () => {
+    const trades = [
+      mkTrade({ id: 'w', result: 100, entryTime: '2026-04-13T10:00:00', exitTime: '2026-04-13T10:20:00' }), // 20min win
+      mkTrade({ id: 'l', result: -50, entryTime: '2026-04-13T11:00:00', exitTime: '2026-04-13T11:05:00' }),  // 5min loss
+      mkTrade({ id: 'w2', result: 30, entryTime: '2026-04-13T12:00:00', exitTime: '2026-04-13T12:16:00' }), // 16min win
+    ];
+    const snap = buildClientSnapshot({ plan, trades });
+    expect(snap.kpis.avgHoldTimeWinMin).toBe(18);  // (20+16)/2
+    expect(snap.kpis.avgHoldTimeLossMin).toBe(5);
+    expect(snap.kpis.avgHoldTimeMin).toBe(14);     // (20+5+16)/3 ≈ 13.67 → 14
+  });
+
+  it('periodTrades — inclui todos os trades inline com qty, pnl, emoções', () => {
+    const trades = [
+      mkTrade({ id: 't1', result: 100, qty: 2 }),
+      mkTrade({ id: 't2', result: -50, qty: 1 }),
+    ];
+    const snap = buildClientSnapshot({ plan, trades });
+    expect(snap.periodTrades).toHaveLength(2);
+    expect(snap.periodTrades[0]).toMatchObject({ tradeId: 't1', pnl: 100, qty: 2 });
+    expect(snap.periodTrades[1]).toMatchObject({ tradeId: 't2', pnl: -50, qty: 1 });
+  });
 });

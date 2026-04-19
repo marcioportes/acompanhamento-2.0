@@ -10,7 +10,7 @@
  */
 
 import { calculateTradeCompliance } from './compliance';
-import { buildWeeklyReviewSnapshot } from './weeklyReviewSnapshot';
+import { buildWeeklyReviewSnapshot, pickPeriodTrades } from './weeklyReviewSnapshot';
 
 const round1 = (n) => Math.round(Number(n) * 10) / 10;
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -35,6 +35,77 @@ const sortByExit = (trades) =>
     const tb = new Date(b.exitTime || b.entryTime || b.date).getTime();
     return ta - tb;
   });
+
+// === KPIs adicionais exigidos pelo mockup-revisao-semanal-102.html (Subitem 2) ===
+
+// Payoff = |média dos wins| / |média dos losses|. Retorna 0 se não houver losses.
+const computePayoff = (trades) => {
+  const wins = trades.filter(t => Number(t.result) > 0).map(t => Number(t.result));
+  const losses = trades.filter(t => Number(t.result) < 0).map(t => Math.abs(Number(t.result)));
+  if (wins.length === 0 || losses.length === 0) return 0;
+  const avgWin = wins.reduce((a, b) => a + b, 0) / wins.length;
+  const avgLoss = losses.reduce((a, b) => a + b, 0) / losses.length;
+  if (avgLoss === 0) return 0;
+  return round2(avgWin / avgLoss);
+};
+
+// Profit Factor = Σ wins / |Σ losses|.
+const computeProfitFactor = (trades) => {
+  let sumWins = 0, sumLosses = 0;
+  for (const t of trades) {
+    const r = Number(t.result) || 0;
+    if (r > 0) sumWins += r;
+    else if (r < 0) sumLosses += Math.abs(r);
+  }
+  if (sumLosses === 0) return 0;
+  return round2(sumWins / sumLosses);
+};
+
+// EV por trade = P&L total / número de trades.
+const computeEvPerTrade = (trades, totalPL) => {
+  if (!trades?.length) return 0;
+  return round2(totalPL / trades.length);
+};
+
+// Coeficiente de variação = desvio-padrão / |média dos results|.
+// Métrica de consistência — menor é melhor (retornos menos voláteis).
+const computeCoefVariation = (trades) => {
+  const results = trades.map(t => Number(t.result) || 0);
+  if (results.length < 2) return 0;
+  const mean = results.reduce((a, b) => a + b, 0) / results.length;
+  const variance = results.reduce((acc, r) => acc + Math.pow(r - mean, 2), 0) / results.length;
+  const stdev = Math.sqrt(variance);
+  const absMean = Math.abs(mean);
+  if (absMean === 0) return 0;
+  return round2(stdev / absMean);
+};
+
+// Tempo médio de cada trade (minutos) — geral + win/loss breakdown.
+const computeHoldTimes = (trades) => {
+  const minutesOf = (t) => {
+    if (!t.entryTime || !t.exitTime) return null;
+    const entry = new Date(t.entryTime).getTime();
+    const exit = new Date(t.exitTime).getTime();
+    if (!Number.isFinite(entry) || !Number.isFinite(exit)) return null;
+    const min = (exit - entry) / 60000;
+    return min >= 0 ? min : null;
+  };
+  const all = [], wins = [], losses = [];
+  for (const t of trades) {
+    const m = minutesOf(t);
+    if (m == null) continue;
+    all.push(m);
+    const r = Number(t.result) || 0;
+    if (r > 0) wins.push(m);
+    else if (r < 0) losses.push(m);
+  }
+  const avg = (arr) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
+  return {
+    avgHoldTimeMin: avg(all),
+    avgHoldTimeWinMin: avg(wins),
+    avgHoldTimeLossMin: avg(losses),
+  };
+};
 
 const computeComplianceAggregate = (trades, plan) => {
   let total = 0, stopOk = 0, rrEvalTotal = 0, rrOk = 0, roEvalTotal = 0, roOk = 0;
@@ -122,6 +193,12 @@ export const buildClientSnapshot = ({
   const maxDD = computeMaxDrawdown(sorted);
   const compliance = computeComplianceAggregate(safeTrades, plan);
   const emotional = projectEmotionalMetrics(emotionalMetrics);
+  // Novos KPIs para mockup-revisao-semanal-102.html (Subitem 2)
+  const payoff = computePayoff(safeTrades);
+  const profitFactor = computeProfitFactor(safeTrades);
+  const evPerTrade = computeEvPerTrade(safeTrades, pl);
+  const coefVariation = computeCoefVariation(safeTrades);
+  const holdTimes = computeHoldTimes(safeTrades);
 
   const kpis = {
     pl: round2(pl),
@@ -129,9 +206,18 @@ export const buildClientSnapshot = ({
     wr,
     avgRR,
     maxDD,
+    payoff,
+    profitFactor,
+    evPerTrade,
+    coefVariation,
+    avgHoldTimeMin: holdTimes.avgHoldTimeMin,
+    avgHoldTimeWinMin: holdTimes.avgHoldTimeWinMin,
+    avgHoldTimeLossMin: holdTimes.avgHoldTimeLossMin,
     compliance,
     emotional,
   };
 
-  return buildWeeklyReviewSnapshot({ plan, trades: safeTrades, kpis, cycleKey });
+  const baseSnapshot = buildWeeklyReviewSnapshot({ plan, trades: safeTrades, kpis, cycleKey });
+  // periodTrades: todos os trades do período inline, para o Subitem 1 da nova tela.
+  return { ...baseSnapshot, periodTrades: pickPeriodTrades(safeTrades) };
 };
