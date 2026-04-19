@@ -10,7 +10,7 @@
 
 import {
   Trophy, Skull, Check, TrendingUp, TrendingDown,
-  AlertTriangle, Activity, Brain, Target, ShieldAlert
+  AlertTriangle, Activity, Brain, Target, ShieldAlert, BarChart3
 } from 'lucide-react';
 import { classifyPeriodBadge, PERIOD_STATES } from '../../utils/planStateMachine';
 
@@ -50,7 +50,7 @@ const COLOR_MAP = {
  * @param {Function} fmt - Formatador de moeda
  * @param {Object|null} planRiskInfo - { riskPerOperation, rrTarget } do plano (B4)
  */
-const ExtractSummary = ({ periodState, cycleSummary, isCycleView, startPL, emotionalData, cycleStatus, fmt, planRiskInfo }) => {
+const ExtractSummary = ({ periodState, cycleSummary, isCycleView, startPL, emotionalData, cycleStatus, fmt, planRiskInfo, summaryMetrics = null }) => {
   const summary = periodState?.summary;
   if (!summary && !cycleSummary) return null;
 
@@ -161,6 +161,30 @@ const ExtractSummary = ({ periodState, cycleSummary, isCycleView, startPL, emoti
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* R3 #102: Resumo do recorte (qty trades, WR) */}
+      {summaryMetrics && summaryMetrics.tradesCount > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center gap-6 text-xs">
+          <div className="flex items-center gap-1.5">
+            <BarChart3 className="w-3 h-3 text-slate-400" />
+            <span className="text-slate-500">Trades:</span>
+            <span className="font-mono font-bold text-white">{summaryMetrics.tradesCount}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-500">WR:</span>
+            <span className={`font-mono font-bold ${
+              summaryMetrics.winRate >= 50 ? 'text-emerald-400'
+              : summaryMetrics.winRate >= 40 ? 'text-amber-400'
+              : 'text-red-400'
+            }`}>
+              {summaryMetrics.winRate.toFixed(1)}%
+            </span>
+            <span className="text-slate-600 font-mono text-[10px]">
+              ({summaryMetrics.winCount}/{summaryMetrics.tradesCount})
+            </span>
+          </div>
         </div>
       )}
 

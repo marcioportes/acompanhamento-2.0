@@ -30,11 +30,13 @@ import SubscriptionsPage from './pages/SubscriptionsPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
+import PlanLedgerExtract from './components/PlanLedgerExtract';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
+import { useAccounts } from './hooks/useAccounts';
+import { getPlanCurrency } from './utils/currency';
 import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
 import { useAssessment } from './hooks/useAssessment';
-import { useAccounts } from './hooks/useAccounts';
 import BaselineReport from './components/Onboarding/BaselineReport';
 
 // Banner de "Visualizando como Aluno"
@@ -78,6 +80,9 @@ const AppContent = () => {
   const [feedbackTrade, setFeedbackTrade] = useState(null);
   // Contexto de retorno: planId do extrato que estava aberto (só quando veio do extrato)
   const [feedbackReturnPlanId, setFeedbackReturnPlanId] = useState(null);
+
+  // Estado do Extrato do Plano como view (Fase 0 #102 — modal → currentView)
+  const [ledgerPlanId, setLedgerPlanId] = useState(null);
   
   // Hooks
   const { 
@@ -92,6 +97,7 @@ const AppContent = () => {
     uploadFeedbackImage
   } = useTrades();
   const { plans } = usePlans();
+  const { accounts } = useAccounts();
 
   // Assessment Guard (CHUNK-09) — intercepta no nível do App para evitar loop no StudentDashboard
   // Mentor visualizando aluno: usa uid do aluno. Aluno logado: usa próprio uid. Mentor no dashboard: null (desativa).
@@ -160,12 +166,21 @@ const AppContent = () => {
     if (viewingAsStudent && view !== 'students') {
       setViewingAsStudent(null);
     }
-    
+
     // Sair do FeedbackPage se estava nele
     if (feedbackTrade) {
       setFeedbackTrade(null);
     }
-    
+
+    // Limpar extrato se navegando para outra view (Fase 0 #102)
+    if (view !== 'ledger') {
+      setLedgerPlanId(null);
+    } else if (!ledgerPlanId) {
+      // Clicou na sidebar sem plano pré-selecionado — escolhe o primeiro ativo
+      const firstActive = plans.find(p => p.active !== false) || plans[0];
+      if (firstActive) setLedgerPlanId(firstActive.id);
+    }
+
     if (view === 'add-trade') {
       setShowAddTradeModal(true);
     } else {
@@ -185,9 +200,15 @@ const AppContent = () => {
     setCurrentView('students');
   };
 
+  // Handler para abrir extrato do plano como view (Fase 0 #102)
+  const handleOpenLedger = (planId) => {
+    setLedgerPlanId(planId);
+    setCurrentView('ledger');
+  };
+
   // Handler para navegar para FeedbackPage com um trade específico
   const handleNavigateToFeedback = (trade) => {
-    // Só guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
+    // Guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
     setFeedbackReturnPlanId(trade._fromLedgerPlanId || null);
     setFeedbackTrade(trade);
   };
@@ -195,7 +216,12 @@ const AppContent = () => {
   // Handler para voltar do FeedbackPage
   const handleBackFromFeedback = () => {
     setFeedbackTrade(null);
-    // feedbackReturnPlanId permanece para StudentDashboard consumir
+    // Se veio do extrato, volta para o extrato (não para o dashboard)
+    if (feedbackReturnPlanId) {
+      setLedgerPlanId(feedbackReturnPlanId);
+      setCurrentView('ledger');
+      setFeedbackReturnPlanId(null);
+    }
   };
 
   // Handler para adicionar comentário no FeedbackPage
@@ -258,7 +284,7 @@ const AppContent = () => {
     
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
-      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
+      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
     }
     
     // Páginas específicas
@@ -286,7 +312,7 @@ const AppContent = () => {
     } else {
       // Aluno
       switch (currentView) {
-        case 'journal': 
+        case 'journal':
           return <TradesJournal onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'feedback':
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
@@ -303,9 +329,31 @@ const AppContent = () => {
           );
         case 'propfirm':
           return <PropFirmPage />;
+        case 'ledger': {
+          // Extrato do Plano como view (Fase 0 #102 — modal → currentView)
+          const ledgerPlan = ledgerPlanId ? plans.find(p => p.id === ledgerPlanId) : null;
+          if (!ledgerPlan) {
+            // Sem plano selecionado — volta ao dashboard
+            setCurrentView('dashboard');
+            setLedgerPlanId(null);
+            return null;
+          }
+          const ledgerTrades = trades.filter(t => t.planId === ledgerPlanId);
+          const ledgerCurrency = getPlanCurrency(ledgerPlan, accounts);
+          return (
+            <PlanLedgerExtract
+              plan={ledgerPlan}
+              trades={ledgerTrades}
+              onClose={() => { setCurrentView('dashboard'); setLedgerPlanId(null); }}
+              currency={ledgerCurrency}
+              onNavigateToFeedback={(trade) => handleNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id })}
+              embedded
+            />
+          );
+        }
         case 'dashboard':
         default:
-          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
+          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
       }
     }
   };
@@ -335,6 +383,7 @@ const AppContent = () => {
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
         hasPropAccount={hasPropAccount}
+        hasPlans={plans.length > 0}
       />
 
       {/* Conteúdo principal */}

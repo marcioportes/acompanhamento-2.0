@@ -76,17 +76,17 @@ const ExtractPeriodSelector = ({
           </button>
 
           {availableCycles.length <= 6 ? (
-            <span className="text-xs font-bold text-white px-2 py-1 bg-slate-800/80 rounded-lg border border-slate-700/50 min-w-[80px] text-center">
+            <span className="text-xs font-bold text-white px-2 py-1 bg-slate-900 rounded-lg border border-slate-700 min-w-[80px] text-center">
               {currentCycleLabel}
             </span>
           ) : (
             <select
               value={selectedCycleKey || ''}
               onChange={(e) => onSelectCycle?.(e.target.value)}
-              className="text-xs font-bold text-white bg-slate-800/80 rounded-lg border border-slate-700/50 px-2 py-1 min-w-[80px] text-center appearance-none cursor-pointer hover:border-slate-600 focus:border-blue-500 focus:outline-none"
+              className="text-xs font-bold text-white bg-slate-900 rounded-lg border border-slate-700 px-2 py-1 min-w-[80px] text-center appearance-none cursor-pointer hover:border-slate-600 focus:border-blue-500 focus:outline-none"
             >
               {availableCycles.map(c => (
-                <option key={c.key} value={c.key}>{c.label} ({c.tradesCount})</option>
+                <option key={c.key} value={c.key} className="bg-slate-900">{c.label} ({c.tradesCount})</option>
               ))}
             </select>
           )}
@@ -111,15 +111,15 @@ const ExtractPeriodSelector = ({
         onClick={() => onSelectPeriod(null)}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${
           isCycleView
-            ? 'bg-purple-500/20 text-purple-400 border-purple-500/40'
-            : 'bg-slate-800/50 text-slate-500 border-slate-700/50 hover:text-slate-300 hover:border-slate-600'
+            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+            : 'bg-slate-900 text-slate-300 border-slate-700 hover:text-white hover:border-slate-600'
         }`}
       >
         <RefreshCw className="w-3 h-3" />
         Ciclo
       </button>
 
-      <span className="text-slate-700">|</span>
+      <span className="text-slate-600">|</span>
 
       {/* Períodos: botões (≤7) ou dropdown (>7) */}
       {useDropdown ? (
@@ -128,15 +128,15 @@ const ExtractPeriodSelector = ({
           <select
             value={selectedPeriod || ''}
             onChange={(e) => onSelectPeriod(e.target.value || null)}
-            className={`text-xs font-mono bg-slate-800/50 rounded-lg border px-2.5 py-1.5 appearance-none cursor-pointer focus:outline-none transition-all ${
+            className={`text-xs font-mono bg-slate-900 rounded-lg border px-2.5 py-1.5 appearance-none cursor-pointer focus:outline-none transition-all ${
               selectedPeriod
-                ? 'text-blue-400 border-blue-500/40 font-bold'
-                : 'text-slate-500 border-slate-700/50 hover:border-slate-600'
+                ? 'text-blue-300 border-blue-500/40 font-bold'
+                : 'text-white border-slate-700 hover:border-slate-600'
             }`}
           >
-            <option value="">Selecionar período...</option>
+            <option value="" className="bg-slate-900">Selecionar período...</option>
             {availablePeriods.map(periodKey => (
-              <option key={periodKey} value={periodKey}>
+              <option key={periodKey} value={periodKey} className="bg-slate-900">
                 {fmtPeriodLabel(periodKey, operationPeriod)}
                 {periodKey === currentPeriodKey ? ' (atual)' : ''}
               </option>
@@ -155,10 +155,10 @@ const ExtractPeriodSelector = ({
                 onClick={() => onSelectPeriod(periodKey)}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-mono border transition-all ${
                   isSelected
-                    ? 'bg-blue-500/20 text-blue-400 border-blue-500/40 font-bold'
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 font-bold'
                     : isCurrent
-                      ? 'bg-slate-800/50 text-slate-300 border-slate-600 hover:border-blue-500/40'
-                      : 'bg-slate-800/30 text-slate-500 border-slate-700/30 hover:text-slate-300 hover:border-slate-600'
+                      ? 'bg-slate-900 text-white border-slate-600 hover:border-blue-500/40'
+                      : 'bg-slate-900 text-slate-300 border-slate-700 hover:text-white hover:border-slate-600'
                 }`}
               >
                 <Calendar className="w-3 h-3" />

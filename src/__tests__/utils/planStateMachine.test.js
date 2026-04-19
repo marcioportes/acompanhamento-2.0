@@ -520,9 +520,9 @@ describe('getAvailableCycles', () => {
     ];
     const cycles = getAvailableCycles(trades, 'Trimestral');
     expect(cycles).toHaveLength(2);
-    expect(cycles[0].label).toBe('Q1/2026');
+    expect(cycles[0].label).toBe('1T/2026');
     expect(cycles[0].tradesCount).toBe(2);
-    expect(cycles[1].label).toBe('Q2/2026');
+    expect(cycles[1].label).toBe('2T/2026');
     expect(cycles[1].tradesCount).toBe(1);
   });
 

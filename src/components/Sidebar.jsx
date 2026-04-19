@@ -26,7 +26,8 @@ import {
   Settings,
   Brain,
   CreditCard,
-  Shield
+  Shield,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -42,6 +43,7 @@ const Sidebar = ({
   unreviewedFeedback = 0,
   hasBaseline = false,
   hasPropAccount = false,
+  hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -56,6 +58,8 @@ const Sidebar = ({
       badgeColor: 'green'
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
+    // Extrato do Plano — só aparece se aluno tem planos (ou mentor em viewAs)
+    ...(hasPlans ? [{ id: 'ledger', label: 'Extrato do Plano', icon: FileText }] : []),
     { id: 'accounts', label: 'Contas', icon: Wallet },
     // Mesa Prop — só aparece se aluno tem conta type PROP
     ...(hasPropAccount ? [{ id: 'propfirm', label: 'Mesa Prop', icon: Shield }] : []),

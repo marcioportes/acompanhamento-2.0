@@ -38,7 +38,6 @@ import SwotAnalysis from '../components/SwotAnalysis';
 import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
 import PlanAuditModal from '../components/dashboard/PlanAuditModal';
-import PlanLedgerExtract from '../components/PlanLedgerExtract';
 import DebugBadge from '../components/DebugBadge';
 
 // CSV Import v2 (staging)
@@ -77,15 +76,14 @@ import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
  * @param {Function} onNavigateToFeedback - Callback para navegar para a tela de feedback
- * @param {string|null} returnToPlanId - PlanId do extrato a reabrir ao voltar do feedback (só quando veio do extrato)
- * @param {Function} onReturnConsumed - Callback para limpar o returnToPlanId após consumir
+ * @param {Function} onOpenLedger - Callback que troca a view para 'ledger' com planId selecionado (Fase 0 #102)
  */
 /**
  * StudentDashboardBody — corpo original do dashboard.
  * Envolvido pelo wrapper StudentDashboard que instancia o StudentContextProvider (issue #118).
  * Consome useStudentContext() para conta/plano/ciclo/período globais.
  */
-const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPlanId = null, onReturnConsumed }) => {
+const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
 
@@ -124,7 +122,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
   const [editingPlan, setEditingPlan] = useState(null);
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [extractPlan, setExtractPlan] = useState(null);
-  const [ledgerPlan, setLedgerPlan] = useState(null);
   const [auditPlanId, setAuditPlanId] = useState(null);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -151,15 +148,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
     }
   }, [studentCtx.planId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Prop firm drawdown history + movements — usa filters.accountId (que reflete contexto)
-  // Reabrir extrato ao voltar do feedback (só quando veio do extrato — _fromLedgerPlanId)
-  useEffect(() => {
-    if (returnToPlanId && !plansLoading && plans.length > 0) {
-      const plan = plans.find(p => p.id === returnToPlanId);
-      if (plan) setLedgerPlan(plan);
-      onReturnConsumed?.();
-    }
-  }, [returnToPlanId, plansLoading, plans]);
+  // Reabrir extrato ao voltar do feedback — delegado para App.jsx via handleBackFromFeedback (Fase 0 #102)
+  // returnToPlanId consumido diretamente no App.jsx → setLedgerPlanId + currentView='ledger'
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
@@ -373,7 +363,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
         selectedPlanId={selectedPlanId}
         viewAs={viewAs}
         onSelectPlan={(id) => studentCtx.setPlan(id)}
-        onOpenLedger={setLedgerPlan}
+        onOpenLedger={(plan) => onOpenLedger?.(plan?.id)}
         onEditPlan={(plan) => { setEditingPlan(plan); setShowPlanModal(true); }}
         onDeletePlan={handleDeletePlan}
         onAuditPlan={handleAuditPlan}
@@ -478,7 +468,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, returnToPla
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} onViewFeedbackHistory={handleViewFeedbackHistory} getPartials={getPartials} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
-      {ledgerPlan && (<PlanLedgerExtract plan={ledgerPlan} trades={trades.filter(t => t.planId === ledgerPlan.id)} onClose={() => setLedgerPlan(null)} currency={getPlanCurrency(ledgerPlan, accounts)} onNavigateToFeedback={onNavigateToFeedback ? (trade) => onNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id }) : null} />)}
+      {/* PlanLedgerExtract: ledger agora é currentView no App.jsx (#102 Fase 0), não modal aqui */}
 
       {/* Auditoria de Plano */}
       {auditPlanId && (() => {

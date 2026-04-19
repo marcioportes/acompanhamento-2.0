@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
+import { matchEmotionalEventsToTrade } from '../../utils/extractInlineEvents';
 import TradeStatusBadges from '../TradeStatusBadges';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
@@ -68,29 +69,16 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
     events.push({ icon: Skull, color: 'text-orange-400', label: 'STOP!', sublabel: 'Ciclo' });
   }
 
-  // 2. Emotional events (TILT, REVENGE matched by tradeId or proximity)
-  if (emotionalEvents) {
-    const tradeEmotionalEvents = emotionalEvents.filter(e => {
-      if (e.tradeId && e.tradeId === trade.id) return true;
-      if (e.date === trade.date) return true;
-      return false;
-    });
-    for (const ee of tradeEmotionalEvents) {
-      if (ee.type === 'TILT_DETECTED' || ee.type === 'TILT') {
-        if (!events.some(ev => ev.label === 'TILT')) {
-          events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
-        }
-      }
-      if (ee.type === 'REVENGE_DETECTED' || ee.type === 'REVENGE') {
-        if (!events.some(ev => ev.label === 'REVENGE')) {
-          events.push({ icon: Zap, color: 'text-red-400', label: 'REVENGE', small: true });
-        }
-      }
-      if (ee.type === 'STATUS_CRITICAL') {
-        if (!events.some(ev => ev.label === 'CRÍTICO')) {
-          events.push({ icon: AlertTriangle, color: 'text-red-500', label: 'CRÍTICO', small: true });
-        }
-      }
+  // 2. Emotional events — match estrito por tradeId para TILT/REVENGE;
+  //    STATUS_CRITICAL preserva match por data (evento day-level).
+  const matchedTypes = matchEmotionalEventsToTrade(trade, emotionalEvents);
+  for (const type of matchedTypes) {
+    if (type === 'TILT_DETECTED' || type === 'TILT') {
+      events.push({ icon: Flame, color: 'text-orange-400', label: 'TILT', small: true });
+    } else if (type === 'REVENGE_DETECTED' || type === 'REVENGE') {
+      events.push({ icon: Zap, color: 'text-red-400', label: 'REVENGE', small: true });
+    } else if (type === 'STATUS_CRITICAL') {
+      events.push({ icon: AlertTriangle, color: 'text-red-500', label: 'CRÍTICO', small: true });
     }
   }
 
@@ -123,8 +111,8 @@ const getFeedbackStatusConfig = (status) => {
  */
 const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [], planRiskInfo = null, onNavigateToFeedback = null }) => {
   const displayRows = rows;
-  // Colunas fixas: #, Data, Ativo, Emo, RO, RR, Resultado, Acumulado, Evento, Status = 10
-  const totalCols = 10;
+  // Colunas fixas: #, Data, Ativo, Emo, RO, RR, Resultado, Acum. Ciclo, Acum. Período, Evento, Status = 11
+  const totalCols = 11;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -138,7 +126,8 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             <th className="px-2 py-2 text-right">RO</th>
             <th className="px-2 py-2 text-right">RR</th>
             <th className="px-2 py-2 text-right">Resultado</th>
-            <th className="px-2 py-2 text-right bg-slate-800/50">Acum.</th>
+            <th className="px-2 py-2 text-right bg-slate-800/40" title="Acumulado do período (reseta a cada período)">Acum. Período</th>
+            <th className="px-2 py-2 text-right bg-slate-800/50" title="Acumulado do ciclo (carry + running total)">Acum. Ciclo</th>
             <th className="px-2 py-2 text-center">Evento</th>
             <th className="px-2 py-2 text-center w-20">Status</th>
           </tr>
@@ -148,10 +137,13 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
           {carryOver !== 0 && displayRows.length > 0 && (
             <tr className="bg-slate-800/20 border-b-2 border-slate-700 border-dashed">
               <td className="px-2 py-2 text-center text-slate-600 font-mono text-xs">—</td>
-              <td colSpan={totalCols - 2} className="px-2 py-2 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
-              <td className={`px-2 py-2 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
+              <td colSpan={totalCols - 5} className="px-2 py-2 text-slate-500 italic text-xs">Saldo anterior (períodos anteriores)</td>
+              <td className="px-2 py-2 text-right text-slate-600 font-mono text-xs bg-slate-800/20 border-l border-slate-800">—</td>
+              <td className={`px-2 py-2 text-right font-mono font-bold text-xs bg-slate-800/30 ${carryOver >= 0 ? 'text-emerald-400/60' : 'text-red-400/60'}`}>
                 {fmt(carryOver)}
               </td>
+              <td className="px-2 py-2"></td>
+              <td className="px-2 py-2"></td>
             </tr>
           )}
           {displayRows.map((row) => {
@@ -269,8 +261,15 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   {row.result > 0 ? '+' : ''}{fmt(row.result)}
                 </td>
 
-                {/* Acumulado */}
-                <td className={`px-2 py-1.5 text-right font-mono font-bold text-xs bg-slate-800/30 border-l border-slate-800 ${
+                {/* Acumulado Período (reseta por período — para detectar meta do período) */}
+                <td className={`px-2 py-1.5 text-right font-mono font-bold text-xs bg-slate-800/20 border-l border-slate-800 ${
+                  (row.periodCumPnL ?? 0) >= 0 ? 'text-emerald-300' : 'text-red-300'
+                }`}>
+                  {fmt(row.periodCumPnL ?? 0)}
+                </td>
+
+                {/* Acumulado Ciclo (carry + running) */}
+                <td className={`px-2 py-1.5 text-right font-mono font-bold text-xs bg-slate-800/30 ${
                   row.cumPnL >= 0 ? 'text-emerald-300' : 'text-red-300'
                 }`}>
                   {fmt(row.cumPnL)}

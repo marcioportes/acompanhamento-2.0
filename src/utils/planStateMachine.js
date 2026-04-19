@@ -54,7 +54,8 @@ const getQuarterEnd = (year, month) => {
 
 /**
  * Retorna o último dia do ciclo que contém a data fornecida.
- * @param {string} adjustmentCycle - 'Mensal' | 'Trimestral'
+ * @param {string} adjustmentCycle - 'Mensal' | 'Trimestral' | 'Semestral' | 'Anual'
+ *   (legacy: 'Semanal' é alias para 'Semestral' — rótulo original escrito errado)
  * @param {Date} date
  * @returns {Date}
  */
@@ -64,6 +65,11 @@ export const getCycleEndDate = (adjustmentCycle, date) => {
   switch (adjustmentCycle) {
     case 'Trimestral':
       return getQuarterEnd(y, m);
+    case 'Semestral':
+    case 'Semanal': // legacy alias
+      return getMonthEnd(y, m < 6 ? 5 : 11);
+    case 'Anual':
+      return getMonthEnd(y, 11);
     case 'Mensal':
     default:
       return getMonthEnd(y, m);
@@ -72,7 +78,8 @@ export const getCycleEndDate = (adjustmentCycle, date) => {
 
 /**
  * Retorna o primeiro dia do ciclo que contém a data fornecida.
- * @param {string} adjustmentCycle - 'Mensal' | 'Trimestral'
+ * @param {string} adjustmentCycle - 'Mensal' | 'Trimestral' | 'Semestral' | 'Anual'
+ *   (legacy: 'Semanal' é alias para 'Semestral')
  * @param {Date} date
  * @returns {Date}
  */
@@ -82,6 +89,11 @@ export const getCycleStartDate = (adjustmentCycle, date) => {
   switch (adjustmentCycle) {
     case 'Trimestral':
       return new Date(y, Math.floor(m / 3) * 3, 1);
+    case 'Semestral':
+    case 'Semanal': // legacy alias
+      return new Date(y, m < 6 ? 0 : 6, 1);
+    case 'Anual':
+      return new Date(y, 0, 1);
     case 'Mensal':
     default:
       return new Date(y, m, 1);
@@ -450,9 +462,11 @@ export const getAvailableCycles = (trades, adjustmentCycle = 'Mensal') => {
     const key = formatDateKey(start);
 
     if (!cycleMap.has(key)) {
-      const label = adjustmentCycle === 'Trimestral'
-        ? formatCycleLabel_Trimestral(start)
-        : formatCycleLabel_Mensal(start);
+      let label;
+      if (adjustmentCycle === 'Trimestral') label = formatCycleLabel_Trimestral(start);
+      else if (adjustmentCycle === 'Anual') label = formatCycleLabel_Anual(start);
+      else if (adjustmentCycle === 'Semestral' || adjustmentCycle === 'Semanal') label = formatCycleLabel_Semestral(start);
+      else label = formatCycleLabel_Mensal(start);
       cycleMap.set(key, { key, label, start, end, tradesCount: 0 });
     }
     cycleMap.get(key).tradesCount++;
@@ -468,10 +482,21 @@ const formatCycleLabel_Mensal = (start) => {
   return `${MONTH_NAMES_PT[start.getMonth()]}/${start.getFullYear()}`;
 };
 
-/** Label legível para ciclo trimestral: "Q1/2026" */
+/** Label legível para ciclo trimestral: "1T/2026" */
 const formatCycleLabel_Trimestral = (start) => {
   const q = Math.floor(start.getMonth() / 3) + 1;
-  return `Q${q}/${start.getFullYear()}`;
+  return `${q}T/${start.getFullYear()}`;
+};
+
+/** Label legível para ciclo semestral: "S1/2026" (jan-jun) ou "S2/2026" (jul-dez) */
+const formatCycleLabel_Semestral = (start) => {
+  const s = start.getMonth() < 6 ? 1 : 2;
+  return `S${s}/${start.getFullYear()}`;
+};
+
+/** Label legível para ciclo anual: "2026" */
+const formatCycleLabel_Anual = (start) => {
+  return `${start.getFullYear()}`;
 };
 
 // ============================================

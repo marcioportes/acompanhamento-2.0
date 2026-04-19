@@ -32,7 +32,7 @@ import { usePlans } from '../hooks/usePlans';
 import { useMasterData } from '../hooks/useMasterData';
 
 // Opções de ciclo e período
-const ADJUSTMENT_CYCLES = ['Semanal', 'Mensal', 'Trimestral', 'Anual'];
+const ADJUSTMENT_CYCLES = ['Mensal', 'Trimestral', 'Semestral', 'Anual'];
 const OPERATION_PERIODS = ['Diário', 'Semanal', 'Mensal'];
 const PLAN_DESCRIPTIONS = ['Day Trade', 'Swing Trade', 'Position', 'Opções', 'Scalping'];
 
