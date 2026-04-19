@@ -130,6 +130,27 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Pin rápido: anexa uma linha ao campo takeaways de uma revisão (DRAFT).
+  // Usado pelo PinToReviewButton (FeedbackPage) — evita context switch.
+  const appendTakeaway = useCallback(async (reviewId, line) => {
+    if (!line || !String(line).trim()) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      const current = reviews.find(r => r.id === reviewId);
+      const existing = current?.takeaways || '';
+      const sep = existing && !existing.endsWith('\n') ? '\n' : '';
+      const next = existing + sep + String(line).trim();
+      await updateDoc(ref, { takeaways: next });
+    } catch (err) {
+      setError(err.message || 'Erro ao anotar takeaway');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId, reviews]);
+
   return {
     reviews,
     isLoading,
@@ -139,6 +160,7 @@ export const useWeeklyReviews = (studentId) => {
     generateSwot,
     closeReview,
     archiveReview,
+    appendTakeaway,
   };
 };
 
