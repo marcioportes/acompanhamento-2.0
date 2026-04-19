@@ -19,7 +19,6 @@ import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } fro
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
 import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS } from '../../constants/propFirmDefaults';
 import DebugBadge from '../DebugBadge';
-import PropAiApproachPlanSection from './PropAiApproachPlanSection';
 
 // ============================================
 // Helpers visuais
@@ -293,7 +292,7 @@ const PhaseSelector = ({ currentPhase, onChangePhase }) => {
   );
 };
 
-const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, trader4DProfile, traderIndicators }) => {
+const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) => {
   const propFirm = account?.propFirm;
 
   if (!propFirm || account?.type !== 'PROP') return null;
@@ -520,15 +519,6 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase, tr
             ))}
           </div>
         )}
-
-        {/* AI Approach Plan (issue #133) */}
-        <PropAiApproachPlanSection
-          account={account}
-          template={template}
-          trader4DProfile={trader4DProfile}
-          traderIndicators={traderIndicators}
-          phase={phase}
-        />
       </div>
 
       <DebugBadge component="PropAccountCard" embedded />

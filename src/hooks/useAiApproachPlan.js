@@ -24,7 +24,7 @@ function resolveDataSource({ trader4DProfile, traderIndicators }) {
   return 'defaults';
 }
 
-function buildContext({ account, template, trader4DProfile, traderIndicators, phase = 'EVALUATION' }) {
+function buildContext({ account, template, trader4DProfile, traderIndicators }) {
   const propFirm = account?.propFirm ?? {};
   const plan = propFirm.suggestedPlan ?? {};
 
@@ -91,12 +91,11 @@ function buildContext({ account, template, trader4DProfile, traderIndicators, ph
     instrument,
     plan: cfPlan,
     dataSource,
-    phase,
     traderProfile: trader4DProfile ?? traderIndicators ?? {},
   };
 }
 
-export function useAiApproachPlan({ account, template, trader4DProfile = null, traderIndicators = null, phase = 'EVALUATION' } = {}) {
+export function useAiApproachPlan({ account, template, trader4DProfile = null, traderIndicators = null } = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -107,8 +106,8 @@ export function useAiApproachPlan({ account, template, trader4DProfile = null, t
   const remaining = Math.max(0, MAX_GENERATIONS - generationCount);
 
   const context = useMemo(
-    () => buildContext({ account, template, trader4DProfile, traderIndicators, phase }),
-    [account, template, trader4DProfile, traderIndicators, phase]
+    () => buildContext({ account, template, trader4DProfile, traderIndicators }),
+    [account, template, trader4DProfile, traderIndicators]
   );
 
   const generate = useCallback(async () => {

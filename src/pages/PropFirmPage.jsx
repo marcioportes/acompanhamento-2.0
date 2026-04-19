@@ -1,9 +1,9 @@
 /**
  * PropFirmPage — Página dedicada "Mesa Prop"
- * @version 1.0.0 (v1.32.0)
- * @description Extraída do StudentDashboard (issue #145, epic #144).
- *   Renderiza PropAlertsBanner, PropAccountCard (com AI Approach Plan),
- *   PropPayoutTracker. ContextBar no topo governa conta selecionada.
+ * @version 1.1.0 (v1.32.0 — Fase D spec v2)
+ * @description Página dedicada com ContextBar, PropAlertsBanner,
+ *   PropAccountCard, PropPayoutTracker. AI Approach Plan migrou para
+ *   issue #148 (tela dedicada com gate de disponibilidade).
  *
  * Padrão: wrapper externo com StudentContextProvider (igual StudentDashboard).
  *
@@ -19,7 +19,6 @@ import { usePlans } from '../hooks/usePlans';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import { useDrawdownHistory } from '../hooks/useDrawdownHistory';
 import { useMovements } from '../hooks/useMovements';
-import { useAssessment } from '../hooks/useAssessment';
 import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
 import { formatCurrencyDynamic } from '../utils/currency';
 import ContextBar from '../components/ContextBar';
@@ -33,7 +32,6 @@ import DebugBadge from '../components/DebugBadge';
 // ============================================
 
 const PropFirmPageBody = ({ viewAs }) => {
-  const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
   const studentCtx = useStudentContext();
   const { accounts, updateAccount } = useAccounts(overrideStudentId);
@@ -49,10 +47,6 @@ const PropFirmPageBody = ({ viewAs }) => {
   const propAccountId = selectedAccount?.id || null;
   const { history: drawdownHistory } = useDrawdownHistory(propAccountId);
   const { movements: propMovements } = useMovements(propAccountId);
-
-  // Assessment 4D (para AI Approach Plan)
-  const assessmentStudentId = overrideStudentId || user?.uid || null;
-  const { initialAssessment } = useAssessment(assessmentStudentId);
 
   // Derived data — safe to compute even when selectedAccount is null (returns defaults)
   const propFirm = selectedAccount?.propFirm ?? null;
@@ -96,20 +90,6 @@ const PropFirmPageBody = ({ viewAs }) => {
 
   const dangerAlerts = getDangerAlerts(alerts);
 
-  // Trader 4D profile (para AI Approach Plan)
-  const trader4DProfile = useMemo(() => {
-    if (!initialAssessment) return null;
-    const sd = initialAssessment.stage_diagnosis ?? initialAssessment.stageDiagnosis;
-    const emotionalScore = initialAssessment.emotional?.score ?? null;
-    const riskScore = initialAssessment.financial?.score ?? null;
-    const disciplineScore = initialAssessment.operational?.fit_score ?? initialAssessment.operational?.score ?? null;
-    const techScore = initialAssessment.experience?.score ?? initialAssessment.experience?.fit_score ?? null;
-    if (techScore == null && emotionalScore == null && disciplineScore == null && riskScore == null) return null;
-    return { stage: sd?.stage ?? null, stageName: sd?.stageName ?? sd?.name ?? null,
-      compositeScore: initialAssessment.composite_score ?? null, compositeLabel: initialAssessment.composite_label ?? null,
-      techScore, emotionalScore, disciplineScore, riskScore };
-  }, [initialAssessment]);
-
   // Early return AFTER all hooks
   if (!selectedAccount) {
     return (
@@ -137,8 +117,6 @@ const PropFirmPageBody = ({ viewAs }) => {
         account={selectedAccount}
         template={propTemplate}
         drawdownHistory={drawdownHistory}
-        trader4DProfile={trader4DProfile}
-        traderIndicators={null}
         onUpdatePhase={async (newPhase) => {
           try {
             await updateAccount(selectedAccount.id, {

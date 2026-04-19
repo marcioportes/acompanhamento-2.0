@@ -107,17 +107,9 @@ Responda EXCLUSIVAMENTE em JSON válido, sem markdown, sem backticks, sem preâm
  * @returns {string}
  */
 function buildUserPrompt(ctx) {
-  const { firm, instrument, plan, dataSource, phase, traderProfileBlock } = ctx;
+  const { firm, instrument, plan, dataSource, traderProfileBlock } = ctx;
 
-  // Phase-aware label (issue #145 Fase C)
-  const phaseLabel = {
-    EVALUATION: 'AVALIAÇÃO — objetivo é PASSAR dentro do prazo',
-    SIM_FUNDED: 'SIMULADO FUNDED — regras de funded se aplicam, não há prazo de eval',
-    LIVE: 'CONTA REAL — gestão de risco prioritária sobre velocidade',
-    EXPIRED: 'EXPIRADA',
-  }[phase ?? 'EVALUATION'] ?? 'AVALIAÇÃO';
-
-  return `Gere um plano de approach para este trader na ${phase === 'EVALUATION' ? 'avaliação de' : 'conta funded de'} prop firm.
+  return `Gere um plano de approach para este trader na avaliação de prop firm.
 
 DADOS DA MESA:
 - Firma: ${firm.firmName}
@@ -129,7 +121,6 @@ DADOS DA MESA:
 - Prazo eval: ${firm.evalDays} dias úteis
 - Tipo drawdown: ${firm.drawdownType}
 - Consistency rule: ${firm.consistencyRule}
-- FASE DA CONTA: ${phaseLabel}${phase !== 'EVALUATION' ? '\n  → Não há prazo de avaliação — foco em sustentabilidade, não urgência' : ''}
 
 INSTRUMENTO ESCOLHIDO:
 - Símbolo: ${instrument.symbol}
@@ -168,7 +159,7 @@ INSTRUÇÕES:
    - "Dia ruim"   = -$${plan.dailyStop}  (= -dailyStop, trader acionou todos os stops)
    - "Dia médio" = (1 win × ${plan.targetPoints}pts) + (1 loss × ${plan.stopPoints}pts) parciais, descrever em narrativa
 4. Inclua protocolo de sequência de losses e quando parar (geralmente 2-3 losses consecutivos).
-5. Recomende sessões e daily profiles adequados ao perfil. Se fase é SIM_FUNDED ou LIVE, substitua urgência de prazo por disciplina de longo prazo e gestão de drawdown conservadora.
+5. Recomende sessões e daily profiles adequados ao perfil.
 6. Se WR do trader < 33.3%, alerte explicitamente que o plano é matematicamente inviável.
 7. Se há flags comportamentais (hold time asymmetry, revenge), integre nas recomendações.
 8. Ofereça os dois caminhos de execução (Path A: ${plan.maxTradesPerDay}×1 contrato, Path B: 1×N contratos) quando aplicável — NUNCA Path C (N×N).
