@@ -331,3 +331,82 @@ Marcio reportou bug de ciclo Anual quebrando como Mensal. `planStateMachine.js` 
 **Chunk expansion:** CHUNK-06 entrou em modo escrita (extensão aditiva). Lock a registrar em main quando a sessão paralela do INV-17/18 liberar PROJECT.md.
 
 **Pendente:** AP-08 browser da Fase A + JAQUE.
+
+### Sessao 5 — 18/04/2026 (Fase B backend completa)
+
+**O que foi feito:**
+
+Helpers puros + 2 CFs callable + hook + 5 arquivos de teste. Zero arquivo shared editado no worktree — todos os deltas abaixo.
+
+**Arquivos novos:**
+- `src/utils/weeklyReviewSnapshot.js` — getISOWeekKey, getISOWeekRange, buildReviewId (A3), pickTopTrades/pickBottomTrades (A2 inline, excluem break-even), buildWeeklyReviewSnapshot
+- `src/hooks/useWeeklyReviews.js` — listagem real-time (mentor vê all, aluno vê CLOSED+ARCHIVED — A4), createReview/generateSwot/closeReview/archiveReview
+- `functions/reviews/validators.js` — helpers puros (isMentor, isISODate, isPeriodKey, validateSnapshot, validateStatusTransition A4)
+- `functions/reviews/prompt.js` — SYSTEM_PROMPT SWOT, buildUserPrompt (compara com revisão anterior), parseAndValidateSwot (4 quadrantes 1-4 itens), buildFallbackSwot (A5 aiUnavailable=true)
+- `functions/reviews/createWeeklyReview.js` — onCall, mentor-only, reviewId `${periodKey}-${Date.now()}` (A3), status DRAFT
+- `functions/reviews/generateWeeklySwot.js` — onCall, Sonnet 4.6, retry 3x com error-accumulator, fallback determinístico (A5), sobrescreve current + incrementa generationCount (A6)
+
+**Testes novos (65 total):**
+- `src/__tests__/utils/weeklyReviewSnapshot.test.js` — 17 testes
+- `src/__tests__/utils/weeklyReviewValidators.test.js` — 21 testes (incluindo A4 state machine)
+- `src/__tests__/utils/weeklyReviewPrompt.test.js` — 17 testes (prompt + parser + fallback)
+- `src/__tests__/hooks/useWeeklyReviews.test.js` — 10 testes (mentor vs aluno, CRUD, errors)
+
+**Deltas shared files (aplicar no main junto com o merge):**
+
+**1. `firestore.rules` — adicionar após o match /students/{studentId}/emotionalProfile:**
+
+```
+// REVIEWS (subcollection) — Revisão Semanal (issue #102)
+// A4: state machine enforçada. DRAFT→CLOSED→ARCHIVED. ARCHIVED imutável.
+// Aluno vê só CLOSED + ARCHIVED; mentor vê tudo.
+match /reviews/{reviewId} {
+  allow read: if isMentor() || (
+    isOwner(studentId) &&
+    resource.data.status in ['CLOSED', 'ARCHIVED']
+  );
+  // create: somente mentor, e somente em DRAFT (CF createWeeklyReview)
+  allow create: if isMentor() &&
+    request.resource.data.status == 'DRAFT';
+  // update: mentor apenas, com transições válidas
+  allow update: if isMentor() && (
+    (resource.data.status == 'DRAFT' && request.resource.data.status in ['DRAFT', 'CLOSED']) ||
+    (resource.data.status == 'CLOSED' && request.resource.data.status in ['CLOSED', 'ARCHIVED']) ||
+    (resource.data.status == 'ARCHIVED' && request.resource.data.status == 'ARCHIVED')
+  );
+  // delete: mentor apenas, e não em ARCHIVED (terminal/imutável)
+  allow delete: if isMentor() && resource.data.status != 'ARCHIVED';
+}
+```
+
+**2. `functions/index.js` — adicionar depois dos exports existentes de propFirm/assessment:**
+
+```js
+exports.createWeeklyReview = require("./reviews/createWeeklyReview");
+exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
+```
+
+**3. `firestore.indexes.json` — adicionar entry para subcollection reviews:**
+
+Aluno consulta `where('status','in',['CLOSED','ARCHIVED']) + orderBy('weekStart','desc')` na subcollection — exige composto. Mentor consulta só `orderBy('weekStart','desc')` — single-field automático.
+
+```json
+{
+  "collectionGroup": "reviews",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "status", "order": "ASCENDING" },
+    { "fieldPath": "weekStart", "order": "DESCENDING" }
+  ]
+}
+```
+
+**Contratos das CFs:**
+
+- `createWeeklyReview({studentId, planId, weekStart, weekEnd, periodKey, customPeriod?, cycleKey?, snapshot})` → `{reviewId, status: 'DRAFT'}`
+- `generateWeeklySwot({studentId, reviewId})` → `{swot: {...quadrants, generatedAt, modelVersion, promptVersion, aiUnavailable, generationCount}, aiUnavailable}`
+
+**Pendente Fase B:**
+- Nada de código. Fase B fechada.
+- Aplicar os 3 deltas acima em main (firestore.rules + functions/index.js + firestore.indexes.json) via commit de shared files.
+- Deploy CFs (`firebase deploy --only functions:createWeeklyReview,functions:generateWeeklySwot`) — só depois do merge do PR.
