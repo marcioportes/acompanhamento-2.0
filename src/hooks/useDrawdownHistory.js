@@ -2,10 +2,10 @@
  * useDrawdownHistory
  * @description Leitura da subcollection accounts/{id}/drawdownHistory.
  *   Query condicional: só dispara se accountId é fornecido.
- *   Ordenado por createdAt desc, limit 100 docs mais recentes.
- *   Retorna array ordenado cronologicamente (asc) para sparkline.
+ *   Ordenado por createdAt desc, limit configurável (default DEFAULT_LIMIT).
+ *   Retorna array ordenado cronologicamente (asc) para plotagem.
  *
- * Ref: issue #134 Fase C, epic #52
+ * Ref: issue #134 Fase C (criação), issue #145 Fase E (limit 100→1000 para equity curve)
  */
 
 import { useState, useEffect } from 'react';
@@ -14,13 +14,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const MAX_DOCS = 100;
+export const DEFAULT_LIMIT = 1000;
 
 /**
  * @param {string|null} accountId - ID da conta PROP (null = não carrega)
+ * @param {object} [options]
+ * @param {number} [options.limit=DEFAULT_LIMIT] - Max docs carregados (override p/ sparkline/card pequeno)
  * @returns {{ history: Array, loading: boolean }}
  */
-export function useDrawdownHistory(accountId) {
+export function useDrawdownHistory(accountId, options = {}) {
+  const maxDocs = options.limit ?? DEFAULT_LIMIT;
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +37,7 @@ export function useDrawdownHistory(accountId) {
     setLoading(true);
 
     const colRef = collection(db, 'accounts', accountId, 'drawdownHistory');
-    const q = query(colRef, orderBy('createdAt', 'desc'), limit(MAX_DOCS));
+    const q = query(colRef, orderBy('createdAt', 'desc'), limit(maxDocs));
 
     const unsubscribe = onSnapshot(
       q,
@@ -43,7 +46,7 @@ export function useDrawdownHistory(accountId) {
           id: d.id,
           ...d.data(),
         }));
-        // Reverse to chronological order (asc) for sparkline
+        // Reverse to chronological order (asc) for plotting
         docs.reverse();
         setHistory(docs);
         setLoading(false);
@@ -56,7 +59,7 @@ export function useDrawdownHistory(accountId) {
     );
 
     return () => unsubscribe();
-  }, [accountId]);
+  }, [accountId, maxDocs]);
 
   return { history, loading };
 }
