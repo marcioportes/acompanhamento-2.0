@@ -20,15 +20,19 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { X, ScrollText } from 'lucide-react';
+import { X, ScrollText, FileCheck2 } from 'lucide-react';
 import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
+import { useAuth } from '../contexts/AuthContext';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { computePlanState, getAvailableCycles, getCycleStartDate, getCycleEndDate } from '../utils/planStateMachine';
 import { buildTableRows } from '../utils/extractTableRows';
 import { computeExtractSummaryMetrics } from '../utils/extractSummaryMetrics';
 import DebugBadge from './DebugBadge';
+import NewReviewDialog from './reviews/NewReviewDialog';
+import WeeklyReviewModal from './reviews/WeeklyReviewModal';
 
 // Sub-componentes
 import ExtractPeriodSelector from './extract/ExtractPeriodSelector';
@@ -36,13 +40,38 @@ import ExtractCycleCard from './extract/ExtractCycleCard';
 import ExtractSummary from './extract/ExtractSummary';
 import ExtractTable from './extract/ExtractTable';
 
-const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigateToFeedback = null, embedded = false, mode = 'live' }) => {
+const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigateToFeedback = null, embedded = false, mode = 'live', reviewSnapshot = null, reviewMeta = null }) => {
+  const inReviewMode = mode === 'review' && !!reviewSnapshot;
   const { getEmotionConfig } = useMasterData();
   const { detectionConfig, statusThresholds } = useComplianceRules();
+  const { isMentor } = useAuth();
+  const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
+  const studentIdForReviews = plan?.studentId || null;
+  const { createReview, reviews: allReviews } = useWeeklyReviews(studentIdForReviews);
 
   // Seletor temporal: null = ciclo inteiro, string = periodKey
   const [selectedPeriod, setSelectedPeriod] = useState(null);
+  const [newReviewOpen, setNewReviewOpen] = useState(false);
+  const [openReviewId, setOpenReviewId] = useState(null);
+
+  // Reviews do plano atual em ordem desc por weekStart
+  const planReviews = useMemo(
+    () => (allReviews || []).filter(r => r.frozenSnapshot?.planContext?.planId === plan?.id),
+    [allReviews, plan?.id]
+  );
+
+  const openReview = useMemo(
+    () => planReviews.find(r => r.id === openReviewId) || null,
+    [planReviews, openReviewId]
+  );
+
+  const previousReview = useMemo(() => {
+    if (!openReview) return null;
+    return planReviews.find(
+      r => r.id !== openReview.id && r.weekStart < openReview.weekStart
+    ) || null;
+  }, [planReviews, openReview]);
 
   // Currency formatter parcial
   const fmt = useCallback((v) => formatCurrencyDynamic(v, currency), [currency]);
@@ -120,10 +149,18 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
   );
 
   // R3 #102: métricas agregadas do recorte visível (Trades / WR).
-  const summaryMetrics = useMemo(
-    () => computeExtractSummaryMetrics(tableRows),
-    [tableRows]
-  );
+  // Em mode='review', usa KPIs congelados do snapshot ao invés de recomputar do live.
+  const summaryMetrics = useMemo(() => {
+    if (inReviewMode && reviewSnapshot?.kpis) {
+      const k = reviewSnapshot.kpis;
+      return {
+        tradesCount: Number(k.trades) || 0,
+        winCount: Math.round(((Number(k.wr) || 0) / 100) * (Number(k.trades) || 0)),
+        winRate: Number(k.wr) || 0,
+      };
+    }
+    return computeExtractSummaryMetrics(tableRows);
+  }, [inReviewMode, reviewSnapshot, tableRows]);
 
   // Dados emocionais para o summary
   const emotionalData = useMemo(() => {
@@ -197,19 +234,35 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex justify-between items-start">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-600/20 rounded-lg">
-              <ScrollText className="w-5 h-5 text-purple-400" />
+            <div className={`p-2 rounded-lg ${inReviewMode ? 'bg-emerald-600/20' : 'bg-purple-600/20'}`}>
+              <ScrollText className={`w-5 h-5 ${inReviewMode ? 'text-emerald-400' : 'text-purple-400'}`} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Extrato do Plano: {plan.name}</h2>
+              <h2 className="text-lg font-bold text-white">
+                {inReviewMode ? 'Revisão: ' : 'Extrato do Plano: '}{plan.name}
+              </h2>
               <p className="text-xs text-slate-400">
-                {plan.operationPeriod || 'Diário'} · {plan.adjustmentCycle || 'Mensal'} · {fmt(startPL)}
+                {inReviewMode && reviewMeta
+                  ? `Snapshot congelado · ${reviewMeta.weekStart} → ${reviewMeta.weekEnd}${reviewMeta.periodKey ? ` · ${reviewMeta.periodKey}` : ''}`
+                  : `${plan.operationPeriod || 'Diário'} · ${plan.adjustmentCycle || 'Mensal'} · ${fmt(startPL)}`}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {mentor && mode === 'live' && (
+              <button
+                onClick={() => setNewReviewOpen(true)}
+                className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 flex items-center gap-1.5"
+                title="Criar nova revisão semanal (mentor)"
+              >
+                <FileCheck2 className="w-3.5 h-3.5" />
+                Nova Revisão
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Period Selector + Cycle Navigation */}
@@ -273,6 +326,27 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
 
       </div>
       <DebugBadge component="PlanLedgerExtract" />
+
+      {newReviewOpen && mentor && (
+        <NewReviewDialog
+          plan={plan}
+          allTrades={trades}
+          cycleKey={selectedCycleKey}
+          emotionalMetrics={emotional.metrics}
+          createReview={createReview}
+          onCreated={(reviewId) => setOpenReviewId(reviewId)}
+          onClose={() => setNewReviewOpen(false)}
+        />
+      )}
+
+      {openReview && (
+        <WeeklyReviewModal
+          review={openReview}
+          studentId={studentIdForReviews}
+          previousReview={previousReview}
+          onClose={() => setOpenReviewId(null)}
+        />
+      )}
     </div>
   );
 };

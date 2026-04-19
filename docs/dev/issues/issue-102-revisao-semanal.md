@@ -406,7 +406,30 @@ Aluno consulta `where('status','in',['CLOSED','ARCHIVED']) + orderBy('weekStart'
 - `createWeeklyReview({studentId, planId, weekStart, weekEnd, periodKey, customPeriod?, cycleKey?, snapshot})` → `{reviewId, status: 'DRAFT'}`
 - `generateWeeklySwot({studentId, reviewId})` → `{swot: {...quadrants, generatedAt, modelVersion, promptVersion, aiUnavailable, generationCount}, aiUnavailable}`
 
-**Pendente Fase B:**
-- Nada de código. Fase B fechada.
-- Aplicar os 3 deltas acima em main (firestore.rules + functions/index.js + firestore.indexes.json) via commit de shared files.
-- Deploy CFs (`firebase deploy --only functions:createWeeklyReview,functions:generateWeeklySwot`) — só depois do merge do PR.
+**Pendente Fase B:** concluída — PRs #150 + #151 mergeados, deploy Firebase OK em 19/04/2026.
+
+### Sessao 6 — 19/04/2026 (Fase C UI completa, pre-AP-08)
+
+**Contexto:** Fase B live em prod. Branch `feat/issue-102-fase-c` criada a partir de main atualizado (`8999a105`).
+
+**Arquivos novos:**
+- `src/utils/clientSnapshotBuilder.js` — buildClientSnapshot agrega KPIs client-side (pl, wr, avgRR, maxDD, compliance, emotional).
+- `src/utils/reviewUrlValidator.js` — validateReviewUrl (https + allowlist zoom/meet/teams/loom/youtube/drive/vimeo) + validateTakeaways (max 5000).
+- `src/components/reviews/NewReviewDialog.jsx` — modal mentor-only criar revisão DRAFT, ISO default ou custom (G3 flag).
+- `src/components/reviews/WeeklyReviewModal.jsx` — 5 tabs (SWOT G2/G4, Ranking, Takeaways, Reunião, Comparação G3), Publicar/Arquivar, DebugBadge + grid-cols-1 md:grid-cols-2.
+
+**Shared files tocados no worktree (parte do PR Fase C):**
+- `src/components/PlanLedgerExtract.jsx`: botão "Nova Revisão" (G1 mentor + mode='live'), integração dos modals, props mode='review' + reviewSnapshot/reviewMeta (C.5 minimal — header verde + summaryMetrics congelado).
+
+**Testes novos (22):**
+- `src/__tests__/utils/clientSnapshotBuilder.test.js` — 9 testes
+- `src/__tests__/utils/reviewUrlValidator.test.js` — 13 testes
+
+**Decisões pendentes resolvidas (auto mode, propostas aplicadas):**
+- Takeaways: textarea + contador, max 5000 chars
+- meetingLink/videoLink: https + allowlist hosts
+- Re-gerar SWOT: confirmação inline "sobrescrever geração #N"
+
+**Suite:** 1571/1571 (de 1549, +22). Zero regressão.
+
+**Pendente:** AP-08 browser Fase C (criar revisão, gerar SWOT, takeaways, meeting, publicar, arquivar) + PR + Fase D.
