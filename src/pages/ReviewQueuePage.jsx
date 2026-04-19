@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ClipboardCheck, ChevronDown, ChevronRight, Clock, CheckCircle2, Archive, Loader2, Search, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
