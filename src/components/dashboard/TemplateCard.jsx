@@ -52,7 +52,7 @@ const TemplateCard = ({ template, phase = 'EVALUATION', currency = 'USD' }) => {
       </div>
 
       <div className="space-y-0">
-        <Row label="Firma" value={template.firmName ?? '—'} />
+        <Row label="Firma" value={template.firmName ?? template.firm ?? '—'} />
         <Row label="Produto" value={template.productName ?? template.name ?? '—'} />
         <Row label="Tamanho da conta" value={fmt(template.accountSize ?? 0)} />
         <Row label="Drawdown" value={`${fmt(ddAmount)} · ${ddType}`} />
