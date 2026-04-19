@@ -93,11 +93,28 @@ module.exports = onCall(
       throw new HttpsError('failed-precondition', 'Plan não pertence ao student informado');
     }
 
+    // GUARD DE UNICIDADE: 1 rascunho DRAFT por (student, plan, weekStart, weekEnd).
+    // Se já existe, retorna o existente em vez de duplicar (transparente para o cliente).
+    const dupeQuery = await studentRef.collection('reviews')
+      .where('status', '==', 'DRAFT')
+      .where('weekStart', '==', weekStart)
+      .where('weekEnd', '==', weekEnd)
+      .get();
+    const duplicate = dupeQuery.docs
+      .map(d => ({ id: d.id, data: d.data() }))
+      .find(r => r.data?.frozenSnapshot?.planContext?.planId === planId);
+    if (duplicate) {
+      console.log(`[createWeeklyReview] Duplicate DRAFT prevented — returning existing ${duplicate.id} for student ${studentId} plan ${planId}`);
+      return { reviewId: duplicate.id, status: 'DRAFT', existing: true };
+    }
+
     const timestampMs = Date.now();
     const reviewId = `${periodKey}-${timestampMs}`;
     const reviewRef = studentRef.collection('reviews').doc(reviewId);
 
     const doc = {
+      studentId,
+      planId,
       weekStart,
       weekEnd,
       periodKey,
@@ -118,7 +135,7 @@ module.exports = onCall(
     await reviewRef.set(doc);
     console.log(`[createWeeklyReview] Created review ${reviewId} for student ${studentId} plan ${planId} (${periodKey})`);
 
-    return { reviewId, status: 'DRAFT' };
+    return { reviewId, status: 'DRAFT', existing: false };
   }
 );
 
