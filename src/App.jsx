@@ -292,9 +292,9 @@ const AppContent = () => {
           />
         );
       }
-      // Plano não encontrado: reset e continua
-      setCurrentView('dashboard');
-      setLedgerPlanId(null);
+      // Plano ainda não disponível (plans em carregamento async). Renderiza loading.
+      // NÃO chamar setState durante render — causa loop infinito.
+      return <Loading fullScreen text="Carregando extrato..." />;
     }
 
     // Se está visualizando como aluno, mostra o StudentDashboard com override
