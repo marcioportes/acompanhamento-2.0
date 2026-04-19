@@ -103,4 +103,33 @@ describe('classifyViability', () => {
     const r = classifyViability(base, 'PA');
     expect(r.text).toMatch(/sem deadline/);
   });
+
+  it('Bug fix (#145 Fase H): dailyLossLimit null (Apex PA) não gera NaN/Infinity — usa métrica alternativa', () => {
+    const r = classifyViability({
+      ...base,
+      dailyLossLimit: null,
+      drawdownMax: 1000,
+      roPerTrade: 150,
+      maxTradesPerDay: 1,
+      lossesToBust: 6,
+      evPerTrade: 100,
+    }, 'PA');
+    expect([VIABILITY_STATES.CONFORTAVEL, VIABILITY_STATES.APERTADO]).toContain(r.state);
+    expect(r.text).not.toMatch(/NaN|Infinity|% do daily loss/);
+    expect(r.text).toMatch(/DD de/);
+    expect(r.text).toMatch(/margem 6 perdas/);
+    expect(r.text).toMatch(/sem deadline/); // phase PA sufixo
+  });
+
+  it('Bug fix (#145 Fase H): dailyLossLimit 0 também trata como sem limite', () => {
+    const r = classifyViability({
+      ...base,
+      dailyLossLimit: 0,
+      drawdownMax: 1000,
+      roPerTrade: 150,
+      maxTradesPerDay: 1,
+    }, 'SIM_FUNDED');
+    expect(r.text).not.toMatch(/% do daily loss/);
+    expect(r.text).toMatch(/preservar capital fundado/);
+  });
 });

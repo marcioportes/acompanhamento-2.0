@@ -42,6 +42,7 @@ const PropHistoricalKPIs = ({
   evalTimeLimit,
   profitTarget,
   consistencyRule,
+  phase = 'EVALUATION',
   currency = 'USD',
 }) => {
   const days = useMemo(() => groupByDay(drawdownHistory ?? []), [drawdownHistory]);
@@ -77,7 +78,7 @@ const PropHistoricalKPIs = ({
         <Metric
           icon={Calendar}
           label="Dias operados"
-          value={evalTimeLimit ? `${tradingDays} / ${evalTimeLimit}` : `${tradingDays}`}
+          value={phase === 'EVALUATION' && evalTimeLimit ? `${tradingDays} / ${evalTimeLimit}` : `${tradingDays}`}
           color="text-white"
         />
         <Metric

@@ -36,6 +36,8 @@ const TemplateCard = ({ template, phase = 'EVALUATION', currency = 'USD' }) => {
   const ddAmount = template.drawdown?.maxAmount ?? 0;
   const fundedDd = template.fundedDrawdown?.maxAmount ?? null;
   const consistencyPct = template.consistency?.evalRule ? Math.round(template.consistency.evalRule * 100) : null;
+  const hasDailyLoss = template.dailyLossLimit != null && template.dailyLossLimit > 0;
+  const isEvaluation = phase === 'EVALUATION';
 
   return (
     <div className="glass-card border border-slate-700/50 p-4">
@@ -57,13 +59,17 @@ const TemplateCard = ({ template, phase = 'EVALUATION', currency = 'USD' }) => {
         {fundedDd !== null && (
           <Row label="DD fundado" value={fmt(fundedDd)} muted={phase === 'EVALUATION'} />
         )}
-        <Row label="Profit target" value={fmt(template.profitTarget ?? 0)} />
-        <Row label="Daily loss limit" value={fmt(template.dailyLossLimit ?? 0)} />
-        {consistencyPct !== null && (
+        <Row label="Profit target" value={isEvaluation ? fmt(template.profitTarget ?? 0) : '—'} muted={!isEvaluation} />
+        <Row
+          label="Daily loss limit"
+          value={hasDailyLoss ? fmt(template.dailyLossLimit) : 'N/A (apenas Total Loss)'}
+          muted={!hasDailyLoss}
+        />
+        {consistencyPct !== null && isEvaluation && (
           <Row label="Consistency (melhor dia)" value={`≤ ${consistencyPct}% do profit`} />
         )}
-        {template.evalTimeLimit && (
-          <Row label="Prazo avaliação" value={`${template.evalTimeLimit} dias úteis`} muted={phase !== 'EVALUATION'} />
+        {isEvaluation && template.evalTimeLimit && (
+          <Row label="Prazo avaliação" value={`${template.evalTimeLimit} dias úteis`} />
         )}
       </div>
     </div>

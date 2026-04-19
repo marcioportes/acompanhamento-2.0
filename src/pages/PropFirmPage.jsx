@@ -177,6 +177,7 @@ const PropFirmPageBody = ({ viewAs }) => {
           evalTimeLimit={propTemplate?.evalTimeLimit ?? null}
           profitTarget={profitTarget}
           consistencyRule={propTemplate?.consistency?.evalRule ?? null}
+          phase={phase}
           currency={currency}
         />
       </section>

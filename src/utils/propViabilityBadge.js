@@ -81,8 +81,6 @@ export function classifyViability(plan, phase = 'EVALUATION') {
 
   // Não-inviável — classifica conforto
   const dailyStop = (plan.roPerTrade ?? 0) * (plan.maxTradesPerDay ?? 0);
-  const dailyLoss = plan.dailyLossLimit || 1;
-  const stopPct = dailyStop / dailyLoss;
   const lossesToBust = plan.lossesToBust ?? 0;
   const ev = plan.evPerTrade ?? 0;
 
@@ -96,6 +94,46 @@ export function classifyViability(plan, phase = 'EVALUATION') {
     };
   }
 
+  // Mesa sem daily loss (ex: Apex PA, Ylos Funded) → métrica alternativa
+  // Usa dailyStop / (drawdownMax × 0.30) — "fração da reserva saudável"
+  const hasDailyLoss = typeof plan.dailyLossLimit === 'number' && plan.dailyLossLimit > 0;
+
+  if (!hasDailyLoss) {
+    const dd = plan.drawdownMax ?? 0;
+    const roPerTrade = plan.roPerTrade ?? 0;
+    const stopTxt = roPerTrade > 0 && dd > 0
+      ? `Stop de ${plan.instrument?.symbol ? '' : ''}${formatUsd(roPerTrade)} em DD de ${formatUsd(dd)} · margem ${lossesToBust} perdas${phaseSuffix(phase, plan)}`
+      : `Sem daily loss limit — plano depende só do drawdown total${phaseSuffix(phase, plan)}`;
+
+    // Reserva saudável = 30% do drawdown total; se dailyStop consome >30% disso, alerta
+    const reserve = dd * 0.30;
+    const reservePct = reserve > 0 ? (dailyStop / reserve) : 0;
+
+    if (lossesToBust >= 5 && ev > 0 && reservePct < 1) {
+      return {
+        state: VIABILITY_STATES.CONFORTAVEL,
+        color: 'green',
+        text: stopTxt,
+        recommendation: null,
+      };
+    }
+    if (lossesToBust >= 3 && ev >= 0) {
+      return {
+        state: VIABILITY_STATES.APERTADO,
+        color: 'amber',
+        text: stopTxt,
+        recommendation: 'Revisar perfil — mesa sem daily loss exige preservação mais rígida',
+      };
+    }
+    return {
+      state: VIABILITY_STATES.APERTADO,
+      color: 'amber',
+      text: stopTxt,
+      recommendation: 'Revisar perfil de risco',
+    };
+  }
+
+  const stopPct = dailyStop / plan.dailyLossLimit;
   const stopPctRounded = Math.round(stopPct * 100);
 
   if (stopPct < 0.60 && lossesToBust >= 5 && ev > 0) {
@@ -123,4 +161,9 @@ export function classifyViability(plan, phase = 'EVALUATION') {
     text: `Plano consome ${stopPctRounded}% do daily loss → limite apertado, exposição alta${phaseSuffix(phase, plan)}`,
     recommendation: 'Revisar perfil de risco',
   };
+}
+
+function formatUsd(v) {
+  if (typeof v !== 'number') return '—';
+  return `$${Math.round(v).toLocaleString('en-US')}`;
 }
