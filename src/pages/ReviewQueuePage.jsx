@@ -30,6 +30,7 @@ const statusLabel = {
 
 const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
   const [reviews, setReviews] = useState([]);
+  const [plansById, setPlansById] = useState({});
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -43,6 +44,19 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
       setReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     }, () => setLoading(false));
+    return () => unsub();
+  }, [expanded, student?.id]);
+
+  // Mapa planId → plan (para mostrar nome do plano em cada revisão, já que um aluno
+  // pode ter múltiplos planos e cada um tem seu rascunho — per-plano é por design).
+  useEffect(() => {
+    if (!expanded || !student?.id) return undefined;
+    const q = query(collection(db, 'plans'), where('studentId', '==', student.id));
+    const unsub = onSnapshot(q, (snap) => {
+      const map = {};
+      for (const d of snap.docs) map[d.id] = { id: d.id, ...d.data() };
+      setPlansById(map);
+    });
     return () => unsub();
   }, [expanded, student?.id]);
 
@@ -83,22 +97,28 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
           )}
           {!loading && reviews.length > 0 && (
             <div className="divide-y divide-slate-800/60">
-              {reviews.map(r => (
-                <button
-                  key={r.id}
-                  onClick={() => onOpenReview(student, r)}
-                  className="w-full flex items-center justify-between py-2 text-xs hover:bg-slate-800/30 px-1 rounded"
-                >
-                  <div className="flex items-center gap-2">
-                    {r.status === 'DRAFT' && <Clock className="w-3.5 h-3.5 text-amber-400" />}
-                    {r.status === 'CLOSED' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-                    {r.status === 'ARCHIVED' && <Archive className="w-3.5 h-3.5 text-slate-500" />}
-                    <span className="font-mono text-slate-400">{r.periodKey}</span>
-                    <span className="text-slate-500">{r.weekStart} → {r.weekEnd}</span>
-                  </div>
-                  <span className={statusColor[r.status] || 'text-slate-400'}>{statusLabel[r.status] || r.status}</span>
-                </button>
-              ))}
+              {reviews.map(r => {
+                const planId = r.planId || r.frozenSnapshot?.planContext?.planId;
+                const planName = plansById[planId]?.name || planId || '—';
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => onOpenReview(student, r)}
+                    className="w-full flex items-center justify-between py-2 text-xs hover:bg-slate-800/30 px-1 rounded"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {r.status === 'DRAFT' && <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                      {r.status === 'CLOSED' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                      {r.status === 'ARCHIVED' && <Archive className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
+                      <span className="text-emerald-300 font-medium truncate max-w-[200px]" title={planName}>{planName}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="font-mono text-slate-400">{r.periodKey}</span>
+                      <span className="text-slate-500 hidden md:inline">{r.weekStart} → {r.weekEnd}</span>
+                    </div>
+                    <span className={statusColor[r.status] || 'text-slate-400'}>{statusLabel[r.status] || r.status}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -114,7 +134,8 @@ const ReviewQueuePage = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
-  const [openReview, setOpenReview] = useState(null); // { student, review }
+  // Guarda IDs — modal escuta o doc via onSnapshot pra refletir updates (SWOT, etc).
+  const [openReview, setOpenReview] = useState(null); // { studentId, reviewId }
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -201,7 +222,7 @@ const ReviewQueuePage = () => {
                 student={s}
                 expanded={expandedId === s.id}
                 onToggle={() => setExpandedId(prev => prev === s.id ? null : s.id)}
-                onOpenReview={(student, review) => setOpenReview({ student, review })}
+                onOpenReview={(student, review) => setOpenReview({ studentId: student.id, reviewId: review.id })}
               />
             ))}
           </div>
@@ -210,8 +231,8 @@ const ReviewQueuePage = () => {
 
       {openReview && (
         <WeeklyReviewModal
-          review={openReview.review}
-          studentId={openReview.student.id}
+          reviewId={openReview.reviewId}
+          studentId={openReview.studentId}
           previousReview={null}
           onClose={() => setOpenReview(null)}
         />

@@ -13,7 +13,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   X, Loader2, Sparkles, AlertTriangle, CheckCircle2, RefreshCw,
@@ -145,10 +145,27 @@ const KpiRow = ({ label, current, previous, fmt = fmtNum, invertColors = false }
   );
 };
 
-const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }) => {
+// Aceita `review` como prop (fast path quando caller já tem live data) OU `reviewId`
+// (modal escuta o doc via onSnapshot — usado quando caller não tem hook conectado).
+const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, studentId, previousReview = null, onClose }) => {
   const { generateSwot, closeReview, archiveReview, deleteReview, actionLoading, error } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
+
+  // Self-listener quando reviewId é fornecido e não temos review prop.
+  // Garante que SWOT gerado por CF + updates no doc reflitam imediatamente.
+  const [selfReview, setSelfReview] = useState(null);
+  useEffect(() => {
+    if (reviewProp || !reviewId || !studentId) { setSelfReview(null); return undefined; }
+    const unsub = onSnapshot(
+      doc(db, 'students', studentId, 'reviews', reviewId),
+      (snap) => { if (snap.exists()) setSelfReview({ id: snap.id, ...snap.data() }); },
+      (err) => console.error('[WeeklyReviewModal] doc listener error', err)
+    );
+    return () => unsub();
+  }, [reviewId, studentId, reviewProp]);
+
+  const review = reviewProp || selfReview;
 
   const [tab, setTab] = useState('swot');
   const [takeaways, setTakeaways] = useState(review?.takeaways || '');
