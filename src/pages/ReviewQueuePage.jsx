@@ -127,7 +127,7 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
   );
 };
 
-const ReviewQueuePage = ({ onOpenReviewInLedger = null }) => {
+const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = null }) => {
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
@@ -221,6 +221,12 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null }) => {
                 expanded={expandedId === s.id}
                 onToggle={() => setExpandedId(prev => prev === s.id ? null : s.id)}
                 onOpenReview={(student, review) => {
+                  // Entry point da tela nova (Stage 1): Fila > aluno > rascunho → WeeklyReviewPage.
+                  // Fallback para PlanLedgerExtract 3-col (baseline) se o handler novo não existe.
+                  if (onOpenWeeklyReview) {
+                    onOpenWeeklyReview({ studentId: student.id, reviewId: review.id });
+                    return;
+                  }
                   const planId = review.planId || review.frozenSnapshot?.planContext?.planId;
                   if (onOpenReviewInLedger && planId) {
                     onOpenReviewInLedger({ planId, reviewId: review.id });

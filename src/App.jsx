@@ -27,6 +27,7 @@ import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import ReviewQueuePage from './pages/ReviewQueuePage';
+import WeeklyReviewPage from './pages/WeeklyReviewPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -85,6 +86,9 @@ const AppContent = () => {
   const [ledgerPlanId, setLedgerPlanId] = useState(null);
   // Quando aberto vindo da Fila de Revisão → carrega PlanLedgerExtract em mode='review'
   const [ledgerInitialReviewId, setLedgerInitialReviewId] = useState(null);
+  // Tela nova Revisão Semanal (#102, Stage 1) — navegada pela Fila de Revisão.
+  // Coexiste com o PlanLedgerExtract 3-col (baseline para comparação).
+  const [weeklyReviewContext, setWeeklyReviewContext] = useState(null); // { studentId, reviewId }
   
   // Hooks
   const { 
@@ -198,11 +202,18 @@ const AppContent = () => {
     setCurrentView('ledger');
   };
 
-  // Handler para abrir extrato direto em mode='review' (vem da Fila de Revisão)
+  // Handler para abrir extrato direto em mode='review' (vem da Fila de Revisão — baseline)
   const handleOpenReviewInLedger = ({ planId, reviewId }) => {
     setLedgerPlanId(planId);
     setLedgerInitialReviewId(reviewId);
     setCurrentView('ledger');
+  };
+
+  // Handler para abrir a nova tela de Revisão Semanal (Stage 1).
+  // Entry point: Fila de Revisão > aluno > click no rascunho.
+  const handleOpenWeeklyReview = ({ studentId, reviewId }) => {
+    setWeeklyReviewContext({ studentId, reviewId });
+    setCurrentView('weekly-review');
   };
 
   // Handler para navegar para FeedbackPage com um trade específico
@@ -317,7 +328,21 @@ const AppContent = () => {
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
     if (currentView === 'subscriptions' && isMentor()) return <SubscriptionsPage />;
-    if (currentView === 'reviews' && isMentor()) return <ReviewQueuePage onOpenReviewInLedger={handleOpenReviewInLedger} />;
+    if (currentView === 'reviews' && isMentor()) {
+      return <ReviewQueuePage
+        onOpenReviewInLedger={handleOpenReviewInLedger}
+        onOpenWeeklyReview={handleOpenWeeklyReview}
+      />;
+    }
+    if (currentView === 'weekly-review' && isMentor() && weeklyReviewContext) {
+      return (
+        <WeeklyReviewPage
+          studentId={weeklyReviewContext.studentId}
+          reviewId={weeklyReviewContext.reviewId}
+          onBack={() => { setWeeklyReviewContext(null); setCurrentView('reviews'); }}
+        />
+      );
+    }
 
     // Student Onboarding — acessível pelo mentor via viewingAsStudent
     if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
