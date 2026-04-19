@@ -172,18 +172,32 @@ const projectEmotionalMetrics = (metrics) => {
  * @param {Object}  params
  * @param {Object}  params.plan         — {id, adjustmentCycle, pl, riskPerOperation, rrTarget, ...}
  * @param {Array}   params.trades       — trades filtrados pelo período da revisão
+ * @param {Array}   [params.extraTrades] — trades incluídos manualmente (`review.includedTradeIds`),
+ *                  pode estar fora do período. Mesclado e deduplicado por id com `trades`.
  * @param {string}  [params.cycleKey]   — chave do ciclo ativo (ex: '2026-04')
  * @param {Object}  [params.emotionalMetrics] — metrics de useEmotionalProfile
- * @returns {Object} frozenSnapshot (planContext, kpis, topTrades, bottomTrades)
+ * @returns {Object} frozenSnapshot (planContext, kpis, topTrades, bottomTrades, periodTrades)
  */
 export const buildClientSnapshot = ({
   plan,
   trades,
+  extraTrades = [],
   cycleKey = null,
   emotionalMetrics = null,
 }) => {
   if (!plan?.id) throw new Error('buildClientSnapshot: plan.id é obrigatório');
-  const safeTrades = Array.isArray(trades) ? trades : [];
+  const baseTrades = Array.isArray(trades) ? trades : [];
+  const extras = Array.isArray(extraTrades) ? extraTrades : [];
+  // Dedup por id: trades do período prevalecem (mesmo shape), extras entram só se id novo.
+  const seenIds = new Set(baseTrades.map(t => t.id).filter(Boolean));
+  const mergedTrades = [...baseTrades];
+  for (const t of extras) {
+    if (t?.id && !seenIds.has(t.id)) {
+      seenIds.add(t.id);
+      mergedTrades.push(t);
+    }
+  }
+  const safeTrades = mergedTrades;
   const sorted = sortByExit(safeTrades);
 
   const pl = safeTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);

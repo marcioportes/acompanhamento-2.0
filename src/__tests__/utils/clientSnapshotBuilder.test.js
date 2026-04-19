@@ -213,4 +213,52 @@ describe('buildClientSnapshot', () => {
     expect(snap.periodTrades[0]).toMatchObject({ tradeId: 't1', pnl: 100, qty: 2 });
     expect(snap.periodTrades[1]).toMatchObject({ tradeId: 't2', pnl: -50, qty: 1 });
   });
+
+  // === Stage 2.5: extraTrades (inclusão explícita de trades fora do período) ===
+
+  describe('extraTrades — inclusão explícita além do período', () => {
+    it('mescla extraTrades em periodTrades quando IDs são novos', () => {
+      const trades = [mkTrade({ id: 't1', result: 100 })];
+      const extraTrades = [
+        mkTrade({ id: 'x1', result: 50, date: '2026-02-12' }),
+        mkTrade({ id: 'x2', result: -30, date: '2026-02-09' }),
+      ];
+      const snap = buildClientSnapshot({ plan, trades, extraTrades });
+      expect(snap.periodTrades).toHaveLength(3);
+      const ids = snap.periodTrades.map(t => t.tradeId).sort();
+      expect(ids).toEqual(['t1', 'x1', 'x2']);
+    });
+
+    it('deduplica: se extraTrades inclui trade já em trades, aparece 1× só', () => {
+      const trades = [mkTrade({ id: 't1', result: 100 })];
+      const extraTrades = [mkTrade({ id: 't1', result: 100 })]; // mesmo id
+      const snap = buildClientSnapshot({ plan, trades, extraTrades });
+      expect(snap.periodTrades).toHaveLength(1);
+      expect(snap.kpis.trades).toBe(1);
+    });
+
+    it('KPIs refletem o set completo (período ∪ extra)', () => {
+      // Período: 1 win de 100. Extra: 1 win de 200 + 1 loss de -50.
+      // Total: pl=250, 3 trades, wr=66.7%, payoff = 150 / 50 = 3
+      const trades = [mkTrade({ id: 't1', result: 100 })];
+      const extraTrades = [
+        mkTrade({ id: 'x1', result: 200 }),
+        mkTrade({ id: 'x2', result: -50 }),
+      ];
+      const snap = buildClientSnapshot({ plan, trades, extraTrades });
+      expect(snap.kpis.pl).toBe(250);
+      expect(snap.kpis.trades).toBe(3);
+      expect(snap.kpis.wr).toBeCloseTo(66.7, 1);
+      expect(snap.kpis.payoff).toBe(3);
+    });
+
+    it('extraTrades ausente / vazio — se comporta como antes', () => {
+      const trades = [mkTrade({ id: 't1', result: 100 })];
+      const snapSem = buildClientSnapshot({ plan, trades });
+      const snapVazio = buildClientSnapshot({ plan, trades, extraTrades: [] });
+      expect(snapSem.periodTrades).toHaveLength(1);
+      expect(snapVazio.periodTrades).toHaveLength(1);
+      expect(snapSem.kpis).toEqual(snapVazio.kpis);
+    });
+  });
 });

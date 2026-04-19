@@ -72,8 +72,16 @@ const deltaText = (curr, prev, fmt = (v) => String(v), invertColors = false) => 
   };
 };
 
+// Extrai data ISO (YYYY-MM-DD) de um trade inline (tem entryTime ISO).
+const tradeDate = (t) => {
+  if (!t) return null;
+  if (t.entryTime && typeof t.entryTime === 'string') return t.entryTime.slice(0, 10);
+  if (t.date) return t.date;
+  return null;
+};
+
 // ===== Subitem 1: Trades do período =====
-const TradesSection = ({ trades, currency = 'USD' }) => {
+const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = null }) => {
   if (!trades || trades.length === 0) {
     return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
       Sem trades no período.
@@ -84,6 +92,8 @@ const TradesSection = ({ trades, currency = 'USD' }) => {
       {trades.map((t, i) => {
         const isBuy = t.side === 'LONG' || t.side === 'BUY' || t.side === 'C';
         const isWin = Number(t.pnl) > 0;
+        const td = tradeDate(t);
+        const outOfPeriod = weekStart && weekEnd && td && (td < weekStart || td > weekEnd);
         return (
           <div key={t.tradeId || i} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
             <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
@@ -91,8 +101,13 @@ const TradesSection = ({ trades, currency = 'USD' }) => {
               {isBuy ? 'C' : 'V'}
             </span>
             <span className="text-slate-400 text-[12px]">
-              {t.qty || 0} {(t.qty || 0) === 1 ? 'ctr' : 'ctrs'} · {fmtTime(t.entryTime)}
+              {t.qty || 0} {(t.qty || 0) === 1 ? 'ctr' : 'ctrs'} · {td ? td.slice(5).replace('-', '/') + ' ' : ''}{fmtTime(t.entryTime)}
             </span>
+            {outOfPeriod && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
+                fora do período
+              </span>
+            )}
             <span className={`ml-auto font-medium ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
               {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
             </span>
@@ -195,8 +210,11 @@ const Placeholder = ({ label }) => (
   </div>
 );
 
-// Reconstrói snapshot live a partir das trades atuais do plano + período.
+// Reconstrói snapshot live a partir das trades atuais do plano + período + inclusões.
 // Usado em DRAFTs (rascunhos abertos atualizam KPIs/trades em tempo real).
+//
+// Stage 2.5: além das trades no período [weekStart, weekEnd], mescla trades cujos ids
+// estão em `review.includedTradeIds` (pinados pelo mentor via FeedbackPage). Dedup por id.
 const rebuildSnapshotFromFirestore = async (review) => {
   const planId = review?.planId || review?.frozenSnapshot?.planContext?.planId;
   if (!planId) return null;
@@ -211,9 +229,15 @@ const rebuildSnapshotFromFirestore = async (review) => {
     if (!td) return false;
     return td >= review.weekStart && td <= review.weekEnd;
   });
+  // Trades explicitamente incluídos (podem estar fora do período).
+  const includedIds = new Set(review?.includedTradeIds || []);
+  const extraTrades = includedIds.size > 0
+    ? allTrades.filter(t => includedIds.has(t.id) && !weekTrades.some(w => w.id === t.id))
+    : [];
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
+    extraTrades,
     cycleKey: review.cycleKey || null,
     emotionalMetrics: null,
   });
@@ -411,6 +435,8 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
               <TradesSection
                 trades={effectiveSnapshot.periodTrades}
                 currency={currency}
+                weekStart={review.weekStart}
+                weekEnd={review.weekEnd}
               />
             </Section>
 

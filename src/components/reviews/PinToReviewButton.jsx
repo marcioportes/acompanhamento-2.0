@@ -70,7 +70,7 @@ const PinToReviewButton = ({ trade }) => {
     return () => { unsubPlan(); unsubTrades(); };
   }, [planId]);
 
-  const { reviews, createReview, appendTakeaway, actionLoading } = useWeeklyReviews(studentIdForReviews);
+  const { reviews, createReview, appendTakeaway, addIncludedTrade, actionLoading } = useWeeklyReviews(studentIdForReviews);
 
   // Semana ISO de HOJE (quando o mentor está conduzindo a revisão).
   // Revisão é uma por semana. Mentor pode estar revisando trade antigo — o ponto
@@ -134,8 +134,14 @@ const PinToReviewButton = ({ trade }) => {
         // Usando timeout curto para permitir onSnapshot atualizar o array.
         await new Promise(r => setTimeout(r, 350));
       }
+      // 1) Inclui o tradeId no set explícito da revisão — garante que o trade apareça
+      //    em Subitem 1 mesmo fora do período do rascunho (Stage 2.5).
+      if (trade?.id) {
+        try { await addIncludedTrade(reviewId, trade.id); } catch { /* best-effort */ }
+      }
+      // 2) Append da nota em takeaways (string atual — Stage 4 vai virar checklist).
       await appendTakeaway(reviewId, note);
-      setFlash(`Anotado em ${todayISO.key}`);
+      setFlash(`Trade pinado na revisão ${todayISO.key}`);
       setNote('');
       setOpen(false);
       setTimeout(() => setFlash(null), 2500);
@@ -145,7 +151,7 @@ const PinToReviewButton = ({ trade }) => {
     } finally {
       setBusy(false);
     }
-  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway]);
+  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway, addIncludedTrade, trade?.id]);
 
   if (!mentor) return null;
   if (!planId) return null;

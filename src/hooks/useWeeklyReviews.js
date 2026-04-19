@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  doc, updateDoc, deleteDoc, serverTimestamp,
+  doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -150,6 +150,24 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
+  // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
+  // (caso mentor revise trade antigo em rascunho de semana diferente).
+  const addIncludedTrade = useCallback(async (reviewId, tradeId) => {
+    if (!tradeId) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, { includedTradeIds: arrayUnion(tradeId) });
+    } catch (err) {
+      setError(err.message || 'Erro ao incluir trade na revisão');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Pin rápido: anexa uma linha ao campo takeaways de uma revisão (DRAFT).
   // Usado pelo PinToReviewButton (FeedbackPage) — evita context switch.
   const appendTakeaway = useCallback(async (reviewId, line) => {
@@ -182,6 +200,7 @@ export const useWeeklyReviews = (studentId) => {
     archiveReview,
     deleteReview,
     appendTakeaway,
+    addIncludedTrade,
   };
 };
 
