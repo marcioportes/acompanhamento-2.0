@@ -13,14 +13,45 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase';
 import {
-  X, Loader2, Sparkles, AlertTriangle, CheckCircle2,
+  X, Loader2, Sparkles, AlertTriangle, CheckCircle2, RefreshCw,
   TrendingUp, TrendingDown, Archive, Lock, FileText, Video, GitCompare, Trash2,
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
 import { validateReviewUrl, validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../../utils/reviewUrlValidator';
+import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
 import DebugBadge from '../DebugBadge';
+
+const filterTradesByRange = (trades, startISO, endISO) => {
+  if (!Array.isArray(trades)) return [];
+  return trades.filter(t => {
+    const d = t.date || (t.entryTime ? t.entryTime.slice(0, 10) : null);
+    if (!d) return false;
+    return d >= startISO && d <= endISO;
+  });
+};
+
+// Busca plan + trades do período e reconstrói snapshot — usado no publish de DRAFT.
+const rebuildSnapshot = async (review) => {
+  const planId = review?.frozenSnapshot?.planContext?.planId;
+  if (!planId) return null;
+  const planSnap = await getDoc(doc(db, 'plans', planId));
+  if (!planSnap.exists()) return null;
+  const plan = { id: planSnap.id, ...planSnap.data() };
+  const tradesQ = query(collection(db, 'trades'), where('planId', '==', planId));
+  const tradesSnap = await getDocs(tradesQ);
+  const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const weekTrades = filterTradesByRange(allTrades, review.weekStart, review.weekEnd);
+  return buildClientSnapshot({
+    plan,
+    trades: weekTrades,
+    cycleKey: review.cycleKey || null,
+    emotionalMetrics: null,
+  });
+};
 
 const fmtMoney = (v) => {
   const n = Number(v);
@@ -132,8 +163,34 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
     setVideoLink(review?.videoLink || '');
   }, [review?.id, review?.takeaways, review?.meetingLink, review?.videoLink]);
 
+  // DRAFT: recomputa snapshot live ao abrir e quando mentor pedir refresh.
+  // CLOSED/ARCHIVED: nunca recomputa (frozenSnapshot é a foto definitiva).
+  const refreshLiveSnapshot = useCallback(async () => {
+    if (!isDraft || !review) return;
+    setLiveRefreshing(true);
+    try {
+      const snap = await rebuildSnapshot(review);
+      if (snap) setLiveSnapshot(snap);
+    } catch (e) {
+      console.error('[WeeklyReviewModal] refresh live snapshot failed', e);
+    } finally {
+      setLiveRefreshing(false);
+    }
+  }, [isDraft, review]);
+
+  useEffect(() => {
+    if (isDraft) refreshLiveSnapshot();
+    else setLiveSnapshot(null);
+  }, [review?.id, isDraft, refreshLiveSnapshot]);
+
+  const [liveSnapshot, setLiveSnapshot] = useState(null);
+  const [liveRefreshing, setLiveRefreshing] = useState(false);
+
   const swot = review?.swot || null;
-  const snapshot = review?.frozenSnapshot || {};
+  const isDraft = review?.status === 'DRAFT';
+  // Em DRAFT, se já recomputamos snapshot live, usa; senão, fallback no stored.
+  // Em CLOSED/ARCHIVED, sempre usa o frozenSnapshot (foto congelada).
+  const snapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
   const isCustomPeriod = !!review?.customPeriod;
   const canEdit = mentor && review?.status !== 'ARCHIVED';
   const canGenerateSwot = canEdit && review?.status === 'DRAFT';
@@ -164,9 +221,15 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
     if (!canClose) return;
     if (!takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid) return;
     try {
-      await closeReview(review.id, { takeaways, meetingLink, videoLink });
+      // Recomputa snapshot no momento do publish — KPIs congelam agora, não no create.
+      // Se falhar, publica com o snapshot existente (best-effort).
+      const fresh = await rebuildSnapshot(review).catch(() => null);
+      await closeReview(review.id, {
+        takeaways, meetingLink, videoLink,
+        frozenSnapshot: fresh || undefined,
+      });
     } catch { /* already surfaced */ }
-  }, [canClose, closeReview, review?.id, takeaways, meetingLink, videoLink,
+  }, [canClose, closeReview, review, takeaways, meetingLink, videoLink,
       takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
 
   const handleArchive = useCallback(async () => {
@@ -218,6 +281,24 @@ const WeeklyReviewModal = ({ review, studentId, previousReview = null, onClose }
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* DRAFT live banner — KPIs atualizam até Publicar; aí congelam */}
+        {isDraft && (
+          <div className="px-5 py-2 bg-amber-500/5 border-b border-amber-500/20 text-[11px] flex items-center justify-between">
+            <span className="text-amber-400/90">
+              ● Rascunho em atualização — indicadores congelam ao publicar.
+            </span>
+            <button
+              onClick={refreshLiveSnapshot}
+              disabled={liveRefreshing}
+              className="text-amber-300 hover:text-amber-200 disabled:opacity-40 inline-flex items-center gap-1"
+              title="Recomputar KPIs com trades atuais"
+            >
+              {liveRefreshing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              Atualizar
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-slate-800 px-3">

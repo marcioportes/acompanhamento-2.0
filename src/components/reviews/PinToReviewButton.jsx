@@ -72,25 +72,25 @@ const PinToReviewButton = ({ trade }) => {
 
   const { reviews, createReview, appendTakeaway, actionLoading } = useWeeklyReviews(studentIdForReviews);
 
-  // Semana ISO a partir da data do trade (não do "hoje") — faz sentido pro caso
-  // do mentor revisando trade antigo: aponta para a semana do trade.
-  const tradeISO = useMemo(() => {
-    if (!trade) return null;
-    const d = trade.date || (trade.entryTime ? trade.entryTime.slice(0, 10) : null);
-    if (!d) return null;
-    return { key: getISOWeekKey(d), range: getISOWeekRange(d) };
-  }, [trade]);
+  // Semana ISO de HOJE (quando o mentor está conduzindo a revisão).
+  // Revisão é uma por semana. Mentor pode estar revisando trade antigo — o ponto
+  // vai pro rascunho da semana atual, não da semana do trade (o prefixo do texto
+  // já carrega a data do trade original).
+  const todayISO = useMemo(() => {
+    const today = new Date();
+    return { key: getISOWeekKey(today), range: getISOWeekRange(today) };
+  }, []);
 
-  // DRAFT do plano atual para a semana ISO do trade
+  // DRAFT do plano atual para a semana ISO de hoje
   const existingDraft = useMemo(() => {
-    if (!plan?.id || !tradeISO) return null;
+    if (!plan?.id || !todayISO) return null;
     return (reviews || []).find(r =>
       r.status === 'DRAFT' &&
       r.frozenSnapshot?.planContext?.planId === plan.id &&
-      r.weekStart === tradeISO.range.weekStart &&
-      r.weekEnd === tradeISO.range.weekEnd
+      r.weekStart === todayISO.range.weekStart &&
+      r.weekEnd === todayISO.range.weekEnd
     ) || null;
-  }, [reviews, plan?.id, tradeISO]);
+  }, [reviews, plan?.id, todayISO]);
 
   const prefix = useMemo(() => fmtTradePrefix(trade), [trade]);
 
@@ -99,7 +99,7 @@ const PinToReviewButton = ({ trade }) => {
   }, [open, prefix, note]);
 
   const handlePin = useCallback(async () => {
-    if (!mentor || !plan || !tradeISO) return;
+    if (!mentor || !plan || !todayISO) return;
     const trimmed = note.trim();
     if (!trimmed || trimmed === prefix.trim()) {
       setError('Escreva algo antes de anotar.');
@@ -111,7 +111,7 @@ const PinToReviewButton = ({ trade }) => {
       let reviewId = existingDraft?.id;
       if (!reviewId) {
         // Cria um DRAFT da semana ISO do trade com snapshot computado
-        const weekTrades = filterTradesByISO(planTrades, tradeISO.range.weekStart, tradeISO.range.weekEnd);
+        const weekTrades = filterTradesByISO(planTrades, todayISO.range.weekStart, todayISO.range.weekEnd);
         const snapshot = buildClientSnapshot({
           plan,
           trades: weekTrades,
@@ -121,9 +121,9 @@ const PinToReviewButton = ({ trade }) => {
         const res = await createReview({
           studentId: plan.studentId,
           planId: plan.id,
-          weekStart: tradeISO.range.weekStart,
-          weekEnd: tradeISO.range.weekEnd,
-          periodKey: tradeISO.key,
+          weekStart: todayISO.range.weekStart,
+          weekEnd: todayISO.range.weekEnd,
+          periodKey: todayISO.key,
           customPeriod: null,
           cycleKey: null,
           snapshot,
@@ -136,7 +136,7 @@ const PinToReviewButton = ({ trade }) => {
         await new Promise(r => setTimeout(r, 350));
       }
       await appendTakeaway(reviewId, note);
-      setFlash(`Anotado em ${tradeISO.key}`);
+      setFlash(`Anotado em ${todayISO.key}`);
       setNote('');
       setOpen(false);
       setTimeout(() => setFlash(null), 2500);
@@ -146,20 +146,20 @@ const PinToReviewButton = ({ trade }) => {
     } finally {
       setBusy(false);
     }
-  }, [mentor, plan, tradeISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway]);
+  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway]);
 
   if (!mentor) return null;
   if (!planId) return null;
 
   const label = existingDraft
-    ? `Anotar em ${tradeISO?.key || 'semana'}`
-    : `Criar rascunho ${tradeISO?.key || 'semana'} + anotar`;
+    ? `Anotar em ${todayISO?.key || 'semana'}`
+    : `Criar rascunho ${todayISO?.key || 'semana'} + anotar`;
 
   return (
     <div className="relative inline-block">
       <button
         onClick={() => setOpen(v => !v)}
-        disabled={!plan || !tradeISO}
+        disabled={!plan || !todayISO}
         className="px-3 py-1.5 text-xs font-medium bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/25 disabled:opacity-40 inline-flex items-center gap-1.5"
         title="Anotar ponto para conversar na Revisão Semanal"
       >
@@ -178,7 +178,7 @@ const PinToReviewButton = ({ trade }) => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-semibold text-white flex items-center gap-1.5">
               <PinIcon className="w-3 h-3 text-emerald-400" />
-              {existingDraft ? `Anotar em ${tradeISO?.key}` : `Criar rascunho ${tradeISO?.key} + anotar`}
+              {existingDraft ? `Anotar em ${todayISO?.key}` : `Criar rascunho ${todayISO?.key} + anotar`}
             </div>
             <button onClick={() => setOpen(false)} disabled={busy} className="text-slate-500 hover:text-slate-300">
               <X className="w-3.5 h-3.5" />
@@ -187,7 +187,7 @@ const PinToReviewButton = ({ trade }) => {
 
           {!existingDraft && (
             <div className="text-[11px] text-amber-400/90 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1.5 mb-2">
-              Nenhum rascunho para essa semana. Ao anotar, um rascunho será criado automaticamente com snapshot dos trades do plano em {tradeISO?.range.weekStart} → {tradeISO?.range.weekEnd}.
+              Nenhum rascunho para essa semana. Ao anotar, um rascunho será criado automaticamente com snapshot dos trades do plano em {todayISO?.range.weekStart} → {todayISO?.range.weekEnd}.
             </div>
           )}
 
