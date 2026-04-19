@@ -10,8 +10,8 @@
  * - 1.1.0: Adicionado item "Feedback" no menu do aluno
  */
 
-import { 
-  LayoutDashboard, 
+import {
+  LayoutDashboard,
   Users,
   User,
   LogOut,
@@ -26,7 +26,8 @@ import {
   Settings,
   Brain,
   CreditCard,
-  FileText
+  FileText,
+  ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -72,11 +73,12 @@ const Sidebar = ({
       badge: emotionalAlerts > 0 ? emotionalAlerts : null,
       badgeColor: 'purple'
     },
+    { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
     { id: 'students', label: 'Alunos', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },
-    { 
-      id: 'pending', 
-      label: 'Aguardando Feedback', 
+    {
+      id: 'pending',
+      label: 'Aguardando Feedback',
       icon: MessageSquare,
       badge: pendingFeedback > 0 ? pendingFeedback : null,
     },

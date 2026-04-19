@@ -26,6 +26,7 @@ import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
+import ReviewQueuePage from './pages/ReviewQueuePage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -273,6 +274,29 @@ const AppContent = () => {
       );
     }
     
+    // Extrato do Plano como view (funciona para aluno direto E mentor-viewing-as-student).
+    // Colocado ANTES do early return de viewingAsStudent para evitar hijack.
+    if (currentView === 'ledger' && ledgerPlanId) {
+      const ledgerPlan = plans.find(p => p.id === ledgerPlanId);
+      if (ledgerPlan) {
+        const ledgerTrades = trades.filter(t => t.planId === ledgerPlanId);
+        const ledgerCurrency = getPlanCurrency(ledgerPlan, accounts);
+        return (
+          <PlanLedgerExtract
+            plan={ledgerPlan}
+            trades={ledgerTrades}
+            onClose={() => { setCurrentView('dashboard'); setLedgerPlanId(null); }}
+            currency={ledgerCurrency}
+            onNavigateToFeedback={(trade) => handleNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id })}
+            embedded
+          />
+        );
+      }
+      // Plano não encontrado: reset e continua
+      setCurrentView('dashboard');
+      setLedgerPlanId(null);
+    }
+
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
       return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
@@ -285,6 +309,7 @@ const AppContent = () => {
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
     if (currentView === 'subscriptions' && isMentor()) return <SubscriptionsPage />;
+    if (currentView === 'reviews' && isMentor()) return <ReviewQueuePage />;
 
     // Student Onboarding — acessível pelo mentor via viewingAsStudent
     if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
