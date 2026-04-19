@@ -53,8 +53,22 @@ Padrão: card da conta = **ponto de entrada**; `AccountDetailPage` = **casa do p
 
 ## Log de execução
 
-_Preencher durante o trabalho._
+- 19/04/2026 — issue #154 criada + item no Product Board em "Review".
+- Worktree `~/projects/issue-154` criado a partir de `main@d736b37b`.
+- Implementação (3 arquivos + version.js):
+  - `src/pages/AccountsPage.jsx:15` — import `PlusCircle`; linha ~581 — botão no hover do card (entre Edit2 e Trash2), `setSelectedAccount({ ...acc, _autoOpenPlanModal: true })` + `e.stopPropagation()`.
+  - `src/components/StudentAccountGroup.jsx:16-20` — import `PlusCircle`; nova ação no row actions entre Target (accordion) e Edit2, `onAccountClick({ ...acc, _autoOpenPlanModal: true })`.
+  - `src/pages/AccountDetailPage.jsx:18` — import `useEffect`; linha ~78 — `useEffect` dispara `setShowPlanModal(true); setEditingPlan(null);` quando `account?._autoOpenPlanModal && onCreatePlan`.
+  - `src/version.js` — bump 1.32.0 → 1.36.0 + entrada no changelog inline.
+- Testes: 1567/1567 passando (zero regressão).
+- Commit `32693927` → push `fix/issue-154-botao-criar-plano-card-conta` → PR #155 → merge fast-forward `6caf02c9`.
 
 ## Encerramento
 
-_Preencher no final._
+- PR #155 mergeado em 19/04/2026.
+- Branch remoto deletado (pelo Marcio via GitHub UI).
+- Worktree `~/projects/issue-154` removido (passo §4.3).
+- Branch local `fix/issue-154-botao-criar-plano-card-conta` deletado.
+- Product Board item #154 movido para "Done".
+- Nenhuma dívida residual. Nenhum lock a liberar (issue em modo interativo, sem CHUNK lock formal).
+- Validação browser executada pelo Marcio (merge indica aprovação).

@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.3  
-> **Última atualização:** 19/04/2026 — DT-037 registrada (reconciliação INV-22, ISSUE 6 cancelada). Marcio prioriza valor concreto + marketing/lead capture sobre observabilidade defensiva em escala atual  
+> **Versão:** 0.22.4  
+> **Última atualização:** 19/04/2026 — Encerramento #154 v1.36.0 (botão "Novo plano" no card de conta) mergeado via PR #155, worktree removido, issue doc arquivada  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -57,6 +57,7 @@ Este documento segue versionamento semântico:
 | 0.22.1 | 19/04/2026 | Encerramento #145 v1.32.0 | PR #152 mergeado (redesign Mesa Prop em 4 zonas: status agora / retrospectivo / contrato da mesa / payout). 5 componentes novos (PropEquityCurve, PropHistoricalKPIs, TemplateCard, PlanoMecanicoCard, PropViabilityBadge) + lógica pura propViabilityBadge (6 estados phase-aware). useDrawdownHistory MAX_DOCS 100→1000. AI Approach Plan migrou para #148 (RESERVADO, gate 4D+30 shadow trades). Hotfix #149 cancelada (bug só existia em branch). Locks CHUNK-02 + CHUNK-17 liberados. Issue doc arquivada em docs/archive/. Spec Review Gate INV-18 aplicado (iteração 3). 16 testes novos, 1567/1567 passando |
 | 0.22.2 | 19/04/2026 | #128 deepdive — SPEC v1.0 + IMPACT v0.2 em referência | SPEC-importacao-plano-v1.0 e IMPACT-importacao-plano-v0.2 adicionados a `docs/reference/` como material de domínio citável (não protocolo formal). Deepdive produziu: 4 INVs (INV-19 a INV-22), 4 APs (AP-09 a AP-12), 7 DECs (DEC-084 a DEC-090), 6 issues derivadas (ISSUE 1-6). ISSUE 7 (migração shadowBehavior) cancelada, virou DT-036 com trigger de reconsideração em > 5000 trades. Framework de bundle formal INV-19 abandonado em favor de modo interativo (pair programming assíncrono com coder). Invariantes da spec ficam como vocabulário/referência, não como gate. |
 | 0.22.3 | 19/04/2026 | Cancelar ISSUE 6 — reconciliação vira DT-037 | ISSUE 6 (reconciliação de agregados INV-22) cancelada. DT-037 registrada com trigger de reconsideração em > 1000 trades OU primeiro incidente real de divergência OU escala que exija observabilidade defensiva. Priorização do Marcio: resultado concreto dia-a-dia + material para marketing/lead capture. Issues ativas do deepdive #128 agora: ISSUE 1 a ISSUE 5 (fundação + imports + plano + mesa). |
+| 0.22.4 | 19/04/2026 | Encerramento #154 v1.36.0 | PR #155 mergeado (fast-forward, merge commit 6caf02c9). Card de conta em `AccountsPage` (visão aluno) e `StudentAccountGroup` (visão mentor) ganha botão "Novo plano" (ícone `PlusCircle` emerald); click passa flag `_autoOpenPlanModal` para `AccountDetailPage` que abre `PlanManagementModal` via `useEffect`. Preserva "casa do pai" (modal não duplica surface, AP-11 não violado). Resolve workaround crítico: hoje aluno criava conta Mesa → revertia para Real → corrigia plano. **Primeira issue entregue em modo interativo** (sem bundle formal INV-19, sem R1/R2/R3) — protocolo §4.0 disciplina básica (issue + worktree + control file + PR + Closes) foi suficiente. 1567/1567 testes passando, zero regressão. Worktree removido, issue doc arquivada. |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
