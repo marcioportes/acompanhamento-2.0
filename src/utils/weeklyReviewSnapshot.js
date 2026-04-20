@@ -67,8 +67,9 @@ const projectTrade = (trade) => {
     else if (k === 'closeTime') out.closeTime = trade.exitTime || null;
     // Trades legados usam `ticker`; novos usam `symbol`. Prioriza symbol, cai em ticker.
     else if (k === 'symbol') out.symbol = trade.symbol ?? trade.ticker ?? null;
-    // Emotion legada é `emotion` (single); novo shape separa entry/exit. Fallback.
-    else if (k === 'emotionEntry') out.emotionEntry = trade.emotionEntry ?? trade.emotion ?? null;
+    // Emotion legada é `emotion` (single); novo shape separa entry/exit.
+    // || (não ??) para tratar string vazia '' como ausente e cair no fallback.
+    else if (k === 'emotionEntry') out.emotionEntry = trade.emotionEntry || trade.emotion || null;
     else out[k] = trade[k] ?? null;
   }
   return out;
