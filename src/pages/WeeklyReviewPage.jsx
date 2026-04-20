@@ -22,9 +22,14 @@ import {
   doc, onSnapshot, collection, query, where, orderBy, limit, getDoc, getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import {
+  ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown,
+  RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save,
+} from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
+import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
+import { validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
 
 const statusBadge = (status) => {
   switch (status) {
@@ -130,6 +135,127 @@ const KpiCard = ({ label, value, delta, prev }) => (
       {delta && <span className={`text-[11px] font-medium ${delta.cls}`}>{delta.text}</span>}
     </div>
     {prev && <div className="text-[11px] text-slate-500 mt-0.5">{prev}</div>}
+  </div>
+);
+
+// ===== Subitem 3: SWOT =====
+const SwotQuadrant = ({ title, items, icon: Icon, color }) => (
+  <div className={`rounded-lg border p-3 bg-slate-900/40 ${color}`}>
+    <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold uppercase tracking-wide">
+      <Icon className="w-3.5 h-3.5" />
+      {title}
+    </div>
+    {items && items.length > 0 ? (
+      <ul className="space-y-1.5 text-[12px] leading-relaxed text-slate-300">
+        {items.map((it, i) => (
+          <li key={i}>{it}</li>
+        ))}
+      </ul>
+    ) : (
+      <div className="text-[11px] text-slate-500 italic">Sem itens</div>
+    )}
+  </div>
+);
+
+const SwotSection = ({ swot, canGenerate, onGenerate, actionLoading, confirmRegen, setConfirmRegen }) => {
+  if (!swot) {
+    return (
+      <div className="text-center py-6 rounded-lg border border-dashed border-slate-700 bg-slate-800/20">
+        <Sparkles className="w-5 h-5 text-slate-600 mx-auto mb-2" />
+        <p className="text-xs text-slate-400 mb-3">SWOT ainda não foi gerado para esta revisão.</p>
+        {canGenerate && (
+          <button
+            onClick={onGenerate}
+            disabled={actionLoading}
+            className="px-4 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
+          >
+            {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            Gerar SWOT via IA
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {swot.aiUnavailable ? (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 text-[11px] text-amber-300 flex items-center gap-2 mb-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          IA indisponível no momento — SWOT determinístico. Regenere quando a IA voltar.
+        </div>
+      ) : (
+        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded px-3 py-1 text-[10px] text-emerald-400 flex items-center gap-2 mb-2">
+          <CheckCircle2 className="w-3 h-3" />
+          Gerado por {swot.modelVersion || 'IA'} · prompt v{swot.promptVersion || '—'} · geração #{swot.generationCount ?? 1}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <SwotQuadrant title="Forças" items={swot.strengths} icon={TrendingUp} color="border-emerald-500/30" />
+        <SwotQuadrant title="Fraquezas" items={swot.weaknesses} icon={TrendingDown} color="border-red-500/30" />
+        <SwotQuadrant title="Oportunidades" items={swot.opportunities} icon={Sparkles} color="border-sky-500/30" />
+        <SwotQuadrant title="Ameaças" items={swot.threats} icon={AlertTriangle} color="border-amber-500/30" />
+      </div>
+
+      {canGenerate && (
+        <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-800/60">
+          {confirmRegen ? (
+            <>
+              <span className="text-[11px] text-amber-400">
+                Sobrescrever SWOT atual (geração #{swot.generationCount ?? 1})?
+              </span>
+              <button onClick={() => setConfirmRegen(false)} disabled={actionLoading} className="px-2 py-0.5 text-[11px] text-slate-400 hover:text-white disabled:opacity-40">Cancelar</button>
+              <button onClick={onGenerate} disabled={actionLoading} className="px-2 py-0.5 text-[11px] bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded hover:bg-amber-500/30 disabled:opacity-40">
+                {actionLoading ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
+                Sim, regenerar
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirmRegen(true)}
+              disabled={actionLoading}
+              className="px-2.5 py-0.5 text-[11px] text-emerald-400 hover:text-emerald-300 disabled:opacity-40 inline-flex items-center gap-1"
+            >
+              <Sparkles className="w-3 h-3" /> Regenerar SWOT
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== Subitem 4: Notas da Sessão =====
+const SessionNotesSection = ({ value, onChange, onSave, canEdit, actionLoading, dirty, validation }) => (
+  <div>
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={!canEdit || actionLoading}
+      rows={5}
+      className="w-full input-dark text-[13px] font-sans leading-relaxed"
+      placeholder="O que aconteceu na sessão. Discussões, links de Zoom/Meet, contexto relevante..."
+    />
+    <div className="flex items-center justify-between mt-1.5">
+      <div className="text-[10px]">
+        {validation?.error ? (
+          <span className="text-red-400">{validation.error}</span>
+        ) : (
+          <span className="text-slate-500">{value.length}/{MAX_TAKEAWAYS_LENGTH} · texto livre, com links inline se necessário</span>
+        )}
+      </div>
+      {canEdit && (
+        <button
+          onClick={onSave}
+          disabled={!dirty || !validation?.valid || actionLoading}
+          className="px-2.5 py-1 text-[11px] font-medium bg-slate-700/40 border border-slate-600 text-slate-300 rounded hover:bg-slate-700/60 disabled:opacity-40 inline-flex items-center gap-1"
+        >
+          {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          Salvar
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -252,6 +378,11 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
   const [liveSnapshot, setLiveSnapshot] = useState(null);
   const [liveRefreshing, setLiveRefreshing] = useState(false);
 
+  // Stage 3: hook + state para SWOT e Notas da Sessão.
+  const { generateSwot, updateSessionNotes, actionLoading } = useWeeklyReviews(studentId);
+  const [confirmRegen, setConfirmRegen] = useState(false);
+  const [sessionNotesDraft, setSessionNotesDraft] = useState('');
+
   // Listener no doc da revisão — reflete updates live (SWOT, takeaways, etc.)
   useEffect(() => {
     if (!studentId || !reviewId) { setLoading(false); return undefined; }
@@ -361,6 +492,41 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
   // Snapshot efetivo: live para DRAFT (se recomputado), senão o frozenSnapshot do doc.
   const effectiveSnapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
 
+  // Stage 3: permissão + handlers SWOT / Notas.
+  const canEdit = review?.status !== 'ARCHIVED';
+  const swot = review?.swot || null;
+
+  // Sincroniza draft de sessionNotes com o doc. Fallback: rascunhos antigos têm
+  // `takeaways` (string) em vez de `sessionNotes` — consome na primeira render.
+  useEffect(() => {
+    if (!review) return;
+    const next = typeof review.sessionNotes === 'string'
+      ? review.sessionNotes
+      : (typeof review.takeaways === 'string' ? review.takeaways : '');
+    setSessionNotesDraft(next);
+  }, [review?.id, review?.sessionNotes, review?.takeaways]);
+
+  const persistedNotes = typeof review?.sessionNotes === 'string'
+    ? review.sessionNotes
+    : (typeof review?.takeaways === 'string' ? review.takeaways : '');
+  const notesDirty = sessionNotesDraft !== persistedNotes;
+  const notesValidation = useMemo(() => validateTakeaways(sessionNotesDraft), [sessionNotesDraft]);
+
+  const handleGenerateSwot = async () => {
+    if (!canEdit || !isDraft) return;
+    try {
+      await generateSwot({ reviewId: review.id });
+      setConfirmRegen(false);
+    } catch { /* error surfaced by hook */ }
+  };
+
+  const handleSaveSessionNotes = async () => {
+    if (!canEdit || !notesDirty || !notesValidation.valid) return;
+    try {
+      await updateSessionNotes(review.id, sessionNotesDraft);
+    } catch { /* */ }
+  };
+
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
 
@@ -450,13 +616,28 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
             </Section>
 
             {/* Subitem 3: SWOT */}
-            <Section num="3" title="SWOT do aluno (gerado pela CF no ato da criação)" stage="3">
-              <Placeholder label="Grid 2×2: Forças · Fraquezas · Oportunidades · Ameaças — Stage 3" />
+            <Section num="3" title="SWOT do aluno (gerado pela IA)">
+              <SwotSection
+                swot={swot}
+                canGenerate={canEdit && isDraft}
+                onGenerate={handleGenerateSwot}
+                actionLoading={actionLoading}
+                confirmRegen={confirmRegen}
+                setConfirmRegen={setConfirmRegen}
+              />
             </Section>
 
             {/* Subitem 4: Notas da sessão */}
-            <Section num="4" title="Notas da sessão" stage="3">
-              <Placeholder label="Textarea livre — o que aconteceu na reunião, link Zoom inline — Stage 3" />
+            <Section num="4" title="Notas da sessão">
+              <SessionNotesSection
+                value={sessionNotesDraft}
+                onChange={setSessionNotesDraft}
+                onSave={handleSaveSessionNotes}
+                canEdit={canEdit}
+                actionLoading={actionLoading}
+                dirty={notesDirty}
+                validation={notesValidation}
+              />
             </Section>
 
             {/* Subitem 5: Takeaways */}

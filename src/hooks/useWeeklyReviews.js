@@ -150,6 +150,22 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Atualiza campo sessionNotes (Notas da Sessão) — texto livre do mentor sobre a reunião.
+  // Usado em Stage 3 da nova tela WeeklyReviewPage (Subitem 4).
+  const updateSessionNotes = useCallback(async (reviewId, notes) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, { sessionNotes: typeof notes === 'string' ? notes : null });
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar notas da sessão');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
   // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
   // (caso mentor revise trade antigo em rascunho de semana diferente).
@@ -201,6 +217,7 @@ export const useWeeklyReviews = (studentId) => {
     deleteReview,
     appendTakeaway,
     addIncludedTrade,
+    updateSessionNotes,
   };
 };
 
