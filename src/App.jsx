@@ -89,6 +89,8 @@ const AppContent = () => {
   // Tela nova Revisão Semanal (#102, Stage 1) — navegada pela Fila de Revisão.
   // Coexiste com o PlanLedgerExtract 3-col (baseline para comparação).
   const [weeklyReviewContext, setWeeklyReviewContext] = useState(null); // { studentId, reviewId }
+  // Contexto de retorno quando usuário vai ao FeedbackPage a partir da WeeklyReviewPage (Stage 3).
+  const [feedbackReturnReviewContext, setFeedbackReturnReviewContext] = useState(null);
   
   // Hooks
   const { 
@@ -220,12 +222,22 @@ const AppContent = () => {
   const handleNavigateToFeedback = (trade) => {
     // Guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
     setFeedbackReturnPlanId(trade._fromLedgerPlanId || null);
+    // Stage 3: retorno à WeeklyReviewPage se veio de lá (flag _fromReviewContext)
+    setFeedbackReturnReviewContext(trade._fromReviewContext || null);
     setFeedbackTrade(trade);
   };
 
   // Handler para voltar do FeedbackPage
   const handleBackFromFeedback = () => {
     setFeedbackTrade(null);
+    // Se veio da WeeklyReviewPage, volta pra ela (prioriza sobre extrato)
+    if (feedbackReturnReviewContext) {
+      setWeeklyReviewContext(feedbackReturnReviewContext);
+      setCurrentView('weekly-review');
+      setFeedbackReturnReviewContext(null);
+      setFeedbackReturnPlanId(null);
+      return;
+    }
     // Se veio do extrato, volta para o extrato (não para o dashboard)
     if (feedbackReturnPlanId) {
       setLedgerPlanId(feedbackReturnPlanId);
@@ -340,6 +352,10 @@ const AppContent = () => {
           studentId={weeklyReviewContext.studentId}
           reviewId={weeklyReviewContext.reviewId}
           onBack={() => { setWeeklyReviewContext(null); setCurrentView('reviews'); }}
+          onNavigateToFeedback={(trade) => handleNavigateToFeedback({
+            ...trade,
+            _fromReviewContext: { studentId: weeklyReviewContext.studentId, reviewId: weeklyReviewContext.reviewId },
+          })}
         />
       );
     }

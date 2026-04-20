@@ -24,7 +24,7 @@ import {
 import { db } from '../firebase';
 import {
   ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown,
-  RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save,
+  RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save, MessageSquare,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
@@ -86,7 +86,7 @@ const tradeDate = (t) => {
 };
 
 // ===== Subitem 1: Trades do período =====
-const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = null }) => {
+const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = null, onNavigateToFeedback = null }) => {
   if (!trades || trades.length === 0) {
     return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
       Sem trades no período.
@@ -99,6 +99,12 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
         const isWin = Number(t.pnl) > 0;
         const td = tradeDate(t);
         const outOfPeriod = weekStart && weekEnd && td && (td < weekStart || td > weekEnd);
+        const handleOpenFeedback = () => {
+          if (!onNavigateToFeedback || !t.tradeId) return;
+          // Repassa o shape inline como trade (tem id + ticker/symbol + emoções).
+          // FeedbackPage resolve o resto via re-lookup por trade.id.
+          onNavigateToFeedback({ id: t.tradeId, ticker: t.symbol, ...t });
+        };
         return (
           <div key={t.tradeId || i} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
             <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
@@ -119,6 +125,15 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
             <span className="text-[12px] text-slate-500 min-w-[60px] text-right truncate" title={t.emotionEntry || ''}>
               {t.emotionEntry || '—'}
             </span>
+            {onNavigateToFeedback && t.tradeId && (
+              <button
+                onClick={handleOpenFeedback}
+                className="p-1 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                title="Abrir feedback do trade"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         );
       })}
@@ -369,7 +384,7 @@ const rebuildSnapshotFromFirestore = async (review) => {
   });
 };
 
-const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
+const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = null }) => {
   const [review, setReview] = useState(null);
   const [student, setStudent] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -603,6 +618,7 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack }) => {
                 currency={currency}
                 weekStart={review.weekStart}
                 weekEnd={review.weekEnd}
+                onNavigateToFeedback={onNavigateToFeedback}
               />
             </Section>
 
