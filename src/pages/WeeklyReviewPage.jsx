@@ -370,23 +370,45 @@ const SwotSection = ({ swot, canGenerate, onGenerate, actionLoading, confirmRege
 };
 
 // ===== Subitem 5: Takeaways (checklist) =====
-const TakeawayItem = ({ item, canEdit, onToggle, onRemove, onNavigateToFeedback }) => {
+// Dois estados independentes são renderizados:
+// - item.done: mentor encerrou o takeaway (pode voltar ao estado pendente via toggle).
+// - alunoDone (derivado de review.alunoDoneIds): aluno marcou como executado no
+//   dashboard dele. Visual amber (distinto do emerald do mentor) + badge "aluno".
+const TakeawayItem = ({ item, canEdit, alunoDone, onToggle, onRemove, onNavigateToFeedback }) => {
   const handleOpenTrade = () => {
     if (!onNavigateToFeedback || !item.sourceTradeId) return;
     onNavigateToFeedback({ id: item.sourceTradeId });
   };
+  const checkboxColor = item.done
+    ? 'text-emerald-400'
+    : alunoDone
+      ? 'text-amber-400'
+      : 'text-slate-500 hover:text-slate-300';
+  const checkboxTitle = item.done
+    ? 'Mentor encerrou — clique para reabrir'
+    : alunoDone
+      ? 'Aluno marcou como feito — encerre para fechar oficialmente'
+      : 'Encerrar takeaway (mentor)';
   return (
     <div className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-slate-800/40 group">
       <button
         onClick={() => canEdit && onToggle(item.id)}
         disabled={!canEdit}
-        className={`mt-0.5 shrink-0 ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${item.done ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
-        title={item.done ? 'Marcar como pendente' : 'Marcar como feito'}
+        className={`mt-0.5 shrink-0 ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${checkboxColor}`}
+        title={checkboxTitle}
       >
-        {item.done ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+        {(item.done || alunoDone) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
       </button>
       <span className={`flex-1 text-[13px] leading-relaxed ${item.done ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
         {item.text}
+        {alunoDone && !item.done && (
+          <span
+            className="ml-1.5 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 align-middle"
+            title="O aluno marcou este takeaway como executado pelo dashboard"
+          >
+            aluno ✓
+          </span>
+        )}
       </span>
       {item.sourceTradeId && onNavigateToFeedback && (
         <button
@@ -410,7 +432,7 @@ const TakeawayItem = ({ item, canEdit, onToggle, onRemove, onNavigateToFeedback 
   );
 };
 
-const TakeawaysSection = ({ items, canEdit, onAdd, onToggle, onRemove, onNavigateToFeedback, actionLoading }) => {
+const TakeawaysSection = ({ items, alunoDoneIds, canEdit, onAdd, onToggle, onRemove, onNavigateToFeedback, actionLoading }) => {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState('');
   const handleAdd = async () => {
@@ -423,8 +445,13 @@ const TakeawaysSection = ({ items, canEdit, onAdd, onToggle, onRemove, onNavigat
     } catch { /* */ }
   };
   const safeItems = Array.isArray(items) ? items : [];
+  const alunoDoneSet = useMemo(
+    () => new Set(Array.isArray(alunoDoneIds) ? alunoDoneIds : []),
+    [alunoDoneIds]
+  );
   const pendingCount = safeItems.filter(it => !it.done).length;
   const doneCount = safeItems.length - pendingCount;
+  const alunoDoneCount = safeItems.filter(it => !it.done && alunoDoneSet.has(it.id)).length;
   return (
     <div>
       {safeItems.length === 0 && !adding && (
@@ -435,7 +462,8 @@ const TakeawaysSection = ({ items, canEdit, onAdd, onToggle, onRemove, onNavigat
       {safeItems.length > 0 && (
         <>
           <div className="text-[10px] text-slate-500 mb-1">
-            {pendingCount} pendente{pendingCount === 1 ? '' : 's'} · {doneCount} feito{doneCount === 1 ? '' : 's'}
+            {pendingCount} pendente{pendingCount === 1 ? '' : 's'} · {doneCount} encerrado{doneCount === 1 ? '' : 's'} pelo mentor
+            {alunoDoneCount > 0 && <> · <span className="text-amber-400">{alunoDoneCount} marcado{alunoDoneCount === 1 ? '' : 's'} pelo aluno</span></>}
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60 mb-2">
             {safeItems.map(it => (
@@ -443,6 +471,7 @@ const TakeawaysSection = ({ items, canEdit, onAdd, onToggle, onRemove, onNavigat
                 key={it.id}
                 item={it}
                 canEdit={canEdit}
+                alunoDone={alunoDoneSet.has(it.id)}
                 onToggle={onToggle}
                 onRemove={onRemove}
                 onNavigateToFeedback={onNavigateToFeedback}
@@ -1127,6 +1156,7 @@ const WeeklyReviewPage = ({
             <Section num="5" title="Takeaways">
               <TakeawaysSection
                 items={review.takeawayItems}
+                alunoDoneIds={review.alunoDoneIds}
                 canEdit={canEdit}
                 onAdd={(text) => addTakeawayItem(review.id, text, null)}
                 onToggle={(itemId) => toggleTakeawayDone(review.id, itemId)}
