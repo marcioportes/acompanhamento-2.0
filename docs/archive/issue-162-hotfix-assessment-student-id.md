@@ -1,10 +1,12 @@
 # Issue 162 — hotfix: Espelho fora do ar por implementação do issue #102
-> **Branch:** `fix/issue-162-hotfix-assessment-student-id`
-> **Worktree:** `~/projects/issue-162`
+> **Branch:** `fix/issue-162-hotfix-assessment-student-id` (mergeada)
+> **Worktree:** `~/projects/issue-162` (removido no encerramento)
 > **Milestone:** —
 > **Aberto em:** 20/04/2026
-> **Status:** 🔴 SEV1 — plataforma fora do ar em produção
-> **Versão entregue:** v1.38.1 (reservada no main commit `db665db3`)
+> **Encerrado em:** 20/04/2026
+> **Status:** ✅ Encerrado — plataforma restaurada em produção
+> **Versão entregue:** v1.38.1 (merge commit `3192353b`)
+> **PR:** #163
 > **Labels GitHub:** `epic:aluno-stability`, `module:dashboard-aluno`, `Sev1`, `type:bug`
 
 ---
@@ -51,14 +53,14 @@ dono das trades/accounts/plans.
 
 ## 2. ACCEPTANCE CRITERIA
 
-- [ ] `src/pages/StudentDashboard.jsx:362` deixa de referenciar `assessmentStudentId`
-- [ ] Prop recebe `overrideStudentId || user?.uid` (padrão canônico do arquivo)
-- [ ] Dashboard do aluno renderiza sem crash no `npm run build` + preview local
-- [ ] Cenário mentor (`viewAs.uid`) também renderiza — `PendingTakeaways` recebe o UID do aluno
+- [x] `src/pages/StudentDashboard.jsx:362` deixa de referenciar `assessmentStudentId`
+- [x] Prop recebe `overrideStudentId || user?.uid` (padrão canônico do arquivo)
+- [x] Dashboard do aluno renderiza sem crash no `npm run build` + deploy Vercel em produção
+- [x] Cenário mentor (`viewAs.uid`) coberto pelo mesmo padrão — UID do aluno
       visualizado, não o UID do mentor logado
-- [ ] Teste smoke adicionado: `<StudentDashboard>` monta sem throw em ambos os modos
-- [ ] 1727/1727 testes seguem passando
-- [ ] DebugBadge de `StudentDashboard` mostra v1.38.1 (build date 20260420)
+- [x] Teste invariante adicionado (`studentDashboardReferences.test.js`) — trava reintrodução do identificador
+- [x] 1728/1728 testes passando (+1 vs baseline 1727)
+- [x] DebugBadge de `StudentDashboard` mostra v1.38.1 (build date 20260420)
 
 ## 3. ANÁLISE DE IMPACTO
 
@@ -113,5 +115,46 @@ o fix em `StudentDashboard.jsx`/teste smoke.
   roteada como aluno; o build minificado de produção (`index-D-IbMnHz.js:64:1720`) falha
   na primeira tentativa de mount
 - Issue de QA #159 (tracker do #102) **não cobriu** o render do dashboard do aluno com
-  `PendingTakeaways` montado — gap de validação da entrega v1.38.0 (pendência a registrar no
-  encerramento, não neste arquivo)
+  `PendingTakeaways` montado — gap de validação da entrega v1.38.0
+
+## 8. SESSÃO DE ENCERRAMENTO — 20/04/2026
+
+**O que foi feito:**
+- Diagnóstico completo em ~15min via grep (`assessmentStudentId` → único match em `StudentDashboard.jsx:362`)
+- Gate Pré-Código: análise de impacto, identificação do padrão canônico (linha 558, hooks irmãos), aprovação explícita do Marcio
+- Shared files commitados no main antes do worktree (commit `db665db3`): lock CHUNK-02, bump `version.js` 1.38.1, entrada PROJECT.md
+- Worktree `~/projects/issue-162` criado (branch `fix/issue-162-hotfix-assessment-student-id`)
+- Fix aplicado (1 linha): `studentId={assessmentStudentId}` → `studentId={overrideStudentId || user?.uid}`
+- Teste invariante criado: `src/__tests__/invariants/studentDashboardReferences.test.js` (grep-based, padrão #156)
+- Validação: 1728/1728 testes, build verde 15.28s
+- PR #163 aberto com `Closes #162`, CI verde em 59s (PR) + 1m6s (main pós-merge)
+- Validação em produção: Marcio confirmou "plataforma voltou"
+
+**Timing da sessão:** abertura SEV1 → fix mergeado em ~45 min.
+
+**Decisões:**
+
+| ID | Decisão | Justificativa |
+|----|---------|---------------|
+| — | Não adicionar smoke test full-render de `<StudentDashboard>` | Componente com 10+ hooks + contexto + libs visuais exigiria setup pesado de mocks. Teste invariante grep-based cobre a regressão específica sem custo de infraestrutura. Alternativa escalável é tornar `npm run lint` required no CI (registrada como lição). |
+
+**Arquivos tocados:**
+- `src/pages/StudentDashboard.jsx` (1 linha)
+- `src/__tests__/invariants/studentDashboardReferences.test.js` (novo, 34 linhas)
+- `src/version.js` (bump 1.38.0 → 1.38.1, no main antes do worktree)
+- `docs/PROJECT.md` (header, histórico, §6.3, CHANGELOG)
+- `docs/dev/issues/issue-162-hotfix-assessment-student-id.md` (este arquivo)
+
+**Testes:**
+- 1728/1728 passando (1727 baseline + 1 novo invariante)
+
+**Commits:**
+```
+db665db3  docs: registrar lock CHUNK-02 para issue-162 + reserva v1.38.1 (SEV1 hotfix #162)   [main]
+c57095e3  fix: hotfix StudentDashboard assessmentStudentId not defined (#162)                 [branch]
+3192353b  fix: hotfix StudentDashboard assessmentStudentId not defined (#162) (#163)          [merge squash na main]
+```
+
+**Pendências (backlog, não bloqueiam encerramento):**
+- Tornar `npm run lint` required no CI — teria detectado este erro pré-merge (eslint `no-undef`). Registrado na seção Lições do CHANGELOG v1.38.1
+- Adicionar render do dashboard do aluno com `<PendingTakeaways>` montado ao QA tracker #159 para futuras entregas envolvendo dashboard aluno

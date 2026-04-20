@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.9  
-> **Última atualização:** 20/04/2026 — Abertura #162 SEV1 hotfix `assessmentStudentId is not defined` introduzido pelo merge #102 em `StudentDashboard.jsx:362`, lock CHUNK-02 registrado, v1.38.1 reservada, plataforma fora do ar em produção  
+> **Versão:** 0.22.10  
+> **Última atualização:** 20/04/2026 — Encerramento #162 v1.38.1 (SEV1 hotfix — `assessmentStudentId is not defined` em `StudentDashboard.jsx:362`) mergeado via PR #163 (merge commit `3192353b`), plataforma restaurada em produção, lock CHUNK-02 liberado, issue doc arquivada, 1728/1728 testes passing  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -62,6 +62,7 @@ Este documento segue versionamento semântico:
 | 0.22.6 | 19/04/2026 | Fase A de #156 entregue + DT-039 | **Primeira issue entregue em modelo coordenador+worker via mailbox file-drop** (este coordenador escreve prompt → listener tmux `cc-156` dispara `claude -p` headless no worktree → worker executa e relata em `.cc-mailbox/outbox/`). Task 01 (discovery) e Task 02 (Fase A) completas. Commit `1e034534` no branch `arch/issue-156-order-import-staging-conversacional`: `OrderImportPage.jsx` não escreve mais `shadowBehavior` direto em `trades` (removidas 52 linhas); hook `useShadowAnalysis` invoca CF canônica `analyzeShadowBehavior`. Novo arquivo `src/__tests__/invariants/tradeWriteBoundary.test.js` (106 linhas, 6 testes) — grep-based, falha build se novos writers aparecerem em `trades` fora da whitelist. 1573/1573 testes passando. DT-039 registrada: 4 arquivos legados mantidos em whitelist GRANDFATHERED (useTrades/useAccounts/usePlans CRUD + seedTestExtract) — refatoração fica para ISSUE 1 do épico #128 ou primeiro incidente que exija migração. |
 | 0.22.8 | 20/04/2026 | Encerramento #102 v1.38.0 | PRs #157 (rules alunoDoneIds — merged `e9d5de8d` + deployado via `firebase deploy --only firestore:rules`) e #160 (squash `30af3a18`) mergeados em sequência. Entrega consolidada da **Revisão Semanal v2**: (a) `WeeklyReviewPage` nova com 8 subitens conforme mockup aprovado (Trades tabela + day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA 4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual) + Action Footer Publicar/Arquivar (gate de fechamento que faltava); (b) **carry-over de takeaways** `!done` entre revisões do mesmo plano, badge `↻ anterior`; (c) **PendingTakeaways** no dashboard do aluno (rule nova permite `alunoDoneIds` via arrayUnion em CLOSED, badge `aluno ✓` amber visível pro mentor na revisão); (d) **PendingReviewsCard** trigger secundário G8 no MentorDashboard (N-listener pattern, evita índice COLLECTION_GROUP novo). Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto para comparação. Bugfixes relevantes: hijack `viewingAsStudent → StudentDashboard` movido para DEPOIS do check `currentView==='onboarding'` no App.jsx; retorno contextual do ledger e assessment; `closeReview` preserva campos não-passados (undefined-check). DEC-086/087 adicionados. Issue **#159** criado como QA tracker (14 blocos ~120 checkboxes, validação em produção). Lock CHUNK-16 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `/home/mportes/projects/issue-102` removido (git worktree remove + rm -rf). 1727/1727 testes passing (baseline pré-sessão 1583 + carry-over +4 + outros merges). Zero regressão. |
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
+| 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
 | 0.22.7 | 20/04/2026 | Encerramento #156 v1.37.0 | PR #158 mergeado. Épico de 6 fases (A-F) consolidado em um único PR: (A) shadow writer bypass removido + invariante `tradeWriteBoundary`; (B) schema classificação persistente (5 classes) em `ordersStagingArea` + `autoLiqDetector`; (C) UX conversacional `ConversationalOpCard` substitui auto-create #93 + `AutoLiqBadge` + gate plano retroativo; (D) reconstrução robusta — segmentação por instrument + agregação N×M fills + gap 60min; (E) enrichment sem duplicata — helper puro `conversationalIngest` + `AdjustmentModal` diff fino + persist `discarded` em `orders`; (F) wire `onRequestRetroactivePlan` em App→StudentDashboard→OrderImportPage fechando gate + bump v1.37.0. **1689/1689 testes** (+122 vs baseline pré-#156 de 1567), invariante verde, zero regressão. Delta de shared files: `version.js` bumped, `firestore.rules` não tocado pela issue. Worktree removido, tmux `cc-156` killed, issue doc arquivada em `docs/archive/`, Product Board item movido para Done. **Infra operacional nova:** scripts `cc-worktree-{start,stop}.sh` + mailbox file-drop (`.cc-mailbox/`) + suporte opcional a `COORD_SESSION_ID` para notificação inversa via `claude --resume` validada em teste isolado — aplicável a partir do próximo épico. |
 
 **Regra de uso:**
@@ -692,7 +693,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-02 | #162 | `fix/issue-162-hotfix-assessment-student-id` | 20/04/2026 | SEV1 hotfix — `assessmentStudentId is not defined` pós #102 |
+| — | — | — | — | (nenhum lock ativo) |
 
 ### 6.4 Checklist de Check-Out
 
@@ -883,11 +884,28 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
-### [1.38.1] - 20/04/2026 (RESERVADA — SEV1 hotfix #162)
-**Issue:** #162 (hotfix: plataforma fora do ar — `assessmentStudentId is not defined`)
-**Contexto:** ReferenceError introduzido em `src/pages/StudentDashboard.jsx:362` pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Prop `studentId` de `<PendingTakeaways>` referenciava identificador inexistente no escopo de `StudentDashboardBody`, quebrando render do dashboard do aluno em produção.
-**Fix previsto:** substituir `assessmentStudentId` por `overrideStudentId || user?.uid` (padrão canônico da linha 558 e dos hooks irmãos `useTrades`/`useAccounts`/`usePlans`).
-**Entrada definitiva a consolidar no encerramento.**
+### [1.38.1] - 20/04/2026
+**Issue:** #162 (hotfix: Espelho fora do ar por implementação do issue #102)
+**PR:** #163 (merge commit `3192353b`)
+**Severidade:** SEV1 — plataforma fora do ar em produção, dashboard do aluno retornando tela branca
+
+#### Contexto
+Pós-merge do PR #160 (entrega do #102 v1.38.0 — Revisão Semanal v2, commit `30af3a18`) o bundle de produção lançava `Uncaught ReferenceError: assessmentStudentId is not defined` no render de `StudentDashboardBody`. Logs consecutivos de `[useTrades] / [usePlans] / [useAccounts] Student mode` precediam o crash — hooks de dados inicializavam OK, o erro era síncrono no JSX durante mount.
+
+#### Corrigido
+- `src/pages/StudentDashboard.jsx:362` — prop `studentId` de `<PendingTakeaways>` referenciava identificador `assessmentStudentId` **não declarado** no escopo de `StudentDashboardBody` (linha 88+). Resíduo de refactor/rename do PR #160. Substituído por `overrideStudentId || user?.uid`, padrão canônico da linha 558 (`scopeStudentId`) e dos hooks irmãos `useTrades`/`useAccounts`/`usePlans` (linhas 96-98). Ambos os identificadores já estavam no escopo via `useAuth()` + `viewAs?.uid`, sem novos imports ou dependências.
+
+#### Adicionado
+- `src/__tests__/invariants/studentDashboardReferences.test.js` — cerca anti-regressão grep-based: falha se `\bassessmentStudentId\b` reaparecer em `src/pages/StudentDashboard.jsx`. Padrão do `tradeWriteBoundary.test.js` (#156). Não substitui ESLint `no-undef`; serve de guarda explícita enquanto `npm run lint` não é obrigatório no CI.
+
+#### Testes
+- 1728/1728 passando (baseline 1727 pré-sessão + 1 novo invariante)
+- `npm run build` verde (15.28s, 2913 módulos)
+- Validado em produção: bundle pós-deploy carrega sem ReferenceError, dashboard do aluno renderiza
+
+#### Lições aprendidas
+- QA tracker #159 (do #102) **não cobriu** render do dashboard do aluno com `<PendingTakeaways>` montado — gap de validação da entrega v1.38.0. Registrar no tracker como acceptance criterion antes do próximo merge envolvendo dashboard aluno.
+- Lint `no-undef` teria detectado o erro em CI pré-merge. Candidato a fast-follow: tornar `npm run lint` required no CI (inicialmente apenas para arquivos tocados no PR, para evitar backlog de warnings antigos).
 
 ### [1.38.0] - 20/04/2026
 **Issue:** #102 (feat: Revisão Semanal — entrega consolidada v2)
