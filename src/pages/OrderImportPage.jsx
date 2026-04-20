@@ -43,8 +43,16 @@ import { compareOperationWithTrade } from '../utils/orderTradeComparison';
 import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
 import { detectCoverageGap } from '../utils/planCoverage';
+import {
+  routeConversationalDecisions,
+  enrichConversationalBatch,
+  operationOrderFingerprints,
+  orderMatchFingerprint,
+} from '../utils/conversationalIngest';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import {
+  collection, query, where, getDocs, writeBatch, doc, serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 
 // ============================================
@@ -71,6 +79,53 @@ const STEP_LABELS = {
   [STEPS.INGESTING]: 'Importando...',
   [STEPS.DONE]: 'Concluído',
 };
+
+/**
+ * Marca os docs de `orders` correspondentes a operações descartadas com
+ * `userDecision: 'discarded'` + `userDecisionAt: serverTimestamp()`. As ordens
+ * foram ingeridas no passo anterior (handleStagingConfirm); esta função só
+ * atualiza os docs existentes para preservar a decisão do aluno em auditoria.
+ *
+ * Match: `batchId` + fingerprint instrument|side|filledAt|quantity
+ * (ver `orderMatchFingerprint`). `orders` docs não carregam `externalOrderId`
+ * atualmente; o fingerprint composto é suficiente para o propósito de
+ * marcação — colisões dentro do mesmo batch são improváveis (mesmo ticker,
+ * mesmo lado, mesmo filledAt exato, mesmo qty).
+ */
+async function persistDiscardedOrders({ batchId, discardedItems }) {
+  if (!batchId || !discardedItems?.length) return { updated: 0 };
+
+  // Reúne fingerprints de todas as ordens (entry+exit+stop) das ops descartadas.
+  const discardedFps = new Set();
+  for (const item of discardedItems) {
+    const fps = operationOrderFingerprints(item.operation);
+    for (const fp of fps) discardedFps.add(fp);
+  }
+  if (discardedFps.size === 0) return { updated: 0 };
+
+  const q = query(collection(db, 'orders'), where('batchId', '==', batchId));
+  const snap = await getDocs(q);
+  if (snap.empty) return { updated: 0 };
+
+  const BATCH_SIZE = 450;
+  let updated = 0;
+  const matchingDocs = snap.docs.filter(d => discardedFps.has(orderMatchFingerprint(d.data())));
+
+  for (let i = 0; i < matchingDocs.length; i += BATCH_SIZE) {
+    const chunk = matchingDocs.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+    for (const d of chunk) {
+      batch.update(doc(db, 'orders', d.id), {
+        userDecision: 'discarded',
+        userDecisionAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    updated += chunk.length;
+  }
+
+  return { updated };
+}
 
 /**
  * @param {Object} props
@@ -409,23 +464,9 @@ const OrderImportPage = ({
 
       const lowResolution = !!parseResult?.lowResolution;
 
-      // Separar por ação final:
-      //   - Criação (new / autoliq confirmado / ambiguous confirmado sem tradeId mas com promotedFrom='new' → não acontece aqui)
-      //   - Enriquecimento (match_confident / ambiguous com tradeId / new promovido para existing via pick)
-      const toCreateOps = [];
-      const toEnrich = [];
-      for (const item of confirmedItems) {
-        const needsEnrich =
-          (item.classification === CLASSIFICATION.MATCH_CONFIDENT ||
-            item.classification === CLASSIFICATION.AMBIGUOUS ||
-            item.promotedFrom === 'new') &&
-          item.tradeId;
-        if (needsEnrich) {
-          toEnrich.push(item);
-        } else {
-          toCreateOps.push(item.operation);
-        }
-      }
+      // Roteia decisões em buckets (helper puro — ver conversationalIngest.js).
+      const { toEnrich, toCreate: toCreateOps, discarded } =
+        routeConversationalDecisions(conversationalQueue);
 
       // Criação via gateway (INV-02) com throttling.
       setProgress('Criando trades a partir das decisões...');
@@ -440,13 +481,25 @@ const OrderImportPage = ({
         onProgress: (_current, _total, message) => setProgress(message),
       });
 
-      // Enriquecimento: match_confident e equivalentes.
+      // Enriquecimento real — chama tradeGateway.enrichTrade por item.
+      setProgress('Enriquecendo trades existentes com dados da corretora...');
+      const enrichResult = await enrichConversationalBatch({
+        toEnrich,
+        userContext,
+        tickerRuleMap,
+        importBatchId: batchId,
+        enrichTradeFn: enrichTrade,
+      });
+
+      // Painel de confronto: mostra o que foi enriquecido (before vs after)
+      // para auditoria visual. Classifica entre divergent (ajustes reais no patch)
+      // e converged (patch idempotente — nada mudou).
       const divergent = [];
       const converged = [];
-      const tradesByIdLocal = tradesById;
-      for (const item of toEnrich) {
-        const trade = tradesByIdLocal.get(item.tradeId);
-        if (!trade) continue;
+      for (const entry of enrichResult.enriched) {
+        const trade = tradesById.get(entry.tradeId);
+        const item = toEnrich.find(i => i.tradeId === entry.tradeId);
+        if (!trade || !item) continue;
         const comparison = compareOperationWithTrade(item.operation, trade);
         if (comparison.hasDivergences) {
           divergent.push({ operation: item.operation, trade, comparison });
@@ -454,8 +507,20 @@ const OrderImportPage = ({
           converged.push({ operation: item.operation, trade });
         }
       }
-      if (divergent.length > 0 || converged.length > 0) {
+      if (divergent.length > 0 || converged.length > 0 || enrichResult.failed.length > 0) {
         setConfrontData({ divergent, converged });
+      }
+
+      // Persist userDecision: 'discarded' nos docs de `orders` correspondentes.
+      // A operação teve suas ordens ingeridas no step anterior (handleStagingConfirm);
+      // aqui marcamos as ordens como descartadas para auditoria downstream.
+      if (discarded.length > 0 && batchId) {
+        try {
+          setProgress('Registrando decisões de descarte...');
+          await persistDiscardedOrders({ batchId, discardedItems: discarded });
+        } catch (discErr) {
+          console.warn('[OrderImportPage] Persist discarded failed (non-blocking):', discErr.message);
+        }
       }
 
       // Summary para STEP DONE.
@@ -473,7 +538,8 @@ const OrderImportPage = ({
         tradesCreated: batchResult.created,
         tradesDuplicates: batchResult.duplicates.length,
         tradesFailed: batchResult.failed,
-        enrichedCount: toEnrich.length,
+        enrichedCount: enrichResult.enriched.length,
+        enrichFailed: enrichResult.failed,
         discardedCount,
         byClass,
         lowResolution,

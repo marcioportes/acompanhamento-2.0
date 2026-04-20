@@ -108,4 +108,78 @@ describe('ConversationalReview — gate de submit', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Criar trade' }));
     expect(onDecide).toHaveBeenCalledWith(0, { decision: 'confirmed' });
   });
+
+  it('match_confident + click "Ajustar" abre AdjustmentModal; confirm dispara onDecide com adjustments', () => {
+    const onDecide = vi.fn();
+    const tradesById = new Map([
+      ['trade-abc', { id: 'trade-abc', ticker: 'MNQH6', side: 'LONG', entry: 24800, exit: 24900, qty: 2, stopLoss: 24750 }],
+    ]);
+    const matchItem = {
+      operation: { ...baseOp, classification: CLASSIFICATION.MATCH_CONFIDENT },
+      classification: CLASSIFICATION.MATCH_CONFIDENT,
+      tradeId: 'trade-abc',
+      matchCandidates: [{ tradeId: 'trade-abc', score: 0.95 }],
+      userDecision: 'pending',
+    };
+
+    render(
+      <ConversationalReview
+        queue={[matchItem]}
+        tradesById={tradesById}
+        coverageGap={{ hasCoverageGap: false, gapOperations: [] }}
+        onDecide={onDecide}
+        onBack={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+
+    // Modal fechado inicialmente
+    expect(screen.queryByTestId('adjustment-modal')).not.toBeInTheDocument();
+
+    // Click "Ajustar" → modal abre
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustar' }));
+    expect(screen.getByTestId('adjustment-modal')).toBeInTheDocument();
+
+    // Confirmar com defaults (usar novo) → onDecide é chamado com adjustments
+    fireEvent.click(screen.getByTestId('confirm-adjustment'));
+    expect(onDecide).toHaveBeenCalledWith(0, {
+      decision: 'adjusted',
+      tradeId: 'trade-abc',
+      adjustments: { entry: 24900, exit: 24950, qty: 2, stopLoss: null },
+    });
+
+    // Modal fecha
+    expect(screen.queryByTestId('adjustment-modal')).not.toBeInTheDocument();
+  });
+
+  it('Ajustar modal: cancelar fecha modal sem chamar onDecide', () => {
+    const onDecide = vi.fn();
+    const matchItem = {
+      operation: { ...baseOp, classification: CLASSIFICATION.MATCH_CONFIDENT },
+      classification: CLASSIFICATION.MATCH_CONFIDENT,
+      tradeId: 'trade-abc',
+      matchCandidates: [{ tradeId: 'trade-abc', score: 0.95 }],
+      userDecision: 'pending',
+    };
+    const tradesById = new Map([['trade-abc', { id: 'trade-abc', entry: 24800, exit: 24900, qty: 2 }]]);
+
+    render(
+      <ConversationalReview
+        queue={[matchItem]}
+        tradesById={tradesById}
+        coverageGap={{ hasCoverageGap: false, gapOperations: [] }}
+        onDecide={onDecide}
+        onBack={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ajustar' }));
+    expect(screen.getByTestId('adjustment-modal')).toBeInTheDocument();
+    // Cancelar
+    const modal = screen.getByTestId('adjustment-modal');
+    const cancelBtn = modal.querySelector('button[aria-label="Fechar"]');
+    fireEvent.click(cancelBtn);
+    expect(screen.queryByTestId('adjustment-modal')).not.toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
+  });
 });
