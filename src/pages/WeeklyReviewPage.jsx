@@ -138,13 +138,13 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
             <span className="text-[11px] text-slate-400 max-w-[130px] truncate" title={emotionText}>
               {emotionText}
             </span>
-            <span className={`font-medium ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`ml-auto font-medium tabular-nums ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
               {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
             </span>
             {onNavigateToFeedback && t.tradeId && (
               <button
                 onClick={handleOpenFeedback}
-                className="ml-auto p-1 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                className="p-1 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
                 title="Abrir feedback do trade"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
