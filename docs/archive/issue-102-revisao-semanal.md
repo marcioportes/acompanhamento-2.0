@@ -432,4 +432,69 @@ Aluno consulta `where('status','in',['CLOSED','ARCHIVED']) + orderBy('weekStart'
 
 **Suite:** 1571/1571 (de 1549, +22). Zero regressão.
 
+---
+
+### Sessão 3 — 20/04/2026 (encerramento)
+
+**Entrega principal:** WeeklyReviewPage v2 — tela nova com 8 subitens conforme mockup aprovado (`mockup-revisao-semanal-102.html`), coexistindo com o `PlanLedgerExtract` baseline 3-col. Entry point: Fila de Revisão > aluno > click no rascunho.
+
+**Subitens implementados na nova tela:**
+1. Trades do período — tabela compacta com day grouping (>2 trades colapsa, sinal `+`), ordenação cronológica, data DD/MM (INV-06), badge "fora" para trades em `includedTradeIds`
+2. Notas da sessão — textarea + validação (max 5000 chars, hosts allowlist)
+3. Snapshot KPIs — 8 cards (WR, Payoff, PF, EV, RR, Compliance, Coef. Variação, Tempo médio) com tooltip ⓘ inline por click + Δ vs revisão anterior
+4. SWOT — 4 quadrantes via `generateWeeklySwot` (Sonnet 4.6), fallback `aiUnavailable`, re-gerar com confirmação
+5. Takeaways checklist — `takeawayItems: [{id, text, done, sourceTradeId, createdAt, carriedOverFromReviewId?}]`, add/toggle/remove + `alunoDoneIds` (amber ✓ badge) + `carriedOverFromReviewId` (sky ↻ anterior badge)
+6. Ranking — top 3 wins (emerald) + bottom 3 losses (red) lado a lado
+7. Maturidade 4D — barras Emocional/Financeiro/Operacional/Maturidade do `initial_assessment`
+8. Navegação contextual — "Ver plano no extrato" (com retorno à revisão) + "Ver assessment 4D"
+
+**Action Footer (gate de fechamento que faltava):**
+- Publicar (DRAFT→CLOSED): confirm inline + congela snapshot via `rebuildSnapshotFromFirestore`
+- Arquivar (CLOSED→ARCHIVED): confirm inline + remove do card Pendências do aluno
+- ARCHIVED: mensagem imutável, zero ações
+
+**Extensões acordadas durante validação (fora do escopo original):**
+- **Carry-over de takeaways**: ao criar nova revisão, hook busca última CLOSED/ARCHIVED do mesmo plano, replica items `!done` com ids novos + `carriedOverFromReviewId`. Best-effort: falha em `getDocs` não aborta criação. 4 testes novos.
+- **PendingTakeaways (aluno dashboard)**: card "Pendências da mentoria" lista takeaways abertos de revisões CLOSED, agrupa por revisão, click marca via `alunoDoneIds`. Não renderiza quando vazio.
+- **PendingReviewsCard (mentor dashboard)**: trigger secundário G8 — N listeners por aluno (evita índice COLLECTION_GROUP novo), mostra total + nome do aluno se 1, ou contagem se N. Click abre Fila de Revisão.
+- **Carry-over badge + aluno ✓ badge** no TakeawayItem da WeeklyReviewPage.
+- **PinToReviewButton** (FeedbackPage): cria DRAFT se necessário, adiciona `includedTradeIds` (arrayUnion), optional takeaway estruturado + legado string.
+- **Fila de Revisão**: só mostra alunos com pelo menos 1 DRAFT (`StudentDraftProbe`).
+
+**Bugfixes:**
+- Voltar do extrato à WeeklyReviewPage — novo `ledgerReturnReviewContext` (espelha pattern feedback)
+- "Ver assessment 4D" caía em `StudentDashboard` com aluno undefined — hijack `viewingAsStudent` rendering StudentDashboard ANTES do check `currentView==='onboarding'`; movido o check para antes do hijack em `App.jsx`
+- TakeawayItem não renderizava o tick do aluno (só considerava `item.done` do mentor) — agora dois estados independentes com visual distinto (emerald mentor / amber aluno)
+- `closeReview` preserva `takeaways`/`meetingLink`/`videoLink` quando não explicitamente passados (undefined-check) — evita que publicar pela tela nova zere campos persistidos pelo baseline ReviewToolsPanel
+
+**Shared infra desta sessão:**
+- `firestore.rules`: delta já deployado em prod via PR #157 (merged `e9d5de8d` + `firebase deploy --only firestore:rules` em 2026-04-20). Aluno pode mutar apenas `alunoDoneIds` quando status=CLOSED (arrayUnion/arrayRemove), rule granular via `affectedKeys().hasOnly([...])`.
+
+**Arquivos tocados nesta sessão (resumo):**
+- `src/pages/WeeklyReviewPage.jsx` (~1100 linhas — 8 subitens + Action Footer)
+- `src/hooks/useWeeklyReviews.js` — `toggleAlunoDone`, `addIncludedTrade`, `updateSessionNotes`, `saveDraftFields`, `addTakeawayItem`/`toggleTakeawayDone`/`removeTakeawayItem`, carry-over em `createReview`
+- `src/components/reviews/PendingTakeaways.jsx` — NOVO
+- `src/components/reviews/PendingReviewsCard.jsx` — NOVO
+- `src/components/reviews/PinToReviewButton.jsx` — expandido
+- `src/pages/ReviewQueuePage.jsx` — filtro por DRAFT
+- `src/pages/StudentDashboard.jsx` — integração PendingTakeaways
+- `src/pages/MentorDashboard.jsx` — integração PendingReviewsCard
+- `src/App.jsx` — view `weekly-review` + retorno contextual ledger/feedback + fix hijack onboarding
+- `src/utils/clientSnapshotBuilder.js` — `extraTrades` + dedup por id
+- `src/utils/weeklyReviewSnapshot.js` — `pickPeriodTrades`, `projectTrade` com fallback `symbol??ticker` e `emotionEntry||emotion` (|| trata '' como falsy)
+- `src/__tests__/hooks/useWeeklyReviews.test.js` — +4 testes para carry-over
+
+**Entrega consolidada:**
+- PR #157 (`chore: permitir aluno toggle alunoDoneIds`) — merged `e9d5de8d`
+- PR #160 (`feat: Revisão Semanal v2 — WeeklyReviewPage + carry-over + PendingTakeaways`) — merged `30af3a18` (squash)
+- Issue #159 criado como QA tracker (14 blocos, ~120 checkboxes) para validação em produção
+
+**Testes:** 1727/1727 passando (1583 antes do merge + 144 de outras sessões incorporadas).
+**Deploy prod:** Vercel auto-deploy de `30af3a18` success. Firestore rules deployadas antes.
+
+**Pendências (fora do escopo do #102):**
+- AP-08 browser em prod via #159 (QA em andamento, bugfixes virão como issues-filhos)
+- Stage 4.5 unit tests para componentes novos (`PendingTakeaways`, `RankingSection`, `MaturitySection`, `ContextNavSection`) — backlog
+- Feature futura (escopo novo): widget "Accountability timeline" consolidando execução de takeaways ao longo das revisões
+
 **Pendente:** AP-08 browser Fase C (criar revisão, gerar SWOT, takeaways, meeting, publicar, arquivar) + PR + Fase D.

@@ -3,6 +3,18 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.38.0: feat: Revisão Semanal v2 (#102) — entrega consolidada da tela nova `WeeklyReviewPage`
+ *   com 8 subitens (Trades com day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA
+ *   4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual)
+ *   + Action Footer Publicar/Arquivar. Coexiste com PlanLedgerExtract 3-col baseline preservado.
+ *   **Carry-over de takeaways** `!done` entre revisões do mesmo plano (badge `↻ anterior`).
+ *   **PendingTakeaways** no dashboard do aluno (novo campo `alunoDoneIds` via arrayUnion em CLOSED,
+ *   badge `aluno ✓` amber visível pro mentor). **PendingReviewsCard** trigger secundário G8 no
+ *   MentorDashboard. **Rules**: aluno pode mutar apenas `alunoDoneIds` quando status=CLOSED via
+ *   `affectedKeys().hasOnly([...])`, deployada via PR #157. PR #160 squash merged `30af3a18`.
+ *   Bugfixes: hijack viewingAsStudent→StudentDashboard movido para depois do check
+ *   currentView==='onboarding'; retorno contextual ledger/feedback; closeReview preserva campos
+ *   não-passados (undefined-check). DEC-084/085. Issue #159 criado como QA tracker. 1727/1727 testes.
  * - 1.37.0: arch: Import Orders staging conversacional obrigatório + fix bypass #93 (issue #156) —
  *   5 fases consolidadas: (A) shadow writer bypass removido, hook useShadowAnalysis invoca CF canônica
  *   analyzeShadowBehavior + invariante tradeWriteBoundary; (B) schema classificação persistente em
@@ -66,10 +78,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.37.0',
+  version: '1.38.0',
   build: '20260420',
-  display: 'v1.37.0',
-  full: '1.37.0+20260420',
+  display: 'v1.38.0',
+  full: '1.38.0+20260420',
 };
 export default VERSION;
 export { VERSION };

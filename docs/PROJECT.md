@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.22.7  
-> **Última atualização:** 20/04/2026 — Encerramento #156 v1.37.0 (Import Orders staging conversacional obrigatório + fix bypass #93) mergeado via PR #158, worktree removido, issue doc arquivada, 1689/1689 testes passing  
+> **Versão:** 0.22.8  
+> **Última atualização:** 20/04/2026 — Encerramento #102 v1.38.0 (Revisão Semanal — WeeklyReviewPage v2 + carry-over takeaways + PendingTakeaways aluno + PendingReviewsCard mentor) mergeado via PR #160, PR #157 (rules alunoDoneIds) deployado em prod, lock CHUNK-16 liberado, issue doc arquivada, 1727/1727 testes passing  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -60,6 +60,7 @@ Este documento segue versionamento semântico:
 | 0.22.4 | 19/04/2026 | Encerramento #154 v1.36.0 | PR #155 mergeado (fast-forward, merge commit 6caf02c9). Card de conta em `AccountsPage` (visão aluno) e `StudentAccountGroup` (visão mentor) ganha botão "Novo plano" (ícone `PlusCircle` emerald); click passa flag `_autoOpenPlanModal` para `AccountDetailPage` que abre `PlanManagementModal` via `useEffect`. Preserva "casa do pai" (modal não duplica surface, AP-11 não violado). Resolve workaround crítico: hoje aluno criava conta Mesa → revertia para Real → corrigia plano. **Primeira issue entregue em modo interativo** (sem bundle formal INV-19, sem R1/R2/R3) — protocolo §4.0 disciplina básica (issue + worktree + control file + PR + Closes) foi suficiente. 1567/1567 testes passando, zero regressão. Worktree removido, issue doc arquivada. |
 | 0.22.5 | 19/04/2026 | DT-038 — cancelar estrutura 3 camadas do trade | Revisão pragmática da ISSUE 1 do deepdive #128. Estrutura proposta (`_rawPayload` imutável + projeção canônica + `_enrichments[]` append-only) responde a perguntas que o produto não faz hoje: (A) preservação após N enrichments — `_enrichmentSnapshot` atual cobre 95%; (B) histórico granular — sem demanda de UI; (C) rollback específico — caso de borda raro; (D) auditoria evolutiva — sem necessidade. Migração custaria 2-3 dias + risco em prod. DT-038 registrada com 3 triggers de reconsideração. Parte técnica de ISSUE 1 desarmada. **ISSUE 3 cirúrgica destravada** (fix bypass #93 + UX conversacional + AutoLiq badge + segmentação por ticker), sem dependência de refactor arquitetural. Princípio operacional formalizado: "não é falta de controle, é ritmo" — cancelar rigor que responde perguntas ainda não feitas é cadência correta. Também: scripts `cc-worktree-start.sh` + `cc-worktree-stop.sh` criados (commit c52da7ef) para orquestração coordenador→coder via mailbox em `.cc-mailbox/` dentro do worktree (POC validado). |
 | 0.22.6 | 19/04/2026 | Fase A de #156 entregue + DT-039 | **Primeira issue entregue em modelo coordenador+worker via mailbox file-drop** (este coordenador escreve prompt → listener tmux `cc-156` dispara `claude -p` headless no worktree → worker executa e relata em `.cc-mailbox/outbox/`). Task 01 (discovery) e Task 02 (Fase A) completas. Commit `1e034534` no branch `arch/issue-156-order-import-staging-conversacional`: `OrderImportPage.jsx` não escreve mais `shadowBehavior` direto em `trades` (removidas 52 linhas); hook `useShadowAnalysis` invoca CF canônica `analyzeShadowBehavior`. Novo arquivo `src/__tests__/invariants/tradeWriteBoundary.test.js` (106 linhas, 6 testes) — grep-based, falha build se novos writers aparecerem em `trades` fora da whitelist. 1573/1573 testes passando. DT-039 registrada: 4 arquivos legados mantidos em whitelist GRANDFATHERED (useTrades/useAccounts/usePlans CRUD + seedTestExtract) — refatoração fica para ISSUE 1 do épico #128 ou primeiro incidente que exija migração. |
+| 0.22.8 | 20/04/2026 | Encerramento #102 v1.38.0 | PRs #157 (rules alunoDoneIds — merged `e9d5de8d` + deployado via `firebase deploy --only firestore:rules`) e #160 (squash `30af3a18`) mergeados em sequência. Entrega consolidada da **Revisão Semanal v2**: (a) `WeeklyReviewPage` nova com 8 subitens conforme mockup aprovado (Trades tabela + day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA 4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual) + Action Footer Publicar/Arquivar (gate de fechamento que faltava); (b) **carry-over de takeaways** `!done` entre revisões do mesmo plano, badge `↻ anterior`; (c) **PendingTakeaways** no dashboard do aluno (rule nova permite `alunoDoneIds` via arrayUnion em CLOSED, badge `aluno ✓` amber visível pro mentor na revisão); (d) **PendingReviewsCard** trigger secundário G8 no MentorDashboard (N-listener pattern, evita índice COLLECTION_GROUP novo). Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto para comparação. Bugfixes relevantes: hijack `viewingAsStudent → StudentDashboard` movido para DEPOIS do check `currentView==='onboarding'` no App.jsx; retorno contextual do ledger e assessment; `closeReview` preserva campos não-passados (undefined-check). DEC-086/087 adicionados. Issue **#159** criado como QA tracker (14 blocos ~120 checkboxes, validação em produção). Lock CHUNK-16 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `/home/mportes/projects/issue-102` removido (git worktree remove + rm -rf). 1727/1727 testes passing (baseline pré-sessão 1583 + carry-over +4 + outros merges). Zero regressão. |
 | 0.22.7 | 20/04/2026 | Encerramento #156 v1.37.0 | PR #158 mergeado. Épico de 6 fases (A-F) consolidado em um único PR: (A) shadow writer bypass removido + invariante `tradeWriteBoundary`; (B) schema classificação persistente (5 classes) em `ordersStagingArea` + `autoLiqDetector`; (C) UX conversacional `ConversationalOpCard` substitui auto-create #93 + `AutoLiqBadge` + gate plano retroativo; (D) reconstrução robusta — segmentação por instrument + agregação N×M fills + gap 60min; (E) enrichment sem duplicata — helper puro `conversationalIngest` + `AdjustmentModal` diff fino + persist `discarded` em `orders`; (F) wire `onRequestRetroactivePlan` em App→StudentDashboard→OrderImportPage fechando gate + bump v1.37.0. **1689/1689 testes** (+122 vs baseline pré-#156 de 1567), invariante verde, zero regressão. Delta de shared files: `version.js` bumped, `firestore.rules` não tocado pela issue. Worktree removido, tmux `cc-156` killed, issue doc arquivada em `docs/archive/`, Product Board item movido para Done. **Infra operacional nova:** scripts `cc-worktree-{start,stop}.sh` + mailbox file-drop (`.cc-mailbox/`) + suporte opcional a `COORD_SESSION_ID` para notificação inversa via `claude --resume` validada em teste isolado — aplicável a partir do próximo épico. |
 
 **Regra de uso:**
@@ -690,7 +691,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-16 | #102 | feat/issue-102-revisao-semanal | 15/04/2026 | Revisão Semanal — Fases A-D (PlanLedgerExtract + reviews + SWOT IA + integração mentor/aluno) |
+| — | — | — | — | (nenhum lock ativo) |
 
 ### 6.4 Checklist de Check-Out
 
@@ -813,6 +814,8 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | DEC-081 | **Sincronização bidirecional `filters.accountId ↔ ctx.accountId` via useEffect** — contexto é fonte de verdade para conta; `filters` multi-campo local (period/ticker/setup/emotion/etc.) preserva estrutura original sem ripple nos consumidores prop-drilled | #118 | 15/04/2026 |
 | DEC-082 | **Adaptador temporário `selectedPropAccountId` para #134** — CHUNK-17 liberado após merge #133 (15/04/2026 tarde). Derivation mantida no commit de #118; migração dos componentes PROP (PropAccountCard, PropAlertsBanner, PropPayoutTracker) + hooks (useDrawdownHistory, useMovements) para consumir contexto direto fica em sessão subsequente | #118 | 15/04/2026 |
 | DEC-083 | **cycleKey canônico:** "YYYY-MM" (Mensal) ou "YYYY-Qn" (Trimestral). Formato determinístico, parseável, ordenável por string DESC. Evita Dates com timezones em localStorage | #118 | 15/04/2026 |
+| DEC-084 | **`alunoDoneIds` separado de `item.done`** — checkbox do aluno no card Pendências do dashboard (mutação via `arrayUnion`/`arrayRemove` em status=CLOSED, rule granular via `affectedKeys().hasOnly(['alunoDoneIds'])`) NÃO encerra o takeaway oficialmente. Semântica dual: mentor encerra (`item.done=true`, emerald ✓) vs aluno executa (`alunoDoneIds.includes(id)`, amber ✓). No TakeawayItem da WeeklyReviewPage, mentor vê badge "aluno ✓" como sinal de accountability sem confundir com deliberação | #102 | 20/04/2026 |
+| DEC-085 | **Carry-over de takeaways `!done` entre revisões do mesmo plano** — ao criar novo DRAFT via `createWeeklyReview`, hook cliente busca última CLOSED/ARCHIVED do mesmo plano (em memória, sem índice composto novo), replica items não-encerrados pelo mentor com ids novos + campo `carriedOverFromReviewId` para rastreabilidade (badge `↻ anterior` sky no TakeawayItem). Revisão anterior permanece congelada. Implementação client-side (não CF) porque: (a) evita redeploy de functions; (b) cliente já tem permissão write em DRAFT; (c) best-effort — falha em getDocs/updateDoc não aborta criação da revisão, só loga warn | #102 | 20/04/2026 |
 
 ---
 
@@ -878,6 +881,40 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.38.0] - 20/04/2026
+**Issue:** #102 (feat: Revisão Semanal — entrega consolidada v2)
+**Milestone:** v1.2.0 — Mentor Cockpit
+**PRs:** #157 (rules alunoDoneIds, merged `e9d5de8d`), #160 (squash `30af3a18`)
+**Issue de QA:** #159 (tracker de validação em produção, 14 blocos)
+
+#### Adicionado
+- **`WeeklyReviewPage`** — tela nova com 8 subitens conforme mockup aprovado. Single-column scroll, max-width 720px. Entry point: Fila de Revisão > aluno > click no rascunho. Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto
+  1. Trades do período — `<table>` compacta com day-grouping (>2 trades colapsa com sinal `+`), ordem cronológica, data DD/MM (INV-06), badge `fora` para trades em `includedTradeIds` fora do período declarado
+  2. Notas da sessão — textarea + validação 5000 chars, persistido no campo `sessionNotes` via `updateSessionNotes`
+  3. Snapshot KPIs — 8 cards (WR, Payoff, PF, EV/trade, RR, Compliance, Coef. Variação, Tempo médio) com tooltip ⓘ click-to-expand + Δ vs revisão anterior (invertColors no CV, menor é melhor)
+  4. SWOT — 4 quadrantes via `generateWeeklySwot` (Sonnet 4.6), fallback `aiUnavailable`, regenerar com confirm inline
+  5. Takeaways checklist — `takeawayItems: [{id, text, done, sourceTradeId, createdAt, carriedOverFromReviewId?}]`, add/toggle/remove, badges `aluno ✓` amber (DEC-084) e `↻ anterior` sky (DEC-085)
+  6. Ranking — top 3 wins (emerald) + bottom 3 losses (red) lado a lado, deep-link para FeedbackPage
+  7. Maturidade 4D — barras Emocional/Financeiro/Operacional/Maturidade do `students/{id}/assessment/initial_assessment`
+  8. Navegação contextual — "Ver plano no extrato" (com retorno à revisão via `ledgerReturnReviewContext`) + "Ver assessment 4D do aluno"
+- **Action Footer** — Publicar (DRAFT→CLOSED congela snapshot via `rebuildSnapshotFromFirestore`) + Arquivar (CLOSED→ARCHIVED, remove do card Pendências do aluno). Confirm inline com aviso sobre congelamento e visibilidade pro aluno
+- **`PendingTakeaways`** no dashboard do aluno — card "Pendências da mentoria" lista takeaways abertos de revisões CLOSED, agrupado por revisão, click marca via `alunoDoneIds` (arrayUnion). Não renderiza quando vazio. Revisões ARCHIVED não aparecem
+- **`PendingReviewsCard`** no MentorDashboard (trigger secundário G8) — N-listener pattern (1 probe por aluno), evita índice COLLECTION_GROUP novo. Zero-state silencioso. Click abre Fila de Revisão
+- **Carry-over de takeaways `!done`** entre revisões do mesmo plano (DEC-085). Ao criar novo DRAFT, hook replica items não-encerrados com ids novos + `carriedOverFromReviewId`. Best-effort: falha em getDocs não aborta criação
+- **Fila de Revisão filtrada** — só mostra alunos com pelo menos 1 DRAFT ativo (`StudentDraftProbe` por aluno)
+- **PinToReviewButton** (FeedbackPage): cria DRAFT se necessário + adiciona `includedTradeIds` (arrayUnion) + opcional takeaway estruturado + legado string
+- **firestore.rules** — aluno pode mutar apenas `alunoDoneIds` (arrayUnion/arrayRemove) quando review.status=CLOSED, via `affectedKeys().hasOnly([...])`. Rule mentor (transições A4) inalterada. Deploy prod em 2026-04-20
+
+#### Corrigido
+- Hijack `viewingAsStudent → StudentDashboard` em App.jsx renderizava StudentDashboard com aluno `undefined` quando mentor clicava "Ver assessment 4D". Check `currentView==='onboarding' && viewingAsStudent` movido para ANTES do hijack
+- Retorno do PlanLedgerExtract para WeeklyReviewPage (espelha pattern `feedbackReturnReviewContext` já existente para FeedbackPage)
+- `useWeeklyReviews.closeReview` preserva `takeaways`/`meetingLink`/`videoLink` quando não explicitamente passados (undefined-check) — publicar pela tela nova não zera campos persistidos pelo baseline ReviewToolsPanel
+- TakeawayItem da WeeklyReviewPage agora renderiza `alunoDoneIds` separadamente de `item.done` (dois estados, visual distinto)
+
+#### Testes
+- 1727/1727 passando (1583 baseline pré-sessão + 44 testes do #102 acumulados + merges de outras sessões)
+- 4 testes novos de carry-over em `src/__tests__/hooks/useWeeklyReviews.test.js`
 
 ### [1.34.0] - 16/04/2026
 **Issue:** #146 (fix: Botão Novo Plano inacessível após issue-118 — mover para AccountDetailPage)
