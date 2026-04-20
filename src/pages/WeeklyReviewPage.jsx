@@ -631,19 +631,7 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               />
             </Section>
 
-            {/* Subitem 3: SWOT */}
-            <Section num="3" title="SWOT do aluno (gerado pela IA)">
-              <SwotSection
-                swot={swot}
-                canGenerate={canEdit && isDraft}
-                onGenerate={handleGenerateSwot}
-                actionLoading={actionLoading}
-                confirmRegen={confirmRegen}
-                setConfirmRegen={setConfirmRegen}
-              />
-            </Section>
-
-            {/* Subitem 4: Notas da sessão */}
+            {/* Subitem 4: Notas da sessão (vem antes do SWOT conforme fluxo do mentor) */}
             <Section num="4" title="Notas da sessão">
               <SessionNotesSection
                 value={sessionNotesDraft}
@@ -653,6 +641,18 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
                 actionLoading={actionLoading}
                 dirty={notesDirty}
                 validation={notesValidation}
+              />
+            </Section>
+
+            {/* Subitem 3: SWOT */}
+            <Section num="3" title="SWOT do aluno (gerado pela IA)">
+              <SwotSection
+                swot={swot}
+                canGenerate={canEdit && isDraft}
+                onGenerate={handleGenerateSwot}
+                actionLoading={actionLoading}
+                confirmRegen={confirmRegen}
+                setConfirmRegen={setConfirmRegen}
               />
             </Section>
 
