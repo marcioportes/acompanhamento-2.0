@@ -89,7 +89,16 @@ const dateToInputString = (dateObj) => {
   return `${year}-${month}-${day}`;
 };
 
-const AccountsPage = () => {
+/**
+ * @param {Object} [props]
+ * @param {{ accountId: string, autoOpenPlanModal?: boolean }} [props.initialAccount] — preseleção
+ *   externa (ex.: banner "Criar plano retroativo" em OrderImportPage, issue #156 Fase F).
+ *   Quando presente, navega direto ao AccountDetailPage da conta e abre o PlanManagementModal
+ *   (padrão _autoOpenPlanModal de #154).
+ * @param {Function} [props.onInitialConsumed] — invocado após aplicar a preseleção para limpar
+ *   o estado no parent (evita re-navegação em unmount/rerender).
+ */
+const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
   const { user, isMentor } = useAuth();
@@ -162,6 +171,21 @@ const AccountsPage = () => {
       );
     } catch { return null; }
   }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument]);
+
+  // Preseleção externa (issue #156 Fase F) — aplica assim que `accounts` carregar
+  // e a conta alvo estiver disponível. Propaga flag `_autoOpenPlanModal` ao
+  // AccountDetailPage (padrão #154) e chama `onInitialConsumed` para limpar o sinal no parent.
+  useEffect(() => {
+    if (!initialAccount?.accountId) return;
+    if (!accounts || accounts.length === 0) return;
+    const acc = accounts.find(a => a.id === initialAccount.accountId);
+    if (!acc) return;
+    setSelectedAccount({
+      ...acc,
+      _autoOpenPlanModal: !!initialAccount.autoOpenPlanModal,
+    });
+    if (onInitialConsumed) onInitialConsumed();
+  }, [initialAccount, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-fill quando template selecionado
   useEffect(() => {

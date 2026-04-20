@@ -83,7 +83,7 @@ import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
  * Envolvido pelo wrapper StudentDashboard que instancia o StudentContextProvider (issue #118).
  * Consome useStudentContext() para conta/plano/ciclo/período globais.
  */
-const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger }) => {
+const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger, onRequestRetroactivePlan }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
 
@@ -522,6 +522,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           orderStaging={orderStaging}
           crossCheck={crossCheckHook}
           userContext={user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null}
+          onRequestRetroactivePlan={onRequestRetroactivePlan ? ({ accountId }) => {
+            setShowOrderImport(false);
+            onRequestRetroactivePlan({ accountId });
+          } : undefined}
         />
       )}
 
