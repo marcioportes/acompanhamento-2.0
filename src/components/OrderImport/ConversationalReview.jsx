@@ -13,10 +13,11 @@
  * de criação de plano retroativo (via flag _autoOpenPlanModal do AccountDetailPage).
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import ConversationalOpCard from './ConversationalOpCard';
+import AdjustmentModal from './AdjustmentModal';
 import { CLASSIFICATION } from '../../utils/orderTradeCreation';
 
 const CLASSIFICATION_LABEL = {
@@ -73,6 +74,13 @@ const ConversationalReview = ({
 
   const allDecided = queue.length > 0 && totals.pending === 0;
   const canSubmit = allDecided && !coverageGap.hasCoverageGap && !loading;
+
+  // AdjustmentModal state — aberto quando aluno clica "Ajustar" em match_confident
+  const [adjustingIdx, setAdjustingIdx] = useState(null);
+  const adjustingItem = adjustingIdx != null ? queue[adjustingIdx] : null;
+  const adjustingTrade = adjustingItem && adjustingItem.tradeId && tradesById?.get
+    ? tradesById.get(adjustingItem.tradeId) ?? null
+    : null;
 
   const getDayCandidates = (op) => {
     if (!tradesByDate) return [];
@@ -185,13 +193,30 @@ const ConversationalReview = ({
               tradesById={tradesById}
               dayCandidates={getDayCandidates(item.operation)}
               onConfirm={(payload) => onDecide(idx, payload)}
-              onAdjust={(payload) => onDecide(idx, payload)}
+              onAdjust={() => setAdjustingIdx(idx)}
               onDiscard={() => onDecide(idx, { decision: 'discarded' })}
               onPointToExisting={({ tradeId }) => onDecide(idx, { decision: 'confirmed', tradeId, promotedFrom: 'new' })}
             />
           );
         })}
       </div>
+
+      {/* Adjustment modal — fino */}
+      {adjustingItem && (
+        <AdjustmentModal
+          operation={adjustingItem.operation}
+          trade={adjustingTrade}
+          onConfirm={({ finalFields }) => {
+            onDecide(adjustingIdx, {
+              decision: 'adjusted',
+              tradeId: adjustingItem.tradeId,
+              adjustments: finalFields,
+            });
+            setAdjustingIdx(null);
+          }}
+          onCancel={() => setAdjustingIdx(null)}
+        />
+      )}
 
       {/* Actions */}
       <div className="flex items-center justify-between pt-3 border-t border-slate-800/50">
