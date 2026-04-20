@@ -203,19 +203,17 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Salva campos editáveis do rascunho (takeaways, meetingLink, videoLink) SEM
+  // Salva campos editáveis do rascunho (takeaways, meetingLink, videoLink, sessionNotes) SEM
   // mudar o status. Usado pelo baseline ReviewToolsPanel — mentor digita e persiste
   // sem precisar publicar antes.
-  const saveDraftFields = useCallback(async (reviewId, { takeaways = null, meetingLink = null, videoLink = null } = {}) => {
+  const saveDraftFields = useCallback(async (reviewId, { takeaways = null, meetingLink = null, videoLink = null, sessionNotes = undefined } = {}) => {
     setActionLoading(true);
     setError(null);
     try {
       const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      await updateDoc(ref, {
-        takeaways,
-        meetingLink,
-        videoLink,
-      });
+      const delta = { takeaways, meetingLink, videoLink };
+      if (sessionNotes !== undefined) delta.sessionNotes = sessionNotes;
+      await updateDoc(ref, delta);
     } catch (err) {
       setError(err.message || 'Erro ao salvar rascunho');
       throw err;
