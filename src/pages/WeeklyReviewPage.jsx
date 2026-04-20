@@ -25,6 +25,7 @@ import { db } from '../firebase';
 import {
   ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown,
   RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save, MessageSquare,
+  CheckSquare, Square, Trash2, Plus,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
@@ -367,6 +368,130 @@ const SwotSection = ({ swot, canGenerate, onGenerate, actionLoading, confirmRege
   );
 };
 
+// ===== Subitem 5: Takeaways (checklist) =====
+const TakeawayItem = ({ item, canEdit, onToggle, onRemove, onNavigateToFeedback }) => {
+  const handleOpenTrade = () => {
+    if (!onNavigateToFeedback || !item.sourceTradeId) return;
+    onNavigateToFeedback({ id: item.sourceTradeId });
+  };
+  return (
+    <div className="flex items-start gap-2 py-1.5 px-2 rounded hover:bg-slate-800/40 group">
+      <button
+        onClick={() => canEdit && onToggle(item.id)}
+        disabled={!canEdit}
+        className={`mt-0.5 shrink-0 ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${item.done ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
+        title={item.done ? 'Marcar como pendente' : 'Marcar como feito'}
+      >
+        {item.done ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+      </button>
+      <span className={`flex-1 text-[13px] leading-relaxed ${item.done ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+        {item.text}
+      </span>
+      {item.sourceTradeId && onNavigateToFeedback && (
+        <button
+          onClick={handleOpenTrade}
+          className="shrink-0 p-0.5 text-slate-500 hover:text-blue-400 opacity-60 group-hover:opacity-100 transition"
+          title="Abrir trade de origem"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {canEdit && (
+        <button
+          onClick={() => onRemove(item.id)}
+          className="shrink-0 p-0.5 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"
+          title="Remover takeaway"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+const TakeawaysSection = ({ items, canEdit, onAdd, onToggle, onRemove, onNavigateToFeedback, actionLoading }) => {
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState('');
+  const handleAdd = async () => {
+    const clean = newText.trim();
+    if (!clean) return;
+    try {
+      await onAdd(clean);
+      setNewText('');
+      setAdding(false);
+    } catch { /* */ }
+  };
+  const safeItems = Array.isArray(items) ? items : [];
+  const pendingCount = safeItems.filter(it => !it.done).length;
+  const doneCount = safeItems.length - pendingCount;
+  return (
+    <div>
+      {safeItems.length === 0 && !adding && (
+        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-800/20 px-3 py-4 text-center text-[11px] text-slate-500 italic mb-2">
+          Nenhum takeaway ainda. Adicione manualmente ou via Pin de trade no feedback.
+        </div>
+      )}
+      {safeItems.length > 0 && (
+        <>
+          <div className="text-[10px] text-slate-500 mb-1">
+            {pendingCount} pendente{pendingCount === 1 ? '' : 's'} · {doneCount} feito{doneCount === 1 ? '' : 's'}
+          </div>
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 divide-y divide-slate-800/60 mb-2">
+            {safeItems.map(it => (
+              <TakeawayItem
+                key={it.id}
+                item={it}
+                canEdit={canEdit}
+                onToggle={onToggle}
+                onRemove={onRemove}
+                onNavigateToFeedback={onNavigateToFeedback}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      {canEdit && (
+        adding ? (
+          <div className="flex items-start gap-2">
+            <textarea
+              value={newText}
+              onChange={(e) => setNewText(e.target.value)}
+              disabled={actionLoading}
+              rows={2}
+              className="flex-1 input-dark text-[12px]"
+              placeholder="Ex: Estudar aula 21 · Reforçar leitura de estrutura · Parar após 2 losses"
+              autoFocus
+            />
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleAdd}
+                disabled={!newText.trim() || actionLoading}
+                className="px-2 py-1 text-[11px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded hover:bg-emerald-500/30 disabled:opacity-40"
+              >
+                {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Adicionar'}
+              </button>
+              <button
+                onClick={() => { setAdding(false); setNewText(''); }}
+                disabled={actionLoading}
+                className="px-2 py-1 text-[11px] text-slate-400 hover:text-white disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="w-full px-3 py-1.5 text-[12px] text-slate-400 hover:text-emerald-300 border border-dashed border-slate-700 hover:border-emerald-500/40 rounded-lg flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-3 h-3" /> Adicionar takeaway
+          </button>
+        )
+      )}
+    </div>
+  );
+};
+
 // ===== Subitem 4: Notas da Sessão =====
 const SessionNotesSection = ({ value, onChange, onSave, canEdit, actionLoading, dirty, validation }) => (
   <div>
@@ -527,8 +652,12 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
   const [liveSnapshot, setLiveSnapshot] = useState(null);
   const [liveRefreshing, setLiveRefreshing] = useState(false);
 
-  // Stage 3: hook + state para SWOT e Notas da Sessão.
-  const { generateSwot, updateSessionNotes, actionLoading } = useWeeklyReviews(studentId);
+  // Stage 3 + 4: hook + state para SWOT, Notas e Takeaways.
+  const {
+    generateSwot, updateSessionNotes,
+    addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
+    actionLoading,
+  } = useWeeklyReviews(studentId);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [sessionNotesDraft, setSessionNotesDraft] = useState('');
 
@@ -790,9 +919,17 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               />
             </Section>
 
-            {/* 5 — Takeaways */}
-            <Section num="5" title="Takeaways" stage="4">
-              <Placeholder label="Checklist de itens acionáveis (pin do feedback + manuais) — Stage 4" />
+            {/* 5 — Takeaways (checklist) */}
+            <Section num="5" title="Takeaways">
+              <TakeawaysSection
+                items={review.takeawayItems}
+                canEdit={canEdit}
+                onAdd={(text) => addTakeawayItem(review.id, text, null)}
+                onToggle={(itemId) => toggleTakeawayDone(review.id, itemId)}
+                onRemove={(itemId) => removeTakeawayItem(review.id, itemId)}
+                onNavigateToFeedback={onNavigateToFeedback}
+                actionLoading={actionLoading}
+              />
             </Section>
 
             {/* 6 — Ranking */}

@@ -187,6 +187,68 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // ===== Takeaways checklist (Stage 4) =====
+  // Schema: review.takeawayItems: [{id, text, done, createdAt, sourceTradeId?}]
+  // Adição via arrayUnion (race-safe). Toggle/remove via read-modify-write.
+
+  const addTakeawayItem = useCallback(async (reviewId, text, sourceTradeId = null) => {
+    const clean = (text || '').trim();
+    if (!clean) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const item = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: clean,
+        done: false,
+        // serverTimestamp não funciona dentro de arrayUnion — usar ISO client-side.
+        createdAt: new Date().toISOString(),
+        sourceTradeId: sourceTradeId || null,
+      };
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, { takeawayItems: arrayUnion(item) });
+    } catch (err) {
+      setError(err.message || 'Erro ao adicionar takeaway');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
+  const toggleTakeawayDone = useCallback(async (reviewId, itemId) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const current = reviews.find(r => r.id === reviewId);
+      const items = Array.isArray(current?.takeawayItems) ? current.takeawayItems : [];
+      const next = items.map(it => it.id === itemId ? { ...it, done: !it.done } : it);
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, { takeawayItems: next });
+    } catch (err) {
+      setError(err.message || 'Erro ao marcar takeaway');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId, reviews]);
+
+  const removeTakeawayItem = useCallback(async (reviewId, itemId) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const current = reviews.find(r => r.id === reviewId);
+      const items = Array.isArray(current?.takeawayItems) ? current.takeawayItems : [];
+      const next = items.filter(it => it.id !== itemId);
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, { takeawayItems: next });
+    } catch (err) {
+      setError(err.message || 'Erro ao remover takeaway');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId, reviews]);
+
   // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
   // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
   // (caso mentor revise trade antigo em rascunho de semana diferente).
@@ -240,6 +302,9 @@ export const useWeeklyReviews = (studentId) => {
     addIncludedTrade,
     updateSessionNotes,
     saveDraftFields,
+    addTakeawayItem,
+    toggleTakeawayDone,
+    removeTakeawayItem,
   };
 };
 

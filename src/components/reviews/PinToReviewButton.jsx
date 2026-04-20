@@ -70,7 +70,7 @@ const PinToReviewButton = ({ trade }) => {
     return () => { unsubPlan(); unsubTrades(); };
   }, [planId]);
 
-  const { reviews, createReview, appendTakeaway, addIncludedTrade, actionLoading } = useWeeklyReviews(studentIdForReviews);
+  const { reviews, createReview, appendTakeaway, addIncludedTrade, addTakeawayItem, actionLoading } = useWeeklyReviews(studentIdForReviews);
 
   // Semana ISO de HOJE (quando o mentor está conduzindo a revisão).
   // Revisão é uma por semana. Mentor pode estar revisando trade antigo — o ponto
@@ -135,10 +135,12 @@ const PinToReviewButton = ({ trade }) => {
       if (trade?.id) {
         try { await addIncludedTrade(reviewId, trade.id); } catch { /* best-effort */ }
       }
-      // 2) Append da nota em takeaways SÓ se mentor escreveu algo (Stage 4 troca para checklist).
+      // 2) Se mentor escreveu nota: cria takeawayItem estruturado (Stage 4)
+      //    + mantém append no takeaways string legado (para baseline ReviewToolsPanel).
       if (hasNote) {
-        await appendTakeaway(reviewId, note);
-        setFlash(`Trade pinado + anotação em ${todayISO.key}`);
+        try { await addTakeawayItem(reviewId, note, trade?.id || null); } catch { /* */ }
+        try { await appendTakeaway(reviewId, note); } catch { /* */ }
+        setFlash(`Trade pinado + takeaway em ${todayISO.key}`);
       } else {
         setFlash(`Trade incluído em ${todayISO.key}`);
       }
@@ -151,7 +153,7 @@ const PinToReviewButton = ({ trade }) => {
     } finally {
       setBusy(false);
     }
-  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway, addIncludedTrade, trade?.id]);
+  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway, addIncludedTrade, addTakeawayItem, trade?.id]);
 
   if (!mentor) return null;
   if (!planId) return null;
