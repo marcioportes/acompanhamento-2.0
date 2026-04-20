@@ -611,7 +611,7 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               </div>
             )}
 
-            {/* Subitem 1: Trades do período */}
+            {/* 1 — Trades do período */}
             <Section num="1" title="Trades do período">
               <TradesSection
                 trades={effectiveSnapshot.periodTrades}
@@ -622,17 +622,8 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               />
             </Section>
 
-            {/* Subitem 2: Snapshot KPIs */}
-            <Section num="2" title="Snapshot de indicadores (congelado)">
-              <SnapshotKpisSection
-                kpis={effectiveSnapshot.kpis}
-                prevKpis={previousReview?.frozenSnapshot?.kpis}
-                currency={currency}
-              />
-            </Section>
-
-            {/* Subitem 4: Notas da sessão (vem antes do SWOT conforme fluxo do mentor) */}
-            <Section num="4" title="Notas da sessão">
+            {/* 2 — Notas da sessão (logo abaixo dos trades, como contexto da revisão) */}
+            <Section num="2" title="Notas da sessão">
               <SessionNotesSection
                 value={sessionNotesDraft}
                 onChange={setSessionNotesDraft}
@@ -644,8 +635,17 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               />
             </Section>
 
-            {/* Subitem 3: SWOT */}
-            <Section num="3" title="SWOT do aluno (gerado pela IA)">
+            {/* 3 — Snapshot KPIs congelados */}
+            <Section num="3" title="Snapshot de indicadores (congelado)">
+              <SnapshotKpisSection
+                kpis={effectiveSnapshot.kpis}
+                prevKpis={previousReview?.frozenSnapshot?.kpis}
+                currency={currency}
+              />
+            </Section>
+
+            {/* 4 — SWOT (gerado pela IA) */}
+            <Section num="4" title="SWOT do aluno (gerado pela IA)">
               <SwotSection
                 swot={swot}
                 canGenerate={canEdit && isDraft}
@@ -656,22 +656,22 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
               />
             </Section>
 
-            {/* Subitem 5: Takeaways */}
+            {/* 5 — Takeaways */}
             <Section num="5" title="Takeaways" stage="4">
               <Placeholder label="Checklist de itens acionáveis (pin do feedback + manuais) — Stage 4" />
             </Section>
 
-            {/* Subitem 6: Ranking */}
+            {/* 6 — Ranking */}
             <Section num="6" title="Ranking de trades" stage="5">
               <Placeholder label="Top 3 melhores · Top 3 piores (lado a lado) — Stage 5" />
             </Section>
 
-            {/* Subitem 7: Evolução maturidade */}
+            {/* 7 — Evolução maturidade */}
             <Section num="7" title="Evolução de maturidade (4D vs marco zero)" stage="6">
               <Placeholder label="4 barras (Técnica · Emocional · Disciplina · Gestão risco) + marcador do assessment inicial — Stage 6" />
             </Section>
 
-            {/* Subitem 8: Navegação contextual */}
+            {/* 8 — Navegação contextual */}
             <Section num="8" title="Navegação contextual" stage="6">
               <Placeholder label="Links: Ver conta · Ver plano · Ver extrato emocional · Ver assessment 4D — Stage 6" />
             </Section>
