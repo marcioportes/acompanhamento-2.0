@@ -99,23 +99,23 @@ const PinToReviewButton = ({ trade }) => {
 
   const handlePin = useCallback(async () => {
     if (!mentor || !plan || !todayISO) return;
+    // Nota é OPCIONAL — se vazia (ou só o prefixo), apenas inclui o trade na revisão.
+    // Se preenchida, inclui o trade + anota takeaway.
     const trimmed = note.trim();
-    if (!trimmed || trimmed === prefix.trim()) {
-      setError('Escreva algo antes de anotar.');
-      return;
-    }
+    const hasNote = trimmed.length > 0 && trimmed !== prefix.trim();
+
     setBusy(true);
     setError(null);
     try {
       let reviewId = existingDraft?.id;
       if (!reviewId) {
-        // Cria um DRAFT da semana ISO do trade com snapshot computado
+        // Cria um DRAFT da semana ISO atual com snapshot computado
         const weekTrades = filterTradesByISO(planTrades, todayISO.range.weekStart, todayISO.range.weekEnd);
         const snapshot = buildClientSnapshot({
           plan,
           trades: weekTrades,
           cycleKey: null,
-          emotionalMetrics: null, // mentor pode regenerar SWOT depois a partir do extrato
+          emotionalMetrics: null,
         });
         const res = await createReview({
           studentId: plan.studentId,
@@ -129,25 +129,25 @@ const PinToReviewButton = ({ trade }) => {
         });
         if (!res?.reviewId) throw new Error('CF não retornou reviewId');
         reviewId = res.reviewId;
-        // Espera o snapshot-listener entregar o doc antes de append (próximo tick)
-        // Fallback: updateDoc direto — appendTakeaway lê do cache de reviews.
-        // Usando timeout curto para permitir onSnapshot atualizar o array.
         await new Promise(r => setTimeout(r, 350));
       }
-      // 1) Inclui o tradeId no set explícito da revisão — garante que o trade apareça
-      //    em Subitem 1 mesmo fora do período do rascunho (Stage 2.5).
+      // 1) SEMPRE inclui o tradeId no set explícito (Stage 2.5).
       if (trade?.id) {
         try { await addIncludedTrade(reviewId, trade.id); } catch { /* best-effort */ }
       }
-      // 2) Append da nota em takeaways (string atual — Stage 4 vai virar checklist).
-      await appendTakeaway(reviewId, note);
-      setFlash(`Trade pinado na revisão ${todayISO.key}`);
+      // 2) Append da nota em takeaways SÓ se mentor escreveu algo (Stage 4 troca para checklist).
+      if (hasNote) {
+        await appendTakeaway(reviewId, note);
+        setFlash(`Trade pinado + anotação em ${todayISO.key}`);
+      } else {
+        setFlash(`Trade incluído em ${todayISO.key}`);
+      }
       setNote('');
       setOpen(false);
       setTimeout(() => setFlash(null), 2500);
     } catch (e) {
       console.error('[PinToReviewButton]', e);
-      setError(e.message || 'Falha ao anotar');
+      setError(e.message || 'Falha ao incluir trade');
     } finally {
       setBusy(false);
     }
@@ -160,8 +160,8 @@ const PinToReviewButton = ({ trade }) => {
     ? existingDraft.periodKey
     : (todayISO?.key || 'semana');
   const label = existingDraft
-    ? `Anotar em ${draftLabel}`
-    : `Criar rascunho ${todayISO?.key || 'semana'} + anotar`;
+    ? `Incluir na revisão ${draftLabel}`
+    : `Criar rascunho ${todayISO?.key || 'semana'} + incluir`;
 
   return (
     <div className="relative inline-block">
@@ -186,7 +186,7 @@ const PinToReviewButton = ({ trade }) => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-semibold text-white flex items-center gap-1.5">
               <PinIcon className="w-3 h-3 text-emerald-400" />
-              {existingDraft ? `Anotar em ${draftLabel}` : `Criar rascunho ${todayISO?.key} + anotar`}
+              {existingDraft ? `Incluir trade em ${draftLabel}` : `Criar rascunho ${todayISO?.key} + incluir trade`}
             </div>
             <button onClick={() => setOpen(false)} disabled={busy} className="text-slate-500 hover:text-slate-300">
               <X className="w-3.5 h-3.5" />
@@ -203,13 +203,16 @@ const PinToReviewButton = ({ trade }) => {
             </div>
           )}
 
+          <label className="text-[10px] text-slate-500 block mb-1">
+            Nota (opcional — se vazio, só inclui o trade):
+          </label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             disabled={busy}
             rows={4}
             className="w-full input-dark text-xs font-mono"
-            placeholder={`${prefix}Ponto para conversar...`}
+            placeholder={`${prefix}Ponto para conversar (opcional)...`}
           />
 
           {error && (
@@ -226,11 +229,12 @@ const PinToReviewButton = ({ trade }) => {
             </button>
             <button
               onClick={handlePin}
-              disabled={busy || actionLoading || !note.trim() || note.trim() === prefix.trim()}
+              disabled={busy || actionLoading}
               className="px-3 py-1 text-[11px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1"
+              title={note.trim() && note.trim() !== prefix.trim() ? 'Incluir o trade e anotar o takeaway' : 'Apenas incluir o trade na revisão (sem nota)'}
             >
               {busy && <Loader2 className="w-3 h-3 animate-spin" />}
-              Anotar
+              {note.trim() && note.trim() !== prefix.trim() ? 'Incluir + anotar' : 'Incluir'}
             </button>
           </div>
         </div>
