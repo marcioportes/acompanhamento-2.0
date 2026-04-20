@@ -85,42 +85,40 @@ const tradeDate = (t) => {
   return null;
 };
 
-// Threshold: dias com mais trades que isso colapsam os excedentes por default.
-const AUTO_COLLAPSE_THRESHOLD = 3;
+// Threshold: dias com mais de 2 trades (ou seja, 3+) colapsam integralmente.
+const DAY_GROUP_THRESHOLD = 2;
 
-// Conta trades por dia e monta a lista de visibles — respeitando colapso.
-// Retorna array de {type:'trade', data, dayCount, isFirstOfDay, dayExpanded}
-// ou {type:'more', date, hidden} para a pseudo-row "+N mais".
+// Constrói lista de rows visíveis:
+// - Dia com count > 2 colapsado → 1 row-resumo única (daySummary). Click expande.
+// - Dia com count > 2 expandido → row-resumo + todas as trades do dia.
+// - Dia com count ≤ 2 → trades renderizadas flat, sem resumo.
 const buildVisibleRows = (trades, expandedDays) => {
   if (!Array.isArray(trades) || trades.length === 0) return [];
-  const dayCounts = {};
+  const days = new Map();
   for (const t of trades) {
     const d = tradeDate(t);
     if (!d) continue;
-    dayCounts[d] = (dayCounts[d] || 0) + 1;
+    if (!days.has(d)) days.set(d, []);
+    days.get(d).push(t);
   }
-  const sorted = [...trades].sort((a, b) => {
-    const da = tradeDate(a) || '';
-    const db = tradeDate(b) || '';
-    if (da !== db) return db.localeCompare(da);       // dias recentes primeiro
-    return (a.entryTime || '').localeCompare(b.entryTime || '');
-  });
-  const rendered = {};
+  const sortedDates = Array.from(days.keys()).sort((a, b) => b.localeCompare(a));
   const result = [];
-  for (const t of sorted) {
-    const d = tradeDate(t);
-    rendered[d] = (rendered[d] || 0) + 1;
-    const dayCount = dayCounts[d];
-    const isExpanded = expandedDays.has(d);
-    const needsCollapse = dayCount > AUTO_COLLAPSE_THRESHOLD;
-    if (needsCollapse && !isExpanded && rendered[d] > AUTO_COLLAPSE_THRESHOLD) continue;
-    const isFirstOfDay = rendered[d] === 1;
-    result.push({ type: 'trade', data: t, dayCount, isFirstOfDay });
-    if (needsCollapse && !isExpanded && rendered[d] === AUTO_COLLAPSE_THRESHOLD) {
-      result.push({ type: 'more', date: d, hidden: dayCount - AUTO_COLLAPSE_THRESHOLD });
-    }
-    if (needsCollapse && isExpanded && rendered[d] === dayCount) {
-      result.push({ type: 'collapse', date: d, count: dayCount });
+  for (const date of sortedDates) {
+    const dayTrades = days.get(date).sort((a, b) =>
+      (a.entryTime || '').localeCompare(b.entryTime || '')
+    );
+    const count = dayTrades.length;
+    const pl = dayTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+    const wins = dayTrades.filter(t => Number(t.pnl) > 0).length;
+    const wr = count > 0 ? Math.round((wins / count) * 100) : 0;
+    if (count > DAY_GROUP_THRESHOLD) {
+      const isExpanded = expandedDays.has(date);
+      result.push({ type: 'daySummary', date, count, pl, wins, wr, expanded: isExpanded });
+      if (isExpanded) {
+        for (const t of dayTrades) result.push({ type: 'trade', data: t });
+      }
+    } else {
+      for (const t of dayTrades) result.push({ type: 'trade', data: t });
     }
   }
   return result;
@@ -147,29 +145,27 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
   return (
     <div className="flex flex-col gap-1.5">
       {rows.map((row, idx) => {
-        if (row.type === 'more') {
+        if (row.type === 'daySummary') {
+          const [y, m, d] = row.date.split('-');
+          const ddmm = `${d}/${m}`;
+          const ddmmYYYY = `${d}/${m}/${y}`;
+          const wrColor = row.wr >= 50 ? 'text-emerald-400' : row.wr >= 40 ? 'text-amber-400' : 'text-red-400';
+          const plPositive = row.pl > 0;
           return (
             <button
-              key={`more-${row.date}`}
+              key={`day-${row.date}`}
               onClick={() => toggleDay(row.date)}
-              className="flex items-center gap-2 px-3 py-1 text-[11px] text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/10 rounded-lg border border-dashed border-emerald-500/30"
-              title="Mostrar trades adicionais desse dia"
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 border border-slate-700 rounded-lg text-[13px] hover:bg-slate-800/60"
+              title={`${row.expanded ? 'Recolher' : 'Expandir'} os ${row.count} trades de ${ddmmYYYY}`}
             >
-              <span className="font-mono text-[12px]">+</span>
-              <span>mostrar {row.hidden} trade{row.hidden === 1 ? '' : 's'} adicional{row.hidden === 1 ? '' : 'is'} em {row.date.split('-').slice(1).reverse().join('/')}</span>
-            </button>
-          );
-        }
-        if (row.type === 'collapse') {
-          return (
-            <button
-              key={`collapse-${row.date}`}
-              onClick={() => toggleDay(row.date)}
-              className="flex items-center gap-2 px-3 py-1 text-[11px] text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg border border-dashed border-slate-700"
-              title="Recolher trades desse dia"
-            >
-              <span className="font-mono text-[12px]">−</span>
-              <span>recolher {row.date.split('-').slice(1).reverse().join('/')}</span>
+              <span className="font-mono text-slate-300 min-w-[40px]">{ddmm}</span>
+              <span className="font-mono text-emerald-400 font-semibold w-3 text-center">{row.expanded ? '−' : '+'}</span>
+              <span className="text-slate-300">{row.count} trades</span>
+              <span className="text-slate-500">·</span>
+              <span className={`text-[11px] ${wrColor}`}>WR {row.wr}%</span>
+              <span className={`ml-auto font-medium tabular-nums ${plPositive ? 'text-emerald-400' : row.pl < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                {plPositive ? '+' : ''}{fmtMoney(row.pl, currency)}
+              </span>
             </button>
           );
         }
@@ -191,27 +187,16 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
           const [y, m, d] = td.split('-');
           return `${d}/${m}/${y}`;
         })() : '';
-        const emotionText = t.emotionExit && t.emotionExit !== t.emotionEntry
-          ? `${t.emotionEntry || '—'} → ${t.emotionExit}`
-          : (t.emotionEntry || '—');
-        // "+" ao lado da data quando dia tem >3 trades E é a primeira linha do dia.
-        // Permite o mentor controlar o estado clicando na própria data.
-        const showDayToggle = row.dayCount > AUTO_COLLAPSE_THRESHOLD && row.isFirstOfDay;
-        const isExpanded = expandedDays.has(td);
+        // Fallback robusto: emotionEntry pode estar ausente em trades legados
+        // (só tinham `emotion` single). projectTrade já tenta fallback, aqui é belt-and-suspenders.
+        const rawEntry = t.emotionEntry || t.emotion;
+        const rawExit = t.emotionExit;
+        const emotionText = rawExit && rawExit !== rawEntry
+          ? `${rawEntry || '—'} → ${rawExit}`
+          : (rawEntry || '—');
         return (
           <div key={t.tradeId || idx} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
-            {showDayToggle ? (
-              <button
-                onClick={() => toggleDay(td)}
-                className="font-mono text-slate-300 text-[12px] hover:text-emerald-300 flex items-center gap-0.5"
-                title={`${isExpanded ? 'Recolher' : 'Expandir'} os ${row.dayCount} trades de ${dateFullBR}`}
-              >
-                <span className="min-w-[40px]">{dateShort}</span>
-                <span className="text-emerald-400 font-semibold">{isExpanded ? '−' : '+'}</span>
-              </button>
-            ) : (
-              <span className="font-mono text-slate-300 min-w-[40px] text-[12px]" title={dateFullBR}>{dateShort}</span>
-            )}
+            <span className="font-mono text-slate-300 min-w-[40px] text-[12px]" title={dateFullBR}>{dateShort}</span>
             <span className="text-slate-500 text-[11px] min-w-[36px]">{fmtTime(t.entryTime)}</span>
             <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
             <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
