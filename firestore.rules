@@ -62,10 +62,19 @@ service cloud.firestore {
         );
         allow create: if isMentor() &&
           request.resource.data.status == 'DRAFT';
-        allow update: if isMentor() && (
-          (resource.data.status == 'DRAFT' && request.resource.data.status in ['DRAFT', 'CLOSED']) ||
-          (resource.data.status == 'CLOSED' && request.resource.data.status in ['CLOSED', 'ARCHIVED']) ||
-          (resource.data.status == 'ARCHIVED' && request.resource.data.status == 'ARCHIVED')
+        allow update: if (
+          // Mentor: transições de state machine (A4).
+          (isMentor() && (
+            (resource.data.status == 'DRAFT' && request.resource.data.status in ['DRAFT', 'CLOSED']) ||
+            (resource.data.status == 'CLOSED' && request.resource.data.status in ['CLOSED', 'ARCHIVED']) ||
+            (resource.data.status == 'ARCHIVED' && request.resource.data.status == 'ARCHIVED')
+          )) ||
+          // Stage 4.5: aluno toggla apenas alunoDoneIds em revisão CLOSED
+          // (arrayUnion/arrayRemove). Campo separado do item.done (mentor).
+          (isOwner(studentId) &&
+            resource.data.status == 'CLOSED' &&
+            request.resource.data.status == 'CLOSED' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alunoDoneIds']))
         );
         allow delete: if isMentor() && resource.data.status != 'ARCHIVED';
       }
