@@ -23,6 +23,7 @@ import { Wallet, X, Activity, Upload } from 'lucide-react';
 import DashboardHeader from '../components/dashboard/DashboardHeader';
 import PlanCardGrid from '../components/dashboard/PlanCardGrid';
 import MetricsCards from '../components/dashboard/MetricsCards';
+import PendingTakeaways from '../components/reviews/PendingTakeaways';
 import PropAccountCard from '../components/dashboard/PropAccountCard';
 import PropAlertsBanner from '../components/dashboard/PropAlertsBanner';
 import PropPayoutTracker from '../components/dashboard/PropPayoutTracker';
@@ -490,6 +491,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           </>
         );
       })()}
+
+      {/* Pendências da mentoria — takeaways em aberto (Stage 4.5) */}
+      <PendingTakeaways
+        studentId={assessmentStudentId}
+        onNavigateToFeedback={onNavigateToFeedback}
+      />
 
       {/* Cards de Planos */}
       <PlanCardGrid

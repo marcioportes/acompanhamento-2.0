@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot,
-  doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion,
+  doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -249,6 +249,25 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId, reviews]);
 
+  // Stage 4.5: aluno marca takeaway como feito/não-feito.
+  // Aluno só tem permissão (via rules) de mutar `alunoDoneIds` quando review.status=CLOSED.
+  const toggleAlunoDone = useCallback(async (reviewId, itemId, markDone) => {
+    if (!itemId) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, {
+        alunoDoneIds: markDone ? arrayUnion(itemId) : arrayRemove(itemId),
+      });
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar status');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
   // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
   // (caso mentor revise trade antigo em rascunho de semana diferente).
@@ -305,6 +324,7 @@ export const useWeeklyReviews = (studentId) => {
     addTakeawayItem,
     toggleTakeawayDone,
     removeTakeawayItem,
+    toggleAlunoDone,
   };
 };
 
