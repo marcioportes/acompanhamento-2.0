@@ -6,10 +6,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { categorizeConfirmedOps, mapOperationToTradeData, checkDuplication } from '../../utils/orderTradeCreation';
+import { categorizeConfirmedOps, mapOperationToTradeData, checkDuplication, CLASSIFICATION } from '../../utils/orderTradeCreation';
 import { createTradesBatch } from '../../utils/orderTradeBatch';
 import { compareOperationWithTrade } from '../../utils/orderTradeComparison';
 import { detectLowResolution } from '../../utils/orderTemporalResolution';
+import {
+  routeConversationalDecisions,
+  enrichConversationalBatch,
+} from '../../utils/conversationalIngest';
 
 // ============================================
 // FIXTURES
@@ -343,5 +347,226 @@ describe('Cenário 10: importSummary shape para cenário misto', () => {
     expect(importSummary.ambiguousCount).toBe(1);
     expect(importSummary.tradesDuplicates).toBe(0);
     expect(importSummary.tradesCreated[0].id).toBe('trade-new-1');
+  });
+});
+
+// ============================================
+// 11. Conversational queue (Fase C #156) — composição + decisões
+// ============================================
+
+describe('Cenário 11: fila conversacional respeita userDecision antes de criar trades', () => {
+  it('só ops com decision confirmed chegam no createTradesBatch; discarded são ignoradas', async () => {
+    const ops = [
+      makeOp('OP-NEW-1', 1, 2),
+      makeOp('OP-NEW-2', 3, 4, { entryTime: '2026-04-04T11:00:00' }),
+      makeOp('OP-NEW-3', 5, 6, { entryTime: '2026-04-04T12:00:00' }),
+    ];
+    const correlations = [
+      corr(1), corr(2), corr(3), corr(4), corr(5), corr(6),
+    ];
+
+    const { toCreate, toConfront, ambiguous, autoliq } =
+      categorizeConfirmedOps(ops, correlations);
+
+    expect(toCreate).toHaveLength(3);
+    expect(toConfront).toHaveLength(0);
+    expect(ambiguous).toHaveLength(0);
+    expect(autoliq).toHaveLength(0);
+
+    // Simula fila conversacional: aluno confirma 2, descarta 1.
+    const queue = toCreate.map((op, i) => ({
+      operation: op,
+      classification: 'new',
+      userDecision: i === 1 ? 'discarded' : 'confirmed',
+    }));
+
+    const toProcess = queue
+      .filter(item => item.userDecision === 'confirmed')
+      .map(item => item.operation);
+
+    expect(toProcess).toHaveLength(2);
+    expect(toProcess.map(o => o.operationId)).toEqual(['OP-NEW-1', 'OP-NEW-3']);
+
+    const mockCreate = vi.fn(async (data) => ({ id: `created-${data.entryTime}` }));
+    const batchResult = await createTradesBatch({
+      toCreate: toProcess,
+      planId: 'plan-001',
+      existingTrades: [],
+      userContext: makeUser(),
+      createTradeFn: mockCreate,
+    });
+
+    expect(batchResult.created).toHaveLength(2);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('classification propagada pela Fase B chega intacta no item da fila', () => {
+    const ops = [
+      makeOp('OP-NEW', 1, 2),
+      makeOp('OP-MATCH', 3, 4),
+    ];
+    const correlations = [
+      corr(1), corr(2),
+      corr(3, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9 }),
+      corr(4, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9 }),
+    ];
+
+    const { toCreate, toConfront } = categorizeConfirmedOps(ops, correlations);
+
+    expect(toCreate[0].classification).toBe('new');
+    expect(toConfront[0].operation.classification).toBe('match_confident');
+    expect(toConfront[0].matchCandidates).toEqual([{ tradeId: 'trade-X', score: 0.9 }]);
+  });
+});
+
+// ============================================
+// 12. Fase E — match_confident enriquece SEM criar duplicata
+// ============================================
+
+describe('Cenário 12: match_confident → enrichTrade chamado, createTrade NÃO chamado (Fase E)', () => {
+  it('fluxo end-to-end: 1 op correlacionada com trade manual → enrichTrade(tradeId, payload); createTrade zero calls', async () => {
+    // Estado: 1 trade manual já registrado no diário
+    const existingTrade = makeTrade({
+      id: 'trade-manual-001',
+      ticker: 'WINJ26',
+      side: 'LONG',
+      entry: 130000,
+      exit: 130050,
+      qty: 2,
+      entryTime: '2026-04-04T10:00:00',
+      emotionEntry: 'CALMO',
+      emotionExit: 'SATISFEITO',
+      setup: 'BREAKOUT',
+    });
+
+    // CSV com ordens correspondentes ao trade manual
+    const ops = [makeOp('OP-MATCHED', 1, 2)];
+    const correlations = [
+      corr(1, { tradeId: 'trade-manual-001', matchType: 'exact', confidence: 0.95 }),
+      corr(2, { tradeId: 'trade-manual-001', matchType: 'exact', confidence: 0.95 }),
+    ];
+
+    // Classificação Fase B emite match_confident com tradeId
+    const { toCreate, toConfront, ambiguous, autoliq } = categorizeConfirmedOps(ops, correlations);
+    expect(toCreate).toHaveLength(0);
+    expect(toConfront).toHaveLength(1);
+    expect(ambiguous).toHaveLength(0);
+    expect(autoliq).toHaveLength(0);
+    expect(toConfront[0].operation.classification).toBe(CLASSIFICATION.MATCH_CONFIDENT);
+    expect(toConfront[0].tradeId).toBe('trade-manual-001');
+
+    // Aluno clica "Confirmar" → fila com userDecision=confirmed
+    const queue = toConfront.map(({ operation, tradeId, matchCandidates }) => ({
+      operation,
+      classification: CLASSIFICATION.MATCH_CONFIDENT,
+      tradeId,
+      matchCandidates,
+      userDecision: 'confirmed',
+    }));
+
+    // Router Fase E: tudo em toEnrich, nada em toCreate
+    const { toEnrich, toCreate: toCreateOps, discarded } = routeConversationalDecisions(queue);
+    expect(toEnrich).toHaveLength(1);
+    expect(toEnrich[0].tradeId).toBe('trade-manual-001');
+    expect(toCreateOps).toHaveLength(0);
+    expect(discarded).toHaveLength(0);
+
+    // Simular tradeGateway.enrichTrade: retorna before (snapshot) + after (enriquecido)
+    const enrichTradeFn = vi.fn(async (tradeId, payload, userCtx) => {
+      expect(userCtx.uid).toBe('user-001');
+      return {
+        id: tradeId,
+        before: { ...existingTrade },
+        after: {
+          ...existingTrade,
+          entry: payload.entry,
+          exit: payload.exit,
+          qty: payload.qty,
+          _partials: payload._partials,
+          enrichedByImport: true,
+          importBatchId: payload.importBatchId,
+          // Invariante: snapshot preservado (testado unitariamente em tradeGatewayEnrich)
+          _enrichmentSnapshot: { entry: existingTrade.entry, exit: existingTrade.exit, qty: existingTrade.qty },
+        },
+      };
+    });
+
+    // Mock de createTrade — DEVE ficar com zero calls.
+    const createTradeFn = vi.fn(async () => {
+      throw new Error('createTrade não deveria ser chamado em match_confident');
+    });
+
+    // Executar enrichment batch
+    const enrichResult = await enrichConversationalBatch({
+      toEnrich,
+      userContext: makeUser(),
+      importBatchId: 'batch-TEST',
+      enrichTradeFn,
+    });
+
+    expect(enrichResult.enriched).toHaveLength(1);
+    expect(enrichResult.failed).toHaveLength(0);
+    expect(enrichTradeFn).toHaveBeenCalledTimes(1);
+    expect(enrichTradeFn).toHaveBeenCalledWith(
+      'trade-manual-001',
+      expect.objectContaining({
+        entry: 130000,
+        exit: 130050,
+        qty: 2,
+        importBatchId: 'batch-TEST',
+        _partials: expect.any(Array),
+      }),
+      expect.objectContaining({ uid: 'user-001' })
+    );
+
+    // Snapshot preservado no retorno (_enrichmentSnapshot é garantia do gateway)
+    expect(enrichResult.enriched[0].after._enrichmentSnapshot).toBeDefined();
+    expect(enrichResult.enriched[0].after._enrichmentSnapshot.entry).toBe(130000);
+
+    // Fluxo de criação de novo trade — zero invocações
+    const batchResult = await createTradesBatch({
+      toCreate: toCreateOps,
+      planId: 'plan-001',
+      existingTrades: [existingTrade],
+      userContext: makeUser(),
+      createTradeFn,
+    });
+    expect(batchResult.created).toHaveLength(0);
+    expect(createTradeFn).not.toHaveBeenCalled();
+  });
+
+  it('userDecision=discarded NÃO cria trade nem enriquece; vai para bucket discarded', async () => {
+    const ops = [makeOp('OP-DISC', 1, 2)];
+    const correlations = [corr(1), corr(2)]; // ghost
+
+    const { toCreate } = categorizeConfirmedOps(ops, correlations);
+    const queue = toCreate.map(op => ({
+      operation: op,
+      classification: CLASSIFICATION.NEW,
+      userDecision: 'discarded',
+    }));
+
+    const { toEnrich, toCreate: toCreateOps, discarded } = routeConversationalDecisions(queue);
+    expect(toEnrich).toHaveLength(0);
+    expect(toCreateOps).toHaveLength(0);
+    expect(discarded).toHaveLength(1);
+    expect(discarded[0].operation.operationId).toBe('OP-DISC');
+
+    const enrichTradeFn = vi.fn();
+    const createTradeFn = vi.fn();
+    await enrichConversationalBatch({
+      toEnrich,
+      userContext: makeUser(),
+      enrichTradeFn,
+    });
+    await createTradesBatch({
+      toCreate: toCreateOps,
+      planId: 'p',
+      existingTrades: [],
+      userContext: makeUser(),
+      createTradeFn,
+    });
+    expect(enrichTradeFn).not.toHaveBeenCalled();
+    expect(createTradeFn).not.toHaveBeenCalled();
   });
 });

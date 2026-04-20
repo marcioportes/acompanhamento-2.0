@@ -24,9 +24,6 @@ import DashboardHeader from '../components/dashboard/DashboardHeader';
 import PlanCardGrid from '../components/dashboard/PlanCardGrid';
 import MetricsCards from '../components/dashboard/MetricsCards';
 import PendingTakeaways from '../components/reviews/PendingTakeaways';
-import PropAccountCard from '../components/dashboard/PropAccountCard';
-import PropAlertsBanner from '../components/dashboard/PropAlertsBanner';
-import PropPayoutTracker from '../components/dashboard/PropPayoutTracker';
 
 // Componentes existentes
 import TradingCalendar from '../components/TradingCalendar';
@@ -43,7 +40,6 @@ import SwotAnalysis from '../components/SwotAnalysis';
 import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
 import PlanAuditModal from '../components/dashboard/PlanAuditModal';
-// PlanLedgerExtract removido — agora renderizado como view no App.jsx (Fase 0 #102)
 import DebugBadge from '../components/DebugBadge';
 
 // CSV Import v2 (staging)
@@ -62,16 +58,12 @@ import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { useAuth } from '../contexts/AuthContext';
 import useDashboardMetrics from '../hooks/useDashboardMetrics';
-import { useAssessment } from '../hooks/useAssessment';
 import useCsvStaging from '../hooks/useCsvStaging';
 import useOrderStaging from '../hooks/useOrderStaging';
 import useOrders from '../hooks/useOrders';
 import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
-import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
-import { useDrawdownHistory } from '../hooks/useDrawdownHistory';
-import { useMovements } from '../hooks/useMovements';
 
 // Contexto unificado (issue #118 — DEC-047)
 import StudentContextProvider from '../contexts/StudentContextProvider';
@@ -81,20 +73,19 @@ import ContextBar from '../components/ContextBar';
 // Utils
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
-import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
+
 
 /**
  * @param {Object} viewAs - Dados do aluno sendo visualizado (quando mentor usa View As)
  * @param {Function} onNavigateToFeedback - Callback para navegar para a tela de feedback
- * @param {string|null} returnToPlanId - PlanId do extrato a reabrir ao voltar do feedback (só quando veio do extrato)
- * @param {Function} onReturnConsumed - Callback para limpar o returnToPlanId após consumir
+ * @param {Function} onOpenLedger - Callback que troca a view para 'ledger' com planId selecionado (Fase 0 #102)
  */
 /**
  * StudentDashboardBody — corpo original do dashboard.
  * Envolvido pelo wrapper StudentDashboard que instancia o StudentContextProvider (issue #118).
  * Consome useStudentContext() para conta/plano/ciclo/período globais.
  */
-const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger, returnToPlanId = null, onReturnConsumed }) => {
+const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger, onRequestRetroactivePlan }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
 
@@ -109,13 +100,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // Master data (emotions, tickers) + setups
   const { emotions, tickers: masterTickers } = useMasterData();
   const { setups } = useSetups();
-
-  // Prop firm templates (para PropAccountCard)
-  const { getTemplateById } = usePropFirmTemplates();
-
-  // Assessment 4D (para PropAccountCard → AI Approach Plan — #133)
-  const assessmentStudentId = overrideStudentId || user?.uid || null;
-  const { initialAssessment } = useAssessment(assessmentStudentId);
 
   // CSV Staging
   const {
@@ -140,7 +124,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [editingPlan, setEditingPlan] = useState(null);
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [extractPlan, setExtractPlan] = useState(null);
-  // ledgerPlan state removido — Fase 0 #102 (modal → view via App.jsx currentView='ledger')
   const [auditPlanId, setAuditPlanId] = useState(null);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -167,19 +150,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     }
   }, [studentCtx.planId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Prop firm drawdown history + movements — usa filters.accountId (que reflete contexto)
-  // Adaptador temporário para #134 (CHUNK-17 locked pelo #133) — PropAccountCard/Banner/Tracker
-  // continuam via props. Migração para consumir contexto direto fica para sessão pós-#133.
-  const selectedPropAccountId = (() => {
-    if (filters.accountId === 'all') return null;
-    const acc = accounts.find(a => a.id === filters.accountId);
-    return acc?.type === 'PROP' ? acc.id : null;
-  })();
-  const { history: drawdownHistory } = useDrawdownHistory(selectedPropAccountId);
-  const { movements: propMovements } = useMovements(selectedPropAccountId);
-
-  // Reabrir extrato ao voltar do feedback — agora delega para App.jsx via handleBackFromFeedback (Fase 0 #102)
-  // returnToPlanId consumido diretamente no App.jsx handleBackFromFeedback → setLedgerPlanId + currentView='ledger'
+  // Reabrir extrato ao voltar do feedback — delegado para App.jsx via handleBackFromFeedback (Fase 0 #102)
+  // returnToPlanId consumido diretamente no App.jsx → setLedgerPlanId + currentView='ledger'
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
@@ -385,113 +357,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         </div>
       )}
 
-      {/* Prop Firm: Banner de alertas vermelhos + Card da conta */}
-      {(() => {
-        const selectedAccount = filters.accountId !== 'all'
-          ? accounts.find(a => a.id === filters.accountId)
-          : null;
-        if (!selectedAccount || selectedAccount.type !== 'PROP') return null;
-        const propTemplate = selectedAccount.propFirm?.templateId
-          ? getTemplateById(selectedAccount.propFirm.templateId)
-          : null;
-        const propFirm = selectedAccount.propFirm;
-        const accountSize = propTemplate?.accountSize ?? selectedAccount.initialBalance ?? 0;
-        const drawdownMax = propTemplate?.drawdown?.maxAmount ?? 0;
-        const currentBalance = selectedAccount.currentBalance ?? accountSize;
-        const currentProfit = currentBalance - accountSize;
-        const profitTarget = propTemplate?.profitTarget ?? 0;
-        const distanceToDD = propFirm?.distanceToDD
-          ?? (drawdownMax > 0 ? (currentBalance - (propFirm?.currentDrawdownThreshold ?? (accountSize - drawdownMax))) / drawdownMax : 1);
-
-        const alerts = derivePropAlerts({
-          flags: propFirm?.flags ?? [],
-          distanceToDD,
-          isDayPaused: propFirm?.isDayPaused ?? false,
-          dailyPnL: propFirm?.dailyPnL ?? 0,
-          currentBalance,
-          currentDrawdownThreshold: propFirm?.currentDrawdownThreshold ?? (accountSize - drawdownMax),
-          currentProfit,
-          profitTarget,
-          profitRatio: profitTarget > 0 ? Math.max(0, currentProfit / profitTarget) : 0,
-          evalDaysRemaining: null, // banner usa flags — countdown calculado no card
-          bestDayProfit: propFirm?.bestDayProfit ?? 0,
-          consistencyRule: propTemplate?.consistency?.evalRule ?? null,
-          consistencyThreshold: propTemplate?.consistency?.evalRule && profitTarget > 0
-            ? profitTarget * propTemplate.consistency.evalRule : null,
-          lockLevel: propFirm?.lockLevel ?? null,
-          trailFrozen: propFirm?.trailFrozen ?? false,
-          currency: selectedAccount.currency ?? 'USD',
-          fmt: formatCurrencyDynamic,
-        });
-        const dangerAlerts = getDangerAlerts(alerts);
-
-        return (
-          <>
-            <PropAlertsBanner
-              dangerAlerts={dangerAlerts}
-              firmName={propFirm?.firmName}
-              productName={propFirm?.productName}
-            />
-            <PropAccountCard
-              account={selectedAccount}
-              template={propTemplate}
-              drawdownHistory={drawdownHistory}
-              trader4DProfile={(() => {
-                // Shape real do Firestore: dimensões são top-level no doc initial_assessment
-                // (emotional, financial, operational, experience) — não sob .scores
-                if (!initialAssessment) return null;
-                const sd = initialAssessment.stage_diagnosis ?? initialAssessment.stageDiagnosis;
-                const emotionalScore = initialAssessment.emotional?.score ?? null;
-                const riskScore = initialAssessment.financial?.score ?? null;
-                const disciplineScore = initialAssessment.operational?.fit_score ?? initialAssessment.operational?.score ?? null;
-                const techScore = initialAssessment.experience?.score ?? initialAssessment.experience?.fit_score ?? null;
-                if (techScore == null && emotionalScore == null && disciplineScore == null && riskScore == null) return null;
-                return {
-                  stage: sd?.stage ?? null,
-                  stageName: sd?.stageName ?? sd?.name ?? null,
-                  compositeScore: initialAssessment.composite_score ?? null,
-                  compositeLabel: initialAssessment.composite_label ?? null,
-                  techScore,
-                  emotionalScore,
-                  disciplineScore,
-                  riskScore,
-                };
-              })()}
-              traderIndicators={(() => {
-                const hasData = metrics?.stats?.totalTrades > 0;
-                if (!hasData) return null;
-                return {
-                  wr: Math.round(metrics.stats.winRate ?? 0),
-                  payoff: Number((metrics.payoff?.value ?? 0).toFixed(2)),
-                  pf: Number((metrics.stats.profitFactor ?? 0).toFixed(2)),
-                  ev: Number((metrics.stats.avgPl ?? 0).toFixed(2)),
-                  cv: null,
-                  avgWinHold: metrics.avgTradeDuration?.win ?? null,
-                  avgLossHold: metrics.avgTradeDuration?.loss ?? null,
-                  holdTimeAsymmetry: null,
-                  behaviorFlags: null,
-                };
-              })()}
-              onUpdatePhase={async (newPhase) => {
-                try {
-                  await updateAccount(selectedAccount.id, {
-                    propFirm: { phase: newPhase, phaseStartDate: new Date().toISOString() },
-                  });
-                } catch (err) {
-                  alert('Erro ao alterar fase: ' + err.message);
-                }
-              }}
-            />
-            <PropPayoutTracker
-              account={selectedAccount}
-              template={propTemplate}
-              drawdownHistory={drawdownHistory}
-              movements={propMovements}
-            />
-          </>
-        );
-      })()}
-
       {/* Pendências da mentoria — takeaways em aberto (Stage 4.5) */}
       <PendingTakeaways
         studentId={assessmentStudentId}
@@ -506,7 +371,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         selectedPlanId={selectedPlanId}
         viewAs={viewAs}
         onSelectPlan={(id) => studentCtx.setPlan(id)}
-        onOpenLedger={(plan) => onOpenLedger?.(plan.id)}
+        onOpenLedger={(plan) => onOpenLedger?.(plan?.id)}
         onEditPlan={(plan) => { setEditingPlan(plan); setShowPlanModal(true); }}
         onDeletePlan={handleDeletePlan}
         onAuditPlan={handleAuditPlan}
@@ -611,7 +476,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} onViewFeedbackHistory={handleViewFeedbackHistory} getPartials={getPartials} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
-      {/* PlanLedgerExtract removido do modal — agora renderizado como view no App.jsx via currentView='ledger' (Fase 0 #102) */}
+      {/* PlanLedgerExtract: ledger agora é currentView no App.jsx (#102 Fase 0), não modal aqui */}
 
       {/* Auditoria de Plano */}
       {auditPlanId && (() => {
@@ -665,6 +530,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           orderStaging={orderStaging}
           crossCheck={crossCheckHook}
           userContext={user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null}
+          onRequestRetroactivePlan={onRequestRetroactivePlan ? ({ accountId }) => {
+            setShowOrderImport(false);
+            onRequestRetroactivePlan({ accountId });
+          } : undefined}
         />
       )}
 

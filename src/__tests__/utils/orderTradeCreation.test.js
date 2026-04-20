@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   categorizeConfirmedOps,
+  CLASSIFICATION,
   mapOperationToTradeData,
   checkDuplication,
 } from '../../utils/orderTradeCreation';
@@ -99,16 +100,16 @@ describe('categorizeConfirmedOps', () => {
   });
 
   describe('inputs vazios', () => {
-    it('operations vazio → 3 arrays vazios', () => {
-      expect(categorizeConfirmedOps([], [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    it('operations vazio → 4 arrays vazios', () => {
+      expect(categorizeConfirmedOps([], [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [], autoliq: [] });
     });
 
-    it('operations null → 3 arrays vazios', () => {
-      expect(categorizeConfirmedOps(null, [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    it('operations null → 4 arrays vazios', () => {
+      expect(categorizeConfirmedOps(null, [])).toEqual({ toCreate: [], toConfront: [], ambiguous: [], autoliq: [] });
     });
 
-    it('operations undefined → 3 arrays vazios', () => {
-      expect(categorizeConfirmedOps(undefined, undefined)).toEqual({ toCreate: [], toConfront: [], ambiguous: [] });
+    it('operations undefined → 4 arrays vazios', () => {
+      expect(categorizeConfirmedOps(undefined, undefined)).toEqual({ toCreate: [], toConfront: [], ambiguous: [], autoliq: [] });
     });
 
     it('correlations vazio → todas as ops vão para toCreate', () => {
@@ -288,6 +289,178 @@ describe('categorizeConfirmedOps', () => {
       const result = categorizeConfirmedOps(ops, correlations);
       expect(result.toCreate).toHaveLength(1); // foi para create porque "matched" foi descartado
       expect(result.toConfront).toHaveLength(0);
+    });
+  });
+
+  // ============================================
+  // Fase B (#156): classification + matchCandidates + autoliq
+  // ============================================
+
+  describe('classification propagation', () => {
+    it('op sem match → classification = "new"', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const result = categorizeConfirmedOps(ops, []);
+      expect(result.toCreate[0].classification).toBe(CLASSIFICATION.NEW);
+    });
+
+    it('op com 1 trade matched → classification = "match_confident"', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.95 }),
+        corr(2, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.95 }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront[0].operation.classification).toBe(CLASSIFICATION.MATCH_CONFIDENT);
+    });
+
+    it('op com 2+ trades matched → classification = "ambiguous"', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.9 }),
+        corr(2, { tradeId: 'trade-B', matchType: 'exact', confidence: 0.8 }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.ambiguous[0].operation.classification).toBe(CLASSIFICATION.AMBIGUOUS);
+    });
+  });
+
+  describe('matchCandidates', () => {
+    it('toConfront: matchCandidates com tradeId e score derivado de confidence', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.92 }),
+        corr(2, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.88 }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront[0].matchCandidates).toEqual([{ tradeId: 'trade-A', score: 0.92 }]);
+    });
+
+    it('ambiguous: matchCandidates lista todos os trades candidatos com score', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.9 }),
+        corr(2, { tradeId: 'trade-B', matchType: 'exact', confidence: 0.75 }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      const candidates = result.ambiguous[0].matchCandidates;
+      expect(candidates).toHaveLength(2);
+      expect(candidates).toEqual(expect.arrayContaining([
+        { tradeId: 'trade-A', score: 0.9 },
+        { tradeId: 'trade-B', score: 0.75 },
+      ]));
+    });
+
+    it('confidence ausente no objeto → score default 1', () => {
+      const ops = [makeOp('OP-001', 1, 2)];
+      // Correlação raw (sem helper corr) — sem campo confidence
+      const correlations = [
+        { orderIndex: 1, tradeId: 'trade-A', matchType: 'exact', instrument: 'WINJ26' },
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.toConfront[0].matchCandidates[0].score).toBe(1);
+    });
+  });
+
+  describe('autoliq (#156 Fase B)', () => {
+    /** Helper: op com ordem AutoLiq no exit. */
+    const makeAutoLiqOp = (id, entryRow, exitRow, matchCandidateAttached = false) => ({
+      operationId: id,
+      instrument: 'MNQH6',
+      side: 'LONG',
+      _isOpen: false,
+      entryOrders: [
+        { _rowIndex: entryRow, instrument: 'MNQH6', filledPrice: 24800, filledQuantity: 1, filledAt: '2026-02-12T10:00:00', origin: 'multibracket' },
+      ],
+      exitOrders: [
+        { _rowIndex: exitRow, instrument: 'MNQH6', filledPrice: 24700, filledQuantity: 1, filledAt: '2026-02-12T10:30:00', origin: 'AutoLiq' },
+      ],
+    });
+
+    it('op com AutoLiq sem match → vai para autoliq (não toCreate)', () => {
+      const ops = [makeAutoLiqOp('OP-LIQ', 1, 2)];
+      const result = categorizeConfirmedOps(ops, []);
+      expect(result.autoliq).toHaveLength(1);
+      expect(result.autoliq[0].operation.operationId).toBe('OP-LIQ');
+      expect(result.autoliq[0].operation.classification).toBe(CLASSIFICATION.AUTOLIQ);
+      expect(result.toCreate).toHaveLength(0);
+    });
+
+    it('op com AutoLiq + match candidate → vai para autoliq (prevalece sobre match_confident)', () => {
+      const ops = [makeAutoLiqOp('OP-LIQ', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9, instrument: 'MNQH6' }),
+        corr(2, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9, instrument: 'MNQH6' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.autoliq).toHaveLength(1);
+      expect(result.autoliq[0].operation.classification).toBe(CLASSIFICATION.AUTOLIQ);
+      expect(result.toConfront).toHaveLength(0);
+      // matchCandidates preservados para a UI decidir
+      expect(result.autoliq[0].matchCandidates).toEqual([{ tradeId: 'trade-X', score: 0.9 }]);
+      expect(result.autoliq[0].tradeIds).toEqual(['trade-X']);
+    });
+
+    it('op com AutoLiq + 2 trades candidatos → autoliq preserva ambos em matchCandidates', () => {
+      const ops = [makeAutoLiqOp('OP-LIQ', 1, 2)];
+      const correlations = [
+        corr(1, { tradeId: 'trade-A', matchType: 'exact', confidence: 0.9, instrument: 'MNQH6' }),
+        corr(2, { tradeId: 'trade-B', matchType: 'exact', confidence: 0.7, instrument: 'MNQH6' }),
+      ];
+      const result = categorizeConfirmedOps(ops, correlations);
+      expect(result.autoliq).toHaveLength(1);
+      expect(result.ambiguous).toHaveLength(0);
+      expect(result.autoliq[0].matchCandidates).toHaveLength(2);
+    });
+
+    it('CLASSIFICATION enum expõe todas as 5 classes', () => {
+      expect(CLASSIFICATION.MATCH_CONFIDENT).toBe('match_confident');
+      expect(CLASSIFICATION.AMBIGUOUS).toBe('ambiguous');
+      expect(CLASSIFICATION.NEW).toBe('new');
+      expect(CLASSIFICATION.AUTOLIQ).toBe('autoliq');
+      expect(CLASSIFICATION.DISCARDED).toBe('discarded');
+    });
+  });
+
+  describe('FEV-12 — fills explodidos agrupados em 1 operação', () => {
+    it('op MARKET com 5 fills (3 entry + 2 exit, mesmo orderId) → categorizada como 1 única op', () => {
+      // Stub FEV-12: ordem de mercado que foi preenchida em 5 linhas no CSV.
+      // O reconstructor já agrupa por orderId/tempo; aqui validamos que o
+      // categorizer trata isso como 1 op e não 5.
+      const op = {
+        operationId: 'OP-FEV12',
+        instrument: 'MNQH6',
+        side: 'LONG',
+        _isOpen: false,
+        entryOrders: [
+          { _rowIndex: 10, instrument: 'MNQH6', externalOrderId: 'O-1', filledPrice: 24800.00, filledQuantity: 1, filledAt: '2026-02-12T14:00:01', origin: 'multibracket' },
+          { _rowIndex: 11, instrument: 'MNQH6', externalOrderId: 'O-1', filledPrice: 24800.25, filledQuantity: 1, filledAt: '2026-02-12T14:00:01', origin: 'multibracket' },
+          { _rowIndex: 12, instrument: 'MNQH6', externalOrderId: 'O-1', filledPrice: 24800.50, filledQuantity: 1, filledAt: '2026-02-12T14:00:02', origin: 'multibracket' },
+        ],
+        exitOrders: [
+          { _rowIndex: 20, instrument: 'MNQH6', externalOrderId: 'O-2', filledPrice: 24810.00, filledQuantity: 2, filledAt: '2026-02-12T14:30:00', origin: 'Exit' },
+          { _rowIndex: 21, instrument: 'MNQH6', externalOrderId: 'O-2', filledPrice: 24810.25, filledQuantity: 1, filledAt: '2026-02-12T14:30:00', origin: 'Exit' },
+        ],
+      };
+
+      // Caso 1: sem correlação → classification = 'new'
+      const resultNew = categorizeConfirmedOps([op], []);
+      expect(resultNew.toCreate).toHaveLength(1);
+      expect(resultNew.toCreate[0].classification).toBe(CLASSIFICATION.NEW);
+      expect(resultNew.toConfront).toHaveLength(0);
+      expect(resultNew.ambiguous).toHaveLength(0);
+
+      // Caso 2: todas as 5 fills correlacionam com o mesmo trade → match_confident único
+      const correlations = [10, 11, 12, 20, 21].map(rowIndex => ({
+        orderIndex: rowIndex,
+        tradeId: 'trade-FEV12',
+        matchType: 'exact',
+        confidence: 0.95,
+        instrument: 'MNQH6',
+      }));
+      const resultMatched = categorizeConfirmedOps([op], correlations);
+      expect(resultMatched.toConfront).toHaveLength(1);
+      expect(resultMatched.toConfront[0].tradeId).toBe('trade-FEV12');
+      expect(resultMatched.toConfront[0].matchCandidates).toEqual([{ tradeId: 'trade-FEV12', score: 0.95 }]);
     });
   });
 });

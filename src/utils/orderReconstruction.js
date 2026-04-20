@@ -1,23 +1,36 @@
 /**
  * orderReconstruction.js
- * @version 1.0.0 (v1.20.0)
+ * @version 1.1.0 (v1.37.0 — issue #156 Fase D)
  * @description Reconstrói operações (trades) a partir de ordens individuais.
  *   Usa algoritmo de net position: agrupa ordens por instrumento, acumula posição,
  *   e quando net position volta a zero → operação completa.
  *
  * ALGORITMO:
+ *   0. Agregar fills N×M (mesmo externalOrderId) via aggregateFills
  *   1. Filtrar ordens FILLED, ordenar cronologicamente por filledAt/submittedAt
  *   2. Para cada instrumento, manter net position (BUY soma, SELL subtrai)
  *   3. Quando net position = 0 → operação completa (entradas + saídas agrupadas)
- *   4. Associar stop orders e canceladas ao intervalo temporal da operação
+ *   4. Gap temporal > GAP_THRESHOLD_MS entre ops do mesmo instrumento → flag
+ *      hasPriorGap=true na operação seguinte
+ *   5. Associar stop orders e canceladas ao intervalo temporal da operação
  *
  * GROUND TRUTH: Validado contra 5 operações reais (19/03/2026, WINJ26)
+ * ISSUE #156 Fase D: segmentação por ticker explícita + N×M + gap temporal
  *
  * EXPORTS:
- *   reconstructOperations(orders) → ReconstructedOperation[]
+ *   reconstructOperations(orders, opts?) → ReconstructedOperation[]
  *   calculateOperationResult(operation) → { resultPoints, avgEntry, avgExit }
  *   associateNonFilledOrders(operations, allOrders) → operations (mutated)
+ *   DEFAULT_GAP_THRESHOLD_MS
  */
+
+import { aggregateFills } from './orderFillAggregator';
+
+// Threshold padrão para considerar gap temporal entre operações do mesmo
+// instrumento. 60 minutos cobre janela de almoço, pausas longas intraday
+// e qualquer carry-over para o dia seguinte (sessões normais duram >>60min
+// só em day trade contínuo). Configurável via opts.gapThresholdMs.
+export const DEFAULT_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 
 // ============================================
 // HELPERS
@@ -68,20 +81,30 @@ const operationSide = (firstOrder) => {
  * Reconstrói operações a partir de ordens FILLED.
  *
  * @param {Object[]} orders — todas as ordens (qualquer status)
+ * @param {Object} [opts]
+ * @param {number} [opts.gapThresholdMs] — gap em ms para flag hasPriorGap (default 60min)
  * @returns {Object[]} ReconstructedOperation[]
  */
-export const reconstructOperations = (orders) => {
+export const reconstructOperations = (orders, opts = {}) => {
   if (!orders?.length) return [];
 
+  const gapThresholdMs = typeof opts.gapThresholdMs === 'number'
+    ? opts.gapThresholdMs
+    : DEFAULT_GAP_THRESHOLD_MS;
+
+  // Step 0: Agregar fills N×M do mesmo externalOrderId numa ordem lógica única
+  const aggregated = aggregateFills(orders);
+
   // Step 1: Separar FILLED das demais
-  const filledOrders = orders
+  const filledOrders = aggregated
     .filter(o => o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
     .map(o => ({ ...o, _ts: getEffectiveTimestamp(o) }))
     .sort((a, b) => a._ts - b._ts);
 
   if (!filledOrders.length) return [];
 
-  // Step 2: Agrupar por instrumento
+  // Step 2: Segmentar por instrumento — cada ticker tem pipeline próprio de net
+  // position. Previne contaminação entre tickers num bust day.
   const byInstrument = {};
   for (const order of filledOrders) {
     const key = (order.instrument || 'UNKNOWN').toUpperCase();
@@ -98,6 +121,8 @@ export const reconstructOperations = (orders) => {
     let currentEntries = [];
     let currentExits = [];
     let openingSide = null; // side da primeira ordem (define LONG/SHORT)
+    let lastOpExitTs = null; // exitTime da última op fechada neste instrumento (para gap)
+    let pendingGap = false; // gap detectado antes da operação atual
 
     for (const order of instrumentOrders) {
       const qty = order.filledQuantity ?? order.quantity ?? 0;
@@ -106,7 +131,10 @@ export const reconstructOperations = (orders) => {
       const delta = order.side === 'BUY' ? qty : -qty;
 
       if (netPosition === 0) {
-        // Nova operação
+        // Nova operação — detecta gap contra a última op fechada deste instrumento
+        if (lastOpExitTs != null && order._ts - lastOpExitTs > gapThresholdMs) {
+          pendingGap = true;
+        }
         openingSide = order.side;
         currentEntries = [order];
         currentExits = [];
@@ -162,9 +190,12 @@ export const reconstructOperations = (orders) => {
           stopExecuted: false,        // preenchido em associateNonFilledOrders
           stopMovements: [],          // preenchido em stopMovementAnalysis
           autoObservation: null,      // preenchido em stopMovementAnalysis
+          hasPriorGap: pendingGap,    // Fase D: gap temporal antes desta op
         });
 
-        // Reset
+        // Reset — mantém lastOpExitTs para detectar gap na próxima
+        lastOpExitTs = exitTime;
+        pendingGap = false;
         currentEntries = [];
         currentExits = [];
         openingSide = null;
@@ -198,6 +229,7 @@ export const reconstructOperations = (orders) => {
         stopExecuted: false,
         stopMovements: [],
         autoObservation: 'POSIÇÃO ABERTA — operação incompleta no período importado',
+        hasPriorGap: pendingGap,
         _isOpen: true,
       });
     }

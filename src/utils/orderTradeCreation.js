@@ -12,19 +12,45 @@
  */
 
 import { CORRELATION_WINDOW_MS } from './orderCorrelation';
+import { detectAutoLiq } from './autoLiqDetector';
 
 // ============================================
-// CONFIRMED OPS CATEGORIZATION (issue #93 redesign)
+// CONFIRMED OPS CATEGORIZATION (issue #93 redesign + #156 Fase B)
 // ============================================
 
 /**
- * Particiona operações confirmadas em três grupos baseado em correlação com trades existentes:
- *   - toCreate: operações sem nenhuma ordem correlacionada → criação automática
- *   - toConfront: operações cujas ordens correlacionam com EXATAMENTE 1 trade → confronto enriquecido
- *   - ambiguous: operações cujas ordens correlacionam com 2+ trades → decisão manual
+ * Enum de classificação persistida em `ordersStagingArea` (issue #156 Fase B).
  *
- * Substitui o uso de identifyGhostOperations + identifyMatchedOperations no fluxo
- * principal. Resolve o bug de operações mistas em limbo (issue #93 redesign).
+ * - `match_confident`: correlação única com trade existente → confronto enriquecido
+ * - `ambiguous`: 2+ trades candidatos → decisão manual do aluno
+ * - `new`: sem nenhuma correlação → criação de novo trade
+ * - `autoliq`: operação contém ordem AutoLiq (prevalece sobre as outras)
+ * - `discarded`: aluno descartou explicitamente (setado fora do classificador)
+ */
+export const CLASSIFICATION = Object.freeze({
+  MATCH_CONFIDENT: 'match_confident',
+  AMBIGUOUS: 'ambiguous',
+  NEW: 'new',
+  AUTOLIQ: 'autoliq',
+  DISCARDED: 'discarded',
+});
+
+/**
+ * Particiona operações confirmadas em grupos baseado em correlação com trades
+ * existentes e presença de AutoLiq. Cada operação retornada carrega a propriedade
+ * `classification` — enum persistido em `ordersStagingArea`.
+ *
+ *   - toCreate: classificação `new` — operações sem correlação com trade existente
+ *   - toConfront: classificação `match_confident` — correlação com exatamente 1 trade
+ *   - ambiguous: classificação `ambiguous` — correlação com 2+ trades
+ *   - autoliq: classificação `autoliq` — operação com ordem AutoLiq (prevalece)
+ *
+ * Regra AutoLiq: uma operação com qualquer ordem AutoLiq cai em `autoliq` mesmo
+ * que haja correlação com trade existente. Candidatos de match são preservados
+ * em `matchCandidates` para a UI decidir (Fase C).
+ *
+ * Classificação `discarded` NÃO é emitida aqui — é atualizada pelo fluxo de
+ * decisão do aluno (Fase C) via update direto no doc de staging.
  *
  * Lookup por _rowIndex (identificador estável do parser) — sem fallback por
  * instrumento que causa falsos positivos.
@@ -32,22 +58,27 @@ import { CORRELATION_WINDOW_MS } from './orderCorrelation';
  * @param {Object[]} operations — operações reconstruídas (output de reconstructOperations)
  * @param {Object[]} correlations — output de correlateOrders().correlations
  * @returns {{
- *   toCreate: Object[],
- *   toConfront: Array<{ operation: Object, tradeId: string }>,
- *   ambiguous: Array<{ operation: Object, tradeIds: string[] }>
+ *   toCreate: Array<Object>,
+ *   toConfront: Array<{ operation: Object, tradeId: string, matchCandidates: Array<{tradeId: string, score: number}> }>,
+ *   ambiguous: Array<{ operation: Object, tradeIds: string[], matchCandidates: Array<{tradeId: string, score: number}> }>,
+ *   autoliq: Array<{ operation: Object, tradeIds: string[], matchCandidates: Array<{tradeId: string, score: number}> }>,
  * }}
  */
 export function categorizeConfirmedOps(operations, correlations) {
   if (!operations?.length) {
-    return { toCreate: [], toConfront: [], ambiguous: [] };
+    return { toCreate: [], toConfront: [], ambiguous: [], autoliq: [] };
   }
 
-  // Index correlations matched por _rowIndex (identificador estável do parser)
-  const tradeIdByRowIndex = new Map();
+  // Index correlations matched por _rowIndex (identificador estável do parser).
+  // Preserva o score/confidence para propagar em matchCandidates.
+  const correlationByRowIndex = new Map();
   if (correlations?.length) {
     for (const c of correlations) {
       if (c.tradeId && c.matchType !== 'ghost') {
-        tradeIdByRowIndex.set(c.orderIndex, c.tradeId);
+        correlationByRowIndex.set(c.orderIndex, {
+          tradeId: c.tradeId,
+          score: typeof c.confidence === 'number' ? c.confidence : 1,
+        });
       }
     }
   }
@@ -55,6 +86,7 @@ export function categorizeConfirmedOps(operations, correlations) {
   const toCreate = [];
   const toConfront = [];
   const ambiguous = [];
+  const autoliq = [];
 
   for (const op of operations) {
     if (op._isOpen) continue;
@@ -65,24 +97,52 @@ export function categorizeConfirmedOps(operations, correlations) {
       ...(op.exitOrders || []),
     ];
 
-    // Coletar tradeIds únicos correlacionados a alguma das ordens da op
-    const tradeIds = new Set();
+    // Coletar tradeIds únicos correlacionados a alguma das ordens da op.
+    // Mantém o maior score por tradeId (best-case para ambiguous UI).
+    const scoreByTradeId = new Map();
     for (const order of filledOrders) {
-      const tid = tradeIdByRowIndex.get(order._rowIndex);
-      if (tid) tradeIds.add(tid);
+      const corr = correlationByRowIndex.get(order._rowIndex);
+      if (!corr) continue;
+      const prev = scoreByTradeId.get(corr.tradeId) ?? -Infinity;
+      if (corr.score > prev) scoreByTradeId.set(corr.tradeId, corr.score);
     }
 
-    if (tradeIds.size === 0) {
-      toCreate.push(op);
-    } else if (tradeIds.size === 1) {
+    const tradeIds = [...scoreByTradeId.keys()];
+    const matchCandidates = tradeIds.map(tradeId => ({
+      tradeId,
+      score: scoreByTradeId.get(tradeId),
+    }));
+
+    // AutoLiq prevalece sobre match — evento de sistema não deve criar trade
+    // nem enriquecer trade existente sem decisão explícita (Fase C).
+    if (detectAutoLiq(op)) {
+      autoliq.push({
+        operation: { ...op, classification: CLASSIFICATION.AUTOLIQ },
+        tradeIds,
+        matchCandidates,
+      });
+      continue;
+    }
+
+    if (tradeIds.length === 0) {
+      toCreate.push({ ...op, classification: CLASSIFICATION.NEW });
+    } else if (tradeIds.length === 1) {
       const [tradeId] = tradeIds;
-      toConfront.push({ operation: op, tradeId });
+      toConfront.push({
+        operation: { ...op, classification: CLASSIFICATION.MATCH_CONFIDENT },
+        tradeId,
+        matchCandidates,
+      });
     } else {
-      ambiguous.push({ operation: op, tradeIds: [...tradeIds] });
+      ambiguous.push({
+        operation: { ...op, classification: CLASSIFICATION.AMBIGUOUS },
+        tradeIds,
+        matchCandidates,
+      });
     }
   }
 
-  return { toCreate, toConfront, ambiguous };
+  return { toCreate, toConfront, ambiguous, autoliq };
 }
 
 // ============================================

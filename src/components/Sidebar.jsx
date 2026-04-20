@@ -26,7 +26,9 @@ import {
   Settings,
   Brain,
   CreditCard,
-  ClipboardCheck
+  ClipboardCheck,
+  Shield,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -41,6 +43,8 @@ const Sidebar = ({
   emotionalAlerts = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
+  hasPropAccount = false,
+  hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
 
@@ -58,6 +62,8 @@ const Sidebar = ({
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).
     { id: 'accounts', label: 'Contas', icon: Wallet },
+    // Mesa Prop — só aparece se aluno tem conta type PROP
+    ...(hasPropAccount ? [{ id: 'propfirm', label: 'Mesa Prop', icon: Shield }] : []),
     // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
     ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
   ];

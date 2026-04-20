@@ -3,9 +3,23 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.37.0: arch: Import Orders staging conversacional obrigatório + fix bypass #93 (issue #156) —
+ *   5 fases consolidadas: (A) shadow writer bypass removido, hook useShadowAnalysis invoca CF canônica
+ *   analyzeShadowBehavior + invariante tradeWriteBoundary; (B) schema classificação persistente em
+ *   ordersStagingArea (match_confident/ambiguous/new/autoliq/discarded) + autoLiqDetector; (C) UX
+ *   conversacional por operação via ConversationalOpCard (substitui auto-create #93) + AutoLiqBadge
+ *   + gate de plano retroativo; (D) reconstrução robusta — segmentação por instrument (caso ABR-17
+ *   bust day MNQ+NQ) + agregação N×M fills (caso FEV-12 fill explodido) + detecção de gap temporal
+ *   60min; (E) enrichment sem duplicata — helper puro conversationalIngest, AdjustmentModal com diff
+ *   fino campo-a-campo, persist discarded em orders via fingerprint; (F) wire onRequestRetroactivePlan
+ *   em App/StudentDashboard/AccountsPage fechando o gate (banner → fecha modal → navega para
+ *   AccountDetailPage da conta → PlanManagementModal abre via _autoOpenPlanModal, padrão #154).
+ *   DT-038 (3 camadas do trade cancelada) e DT-039 (writers legados GRANDFATHERED) rastreadas.
+ *   Invariante tradeWriteBoundary verde, zero regressão.
+ * - 1.36.0: fix: Card de conta ganha botão "Novo plano" (#154) — atalho no card (AccountsPage visão aluno + StudentAccountGroup visão mentor) passa flag _autoOpenPlanModal para AccountDetailPage, que abre PlanManagementModal via useEffect. Preserva "casa do pai" (modal mora em AccountDetailPage, card só chama). Resolve workaround crítico: hoje aluno precisava criar conta Mesa → reverter para Real → corrigir plano.
  * - 1.34.0: fix: Botão Novo Plano inacessível (#146) — mover criação de plano de DashboardHeader para AccountDetailPage, limpar state órfão no StudentDashboard.
  * - 1.33.0: feat: Revisão Semanal (#102) — PlanLedgerExtract fundação + collection reviews + CF createWeeklyReview + CF generateWeeklySwot + WeeklyReviewModal + integração mentor/aluno. Inclui JAQUE: fix badge REVENGE/TILT vazando para trades do mesmo dia (match estrito por tradeId em ExtractTable, tradeIdsAfter em detectRevengeV2 RAPID_SEQUENCE, helper extractInlineEvents com 12 testes). [RESERVADO]
- * - 1.32.0: arch: Pagina dedicada Mesa Prop (#145) — extrair PropAccountCard/AlertsBanner/PayoutTracker/AiApproachPlanSection do StudentDashboard para PropFirmPage, novo item condicional no Sidebar, ContextBar governa pagina, fix sparkline DD threshold, plano phase-aware (PA/SIM_FUNDED/LIVE). [RESERVADO]
+ * - 1.32.0: arch: Pagina dedicada Mesa Prop — redesign 4 zonas (#145) — Fases A-B extrair PropAccountCard/AlertsBanner/PayoutTracker do StudentDashboard para PropFirmPage + novo item condicional Sidebar + ContextBar governa pagina. Fase C fix attack plan phase-aware (PA/SIM_FUNDED/LIVE usam fundedDrawdown). Fase D remove AI Approach Plan da pagina (migra para #148 com gate 4D+30 shadow trades) + reset CF phase-aware para main. Fase E useDrawdownHistory MAX_DOCS 100->1000 + prop limit configuravel (suporta equity curve em conta com 500+ trades). Fase F decomposicao em 4 zonas semanticas (status agora / retrospectivo / contrato da mesa / payout) + novos componentes PropEquityCurve (Recharts) + TemplateCard + PlanoMecanicoCard + PropViabilityBadge (6 estados phase-aware) + PropHistoricalKPIs. Fase G renomear "Simulador de Saque" -> "Quando posso sacar?" (linguagem de decisao). Fase H fix 4 bugs phase-aware (dias operados denominador, dailyLossLimit null-safety, ViabilityBadge Infinity, prazo avaliacao condicional). Hotfix #149 cancelada (phase missing era bug de branch, nao de prod). 17 testes novos, 1567/1567 passando (inclui suite #102 mergeada). Spec Review Gate INV-18 iteracao 3.
  * - 1.31.0: feat: Order Import Tradovate Orders (#142) — parser parseTradovateOrders + FORMAT_REGISTRY extensivel em orderParsers.js + auto-detect ProfitChart vs Tradovate por header signature + remove gatekeep hardcoded em OrderImportPage.jsx + deteccao multi-delimitador (; e ,). Shape canonico identico entre parsers — downstream (normalize/validate/reconstruct/correlate) inalterado. Mapas EN inline (STATUS/SIDE/TYPE com trim de leading space), datas US (MM/DD/YYYY HH:MM:SS) via parseDateTime, numeros US (Papa quote-aware lida com thousands). 19 testes novos (2 Fase A + 17 Fase B), fixtures reais april/feb 2026 conta Apex. Validado em browser.
  * - 1.30.0: arch: Barra de Contexto Unificado (#118) — StudentContextProvider com Conta > Plano > Ciclo > Período persistido em localStorage versionado por aluno (E1/E5), cycleResolver puro (detectActiveCycle por datas E3, getDefaultContext conta com plano mais recente E2, períodos predefinidos CYCLE/WEEK/MONTH E4), ContextBar com 4 dropdowns encadeados + opção "Todas as contas" + badge read-only para ciclos finalizados, refactor StudentDashboard com sincronização bidirecional filters↔contexto. Adaptador temporário para PropAccountCard/Banner/Tracker (#134, CHUNK-17 liberado após merge #133 — migração em sessão subsequente). 46 testes novos, zero regressão
  * - 1.29.0: feat: AI Approach Plan Sonnet 4.6 (#133 — epic #52 Fase 2.5) — CF callable generatePropFirmApproachPlan gera narrativa estrategica sobre o plano deterministico (approach, execution, 4 cenarios, guidance comportamental, milestones), validacao pos-processamento com coerencia mecanica (Dia ideal === +dailyGoal, Dia ruim === -dailyStop) e read-only enforcement em numeros deterministicos, retry 3x com self-correction, fallback deterministico sem consumo de cota em falhas, rate limit 5 geracoes/conta (reset manual pelo mentor), seção colapsável no PropAccountCard existente com contador/badge/aviso cenario defaults, 24 testes novos em propFirmAiValidate
@@ -52,10 +66,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.34.0',
-  build: '20260416',
-  display: 'v1.34.0',
-  full: '1.34.0+20260416',
+  version: '1.37.0',
+  build: '20260420',
+  display: 'v1.37.0',
+  full: '1.37.0+20260420',
 };
 export default VERSION;
 export { VERSION };

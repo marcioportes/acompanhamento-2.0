@@ -17,6 +17,7 @@ import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
+import PropFirmPage from './pages/PropFirmPage';
 import MentorDashboard from './pages/MentorDashboard';
 import AccountsPage from './pages/AccountsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -93,6 +94,11 @@ const AppContent = () => {
   const [feedbackReturnReviewContext, setFeedbackReturnReviewContext] = useState(null);
   // Stage 6: contexto de retorno quando usuário vai ao Ledger a partir da WeeklyReviewPage.
   const [ledgerReturnReviewContext, setLedgerReturnReviewContext] = useState(null);
+
+  // Preseleção de conta na AccountsPage com auto-abertura de PlanManagementModal
+  // (usado pelo banner "Criar plano retroativo" do OrderImportPage — issue #156 Fase F).
+  // Padrão espelha flag _autoOpenPlanModal do card de conta (#154, v1.36.0).
+  const [accountsInitial, setAccountsInitial] = useState(null);
   
   // Hooks
   const { 
@@ -119,6 +125,14 @@ const AppContent = () => {
   const studentAssessmentId = !isMentor() ? user?.uid : null;
   const { initialAssessment: studentInitialAssessment } = useAssessment(studentAssessmentId);
   const hasBaseline = !!studentInitialAssessment;
+
+  // Mesa Prop — para exibir item no Sidebar (só alunos logados)
+  const studentAccountsId = !isMentor() ? user?.uid : null;
+  const { accounts: studentAccounts } = useAccounts(studentAccountsId);
+  const hasPropAccount = useMemo(() => {
+    if (isMentor()) return false;
+    return studentAccounts?.some(a => a.type === 'PROP') ?? false;
+  }, [studentAccounts]);
 
   // Contadores para badges
   const pendingFeedbackCount = useMemo(() => {
@@ -219,6 +233,14 @@ const AppContent = () => {
   const handleOpenWeeklyReview = ({ studentId, reviewId }) => {
     setWeeklyReviewContext({ studentId, reviewId });
     setCurrentView('weekly-review');
+  };
+
+  // Handler para abrir AccountsPage com conta preselecionada + modal de novo plano aberto
+  // (issue #156 Fase F — banner "Criar plano retroativo" do OrderImportPage).
+  const handleRequestRetroactivePlan = ({ accountId }) => {
+    if (!accountId) return;
+    setAccountsInitial({ accountId, autoOpenPlanModal: true });
+    setCurrentView('accounts');
   };
 
   // Handler para navegar para FeedbackPage com um trade específico
@@ -353,11 +375,13 @@ const AppContent = () => {
 
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
-      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
+      return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} onRequestRetroactivePlan={handleRequestRetroactivePlan} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
     }
 
     // Páginas específicas
-    if (currentView === 'accounts') return <AccountsPage />;
+    if (currentView === 'accounts') {
+      return <AccountsPage initialAccount={accountsInitial} onInitialConsumed={() => setAccountsInitial(null)} />;
+    }
     if (currentView === 'students' && isMentor()) {
       return <StudentsManagement onViewAsStudent={handleViewAsStudent} />;
     }
@@ -425,6 +449,8 @@ const AppContent = () => {
               />
             </div>
           );
+        case 'propfirm':
+          return <PropFirmPage />;
         case 'ledger': {
           // Extrato do Plano como view (Fase 0 #102 — modal → currentView)
           const ledgerPlan = ledgerPlanId ? plans.find(p => p.id === ledgerPlanId) : null;
@@ -449,7 +475,7 @@ const AppContent = () => {
         }
         case 'dashboard':
         default:
-          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} />;
+          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} onRequestRetroactivePlan={handleRequestRetroactivePlan} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
       }
     }
   };
@@ -478,6 +504,8 @@ const AppContent = () => {
         studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
+        hasPropAccount={hasPropAccount}
+        hasPlans={plans.length > 0}
       />
 
       {/* Conteúdo principal */}

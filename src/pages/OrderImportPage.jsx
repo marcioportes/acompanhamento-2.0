@@ -1,15 +1,20 @@
 /**
  * OrderImportPage.jsx
- * @version 2.0.0 (v1.20.0)
- * @description Wizard de importação de ordens — fluxo completo end-to-end.
+ * @version 3.0.0 (v1.37.0 — issue #156 Fase C)
+ * @description Wizard de importação de ordens — fluxo conversacional por operação.
  *
  * STATE MACHINE:
- *   UPLOAD → PREVIEW → PLAN_SELECT → STAGING (gravar)
- *   → STAGING_REVIEW (operações reconstruídas, aluno confirma)
- *   → INGESTING (staging → orders + delete staging)
- *   → DONE (cross-check + resultado)
+ *   UPLOAD → PREVIEW → PLAN_SELECT → STAGING_WRITE
+ *   → STAGING_REVIEW (reconstrução, aluno confirma o staging cru)
+ *   → CONVERSATIONAL_REVIEW (classificação + decisão por operação)
+ *   → INGESTING (cria/enrich/descarta conforme decisão)
+ *   → DONE
  *
- * O aluno NÃO pode pular o STAGING_REVIEW — deve confirmar cada operação.
+ * Fase C (#156): remove auto-create do #93 — cada operação precisa de decisão
+ * explícita (confirm / adjust / discard) antes de virar trade.
+ *
+ * Gate plano retroativo: se há operações em períodos sem plano vigente, o submit
+ * fica bloqueado até o aluno criar plano cobrindo o período (via AccountDetailPage).
  *
  * @requires useOrderStaging, useCrossCheck
  */
@@ -24,7 +29,7 @@ import OrderStagingReview from '../components/OrderImport/OrderStagingReview';
 import OrderCorrelation from '../components/OrderImport/OrderCorrelation';
 import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
-import AmbiguousOperationsPanel from '../components/OrderImport/AmbiguousOperationsPanel';
+import ConversationalReview from '../components/OrderImport/ConversationalReview';
 
 import { detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -32,13 +37,22 @@ import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
 import { correlateOrders } from '../utils/orderCorrelation';
-import { categorizeConfirmedOps } from '../utils/orderTradeCreation';
+import { categorizeConfirmedOps, CLASSIFICATION } from '../utils/orderTradeCreation';
 import { createTradesBatch } from '../utils/orderTradeBatch';
 import { compareOperationWithTrade } from '../utils/orderTradeComparison';
 import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
-import { analyzeShadowBatch } from '../utils/shadowBehaviorAnalysis';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { detectCoverageGap } from '../utils/planCoverage';
+import {
+  routeConversationalDecisions,
+  enrichConversationalBatch,
+  operationOrderFingerprints,
+  orderMatchFingerprint,
+} from '../utils/conversationalIngest';
+import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import {
+  collection, query, where, getDocs, writeBatch, doc, serverTimestamp,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 
 // ============================================
@@ -50,6 +64,7 @@ const STEPS = {
   PLAN_SELECT: 'plan_select',
   STAGING_WRITE: 'staging_write',
   STAGING_REVIEW: 'staging_review',
+  CONVERSATIONAL_REVIEW: 'conversational_review',
   INGESTING: 'ingesting',
   DONE: 'done',
 };
@@ -60,9 +75,57 @@ const STEP_LABELS = {
   [STEPS.PLAN_SELECT]: 'Selecionar Plano',
   [STEPS.STAGING_WRITE]: 'Gravando staging...',
   [STEPS.STAGING_REVIEW]: 'Revisão de Operações',
+  [STEPS.CONVERSATIONAL_REVIEW]: 'Decisão por Operação',
   [STEPS.INGESTING]: 'Importando...',
   [STEPS.DONE]: 'Concluído',
 };
+
+/**
+ * Marca os docs de `orders` correspondentes a operações descartadas com
+ * `userDecision: 'discarded'` + `userDecisionAt: serverTimestamp()`. As ordens
+ * foram ingeridas no passo anterior (handleStagingConfirm); esta função só
+ * atualiza os docs existentes para preservar a decisão do aluno em auditoria.
+ *
+ * Match: `batchId` + fingerprint instrument|side|filledAt|quantity
+ * (ver `orderMatchFingerprint`). `orders` docs não carregam `externalOrderId`
+ * atualmente; o fingerprint composto é suficiente para o propósito de
+ * marcação — colisões dentro do mesmo batch são improváveis (mesmo ticker,
+ * mesmo lado, mesmo filledAt exato, mesmo qty).
+ */
+async function persistDiscardedOrders({ batchId, discardedItems }) {
+  if (!batchId || !discardedItems?.length) return { updated: 0 };
+
+  // Reúne fingerprints de todas as ordens (entry+exit+stop) das ops descartadas.
+  const discardedFps = new Set();
+  for (const item of discardedItems) {
+    const fps = operationOrderFingerprints(item.operation);
+    for (const fp of fps) discardedFps.add(fp);
+  }
+  if (discardedFps.size === 0) return { updated: 0 };
+
+  const q = query(collection(db, 'orders'), where('batchId', '==', batchId));
+  const snap = await getDocs(q);
+  if (snap.empty) return { updated: 0 };
+
+  const BATCH_SIZE = 450;
+  let updated = 0;
+  const matchingDocs = snap.docs.filter(d => discardedFps.has(orderMatchFingerprint(d.data())));
+
+  for (let i = 0; i < matchingDocs.length; i += BATCH_SIZE) {
+    const chunk = matchingDocs.slice(i, i + BATCH_SIZE);
+    const batch = writeBatch(db);
+    for (const d of chunk) {
+      batch.update(doc(db, 'orders', d.id), {
+        userDecision: 'discarded',
+        userDecisionAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    updated += chunk.length;
+  }
+
+  return { updated };
+}
 
 /**
  * @param {Object} props
@@ -71,8 +134,20 @@ const STEP_LABELS = {
  * @param {Object[]} props.trades — trades do aluno (para correlação)
  * @param {Object} props.orderStaging — hook useOrderStaging
  * @param {Object} props.crossCheck — hook useCrossCheck (opcional)
+ * @param {Function} [props.onRequestRetroactivePlan] — ({ accountId }) => void. Chamado
+ *   quando o aluno clica em "Criar plano retroativo" no banner de gap. Implementação
+ *   esperada: navegar para AccountDetailPage com `_autoOpenPlanModal: true` (padrão #154).
+ *   Se ausente, o botão do banner não aparece.
  */
-const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, crossCheck, userContext }) => {
+const OrderImportPage = ({
+  onClose,
+  plans = [],
+  trades = [],
+  orderStaging,
+  crossCheck,
+  userContext,
+  onRequestRetroactivePlan,
+}) => {
   // State machine
   const [step, setStep] = useState(STEPS.UPLOAD);
 
@@ -89,22 +164,46 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   const [batchId, setBatchId] = useState(null);
   const [reconstructedOps, setReconstructedOps] = useState([]);
 
+  // Conversational queue (Fase C) — operações classificadas com decisão do aluno
+  const [conversationalQueue, setConversationalQueue] = useState([]);
+  const [coverageGap, setCoverageGap] = useState({ hasCoverageGap: false, gapOperations: [] });
+
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
-
-  // Modo Criação (V1.1a — issue #93 redesign): summary completo da importação
   const [importSummary, setImportSummary] = useState(null);
-
-  // Modo Confronto (V1.1b — issue #93)
   const [confrontData, setConfrontData] = useState(null);
-
-  // Operações ambíguas (correlacionam com 2+ trades) — Fase 5 vai criar painel
-  const [ambiguousData, setAmbiguousData] = useState(null);
 
   // UI
   const [progress, setProgress] = useState('');
   const [error, setError] = useState(null);
   const [ingesting, setIngesting] = useState(false);
+
+  // Shadow Behavior Analysis — CF canônica (issue #156 Fase A)
+  const { analyze: analyzeShadow } = useShadowAnalysis();
+
+  // Derivar conta do plano selecionado (para gate de plano retroativo + lookup)
+  const selectedPlan = useMemo(
+    () => plans.find(p => p.id === selectedPlanId) || null,
+    [plans, selectedPlanId]
+  );
+  const accountId = selectedPlan?.accountId || null;
+
+  // Lookup auxiliar: trades indexados por id e agrupados por data (para `new` picker)
+  const planTrades = useMemo(
+    () => trades.filter(t => t.planId === selectedPlanId),
+    [trades, selectedPlanId]
+  );
+  const tradesById = useMemo(() => new Map(planTrades.map(t => [t.id, t])), [planTrades]);
+  const tradesByDate = useMemo(() => {
+    const map = new Map();
+    for (const t of planTrades) {
+      const d = (t.entryTime || t.date || '').slice(0, 10);
+      if (!d) continue;
+      if (!map.has(d)) map.set(d, []);
+      map.get(d).push(t);
+    }
+    return map;
+  }, [planTrades]);
 
   // ============================================
   // STEP 1: UPLOAD → PARSE
@@ -130,7 +229,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     setParseResult({ ...result, format: detection.format, confidence: detection.confidence });
 
-    // Validação de formato — bloqueia apenas quando nenhum parser registrado reconhece
     if (!detection.parser) {
       const headerHint = headers.length > 0
         ? ` Cabeçalho detectado: "${headers.slice(0, 5).join(', ')}${headers.length > 5 ? '...' : ''}"`
@@ -145,14 +243,10 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       return;
     }
 
-    // Parse — roteia pelo parser detectado no registry
     const parsed = detection.parser(result.text);
     setParseErrors(parsed.errors || []);
 
-    // Normalize + dedup
     const { orders: normalized } = normalizeBatch(parsed.orders);
-
-    // Validate
     const validation = validateBatch(normalized);
     setValidationResult(validation);
     setParsedOrders(validation.validOrders);
@@ -160,7 +254,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     if (validation.validOrders.length > 0) {
       setStep(STEPS.PREVIEW);
     } else {
-      // Parser reconheceu o formato mas não extraiu nenhuma ordem válida
       const reason = parsed.errors?.length > 0
         ? `${parsed.errors.length} erros de parse + 0 ordens válidas após validação`
         : '0 ordens válidas após validação';
@@ -186,7 +279,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     setError(null);
 
     try {
-      // 1. Write to staging
       setProgress('Gravando ordens em staging...');
       const newBatchId = await orderStaging.addStagingBatch(parsedOrders, {
         planId: selectedPlanId,
@@ -195,14 +287,9 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
       });
       setBatchId(newBatchId);
 
-      // 2. Reconstruct operations (client-side, from parsed orders)
       setProgress('Reconstruindo operações...');
       const ops = reconstructOperations(parsedOrders);
-
-      // 3. Associate non-filled orders (stops, cancellations)
       associateNonFilledOrders(ops, parsedOrders);
-
-      // 4. Analyze stop movements
       enrichOperationsWithStopAnalysis(ops);
 
       setReconstructedOps(ops);
@@ -218,9 +305,9 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
   }, [selectedPlanId, parsedOrders, parseResult, orderStaging]);
 
   // ============================================
-  // STEP 4: STAGING REVIEW → INGEST
+  // STEP 4: STAGING REVIEW → CATEGORIZE → CONVERSATIONAL REVIEW
   // ============================================
-  const handleStagingConfirm = useCallback(async ({ operations: confirmedOps, observations, confirmedOrderKeys }) => {
+  const handleStagingConfirm = useCallback(async ({ operations: confirmedOps, confirmedOrderKeys }) => {
     if (!batchId || !orderStaging) return;
 
     setIngesting(true);
@@ -228,25 +315,19 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
 
     try {
       // Filtrar ordens cruas pelo mesmo critério canônico usado em ingestBatch.
-      // confirmedOrderKeys vem do OrderStagingReview e contém TODAS as ordens
-      // (entry/exit/stop/cancelled) das operações que o aluno confirmou.
-      // Operações desmarcadas são descartadas do fluxo inteiro — issue #93.
       const confirmedSet = new Set(confirmedOrderKeys || []);
       const confirmedOrders = parsedOrders.filter(o => confirmedSet.has(makeOrderKey(o)));
 
-      // 1. Ingest filtrado: apenas ordens das operações confirmadas vão para `orders`.
-      //    As ordens não-confirmadas são DELETADAS do staging (Opção B — issue #93).
+      // 1. Ingest (staging → orders, deleta o resto) — mantido intacto.
       setProgress('Ingerindo ordens das operações confirmadas...');
       await orderStaging.ingestBatch(batchId, {}, confirmedOrderKeys);
 
-      // 2. Correlate with trades — apenas ordens confirmadas
+      // 2. Correlate com trades do plano.
       setProgress('Correlacionando com trades...');
-      const planTrades = trades.filter(t => t.planId === selectedPlanId);
       const { correlations, stats: corrStats } = correlateOrders(confirmedOrders, planTrades);
       setCorrelationResult({ correlations, stats: corrStats });
 
-      // 3. Cross-check (persistido para a Revisão Semanal #102 — não exibido ao aluno)
-      //    Usa apenas ordens confirmadas — métricas comportamentais refletem só o subset validado.
+      // 3. Cross-check (persistido — não exibido ao aluno).
       if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
         setProgress('Calculando cross-check...');
         const now = new Date();
@@ -259,16 +340,109 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         }
       }
 
-      // 4. Categorizar ops em toCreate / toConfront / ambiguous (issue #93 redesign — Fase 2)
-      //    Resolve o bug de ops mistas em limbo: critério baseado em correlação por op,
-      //    não em filledOrders.every() do código antigo.
-      setProgress('Categorizando operações...');
-      const { toCreate, toConfront, ambiguous } = categorizeConfirmedOps(confirmedOps, correlations);
+      // 4. Categorização → 4 classes (Fase B).
+      setProgress('Classificando operações...');
+      const { toCreate, toConfront, ambiguous, autoliq } =
+        categorizeConfirmedOps(confirmedOps, correlations);
 
-      // 5. Resolver tickerRules dos instrumentos a criar (futuros precisam para cálculo correto)
-      const instrumentsToCreate = [...new Set(toCreate.map(op => (op.instrument || '').toUpperCase()))];
+      // 5. Monta fila unificada — cada item carrega sua classificação persistida.
+      const queue = [
+        ...toCreate.map(op => ({
+          operation: op,
+          classification: CLASSIFICATION.NEW,
+          matchCandidates: op.matchCandidates || [],
+          userDecision: 'pending',
+        })),
+        ...toConfront.map(({ operation, tradeId, matchCandidates }) => ({
+          operation,
+          classification: CLASSIFICATION.MATCH_CONFIDENT,
+          tradeId,
+          matchCandidates: matchCandidates || [],
+          userDecision: 'pending',
+        })),
+        ...ambiguous.map(({ operation, tradeIds, matchCandidates }) => ({
+          operation,
+          classification: CLASSIFICATION.AMBIGUOUS,
+          tradeIds,
+          matchCandidates: matchCandidates || [],
+          userDecision: 'pending',
+        })),
+        ...autoliq.map(({ operation, tradeIds, matchCandidates }) => ({
+          operation,
+          classification: CLASSIFICATION.AUTOLIQ,
+          tradeIds,
+          matchCandidates: matchCandidates || [],
+          userDecision: 'pending',
+        })),
+      ];
+
+      // 6. Gate de cobertura: operações em datas sem plano vigente na conta.
+      const gap = detectCoverageGap({
+        operations: confirmedOps,
+        plans,
+        accountId,
+      });
+      setCoverageGap(gap);
+
+      setConversationalQueue(queue);
+      setStep(STEPS.CONVERSATIONAL_REVIEW);
+      setProgress('');
+    } catch (err) {
+      console.error('[OrderImportPage] Classification error:', err);
+      setError(err.message);
+      setStep(STEPS.STAGING_REVIEW);
+      setProgress('');
+    } finally {
+      setIngesting(false);
+    }
+  }, [batchId, parsedOrders, selectedPlanId, plans, accountId, planTrades, orderStaging, crossCheck]);
+
+  // ============================================
+  // STEP 5: CONVERSATIONAL REVIEW — handlers
+  // ============================================
+  const handleDecide = useCallback((index, payload) => {
+    setConversationalQueue(prev => {
+      const next = [...prev];
+      const current = next[index];
+      if (!current) return prev;
+      next[index] = {
+        ...current,
+        userDecision: payload.decision,
+        userDecisionAt: payload.decision === 'pending' ? null : new Date().toISOString(),
+        tradeId: payload.tradeId ?? current.tradeId,
+        userAdjustments: payload.adjustments ?? null,
+        promotedFrom: payload.promotedFrom ?? current.promotedFrom ?? null,
+      };
+      return next;
+    });
+  }, []);
+
+  const handleRetroactivePlan = useCallback(() => {
+    if (onRequestRetroactivePlan && accountId) {
+      onRequestRetroactivePlan({ accountId });
+    }
+  }, [onRequestRetroactivePlan, accountId]);
+
+  // ============================================
+  // STEP 6: INGESTING — processa decisões do aluno
+  // ============================================
+  const handleConversationalSubmit = useCallback(async () => {
+    if (coverageGap.hasCoverageGap) return; // Gate duro
+
+    setStep(STEPS.INGESTING);
+    setIngesting(true);
+    setError(null);
+
+    try {
+      // Resolver tickerRules dos instrumentos de todas as ops confirmadas.
+      const confirmedItems = conversationalQueue.filter(
+        i => i.userDecision === 'confirmed' || i.userDecision === 'adjusted'
+      );
+      const instruments = [...new Set(
+        confirmedItems.map(i => (i.operation.instrument || '').toUpperCase())
+      )];
       const tickerRuleMap = {};
-      for (const symbol of instrumentsToCreate) {
+      for (const symbol of instruments) {
         try {
           const tickerSnap = await getDocs(
             query(collection(db, 'tickers'), where('symbol', '==', symbol))
@@ -288,12 +462,16 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         }
       }
 
-      // 6. Criação automática (V1.1a redesign): sem painel intermediário, sem clique extra.
-      //    Throttling: batch > 20 → sequencial; ≤ 20 → paralelo (Promise.allSettled).
-      //    Deduplicação verificada antes de cada createTrade pelo helper.
       const lowResolution = !!parseResult?.lowResolution;
+
+      // Roteia decisões em buckets (helper puro — ver conversationalIngest.js).
+      const { toEnrich, toCreate: toCreateOps, discarded } =
+        routeConversationalDecisions(conversationalQueue);
+
+      // Criação via gateway (INV-02) com throttling.
+      setProgress('Criando trades a partir das decisões...');
       const batchResult = await createTradesBatch({
-        toCreate,
+        toCreate: toCreateOps,
         planId: selectedPlanId,
         importBatchId: batchId,
         tickerRuleMap,
@@ -303,99 +481,85 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         onProgress: (_current, _total, message) => setProgress(message),
       });
 
-      // 7. Persistir summary completo para o STEP DONE (Fase 4 vai consumir nas labels)
+      // Enriquecimento real — chama tradeGateway.enrichTrade por item.
+      setProgress('Enriquecendo trades existentes com dados da corretora...');
+      const enrichResult = await enrichConversationalBatch({
+        toEnrich,
+        userContext,
+        tickerRuleMap,
+        importBatchId: batchId,
+        enrichTradeFn: enrichTrade,
+      });
+
+      // Painel de confronto: mostra o que foi enriquecido (before vs after)
+      // para auditoria visual. Classifica entre divergent (ajustes reais no patch)
+      // e converged (patch idempotente — nada mudou).
+      const divergent = [];
+      const converged = [];
+      for (const entry of enrichResult.enriched) {
+        const trade = tradesById.get(entry.tradeId);
+        const item = toEnrich.find(i => i.tradeId === entry.tradeId);
+        if (!trade || !item) continue;
+        const comparison = compareOperationWithTrade(item.operation, trade);
+        if (comparison.hasDivergences) {
+          divergent.push({ operation: item.operation, trade, comparison });
+        } else {
+          converged.push({ operation: item.operation, trade });
+        }
+      }
+      if (divergent.length > 0 || converged.length > 0 || enrichResult.failed.length > 0) {
+        setConfrontData({ divergent, converged });
+      }
+
+      // Persist userDecision: 'discarded' nos docs de `orders` correspondentes.
+      // A operação teve suas ordens ingeridas no step anterior (handleStagingConfirm);
+      // aqui marcamos as ordens como descartadas para auditoria downstream.
+      if (discarded.length > 0 && batchId) {
+        try {
+          setProgress('Registrando decisões de descarte...');
+          await persistDiscardedOrders({ batchId, discardedItems: discarded });
+        } catch (discErr) {
+          console.warn('[OrderImportPage] Persist discarded failed (non-blocking):', discErr.message);
+        }
+      }
+
+      // Summary para STEP DONE.
+      const byClass = {
+        new: conversationalQueue.filter(i => i.classification === CLASSIFICATION.NEW).length,
+        match_confident: conversationalQueue.filter(i => i.classification === CLASSIFICATION.MATCH_CONFIDENT).length,
+        ambiguous: conversationalQueue.filter(i => i.classification === CLASSIFICATION.AMBIGUOUS).length,
+        autoliq: conversationalQueue.filter(i => i.classification === CLASSIFICATION.AUTOLIQ).length,
+      };
+      const discardedCount = conversationalQueue.filter(i => i.userDecision === 'discarded').length;
+
       setImportSummary({
-        ordersConfirmed: confirmedOrders.length,
-        opsConfirmed: confirmedOps.length,
-        toCreateCount: toCreate.length,
+        ordersConfirmed: null, // substituído pelo confirmedItems.length abaixo
+        opsConfirmed: confirmedItems.length,
         tradesCreated: batchResult.created,
         tradesDuplicates: batchResult.duplicates.length,
         tradesFailed: batchResult.failed,
-        toConfrontCount: toConfront.length,
-        ambiguousCount: ambiguous.length,
+        enrichedCount: enrichResult.enriched.length,
+        enrichFailed: enrichResult.failed,
+        discardedCount,
+        byClass,
         lowResolution,
       });
 
-      // 8. Modo Confronto Enriquecido (V1.1b redesign Fase 5)
-      //    Usa toConfront direto do categorizeConfirmedOps + compareOperationWithTrade
-      //    para detectar divergências campo a campo sem o bug do fallback por instrumento.
-      if (toConfront.length > 0) {
-        setProgress('Comparando operações com trades do diário...');
-        const existingTradesById = new Map(planTrades.map(t => [t.id, t]));
-        const divergent = [];
-        const converged = [];
-        for (const { operation, tradeId } of toConfront) {
-          const trade = existingTradesById.get(tradeId);
-          if (!trade) continue;
-          const comparison = compareOperationWithTrade(operation, trade);
-          if (comparison.hasDivergences) {
-            divergent.push({ operation, trade, comparison });
-          } else {
-            converged.push({ operation, trade });
-          }
+      // Shadow Behavior Analysis (pós-import) — CF canônica.
+      if (userContext?.uid) {
+        try {
+          setProgress('Analisando comportamento...');
+          const dates = confirmedItems
+            .map(i => (i.operation.entryTime || i.operation.entryOrders?.[0]?.filledAt || '').split('T')[0])
+            .filter(Boolean)
+            .sort();
+          const dateFrom = dates[0] || null;
+          const dateTo = dates[dates.length - 1] || null;
+          const result = await analyzeShadow({ studentId: userContext.uid, dateFrom, dateTo });
+          console.log(`[OrderImportPage] Shadow: ${result?.analyzed ?? 0}/${result?.total ?? 0}`);
+        } catch (shadowErr) {
+          console.warn('[OrderImportPage] Shadow behavior analysis failed:', shadowErr.message);
         }
-        if (divergent.length > 0 || converged.length > 0) {
-          setConfrontData({ divergent, converged });
-        }
-      }
-
-      // 9. Persistir ambíguas (Fase 5 cria o painel de decisão manual)
-      if (ambiguous.length > 0) {
-        setAmbiguousData(ambiguous);
-      }
-
-      // 10. Shadow Behavior Analysis (pós-import) — upgrade LOW→HIGH
-      //     Re-lê trades do plano para ter docs completos (batchResult.created só tem resumo).
-      //     Trades com ordens correlacionadas recebem resolution HIGH, demais LOW.
-      try {
-        setProgress('Analisando comportamento...');
-        const tradesSnap = await getDocs(query(
-          collection(db, 'trades'),
-          where('planId', '==', selectedPlanId)
-        ));
-        const freshTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        // Enrich trades with planRoPct (para detector UNDERSIZED_TRADE — issue #129)
-        const planSnap = await getDocs(query(
-          collection(db, 'plans'),
-          where('__name__', '==', selectedPlanId)
-        ));
-        const planDoc = planSnap.docs[0];
-        const planRoPct = planDoc?.data()?.riskPerOperation ?? null;
-        const uniqueTrades = freshTrades.map(t => ({ ...t, planRoPct }));
-
-        if (uniqueTrades.length > 0) {
-          // Build orders-by-trade map from correlation results
-          const ordersByTradeId = {};
-          if (correlations) {
-            for (const corr of (correlations ?? [])) {
-              if (corr.tradeId && corr.matchType !== 'ghost') {
-                const orderIndex = corr.orderIndex;
-                const order = confirmedOrders.find(o => o._rowIndex === orderIndex);
-                if (order) {
-                  if (!ordersByTradeId[corr.tradeId]) ordersByTradeId[corr.tradeId] = [];
-                  ordersByTradeId[corr.tradeId].push(order);
-                }
-              }
-            }
-          }
-
-          const shadowResults = analyzeShadowBatch(uniqueTrades, ordersByTradeId);
-
-          // Write shadowBehavior to each trade
-          for (const [tradeId, shadow] of shadowResults) {
-            try {
-              const tradeRef = doc(db, 'trades', tradeId);
-              await updateDoc(tradeRef, { shadowBehavior: shadow });
-            } catch (shadowErr) {
-              console.warn(`[OrderImportPage] Shadow write failed for ${tradeId}:`, shadowErr.message);
-            }
-          }
-          console.log(`[OrderImportPage] Shadow behavior: ${shadowResults.size} trades analisados`);
-        }
-      } catch (shadowErr) {
-        // Shadow analysis failure is non-blocking — log and continue
-        console.warn('[OrderImportPage] Shadow behavior analysis failed:', shadowErr.message);
       }
 
       setStep(STEPS.DONE);
@@ -403,24 +567,31 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     } catch (err) {
       console.error('[OrderImportPage] Ingest error:', err);
       setError(err.message);
-      // Stay on STAGING_REVIEW so aluno can retry
-      setStep(STEPS.STAGING_REVIEW);
+      setStep(STEPS.CONVERSATIONAL_REVIEW);
       setProgress('');
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, parseResult, selectedPlanId, trades, orderStaging, crossCheck, userContext]);
+  }, [
+    coverageGap.hasCoverageGap,
+    conversationalQueue,
+    parseResult,
+    planTrades,
+    selectedPlanId,
+    batchId,
+    userContext,
+    tradesById,
+    analyzeShadow,
+  ]);
 
   // ============================================
-  // MODO CONFRONTO: aceitar ou atualizar trade a partir de operação (V1.1b)
+  // MODO CONFRONTO (V1.1b) — ações para trades enriquecidos
   // ============================================
 
-  /** "Manter manual" — dismissal client-side, sem write no Firestore */
   const handleAcceptMatched = useCallback(async (_item) => {
     return { success: true };
   }, []);
 
-  /** "Aceitar enriquecimento" — updateDoc via enrichTrade (V1.1b redesign Fase 5) */
   const handleEnrichMatched = useCallback(async (item) => {
     if (!userContext?.uid) {
       return { success: false, error: 'Contexto de usuário indisponível' };
@@ -429,7 +600,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
     const { trade, operation } = item;
 
     try {
-      // 1. Resolver tickerRule do master data para cálculo correto de futuros
       let tickerRule = null;
       const symbol = (operation.instrument || '').toUpperCase();
       try {
@@ -450,7 +620,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
       }
 
-      // 2. Construir _partials das ordens reconstruídas (INV-12)
       const partials = [];
       let seq = 1;
       for (const entry of (operation.entryOrders || [])) {
@@ -472,14 +641,12 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         });
       }
 
-      // 3. Stop loss do último stop order (se existir)
       let stopLoss = null;
       if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
         const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
         stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
       }
 
-      // 4. Montar enrichment — enrichTrade preserva campos comportamentais automaticamente
       const enrichment = {
         _partials: partials,
         entry: operation.avgEntryPrice,
@@ -490,7 +657,6 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
         importBatchId: batchId,
       };
 
-      // 5. Enriquecer via gateway (INV-02) — CF onTradeUpdated recalcula PL + compliance
       await enrichTrade(trade.id, enrichment, userContext);
       console.log(`[OrderImportPage] Trade ${trade.id} enriquecido com dados da corretora`);
       return { success: true, tradeId: trade.id };
@@ -644,6 +810,21 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
             />
           )}
 
+          {/* ── CONVERSATIONAL REVIEW (Fase C) ── */}
+          {step === STEPS.CONVERSATIONAL_REVIEW && (
+            <ConversationalReview
+              queue={conversationalQueue}
+              tradesById={tradesById}
+              tradesByDate={tradesByDate}
+              coverageGap={coverageGap}
+              onDecide={handleDecide}
+              onBack={() => setStep(STEPS.STAGING_REVIEW)}
+              onSubmit={handleConversationalSubmit}
+              onCreateRetroactivePlan={onRequestRetroactivePlan ? handleRetroactivePlan : null}
+              loading={ingesting}
+            />
+          )}
+
           {/* ── INGESTING (loading) ── */}
           {step === STEPS.INGESTING && (
             <div className="flex flex-col items-center gap-4 py-8">
@@ -660,22 +841,22 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 {importSummary ? (
                   <>
                     <p className="text-sm font-semibold text-white">
-                      {importSummary.ordersConfirmed} ordens importadas, {importSummary.opsConfirmed} operaç{importSummary.opsConfirmed === 1 ? 'ão' : 'ões'}
+                      {importSummary.opsConfirmed} operaç{importSummary.opsConfirmed === 1 ? 'ão' : 'ões'} processada{importSummary.opsConfirmed === 1 ? '' : 's'}
                     </p>
                     <p className="text-xs text-slate-400 text-center max-w-md">
-                      {importSummary.tradesCreated.length > 0 && (
+                      {importSummary.tradesCreated?.length > 0 && (
                         <>{importSummary.tradesCreated.length} trade{importSummary.tradesCreated.length > 1 ? 's' : ''} criado{importSummary.tradesCreated.length > 1 ? 's' : ''}</>
                       )}
-                      {importSummary.toConfrontCount > 0 && (
-                        <>{importSummary.tradesCreated.length > 0 ? ' · ' : ''}{importSummary.toConfrontCount} correlacionad{importSummary.toConfrontCount === 1 ? 'a' : 'as'}</>
+                      {importSummary.enrichedCount > 0 && (
+                        <>{importSummary.tradesCreated?.length > 0 ? ' · ' : ''}{importSummary.enrichedCount} enriquecido{importSummary.enrichedCount === 1 ? '' : 's'}</>
                       )}
-                      {importSummary.ambiguousCount > 0 && (
-                        <> · {importSummary.ambiguousCount} ambígu{importSummary.ambiguousCount === 1 ? 'a' : 'as'}</>
+                      {importSummary.discardedCount > 0 && (
+                        <> · {importSummary.discardedCount} descartada{importSummary.discardedCount === 1 ? '' : 's'}</>
                       )}
                       {importSummary.tradesDuplicates > 0 && (
                         <> · {importSummary.tradesDuplicates} duplicata{importSummary.tradesDuplicates > 1 ? 's' : ''} ignorada{importSummary.tradesDuplicates > 1 ? 's' : ''}</>
                       )}
-                      {importSummary.tradesFailed.length > 0 && (
+                      {importSummary.tradesFailed?.length > 0 && (
                         <> · <span className="text-red-400">{importSummary.tradesFailed.length} falha{importSummary.tradesFailed.length > 1 ? 's' : ''}</span></>
                       )}
                       {importSummary.lowResolution && (
@@ -697,29 +878,22 @@ const OrderImportPage = ({ onClose, plans = [], trades = [], orderStaging, cross
                 />
               )}
 
-              {/* Modo Criação (V1.1a redesign): trades criados automaticamente após confirmação */}
               {importSummary && (
                 <CreationResultPanel
                   summary={{
-                    created: importSummary.tradesCreated,
-                    duplicates: importSummary.tradesDuplicates,
-                    failed: importSummary.tradesFailed,
+                    created: importSummary.tradesCreated || [],
+                    duplicates: importSummary.tradesDuplicates || 0,
+                    failed: importSummary.tradesFailed || [],
                   }}
                 />
               )}
 
-              {/* Modo Confronto Enriquecido (V1.1b redesign Fase 5) */}
               {confrontData && (
                 <MatchedOperationsPanel
                   confrontData={confrontData}
                   onAccept={handleAcceptMatched}
                   onEnrich={handleEnrichMatched}
                 />
-              )}
-
-              {/* Operações ambíguas (2+ trades matched) — MVP informativo */}
-              {ambiguousData && ambiguousData.length > 0 && (
-                <AmbiguousOperationsPanel ops={ambiguousData} />
               )}
 
               <div className="flex justify-end pt-2">
