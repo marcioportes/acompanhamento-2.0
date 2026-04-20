@@ -250,22 +250,34 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
 };
 
 // ===== Subitem 2: Snapshot KPIs =====
-const KpiCard = ({ label, value, delta, prev, tooltip }) => (
-  <div
-    className="bg-white/5 rounded-lg px-3 py-2.5 cursor-help"
-    title={tooltip}
-  >
-    <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-      {label}
-      {tooltip && <span className="text-[9px] text-slate-500">ⓘ</span>}
+const KpiCard = ({ label, value, delta, prev, tooltip }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={`bg-white/5 rounded-lg px-3 py-2.5 ${tooltip ? 'cursor-pointer hover:bg-white/10' : ''}`}
+      onClick={() => tooltip && setOpen(v => !v)}
+    >
+      <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+        {label}
+        {tooltip && (
+          <span className={`text-[10px] ${open ? 'text-emerald-400' : 'text-slate-500'}`}>
+            {open ? '×' : 'ⓘ'}
+          </span>
+        )}
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-lg font-medium text-white">{value}</span>
+        {delta && <span className={`text-[11px] font-medium ${delta.cls}`}>{delta.text}</span>}
+      </div>
+      {prev && <div className="text-[11px] text-slate-500 mt-0.5">{prev}</div>}
+      {open && tooltip && (
+        <div className="mt-2 pt-2 border-t border-slate-700/60 text-[11px] leading-snug text-slate-300">
+          {tooltip}
+        </div>
+      )}
     </div>
-    <div className="flex items-baseline gap-1.5">
-      <span className="text-lg font-medium text-white">{value}</span>
-      {delta && <span className={`text-[11px] font-medium ${delta.cls}`}>{delta.text}</span>}
-    </div>
-    {prev && <div className="text-[11px] text-slate-500 mt-0.5">{prev}</div>}
-  </div>
-);
+  );
+};
 
 // ===== Subitem 3: SWOT =====
 const SwotQuadrant = ({ title, items, icon: Icon, color }) => (
