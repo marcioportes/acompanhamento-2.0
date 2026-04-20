@@ -359,7 +359,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Pendências da mentoria — takeaways em aberto (Stage 4.5) */}
       <PendingTakeaways
-        studentId={assessmentStudentId}
+        studentId={overrideStudentId || user?.uid}
         onNavigateToFeedback={onNavigateToFeedback}
       />
 
