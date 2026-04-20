@@ -27,6 +27,8 @@ import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
+import ReviewQueuePage from './pages/ReviewQueuePage';
+import WeeklyReviewPage from './pages/WeeklyReviewPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -83,6 +85,15 @@ const AppContent = () => {
 
   // Estado do Extrato do Plano como view (Fase 0 #102 — modal → currentView)
   const [ledgerPlanId, setLedgerPlanId] = useState(null);
+  // Quando aberto vindo da Fila de Revisão → carrega PlanLedgerExtract em mode='review'
+  const [ledgerInitialReviewId, setLedgerInitialReviewId] = useState(null);
+  // Tela nova Revisão Semanal (#102, Stage 1) — navegada pela Fila de Revisão.
+  // Coexiste com o PlanLedgerExtract 3-col (baseline para comparação).
+  const [weeklyReviewContext, setWeeklyReviewContext] = useState(null); // { studentId, reviewId }
+  // Contexto de retorno quando usuário vai ao FeedbackPage a partir da WeeklyReviewPage (Stage 3).
+  const [feedbackReturnReviewContext, setFeedbackReturnReviewContext] = useState(null);
+  // Stage 6: contexto de retorno quando usuário vai ao Ledger a partir da WeeklyReviewPage.
+  const [ledgerReturnReviewContext, setLedgerReturnReviewContext] = useState(null);
 
   // Preseleção de conta na AccountsPage com auto-abertura de PlanManagementModal
   // (usado pelo banner "Criar plano retroativo" do OrderImportPage — issue #156 Fase F).
@@ -177,13 +188,11 @@ const AppContent = () => {
       setFeedbackTrade(null);
     }
 
-    // Limpar extrato se navegando para outra view (Fase 0 #102)
+    // Limpar extrato se navegando para outra view.
+    // Entrada do extrato é exclusivamente pelo pergaminho do PlanCardGrid — sem sidebar.
     if (view !== 'ledger') {
       setLedgerPlanId(null);
-    } else if (!ledgerPlanId) {
-      // Clicou na sidebar sem plano pré-selecionado — escolhe o primeiro ativo
-      const firstActive = plans.find(p => p.active !== false) || plans[0];
-      if (firstActive) setLedgerPlanId(firstActive.id);
+      setLedgerReturnReviewContext(null);
     }
 
     if (view === 'add-trade') {
@@ -205,10 +214,25 @@ const AppContent = () => {
     setCurrentView('students');
   };
 
-  // Handler para abrir extrato do plano como view (Fase 0 #102)
+  // Handler para abrir extrato do plano como view (Fase 0 #102) — mode='live'
   const handleOpenLedger = (planId) => {
     setLedgerPlanId(planId);
+    setLedgerInitialReviewId(null);
     setCurrentView('ledger');
+  };
+
+  // Handler para abrir extrato direto em mode='review' (vem da Fila de Revisão — baseline)
+  const handleOpenReviewInLedger = ({ planId, reviewId }) => {
+    setLedgerPlanId(planId);
+    setLedgerInitialReviewId(reviewId);
+    setCurrentView('ledger');
+  };
+
+  // Handler para abrir a nova tela de Revisão Semanal (Stage 1).
+  // Entry point: Fila de Revisão > aluno > click no rascunho.
+  const handleOpenWeeklyReview = ({ studentId, reviewId }) => {
+    setWeeklyReviewContext({ studentId, reviewId });
+    setCurrentView('weekly-review');
   };
 
   // Handler para abrir AccountsPage com conta preselecionada + modal de novo plano aberto
@@ -223,12 +247,22 @@ const AppContent = () => {
   const handleNavigateToFeedback = (trade) => {
     // Guarda retorno ao extrato se veio do PlanLedgerExtract (flag _fromLedgerPlanId)
     setFeedbackReturnPlanId(trade._fromLedgerPlanId || null);
+    // Stage 3: retorno à WeeklyReviewPage se veio de lá (flag _fromReviewContext)
+    setFeedbackReturnReviewContext(trade._fromReviewContext || null);
     setFeedbackTrade(trade);
   };
 
   // Handler para voltar do FeedbackPage
   const handleBackFromFeedback = () => {
     setFeedbackTrade(null);
+    // Se veio da WeeklyReviewPage, volta pra ela (prioriza sobre extrato)
+    if (feedbackReturnReviewContext) {
+      setWeeklyReviewContext(feedbackReturnReviewContext);
+      setCurrentView('weekly-review');
+      setFeedbackReturnReviewContext(null);
+      setFeedbackReturnPlanId(null);
+      return;
+    }
     // Se veio do extrato, volta para o extrato (não para o dashboard)
     if (feedbackReturnPlanId) {
       setLedgerPlanId(feedbackReturnPlanId);
@@ -295,6 +329,50 @@ const AppContent = () => {
       );
     }
     
+    // Extrato do Plano como view (funciona para aluno direto E mentor-viewing-as-student).
+    // Colocado ANTES do early return de viewingAsStudent para evitar hijack.
+    if (currentView === 'ledger' && ledgerPlanId) {
+      const ledgerPlan = plans.find(p => p.id === ledgerPlanId);
+      if (ledgerPlan) {
+        const ledgerTrades = trades.filter(t => t.planId === ledgerPlanId);
+        const ledgerCurrency = getPlanCurrency(ledgerPlan, accounts);
+        return (
+          <PlanLedgerExtract
+            plan={ledgerPlan}
+            trades={ledgerTrades}
+            onClose={() => {
+              // Se veio da WeeklyReviewPage, volta pra ela em vez de dashboard.
+              if (ledgerReturnReviewContext) {
+                setWeeklyReviewContext(ledgerReturnReviewContext);
+                setLedgerReturnReviewContext(null);
+                setLedgerPlanId(null);
+                setLedgerInitialReviewId(null);
+                setCurrentView('weekly-review');
+                return;
+              }
+              setCurrentView('dashboard');
+              setLedgerPlanId(null);
+              setLedgerInitialReviewId(null);
+            }}
+            currency={ledgerCurrency}
+            onNavigateToFeedback={(trade) => handleNavigateToFeedback({ ...trade, _fromLedgerPlanId: ledgerPlan.id })}
+            embedded
+            initialReviewId={ledgerInitialReviewId}
+          />
+        );
+      }
+      // Plano ainda não disponível (plans em carregamento async). Renderiza loading.
+      // NÃO chamar setState durante render — causa loop infinito.
+      return <Loading fullScreen text="Carregando extrato..." />;
+    }
+
+    // Student Onboarding (assessment 4D) — mentor visitando aluno via viewingAsStudent.
+    // Colocado ANTES do hijack de viewingAsStudent→StudentDashboard para permitir
+    // navegação contextual da WeeklyReviewPage sem redirecionar pro dashboard do aluno.
+    if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
+      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} isMentorView={true} />;
+    }
+
     // Se está visualizando como aluno, mostra o StudentDashboard com override
     if (viewingAsStudent) {
       return <StudentDashboard viewAs={viewingAsStudent} onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} onRequestRetroactivePlan={handleRequestRetroactivePlan} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
@@ -309,10 +387,39 @@ const AppContent = () => {
     }
     if (currentView === 'settings' && isMentor()) return <SettingsPage />;
     if (currentView === 'subscriptions' && isMentor()) return <SubscriptionsPage />;
-
-    // Student Onboarding — acessível pelo mentor via viewingAsStudent
-    if (currentView === 'onboarding' && isMentor() && viewingAsStudent) {
-      return <StudentOnboardingPage studentId={viewingAsStudent.studentId || viewingAsStudent.uid} isMentorView={true} />;
+    if (currentView === 'reviews' && isMentor()) {
+      return <ReviewQueuePage
+        onOpenReviewInLedger={handleOpenReviewInLedger}
+        onOpenWeeklyReview={handleOpenWeeklyReview}
+      />;
+    }
+    if (currentView === 'weekly-review' && isMentor() && weeklyReviewContext) {
+      return (
+        <WeeklyReviewPage
+          studentId={weeklyReviewContext.studentId}
+          reviewId={weeklyReviewContext.reviewId}
+          onBack={() => { setWeeklyReviewContext(null); setCurrentView('reviews'); }}
+          onNavigateToFeedback={(trade) => handleNavigateToFeedback({
+            ...trade,
+            _fromReviewContext: { studentId: weeklyReviewContext.studentId, reviewId: weeklyReviewContext.reviewId },
+          })}
+          onNavigateToLedger={(planId) => {
+            // Preserva contexto para retorno via onClose do PlanLedgerExtract.
+            setLedgerReturnReviewContext({
+              studentId: weeklyReviewContext.studentId,
+              reviewId: weeklyReviewContext.reviewId,
+            });
+            setWeeklyReviewContext(null);
+            setLedgerPlanId(planId);
+            setCurrentView('ledger');
+          }}
+          onNavigateToAssessment={(studentId) => {
+            setViewingAsStudent({ studentId, uid: studentId });
+            setWeeklyReviewContext(null);
+            setCurrentView('onboarding');
+          }}
+        />
+      );
     }
 
     // Dashboard principal

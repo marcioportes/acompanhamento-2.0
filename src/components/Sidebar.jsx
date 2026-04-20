@@ -26,6 +26,7 @@ import {
   Settings,
   Brain,
   CreditCard,
+  ClipboardCheck,
   Shield,
   FileText
 } from 'lucide-react';
@@ -58,8 +59,8 @@ const Sidebar = ({
       badgeColor: 'green'
     },
     { id: 'journal', label: 'Diário', icon: BookOpen },
-    // Extrato do Plano — só aparece se aluno tem planos (ou mentor em viewAs)
-    ...(hasPlans ? [{ id: 'ledger', label: 'Extrato do Plano', icon: FileText }] : []),
+    // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
+    // pergaminho do PlanCardGrid (precisa de contexto de plano específico).
     { id: 'accounts', label: 'Contas', icon: Wallet },
     // Mesa Prop — só aparece se aluno tem conta type PROP
     ...(hasPropAccount ? [{ id: 'propfirm', label: 'Mesa Prop', icon: Shield }] : []),
@@ -76,11 +77,12 @@ const Sidebar = ({
       badge: emotionalAlerts > 0 ? emotionalAlerts : null,
       badgeColor: 'purple'
     },
+    { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
     { id: 'students', label: 'Alunos', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },
-    { 
-      id: 'pending', 
-      label: 'Aguardando Feedback', 
+    {
+      id: 'pending',
+      label: 'Aguardando Feedback',
       icon: MessageSquare,
       badge: pendingFeedback > 0 ? pendingFeedback : null,
     },

@@ -56,7 +56,7 @@ const StudentAlertGenerator = ({ trades, studentName, studentEmail, detectionCon
       const mapped = alerts
         .filter(a => a.severity === 'CRITICAL' || a.severity === 'HIGH')
         .map(a => ({
-          id: `local_${studentEmail}_${a.type}_${a.date}`,
+          id: `local_${studentEmail}_${a.id || `${a.type}_${a.timestamp || 'na'}`}`,
           type: a.type,
           severity: a.severity || 'MEDIUM',
           studentName,

@@ -37,6 +37,7 @@ import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
 import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -564,7 +565,8 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <div className="lg:sticky lg:top-0 lg:self-start">
             <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
             {userIsMentor && (
-              <div className="mt-3">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <PinToReviewButton trade={trade} />
                 <button
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}
@@ -575,7 +577,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
                 </button>
                 {shadowMessage && (
-                  <div className={`mt-2 text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+                  <div className={`w-full text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
                     {shadowMessage.text}
                   </div>
                 )}
@@ -729,15 +731,18 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           </div>
           <div className="flex items-center gap-3">
             {userIsMentor && (
-              <button
-                onClick={handleAnalyzeShadow}
-                disabled={shadowLoading}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
-                title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
-              >
-                {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
-                {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
-              </button>
+              <>
+                <PinToReviewButton trade={trade} />
+                <button
+                  onClick={handleAnalyzeShadow}
+                  disabled={shadowLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
+                  title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+                >
+                  {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+                  {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+                </button>
+              </>
             )}
             <StatusBadge status={status} />
           </div>

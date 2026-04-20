@@ -90,13 +90,14 @@ describe('pickTopTrades / pickBottomTrades', () => {
     expect(bottom.map(t => t.tradeId)).toEqual(['loss4', 'loss3', 'loss2']);
   });
 
-  it('uses inline fields (A2): tradeId, symbol, side, pnl, entryTime, closeTime, setup, emotionEntry, emotionExit, stopLoss', () => {
+  it('uses inline fields (A2): tradeId, symbol, side, pnl, qty, entryTime, closeTime, setup, emotionEntry, emotionExit, stopLoss', () => {
     const top = pickTopTrades(trades, 1)[0];
     expect(top).toEqual({
       tradeId: 'win1',
       symbol: 'MNQH6',
       side: 'LONG',
       pnl: 300,
+      qty: 1,
       entryTime: '2026-04-13T10:00:00',
       closeTime: '2026-04-13T10:30:00',
       setup: 'breakout',
