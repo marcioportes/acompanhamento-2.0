@@ -3,6 +3,19 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.37.0: arch: Import Orders staging conversacional obrigatório + fix bypass #93 (issue #156) —
+ *   5 fases consolidadas: (A) shadow writer bypass removido, hook useShadowAnalysis invoca CF canônica
+ *   analyzeShadowBehavior + invariante tradeWriteBoundary; (B) schema classificação persistente em
+ *   ordersStagingArea (match_confident/ambiguous/new/autoliq/discarded) + autoLiqDetector; (C) UX
+ *   conversacional por operação via ConversationalOpCard (substitui auto-create #93) + AutoLiqBadge
+ *   + gate de plano retroativo; (D) reconstrução robusta — segmentação por instrument (caso ABR-17
+ *   bust day MNQ+NQ) + agregação N×M fills (caso FEV-12 fill explodido) + detecção de gap temporal
+ *   60min; (E) enrichment sem duplicata — helper puro conversationalIngest, AdjustmentModal com diff
+ *   fino campo-a-campo, persist discarded em orders via fingerprint; (F) wire onRequestRetroactivePlan
+ *   em App/StudentDashboard/AccountsPage fechando o gate (banner → fecha modal → navega para
+ *   AccountDetailPage da conta → PlanManagementModal abre via _autoOpenPlanModal, padrão #154).
+ *   DT-038 (3 camadas do trade cancelada) e DT-039 (writers legados GRANDFATHERED) rastreadas.
+ *   Invariante tradeWriteBoundary verde, zero regressão.
  * - 1.36.0: fix: Card de conta ganha botão "Novo plano" (#154) — atalho no card (AccountsPage visão aluno + StudentAccountGroup visão mentor) passa flag _autoOpenPlanModal para AccountDetailPage, que abre PlanManagementModal via useEffect. Preserva "casa do pai" (modal mora em AccountDetailPage, card só chama). Resolve workaround crítico: hoje aluno precisava criar conta Mesa → reverter para Real → corrigir plano.
  * - 1.34.0: fix: Botão Novo Plano inacessível (#146) — mover criação de plano de DashboardHeader para AccountDetailPage, limpar state órfão no StudentDashboard.
  * - 1.33.0: feat: Revisão Semanal (#102) — PlanLedgerExtract fundação + collection reviews + CF createWeeklyReview + CF generateWeeklySwot + WeeklyReviewModal + integração mentor/aluno. Inclui JAQUE: fix badge REVENGE/TILT vazando para trades do mesmo dia (match estrito por tradeId em ExtractTable, tradeIdsAfter em detectRevengeV2 RAPID_SEQUENCE, helper extractInlineEvents com 12 testes). [RESERVADO]
@@ -53,10 +66,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.36.0',
-  build: '20260419',
-  display: 'v1.36.0',
-  full: '1.36.0+20260419',
+  version: '1.37.0',
+  build: '20260420',
+  display: 'v1.37.0',
+  full: '1.37.0+20260420',
 };
 export default VERSION;
 export { VERSION };
