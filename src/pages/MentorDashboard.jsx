@@ -28,6 +28,7 @@ import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
 import MentorAlerts from '../components/MentorAlerts';
+import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
@@ -288,6 +289,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <EquityCurve trades={allTrades} />
             <CalendarHeatmap trades={allTrades} />
           </div>
+          {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
+          <PendingReviewsCard
+            students={students}
+            onOpenReviewQueue={() => onViewChange('reviews')}
+          />
           {/* Alertas Emocionais (Fase 1.5.0) */}
           <div className="mb-8">
             <MentorAlerts
