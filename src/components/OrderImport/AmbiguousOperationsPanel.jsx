@@ -1,11 +1,11 @@
 /**
  * AmbiguousOperationsPanel.jsx
  * @version 1.0.0 (v1.1.0 — issue #93 redesign V1.1b Fase 5)
- * @description Exibe operações cujas ordens correlacionam com múltiplos trades
- *   do diário (2+ tradeIds). Nenhuma ação automática é tomada — o aluno precisa
- *   resolver manualmente editando trades no diário e refazendo a importação.
- *
- * MVP informativo. Decisão manual completa é sub-issue futura do epic #128.
+ * @deprecated desde v1.37.0 (issue #156 Fase C) — substituído pelo
+ *   `ConversationalOpCard` classe `ambiguous`, que expõe seleção por rádio +
+ *   descarte por operação. Mantido apenas para retrocompatibilidade (tela DONE
+ *   legada fora do fluxo conversacional). Não é mais renderizado pelo
+ *   `OrderImportPage` — remover em limpeza futura após verificar callers externos.
  *
  * Sem state, sem actions. Display puro.
  */

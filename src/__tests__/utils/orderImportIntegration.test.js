@@ -345,3 +345,72 @@ describe('Cenário 10: importSummary shape para cenário misto', () => {
     expect(importSummary.tradesCreated[0].id).toBe('trade-new-1');
   });
 });
+
+// ============================================
+// 11. Conversational queue (Fase C #156) — composição + decisões
+// ============================================
+
+describe('Cenário 11: fila conversacional respeita userDecision antes de criar trades', () => {
+  it('só ops com decision confirmed chegam no createTradesBatch; discarded são ignoradas', async () => {
+    const ops = [
+      makeOp('OP-NEW-1', 1, 2),
+      makeOp('OP-NEW-2', 3, 4, { entryTime: '2026-04-04T11:00:00' }),
+      makeOp('OP-NEW-3', 5, 6, { entryTime: '2026-04-04T12:00:00' }),
+    ];
+    const correlations = [
+      corr(1), corr(2), corr(3), corr(4), corr(5), corr(6),
+    ];
+
+    const { toCreate, toConfront, ambiguous, autoliq } =
+      categorizeConfirmedOps(ops, correlations);
+
+    expect(toCreate).toHaveLength(3);
+    expect(toConfront).toHaveLength(0);
+    expect(ambiguous).toHaveLength(0);
+    expect(autoliq).toHaveLength(0);
+
+    // Simula fila conversacional: aluno confirma 2, descarta 1.
+    const queue = toCreate.map((op, i) => ({
+      operation: op,
+      classification: 'new',
+      userDecision: i === 1 ? 'discarded' : 'confirmed',
+    }));
+
+    const toProcess = queue
+      .filter(item => item.userDecision === 'confirmed')
+      .map(item => item.operation);
+
+    expect(toProcess).toHaveLength(2);
+    expect(toProcess.map(o => o.operationId)).toEqual(['OP-NEW-1', 'OP-NEW-3']);
+
+    const mockCreate = vi.fn(async (data) => ({ id: `created-${data.entryTime}` }));
+    const batchResult = await createTradesBatch({
+      toCreate: toProcess,
+      planId: 'plan-001',
+      existingTrades: [],
+      userContext: makeUser(),
+      createTradeFn: mockCreate,
+    });
+
+    expect(batchResult.created).toHaveLength(2);
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('classification propagada pela Fase B chega intacta no item da fila', () => {
+    const ops = [
+      makeOp('OP-NEW', 1, 2),
+      makeOp('OP-MATCH', 3, 4),
+    ];
+    const correlations = [
+      corr(1), corr(2),
+      corr(3, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9 }),
+      corr(4, { tradeId: 'trade-X', matchType: 'exact', confidence: 0.9 }),
+    ];
+
+    const { toCreate, toConfront } = categorizeConfirmedOps(ops, correlations);
+
+    expect(toCreate[0].classification).toBe('new');
+    expect(toConfront[0].operation.classification).toBe('match_confident');
+    expect(toConfront[0].matchCandidates).toEqual([{ tradeId: 'trade-X', score: 0.9 }]);
+  });
+});
