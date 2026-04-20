@@ -62,7 +62,13 @@ const PendingTakeaways = ({ studentId, onNavigateToFeedback = null }) => {
   if (groups.length === 0) return null; // nada pendente → não renderiza o card
 
   const handleMarkDone = async (reviewId, itemId) => {
-    try { await toggleAlunoDone(reviewId, itemId, true); } catch { /* */ }
+    try {
+      await toggleAlunoDone(reviewId, itemId, true);
+    } catch (err) {
+      // Sem rule deployada, aluno recebe permission-denied aqui. Loga no console
+      // para facilitar debug — sem rule, click aparece "inerte" para o usuário.
+      console.error('[PendingTakeaways] falha ao marcar takeaway:', err);
+    }
   };
 
   return (
