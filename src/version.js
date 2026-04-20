@@ -3,6 +3,12 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.38.1: hotfix: `assessmentStudentId is not defined` em StudentDashboard.jsx:362 (#162) — SEV1.
+ *   Prop `studentId` de `<PendingTakeaways>` referenciava identificador inexistente no escopo de
+ *   `StudentDashboardBody`, quebrando render do dashboard do aluno em produção (ReferenceError
+ *   introduzido pelo merge PR #160 / commit `30af3a18`). Fix: substituir por `overrideStudentId ||
+ *   user?.uid`, padrão canônico da linha 558 e dos hooks irmãos (`useTrades`, `useAccounts`,
+ *   `usePlans`). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.38.0: feat: Revisão Semanal v2 (#102) — entrega consolidada da tela nova `WeeklyReviewPage`
  *   com 8 subitens (Trades com day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA
  *   4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual)
@@ -78,10 +84,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.38.0',
+  version: '1.38.1',
   build: '20260420',
-  display: 'v1.38.0',
-  full: '1.38.0+20260420',
+  display: 'v1.38.1',
+  full: '1.38.1+20260420',
 };
 export default VERSION;
 export { VERSION };
