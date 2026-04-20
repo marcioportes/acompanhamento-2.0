@@ -110,7 +110,22 @@ const useOrderStaging = (overrideStudentId = null) => {
   // ============================================
   /**
    * Grava ordens normalizadas em staging.
-   * @param {Object[]} orders — ordens normalizadas (output do normalizer)
+   *
+   * Schema de classificação (issue #156 Fase B) — campos opcionais, retrocompatíveis:
+   *   - classification: 'match_confident' | 'ambiguous' | 'new' | 'autoliq' | 'discarded' | null
+   *   - userDecision: 'pending' | 'confirmed' | 'adjusted' | 'discarded' (default 'pending')
+   *   - userDecisionAt: timestamp | null (null enquanto pending)
+   *   - userAdjustments: map | null (preenchido só se o aluno ajustou manualmente)
+   *   - matchCandidates: Array<{ tradeId, score }> (vazio quando não há candidatos)
+   *   - isAutoLiq: boolean (derivado de classification === 'autoliq')
+   *
+   * No write inicial (STAGING_WRITE), classificação não existe ainda — default pending/null.
+   * A classificação é atualizada após reconstrução/categorização (Fase C).
+   *
+   * Preserva também `origin` e `text` das ordens (quando presentes) para permitir
+   * re-classificação a partir do staging sem depender do CSV original.
+   *
+   * @param {Object[]} orders — ordens normalizadas (output do normalizer) com campos opcionais de classificação
    * @param {Object} meta — { planId, sourceFormat, fileName }
    * @returns {Promise<string>} batchId
    */
@@ -129,6 +144,7 @@ const useOrderStaging = (overrideStudentId = null) => {
 
       for (const order of chunk) {
         const ref = doc(collection(db, STAGING_COLLECTION));
+        const classification = order.classification ?? null;
         batch.set(ref, {
           // Dados da ordem
           externalOrderId: order.externalOrderId ?? null,
@@ -147,12 +163,24 @@ const useOrderStaging = (overrideStudentId = null) => {
           cancelledAt: order.cancelledAt ?? null,
           modifications: order.modifications ?? [],
           isStopOrder: order.isStopOrder ?? false,
+          // Campo bruto Tradovate `Text` (AutoLiq/multibracket/...) — preservado para
+          // re-classificação a partir do staging.
+          origin: order.origin ?? null,
+          text: order.text ?? null,
 
           // Metadados
           importBatchId: batchId,
           planId: meta.planId ?? null,
           sourceFormat: meta.sourceFormat ?? 'generic',
           fileName: meta.fileName ?? null,
+
+          // Schema de classificação persistida (issue #156 Fase B)
+          classification,
+          userDecision: order.userDecision ?? 'pending',
+          userDecisionAt: order.userDecisionAt ?? null,
+          userAdjustments: order.userAdjustments ?? null,
+          matchCandidates: Array.isArray(order.matchCandidates) ? order.matchCandidates : [],
+          isAutoLiq: typeof order.isAutoLiq === 'boolean' ? order.isAutoLiq : classification === 'autoliq',
 
           // Controle
           studentId: user.uid,
