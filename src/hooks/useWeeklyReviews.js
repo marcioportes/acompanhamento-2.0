@@ -150,6 +150,27 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Salva campos editáveis do rascunho (takeaways, meetingLink, videoLink) SEM
+  // mudar o status. Usado pelo baseline ReviewToolsPanel — mentor digita e persiste
+  // sem precisar publicar antes.
+  const saveDraftFields = useCallback(async (reviewId, { takeaways = null, meetingLink = null, videoLink = null } = {}) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      await updateDoc(ref, {
+        takeaways,
+        meetingLink,
+        videoLink,
+      });
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar rascunho');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Atualiza campo sessionNotes (Notas da Sessão) — texto livre do mentor sobre a reunião.
   // Usado em Stage 3 da nova tela WeeklyReviewPage (Subitem 4).
   const updateSessionNotes = useCallback(async (reviewId, notes) => {
@@ -218,6 +239,7 @@ export const useWeeklyReviews = (studentId) => {
     appendTakeaway,
     addIncludedTrade,
     updateSessionNotes,
+    saveDraftFields,
   };
 };
 

@@ -105,14 +105,23 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
           // FeedbackPage resolve o resto via re-lookup por trade.id.
           onNavigateToFeedback({ id: t.tradeId, ticker: t.symbol, ...t });
         };
-        const dateShort = td ? td.slice(5).replace('-', '/') : '??';
+        // INV-06: formato BR (DD/MM). td é 'YYYY-MM-DD' — slice invertia.
+        const dateShort = (() => {
+          if (!td) return '??';
+          const [y, m, d] = td.split('-');
+          return `${d}/${m}`;
+        })();
+        const dateFullBR = td ? (() => {
+          const [y, m, d] = td.split('-');
+          return `${d}/${m}/${y}`;
+        })() : '';
         const emotionText = t.emotionExit && t.emotionExit !== t.emotionEntry
           ? `${t.emotionEntry || '—'} → ${t.emotionExit}`
           : (t.emotionEntry || '—');
         return (
           <div key={t.tradeId || i} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
             {/* Data primeiro — facilita associar trade com nota da sessão */}
-            <span className="font-mono text-slate-300 min-w-[40px] text-[12px]" title={td || ''}>{dateShort}</span>
+            <span className="font-mono text-slate-300 min-w-[40px] text-[12px]" title={dateFullBR}>{dateShort}</span>
             <span className="text-slate-500 text-[11px] min-w-[36px]">{fmtTime(t.entryTime)}</span>
             <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
             <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
