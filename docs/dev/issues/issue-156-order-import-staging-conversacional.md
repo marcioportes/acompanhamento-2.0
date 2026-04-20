@@ -70,7 +70,7 @@ Mantém schema atual de `trades` + `_enrichmentSnapshot` inline. Foco no fix + U
 | 04 | Fase C — UX conversacional por operação + gate plano retroativo | ✓ 2026-04-19 | `a3be324a` | `.cc-mailbox/outbox/04-fase-c-report.md` |
 | 05 | Fase D — reconstrução robusta (segmentação ticker + N×M fills + gap) | ✓ 2026-04-20 | `4ffba17a` | `.cc-mailbox/outbox/05-fase-d-report.md` |
 | 06 | Fase E — enrichment sem duplicata + modal ajuste fino + discarded persist | ✓ 2026-04-20 | `a613248f` | `.cc-mailbox/outbox/06-fase-e-report.md` |
-| 07 | Fase F — wire StudentDashboard retroativo + bump v1.37.0 + consolidação | ✓ 2026-04-20 | (pendente) | `.cc-mailbox/outbox/07-fase-f-report.md` |
+| 07 | Fase F — wire StudentDashboard retroativo + bump v1.37.0 + consolidação | ✓ 2026-04-20 | `6cdcf3e1` | `.cc-mailbox/outbox/07-fase-f-report.md` |
 
 ### Decisões do coordenador
 
@@ -114,7 +114,7 @@ Do report da Fase C §8:
 - **Fase C (`a3be324a`)** — UX conversacional por operação: `ConversationalOpCard` substitui o auto-create do #93 (cada op exige decisão explícita — `confirm` / `adjust` / `discard`), `AutoLiqBadge` destaca liquidações como evento de sistema, gate duro de plano retroativo bloqueia submit quando há operações em períodos sem plano vigente. `AmbiguousOperationsPanel` marcado `@deprecated` via jsdoc.
 - **Fase D (`4ffba17a`)** — Reconstrução robusta: segmentação por instrument no mesmo dia (caso ABR-17 PAAPEX bust day MNQ+NQ não mais colapsa em 1 op), agregação N×M de fills explodidos (caso FEV-12 PAAPEX), detecção de gap temporal 60 min impede junção de blocos descontínuos em uma única operação.
 - **Fase E (`a613248f`)** — Enrichment sem duplicata: helper puro `conversationalIngest` centraliza roteamento (create/enrich/discard), `enrichTrade` preserva `_enrichmentSnapshot`, `AdjustmentModal` mostra diff campo-a-campo antes de promover adjustment em enrichment, `userDecision === 'discarded'` é persistido em `orders` via fingerprint (orderKey).
-- **Fase F (esta task, commit pendente)** — Wire final: `App.jsx` ganha estado `accountsInitial` + handler `handleRequestRetroactivePlan` → `StudentDashboard` recebe a prop e repassa ao `OrderImportPage` (fechando o modal no caminho) → `OrderImportPage` já tinha `handleRetroactivePlan` ligado a `ConversationalReview` como `onCreateRetroactivePlan`. `AccountsPage` ganha props `initialAccount` / `onInitialConsumed` para preselecionar a conta e carregar flag `_autoOpenPlanModal` (padrão #154, `AccountDetailPage` abre `PlanManagementModal` via `useEffect`). Version bump v1.36.0 → v1.37.0. Changelog inline do `version.js` consolidado com narrativa das 5 fases.
+- **Fase F (`6cdcf3e1`)** — Wire final: `App.jsx` ganha estado `accountsInitial` + handler `handleRequestRetroactivePlan` → `StudentDashboard` recebe a prop e repassa ao `OrderImportPage` (fechando o modal no caminho) → `OrderImportPage` já tinha `handleRetroactivePlan` ligado a `ConversationalReview` como `onCreateRetroactivePlan`. `AccountsPage` ganha props `initialAccount` / `onInitialConsumed` para preselecionar a conta e carregar flag `_autoOpenPlanModal` (padrão #154, `AccountDetailPage` abre `PlanManagementModal` via `useEffect`). Version bump v1.36.0 → v1.37.0. Changelog inline do `version.js` consolidado com narrativa das 5 fases.
 
 **Testes:** 1689 / 1689 passando (81 arquivos, zero regressão). Invariante `tradeWriteBoundary` verde. Grep `addDoc(collection(db, 'trades'))` retorna apenas `src/utils/tradeGateway.js:165` (e o fixture literal no próprio teste de invariante).
 
