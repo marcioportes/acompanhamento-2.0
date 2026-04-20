@@ -95,8 +95,9 @@ export const useWeeklyReviews = (studentId) => {
 
   // closeReview publica o rascunho. Se frozenSnapshot for fornecido, sobrescreve
   // o snapshot atual (recomputado no momento do publish — indicadores congelam aqui,
-  // não no create).
-  const closeReview = useCallback(async (reviewId, { takeaways = null, meetingLink = null, videoLink = null, frozenSnapshot = null } = {}) => {
+  // não no create). Campos takeaways/meetingLink/videoLink são opcionais: só vão ao
+  // payload se EXPLICITAMENTE passados (undefined preserva o valor atual do doc).
+  const closeReview = useCallback(async (reviewId, opts = {}) => {
     setActionLoading(true);
     setError(null);
     try {
@@ -104,11 +105,11 @@ export const useWeeklyReviews = (studentId) => {
       const payload = {
         status: 'CLOSED',
         closedAt: serverTimestamp(),
-        takeaways,
-        meetingLink,
-        videoLink,
       };
-      if (frozenSnapshot) payload.frozenSnapshot = frozenSnapshot;
+      if (opts.takeaways !== undefined) payload.takeaways = opts.takeaways;
+      if (opts.meetingLink !== undefined) payload.meetingLink = opts.meetingLink;
+      if (opts.videoLink !== undefined) payload.videoLink = opts.videoLink;
+      if (opts.frozenSnapshot) payload.frozenSnapshot = opts.frozenSnapshot;
       await updateDoc(ref, payload);
     } catch (err) {
       setError(err.message || 'Erro ao fechar revisão');

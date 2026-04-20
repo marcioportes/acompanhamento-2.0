@@ -25,7 +25,8 @@ import { db } from '../firebase';
 import {
   ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown,
   RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save, MessageSquare,
-  CheckSquare, Square, Trash2, Plus,
+  CheckSquare, Square, Trash2, Plus, Archive, Send, Trophy, Target,
+  Award, Shield, Activity, ExternalLink,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
@@ -590,7 +591,175 @@ const SnapshotKpisSection = ({ kpis, prevKpis, currency = 'USD' }) => {
   );
 };
 
-// ====== Placeholder Section (Stage 1 apenas) ======
+// ===== Subitem 6: Ranking top 3 / bottom 3 =====
+const RankedTradeRow = ({ trade, currency, onOpen }) => {
+  const td = trade.entryTime ? trade.entryTime.slice(0, 10) : null;
+  const ddmm = td ? (() => { const [y, m, d] = td.split('-'); return `${d}/${m}`; })() : '??';
+  const isBuy = trade.side === 'LONG' || trade.side === 'BUY' || trade.side === 'C';
+  const isWin = Number(trade.pnl) > 0;
+  const rawEntry = trade.emotionEntry || trade.emotion;
+  const rawExit = trade.emotionExit;
+  const emotionText = rawExit && rawExit !== rawEntry
+    ? `${rawEntry || '—'} → ${rawExit}`
+    : (rawEntry || '—');
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-800/40 group">
+      <span className="text-[10px] font-mono text-slate-500 w-[32px]">{ddmm}</span>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+        {isBuy ? 'C' : 'V'}
+      </span>
+      <span className="text-[12px] text-white font-medium flex-1 truncate">{trade.symbol || '—'}</span>
+      <span className="text-[11px] text-slate-400 truncate max-w-[140px]" title={emotionText}>{emotionText}</span>
+      <span className={`text-[12px] font-medium tabular-nums w-[80px] text-right ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+        {isWin ? '+' : ''}{fmtMoney(trade.pnl, currency)}
+      </span>
+      {onOpen && trade.tradeId && (
+        <button
+          onClick={() => onOpen({ id: trade.tradeId, ticker: trade.symbol, ...trade })}
+          className="p-0.5 text-slate-500 hover:text-blue-400 opacity-60 group-hover:opacity-100 transition"
+          title="Abrir feedback do trade"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+const RankingSection = ({ topTrades, bottomTrades, currency, onNavigateToFeedback }) => {
+  const safeTop = Array.isArray(topTrades) ? topTrades : [];
+  const safeBottom = Array.isArray(bottomTrades) ? bottomTrades : [];
+  if (safeTop.length === 0 && safeBottom.length === 0) {
+    return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
+      Sem trades no período para ranquear.
+    </div>;
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+      <div className="rounded-lg border border-emerald-500/20 bg-slate-900/40 overflow-hidden">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/5 border-b border-emerald-500/20 text-[11px] uppercase tracking-wider text-emerald-400">
+          <Trophy className="w-3.5 h-3.5" /> Top 3 — Maiores ganhos
+        </div>
+        {safeTop.length > 0 ? (
+          <div className="divide-y divide-slate-800/60">
+            {safeTop.map((t, i) => (
+              <RankedTradeRow key={t.tradeId || i} trade={t} currency={currency} onOpen={onNavigateToFeedback} />
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-4 text-[11px] text-slate-500 italic text-center">Nenhum trade vencedor.</div>
+        )}
+      </div>
+      <div className="rounded-lg border border-red-500/20 bg-slate-900/40 overflow-hidden">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/5 border-b border-red-500/20 text-[11px] uppercase tracking-wider text-red-400">
+          <Target className="w-3.5 h-3.5" /> Bottom 3 — Maiores perdas
+        </div>
+        {safeBottom.length > 0 ? (
+          <div className="divide-y divide-slate-800/60">
+            {safeBottom.map((t, i) => (
+              <RankedTradeRow key={t.tradeId || i} trade={t} currency={currency} onOpen={onNavigateToFeedback} />
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-4 text-[11px] text-slate-500 italic text-center">Nenhum trade perdedor.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ===== Subitem 7: Evolução de maturidade 4D =====
+// Baseline do assessment inicial (marco zero). Score 0-100 por dimensão.
+// Maturidade vem de experience.stage_score (score de stage).
+const MaturityBar = ({ label, icon: Icon, score }) => {
+  const n = Number(score);
+  const hasScore = Number.isFinite(n);
+  const pct = hasScore ? Math.min(100, Math.max(0, n)) : 0;
+  const color = pct >= 70 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : pct >= 30 ? 'bg-orange-500' : 'bg-red-500';
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="flex items-center gap-1.5 text-slate-300">
+          <Icon className="w-3 h-3 text-slate-500" /> {label}
+        </span>
+        <span className={hasScore ? 'font-mono tabular-nums text-slate-200' : 'text-slate-600 italic'}>
+          {hasScore ? `${Math.round(n)}/100` : '—'}
+        </span>
+      </div>
+      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        {hasScore && <div className={`h-full ${color} transition-all`} style={{ width: `${pct}%` }} />}
+      </div>
+    </div>
+  );
+};
+
+const MaturitySection = ({ assessment }) => {
+  if (!assessment) {
+    return <div className="rounded-lg border border-dashed border-slate-700 bg-slate-800/20 px-3 py-5 text-center text-[11px] text-slate-500 italic">
+      Assessment inicial ainda não disponível — marco zero será estabelecido após a validação do onboarding.
+    </div>;
+  }
+  const emotional = assessment.emotional?.score;
+  const financial = assessment.financial?.score;
+  const operational = assessment.operational?.fit_score ?? assessment.operational?.score;
+  const maturity = assessment.experience?.stage_score;
+  const ts = assessment.timestamp?.toDate?.() || null;
+  const baselineDate = ts ? ts.toLocaleDateString('pt-BR') : null;
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 space-y-3">
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+        Marco zero {baselineDate ? `· ${baselineDate}` : ''}
+      </div>
+      <MaturityBar label="Emocional" icon={Activity} score={emotional} />
+      <MaturityBar label="Financeiro" icon={Shield} score={financial} />
+      <MaturityBar label="Operacional" icon={Target} score={operational} />
+      <MaturityBar label="Maturidade" icon={Award} score={maturity} />
+      <div className="text-[10px] text-slate-600 pt-1 border-t border-slate-800">
+        Comparação evolutiva (atual vs marco zero) será habilitada após re-assessment periódico.
+      </div>
+    </div>
+  );
+};
+
+// ===== Subitem 8: Navegação contextual =====
+const ContextNavSection = ({ planId, studentId, onNavigateToLedger, onNavigateToAssessment, hasAssessment }) => {
+  const links = [
+    {
+      key: 'ledger',
+      label: 'Ver plano no extrato',
+      enabled: !!(planId && onNavigateToLedger),
+      onClick: () => onNavigateToLedger?.(planId),
+    },
+    {
+      key: 'assessment',
+      label: 'Ver assessment 4D do aluno',
+      enabled: !!(studentId && onNavigateToAssessment && hasAssessment),
+      onClick: () => onNavigateToAssessment?.(studentId),
+    },
+  ];
+  const enabledLinks = links.filter(l => l.enabled);
+  if (enabledLinks.length === 0) {
+    return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-5 text-center text-[11px] text-slate-500 italic">
+      Links contextuais indisponíveis (plano ou assessment não carregados).
+    </div>;
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {enabledLinks.map(l => (
+        <button
+          key={l.key}
+          onClick={l.onClick}
+          className="flex items-center justify-between px-3 py-2 rounded-lg border border-slate-800 bg-slate-900/40 hover:bg-slate-800/50 text-[12px] text-slate-300 hover:text-white transition"
+        >
+          <span>{l.label}</span>
+          <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// ====== Section header ======
 const Section = ({ num, title, children, stage }) => (
   <section className="mb-5">
     <h3 className="text-sm font-medium text-white mb-2 flex items-center gap-1.5">
@@ -602,12 +771,6 @@ const Section = ({ num, title, children, stage }) => (
     </h3>
     {children}
   </section>
-);
-
-const Placeholder = ({ label }) => (
-  <div className="rounded-lg border border-dashed border-slate-700 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
-    {label}
-  </div>
 );
 
 // Reconstrói snapshot live a partir das trades atuais do plano + período + inclusões.
@@ -643,7 +806,14 @@ const rebuildSnapshotFromFirestore = async (review) => {
   });
 };
 
-const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = null }) => {
+const WeeklyReviewPage = ({
+  studentId,
+  reviewId,
+  onBack,
+  onNavigateToFeedback = null,
+  onNavigateToLedger = null,       // Stage 6 Subitem 8 — abre plano no extrato
+  onNavigateToAssessment = null,   // Stage 6 Subitem 8 — abre assessment 4D do aluno
+}) => {
   const [review, setReview] = useState(null);
   const [student, setStudent] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -653,12 +823,15 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
   const [liveRefreshing, setLiveRefreshing] = useState(false);
 
   // Stage 3 + 4: hook + state para SWOT, Notas e Takeaways.
+  // Stage 5a: closeReview + archiveReview para action footer (publish/archive).
   const {
-    generateSwot, updateSessionNotes,
+    generateSwot, updateSessionNotes, closeReview, archiveReview,
     addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
     actionLoading,
   } = useWeeklyReviews(studentId);
   const [confirmRegen, setConfirmRegen] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [sessionNotesDraft, setSessionNotesDraft] = useState('');
 
   // Listener no doc da revisão — reflete updates live (SWOT, takeaways, etc.)
@@ -805,6 +978,37 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
     } catch { /* */ }
   };
 
+  // Stage 5a: publish DRAFT→CLOSED (congela snapshot, aluno passa a ver).
+  const handlePublish = async () => {
+    if (!isDraft) return;
+    try {
+      const fresh = await rebuildSnapshotFromFirestore(review).catch(() => null);
+      await closeReview(review.id, { frozenSnapshot: fresh || effectiveSnapshot || undefined });
+      setConfirmPublish(false);
+    } catch { /* surfaced by hook */ }
+  };
+
+  // Stage 5a: archive CLOSED→ARCHIVED (terminal, imutável, some do dashboard aluno).
+  const handleArchive = async () => {
+    if (review?.status !== 'CLOSED') return;
+    try {
+      await archiveReview(review.id);
+      setConfirmArchive(false);
+    } catch { /* */ }
+  };
+
+  // Stage 6 Subitem 7: marco zero 4D (assessment inicial) — opcional.
+  const [initialAssessment, setInitialAssessment] = useState(null);
+  useEffect(() => {
+    if (!studentId) return undefined;
+    const unsub = onSnapshot(
+      doc(db, 'students', studentId, 'assessment', 'initial_assessment'),
+      (snap) => { setInitialAssessment(snap.exists() ? snap.data() : null); },
+      () => { setInitialAssessment(null); }
+    );
+    return () => unsub();
+  }, [studentId]);
+
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
 
@@ -933,19 +1137,127 @@ const WeeklyReviewPage = ({ studentId, reviewId, onBack, onNavigateToFeedback = 
             </Section>
 
             {/* 6 — Ranking */}
-            <Section num="6" title="Ranking de trades" stage="5">
-              <Placeholder label="Top 3 melhores · Top 3 piores (lado a lado) — Stage 5" />
+            <Section num="6" title="Ranking de trades">
+              <RankingSection
+                topTrades={effectiveSnapshot.topTrades}
+                bottomTrades={effectiveSnapshot.bottomTrades}
+                currency={currency}
+                onNavigateToFeedback={onNavigateToFeedback}
+              />
             </Section>
 
             {/* 7 — Evolução maturidade */}
-            <Section num="7" title="Evolução de maturidade (4D vs marco zero)" stage="6">
-              <Placeholder label="4 barras (Técnica · Emocional · Disciplina · Gestão risco) + marcador do assessment inicial — Stage 6" />
+            <Section num="7" title="Evolução de maturidade (4D vs marco zero)">
+              <MaturitySection assessment={initialAssessment} />
             </Section>
 
             {/* 8 — Navegação contextual */}
-            <Section num="8" title="Navegação contextual" stage="6">
-              <Placeholder label="Links: Ver conta · Ver plano · Ver extrato emocional · Ver assessment 4D — Stage 6" />
+            <Section num="8" title="Navegação contextual">
+              <ContextNavSection
+                planId={planId}
+                studentId={studentId}
+                onNavigateToLedger={onNavigateToLedger}
+                onNavigateToAssessment={onNavigateToAssessment}
+                hasAssessment={!!initialAssessment}
+              />
             </Section>
+
+            {/* Action Footer — publicar DRAFT → CLOSED ou arquivar CLOSED → ARCHIVED */}
+            <div className="mt-6 pt-4 border-t border-slate-800">
+              {isDraft && (
+                confirmPublish ? (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                    <div className="text-[12px] text-emerald-300 mb-2 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Ao publicar, o snapshot atual congela e o aluno passa a ver esta revisão no dashboard.
+                        Regeneração de SWOT e edição de takeaways ficam bloqueadas — só o aluno pode toggla os checks dele.
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setConfirmPublish(false)}
+                        disabled={actionLoading}
+                        className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-white disabled:opacity-40"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handlePublish}
+                        disabled={actionLoading}
+                        className="px-4 py-1.5 text-[12px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
+                      >
+                        {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        Confirmar publicação
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500">
+                      Rascunho em preparação — indicadores vão congelar ao publicar.
+                    </span>
+                    <button
+                      onClick={() => setConfirmPublish(true)}
+                      disabled={actionLoading}
+                      className="px-4 py-2 text-[13px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" /> Publicar revisão
+                    </button>
+                  </div>
+                )
+              )}
+              {review.status === 'CLOSED' && (
+                confirmArchive ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                    <div className="text-[12px] text-amber-300 mb-2 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Arquivar torna a revisão imutável e remove do card "Pendências da mentoria" do aluno.
+                        Essa ação não pode ser desfeita.
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setConfirmArchive(false)}
+                        disabled={actionLoading}
+                        className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-white disabled:opacity-40"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleArchive}
+                        disabled={actionLoading}
+                        className="px-4 py-1.5 text-[12px] font-medium bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-lg hover:bg-amber-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
+                      >
+                        {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
+                        Confirmar arquivamento
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-emerald-400 inline-flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Revisão publicada — aluno tem acesso aos takeaways.
+                    </span>
+                    <button
+                      onClick={() => setConfirmArchive(true)}
+                      disabled={actionLoading}
+                      className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40"
+                    >
+                      <Archive className="w-3 h-3" /> Arquivar
+                    </button>
+                  </div>
+                )
+              )}
+              {review.status === 'ARCHIVED' && (
+                <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                  <Archive className="w-3.5 h-3.5" />
+                  Revisão arquivada — registro histórico imutável.
+                </div>
+              )}
+            </div>
 
             <div className="text-[10px] text-slate-600 pt-3 border-t border-slate-800 mt-4">
               Fundação: PlanLedgerExtract (modo revisão) · CF createWeeklyReview · DEC-045 · Snapshot independente do fechamento de ciclo

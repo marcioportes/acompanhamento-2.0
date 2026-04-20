@@ -356,6 +356,16 @@ const AppContent = () => {
             ...trade,
             _fromReviewContext: { studentId: weeklyReviewContext.studentId, reviewId: weeklyReviewContext.reviewId },
           })}
+          onNavigateToLedger={(planId) => {
+            setWeeklyReviewContext(null);
+            setLedgerPlanId(planId);
+            setCurrentView('ledger');
+          }}
+          onNavigateToAssessment={(studentId) => {
+            setViewingAsStudent({ studentId, uid: studentId });
+            setWeeklyReviewContext(null);
+            setCurrentView('onboarding');
+          }}
         />
       );
     }
