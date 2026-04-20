@@ -65,6 +65,8 @@ const projectTrade = (trade) => {
     if (k === 'pnl') out.pnl = Number(trade.result) || 0;
     else if (k === 'qty') out.qty = Number(trade.qty) || 0;
     else if (k === 'closeTime') out.closeTime = trade.exitTime || null;
+    // Trades legados usam `ticker`; novos usam `symbol`. Prioriza symbol, cai em ticker.
+    else if (k === 'symbol') out.symbol = trade.symbol ?? trade.ticker ?? null;
     else out[k] = trade[k] ?? null;
   }
   return out;
