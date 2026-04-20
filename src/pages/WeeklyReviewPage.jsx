@@ -401,6 +401,14 @@ const TakeawayItem = ({ item, canEdit, alunoDone, onToggle, onRemove, onNavigate
       </button>
       <span className={`flex-1 text-[13px] leading-relaxed ${item.done ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
         {item.text}
+        {item.carriedOverFromReviewId && (
+          <span
+            className="ml-1.5 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/30 align-middle"
+            title="Item herdado da revisão anterior — aluno não fechou, mentor renovou"
+          >
+            ↻ anterior
+          </span>
+        )}
         {alunoDone && !item.done && (
           <span
             className="ml-1.5 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 align-middle"

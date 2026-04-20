@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, query, where, orderBy, onSnapshot,
+  collection, query, where, orderBy, onSnapshot, getDocs,
   doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -63,20 +63,72 @@ export const useWeeklyReviews = (studentId) => {
     return () => unsub();
   }, [studentId, user, mentor]);
 
+  // Ao criar nova revisão, puxa takeaways não-encerrados (!done) da última revisão
+  // CLOSED/ARCHIVED do MESMO plano e os replica no novo DRAFT com ids novos. Campo
+  // carriedOverFromReviewId preserva rastreabilidade. O doc anterior permanece
+  // congelado — esta operação é aditiva no DRAFT novo, não modifica a anterior.
+  const carryOverTakeaways = useCallback(async ({ newReviewId, planId, newWeekStart }) => {
+    if (!newReviewId || !planId || !studentId) return;
+    try {
+      const allQ = query(
+        collection(db, 'students', studentId, 'reviews'),
+        orderBy('weekStart', 'desc')
+      );
+      const snap = await getDocs(allQ);
+      const prev = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .find(r =>
+          r.id !== newReviewId &&
+          (r.status === 'CLOSED' || r.status === 'ARCHIVED') &&
+          (r.planId === planId || r.frozenSnapshot?.planContext?.planId === planId) &&
+          (!newWeekStart || !r.weekStart || r.weekStart < newWeekStart)
+        );
+      if (!prev) return;
+      const openItems = (Array.isArray(prev.takeawayItems) ? prev.takeawayItems : [])
+        .filter(it => !it.done);
+      if (openItems.length === 0) return;
+      const carried = openItems.map(it => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: it.text,
+        done: false,
+        createdAt: new Date().toISOString(),
+        sourceTradeId: it.sourceTradeId || null,
+        carriedOverFromReviewId: prev.id,
+      }));
+      await updateDoc(
+        doc(db, 'students', studentId, 'reviews', newReviewId),
+        { takeawayItems: carried }
+      );
+    } catch (carryErr) {
+      // Não aborta fluxo: review já existe. Só loga.
+      // eslint-disable-next-line no-console
+      console.warn('[useWeeklyReviews] carry-over takeaways falhou:', carryErr);
+    }
+  }, [studentId]);
+
   const createReview = useCallback(async (payload) => {
     setActionLoading(true);
     setError(null);
     try {
       const cf = httpsCallable(functions, 'createWeeklyReview');
       const res = await cf(payload);
-      return res.data;
+      const data = res.data || {};
+      // Carry-over é best-effort, não quebra o fluxo se falhar.
+      if (data.reviewId && payload?.planId) {
+        await carryOverTakeaways({
+          newReviewId: data.reviewId,
+          planId: payload.planId,
+          newWeekStart: payload.weekStart || null,
+        });
+      }
+      return data;
     } catch (err) {
       setError(err.message || 'Erro ao criar revisão');
       throw err;
     } finally {
       setActionLoading(false);
     }
-  }, [functions]);
+  }, [functions, carryOverTakeaways]);
 
   const generateSwot = useCallback(async ({ reviewId }) => {
     setActionLoading(true);

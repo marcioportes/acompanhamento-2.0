@@ -5,6 +5,12 @@ const mockCallable = vi.fn();
 const mockUpdateDoc = vi.fn(() => Promise.resolve());
 const mockOnSnapshot = vi.fn();
 const mockServerTimestamp = vi.fn(() => ({ __type: 'serverTimestamp' }));
+// getDocs default: snapshot vazio (nenhuma revisão anterior para carry-over).
+// Cada teste que precisar pode sobrescrever via mockGetDocs.mockResolvedValueOnce(...).
+const mockGetDocs = vi.fn(() => Promise.resolve({ docs: [], empty: true }));
+const mockDeleteDoc = vi.fn(() => Promise.resolve());
+const mockArrayUnion = vi.fn((...items) => ({ __type: 'arrayUnion', items }));
+const mockArrayRemove = vi.fn((...items) => ({ __type: 'arrayRemove', items }));
 
 vi.mock('firebase/functions', () => ({
   getFunctions: () => ({}),
@@ -22,7 +28,11 @@ vi.mock('firebase/firestore', () => ({
     return () => {};
   },
   updateDoc: (...args) => mockUpdateDoc(...args),
+  deleteDoc: (...args) => mockDeleteDoc(...args),
+  getDocs: (...args) => mockGetDocs(...args),
   serverTimestamp: () => mockServerTimestamp(),
+  arrayUnion: (...items) => mockArrayUnion(...items),
+  arrayRemove: (...items) => mockArrayRemove(...items),
 }));
 
 vi.mock('../../firebase', () => ({
@@ -41,6 +51,11 @@ describe('useWeeklyReviews', () => {
     mockCallable.mockReset();
     mockUpdateDoc.mockClear();
     mockOnSnapshot.mockClear();
+    mockGetDocs.mockClear();
+    mockGetDocs.mockImplementation(() => Promise.resolve({ docs: [], empty: true }));
+    mockDeleteDoc.mockClear();
+    mockArrayUnion.mockClear();
+    mockArrayRemove.mockClear();
     mockAuthValue.user = { uid: 'u1' };
     mockAuthValue.isMentor = () => true;
   });
@@ -134,6 +149,107 @@ describe('useWeeklyReviews', () => {
     const [, payload] = mockUpdateDoc.mock.calls[0];
     expect(payload.status).toBe('ARCHIVED');
     expect(payload.archivedAt).toEqual({ __type: 'serverTimestamp' });
+  });
+
+  describe('carry-over de takeaways ao createReview', () => {
+    it('replica takeaways !done da revisão anterior CLOSED do mesmo plano', async () => {
+      mockCallable.mockResolvedValueOnce({ data: { reviewId: 'new-1', status: 'DRAFT' } });
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'old-1',
+            data: () => ({
+              status: 'CLOSED',
+              planId: 'p1',
+              weekStart: '2026-04-06',
+              takeawayItems: [
+                { id: 'a', text: 'estudar aula 21', done: false, sourceTradeId: 't-1' },
+                { id: 'b', text: 'parar após 2 losses', done: true },
+                { id: 'c', text: 'reforçar estrutura', done: false },
+              ],
+            }),
+          },
+        ],
+        empty: false,
+      });
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.createReview({ studentId: 'student-1', planId: 'p1', weekStart: '2026-04-13' });
+      });
+      expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+      const [, payload] = mockUpdateDoc.mock.calls[0];
+      expect(Array.isArray(payload.takeawayItems)).toBe(true);
+      expect(payload.takeawayItems).toHaveLength(2); // só !done
+      expect(payload.takeawayItems.map(it => it.text)).toEqual(['estudar aula 21', 'reforçar estrutura']);
+      expect(payload.takeawayItems.every(it => it.done === false)).toBe(true);
+      expect(payload.takeawayItems.every(it => it.carriedOverFromReviewId === 'old-1')).toBe(true);
+      expect(payload.takeawayItems[0].sourceTradeId).toBe('t-1');
+      expect(payload.takeawayItems[1].sourceTradeId).toBeNull();
+    });
+
+    it('não chama updateDoc se anterior tem todos takeaways encerrados', async () => {
+      mockCallable.mockResolvedValueOnce({ data: { reviewId: 'new-2', status: 'DRAFT' } });
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'old-2',
+            data: () => ({
+              status: 'CLOSED',
+              planId: 'p1',
+              weekStart: '2026-04-06',
+              takeawayItems: [
+                { id: 'a', text: 'feito', done: true },
+                { id: 'b', text: 'também feito', done: true },
+              ],
+            }),
+          },
+        ],
+        empty: false,
+      });
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.createReview({ studentId: 'student-1', planId: 'p1', weekStart: '2026-04-13' });
+      });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+    });
+
+    it('ignora revisões de outro plano', async () => {
+      mockCallable.mockResolvedValueOnce({ data: { reviewId: 'new-3', status: 'DRAFT' } });
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'old-p2',
+            data: () => ({
+              status: 'CLOSED',
+              planId: 'p2', // outro plano
+              weekStart: '2026-04-06',
+              takeawayItems: [{ id: 'x', text: 'item de outro plano', done: false }],
+            }),
+          },
+        ],
+        empty: false,
+      });
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.createReview({ studentId: 'student-1', planId: 'p1', weekStart: '2026-04-13' });
+      });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+    });
+
+    it('não aborta a criação se o carry-over falha (best-effort)', async () => {
+      mockCallable.mockResolvedValueOnce({ data: { reviewId: 'new-4', status: 'DRAFT' } });
+      mockGetDocs.mockRejectedValueOnce(new Error('firestore offline'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      let returned;
+      await act(async () => {
+        returned = await result.current.createReview({ studentId: 'student-1', planId: 'p1', weekStart: '2026-04-13' });
+      });
+      expect(returned).toEqual({ reviewId: 'new-4', status: 'DRAFT' });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
   });
 
   it('exposes error when CF rejects', async () => {
