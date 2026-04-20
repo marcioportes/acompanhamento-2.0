@@ -85,121 +85,51 @@ const tradeDate = (t) => {
   return null;
 };
 
-// Day threshold for auto-collapse. Above this, day starts collapsed with [+] toggle.
+// Threshold: dias com mais trades que isso colapsam os excedentes por default.
 const AUTO_COLLAPSE_THRESHOLD = 3;
 
-// Agrupa trades por data (YYYY-MM-DD). Dias ordenados mais recente primeiro.
-// Trades dentro de cada dia ordenados por entryTime asc.
-const groupTradesByDay = (trades) => {
-  const map = new Map();
-  for (const t of trades || []) {
+// Conta trades por dia e monta a lista de visibles — respeitando colapso.
+// Retorna array de {type:'trade', data, dayCount, isFirstOfDay, dayExpanded}
+// ou {type:'more', date, hidden} para a pseudo-row "+N mais".
+const buildVisibleRows = (trades, expandedDays) => {
+  if (!Array.isArray(trades) || trades.length === 0) return [];
+  const dayCounts = {};
+  for (const t of trades) {
     const d = tradeDate(t);
     if (!d) continue;
-    if (!map.has(d)) map.set(d, []);
-    map.get(d).push(t);
+    dayCounts[d] = (dayCounts[d] || 0) + 1;
   }
-  return Array.from(map.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([date, dayTrades]) => {
-      const sorted = dayTrades.sort((a, b) => {
-        const ta = a.entryTime || '';
-        const tb = b.entryTime || '';
-        return ta.localeCompare(tb);
-      });
-      const pl = sorted.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-      const wins = sorted.filter(t => Number(t.pnl) > 0).length;
-      return { date, trades: sorted, count: sorted.length, pl, wins };
-    });
+  const sorted = [...trades].sort((a, b) => {
+    const da = tradeDate(a) || '';
+    const db = tradeDate(b) || '';
+    if (da !== db) return db.localeCompare(da);       // dias recentes primeiro
+    return (a.entryTime || '').localeCompare(b.entryTime || '');
+  });
+  const rendered = {};
+  const result = [];
+  for (const t of sorted) {
+    const d = tradeDate(t);
+    rendered[d] = (rendered[d] || 0) + 1;
+    const dayCount = dayCounts[d];
+    const isExpanded = expandedDays.has(d);
+    const needsCollapse = dayCount > AUTO_COLLAPSE_THRESHOLD;
+    if (needsCollapse && !isExpanded && rendered[d] > AUTO_COLLAPSE_THRESHOLD) continue;
+    const isFirstOfDay = rendered[d] === 1;
+    result.push({ type: 'trade', data: t, dayCount, isFirstOfDay });
+    if (needsCollapse && !isExpanded && rendered[d] === AUTO_COLLAPSE_THRESHOLD) {
+      result.push({ type: 'more', date: d, hidden: dayCount - AUTO_COLLAPSE_THRESHOLD });
+    }
+    if (needsCollapse && isExpanded && rendered[d] === dayCount) {
+      result.push({ type: 'collapse', date: d, count: dayCount });
+    }
+  }
+  return result;
 };
 
-// Renderiza uma linha de trade (usado dentro do dia).
-const TradeRow = ({ t, currency, weekStart, weekEnd, onNavigateToFeedback }) => {
-  const isBuy = t.side === 'LONG' || t.side === 'BUY' || t.side === 'C';
-  const isWin = Number(t.pnl) > 0;
-  const td = tradeDate(t);
-  const outOfPeriod = weekStart && weekEnd && td && (td < weekStart || td > weekEnd);
-  const handleOpenFeedback = () => {
-    if (!onNavigateToFeedback || !t.tradeId) return;
-    onNavigateToFeedback({ id: t.tradeId, ticker: t.symbol, ...t });
-  };
-  const emotionText = t.emotionExit && t.emotionExit !== t.emotionEntry
-    ? `${t.emotionEntry || '—'} → ${t.emotionExit}`
-    : (t.emotionEntry || '—');
-  return (
-    <div className="flex items-center gap-2 pl-6 pr-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
-      <span className="text-slate-500 text-[11px] min-w-[36px]">{fmtTime(t.entryTime)}</span>
-      <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
-      <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
-        {isBuy ? 'C' : 'V'}
-      </span>
-      <span className="text-slate-400 text-[12px]" title="quantidade (unidades)">
-        {t.qty || 0} un.
-      </span>
-      {outOfPeriod && (
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
-          fora do período
-        </span>
-      )}
-      <span className="text-[11px] text-slate-400 max-w-[130px] truncate" title={emotionText}>
-        {emotionText}
-      </span>
-      <span className={`ml-auto font-medium tabular-nums ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-        {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
-      </span>
-      {onNavigateToFeedback && t.tradeId && (
-        <button
-          onClick={handleOpenFeedback}
-          className="p-1 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
-          title="Abrir feedback do trade"
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-        </button>
-      )}
-    </div>
-  );
-};
-
-// Header de um dia — agrupa N trades, expandível quando count > 3.
-const DayHeader = ({ day, expanded, onToggle, currency }) => {
-  const [y, m, d] = day.date.split('-');
-  const dateBR = `${d}/${m}/${y}`;
-  const wr = day.count > 0 ? Math.round((day.wins / day.count) * 100) : 0;
-  const isPositive = day.pl > 0;
-  const canToggle = day.count > AUTO_COLLAPSE_THRESHOLD;
-  return (
-    <button
-      onClick={canToggle ? onToggle : undefined}
-      disabled={!canToggle}
-      className={`flex items-center gap-2 w-full px-3 py-1.5 rounded-lg bg-slate-900/70 border border-slate-700 text-[12px] ${
-        canToggle ? 'hover:bg-slate-800 cursor-pointer' : 'cursor-default'
-      }`}
-      title={canToggle ? (expanded ? 'Colapsar dia' : 'Expandir trades do dia') : ''}
-    >
-      {canToggle ? (
-        <span className="font-mono text-emerald-400 text-[13px] w-4 text-center">
-          {expanded ? '−' : '+'}
-        </span>
-      ) : (
-        <span className="w-4" />
-      )}
-      <span className="font-mono text-white font-medium">{dateBR}</span>
-      <span className="text-slate-500">·</span>
-      <span className="text-slate-300">{day.count} trade{day.count === 1 ? '' : 's'}</span>
-      <span className="text-slate-500">·</span>
-      <span className={wr >= 50 ? 'text-emerald-400' : wr >= 40 ? 'text-amber-400' : 'text-red-400'}>
-        WR {wr}% ({day.wins}/{day.count})
-      </span>
-      <span className={`ml-auto font-medium tabular-nums ${isPositive ? 'text-emerald-400' : day.pl < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-        {isPositive ? '+' : ''}{fmtMoney(day.pl, currency)}
-      </span>
-    </button>
-  );
-};
-
-// ===== Subitem 1: Trades do período (agrupado por dia) =====
+// ===== Subitem 1: Trades do período (flat com +/− por dia) =====
 const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = null, onNavigateToFeedback = null }) => {
   const [expandedDays, setExpandedDays] = useState(new Set());
-  const days = useMemo(() => groupTradesByDay(trades), [trades]);
+  const rows = useMemo(() => buildVisibleRows(trades, expandedDays), [trades, expandedDays]);
   const toggleDay = (date) => {
     setExpandedDays(prev => {
       const next = new Set(prev);
@@ -208,35 +138,108 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
     });
   };
 
-  if (!days || days.length === 0) {
+  if (!rows || rows.length === 0) {
     return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
       Sem trades no período.
     </div>;
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {days.map((day) => {
-        const autoExpanded = day.count <= AUTO_COLLAPSE_THRESHOLD;
-        const isExpanded = autoExpanded || expandedDays.has(day.date);
+    <div className="flex flex-col gap-1.5">
+      {rows.map((row, idx) => {
+        if (row.type === 'more') {
+          return (
+            <button
+              key={`more-${row.date}`}
+              onClick={() => toggleDay(row.date)}
+              className="flex items-center gap-2 px-3 py-1 text-[11px] text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/10 rounded-lg border border-dashed border-emerald-500/30"
+              title="Mostrar trades adicionais desse dia"
+            >
+              <span className="font-mono text-[12px]">+</span>
+              <span>mostrar {row.hidden} trade{row.hidden === 1 ? '' : 's'} adicional{row.hidden === 1 ? '' : 'is'} em {row.date.split('-').slice(1).reverse().join('/')}</span>
+            </button>
+          );
+        }
+        if (row.type === 'collapse') {
+          return (
+            <button
+              key={`collapse-${row.date}`}
+              onClick={() => toggleDay(row.date)}
+              className="flex items-center gap-2 px-3 py-1 text-[11px] text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg border border-dashed border-slate-700"
+              title="Recolher trades desse dia"
+            >
+              <span className="font-mono text-[12px]">−</span>
+              <span>recolher {row.date.split('-').slice(1).reverse().join('/')}</span>
+            </button>
+          );
+        }
+        const t = row.data;
+        const isBuy = t.side === 'LONG' || t.side === 'BUY' || t.side === 'C';
+        const isWin = Number(t.pnl) > 0;
+        const td = tradeDate(t);
+        const outOfPeriod = weekStart && weekEnd && td && (td < weekStart || td > weekEnd);
+        const handleOpenFeedback = () => {
+          if (!onNavigateToFeedback || !t.tradeId) return;
+          onNavigateToFeedback({ id: t.tradeId, ticker: t.symbol, ...t });
+        };
+        const dateShort = (() => {
+          if (!td) return '??';
+          const [y, m, d] = td.split('-');
+          return `${d}/${m}`;
+        })();
+        const dateFullBR = td ? (() => {
+          const [y, m, d] = td.split('-');
+          return `${d}/${m}/${y}`;
+        })() : '';
+        const emotionText = t.emotionExit && t.emotionExit !== t.emotionEntry
+          ? `${t.emotionEntry || '—'} → ${t.emotionExit}`
+          : (t.emotionEntry || '—');
+        // "+" ao lado da data quando dia tem >3 trades E é a primeira linha do dia.
+        // Permite o mentor controlar o estado clicando na própria data.
+        const showDayToggle = row.dayCount > AUTO_COLLAPSE_THRESHOLD && row.isFirstOfDay;
+        const isExpanded = expandedDays.has(td);
         return (
-          <div key={day.date} className="flex flex-col gap-1">
-            <DayHeader
-              day={day}
-              expanded={isExpanded}
-              onToggle={() => toggleDay(day.date)}
-              currency={currency}
-            />
-            {isExpanded && day.trades.map((t, i) => (
-              <TradeRow
-                key={t.tradeId || `${day.date}-${i}`}
-                t={t}
-                currency={currency}
-                weekStart={weekStart}
-                weekEnd={weekEnd}
-                onNavigateToFeedback={onNavigateToFeedback}
-              />
-            ))}
+          <div key={t.tradeId || idx} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/30 border border-slate-700/60 rounded-lg text-[13px]">
+            {showDayToggle ? (
+              <button
+                onClick={() => toggleDay(td)}
+                className="font-mono text-slate-300 text-[12px] hover:text-emerald-300 flex items-center gap-0.5"
+                title={`${isExpanded ? 'Recolher' : 'Expandir'} os ${row.dayCount} trades de ${dateFullBR}`}
+              >
+                <span className="min-w-[40px]">{dateShort}</span>
+                <span className="text-emerald-400 font-semibold">{isExpanded ? '−' : '+'}</span>
+              </button>
+            ) : (
+              <span className="font-mono text-slate-300 min-w-[40px] text-[12px]" title={dateFullBR}>{dateShort}</span>
+            )}
+            <span className="text-slate-500 text-[11px] min-w-[36px]">{fmtTime(t.entryTime)}</span>
+            <span className="font-medium text-white min-w-[56px]">{t.symbol || '—'}</span>
+            <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+              {isBuy ? 'C' : 'V'}
+            </span>
+            <span className="text-slate-400 text-[12px]" title="quantidade (unidades)">
+              {t.qty || 0} un.
+            </span>
+            {outOfPeriod && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
+                fora do período
+              </span>
+            )}
+            <span className="text-[11px] text-slate-400 max-w-[130px] truncate" title={emotionText}>
+              {emotionText}
+            </span>
+            <span className={`ml-auto font-medium tabular-nums ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+              {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
+            </span>
+            {onNavigateToFeedback && t.tradeId && (
+              <button
+                onClick={handleOpenFeedback}
+                className="p-1 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                title="Abrir feedback do trade"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         );
       })}
