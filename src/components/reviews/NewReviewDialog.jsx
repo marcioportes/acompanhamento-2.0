@@ -48,35 +48,43 @@ const NewReviewDialog = ({
   onClose,
 }) => {
   const [mode, setMode] = useState('iso');  // 'iso' | 'custom'
+  // Data ISO escolhida pelo mentor — qualquer dia da semana alvo. Default: hoje.
+  const [isoPick, setIsoPick] = useState(todayISO());
   const [customStart, setCustomStart] = useState(todayISO());
   const [customEnd, setCustomEnd] = useState(todayISO());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const today = useMemo(() => new Date(), []);
-  const isoRange = useMemo(() => getISOWeekRange(today), [today]);
-  const isoKey = useMemo(() => getISOWeekKey(today), [today]);
+  // Semana ISO derivada da data escolhida (snap para seg→dom).
+  const pickedIsoRange = useMemo(() => {
+    if (!isoPick) return getISOWeekRange(new Date());
+    return getISOWeekRange(isoPick);
+  }, [isoPick]);
+  const pickedIsoKey = useMemo(() => {
+    if (!isoPick) return getISOWeekKey(new Date());
+    return getISOWeekKey(isoPick);
+  }, [isoPick]);
 
   const periodInfo = useMemo(() => {
     if (mode === 'iso') {
       return {
-        weekStart: isoRange.weekStart,
-        weekEnd: isoRange.weekEnd,
-        periodKey: isoKey,
+        weekStart: pickedIsoRange.weekStart,
+        weekEnd: pickedIsoRange.weekEnd,
+        periodKey: pickedIsoKey,
         customPeriod: null,
         isCustom: false,
       };
     }
     const valid = customStart && customEnd && customStart <= customEnd;
     return {
-      weekStart: valid ? customStart : isoRange.weekStart,
-      weekEnd: valid ? customEnd : isoRange.weekEnd,
+      weekStart: valid ? customStart : pickedIsoRange.weekStart,
+      weekEnd: valid ? customEnd : pickedIsoRange.weekEnd,
       periodKey: `CUSTOM-${Date.now()}`,
       customPeriod: valid ? { start: customStart, end: customEnd } : null,
       isCustom: true,
       valid,
     };
-  }, [mode, isoRange, isoKey, customStart, customEnd]);
+  }, [mode, pickedIsoRange, pickedIsoKey, customStart, customEnd]);
 
   const previewTrades = useMemo(
     () => filterTradesByRange(allTrades, periodInfo.weekStart, periodInfo.weekEnd),
@@ -156,8 +164,8 @@ const NewReviewDialog = ({
                   : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-600'
               }`}
             >
-              Semana ISO atual
-              <div className="text-[10px] text-slate-500 mt-1">{isoKey}</div>
+              Semana ISO
+              <div className="text-[10px] text-slate-500 mt-1">qualquer semana</div>
             </button>
             <button
               onClick={() => setMode('custom')}
@@ -174,9 +182,44 @@ const NewReviewDialog = ({
           </div>
 
           {mode === 'iso' && (
-            <div className="text-xs text-slate-400 bg-slate-800/40 rounded-lg px-3 py-2">
-              De <span className="text-white font-mono">{isoRange.weekStart}</span> até{' '}
-              <span className="text-white font-mono">{isoRange.weekEnd}</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs">
+                <label className="text-slate-400 w-20">Qualquer dia</label>
+                <input
+                  type="date"
+                  value={isoPick}
+                  onChange={(e) => setIsoPick(e.target.value)}
+                  disabled={busy}
+                  className="flex-1 input-dark"
+                  title="Escolha qualquer dia — a semana ISO (seg→dom) é derivada automaticamente"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsoPick(todayISO())}
+                  disabled={busy}
+                  className="px-2 py-0.5 text-[10px] text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/10 rounded disabled:opacity-40"
+                >
+                  hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 7);
+                    setIsoPick(d.toISOString().slice(0, 10));
+                  }}
+                  disabled={busy}
+                  className="px-2 py-0.5 text-[10px] text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/10 rounded disabled:opacity-40"
+                >
+                  semana passada
+                </button>
+              </div>
+              <div className="text-xs text-slate-400 bg-slate-800/40 rounded-lg px-3 py-2">
+                Semana {pickedIsoKey} · de <span className="text-white font-mono">{pickedIsoRange.weekStart}</span> até{' '}
+                <span className="text-white font-mono">{pickedIsoRange.weekEnd}</span>
+              </div>
             </div>
           )}
 

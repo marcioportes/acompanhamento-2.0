@@ -127,8 +127,8 @@ const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = n
             <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
               {isBuy ? 'C' : 'V'}
             </span>
-            <span className="text-slate-400 text-[12px]">
-              {t.qty || 0} {(t.qty || 0) === 1 ? 'ctr' : 'ctrs'}
+            <span className="text-slate-400 text-[12px]" title="quantidade (unidades)">
+              {t.qty || 0} un.
             </span>
             {outOfPeriod && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
