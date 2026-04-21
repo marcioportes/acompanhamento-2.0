@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { getISOWeekKey, getISOWeekRange } from '../../utils/weeklyReviewSnapshot';
 import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
+import { isTradeAlreadyReviewed, isTradeInDraft, getDraftTradeNote } from '../../utils/reviewHelpers';
 
 const fmtTradePrefix = (trade) => {
   if (!trade) return '';
@@ -91,11 +92,30 @@ const PinToReviewButton = ({ trade }) => {
     ) || null;
   }, [reviews, plan?.id]);
 
+  // B: trade já revisado em CLOSED/ARCHIVED → ocultar botão (não é candidato).
+  const tradeAlreadyReviewed = useMemo(
+    () => isTradeAlreadyReviewed(trade?.id, reviews),
+    [trade?.id, reviews]
+  );
+
+  // C: trade já está no rascunho aberto → "Continuar Rascunho".
+  const tradeAlreadyInDraft = useMemo(
+    () => isTradeInDraft(trade?.id, existingDraft),
+    [trade?.id, existingDraft]
+  );
+
   const prefix = useMemo(() => fmtTradePrefix(trade), [trade]);
 
   useEffect(() => {
-    if (open && !note) setNote(prefix);
-  }, [open, prefix, note]);
+    if (!open) return;
+    if (note) return;
+    if (tradeAlreadyInDraft) {
+      const existingNote = getDraftTradeNote(trade?.id, existingDraft);
+      setNote(existingNote || prefix);
+    } else {
+      setNote(prefix);
+    }
+  }, [open, prefix, note, tradeAlreadyInDraft, existingDraft, trade?.id]);
 
   const handlePin = useCallback(async () => {
     if (!mentor || !plan || !todayISO) return;
@@ -157,13 +177,9 @@ const PinToReviewButton = ({ trade }) => {
 
   if (!mentor) return null;
   if (!planId) return null;
+  if (tradeAlreadyReviewed) return null;
 
-  const draftLabel = existingDraft?.periodKey
-    ? existingDraft.periodKey
-    : (todayISO?.key || 'semana');
-  const label = existingDraft
-    ? `Incluir na revisão ${draftLabel}`
-    : `Criar rascunho ${todayISO?.key || 'semana'} + incluir`;
+  const label = tradeAlreadyInDraft ? 'Continuar Rascunho' : 'Incluir no Rascunho';
 
   return (
     <div className="relative inline-block">
@@ -188,20 +204,24 @@ const PinToReviewButton = ({ trade }) => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-semibold text-white flex items-center gap-1.5">
               <PinIcon className="w-3 h-3 text-emerald-400" />
-              {existingDraft ? `Incluir trade em ${draftLabel}` : `Criar rascunho ${todayISO?.key} + incluir trade`}
+              {label}
             </div>
             <button onClick={() => setOpen(false)} disabled={busy} className="text-slate-500 hover:text-slate-300">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {existingDraft ? (
+          {tradeAlreadyInDraft ? (
             <div className="text-[11px] text-emerald-400/90 bg-emerald-500/5 border border-emerald-500/20 rounded px-2 py-1.5 mb-2">
-              Anotando no rascunho aberto: {existingDraft.periodKey} ({existingDraft.weekStart} → {existingDraft.weekEnd}). 1 rascunho por plano — publique ou apague antes de abrir outro.
+              Trade já incluído no rascunho {existingDraft.periodKey}. Edite a nota abaixo ou apenas confirme.
+            </div>
+          ) : existingDraft ? (
+            <div className="text-[11px] text-emerald-400/90 bg-emerald-500/5 border border-emerald-500/20 rounded px-2 py-1.5 mb-2">
+              Rascunho aberto: {existingDraft.periodKey} ({existingDraft.weekStart} → {existingDraft.weekEnd}). Trade será incluído nele.
             </div>
           ) : (
             <div className="text-[11px] text-amber-400/90 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1.5 mb-2">
-              Nenhum rascunho aberto deste plano. Ao anotar, um rascunho será criado automaticamente com snapshot dos trades em {todayISO?.range.weekStart} → {todayISO?.range.weekEnd}.
+              Nenhum rascunho aberto. Um rascunho será criado automaticamente com snapshot dos trades em {todayISO?.range.weekStart} → {todayISO?.range.weekEnd}.
             </div>
           )}
 
