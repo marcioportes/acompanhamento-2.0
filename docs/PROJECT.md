@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.23.3  
-> **Última atualização:** 21/04/2026 — INV-25: outbox antes de resume (padrão coord/worker). Lição aprendida #165.  
+> **Versão:** 0.23.4  
+> **Última atualização:** 21/04/2026 — Encerramento #165 v1.39.0. CHUNK-02/08 liberados.  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -63,6 +63,7 @@ Este documento segue versionamento semântico:
 | 0.22.8 | 20/04/2026 | Encerramento #102 v1.38.0 | PRs #157 (rules alunoDoneIds — merged `e9d5de8d` + deployado via `firebase deploy --only firestore:rules`) e #160 (squash `30af3a18`) mergeados em sequência. Entrega consolidada da **Revisão Semanal v2**: (a) `WeeklyReviewPage` nova com 8 subitens conforme mockup aprovado (Trades tabela + day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA 4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual) + Action Footer Publicar/Arquivar (gate de fechamento que faltava); (b) **carry-over de takeaways** `!done` entre revisões do mesmo plano, badge `↻ anterior`; (c) **PendingTakeaways** no dashboard do aluno (rule nova permite `alunoDoneIds` via arrayUnion em CLOSED, badge `aluno ✓` amber visível pro mentor na revisão); (d) **PendingReviewsCard** trigger secundário G8 no MentorDashboard (N-listener pattern, evita índice COLLECTION_GROUP novo). Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto para comparação. Bugfixes relevantes: hijack `viewingAsStudent → StudentDashboard` movido para DEPOIS do check `currentView==='onboarding'` no App.jsx; retorno contextual do ledger e assessment; `closeReview` preserva campos não-passados (undefined-check). DEC-086/087 adicionados. Issue **#159** criado como QA tracker (14 blocos ~120 checkboxes, validação em produção). Lock CHUNK-16 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `/home/mportes/projects/issue-102` removido (git worktree remove + rm -rf). 1727/1727 testes passing (baseline pré-sessão 1583 + carry-over +4 + outros merges). Zero regressão. |
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
+| 0.23.4 | 21/04/2026 | Encerramento #165 v1.39.0 | PR #167 mergeado (merge commit `0bdaa1a0`). sessionNotes no painel lateral, filtro trades revisados via `includedTradeIds`, botão contextual "Continuar Rascunho". 16 testes novos, 1744/1744 passando. Locks CHUNK-02/08 liberados (AVAILABLE). Issue doc arquivada. Worktree removido. |
 | 0.23.3 | 21/04/2026 | INV-25: outbox antes de resume | Formaliza invariante do padrão coord/worker: output do worker persiste em outbox antes do `--resume`. Coord relê sempre do disco, nunca assume memória do worker. Origin: recovery manual #165. |
 | 0.23.2 | 20/04/2026 | §4.0 coord/worker: coord deve abrir do worktree | Lição #165: `claude --resume` procura JSONL no projeto correspondente ao cwd de invocação. Coord aberto no main → listener no worktree não encontra sessão. Regra adicionada: após criar worktree, entrar nele (`cd ~/projects/issue-NNN`) antes de abrir a sessão coord. |
 | 0.23.1 | 20/04/2026 | Abertura #165 — locks CHUNK-02/08 + v1.39.0 reservada |
@@ -699,13 +700,13 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | Chunk | Domínio | Descrição | Arquivos principais | Status |
 |-------|---------|-----------|-------------------|--------|
 | CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
-| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | LOCKED |
+| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
 | CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
 | CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade/enrichTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `tradeGateway` | AVAILABLE |
 | CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
 | CHUNK-06 | Emotional System | Scoring emocional, detecção TILT/REVENGE, perfil emocional | `emotionalAnalysisV2`, `useEmotionalProfile` | AVAILABLE |
 | CHUNK-07 | CSV Import | Parser CSV, staging, mapeamento de colunas, validação | `CsvImport/*`, `csvStagingTrades` | AVAILABLE |
-| CHUNK-08 | Mentor Feedback | Feedback do mentor por trade, chat, status de revisão | `Feedback/*`, `feedbackHelpers` | LOCKED |
+| CHUNK-08 | Mentor Feedback | Feedback do mentor por trade, chat, status de revisão | `Feedback/*`, `feedbackHelpers` | AVAILABLE |
 | CHUNK-09 | Student Onboarding | Assessment 4D, probing, baseline report, marco zero | `Onboarding/*`, `assessment` subcollection | AVAILABLE |
 | CHUNK-10 | Order Import | Import ordens, parse ProfitChart-Pro, criação automática, confronto enriquecido | `OrderImport/*`, `orders` collection, `tradeGateway` | AVAILABLE |
 | CHUNK-11 | Behavioral Detection | Motor de detecção comportamental em 4 camadas — FUTURO | `behavioralDetection` | BLOCKED |
@@ -719,8 +720,6 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-02 | #165 | fix/issue-165-ajuste-extrato-plano | 20/04/2026 | 23d09bd0 |
-| CHUNK-08 | #165 | fix/issue-165-ajuste-extrato-plano | 20/04/2026 | 23d09bd0 |
 
 ### 6.4 Checklist de Check-Out
 
@@ -910,6 +909,21 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.39.0] - 21/04/2026
+**Issue:** #165 (fix: ajuste extrato do plano)
+**PR:** #167 (merge commit `0bdaa1a0`)
+
+#### Corrigido
+- `ReviewToolsPanel`: campo `sessionNotes` adicionado acima do Takeaway no painel lateral do rascunho. Botão "Publicar" removido completamente (código morto eliminado: `handlePublish`, `closeReview`, `rebuildSnapshot`, imports Firebase desnecessários). Botão "Salvar" persiste `sessionNotes`.
+- `reviewHelpers.js`: helper `isTradeAlreadyReviewed` verifica `includedTradeIds` de revisões `CLOSED`/`ARCHIVED`. Trades já revisados somem como candidatos a novos rascunhos (`PinToReviewButton` retorna `null`).
+- `FeedbackPage`: botão contextual — `"Incluir no Rascunho"` quando trade não está no draft; `"Continuar Rascunho"` com pré-carregamento de `getDraftTradeNote` quando já está.
+
+#### Testes
+- 16 testes novos em `reviewHelpers.test.js` cobrindo edge cases dos itens B e C
+- 1744/1744 passando, lint limpo, zero regressão
+
+---
 
 ### [1.38.1] - 20/04/2026
 **Issue:** #162 (hotfix: Espelho fora do ar por implementação do issue #102)
