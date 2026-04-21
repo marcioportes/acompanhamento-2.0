@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.23.2  
-> **Última atualização:** 20/04/2026 — §4.0 coord/worker: coord deve ser aberto de dentro do worktree para `--resume` funcionar. Lição aprendida #165.  
+> **Versão:** 0.23.3  
+> **Última atualização:** 21/04/2026 — INV-25: outbox antes de resume (padrão coord/worker). Lição aprendida #165.  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -63,6 +63,7 @@ Este documento segue versionamento semântico:
 | 0.22.8 | 20/04/2026 | Encerramento #102 v1.38.0 | PRs #157 (rules alunoDoneIds — merged `e9d5de8d` + deployado via `firebase deploy --only firestore:rules`) e #160 (squash `30af3a18`) mergeados em sequência. Entrega consolidada da **Revisão Semanal v2**: (a) `WeeklyReviewPage` nova com 8 subitens conforme mockup aprovado (Trades tabela + day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA 4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual) + Action Footer Publicar/Arquivar (gate de fechamento que faltava); (b) **carry-over de takeaways** `!done` entre revisões do mesmo plano, badge `↻ anterior`; (c) **PendingTakeaways** no dashboard do aluno (rule nova permite `alunoDoneIds` via arrayUnion em CLOSED, badge `aluno ✓` amber visível pro mentor na revisão); (d) **PendingReviewsCard** trigger secundário G8 no MentorDashboard (N-listener pattern, evita índice COLLECTION_GROUP novo). Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto para comparação. Bugfixes relevantes: hijack `viewingAsStudent → StudentDashboard` movido para DEPOIS do check `currentView==='onboarding'` no App.jsx; retorno contextual do ledger e assessment; `closeReview` preserva campos não-passados (undefined-check). DEC-086/087 adicionados. Issue **#159** criado como QA tracker (14 blocos ~120 checkboxes, validação em produção). Lock CHUNK-16 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `/home/mportes/projects/issue-102` removido (git worktree remove + rm -rf). 1727/1727 testes passing (baseline pré-sessão 1583 + carry-over +4 + outros merges). Zero regressão. |
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
+| 0.23.3 | 21/04/2026 | INV-25: outbox antes de resume | Formaliza invariante do padrão coord/worker: output do worker persiste em outbox antes do `--resume`. Coord relê sempre do disco, nunca assume memória do worker. Origin: recovery manual #165. |
 | 0.23.2 | 20/04/2026 | §4.0 coord/worker: coord deve abrir do worktree | Lição #165: `claude --resume` procura JSONL no projeto correspondente ao cwd de invocação. Coord aberto no main → listener no worktree não encontra sessão. Regra adicionada: após criar worktree, entrar nele (`cd ~/projects/issue-NNN`) antes de abrir a sessão coord. |
 | 0.23.1 | 20/04/2026 | Abertura #165 — locks CHUNK-02/08 + v1.39.0 reservada |
 | 0.23.0 | 20/04/2026 | §4.2 Gate Pré-Entrega — precauções #162 | Lições do SEV1 #162 incorporadas como ITENS OBRIGATÓRIOS do gate pré-entrega (antes eram apenas notas no CHANGELOG v1.38.1): (a) **`npm run lint` em arquivos tocados no branch** — zero `no-undef`, zero `no-unused-vars` críticos, zero regressão em regras já ativas. Custo ~5s/arquivo. Origem: ReferenceError `assessmentStudentId` teria sido pego aqui. (b) **Validação em browser por contexto de consumo** — aluno logado / mentor viewAs / override-embedded, quando aplicáveis. Origem: o #102 validou apenas o contexto mentor (WeeklyReviewPage) e deixou o contexto aluno (dashboard com `<PendingTakeaways>`) passar para prod sem render-check. Bump MINOR (mudança de protocolo §1 do versionamento). Sem lock de chunk — edição exclusivamente em shared file `docs/PROJECT.md`. |
@@ -407,6 +408,15 @@ Nenhuma feature, Cloud Function ou modificação de UI é implementada sem valid
 **Anti-pattern:** CC diz "entendi" e sai codificando sem mostrar o que entendeu. Isso é VIOLAÇÃO da INV-18 — mesmo que o código resultante esteja tecnicamente correto, se não passou pelo gate de validação, deve ser revertido.
 
 > Origem: sessão de voz 15/04/2026 — diagnóstico do gap entre descrição verbal e interpretação do modelo como causa raiz de retrabalho sistemático.
+
+### INV-25: Outbox Antes de Resume — Padrão Coord/Worker
+No modelo de orquestração coord/worker, todo output de worker é persistido em arquivo no outbox (`.cc-mailbox/outbox/`) **antes** de o coord ser invocado via `claude --resume`. O coord nunca depende de memória de processo do worker — lê sempre do outbox.
+
+**Por que:** `claude --resume` opera com semântica at-least-once. Se o `--resume` falhar por qualquer motivo (diretório errado, rede, processo morto), o output continua acessível em disco e pode ser lido manualmente ou reprocessado. Violação — coord assumir que "sabe" o output sem reler o outbox — reintroduz exatamente as fragilidades que o padrão elimina.
+
+**Verificação:** antes de despachar a próxima task, o coord confirma que `outbox/<task>-result.log` existe e tem conteúdo.
+
+> Origem: lição aprendida #165 — `--resume` falhou silenciosamente por cwd incorreto; output estava no outbox e permitiu recovery manual.
 
 ---
 
