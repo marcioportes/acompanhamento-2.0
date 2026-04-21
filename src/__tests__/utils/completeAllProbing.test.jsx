@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { vi, describe, it, expect } from 'vitest';
+import { vi, describe, it, expect, afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
 import ProbingQuestionsFlow from '../../components/Onboarding/ProbingQuestionsFlow.jsx';
 
 function makeProbing(overrides = {}) {
@@ -23,6 +24,11 @@ function makeProbing(overrides = {}) {
 }
 
 describe('ProbingQuestionsFlow — botão Finalizar', () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
   it('chama onComplete após completeAllProbing resolver', async () => {
     const onComplete = vi.fn();
     const probing = makeProbing();

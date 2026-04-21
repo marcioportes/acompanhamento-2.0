@@ -29,6 +29,19 @@ export default function ProbingQuestionsFlow({
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState(null);
 
+  const handleFinalize = async () => {
+    setCompleting(true);
+    setCompleteError(null);
+    try {
+      await completeAllProbing();
+      if (onComplete) onComplete();
+    } catch (err) {
+      setCompleteError('Erro ao finalizar. Tente novamente.');
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   // All probing done
   if (isProbingComplete) {
     return (
@@ -43,28 +56,23 @@ export default function ProbingQuestionsFlow({
           Aprofundamento concluído
         </h2>
         <p className="text-gray-400 text-sm mb-8">
-          Suas respostas serão analisadas e apresentadas ao seu mentor 
+          Suas respostas serão analisadas e apresentadas ao seu mentor
           para a entrevista de validação.
         </p>
 
         <button
-          onClick={async () => {
-            setCompleting(true);
-            setCompleteError(null);
-            try {
-              await completeAllProbing();
-              if (onComplete) onComplete();
-            } catch (err) {
-              setCompleteError('Erro ao finalizar. Tente novamente.');
-            } finally {
-              setCompleting(false);
-            }
-          }}
+          onClick={handleFinalize}
           disabled={completing}
           className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium transition-all flex items-center gap-2 mx-auto"
         >
-          {completing && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {completing ? 'Finalizando...' : 'Finalizar'}
+          {completing ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Finalizando...
+            </>
+          ) : (
+            'Finalizar'
+          )}
         </button>
 
         {completeError && (
