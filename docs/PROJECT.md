@@ -922,6 +922,20 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
+### [1.40.0] - 21/04/2026
+**Issue:** #166 (fix: Sessão travada no botão Finalizar — Sev1)
+**PR:** a criar
+
+#### Corrigido
+- `ProbingQuestionsFlow.jsx`: botão "Finalizar" refatorado com `handleFinalize` (try/catch/finally), `disabled={completing}`, spinner + texto dinâmico "Finalizando...", mensagem de erro ao usuário em caso de falha. `useState` importado; `completing`/`completeError` declarados no topo do componente. `DebugBadge component="ProbingQuestionsFlow"` corrigido (INV-04).
+- `useAssessment.js`: `completeProbing` passa `fromStatus='probing'` explicitamente para `updateOnboardingStatus`, eliminando stale closure em cenário de race condition (mesmo padrão DEC-026).
+
+#### Testes
+- 4 testes novos em `completeAllProbing.test.jsx`: sucesso, erro, loading state, múltiplos cliques
+- 1732/1732 passando, zero regressão
+
+---
+
 ### [1.39.0] - 21/04/2026
 **Issue:** #165 (fix: ajuste extrato do plano)
 **PR:** #167 (merge commit `0bdaa1a0`)
