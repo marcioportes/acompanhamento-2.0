@@ -7,7 +7,7 @@
  * @version 1.0.0 — CHUNK-09 Fase A
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import QuestionOpen from './QuestionOpen.jsx';
 import DebugBadge from '../DebugBadge.jsx';
 
@@ -26,6 +26,22 @@ export default function ProbingQuestionsFlow({
     completeAllProbing,
   } = probing;
 
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState(null);
+
+  const handleFinalize = async () => {
+    setCompleting(true);
+    setCompleteError(null);
+    try {
+      await completeAllProbing();
+      if (onComplete) onComplete();
+    } catch (err) {
+      setCompleteError('Erro ao finalizar. Tente novamente.');
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   // All probing done
   if (isProbingComplete) {
     return (
@@ -40,21 +56,32 @@ export default function ProbingQuestionsFlow({
           Aprofundamento concluído
         </h2>
         <p className="text-gray-400 text-sm mb-8">
-          Suas respostas serão analisadas e apresentadas ao seu mentor 
+          Suas respostas serão analisadas e apresentadas ao seu mentor
           para a entrevista de validação.
         </p>
 
         <button
-          onClick={async () => {
-            await completeAllProbing();
-            if (onComplete) onComplete();
-          }}
-          className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-medium transition-all"
+          onClick={handleFinalize}
+          disabled={completing}
+          className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium transition-all flex items-center gap-2 mx-auto"
         >
-          Finalizar
+          {completing ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Finalizando...
+            </>
+          ) : (
+            'Finalizar'
+          )}
         </button>
 
-        <DebugBadge />
+        {completeError && (
+          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+            {completeError}
+          </div>
+        )}
+
+        <DebugBadge component="ProbingQuestionsFlow" />
       </div>
     );
   }

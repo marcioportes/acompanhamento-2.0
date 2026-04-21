@@ -3,6 +3,9 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.40.0: fix: Botão "Finalizar" travado na conclusão do aprofundamento (issue #166, Sev1) —
+ *   loading state + disabled + try/catch no onClick de ProbingQuestionsFlow; fromStatus='probing'
+ *   explícito em completeProbing (elimina stale closure); DebugBadge component= corrigido (INV-04).
  * - 1.38.1: hotfix: `assessmentStudentId is not defined` em StudentDashboard.jsx:362 (#162) — SEV1.
  *   Prop `studentId` de `<PendingTakeaways>` referenciava identificador inexistente no escopo de
  *   `StudentDashboardBody`, quebrando render do dashboard do aluno em produção (ReferenceError

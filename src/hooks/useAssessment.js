@@ -230,7 +230,7 @@ export function useAssessment(studentId) {
       completedAt: serverTimestamp(),
       summary,
     });
-    await updateOnboardingStatus('probing_complete');
+    await updateOnboardingStatus('probing_complete', 'probing');
   }, [studentId, updateOnboardingStatus]);
 
   /**
