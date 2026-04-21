@@ -79,6 +79,9 @@ else
 fi
 
 while true; do
+  # Re-lê coord ID a cada iteração — permite que coord atualize o arquivo após boot do listener
+  COORD_ID="$(cat "$COORD_ID_FILE" 2>/dev/null || true)"
+
   # Pega o primeiro .md em ordem alfabética
   TASK=$(ls -1 "$INBOX"/*.md 2>/dev/null | head -n1 || true)
   if [ -n "$TASK" ] && [ -f "$TASK" ]; then
@@ -92,11 +95,16 @@ while true; do
 
     # Notifica coordenador via --resume (se configurado)
     if [ -n "$COORD_ID" ]; then
+      COORD_DIR="$(cat "$MAILBOX/.coord-dir" 2>/dev/null || true)"
       ISSUE_NUM=$(basename "$WORKTREE" | sed 's/^issue-//')
       MSG="TASK_DELIVERED issue=${ISSUE_NUM} name=${NAME} worktree=${WORKTREE} result_log=${OUTBOX}/${NAME}-result.log report=${OUTBOX}/${NAME%-*}-report.md"
       echo "[listener] Notificando coordenador: $MSG"
-      (cd "$WORKTREE" && claude --resume "$COORD_ID" -p "$MSG" > "$OUTBOX/${NAME}-coord-response.log" 2>&1) &
-      echo "[listener] Notificação disparada em background (PID $!)"
+      if [ -n "$COORD_DIR" ] && [ -d "$COORD_DIR" ]; then
+        (cd "$COORD_DIR" && claude --resume "$COORD_ID" -p "$MSG" > "$OUTBOX/${NAME}-coord-response.log" 2>&1) &
+        echo "[listener] Notificação disparada em background (PID $!) — coord dir: $COORD_DIR"
+      else
+        echo "[listener] ERRO: .coord-dir ausente ou inválido ('$COORD_DIR')"
+      fi
     fi
   fi
   sleep 2
