@@ -79,6 +79,9 @@ else
 fi
 
 while true; do
+  # Re-lê coord ID a cada iteração — permite que coord atualize o arquivo após boot do listener
+  COORD_ID="$(cat "$COORD_ID_FILE" 2>/dev/null || true)"
+
   # Pega o primeiro .md em ordem alfabética
   TASK=$(ls -1 "$INBOX"/*.md 2>/dev/null | head -n1 || true)
   if [ -n "$TASK" ] && [ -f "$TASK" ]; then
