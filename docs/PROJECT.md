@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.23.5  
-> **Última atualização:** 21/04/2026 — Abertura #166 — lock CHUNK-09 + v1.40.0 reservada.  
+> **Versão:** 0.23.6  
+> **Última atualização:** 21/04/2026 — INV-26: `.coord-id` é responsabilidade do start script, coord nunca sobrescreve. Lição #166.  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -63,6 +63,7 @@ Este documento segue versionamento semântico:
 | 0.22.8 | 20/04/2026 | Encerramento #102 v1.38.0 | PRs #157 (rules alunoDoneIds — merged `e9d5de8d` + deployado via `firebase deploy --only firestore:rules`) e #160 (squash `30af3a18`) mergeados em sequência. Entrega consolidada da **Revisão Semanal v2**: (a) `WeeklyReviewPage` nova com 8 subitens conforme mockup aprovado (Trades tabela + day-grouping, Notas da sessão, 8 KPIs com tooltip inline, SWOT IA 4 quadrantes, Takeaways checklist, Ranking top/bottom, Maturidade 4D, Navegação contextual) + Action Footer Publicar/Arquivar (gate de fechamento que faltava); (b) **carry-over de takeaways** `!done` entre revisões do mesmo plano, badge `↻ anterior`; (c) **PendingTakeaways** no dashboard do aluno (rule nova permite `alunoDoneIds` via arrayUnion em CLOSED, badge `aluno ✓` amber visível pro mentor na revisão); (d) **PendingReviewsCard** trigger secundário G8 no MentorDashboard (N-listener pattern, evita índice COLLECTION_GROUP novo). Coexiste com `PlanLedgerExtract` 3-col baseline (ReviewToolsPanel), preservado intacto para comparação. Bugfixes relevantes: hijack `viewingAsStudent → StudentDashboard` movido para DEPOIS do check `currentView==='onboarding'` no App.jsx; retorno contextual do ledger e assessment; `closeReview` preserva campos não-passados (undefined-check). DEC-086/087 adicionados. Issue **#159** criado como QA tracker (14 blocos ~120 checkboxes, validação em produção). Lock CHUNK-16 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `/home/mportes/projects/issue-102` removido (git worktree remove + rm -rf). 1727/1727 testes passing (baseline pré-sessão 1583 + carry-over +4 + outros merges). Zero regressão. |
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
+| 0.23.6 | 21/04/2026 | INV-26: `.coord-id` é responsabilidade do start script | Coord nunca sobrescreve `.coord-id` — valor gravado pelo `cc-worktree-start.sh` no boot do listener. Anti-pattern: inventar session ID quando `$CLAUDE_SESSION_ID` retorna vazio. Lição #166. |
 | 0.23.5 | 21/04/2026 | Abertura #166 — lock CHUNK-09 + v1.40.0 reservada |
 | 0.23.4 | 21/04/2026 | Encerramento #165 v1.39.0 | PR #167 mergeado (merge commit `0bdaa1a0`). sessionNotes no painel lateral, filtro trades revisados via `includedTradeIds`, botão contextual "Continuar Rascunho". 16 testes novos, 1744/1744 passando. Locks CHUNK-02/08 liberados (AVAILABLE). Issue doc arquivada. Worktree removido. |
 | 0.23.3 | 21/04/2026 | INV-25: outbox antes de resume | Formaliza invariante do padrão coord/worker: output do worker persiste em outbox antes do `--resume`. Coord relê sempre do disco, nunca assume memória do worker. Origin: recovery manual #165. |
@@ -419,6 +420,15 @@ No modelo de orquestração coord/worker, todo output de worker é persistido em
 **Verificação:** antes de despachar a próxima task, o coord confirma que `outbox/<task>-result.log` existe e tem conteúdo.
 
 > Origem: lição aprendida #165 — `--resume` falhou silenciosamente por cwd incorreto; output estava no outbox e permitiu recovery manual.
+
+### INV-26: `.coord-id` É Responsabilidade do Start Script — Coord Nunca Sobrescreve
+O arquivo `.cc-mailbox/.coord-id` é gravado pelo `cc-worktree-start.sh` no momento em que o tmux listener é criado (session ID do coord passado como 3º argumento ao script). **O coord nunca escreve nesse arquivo.** O valor correto já está lá desde a criação do worktree. Sobrescrever destrói o session ID real e quebra o loop de notificação inversa.
+
+**Regra:** o coord só grava `.cc-mailbox/.coord-dir` (caminho do worktree), e apenas se o script não o tiver criado. `.coord-id` é somente leitura para o coord.
+
+**Anti-pattern:** coord inventar ou derivar um session ID (ex: `coord-issue-NNN-taskNN`) quando `$CLAUDE_SESSION_ID` retorna vazio. O ID real foi gravado pelo start script — não tocá-lo é suficiente.
+
+> Origem: lição aprendida #166 — coord sobrescreveu `.coord-id` com valor inventado, destruindo session ID real que já estava gravado pelo start script.
 
 ---
 
