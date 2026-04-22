@@ -104,9 +104,76 @@ Substituir `SetupAnalysis.jsx` atual (barra proporcional + WR) por ferramenta de
 - ✅ v1.42.0 reservada em `src/version.js` (entrada CHANGELOG tagged [RESERVADA])
 - ✅ Commit `3b69ea4b` no main: `docs: abertura #170 — lock CHUNK-02 + v1.42.0 reservada (SetupAnalysis V2)`
 - ✅ Worktree criado em `~/projects/issue-170`
-- ✅ Arquivo de controle criado (este)
+- ✅ Arquivo de controle criado
 
-### Próximo: E3a (testes analyzeBySetupV2 falhando)
+### 22/04/2026 — Implementação (modo autônomo)
+
+**E3 · util `analyzeBySetupV2`** — commit `2bd11e82`
+- `src/utils/setupAnalysisV2.js` (245 linhas)
+- `src/__tests__/utils/setupAnalysisV2.test.js` (23 testes, 7 describes)
+- Cobre: defensivo (null/undefined/array vazio/tipo inválido), agrupamento por setup com trim e fallback "Sem Setup", KPIs básicos (n/totalPL/wr/ev/payoff null quando falta wins ou losses), ΔT com derivação de entryTime/exitTime quando duration ausente, contribEV com denominador Σ|totalPL| preservando sinal, ordenação |contribEV| desc, flag `isSporadic` (n<3), aderência RR condicional (null sem setupsMeta, null sem targetRR, banda [target×0.8, target×1.2]), sparkline 6m (6 buckets mensais determinísticos via `today`, ignora trades fora da janela, 6 zeros para setup sem trades), edges (n=1, multi-moeda não particiona, result null/undefined vira 0).
+
+**E1 + E2 · UI SetupAnalysis V2** — commit `52919bc7`
+- `src/components/SetupAnalysis.jsx` (reescrito: 434 linhas, +349 vs V1)
+- `src/__tests__/components/SetupAnalysisV2.test.jsx` (17 testes)
+- Header com nome · N trades · PL total · WR
+- Grid 2×2: Financial (EV + Payoff), Operational (ΔT com semáforo ±20%/±10% + tempos W/L brutos), Impact (ContribEV com sinal), Maturidade (Sparkline 6m + ícone Trend)
+- Aderência RR condicional: linha só renderiza quando `setupsMeta[x].targetRR` existe. Cor: ≥70% verde, ≥40% âmbar, <40% vermelho
+- Ordenação por `|contribEV|` desc; setups com n<3 em accordion "Esporádicos (N)" colapsado (expandido por default quando nenhum setup atinge n≥3)
+- Insight 1-linha: ofensor contribEV<-20% → best performer payoff≥1.5 → aderência RR<50% → fallback positivo
+- Sparkline local com mesmo visual do EmotionAnalysis (não extraído — duplicação intencional dentro do escopo do componente)
+- DebugBadge `component="SetupAnalysis"` preservado (INV-04)
+
+**E4 · Wire nos dashboards** — commit `e5239727`
+- `StudentDashboard.jsx`: passa `setupsMeta={setups}` via `useSetups()` já presente (mudança de 1 linha)
+- `MentorDashboard.jsx`: **não alterado** — `useSetups` não é consumido na página e os setups globais + pessoais mistos não têm filtro por `selectedStudent.uid`. Aderência RR fica omitida (condicional). Wire mentor-side proposto para fast-follow ou issue dedicada.
+
+### Gate Pré-Entrega (INV-09 §4.2)
+
+- ✅ `src/version.js` reservada para v1.42.0 (definitiva no encerramento)
+- ✅ CHANGELOG de v1.42.0 escrito em version.js (tagged [RESERVADA])
+- ✅ Testes para toda lógica nova: 23 util + 17 render = **40 novos testes**
+- ✅ DebugBadge mantido em `SetupAnalysis` com `component="SetupAnalysis"`
+- ✅ `npm test -- --run`: **1880/1880 passing** (baseline 1840 + 40)
+- ✅ `npx eslint` nos arquivos tocados: zero errors, warnings pré-existentes não regressivos
+- ✅ `npm run build`: verde em 14.74s
+- ⏸️ **Validação browser pendente** (modo autônomo degradado — sem Marcio online). Cenários da spec a validar no merge:
+  - Setup com muitos trades
+  - Setup esporádico (accordion colapsado)
+  - Setup sem `targetRR` (linha Aderência omitida)
+  - Setup perdedor com shift alto (insight ofensor)
+  - Multi-setup com diferentes impactos (ordenação por |contribEV|)
+
+### CLAIMS (INV-27)
+
+```
+commit: e5239727 (tip)
+chain: dcc8c59f → 2bd11e82 → 52919bc7 → e5239727
+tests: 1880/1880 (baseline 1840 +40 novos)
+files_added:
+  - src/utils/setupAnalysisV2.js (245 linhas)
+  - src/__tests__/utils/setupAnalysisV2.test.js (304 linhas, 23 testes)
+  - src/__tests__/components/SetupAnalysisV2.test.jsx (180 linhas, 17 testes)
+  - docs/dev/issues/issue-170-setup-analysis-v2.md
+files_modified:
+  - src/components/SetupAnalysis.jsx (reescrito: 349 linhas adicionadas)
+  - src/pages/StudentDashboard.jsx (prop setupsMeta)
+invariants:
+  - INV-01/02: ✅ zero escrita em trades/plans
+  - INV-04: ✅ DebugBadge component="SetupAnalysis"
+  - INV-05: ✅ testes antes da UI (util E3 → UI E1/E2)
+  - INV-10/15: ✅ zero estrutura Firestore nova
+  - INV-17: ✅ declarado em §3.3
+  - INV-18: ✅ spec aprovada via issue body (não há ambiguidade residual)
+out_of_scope_untouched:
+  - shift emocional por setup (fase 2)
+  - aderência à checklist do setup (fase 2)
+  - heatmap setup × emoção (fase 2)
+  - filtro drill-down por setup no dashboard
+  - wire MentorDashboard (setups não filtrados por aluno — fast-follow/issue nova)
+```
+
+### Próximo: PR + review do Marcio
 
 ## 7. CLAIMS por task (INV-27 universal)
 
