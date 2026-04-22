@@ -1,9 +1,11 @@
 /**
  * EquityCurve
- * @version 3.1.0 (v1.41.0)
+ * @version 3.2.0 (v1.41.0)
  * @description Gráfico de Curva de Patrimônio com moeda dinâmica.
  *
  * CHANGELOG:
+ * - 3.2.0: #164 review — toggle manual para a curva ideal do plano (persiste no
+ *          localStorage). Quando desligado, mantém comportamento legado (sem overlay).
  * - 3.1.0: #164 review — tabs de moeda removidas (contexto resolve a moeda dominante;
  *          aluno não precisa trocar aba). Props `currencies` e `accounts` retiradas.
  * - 3.0.0: E5 (issue #164) — overlay de curva ideal (meta + stop) quando ciclo único
@@ -16,8 +18,12 @@ import React, { useMemo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Line, ComposedChart
 } from 'recharts';
+import { Eye, EyeOff } from 'lucide-react';
 import { formatCurrencyDynamic, formatCurrencyCompact } from '../utils/currency';
+import useLocalStorage from '../hooks/useLocalStorage';
 import DebugBadge from './DebugBadge';
+
+const IDEAL_TOGGLE_LS_KEY = 'equityCurve.showIdeal.v1';
 
 /**
  * Ordena trades de forma determinística: data ASC, hora ASC, fallback por índice.
@@ -133,7 +139,7 @@ const StatusBadge = ({ status, percentVsGoal, percentVsStop }) => {
   );
 };
 
-const SingleCurrencyChart = ({ trades, initialBalance, currency, idealSeries, idealStatus, hideTitle = false }) => {
+const SingleCurrencyChart = ({ trades, initialBalance, currency, idealSeries, idealStatus, hideTitle = false, onToggleIdeal, showIdeal }) => {
   const realCurve = useMemo(() => buildEquityCurve(trades, initialBalance), [trades, initialBalance]);
   const data = useMemo(() => mergeRealAndIdeal(realCurve, idealSeries), [realCurve, idealSeries]);
 
@@ -185,6 +191,22 @@ const SingleCurrencyChart = ({ trades, initialBalance, currency, idealSeries, id
         <div className="flex justify-between items-center px-6 pt-4 mb-2">
           <h3 className="font-bold text-white text-sm">Curva de Patrimônio</h3>
           <div className="flex gap-2 items-center">
+            {onToggleIdeal && (
+              <button
+                type="button"
+                onClick={onToggleIdeal}
+                title={showIdeal ? 'Ocultar curva ideal do plano' : 'Mostrar curva ideal do plano'}
+                aria-pressed={showIdeal}
+                className={`text-[11px] font-medium px-2 py-1 rounded border flex items-center gap-1 transition-colors ${
+                  showIdeal
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                    : 'bg-slate-800/60 border-slate-700/40 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {showIdeal ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                Curva ideal
+              </button>
+            )}
             {idealStatus && (
               <StatusBadge {...idealStatus} />
             )}
@@ -248,14 +270,21 @@ const EquityCurve = ({
   idealSeries = null,
   idealStatus = null,
 }) => {
+  const [showIdeal, setShowIdeal] = useLocalStorage(IDEAL_TOGGLE_LS_KEY, true);
+  const hasIdealAvailable = Array.isArray(idealSeries) && idealSeries.length > 0;
+  const effectiveIdealSeries = hasIdealAvailable && showIdeal ? idealSeries : null;
+  const effectiveIdealStatus = hasIdealAvailable && showIdeal ? idealStatus : null;
+
   return (
     <>
       <SingleCurrencyChart
         trades={trades}
         initialBalance={initialBalance}
         currency={currency}
-        idealSeries={idealSeries}
-        idealStatus={idealStatus}
+        idealSeries={effectiveIdealSeries}
+        idealStatus={effectiveIdealStatus}
+        onToggleIdeal={hasIdealAvailable ? () => setShowIdeal(!showIdeal) : null}
+        showIdeal={showIdeal}
       />
       <DebugBadge component="EquityCurve" embedded />
     </>
