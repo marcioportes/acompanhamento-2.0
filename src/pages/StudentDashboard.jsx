@@ -429,8 +429,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
                 trades={filteredTrades}
                 initialBalance={aggregatedInitialBalance}
                 currency={dominantCurrency || 'BRL'}
-                currencies={balancesByCurrency}
-                accounts={filteredAccountsByType}
                 idealSeries={idealEquitySeries}
                 idealStatus={idealEquityStatus}
               />

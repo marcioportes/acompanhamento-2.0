@@ -1,20 +1,22 @@
 /**
  * EquityCurve
- * @version 3.0.0 (v1.41.0)
+ * @version 3.1.0 (v1.41.0)
  * @description Gráfico de Curva de Patrimônio com moeda dinâmica.
  *
  * CHANGELOG:
- * - 3.0.0: E5 (issue #164) — tabs por moeda quando ≥2 moedas distintas no contexto;
- *          overlay de curva ideal (meta + stop) quando ciclo único é selecionado.
+ * - 3.1.0: #164 review — tabs de moeda removidas (contexto resolve a moeda dominante;
+ *          aluno não precisa trocar aba). Props `currencies` e `accounts` retiradas.
+ * - 3.0.0: E5 (issue #164) — overlay de curva ideal (meta + stop) quando ciclo único
+ *          é selecionado.
  * - 2.0.0: Multi-moeda via prop `currency`, fix ordenação (entryTime como desempate)
  * - 1.0.0: Versão original
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Line, ComposedChart
 } from 'recharts';
-import { formatCurrencyDynamic, formatCurrencyCompact, resolveCurrency } from '../utils/currency';
+import { formatCurrencyDynamic, formatCurrencyCompact } from '../utils/currency';
 import DebugBadge from './DebugBadge';
 
 /**
@@ -228,16 +230,14 @@ const SingleCurrencyChart = ({ trades, initialBalance, currency, idealSeries, id
 /**
  * Gráfico de Curva de Patrimônio.
  *
- * Modos de operação:
- *  - Single-currency (default): comportamento legado, uma curva única.
- *  - Multi-currency (currencies.size ≥ 2): renderiza tabs por moeda, cada tab com sua série e eixo Y.
- *  - Curva ideal: overlay de meta/stop linear pelos dias do ciclo (apenas single-currency, plano único).
+ * A moeda exibida é a `currency` recebida via prop — o consumidor (ex: StudentDashboard)
+ * resolve a moeda dominante pelo contexto (conta/plano/ciclo) e a repassa. Quando há
+ * múltiplas moedas agregadas no contexto, o agregador escolhe a dominante; a separação
+ * por moeda vive nos cards de métrica, não no gráfico.
  *
  * @param {Array}  trades         - Lista de trades filtrados.
- * @param {number} initialBalance - Soma dos saldos iniciais (single-mode).
- * @param {string} currency       - Código de moeda (single-mode). Default: 'BRL'.
- * @param {Map}    [currencies]   - balancesByCurrency. Se size ≥ 2, ativa tabs.
- * @param {Array}  [accounts]     - Contas (necessárias para mapear trade.accountId → currency em modo tabs).
+ * @param {number} initialBalance - Soma dos saldos iniciais.
+ * @param {string} currency       - Código da moeda exibida. Default: 'BRL'.
  * @param {Array}  [idealSeries]  - Saída de generateIdealEquitySeries ou null.
  * @param {Object} [idealStatus]  - Saída de calculateIdealStatus ou null.
  */
@@ -245,105 +245,9 @@ const EquityCurve = ({
   trades = [],
   initialBalance = 0,
   currency = 'BRL',
-  currencies = null,
-  accounts = null,
   idealSeries = null,
   idealStatus = null,
 }) => {
-  // Detecta modo tabs: pelo menos 2 moedas distintas no contexto agregado
-  const tabsMode = currencies instanceof Map && currencies.size >= 2;
-
-  // Monta mapa accountId → currency para filtragem por aba
-  const accountCurrencyMap = useMemo(() => {
-    if (!tabsMode || !Array.isArray(accounts)) return null;
-    const map = new Map();
-    accounts.forEach(acc => {
-      if (acc && acc.id) map.set(acc.id, resolveCurrency(acc.currency));
-    });
-    return map;
-  }, [tabsMode, accounts]);
-
-  // Agrupa trades por moeda (tabs mode)
-  const tradesByCurrency = useMemo(() => {
-    if (!tabsMode || !accountCurrencyMap) return null;
-    const grouped = new Map();
-    trades.forEach(t => {
-      const cur = accountCurrencyMap.get(t.accountId) || 'BRL';
-      if (!grouped.has(cur)) grouped.set(cur, []);
-      grouped.get(cur).push(t);
-    });
-    return grouped;
-  }, [tabsMode, trades, accountCurrencyMap]);
-
-  // Default tab = moeda com mais trades (desempate: ordem alfabética)
-  const tabKeys = useMemo(() => {
-    if (!tabsMode) return [];
-    return Array.from(currencies.keys()).sort();
-  }, [tabsMode, currencies]);
-
-  const defaultTab = useMemo(() => {
-    if (!tabsMode || tabKeys.length === 0) return null;
-    let best = tabKeys[0];
-    let bestCount = tradesByCurrency?.get(best)?.length || 0;
-    tabKeys.forEach(k => {
-      const c = tradesByCurrency?.get(k)?.length || 0;
-      if (c > bestCount) {
-        best = k;
-        bestCount = c;
-      }
-    });
-    return best;
-  }, [tabsMode, tabKeys, tradesByCurrency]);
-
-  const [activeTab, setActiveTab] = useState(defaultTab);
-  const currentTab = activeTab && tabKeys.includes(activeTab) ? activeTab : defaultTab;
-
-  if (tabsMode) {
-    const tabBalance = currencies.get(currentTab);
-    const tabTrades = tradesByCurrency.get(currentTab) || [];
-    const tabInitial = tabBalance?.initial ?? 0;
-
-    return (
-      <div className="w-full h-full min-h-[300px] flex flex-col">
-        <div className="flex justify-between items-center px-6 pt-4 mb-2">
-          <div className="flex items-center gap-3">
-            <h3 className="font-bold text-white text-sm">Curva de Patrimônio</h3>
-            <div className="flex gap-1 bg-slate-800/50 rounded-lg p-1" role="tablist">
-              {tabKeys.map(k => {
-                const isActive = k === currentTab;
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setActiveTab(k)}
-                    className={`text-xs font-mono px-2 py-0.5 rounded transition ${isActive ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
-                  >
-                    {k}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <span className={`text-xs font-mono px-2 py-1 rounded ${(tabBalance?.pnl ?? 0) >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-            {(tabBalance?.pnl ?? 0) >= 0 ? '▲' : '▼'} Total: {formatCurrencyDynamic(tabBalance?.pnl ?? 0, currentTab)}
-          </span>
-        </div>
-
-        <SingleCurrencyChart
-          trades={tabTrades}
-          initialBalance={tabInitial}
-          currency={currentTab}
-          idealSeries={null}
-          idealStatus={null}
-          hideTitle
-        />
-        <DebugBadge component="EquityCurve" embedded />
-      </div>
-    );
-  }
-
   return (
     <>
       <SingleCurrencyChart
