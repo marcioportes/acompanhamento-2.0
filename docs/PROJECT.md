@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.24.0  
-> **Última atualização:** 21/04/2026 — Abertura #164 Dashboard Aluno ajustes: lock CHUNK-02 + reserva v1.41.0, spec aprovada (E1 SWOT lê review / E2 Card Consistência / E3 Matriz Emocional 4D / E5 EquityCurve multi-curva + ideal).  
+> **Versão:** 0.25.0  
+> **Última atualização:** 21/04/2026 — v0.25.0: §13 IMPLEMENTAÇÃO AUTÔNOMA (protocolo completo coord/worker + gates humanos por email, 6 fases, 10 decisões de design, validação externa de claims) + INV-27 (validação externa de claims — cegueira epistêmica) + INV-28 (email iCloud canal primário) + INV-26 amendment (CC-Interface também READ-ONLY para `.coord-id`).  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -64,6 +64,7 @@ Este documento segue versionamento semântico:
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
 | 0.23.8 | 21/04/2026 | §4.3 rm -rf obrigatório | `rm -rf ~/projects/issue-{NNN}` é passo obrigatório após `git worktree remove` — sessões anteriores omitiam, deixando resíduos físicos. Verificação `ls ~/projects/` adicionada ao protocolo. |
+| 0.25.0 | 21/04/2026 | §13 Implementação Autônoma + INV-27/28 + amendment INV-26 | Sessão de design de 5+ horas consolidada. Adiciona §13 com protocolo completo de modo autônomo (CC-Interface + CC-Coord + CC-Worker), 6 fases compactas, canais de comunicação com ownership de diretórios, máquinas de estado por ator, regra de trigger explícito ("atacar #NNN em modo autônomo"), critério opt-in vs modo interativo default, bloco CLAIMS obrigatório em report do worker, validator com 3 checks (commit/tests/files), 10 decisões de design enxutas (bugs 1-10), tipos de email + rate limit, notas operacionais sobre prompt cache. INV-27 formaliza validação externa contra cegueira epistêmica (modelo pode não detectar própria alucinação; auto-declaração "não aluciei" insuficiente). INV-28 estabelece email iCloud como canal primário de gate humano. INV-26 amendment explicita que CC-Interface também é READ-ONLY para `.coord-id`. Scripts python (`cc-notify-email.py`, `cc-validate-task.py`) e refactor de `cc-worktree-start.sh` ficam pra issue formal futura (INV-07/09); esta entrada é SPEC TEXTUAL, não implementação. Lição crítica: design aprovado em sessão não é autoridade até ser commitado no main — qualquer sessão nova só enxerga o que está no PROJECT.md. |
 | 0.24.0 | 21/04/2026 | Abertura #164 — lock CHUNK-02 + v1.41.0 reservada | Dashboard Aluno ajustes: spec aprovada com 4 entregas (E1 SWOT reaproveita `review.swot` + fallback / E2 card "Consistência Operacional" CV P&L + ΔT W/L substitui RR Asymmetry e Tempo Médio isolado / E3 Matriz Emocional 4D Opção A com expectância+payoff+shift+ΔWR+sparkline / E5 EquityCurve com tabs por moeda + curva ideal do plano por trajetória linear de dias corridos quando planId único). E4 (cards desatualizados) removida — Marcio confirmou nenhum dos 10 cards stale. CHUNK-02 escrita; CHUNK-04/06/13/16 leitura. |
 | 0.23.7 | 21/04/2026 | Encerramento #166 v1.40.0 | PR #168 mergeado (merge commit `ca74b289`). Fix Sev1: botão "Finalizar" em ProbingQuestionsFlow com try/catch + disabled + spinner; fromStatus='probing' em completeProbing; DebugBadge corrigido. 4 testes novos, 1732/1732 passando. CHUNK-09 liberado (AVAILABLE). Issue doc arquivada. Worktree removido. |
 | 0.23.6 | 21/04/2026 | INV-26: `.coord-id` é responsabilidade do start script | Coord nunca sobrescreve `.coord-id` — valor gravado pelo `cc-worktree-start.sh` no boot do listener. Anti-pattern: inventar session ID quando `$CLAUDE_SESSION_ID` retorna vazio. Lição #166. |
@@ -429,9 +430,49 @@ O arquivo `.cc-mailbox/.coord-id` é gravado pelo `cc-worktree-start.sh` no mome
 
 **Regra:** o coord só grava `.cc-mailbox/.coord-dir` (caminho do worktree), e apenas se o script não o tiver criado. `.coord-id` é somente leitura para o coord.
 
-**Anti-pattern:** coord inventar ou derivar um session ID (ex: `coord-issue-NNN-taskNN`) quando `$CLAUDE_SESSION_ID` retorna vazio. O ID real foi gravado pelo start script — não tocá-lo é suficiente.
+**Amendment (v0.25.0):** `.coord-id` é READ-ONLY para **todos os atores**, incluindo CC-Coord, CC-Interface (modo autônomo — §13), e listener tmux. Somente `cc-worktree-start.sh` pode escrever, e apenas uma vez, no momento da criação do tmux.
+
+**Anti-pattern:** coord (ou qualquer outro ator) inventar ou derivar um session ID (ex: `coord-issue-NNN-taskNN`) quando `$CLAUDE_SESSION_ID` retorna vazio. O ID real foi gravado pelo start script — não tocá-lo é suficiente.
 
 > Origem: lição aprendida #166 — coord sobrescreveu `.coord-id` com valor inventado, destruindo session ID real que já estava gravado pelo start script.
+
+### INV-27: Validação Externa de Claims — Cegueira Epistêmica
+
+Dados inventados em processo real (commits, contagem de testes, arquivos tocados) são falha crítica. Modelos de linguagem podem **não detectar a própria alucinação** — cegueira epistêmica no caso "não sei que não sei"; auto-declaração "não aluciei" é estatisticamente correlacionada com honestidade mas não é garantia determinística, e sob pressão o sycophancy bias pode vencer.
+
+**Consequência:** toda claim verificável emitida por worker, coord, ou pelo próprio CC em modo interativo após delegação sem supervisão humana ativa DEVE ser externamente validada. Auto-declaração não é suficiente.
+
+**Mecanismos obrigatórios (modo autônomo — §13):**
+- Worker grava bloco `CLAIMS` estruturado em todo `<N>-report.md` do outbox (commit_hash, tests{passed,failed,cmd}, files_touched)
+- Coord roda `cc-validate-task.py` em todo `TASK_DELIVERED`, antes de despachar próxima task
+- Validator executa 3 checks baratos (<300ms total): commit_exists (`git cat-file -e`), tests_match (contagem declarada = `result.log`), files_match (`git show --name-only` ⊆ `files_touched`)
+- Qualquer check em falha → STOP-HALLUCINATION + email humano
+- `tests: skipped` permitido APENAS se `files_touched` contém somente `.md` ou `docs/`; caso contrário STOP
+
+**Mecanismo em modo interativo:** quando CC delega/executa tasks sem supervisão (ex: "vai implementando isso"), o CC DEVE rodar `cc-validate-task.py` contra o próprio commit antes de relatar "pronto". Se fail → para e sinaliza.
+
+> Origem: sessão de design 21/04/2026 (bugs 1-10 do protocolo autônomo). Reframe da versão inicial após discussão sobre cegueira epistêmica: o problema não é modelo desonesto, é modelo que literalmente não consegue detectar a própria invenção. Solução é verificação externa, não confiança.
+
+### INV-28: Email iCloud É Canal Primário de Gate Humano
+
+Notificação humana (STOP-XXX do coord autônomo para Marcio) usa **email iCloud SMTP** como canal primário, sempre. Outros canais (WhatsApp via Evolution API, push notifications) são estritamente opcionais.
+
+**Regras:**
+- Helper único: `~/cc-mailbox/bin/cc-notify-email.py` (global, reutilizado por todas as issues)
+- Interface via JSON stdin com campos tipados (`type`, `issue`, `task`, `summary`, `detail`, `options`, `recommendation`)
+- Rate limit por `(issue, type)`: silencia se mesmo par enviado <4h atrás
+- Sem re-envio automático — um gate, um email. Se Marcio quer status, RC em CC-Interface e pergunta
+- Canais opcionais (WhatsApp) usam try/except com exit silent em falha — nunca bloqueiam o loop
+- SMTP iCloud via `EMAIL_PASSWORD` em `~/cc-mailbox/.env` (separado de outros .env do repositório)
+- Log global em `~/cc-mailbox/log/emails.log` + per-issue em `.cc-mailbox/log/emails-<data>.log`
+
+**Subject scaneável:** `[Espelho #<NNN>] <STOP_TYPE>: <título 5-8 palavras>`
+
+**Tipos de gate:** `TEST_FAIL`, `DESTRUCTIVE`, `CONFLICT`, `INVARIANT`, `HALLUCINATION`, `HUMAN_GATE`, `FINISHED`.
+
+**Body — COMO RESPONDER (linguagem natural, sem código Morse):** Marcio abre Claude Code mobile, RC na sessão tmux `cc-NNN`, fala em linguagem natural ("vai com a A", "explica esse erro", "aborta"). CC-Interface entende contexto e relaya.
+
+> Origem: sessão de design 21/04/2026 — validação por dry-run (4 emails enviados, SMTP funcional, subject chega legível no iPhone). PushNotification inviável em `claude -p` headless (testado, sempre "user active" suppressed). WhatsApp depende de Docker/Evolution API rodando, logo não pode ser canal primário.
 
 ---
 
@@ -1580,6 +1621,290 @@ epic:   agrupa outros issues (não implementável diretamente)
 - DebugBadge: obrigatório em tudo, com `component="NomeExato"`
 - Datas: DD/MM/YYYY sempre
 - Semana: começa na segunda-feira
+
+---
+
+## 13. IMPLEMENTAÇÃO AUTÔNOMA
+
+> Seção formalizada em 21/04/2026 (v0.25.0) após sessão de design de 5+ horas consolidando bugs 1-10, validando arquitetura 3-tier, INVs 26 amendment / 27 / 28, e arquitetura de notificação por email.
+> 
+> Esta seção é a SPEC TEXTUAL do modo autônomo. A implementação dos scripts python (`cc-notify-email.py`, `cc-validate-task.py`) e o refactor de `cc-worktree-start.sh` exigem issue formal própria (INV-07/09). O protocolo pode ser executado em modo degradado (email manual) enquanto os scripts não existem — o gate humano continua funcionando via RC em CC-Interface.
+
+### 13.1 Objetivo
+
+Executar issues do projeto em modo autônomo: Marcio dispara "atacar #NNN em modo autônomo", três sessões Claude se coordenam (Interface / Coord / Worker), PR fica pronto para review manual. Gates humanos por email. Zero polling, custo 0 quando idle.
+
+### 13.2 Modo Autônomo vs Modo Interativo
+
+**O modo autônomo é opt-in explícito.** O modo **padrão do projeto continua sendo o modo interativo** (§4.0 — pair programming assíncrono com coder, bundle formal INV-19 descartado em v0.22.2).
+
+**Triggers:**
+- Marcio diz "atacar #NNN em modo autônomo" (ou variante "em modo autônomo") → Fase 1 desta seção
+- Qualquer outro fraseamento → modo interativo (§4.0)
+- Na dúvida, a sessão PERGUNTA. Autônomo nunca é assumido.
+
+**Quando usar AUTÔNOMO:**
+- Issue bem desambiguado (spec claro, decisões estruturais já fechadas)
+- Trabalho paralelizável em tasks de 1-5 commits cada (~30-90min por task)
+- Marcio quer se ausentar (noite, outro compromisso)
+- Escopo mecânico (refactor, add tests, migração, bulk rename, atualização em massa)
+
+**Quando usar INTERATIVO (§4.0):**
+- Design em discovery (ambiguidade estrutural ainda não resolvida)
+- Debugging com hipótese incerta
+- Feature pequena (1 commit, <30min)
+- Marcio disponível para pair em tempo real
+
+**Regra prática:** se a conversa precisa de deliberação livre entre Marcio e CC, é interativo. Se pode ser reduzida a "tasks pré-especificadas + gates humanos pontuais", é autônomo.
+
+### 13.3 O Que É Universal (Aplica aos Dois Modos)
+
+INV-27 + bloco CLAIMS + `cc-validate-task.py` **não são exclusivos do modo autônomo**. Aplicam-se sempre que CC executa tasks sem supervisão humana ativa — inclui delegações durante modo interativo ("vai implementando isso enquanto eu faço outra coisa"). No interativo, o CC roda `cc-validate-task.py` contra o próprio commit antes de relatar "pronto"; se fail → para e sinaliza.
+
+Seção `§3.2 Decisões Autônomas` no control file do issue também é universal: registra qualquer decisão tomada pelo CC sem consulta explícita ao Marcio, independentemente do modo.
+
+### 13.4 Atores
+
+| Ator | Papel | Lifetime | Modo | TTY/RC |
+|------|-------|----------|------|--------|
+| **Marcio** | humano | persistente | — | celular/desktop |
+| **CC-Interface** | endpoint humano; setup; desambiguação; relay de respostas | persistente em tmux durante toda a issue | interativo | ✅ TTY via tmux, RC-atachada |
+| **CC-Coord** | orquestrador; despacha workers; valida entregas; decide ambiguidades autônomas; notifica humano | **efêmero — 1 ciclo por wake-up via `--resume`** | `-p` headless | ❌ |
+| **CC-Worker** | executor stateless; uma task por vida | **efêmero — 1 task** | `-p` headless | ❌ |
+
+**Invariante de vida:** Coord e Worker SEMPRE morrem após emitir seu artefato. Wake-up sempre via `claude --resume <session-id>`.
+
+### 13.5 Canais de Comunicação
+
+| Origem → Destino | Canal | Mecanismo |
+|------------------|-------|-----------|
+| Marcio ↔ CC-Interface | tmux + RC | padrão Claude Code |
+| CC-Interface → CC-Coord | `coord-inbox/human-response-<N>.md` + `claude --resume <coord-id> --permission-mode auto -p "HUMAN_GATE_RESOLVED ref=<path>"` | flock 30s no `coord.lock` |
+| CC-Coord → CC-Worker | `inbox/<N>.md` + listener tmux detecta arquivo novo | listener `cc-NNN` |
+| CC-Worker → CC-Coord | `outbox/<N>-result.log` + `<N>-report.md` (com CLAIMS) + `claude --resume <coord-id> -p "TASK_DELIVERED N=<N>"` | flock 30s |
+| CC-Coord → Marcio (gate) | email iCloud SMTP via `cc-notify-email.py` | canal primário (INV-28) |
+| CC-Coord → Marcio (urgente opcional) | WhatsApp Evolution API | só se Docker up; skip silent caso contrário |
+
+### 13.6 Ownership de Diretórios `.cc-mailbox/`
+
+- `inbox/` — CC-Coord escreve, listener lê
+- `outbox/` — CC-Worker escreve; CC-Coord lê via TASK_DELIVERED; CC-Interface lê em STOPs
+- `coord-inbox/` — CC-Interface escreve; CC-Coord lê via HUMAN_GATE_RESOLVED
+- `locks/coord.lock` — flock advisório, qualquer ator antes de `--resume`
+- `notify-scratch/` — CC-Coord escreve scratch JSONs antes de invocar `cc-notify-email.py`
+- `log/` — auditoria de emails enviados (rate limit + histórico)
+- `.coord-id` — gravado pelo start script, READ-ONLY para todos (INV-26)
+
+### 13.7 Topologia de Armazenamento
+
+```
+~/cc-mailbox/                        # GLOBAL — reutilizado por todas as issues
+├── bin/
+│   ├── cc-notify-email.py           # helper único de email
+│   ├── cc-validate-task.py          # validator INV-27
+│   ├── cc-notify-whatsapp.sh        # opcional, check Docker interno
+│   └── cc-worktree-start.sh         # refactor para suportar Interface/Coord/Worker
+├── log/emails.log                   # auditoria global (rate limit + histórico)
+└── .env                             # EMAIL_PASSWORD iCloud
+
+~/projects/issue-NNN/.cc-mailbox/    # POR-ISSUE — dentro do worktree
+├── inbox/<N>.md                     # CC-Coord escreve, listener lê
+├── outbox/<N>-result.log            # CC-Worker escreve (log curto, token-eficiente)
+├── outbox/<N>-report.md             # CC-Worker escreve (report + bloco CLAIMS)
+├── coord-inbox/human-response-<N>.md # CC-Interface escreve, CC-Coord lê
+├── locks/coord.lock                 # flock advisório antes de qualquer --resume
+├── notify-scratch/<uuid>.json       # CC-Coord escreve antes de invocar email
+├── log/emails-<data>.log            # auditoria per-issue
+└── .coord-id                        # session_id do CC-Coord, READ-ONLY (INV-26)
+```
+
+### 13.8 Fluxo das 6 Fases
+
+#### Fase 1 — Setup (NO MAIN, auto mode ON, RC OFF)
+
+| # | Ator | Ação |
+|---|------|------|
+| 1 | Marcio → CC-Interface | "Atacar issue #NNN em modo autônomo" |
+| 2 | CC-Interface | Confirma protocolo, ativa INV-27, avisa que RC só ativa depois |
+| 3 | CC-Interface | §4.0 NO MAIN: verifica versão PROJECT.md (INV-14), `gh issue view NNN`, valida chunks §6.3 |
+| 4 | CC-Interface | NO MAIN: registra locks + reserva próximo minor em `version.js` |
+| 5 | CC-Interface | Commit no main: `docs: registrar locks + reservar vX.Y.Z para issue-NNN` |
+| 6 | CC-Interface | `git worktree add ~/projects/issue-NNN -b tipo/issue-NNN-descricao` |
+| 7 | CC-Interface | `cd worktree`, cria `docs/dev/issues/issue-NNN-*.md`, preenche §1-3, §6 |
+| 8a | CC-Interface | Cria `.cc-mailbox/{inbox,outbox,coord-inbox,locks,notify-scratch,log}/` |
+| 8b | CC-Interface | `claude --permission-mode auto --output-format json -p "<contexto>; confirme ready e morra"` → captura `coord_session_id` do JSON |
+| 8c | CC-Interface | `cc-worktree-start.sh NNN <path> <coord_session_id>` → cria tmux + grava `.coord-id` (INV-26) |
+| 8d | CC-Interface | `flock -w 30 locks/coord.lock claude --resume <coord-id> --permission-mode auto -p "DISPATCH_FIRST_TASK"` → coord despacha `inbox/01.md`, morre |
+
+#### Fase 2 — Desambiguação (gate humano único, pesado, upfront)
+
+| # | Ator | Ação |
+|---|------|------|
+| 9 | CC-Interface | Varredura ativa de ambiguidades no spec |
+| 10 | CC-Interface | Aplica INV-18 em bloco: cada ambiguidade = pergunta concreta com opções |
+| 11 | Marcio | Responde bloco completo |
+| 12 | CC-Interface | Registra em `§3.1 Decisões Antecipadas` do control file |
+| 13 | CC-Interface | Re-varre spec; se restar ambiguidade → volta ao 10 |
+| 14 | CC-Interface | Decompõe issue em tasks usando spec desambiguada (regra: 1-5 commits, ~30-90min; micro-tasks merge na próxima — heurística, não regra dura) |
+| 15-16 | CC-Interface ↔ Marcio | Plano de fases apresentado e aprovado |
+
+#### Fase 3 — Transição
+
+| # | Ator | Ação |
+|---|------|------|
+| 19 | Marcio | Ativa Remote Mode (auto mode da CC-Interface cai aqui — ok, ela já escreveu tudo) |
+| 20 | CC-Interface | Idle no prompt, sem polling, token cost = 0 |
+
+#### Fase 4 — Loop Autônomo (sem humano)
+
+| # | Ator | Ação |
+|---|------|------|
+| 22 | Listener `cc-NNN` | Detecta `inbox/<N>.md` → `claude -p` headless no worktree |
+| 23-25 | CC-Worker | Lê task, edita, testa, commita, grava `outbox/<N>-result.log` + `<N>-report.md` (com bloco CLAIMS — INV-27), **morre** |
+| 26 | Listener | `flock -w 30 locks/coord.lock claude --resume <coord-id> --permission-mode auto -p "TASK_DELIVERED N=<N>"` |
+| 27 | CC-Coord | Lê `result.log` ANTES do `report.md` (token budget — result.log é ~1KB, report.md ~20-50KB) |
+| 28 | CC-Coord | Relê control file (§3.1, §3.2, plano) |
+| 29 | CC-Coord | **Roda `cc-validate-task.py`** (INV-27) contra CLAIMS do worker |
+| 30 | CC-Coord | Se ambiguidade nova → resolve pela ordem: spec → PROJECT.md → padrão → menor blast radius. Registra em `§3.2 Decisões Autônomas` (DEC-AUTO-NN) |
+| 31 | CC-Coord | Decide: OK → `inbox/<N+1>.md` + **morre**. STOP de qualquer tipo → grava STOP-XXX no outbox + invoca `cc-notify-email.py` + **morre**. **Sempre morre.** |
+
+#### Fase 5 — Gate Humano Excepcional (durante loop)
+
+| # | Ator | Ação |
+|---|------|------|
+| 32 | Marcio | Recebe email no celular |
+| 33 | Marcio | Abre Claude Code mobile, RC em CC-Interface |
+| 34 | CC-Interface | Lê outbox proativamente quando Marcio digita algo, mostra STOPs |
+| 35 | Marcio | Responde em **linguagem natural** ("vai com a A", "explica esse erro", "aborta") |
+| 36 | CC-Interface | Interpreta intent. Registra resposta em `§4 Sessões` do control file. Escreve `coord-inbox/human-response-<N>.md` |
+| 37 | CC-Interface | `flock -w 30 locks/coord.lock claude --resume <coord-id> --permission-mode auto -p "HUMAN_GATE_RESOLVED ref=<path>"` |
+| 38 | CC-Coord | Acorda, lê resposta humana, ajusta plano, despacha próxima task ou aplica correção, **morre** |
+
+#### Fase 6 — Fechamento
+
+| # | Ator | Ação |
+|---|------|------|
+| 39 | CC-Coord | Última task validada → consolida `§3.2` + relatório de execução → email "FINISHED" |
+| 40-42 | Marcio + CC-Interface | Revisa decisões §3.2; contestadas → revert/rebase + task corretiva (rollback **por task**, não por decisão — INV-13 + princípio de unidade indivisível) |
+| 43 | CC-Interface | Atualiza control file §5; propõe deltas de PROJECT.md (CHANGELOG, DEC, DT) e `version.js` no control file |
+| 44 | CC-Interface | Email "pronto para PR" |
+| 45 | Marcio | Aprova → CC-Interface cria PR (com `Closes #NNN`) → Marcio merga manualmente |
+| 46 | CC-Interface | §4.3: aplica deltas no main, fecha issue, deleta branch, libera locks §6.3, `git worktree remove`, `rm -rf`, mata tmux |
+
+### 13.9 CLAIMS + Validator (INV-27 operacional)
+
+**Bloco CLAIMS obrigatório em todo `<N>-report.md` do worker:**
+
+````
+## CLAIMS (machine-readable, do not edit)
+```json
+{
+  "commit_hash": "a1b2c3d",
+  "tests": {"passed": 1573, "failed": 0, "cmd": "npm test"},
+  "files_touched": ["src/utils/foo.js", "src/__tests__/foo.test.js"]
+}
+```
+````
+
+**Regra `tests: skipped`:** permitido APENAS se `files_touched` contém somente `.md` ou `docs/`. Qualquer `.js|.jsx|.ts|.tsx|.cjs|.mjs|functions/**` com `tests: skipped` → STOP-HALLUCINATION.
+
+**`cc-validate-task.py` — 3 checks, <300ms total:**
+
+| Check | Verifica | Falha → |
+|-------|----------|---------|
+| `commit_exists` | `git cat-file -e <hash>` | STOP-HALLUCINATION |
+| `tests_match` | contagem declarada bate com `result.log` | STOP-HALLUCINATION |
+| `files_match` | `git show --name-only <hash>` ⊆ `files_touched` declarado | STOP-HALLUCINATION |
+
+Edge cases (símbolos, contagem de linhas, DECs/INVs citadas) caem na revisão humana no fechamento via `§3.2`. Validador é intencionalmente minimalista — cobre alucinação grave, não tuning fino.
+
+### 13.10 Tipos de Email (Gate Humano)
+
+```
+Subject: [Espelho #NNN] <TIPO>: <título 5-8 palavras>
+
+TIPOS:
+  TEST_FAIL        — testes quebraram, coord quer orientação
+  DESTRUCTIVE      — worker quer ação destrutiva, precisa aprovação
+  CONFLICT         — merge conflict, shared file bloqueado
+  INVARIANT        — invariante violada (INV-XX)
+  HALLUCINATION    — validator pegou claim falsa
+  HUMAN_GATE       — ambiguidade genuinamente nova durante loop
+  FINISHED         — todas as tasks ok, pronto para revisão de §3.2
+```
+
+**Rate limit:** mesmo `(issue, type)` silenciado se enviado <4h atrás. **Sem re-envio automático** — um gate, um email. Se Marcio quer status, RC em CC-Interface e pergunta.
+
+**Body — seção COMO RESPONDER:**
+```
+Abra Claude Code mobile, RC em CC-Interface (sessão tmux:cc-NNN),
+fale o que quer em linguagem natural. CC-Interface entende contexto e relaya.
+
+Exemplos:
+  "vai com a A"
+  "explica esse erro"
+  "aborta a issue"
+  "tenta de novo sem mexer no compliance"
+  "olha antes o histórico de testes desse arquivo, depois decida"
+```
+
+### 13.11 Componentes a Construir (Status)
+
+| Componente | Localização | Status |
+|------------|-------------|--------|
+| `cc-notify-email.py` | `~/cc-mailbox/bin/` | A ESCREVER (issue formal) |
+| `cc-validate-task.py` | `~/cc-mailbox/bin/` | A ESCREVER (issue formal) |
+| `cc-notify-whatsapp.sh` | `~/cc-mailbox/bin/` | A ESCREVER (trivial, opcional) |
+| `cc-worktree-start.sh` | `~/cc-mailbox/bin/` | **REFACTOR** (existe em v0.22.5 para coord/worker, estender para Interface) |
+| `~/cc-mailbox/.env` | `~/cc-mailbox/` | Setup manual (EMAIL_PASSWORD iCloud) |
+
+**Status do protocolo:** spec textual ativa (esta seção §13 + INVs 27/28). Enquanto os scripts não existem, modo autônomo pode rodar em modo degradado: email manual (CC-Coord grava STOP no outbox + CC-Interface relaya via RC quando Marcio olha), validator skipped (CC-Coord pede revisão humana manual do CLAIMS). Implementação completa dos scripts vira issue formal futura (INV-07/09).
+
+### 13.12 Decisões de Design (Bugs 1-10)
+
+Ver histórico em `/mnt/c/000-Marcio/Temp/proto-autonomo-state.md` para o design completo. Síntese:
+
+| Bug | Decisão |
+|-----|---------|
+| 1 | Coord nasce em 8b (antes do start script) via `claude -p` com captura de `session_id` do JSON |
+| 2 | Modelo A — Coord SEMPRE morre após turn. Wake-up sempre via `--resume` |
+| 3 | CC-Interface idle no prompt, zero polling, trigger único = Marcio digitar algo |
+| 4 | `coord-inbox/` declarado + ownership definido (§13.6) |
+| 5 | `flock -w 30 coord.lock` antes de todo `--resume`. Lock per-worktree. Timeout → 1 retry → email Marcio |
+| 6 | CLAIMS mínimo (3 campos) + validator com 3 checks (commit, testes, arquivos). Resto cai na revisão humana em §3.2 (versão enxuta — não inflar) |
+| 7 | Rate limit por `(issue, type)` em 4h no script. Sem re-envio automático de gate não resolvido |
+| 8 | Task = 1-5 commits, ~30-90min. Micro-task (1 linha) merge na próxima. Heurística, não regra dura |
+| 9 | `cc-notify-whatsapp.sh` faz `curl -sf localhost:8080/` interno. Exit silent se Docker off. Outros atores não sabem |
+| 10 | Task = unidade indivisível. Decisões dentro da task ficam no mesmo commit. Rollback por task, não por decisão. §3.2 + PR review cobrem |
+
+### 13.13 Notas Operacionais (Não-Invariantes)
+
+**Prompt cache:**
+- `claude -p` usa prompt cache por default; Coord/Worker não precisam de `cache_control` explícito
+- Loop apertado (Worker entrega → Coord acorda em <5min): cache hit natural, economia esperada
+- Gate humano longo (>5min até Marcio responder): TTL de 5min do Anthropic expira → `--resume` re-carrega transcript inteiro. Comportamento esperado, não é bug
+- Entre workers: cada worker é sessão nova `claude -p`, sem cache compartilhado
+- Otimização futura possível (fora do MVP): se telemetria mostrar custo alto em gates longos, avaliar `coord-state.md` condensado que `--resume` usa em vez do transcript inteiro
+
+**Dry-runs validados (sessão de design 21/04/2026):**
+
+| Teste | Resultado | Implicação |
+|-------|-----------|-----------|
+| `claude --resume <id> --permission-mode auto -p` | ✅ executa Bash sem prompt, `permission_denials: []` | Resume preserva auto mode; loop coord/worker viável |
+| `claude -p` headless sem TTY | ✅ executa, mas refuse soft em writes fora de cwd | Headless funciona; modelo tem judgment próprio |
+| `PushNotification` em `-p` headless | ❌ 4 tentativas, todas "user active" suppressed | PushNotification inviável como canal primário |
+| Email iCloud SMTP via Python `smtplib` | ✅ enviado, chegou no celular (latência iCloud) | Canal primário validado |
+| WhatsApp Evolution API | ⚠️ não testado vivo (Evolution offline no momento) | Funcional em arquitetura, requer Docker up |
+
+### 13.14 Referência Cruzada
+
+- **INV-25** — Outbox antes de resume (fundação do TASK_DELIVERED)
+- **INV-26** — `.coord-id` read-only, start script responsabilidade única (+ amendment v0.25.0)
+- **INV-27** — Validação externa de claims (cegueira epistêmica)
+- **INV-28** — Email iCloud canal primário
+- **§4.0** — Protocolo padrão interativo (default do projeto)
+- **§6.3** — Registry de chunks e locks (obrigatório antes de qualquer worktree)
+- **DEC-AUTO-NN** — convenção de identificador de decisão autônoma do coord (registrada em `§3.2` do control file do issue)
 
 ---
 

@@ -137,6 +137,42 @@ Nenhuma feature, Cloud Function ou modificação de UI é implementada sem valid
 
 > Origem: sessão de voz 15/04/2026 — diagnóstico do gap entre descrição verbal e interpretação do modelo como causa raiz de retrabalho sistemático.
 
+### INV-25: Outbox Antes de Resume
+No padrão coord/worker, todo output de worker é persistido em arquivo (`outbox/`) **antes** de invocar `claude --resume`. Coord nunca depende de memória de processo do worker — lê sempre do disco. Ver detalhe em PROJECT.md §3 / §13.
+
+### INV-26: `.coord-id` Read-Only (+ amendment v0.25.0)
+`.cc-mailbox/.coord-id` é gravado pelo `cc-worktree-start.sh` na criação do tmux. **READ-ONLY para todos os atores** (Coord, Interface, listener). Coord nunca inventa session ID. Ver detalhe em PROJECT.md §3 / §13.
+
+### INV-27: Validação Externa de Claims — Cegueira Epistêmica
+Modelos podem não detectar a própria alucinação. Auto-declaração "não aluciei" é insuficiente. Worker escreve bloco CLAIMS estruturado em todo report; coord/CC roda `cc-validate-task.py` com 3 checks (commit/tests/files) antes de declarar tarefa OK. Falha → STOP-HALLUCINATION. Aplica aos DOIS modos (autônomo e interativo pós-delegação). Ver PROJECT.md §13.9.
+
+### INV-28: Email iCloud É Canal Primário de Gate Humano
+No modo autônomo, notificação humana usa email iCloud SMTP via `cc-notify-email.py`. WhatsApp/push são estritamente opcionais com try/except silencioso. Rate limit por `(issue, type)` em 4h, sem re-envio automático. Ver PROJECT.md §13.10.
+
+---
+
+## MODO AUTÔNOMO VS INTERATIVO
+
+**Default:** modo interativo (§4.0 do PROJECT.md — pair programming assíncrono).
+
+**Trigger para modo autônomo:** Marcio diz "atacar #NNN em modo autônomo" (ou variante "em modo autônomo"). Qualquer outro fraseamento → interativo. Na dúvida, PERGUNTAR. Autônomo nunca é assumido.
+
+**Quando o modo autônomo é apropriado:**
+- Issue bem desambiguado (spec claro, decisões estruturais fechadas)
+- Trabalho paralelizável em tasks de 1-5 commits (~30-90min cada)
+- Marcio vai se ausentar
+- Escopo mecânico (refactor, add tests, migração, bulk rename)
+
+**Quando usar interativo:**
+- Design em discovery
+- Debugging com hipótese incerta
+- Feature pequena (<30min)
+- Marcio disponível para pair
+
+**Especificação completa:** PROJECT.md §13 (atores CC-Interface / CC-Coord / CC-Worker, 6 fases, canais, validator, tipos de email, decisões de design bugs 1-10). Scripts `cc-notify-email.py` + `cc-validate-task.py` ainda por implementar (issue formal pendente) — enquanto não existem, modo autônomo roda em modo degradado (email manual via RC em CC-Interface).
+
+**INV-27 + CLAIMS + validator são universais** — aplicam também no modo interativo quando há delegação sem supervisão ativa.
+
 ---
 
 ## REGRA DE ATIVAÇÃO AUTOMÁTICA
@@ -230,7 +266,7 @@ Aplica-se a:
 3. Quais hooks/listeners são afetados? (re-renders, queries)
 4. Há side-effects em PL, compliance, emotional scoring?
 5. Dados parciais/inválidos podem entrar no caminho crítico?
-6. A feature respeita todas as INV-01 a INV-18?
+6. A feature respeita todas as INV-01 a INV-28?
 7. Qual o blast radius se algo der errado?
 8. Existe rollback viável?
 9. Quais testes existentes podem quebrar?
