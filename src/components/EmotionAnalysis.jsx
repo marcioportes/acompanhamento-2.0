@@ -201,7 +201,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
       <div className="glass-card p-6 flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500 relative">
         <Brain className="w-12 h-12 mb-3 opacity-20" />
         <p>Sem dados emocionais suficientes.</p>
-        <DebugBadge component="EmotionAnalysis" />
+        <DebugBadge component="EmotionAnalysis" embedded />
       </div>
     );
   }
@@ -312,7 +312,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
         </div>
       )}
 
-      <DebugBadge component="EmotionAnalysis" />
+      <DebugBadge component="EmotionAnalysis" embedded />
     </div>
   );
 };
