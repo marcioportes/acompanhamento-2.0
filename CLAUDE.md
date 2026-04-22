@@ -140,8 +140,8 @@ Nenhuma feature, Cloud Function ou modificação de UI é implementada sem valid
 ### INV-25: Outbox Antes de Resume
 No padrão coord/worker, todo output de worker é persistido em arquivo (`outbox/`) **antes** de invocar `claude --resume`. Coord nunca depende de memória de processo do worker — lê sempre do disco. Ver detalhe em PROJECT.md §3 / §13.
 
-### INV-26: `.coord-id` Read-Only (+ amendment v0.25.0)
-`.cc-mailbox/.coord-id` é gravado pelo `cc-worktree-start.sh` na criação do tmux. **READ-ONLY para todos os atores** (Coord, Interface, listener). Coord nunca inventa session ID. Ver detalhe em PROJECT.md §3 / §13.
+### INV-26: `.coord-id` e `.coord-dir` Read-Only (+ amendments v0.25.0 e v0.26.0)
+`.cc-mailbox/.coord-id` e `.cc-mailbox/.coord-dir` são gravados pelo `cc-worktree-start.sh` na criação do tmux. **READ-ONLY para todos os atores** (Coord, Interface, listener). Coord nunca inventa session ID nem reescreve o path. **Única exceção:** Protocolo de Recovery de CC-Interface (§13.15). Ver detalhe em PROJECT.md §3 / §13.
 
 ### INV-27: Validação Externa de Claims — Cegueira Epistêmica
 Modelos podem não detectar a própria alucinação. Auto-declaração "não aluciei" é insuficiente. Worker escreve bloco CLAIMS estruturado em todo report; coord/CC roda `cc-validate-task.py` com 3 checks (commit/tests/files) antes de declarar tarefa OK. Falha → STOP-HALLUCINATION. Aplica aos DOIS modos (autônomo e interativo pós-delegação). Ver PROJECT.md §13.9.

@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.25.0  
-> **Última atualização:** 21/04/2026 — v0.25.0: §13 IMPLEMENTAÇÃO AUTÔNOMA (protocolo completo coord/worker + gates humanos por email, 6 fases, 10 decisões de design, validação externa de claims) + INV-27 (validação externa de claims — cegueira epistêmica) + INV-28 (email iCloud canal primário) + INV-26 amendment (CC-Interface também READ-ONLY para `.coord-id`).  
+> **Versão:** 0.26.0  
+> **Última atualização:** 22/04/2026 — v0.26.0: 3 amendments ao §13 com evidência direta da rodada #164 — cross-worktree do `.coord-dir` (nova regra de disciplina), Protocolo de Recovery de CC-Interface (§13.15, única exceção ao READ-ONLY da INV-26), exigência explícita de bloco CLAIMS no briefing do worker (§13.9).  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -64,6 +64,7 @@ Este documento segue versionamento semântico:
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
 | 0.23.8 | 21/04/2026 | §4.3 rm -rf obrigatório | `rm -rf ~/projects/issue-{NNN}` é passo obrigatório após `git worktree remove` — sessões anteriores omitiam, deixando resíduos físicos. Verificação `ls ~/projects/` adicionada ao protocolo. |
+| 0.26.0 | 22/04/2026 | §13 amendments — bugs rodada #164 (cross-worktree, recovery, CLAIMS obrigatório) | Primeira execução real do §13 (issue #164) expôs 3 bugs com evidência direta: (1) **Cross-worktree do `.coord-dir`** — session `5cd03bd7` (pts/4) criada com cwd = main repo teve JSONL em project-scope `-acompanhamento-2-0`; listener do worktree invocando `--resume` falhou silenciosamente. §13.7 ganha `.coord-dir` com mesma disciplina READ-ONLY da INV-26; §13.8 passo 8b explicita pré-condição "cwd = worktree" como dura. (2) **§13 sem cláusula de recovery** — CC-Interface morreu; nova precisou sobrescrever `.coord-id` pra funcionar, violando INV-26 literalmente. Nova §13.15 "Protocolo de Recovery de CC-Interface" formaliza os 5 passos (process check, JSONL scope check, spawn sem --resume, escrita excepcional de .coord-id + .coord-dir, registro em §3.2). INV-26 ganha amendment explicitando recovery como única exceção ao READ-ONLY. (3) **Briefing sem exigência de CLAIMS** — worker E3 entregou em formato livre porque o prompt não pediu CLAIMS, deixando validação INV-27 totalmente manual. §13.9 ganha parágrafo obrigando cláusula explícita de CLAIMS em todo briefing, sob pena de STOP-HALLUCINATION. Escopo intencionalmente enxuto: 2 bugs adicionais ("fantasma de ação não-tomada", dedup-por-brewing-prolongado) foram desinflados por evidência circunstancial — ficam como observações em memória, não amendments estruturais. Lição de método: em fase de design pós-execução, desinflar antes de commitar — pressão social de "ser útil" + narrativa do humano podem inflar diagnóstico para além da evidência. |
 | 0.25.0 | 21/04/2026 | §13 Implementação Autônoma + INV-27/28 + amendment INV-26 | Sessão de design de 5+ horas consolidada. Adiciona §13 com protocolo completo de modo autônomo (CC-Interface + CC-Coord + CC-Worker), 6 fases compactas, canais de comunicação com ownership de diretórios, máquinas de estado por ator, regra de trigger explícito ("atacar #NNN em modo autônomo"), critério opt-in vs modo interativo default, bloco CLAIMS obrigatório em report do worker, validator com 3 checks (commit/tests/files), 10 decisões de design enxutas (bugs 1-10), tipos de email + rate limit, notas operacionais sobre prompt cache. INV-27 formaliza validação externa contra cegueira epistêmica (modelo pode não detectar própria alucinação; auto-declaração "não aluciei" insuficiente). INV-28 estabelece email iCloud como canal primário de gate humano. INV-26 amendment explicita que CC-Interface também é READ-ONLY para `.coord-id`. Scripts python (`cc-notify-email.py`, `cc-validate-task.py`) e refactor de `cc-worktree-start.sh` ficam pra issue formal futura (INV-07/09); esta entrada é SPEC TEXTUAL, não implementação. Lição crítica: design aprovado em sessão não é autoridade até ser commitado no main — qualquer sessão nova só enxerga o que está no PROJECT.md. |
 | 0.24.0 | 21/04/2026 | Abertura #164 — lock CHUNK-02 + v1.41.0 reservada | Dashboard Aluno ajustes: spec aprovada com 4 entregas (E1 SWOT reaproveita `review.swot` + fallback / E2 card "Consistência Operacional" CV P&L + ΔT W/L substitui RR Asymmetry e Tempo Médio isolado / E3 Matriz Emocional 4D Opção A com expectância+payoff+shift+ΔWR+sparkline / E5 EquityCurve com tabs por moeda + curva ideal do plano por trajetória linear de dias corridos quando planId único). E4 (cards desatualizados) removida — Marcio confirmou nenhum dos 10 cards stale. CHUNK-02 escrita; CHUNK-04/06/13/16 leitura. |
 | 0.23.7 | 21/04/2026 | Encerramento #166 v1.40.0 | PR #168 mergeado (merge commit `ca74b289`). Fix Sev1: botão "Finalizar" em ProbingQuestionsFlow com try/catch + disabled + spinner; fromStatus='probing' em completeProbing; DebugBadge corrigido. 4 testes novos, 1732/1732 passando. CHUNK-09 liberado (AVAILABLE). Issue doc arquivada. Worktree removido. |
@@ -431,6 +432,8 @@ O arquivo `.cc-mailbox/.coord-id` é gravado pelo `cc-worktree-start.sh` no mome
 **Regra:** o coord só grava `.cc-mailbox/.coord-dir` (caminho do worktree), e apenas se o script não o tiver criado. `.coord-id` é somente leitura para o coord.
 
 **Amendment (v0.25.0):** `.coord-id` é READ-ONLY para **todos os atores**, incluindo CC-Coord, CC-Interface (modo autônomo — §13), e listener tmux. Somente `cc-worktree-start.sh` pode escrever, e apenas uma vez, no momento da criação do tmux.
+
+**Amendment (v0.26.0):** a única exceção ao READ-ONLY é o **Protocolo de Recovery de CC-Interface (§13.15)**. Quando CC-Interface morre e nova sessão assume, ela pode (e deve) atualizar `.coord-id` com seu próprio session_id e `.coord-dir` com o worktree path. Fora dessa exceção e da escrita única pelo start script, qualquer ator que escreva nesses arquivos comete anti-pattern de alteração de estrutura sem aprovação. `.coord-dir` passa a ter a mesma disciplina READ-ONLY de `.coord-id` — divergência entre `.coord-dir` e worktree real causa falha silenciosa do `--resume` do listener (observado na rodada #164).
 
 **Anti-pattern:** coord (ou qualquer outro ator) inventar ou derivar um session ID (ex: `coord-issue-NNN-taskNN`) quando `$CLAUDE_SESSION_ID` retorna vazio. O ID real foi gravado pelo start script — não tocá-lo é suficiente.
 
@@ -1715,7 +1718,12 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 ├── locks/coord.lock                 # flock advisório antes de qualquer --resume
 ├── notify-scratch/<uuid>.json       # CC-Coord escreve antes de invocar email
 ├── log/emails-<data>.log            # auditoria per-issue
-└── .coord-id                        # session_id do CC-Coord, READ-ONLY (INV-26)
+├── .coord-id                        # session_id do CC-Coord, READ-ONLY (INV-26)
+└── .coord-dir                       # worktree path absoluto, gravado pelo cc-worktree-start.sh,
+                                     # READ-ONLY depois. Consumido pelo listener antes de `claude --resume`.
+                                     # Mesma disciplina READ-ONLY da INV-26 (amendment v0.26.0).
+                                     # Divergência main vs worktree → --resume falha silenciosa
+                                     # (JSONL em project-scope errado). Bug observado na rodada #164.
 ```
 
 ### 13.8 Fluxo das 6 Fases
@@ -1732,7 +1740,7 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 | 6 | CC-Interface | `git worktree add ~/projects/issue-NNN -b tipo/issue-NNN-descricao` |
 | 7 | CC-Interface | `cd worktree`, cria `docs/dev/issues/issue-NNN-*.md`, preenche §1-3, §6 |
 | 8a | CC-Interface | Cria `.cc-mailbox/{inbox,outbox,coord-inbox,locks,notify-scratch,log}/` |
-| 8b | CC-Interface | `claude --permission-mode auto --output-format json -p "<contexto>; confirme ready e morra"` → captura `coord_session_id` do JSON |
+| 8b | CC-Interface | **Pré-condição dura: cwd = `~/projects/issue-NNN`** (herdado do passo 7). Executar do main repo invalida o session_id — JSONL fica em project-scope `-acompanhamento-2-0`, listener do worktree invocando `--resume` falha silenciosa por project-scope mismatch. Comando: `claude --permission-mode auto --output-format json -p "<contexto>; confirme ready e morra"` → captura `coord_session_id` do JSON. Bug observado na rodada #164 (v0.26.0). |
 | 8c | CC-Interface | `cc-worktree-start.sh NNN <path> <coord_session_id>` → cria tmux + grava `.coord-id` (INV-26) |
 | 8d | CC-Interface | `flock -w 30 locks/coord.lock claude --resume <coord-id> --permission-mode auto -p "DISPATCH_FIRST_TASK"` → coord despacha `inbox/01.md`, morre |
 
@@ -1792,6 +1800,12 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 | 46 | CC-Interface | §4.3: aplica deltas no main, fecha issue, deleta branch, libera locks §6.3, `git worktree remove`, `rm -rf`, mata tmux |
 
 ### 13.9 CLAIMS + Validator (INV-27 operacional)
+
+**Exigência de CLAIMS no briefing do worker (v0.26.0):** todo prompt gravado em `inbox/<N>.md` DEVE conter, próximo à seção de relatório, a cláusula:
+
+> Você DEVE entregar, no `report.md`, bloco `## CLAIMS (machine-readable, do not edit)` em JSON com `commit_hash`, `tests{passed,failed,cmd}`, `files_touched`. Ausência → coord marca STOP-HALLUCINATION automaticamente.
+
+Sem essa cláusula explícita, o worker entrega em formato livre e o validator (`cc-validate-task.py` ou equivalente manual) não tem artefato parseável. Observado na rodada #164: worker E3 entregou sem CLAIMS por omissão da Interface ao compor o briefing — validação INV-27 ficou totalmente manual (`git cat-file -e` + `vitest run`), funcional mas frágil. Template de briefing canônico com cláusula CLAIMS deve ser parte de `~/cc-mailbox/templates/worker-briefing.md` (componente da issue formal futura dos scripts).
 
 **Bloco CLAIMS obrigatório em todo `<N>-report.md` do worker:**
 
@@ -1899,12 +1913,59 @@ Ver histórico em `/mnt/c/000-Marcio/Temp/proto-autonomo-state.md` para o design
 ### 13.14 Referência Cruzada
 
 - **INV-25** — Outbox antes de resume (fundação do TASK_DELIVERED)
-- **INV-26** — `.coord-id` read-only, start script responsabilidade única (+ amendment v0.25.0)
+- **INV-26** — `.coord-id` e `.coord-dir` read-only, start script responsabilidade única (+ amendments v0.25.0 e v0.26.0)
 - **INV-27** — Validação externa de claims (cegueira epistêmica)
 - **INV-28** — Email iCloud canal primário
 - **§4.0** — Protocolo padrão interativo (default do projeto)
 - **§6.3** — Registry de chunks e locks (obrigatório antes de qualquer worktree)
+- **§13.15** — Protocolo de Recovery de CC-Interface (única exceção ao READ-ONLY da INV-26)
 - **DEC-AUTO-NN** — convenção de identificador de decisão autônoma do coord (registrada em `§3.2` do control file do issue)
+
+### 13.15 Protocolo de Recovery de CC-Interface
+
+> Adicionado em v0.26.0 após primeiro caso real de queda (rodada #164, 21-22/04/2026).
+
+Quando CC-Interface morre durante a execução de um issue (crash, kill, desconexão permanente), uma nova sessão pode assumir o papel sem perder o trabalho em progresso. Passos:
+
+| # | Ação | Observação |
+|---|------|-----------|
+| 1 | **Process check** da session anterior | `ps -p <old_PID>`. Se não responde → session morta, recovery autorizada |
+| 2 | **JSONL scope check** | `find ~/.claude/projects -name "<old_session_id>*"`. Se project-scope ≠ worktree (bug cross-worktree — §13.7/§13.8), documentar como causa raiz e justificativa para override |
+| 3 | **Nova CC-Interface spawna** | `cd ~/projects/issue-NNN && claude --permission-mode auto` — **sem `--resume`** (recovery real, não reanimação). Aplicar prompt padrão de recovery (template abaixo) |
+| 4 | **Escrita excepcional** | `.coord-id` ← `$CLAUDE_SESSION_ID` da nova Interface; `.coord-dir` ← worktree absoluto. **Esta é a ÚNICA exceção à INV-26** (amendment v0.26.0) |
+| 5 | **Registro obrigatório** | Nova Interface adiciona em `§3.2 Decisões Autônomas` do control file: `"RECOVERY: CC-Interface anterior <PID> morta; override de .coord-id e .coord-dir — bug cross-worktree <confirmado|não-confirmado>"` |
+
+**Template de prompt de recovery** (colar na nova sessão após spawn):
+
+```
+Você é CC-Interface de RECUPERAÇÃO para issue #NNN.
+A CC-Interface anterior morreu (PID <X>).
+Reconstrua o estado a partir do filesystem — sem contexto da sessão anterior.
+
+1. Ler docs/PROJECT.md §13 + CLAUDE.md
+2. Ler docs/dev/issues/issue-NNN-*.md (control file: escopo, entregas E1..)
+3. Listar .cc-mailbox/processed/ (tasks processadas) + outbox/ (reports)
+4. git log --oneline main..HEAD (commits da branch)
+5. Ler reports em outbox/ para confirmar o que cada worker entregou
+6. Rodar npx vitest run (validação INV-27 manual enquanto scripts ausentes)
+7. Atualizar .coord-id (seu $CLAUDE_SESSION_ID) + .coord-dir (worktree absoluto)
+   — única exceção à INV-26 (§13.15, passo 4)
+8. Registrar ação em §3.2 do control file (passo 5)
+
+Reporte em 10 linhas:
+- Entregas por fase — quais feitas, quais pendentes (base nos reports + git log)
+- Próxima ação sugerida (validar, despachar pendente, ou fechar issue)
+- Inconsistências entre commits e reports (INV-27 manual)
+- Confirmar que atualizou .coord-id + .coord-dir
+```
+
+**Critério de sucesso da recovery:**
+- Nova Interface identifica entregas sem alucinar
+- Pega session_id antigo como inválido e atualiza
+- Sugere ação coerente com fase real do issue (não re-despachar se tudo entregue)
+- Não assume estado — verifica via filesystem
+
+**Validação histórica:** rodada #164 — CC-Interface `5cd03bd7` morreu (kill manual após 5h40min); nova `4ec7b999` aplicou este protocolo e reconstruiu estado em ~2min (4 entregas E1/E2/E3/E5, 19 commits, 1838/1838 testes confirmados). Bug cross-worktree confirmado: JSONL antigo em `-acompanhamento-2-0`, novo em `-issue-164`.
 
 ---
 
