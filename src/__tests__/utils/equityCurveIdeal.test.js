@@ -13,8 +13,6 @@ import {
   calculateIdealStatus,
 } from '../../utils/equityCurveIdeal.js';
 
-const ISO = (s) => s; // shorthand
-
 describe('generateIdealEquitySeries', () => {
   it('gera 31 pontos para ciclo de 30 dias (start + end inclusive)', () => {
     const plan = { pl: 10000, cycleGoal: 10, cycleStop: 5 };
