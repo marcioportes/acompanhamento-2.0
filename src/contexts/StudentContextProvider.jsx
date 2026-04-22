@@ -159,11 +159,11 @@ export const StudentContextProvider = ({ scopeStudentId, accounts = [], plans = 
     }
     const cycle = detectActiveCycle(plan, now);
     const period = cycle ? getPeriodRange(cycle, PERIOD_KIND.CYCLE, now) : null;
-    // Propaga accountId do plano — plano pertence a uma conta, a cascata
-    // de filtros (saldos, moeda, curva) depende da accountId estar sincronizada
+    // NÃO propaga accountId — manter a seleção do usuário ("Todas as contas"
+    // ou conta específica). Cascata de filtros para os cards é feita pelo
+    // useDashboardMetrics via selectedPlanId (que tem precedência).
     setPersisted({
       ...state,
-      accountId: plan.accountId,
       planId,
       cycleKey: cycle?.cycleKey ?? null,
       period: period
