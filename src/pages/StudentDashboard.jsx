@@ -168,8 +168,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   const {
     filteredAccountsByType,
-    allAccountTrades,
-    plansToShow,
     availablePlans,
     filteredTrades,
     stats,
@@ -494,7 +492,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Análises */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <SwotAnalysis trades={allAccountTrades} plans={plansToShow} currentBalance={aggregatedCurrentBalance} />
+        <SwotAnalysis
+          studentId={overrideStudentId || user?.uid}
+          planId={selectedPlanId}
+          /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
+             (hoje 'weekly-review' é restrita a mentor em App.jsx). */
+        />
         <SetupAnalysis trades={filteredTrades} />
       </div>
       <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
