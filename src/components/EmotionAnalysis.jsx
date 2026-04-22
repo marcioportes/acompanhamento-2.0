@@ -1,71 +1,213 @@
 /**
- * EmotionAnalysis (Refactored to Emotion Performance Matrix)
- * @version 2.0.0
- * @description Substitui o gráfico de pizza por uma Matriz de Performance baseada na Emoção de ENTRADA.
- * Identifica quais sentimentos (Gatilhos) geram lucro ou prejuízo.
+ * EmotionAnalysis — Matriz Emocional 4D (issue #164 E3)
+ *
+ * Agrupa trades por emotionEntry (fallback emotion legado). Cada emoção vira
+ * um card com grid 2×2 de micro-KPIs, um por dimensão do framework 4D:
+ *   - Financial   → expectancy + payoff
+ *   - Operational → shiftRate
+ *   - Emotional   → WR e Δ WR (vs globalWR)
+ *   - Maturity    → sparkline de PL acumulado (últimos 10 trades da emoção)
+ *
+ * Rodapé traz insight acionável: prioriza shift rate alto em ofensor,
+ * depois melhor performer com payoff, depois WR baixo com Δ positivo, e
+ * por fim fallback "seu melhor estado é X".
  */
 
 import React, { useMemo } from 'react';
-import { Brain, TrendingUp, AlertTriangle, ArrowRight, Activity } from 'lucide-react';
-import { formatCurrency, formatPercent } from '../utils/calculations';
+import { Brain, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { formatCurrency } from '../utils/calculations';
+import { buildEmotionMatrix4D } from '../utils/emotionMatrix4D';
+import DebugBadge from './DebugBadge';
 
-const EmotionAnalysis = ({ trades }) => {
-  
-  // Engine de Processamento de Dados Local
-  // Processa a lista bruta de trades para extrair inteligência comportamental
-  const emotionStats = useMemo(() => {
-    if (!trades || trades.length === 0) return [];
+const fmtSignedCurrency = (v) => (v >= 0 ? `+${formatCurrency(v)}` : formatCurrency(v));
+const fmtPct = (v, digits = 0) => `${v >= 0 ? '' : ''}${v.toFixed(digits)}%`;
+const fmtSignedPct = (v, digits = 0) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
 
-    // 1. Agrupamento
-    const groups = trades.reduce((acc, trade) => {
-      // Prioridade: EmotionEntry (Novo) > Emotion (Legado) > "Não Informado"
-      let emotionKey = trade.emotionEntry || trade.emotion || 'Não Informado';
-      
-      // Normalização de texto (Capitalize)
-      if (emotionKey !== 'Não Informado') {
-        emotionKey = emotionKey.charAt(0).toUpperCase() + emotionKey.slice(1).toLowerCase();
-      }
-      
-      if (!acc[emotionKey]) {
-        acc[emotionKey] = { 
-          name: emotionKey, 
-          count: 0, 
-          wins: 0, 
-          totalPL: 0 
-        };
-      }
-      
-      const result = Number(trade.result || 0);
-      acc[emotionKey].count += 1;
-      acc[emotionKey].totalPL += result;
-      if (result > 0) acc[emotionKey].wins += 1;
-      
-      return acc;
-    }, {});
+const shiftColor = (rate) => {
+  if (rate < 20) return 'text-emerald-400';
+  if (rate < 40) return 'text-amber-400';
+  return 'text-red-400';
+};
 
-    // 2. Cálculo de Derivados (KPIs) e Ordenação
-    return Object.values(groups)
-      .map(item => ({
-        ...item,
-        winRate: (item.wins / item.count) * 100,
-        avgPL: item.totalPL / item.count, // Expectativa matemática por trade
-        impactScore: Math.abs(item.totalPL) // Para decidir relevância visual
-      }))
-      .sort((a, b) => b.totalPL - a.totalPL); // Do maior Lucro para o maior Prejuízo
-  }, [trades]);
+const Sparkline = ({ series, positive }) => {
+  if (!series || series.length === 0) return null;
+  const width = 80;
+  const height = 28;
+  const padding = 2;
 
-  // Renderização de Estado Vazio
+  if (series.length === 1) {
+    const cx = width / 2;
+    const cy = height / 2;
+    return (
+      <svg
+        data-testid="emotion-sparkline"
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        className="overflow-visible"
+      >
+        <polyline
+          fill="none"
+          stroke={positive ? '#34d399' : '#f87171'}
+          strokeWidth="1.5"
+          points={`${cx - 4},${cy} ${cx + 4},${cy}`}
+        />
+      </svg>
+    );
+  }
+
+  const values = series.map((p) => p.cumPL);
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 0);
+  const range = max - min || 1;
+
+  const points = series
+    .map((p, i) => {
+      const x = padding + (i / (series.length - 1)) * (width - 2 * padding);
+      const y = height - padding - ((p.cumPL - min) / range) * (height - 2 * padding);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+
+  const zeroY = height - padding - ((0 - min) / range) * (height - 2 * padding);
+
+  return (
+    <svg
+      data-testid="emotion-sparkline"
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      className="overflow-visible"
+    >
+      <line
+        x1={padding}
+        x2={width - padding}
+        y1={zeroY}
+        y2={zeroY}
+        stroke="#334155"
+        strokeWidth="0.5"
+        strokeDasharray="2 2"
+      />
+      <polyline
+        fill="none"
+        stroke={positive ? '#34d399' : '#f87171'}
+        strokeWidth="1.5"
+        points={points}
+      />
+    </svg>
+  );
+};
+
+const Quadrant = ({ label, children }) => (
+  <div className="flex-1 min-w-0">
+    <p className="text-[9px] uppercase tracking-wider text-slate-500 mb-1 font-semibold">
+      {label}
+    </p>
+    <div className="space-y-0.5 text-xs">{children}</div>
+  </div>
+);
+
+const KPI = ({ label, value, valueClassName = 'text-slate-200' }) => (
+  <div className="flex items-baseline justify-between gap-2">
+    <span className="text-[10px] text-slate-500">{label}</span>
+    <span className={`font-mono font-semibold ${valueClassName}`}>{value}</span>
+  </div>
+);
+
+const buildInsight = (cards) => {
+  if (!cards || cards.length === 0) return null;
+
+  // 1. Maior ofensor (totalPL < 0) com shift rate alto (>40%)
+  const offenders = cards.filter((c) => c.totalPL < 0).sort((a, b) => a.totalPL - b.totalPL);
+  const worstShift = offenders.find((c) => c.shiftRate > 40);
+  if (worstShift) {
+    return {
+      kind: 'shift',
+      name: worstShift.name,
+      text: (
+        <>
+          Shift rate alto em <span className="text-red-400 font-bold">{worstShift.name}</span>{' '}
+          ({worstShift.shiftRate.toFixed(0)}%) — você entra com uma emoção e sai com outra, e essa
+          transição costuma virar perda.
+        </>
+      ),
+    };
+  }
+
+  // 2. Melhor performer com payoff ≥ 1.5
+  const best = cards[0];
+  if (best && best.totalPL > 0 && best.payoff !== null && best.payoff >= 1.5) {
+    return {
+      kind: 'payoff',
+      name: best.name,
+      text: (
+        <>
+          Seu melhor estado é <span className="text-emerald-400 font-bold">{best.name}</span>, com
+          payoff {best.payoff.toFixed(1)}x — sustentado por gestão de saída.
+        </>
+      ),
+    };
+  }
+
+  // 3. WR baixo (<50%) mas Δ positivo alto (≥10) → "aumentar exposição"
+  const undervalued = cards.find(
+    (c) => c.wrEmotion < 50 && c.wrDelta !== null && c.wrDelta >= 10 && c.count >= 3,
+  );
+  if (undervalued) {
+    return {
+      kind: 'undervalued',
+      name: undervalued.name,
+      text: (
+        <>
+          <span className="text-blue-400 font-bold">{undervalued.name}</span> tem WR baixo mas
+          excelente vs sua média ({fmtSignedPct(undervalued.wrDelta)}) — pondere aumentar
+          exposição.
+        </>
+      ),
+    };
+  }
+
+  // 4. Fallback: seu melhor estado é X
+  const bestFallback = cards[0];
+  return {
+    kind: 'fallback',
+    name: bestFallback.name,
+    text: (
+      <>
+        Seu melhor estado é <span className="text-emerald-400 font-bold">{bestFallback.name}</span>
+        {cards.length > 1 && cards[cards.length - 1].totalPL < 0 && (
+          <>
+            . Atenção redobrada com{' '}
+            <span className="text-red-400 font-bold">{cards[cards.length - 1].name}</span>, que é
+            seu maior ofensor
+          </>
+        )}
+        .
+      </>
+    ),
+  };
+};
+
+const EmotionAnalysis = ({ trades, globalWR }) => {
+  const cards = useMemo(
+    () => buildEmotionMatrix4D(trades, { globalWR, sparklineWindow: 10 }),
+    [trades, globalWR],
+  );
+
+  const insight = useMemo(() => buildInsight(cards), [cards]);
+
   if (!trades || trades.length === 0) {
     return (
-      <div className="glass-card p-6 flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500">
+      <div className="glass-card p-6 flex flex-col items-center justify-center h-full min-h-[300px] text-slate-500 relative">
         <Brain className="w-12 h-12 mb-3 opacity-20" />
         <p>Sem dados emocionais suficientes.</p>
+        <DebugBadge component="EmotionAnalysis" />
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6 h-full flex flex-col min-h-[350px]">
+    <div className="glass-card p-6 h-full flex flex-col min-h-[350px] relative">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6 flex-none">
         <div className="flex items-center gap-3">
@@ -73,97 +215,104 @@ const EmotionAnalysis = ({ trades }) => {
             <Brain className="w-5 h-5 text-purple-400" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white leading-tight">Matriz Emocional</h3>
-            <p className="text-xs text-slate-500">Impacto financeiro por sentimento de entrada</p>
+            <h3 className="text-lg font-bold text-white leading-tight">Matriz Emocional 4D</h3>
+            <p className="text-xs text-slate-500">
+              Financial · Operational · Emotional · Maturity por emoção de entrada
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Lista / Matriz Scrollável */}
+      {/* Lista de cards */}
       <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
-        {emotionStats.map((stat) => {
-          const isProfitable = stat.totalPL >= 0;
-          
-          // Estilização Dinâmica baseada no Resultado
-          const theme = isProfitable 
-            ? { 
-                bg: 'bg-emerald-500/5', 
-                border: 'border-emerald-500/20', 
-                text: 'text-emerald-400', 
-                bar: 'bg-emerald-500',
-                icon: <TrendingUp className="w-3 h-3" />
-              } 
-            : { 
-                bg: 'bg-red-500/5', 
-                border: 'border-red-500/20', 
-                text: 'text-red-400', 
-                bar: 'bg-red-500',
-                icon: <AlertTriangle className="w-3 h-3" />
-              };
+        {cards.map((c) => {
+          const profitable = c.totalPL >= 0;
+          const borderClass = profitable ? 'border-emerald-500/20' : 'border-red-500/20';
+          const bgClass = profitable ? 'bg-emerald-500/5' : 'bg-red-500/5';
+          const totalColor = profitable ? 'text-emerald-400' : 'text-red-400';
 
           return (
-            <div 
-              key={stat.name} 
-              className={`relative p-3 rounded-xl border ${theme.border} ${theme.bg} transition-all hover:bg-opacity-50 group`}
+            <div
+              key={c.name}
+              data-testid={`emotion-card-${c.name}`}
+              className={`relative p-3 rounded-xl border ${borderClass} ${bgClass} transition-all`}
             >
-              {/* Linha 1: Nome e Valor Total */}
-              <div className="flex justify-between items-center mb-2">
+              {/* Header do card */}
+              <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-200 text-sm">{stat.name}</span>
+                  <span className="font-bold text-slate-200 text-sm">{c.name}</span>
                   <span className="text-[10px] text-slate-500 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-700/50">
-                    {stat.count}x
+                    {c.count}x
                   </span>
                 </div>
-                <span className={`font-mono font-bold text-sm ${theme.text}`}>
-                  {formatCurrency(stat.totalPL)}
+                <span className={`font-mono font-bold text-sm ${totalColor}`}>
+                  {fmtSignedCurrency(c.totalPL)}
                 </span>
               </div>
 
-              {/* Linha 2: KPIs Detalhados */}
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                <div className="flex items-center gap-3">
-                  <span title="Taxa de Acerto">
-                    WR: <b className="text-slate-300">{formatPercent(stat.winRate)}</b>
-                  </span>
-                  <span className="w-px h-3 bg-slate-700/50"></span>
-                  <span title="Resultado Médio por Trade">
-                    Méd: <b className={stat.avgPL >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                      {formatCurrency(stat.avgPL)}
-                    </b>
-                  </span>
-                </div>
-                <div className={`${theme.text} opacity-50 group-hover:opacity-100 transition-opacity`}>
-                  {theme.icon}
-                </div>
-              </div>
+              {/* Grid 2×2 de quadrantes 4D */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <Quadrant label="Financial">
+                  <KPI
+                    label="Expect"
+                    value={fmtSignedCurrency(c.expectancy)}
+                    valueClassName={c.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                  />
+                  <KPI
+                    label="Payoff"
+                    value={c.payoff === null ? '—' : `${c.payoff.toFixed(1)}x`}
+                  />
+                </Quadrant>
 
-              {/* Linha 3: Barra de Intensidade (Win Rate Visual) */}
-              <div className="w-full bg-slate-900/50 h-1 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full ${theme.bar} opacity-60`} 
-                  style={{ width: `${Math.min(stat.winRate, 100)}%` }} 
-                />
+                <Quadrant label="Operational">
+                  <KPI
+                    label="Shift"
+                    value={fmtPct(c.shiftRate)}
+                    valueClassName={shiftColor(c.shiftRate)}
+                  />
+                </Quadrant>
+
+                <Quadrant label="Emotional">
+                  <KPI label="WR" value={fmtPct(c.wrEmotion)} />
+                  {c.wrDelta !== null && (
+                    <KPI
+                      label="Δ"
+                      value={fmtSignedPct(c.wrDelta)}
+                      valueClassName={c.wrDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                    />
+                  )}
+                </Quadrant>
+
+                <Quadrant label="Maturity">
+                  <div className="flex items-center gap-2">
+                    <Sparkline series={c.sparklineSeries} positive={profitable} />
+                    {profitable ? (
+                      <TrendingUp className="w-3 h-3 text-emerald-400 opacity-60" />
+                    ) : (
+                      <TrendingDown className="w-3 h-3 text-red-400 opacity-60" />
+                    )}
+                  </div>
+                </Quadrant>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Rodapé: Insight Automático */}
-      {emotionStats.length > 0 && (
+      {/* Rodapé: Insight Acionável */}
+      {insight && (
         <div className="mt-4 pt-4 border-t border-slate-800/50 flex-none">
-          <div className="flex items-start gap-2 text-xs text-slate-400 leading-relaxed">
+          <div
+            data-testid="emotion-insight"
+            className="flex items-start gap-2 text-xs text-slate-400 leading-relaxed"
+          >
             <Activity className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <p>
-              Seu melhor estado é 
-              <span className="text-emerald-400 font-bold mx-1">{emotionStats[0].name}</span>.
-              {emotionStats.length > 1 && emotionStats[emotionStats.length - 1].totalPL < 0 && (
-                <> Atenção redobrada com <span className="text-red-400 font-bold mx-1">{emotionStats[emotionStats.length - 1].name}</span>, que é seu maior ofensor.</>
-              )}
-            </p>
+            <p>{insight.text}</p>
           </div>
         </div>
       )}
+
+      <DebugBadge component="EmotionAnalysis" />
     </div>
   );
 };
