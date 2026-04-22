@@ -186,6 +186,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     asymmetryDiagnostic,
     plContext,
     avgTradeDuration,
+    consistencyCV,
+    durationDelta,
   } = metrics;
 
   // === Handlers ===
@@ -400,6 +402,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
         avgTradeDuration={avgTradeDuration}
+        consistencyCV={consistencyCV}
+        durationDelta={durationDelta}
       />
 
       {/* Gráficos */}
