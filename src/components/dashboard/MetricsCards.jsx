@@ -442,80 +442,82 @@ const MetricsCards = ({
         const allClass = avgTradeDuration?.all ? classifyDuration(avgTradeDuration.all) : null;
 
         return (
-          <div className="glass-card p-5 relative">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Consistencia Operacional</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-              {/* CV de P&L */}
-              <div title={consistencyCV ? getCVTooltip(consistencyCV.level) : 'Precisa de >=2 trades com expectancia diferente de zero'}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] text-slate-600">CV do P&L por trade</span>
-                  {consistencyCV && cvTheme && (
-                    <span className={`text-[10px] font-bold ${cvTheme.color}`}>{cvTheme.label}</span>
-                  )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="glass-card p-5 relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Consistencia Operacional</span>
                 </div>
-                {consistencyCV ? (
-                  <>
-                    <p className={`text-2xl font-bold ${cvTheme.color}`}>{consistencyCV.cv.toFixed(2)}</p>
-                    {/* Barra: posiciona o valor numa escala 0..1.5 (acima de 1.5 estoura para o final) */}
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
-                        <div
-                          className={`h-full ${cvTheme.bar}`}
-                          style={{ width: `${Math.min(100, (consistencyCV.cv / 1.5) * 100)}%` }}
-                        />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                {/* CV de P&L */}
+                <div title={consistencyCV ? getCVTooltip(consistencyCV.level) : 'Precisa de >=2 trades com expectancia diferente de zero'}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-600">CV do P&L por trade</span>
+                    {consistencyCV && cvTheme && (
+                      <span className={`text-[10px] font-bold ${cvTheme.color}`}>{cvTheme.label}</span>
+                    )}
+                  </div>
+                  {consistencyCV ? (
+                    <>
+                      <p className={`text-2xl font-bold ${cvTheme.color}`}>{consistencyCV.cv.toFixed(2)}</p>
+                      {/* Barra: posiciona o valor numa escala 0..1.5 (acima de 1.5 estoura para o final) */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
+                          <div
+                            className={`h-full ${cvTheme.bar}`}
+                            style={{ width: `${Math.min(100, (consistencyCV.cv / 1.5) * 100)}%` }}
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <p className="text-[10px] text-slate-600 mt-1">
-                      Faixas DEC-050: <span className="text-emerald-400/70">&lt;0.5</span> · <span className="text-amber-400/70">0.5-1.0</span> · <span className="text-red-400/70">&gt;1.0</span>
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-2xl font-bold text-slate-600">-</p>
-                )}
-              </div>
-
-              {/* ΔT W vs L */}
-              <div title={durationDelta ? getDeltaTTooltip(durationDelta.level, durationDelta.deltaPercent) : 'Precisa de wins e losses com duracao registrada'}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] text-slate-600">Tempo W vs L</span>
-                  {durationDelta && dtTheme && (
-                    <span className={`text-[10px] font-bold ${dtTheme.color}`}>{dtTheme.label}</span>
+                      <p className="text-[10px] text-slate-600 mt-1">
+                        Faixas DEC-050: <span className="text-emerald-400/70">&lt;0.5</span> · <span className="text-amber-400/70">0.5-1.0</span> · <span className="text-red-400/70">&gt;1.0</span>
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-2xl font-bold text-slate-600">-</p>
                   )}
                 </div>
-                {durationDelta ? (
-                  <>
-                    <p className={`text-2xl font-bold ${dtTheme.color}`}>
-                      {durationDelta.deltaPercent >= 0 ? '+' : ''}{durationDelta.deltaPercent.toFixed(0)}%
-                    </p>
-                    <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
-                      <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(durationDelta.durationWin)}</span></span>
-                      <span>L: <span className="font-mono text-red-400/80">{formatDuration(durationDelta.durationLoss)}</span></span>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-2xl font-bold text-slate-600">-</p>
-                )}
-              </div>
-            </div>
 
-            {/* Sub-linha: tempo medio geral (info universal preservada do card antigo) */}
-            {allClass && (
-              <div className="border-t border-slate-700/50 mt-4 pt-3">
-                <div className="flex items-center gap-3 text-[11px]">
-                  <Clock className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="text-slate-500">Tempo medio geral:</span>
-                  <span className={`font-bold ${allClass.color}`}>{formatDuration(avgTradeDuration.all)}</span>
-                  <span className={`px-1.5 py-0.5 rounded ${allClass.color} bg-slate-800/50`}>{allClass.label}</span>
+                {/* ΔT W vs L */}
+                <div title={durationDelta ? getDeltaTTooltip(durationDelta.level, durationDelta.deltaPercent) : 'Precisa de wins e losses com duracao registrada'}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-slate-600">Tempo W vs L</span>
+                    {durationDelta && dtTheme && (
+                      <span className={`text-[10px] font-bold ${dtTheme.color}`}>{dtTheme.label}</span>
+                    )}
+                  </div>
+                  {durationDelta ? (
+                    <>
+                      <p className={`text-2xl font-bold ${dtTheme.color}`}>
+                        {durationDelta.deltaPercent >= 0 ? '+' : ''}{durationDelta.deltaPercent.toFixed(0)}%
+                      </p>
+                      <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
+                        <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(durationDelta.durationWin)}</span></span>
+                        <span>L: <span className="font-mono text-red-400/80">{formatDuration(durationDelta.durationLoss)}</span></span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-2xl font-bold text-slate-600">-</p>
+                  )}
                 </div>
               </div>
-            )}
+
+              {/* Sub-linha: tempo medio geral (info universal preservada do card antigo) */}
+              {allClass && (
+                <div className="border-t border-slate-700/50 mt-4 pt-3">
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="text-slate-500">Tempo medio geral:</span>
+                    <span className={`font-bold ${allClass.color}`}>{formatDuration(avgTradeDuration.all)}</span>
+                    <span className={`px-1.5 py-0.5 rounded ${allClass.color} bg-slate-800/50`}>{allClass.label}</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}
