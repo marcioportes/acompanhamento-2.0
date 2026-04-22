@@ -129,7 +129,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardComplete, setWizardComplete] = useState(false);
-  const [accountTypeFilter, setAccountTypeFilter] = useState('all');
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
   const [showOrderImport, setShowOrderImport] = useState(false);
@@ -157,17 +156,18 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
   // === Métricas calculadas (hook extraído) ===
+  // accountTypeFilter fixo em 'all' desde #164 (review): seletor de conta foi unificado
+  // na ContextBar (#118). O hook ainda aceita o filtro caso volte em issue futuro.
   const metrics = useDashboardMetrics({
     accounts,
     trades,
     plans,
     filters,
     selectedPlanId,
-    accountTypeFilter,
+    accountTypeFilter: 'all',
   });
 
   const {
-    filteredAccountsByType,
     availablePlans,
     filteredTrades,
     stats,
@@ -338,7 +338,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       {/* Barra de Contexto Unificado (issue #118 — DEC-047) */}
       <ContextBar accounts={accounts} plans={plans} trades={trades} />
 
-      {/* Header + AccountFilterBar + Card informativo */}
+      {/* Header (título + ações) — seletor de conta/plano/ciclo/período vive na ContextBar. */}
       <DashboardHeader
         viewAs={viewAs}
         showFilters={showFilters}
@@ -346,19 +346,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
         onCsvImport={() => setShowCsvWizard(true)}
         onOrderImport={() => setShowOrderImport(true)}
-        accounts={accounts}
-        accountTypeFilter={accountTypeFilter}
-        onAccountTypeChange={setAccountTypeFilter}
-        selectedAccountId={filters.accountId}
-        onAccountSelect={(id) => {
-          // Fluxo de conta: delega para StudentContextProvider (que reseta plano/ciclo/período em cascata).
-          // Sync bidirecional propaga 'all' ↔ null automaticamente.
-          studentCtx.setAccount(id === 'all' ? null : id);
-        }}
-        filteredAccountsByType={filteredAccountsByType}
-        aggregatedCurrentBalance={aggregatedCurrentBalance}
-        dominantCurrency={dominantCurrency}
-        balancesByCurrency={balancesByCurrency}
       />
 
       {/* CSV Import — Card de staging */}
