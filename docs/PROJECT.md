@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.26.0  
-> **Última atualização:** 22/04/2026 — v0.26.0: 3 amendments ao §13 com evidência direta da rodada #164 — cross-worktree do `.coord-dir` (nova regra de disciplina), Protocolo de Recovery de CC-Interface (§13.15, única exceção ao READ-ONLY da INV-26), exigência explícita de bloco CLAIMS no briefing do worker (§13.9).  
+> **Versão:** 0.27.0  
+> **Última atualização:** 22/04/2026 — v0.27.0: Encerramento #164 v1.41.0 (PR #171 mergeado). Dashboard Aluno ajustes entregues com 4 entregas + 2 rodadas de review + 2 bugs out-of-scope carregados. Lock CHUNK-02 liberado. CHANGELOG [1.41.0] definitivo. Issue doc arquivada.  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -64,6 +64,7 @@ Este documento segue versionamento semântico:
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
 | 0.23.8 | 21/04/2026 | §4.3 rm -rf obrigatório | `rm -rf ~/projects/issue-{NNN}` é passo obrigatório após `git worktree remove` — sessões anteriores omitiam, deixando resíduos físicos. Verificação `ls ~/projects/` adicionada ao protocolo. |
+| 0.27.0 | 22/04/2026 | Encerramento #164 v1.41.0 | PR #171 mergeado (merge commit `f3d46895`). Dashboard Aluno ajustes: 4 entregas (E1 SWOT via `useLatestClosedReview` resiliente a `planId` stale / E2 card "Consistência Operacional" CV+ΔT / E3 Matriz Emocional 4D Opção D com sublabels e rename Maturidade / E5 EquityCurve tabs multi-moeda + curva ideal do plano). Cascata `selectedPlanId` → cards via `accountsInScope` em `useDashboardMetrics`. ContextBar preserva `accountId` do usuário e lista todos os planos em "Todas as contas". AccountFilterBar removido. **2 bugs out-of-scope carregados**: (a) trade edit `exchange: undefined` pós import CSV (fix em 3 camadas `useCsvStaging`+`AddTradeModal`+`useTrades`); (b) #102 PinToReviewButton salvava em `takeawayItems`/`takeaways` — corrigido para `sessionNotes` via novo `appendSessionNotes`. 1732 → 1840 testes (+108). 37 commits. Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree removido. |
 | 0.26.0 | 22/04/2026 | §13 amendments — bugs rodada #164 (cross-worktree, recovery, CLAIMS obrigatório) | Primeira execução real do §13 (issue #164) expôs 3 bugs com evidência direta: (1) **Cross-worktree do `.coord-dir`** — session `5cd03bd7` (pts/4) criada com cwd = main repo teve JSONL em project-scope `-acompanhamento-2-0`; listener do worktree invocando `--resume` falhou silenciosamente. §13.7 ganha `.coord-dir` com mesma disciplina READ-ONLY da INV-26; §13.8 passo 8b explicita pré-condição "cwd = worktree" como dura. (2) **§13 sem cláusula de recovery** — CC-Interface morreu; nova precisou sobrescrever `.coord-id` pra funcionar, violando INV-26 literalmente. Nova §13.15 "Protocolo de Recovery de CC-Interface" formaliza os 5 passos (process check, JSONL scope check, spawn sem --resume, escrita excepcional de .coord-id + .coord-dir, registro em §3.2). INV-26 ganha amendment explicitando recovery como única exceção ao READ-ONLY. (3) **Briefing sem exigência de CLAIMS** — worker E3 entregou em formato livre porque o prompt não pediu CLAIMS, deixando validação INV-27 totalmente manual. §13.9 ganha parágrafo obrigando cláusula explícita de CLAIMS em todo briefing, sob pena de STOP-HALLUCINATION. Escopo intencionalmente enxuto: 2 bugs adicionais ("fantasma de ação não-tomada", dedup-por-brewing-prolongado) foram desinflados por evidência circunstancial — ficam como observações em memória, não amendments estruturais. Lição de método: em fase de design pós-execução, desinflar antes de commitar — pressão social de "ser útil" + narrativa do humano podem inflar diagnóstico para além da evidência. |
 | 0.25.0 | 21/04/2026 | §13 Implementação Autônoma + INV-27/28 + amendment INV-26 | Sessão de design de 5+ horas consolidada. Adiciona §13 com protocolo completo de modo autônomo (CC-Interface + CC-Coord + CC-Worker), 6 fases compactas, canais de comunicação com ownership de diretórios, máquinas de estado por ator, regra de trigger explícito ("atacar #NNN em modo autônomo"), critério opt-in vs modo interativo default, bloco CLAIMS obrigatório em report do worker, validator com 3 checks (commit/tests/files), 10 decisões de design enxutas (bugs 1-10), tipos de email + rate limit, notas operacionais sobre prompt cache. INV-27 formaliza validação externa contra cegueira epistêmica (modelo pode não detectar própria alucinação; auto-declaração "não aluciei" insuficiente). INV-28 estabelece email iCloud como canal primário de gate humano. INV-26 amendment explicita que CC-Interface também é READ-ONLY para `.coord-id`. Scripts python (`cc-notify-email.py`, `cc-validate-task.py`) e refactor de `cc-worktree-start.sh` ficam pra issue formal futura (INV-07/09); esta entrada é SPEC TEXTUAL, não implementação. Lição crítica: design aprovado em sessão não é autoridade até ser commitado no main — qualquer sessão nova só enxerga o que está no PROJECT.md. |
 | 0.24.0 | 21/04/2026 | Abertura #164 — lock CHUNK-02 + v1.41.0 reservada | Dashboard Aluno ajustes: spec aprovada com 4 entregas (E1 SWOT reaproveita `review.swot` + fallback / E2 card "Consistência Operacional" CV P&L + ΔT W/L substitui RR Asymmetry e Tempo Médio isolado / E3 Matriz Emocional 4D Opção A com expectância+payoff+shift+ΔWR+sparkline / E5 EquityCurve com tabs por moeda + curva ideal do plano por trajetória linear de dias corridos quando planId único). E4 (cards desatualizados) removida — Marcio confirmou nenhum dos 10 cards stale. CHUNK-02 escrita; CHUNK-04/06/13/16 leitura. |
@@ -763,7 +764,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 | Chunk | Domínio | Descrição | Arquivos principais | Status |
 |-------|---------|-----------|-------------------|--------|
 | CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
-| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | LOCKED |
+| CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
 | CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
 | CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade/enrichTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `tradeGateway` | AVAILABLE |
 | CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
@@ -783,7 +784,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-02 | #164 | `feat/issue-164-dashboard-aluno-ajustes` | 21/04/2026 | Dashboard Aluno ajustes (E1 SWOT da Revisão / E2 Card Consistência CV+ΔT / E3 Matriz Emocional 4D / E5 EquityCurve multi-curva + ideal) |
+| _(nenhum)_ | | | | |
 
 ### 6.4 Checklist de Check-Out
 
@@ -974,17 +975,43 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
-### [1.41.0] - RESERVADA — issue #164
+### [1.41.0] - 22/04/2026
 **Issue:** #164 (Ajuste Dashboard Aluno — Sev2)
-**PR:** _(pendente)_
+**PR:** #171 (merge commit `f3d46895`)
 
-> Entrada definitiva preenchida no encerramento. Reservada na abertura para evitar conflito de versão entre sessões paralelas (§4.0 Fase 3).
+#### Entregue — 4 tarefas do escopo original (após spec review INV-18)
 
-Escopo aprovado:
-- E1 SWOT do Dashboard reaproveita `review.swot` da última review CLOSED + fallback "aguardando revisão"
-- E2 Card "Consistência Operacional" (CV P&L + ΔT W/L) substitui "Consistência" RR Asymmetry e Tempo Médio isolado
-- E3 Matriz Emocional 4D (Opção A): expectância + payoff + shift rate + Δ WR vs baseline + sparkline PL acumulado
-- E5 EquityCurve com tabs por moeda (quando contexto agrega ≥2 moedas) + curva ideal do plano (meta/stop linear pelos dias corridos do ciclo, quando planId único; mantém extrapolação após meta)
+- **E1 · SWOT do Dashboard reaproveita `review.swot`**: novo hook `useLatestClosedReview` busca as últimas 20 reviews CLOSED do aluno e filtra client-side aceitando match em `planId` top-level OU em `frozenSnapshot.planContext.planId` (resiliente a planos renomeados/recriados). Suporta `planFilter: string | string[] | null` — permite filtrar por planos da conta quando "Todas as contas" está ativo. Fallback "aguardando primeira Revisão Semanal fechada pelo mentor" quando não há match. `SwotAnalysis.jsx` reescrito (~322 → ~155 linhas).
+- **E2 · Card "Consistência Operacional"**: CV de P&L (`std/|mean|`) com semáforo DEC-050 (`<0.5 🟢 / 0.5–1.0 🟡 / >1.0 🔴`) + ΔT W/L (`(tempoW − tempoL) / tempoL × 100%`) com semáforo assimétrico (`>+20% 🟢 winners run / -10% a +20% 🟡 / <-10% 🔴 segurando loss`). Substitui o card "Consistência" RR Asymmetry (semântica errada) + card "Tempo Médio" isolado.
+- **E3 · Matriz Emocional 4D (Opção D)**: `EmotionAnalysis.jsx` reescrito com grid `xl:grid-cols-3` (md 2-col, mobile 1-col). Cada card tem grid 2×2 de micro-KPIs com sublabels permanentes: **Financial · edge por trade** (expectância + payoff), **Operational · aderência sob stress** (shift rate entry→exit), **Emotional · impacto da emoção no WR** (WR + Δ WR vs baseline), **Maturidade · evolução recente** (sparkline PL). Rename "Maturity" → "Maturidade" (DEC-014 pt-BR). Sparkline inline SVG (60×24), zero lib nova. Rodapé com insight acionável. Engine de gates de maturidade por trades endereçada em #119 (body enriquecido com framework 4D × 5 estágios + 6 fases de entrega + DECs + chunks).
+- **E5 · EquityCurve ampliado**: tabs por moeda quando contexto agrega ≥2 moedas distintas (cada tab com sua série e eixo Y próprio); fix do stale activeTab via `useEffect` em `tabsFingerprint` (reset quando o conjunto de moedas disponíveis muda, não quando trades mudam). Curva ideal do plano (meta/stop linear pelos dias corridos do ciclo) como overlay quando ciclo único é selecionado; toggle Eye/EyeOff persistido em `equityCurve.showIdeal.v1` (localStorage). Overlay aparece só na tab que bate com `dominantCurrency`.
+
+#### Cascata de filtro ContextBar → todos os cards
+
+`selectedPlanId` passa a ter precedência sobre `filters.accountId` no cálculo de `selectedAccountIds` em `useDashboardMetrics`. Novo memo `accountsInScope` vira fonte única para `aggregatedInitialBalance`, `aggregatedCurrentBalance`, `balancesByCurrency`, `dominantCurrency` — elimina 3 blocos if/else quase duplicados (−44 +29 linhas). Selecionar um plano agora filtra todos os cards pela conta do plano, mesmo quando a conta no ContextBar continua "Todas as contas".
+
+#### ContextBar preserva `accountId` do usuário
+
+`setPlan` do provider NÃO propaga mais `accountId = plan.accountId` — a seleção do usuário em "Conta" é soberana. ContextBar lista TODOS os planos ativos quando "Todas as contas" está selecionado (antes ficava desabilitado); opção "Todos os planos" no topo permite desmarcar o highlight. Sublabel dos planos ganha nome da conta para diferenciar em modo global.
+
+#### Refactor
+
+- `AccountFilterBar` removido — redundante com ContextBar (#118 / DEC-047). `accountTypeFilter` passou a `'all'` fixo no `useDashboardMetrics`.
+
+#### Bugs out-of-scope carregados pela branch (pragmatismo)
+
+- **Trade edit falhava com `exchange: undefined` após import CSV**: fix em 3 camadas — (a) `useCsvStaging.activateTrade` agora propaga `exchange` no `tradeData` passado a `addTrade` (antes omitia, trades CSV gravavam sem o campo); (b) `AddTradeModal` usa fallback `editTrade.exchange || exchanges[0]?.code ?? 'B3'` para trades legados/CSV sem o campo (evita degradação do `<select>` controlled para uncontrolled); (c) `useTrades.updateTrade` stripa chaves com `undefined` antes do `updateDoc` (defesa no sink — Firestore aceita `null`, rejeita `undefined`).
+- **#102 PinToReviewButton salvava texto em campo errado**: o fluxo "Feedback Trade > Continuar Rascunho" persistia em `takeawayItems` (array estruturado) + `takeaways` (string legada) quando o mentor digitava observações no pin. Correto é Notas da Sessão — takeaways são itens de ação, notas são observações conversacionais. Novo `appendSessionNotes(reviewId, line)` no `useWeeklyReviews` mirror de `appendTakeaway`. PinToReviewButton refatorado para usá-lo.
+
+#### Testes
+
+- 1732 → 1840 (+108). Novos: `dashboardMetrics.test.js` (CV + ΔT), `equityCurveIdeal.test.js`, `equityCurveSort.test.js`, `buildEmotionMatrix4D.test.js`, `EmotionAnalysis.test.jsx`, `SwotAnalysis.test.jsx`, `useLatestClosedReview.test.jsx` (com cobertura de `planId` stale via `frozenSnapshot`).
+- Baseline zero regressão.
+
+#### Shared files
+
+- `src/version.js` bump 1.40.0 → 1.41.0 (aplicado na abertura, commit `7d44626f`)
+- `docs/PROJECT.md` v0.27.0: encerramento + CHUNK-02 liberado + CHANGELOG definitivo
 
 ---
 
