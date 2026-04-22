@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.27.0  
-> **Última atualização:** 22/04/2026 — v0.27.0: Encerramento #164 v1.41.0 (PR #171 mergeado). Dashboard Aluno ajustes entregues com 4 entregas + 2 rodadas de review + 2 bugs out-of-scope carregados. Lock CHUNK-02 liberado. CHANGELOG [1.41.0] definitivo. Issue doc arquivada.  
+> **Versão:** 0.28.0  
+> **Última atualização:** 22/04/2026 — v0.28.0: Abertura #170 SetupAnalysis V2 v1.42.0 — lock CHUNK-02 (escrita), CHUNK-04/16 (leitura). Spec aprovada: 4 KPIs operacionais por setup (EV/Payoff/ΔT/ContribEV) + Aderência RR condicional + sparkline 6m + ordenação por impacto + accordion esporádicos. Util novo `analyzeBySetupV2` com testes antes da UI. Zero campo Firestore novo. v1.42.0 reservada em version.js.  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -77,6 +77,7 @@ Este documento segue versionamento semântico:
 | 0.23.1 | 20/04/2026 | Abertura #165 — locks CHUNK-02/08 + v1.39.0 reservada |
 | 0.23.0 | 20/04/2026 | §4.2 Gate Pré-Entrega — precauções #162 | Lições do SEV1 #162 incorporadas como ITENS OBRIGATÓRIOS do gate pré-entrega (antes eram apenas notas no CHANGELOG v1.38.1): (a) **`npm run lint` em arquivos tocados no branch** — zero `no-undef`, zero `no-unused-vars` críticos, zero regressão em regras já ativas. Custo ~5s/arquivo. Origem: ReferenceError `assessmentStudentId` teria sido pego aqui. (b) **Validação em browser por contexto de consumo** — aluno logado / mentor viewAs / override-embedded, quando aplicáveis. Origem: o #102 validou apenas o contexto mentor (WeeklyReviewPage) e deixou o contexto aluno (dashboard com `<PendingTakeaways>`) passar para prod sem render-check. Bump MINOR (mudança de protocolo §1 do versionamento). Sem lock de chunk — edição exclusivamente em shared file `docs/PROJECT.md`. |
 | 0.22.7 | 20/04/2026 | Encerramento #156 v1.37.0 | PR #158 mergeado. Épico de 6 fases (A-F) consolidado em um único PR: (A) shadow writer bypass removido + invariante `tradeWriteBoundary`; (B) schema classificação persistente (5 classes) em `ordersStagingArea` + `autoLiqDetector`; (C) UX conversacional `ConversationalOpCard` substitui auto-create #93 + `AutoLiqBadge` + gate plano retroativo; (D) reconstrução robusta — segmentação por instrument + agregação N×M fills + gap 60min; (E) enrichment sem duplicata — helper puro `conversationalIngest` + `AdjustmentModal` diff fino + persist `discarded` em `orders`; (F) wire `onRequestRetroactivePlan` em App→StudentDashboard→OrderImportPage fechando gate + bump v1.37.0. **1689/1689 testes** (+122 vs baseline pré-#156 de 1567), invariante verde, zero regressão. Delta de shared files: `version.js` bumped, `firestore.rules` não tocado pela issue. Worktree removido, tmux `cc-156` killed, issue doc arquivada em `docs/archive/`, Product Board item movido para Done. **Infra operacional nova:** scripts `cc-worktree-{start,stop}.sh` + mailbox file-drop (`.cc-mailbox/`) + suporte opcional a `COORD_SESSION_ID` para notificação inversa via `claude --resume` validada em teste isolado — aplicável a partir do próximo épico. |
+| 0.28.0 | 22/04/2026 | Abertura #170 SetupAnalysis V2 v1.42.0 | Lock CHUNK-02 (escrita), CHUNK-04/16 (leitura). v1.42.0 reservada em version.js + entrada CHANGELOG RESERVADA. Spec aprovada: card de setup com 4 KPIs operacionais em grid 2×2 (EV por trade, Payoff, ΔT W vs L com semáforo ±20%/±10%, Contribuição ao EV total) + Aderência RR condicional quando `setups.targetRR` existe + Sparkline 6m (reusa padrão Matriz 4D) + Insight 1-linha. Ordenação por \|contribEV\| desc; setups <3 trades em accordion "Esporádicos (N)" no rodapé. Util puro novo `src/utils/setupAnalysisV2.js` com 15-20 testes antes da UI. `SetupAnalysis.jsx` substituído mantendo API externa (prop `trades`) + nova prop opcional `setupsMeta`. Zero campo Firestore novo. Consumido em `StudentDashboard` e `MentorDashboard` (ambos já importam). Origem: spin-off do review de #164. Milestone v1.2.0 Mentor Cockpit. Modo autônomo degradado (scripts `cc-notify-email.py` + `cc-validate-task.py` ainda não existem — email manual via RC). |
 
 **Regra de uso:**
 - Toda sessão que modificar este documento DEVE incrementar a versão e adicionar entrada na tabela acima
@@ -784,7 +785,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| _(nenhum)_ | | | | |
+| CHUNK-02 | #170 | `feature/issue-170-setup-analysis-v2` | 22/04/2026 | SetupAnalysis V2 — KPIs operacionais por setup |
 
 ### 6.4 Checklist de Check-Out
 

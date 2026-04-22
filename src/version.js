@@ -3,6 +3,17 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.42.0: feat: SetupAnalysis V2 — KPIs operacionais por setup (issue #170) —
+ *   substitui `SetupAnalysis.jsx` atual (barra proporcional + WR) por card com 4
+ *   KPIs em grid 2×2 (EV por trade, Payoff, ΔT W vs L com semáforo ±20%/±10%,
+ *   Contribuição ao EV total) + Aderência RR condicional (quando `setups.targetRR`
+ *   existe) + Sparkline 6m (reusa padrão EmotionAnalysis) + Insight 1-linha
+ *   (`buildInsight` da Matriz 4D). Ordenação por |contribEV| desc; setups <3 trades
+ *   em accordion "Esporádicos (N)" no rodapé. Util novo `src/utils/setupAnalysisV2.js`
+ *   (zero campo Firestore novo). API externa preservada (prop `trades`) + nova prop
+ *   opcional `setupsMeta` (array de docs `setups` com `targetRR`). Consumido em
+ *   `StudentDashboard` e `MentorDashboard`. DebugBadge mantido. [RESERVADA — entrada
+ *   definitiva no encerramento.]
  * - 1.41.0: feat: Ajustes Dashboard Aluno (issue #164, Sev2) — E1 SWOT reaproveita
  *   `review.swot` da última review CLOSED + fallback "aguardando revisão semanal";
  *   E2 card "Consistência Operacional" (CV P&L com semáforo DEC-050 + ΔT W/L com
@@ -95,10 +106,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.41.0',
-  build: '20260421',
-  display: 'v1.41.0',
-  full: '1.41.0+20260421',
+  version: '1.42.0',
+  build: '20260422',
+  display: 'v1.42.0',
+  full: '1.42.0+20260422',
 };
 export default VERSION;
 export { VERSION };
