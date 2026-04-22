@@ -98,11 +98,15 @@ const Sparkline = ({ series, positive }) => {
   );
 };
 
-const Quadrant = ({ label, children }) => (
+const Quadrant = ({ label, sublabel, children }) => (
   <div className="flex-1 min-w-0">
-    <p className="text-[9px] uppercase tracking-wider text-slate-500 mb-1 font-semibold">
+    <p className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold leading-tight">
       {label}
     </p>
+    {sublabel && (
+      <p className="text-[9px] text-slate-600 mb-1 leading-tight">{sublabel}</p>
+    )}
+    {!sublabel && <div className="mb-1" />}
     <div className="space-y-0.5 text-xs">{children}</div>
   </div>
 );
@@ -214,17 +218,19 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
           <div className="p-2 bg-purple-500/10 rounded-lg">
             <Brain className="w-5 h-5 text-purple-400" />
           </div>
-          <div>
+          <div
+            title="4 dimensões do framework: Financial (edge por trade), Operational (aderência sob stress), Emotional (impacto da emoção no WR), Maturidade (evolução recente). Agrupado por emoção de entrada do trade."
+          >
             <h3 className="text-lg font-bold text-white leading-tight">Matriz Emocional 4D</h3>
             <p className="text-xs text-slate-500">
-              Financial · Operational · Emotional · Maturity por emoção de entrada
+              Financial · Operational · Emotional · Maturidade por emoção de entrada
             </p>
           </div>
         </div>
       </div>
 
-      {/* Grid de cards (2 colunas ≥ md, 1 coluna em telas menores) */}
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
+      {/* Grid de cards (3 col xl, 2 col md, 1 col mobile) */}
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
         {cards.map((c) => {
           const profitable = c.totalPL >= 0;
           const borderClass = profitable ? 'border-emerald-500/20' : 'border-red-500/20';
@@ -252,7 +258,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
 
               {/* Grid 2×2 de quadrantes 4D */}
               <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                <Quadrant label="Financial">
+                <Quadrant label="Financial" sublabel="edge por trade">
                   <KPI
                     label="Expect"
                     value={fmtSignedCurrency(c.expectancy)}
@@ -264,7 +270,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
                   />
                 </Quadrant>
 
-                <Quadrant label="Operational">
+                <Quadrant label="Operational" sublabel="aderência sob stress">
                   <KPI
                     label="Shift"
                     value={fmtPct(c.shiftRate)}
@@ -272,7 +278,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
                   />
                 </Quadrant>
 
-                <Quadrant label="Emotional">
+                <Quadrant label="Emotional" sublabel="impacto da emoção no WR">
                   <KPI label="WR" value={fmtPct(c.wrEmotion)} />
                   {c.wrDelta !== null && (
                     <KPI
@@ -283,7 +289,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
                   )}
                 </Quadrant>
 
-                <Quadrant label="Maturity">
+                <Quadrant label="Maturidade" sublabel="evolução recente">
                   <div className="flex items-center gap-2">
                     <Sparkline series={c.sparklineSeries} positive={profitable} />
                     {profitable ? (

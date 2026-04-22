@@ -33,7 +33,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
     expect(screen.getByText(/Sem dados emocionais/i)).toBeInTheDocument();
   });
 
-  it('1 emoção → card com 4 quadrantes (Financial/Operational/Emotional/Maturity)', () => {
+  it('1 emoção → card com 4 quadrantes (Financial/Operational/Emotional/Maturidade)', () => {
     const trades = [
       mk({ result: 200 }),
       mk({ result: 100 }),
@@ -44,7 +44,8 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
     expect(within(card).getByText(/Financial/i)).toBeInTheDocument();
     expect(within(card).getByText(/Operational/i)).toBeInTheDocument();
     expect(within(card).getByText(/Emotional/i)).toBeInTheDocument();
-    expect(within(card).getByText(/Maturity/i)).toBeInTheDocument();
+    // DEC-014 pt-BR: "Maturity" renomeado para "Maturidade"
+    expect(within(card).getByText(/Maturidade/i)).toBeInTheDocument();
   });
 
   it('card renderiza sparkline SVG (polyline)', () => {
