@@ -1,8 +1,8 @@
 # PROJECT.md — Acompanhamento 2.0
 ## Documento Mestre do Projeto · Single Source of Truth
 
-> **Versão:** 0.23.8  
-> **Última atualização:** 21/04/2026 — §4.3 passo 5: rm -rf obrigatório após git worktree remove, com verificação ls + git worktree list.  
+> **Versão:** 0.24.0  
+> **Última atualização:** 21/04/2026 — Abertura #164 Dashboard Aluno ajustes: lock CHUNK-02 + reserva v1.41.0, spec aprovada (E1 SWOT lê review / E2 Card Consistência / E3 Matriz Emocional 4D / E5 EquityCurve multi-curva + ideal).  
 > **Criado:** 26/03/2026 — sessão de consolidação documental  
 > **Fontes originais:** ARCHITECTURE.md, AVOID-SESSION-FAILURES.md, VERSIONING.md, CHANGELOG.md, CHUNK-REGISTRY.md  
 > **Mantido por:** Marcio Portes (integrador único)
@@ -64,6 +64,7 @@ Este documento segue versionamento semântico:
 | 0.22.9 | 20/04/2026 | Abertura #162 SEV1 hotfix | Plataforma fora do ar em produção — `ReferenceError: assessmentStudentId is not defined` em `src/pages/StudentDashboard.jsx:362` (prop `studentId` de `<PendingTakeaways>` referencia identificador inexistente). Introduzido pelo merge PR #160 (#102 v1.38.0, commit `30af3a18`). Lock CHUNK-02 registrado em §6.3 para `fix/issue-162-hotfix-assessment-student-id`. `src/version.js` bumped para v1.38.1 + entrada CHANGELOG reservada. Worktree `~/projects/issue-162` a criar no próximo passo §4.0. Fix: substituir por `overrideStudentId \|\| user?.uid` (padrão canônico linha 558 e hooks irmãos `useTrades/useAccounts/usePlans`). |
 | 0.22.10 | 20/04/2026 | Encerramento #162 v1.38.1 | PR #163 mergeado (merge commit `3192353b`, squash). Fix 1-linha em `StudentDashboard.jsx:362` — `assessmentStudentId` → `overrideStudentId \|\| user?.uid`. Deploy Vercel validado em produção por Marcio ("plataforma voltou"). Adicionado teste invariante `studentDashboardReferences.test.js` (grep-based, padrão #156 `tradeWriteBoundary`). 1728/1728 testes passing (+1 vs baseline pré-hotfix 1727). Lock CHUNK-02 liberado (AVAILABLE). Issue doc arquivada em `docs/archive/`. Worktree `~/projects/issue-162` removido (git worktree remove + rm -rf). **Lições:** (a) QA tracker #159 não cobriu render do dashboard aluno com `<PendingTakeaways>` montado — gap de validação do #102; (b) `npm run lint` (eslint `no-undef`) teria pegado o erro em CI — candidato a fast-follow tornar required. |
 | 0.23.8 | 21/04/2026 | §4.3 rm -rf obrigatório | `rm -rf ~/projects/issue-{NNN}` é passo obrigatório após `git worktree remove` — sessões anteriores omitiam, deixando resíduos físicos. Verificação `ls ~/projects/` adicionada ao protocolo. |
+| 0.24.0 | 21/04/2026 | Abertura #164 — lock CHUNK-02 + v1.41.0 reservada | Dashboard Aluno ajustes: spec aprovada com 4 entregas (E1 SWOT reaproveita `review.swot` + fallback / E2 card "Consistência Operacional" CV P&L + ΔT W/L substitui RR Asymmetry e Tempo Médio isolado / E3 Matriz Emocional 4D Opção A com expectância+payoff+shift+ΔWR+sparkline / E5 EquityCurve com tabs por moeda + curva ideal do plano por trajetória linear de dias corridos quando planId único). E4 (cards desatualizados) removida — Marcio confirmou nenhum dos 10 cards stale. CHUNK-02 escrita; CHUNK-04/06/13/16 leitura. |
 | 0.23.7 | 21/04/2026 | Encerramento #166 v1.40.0 | PR #168 mergeado (merge commit `ca74b289`). Fix Sev1: botão "Finalizar" em ProbingQuestionsFlow com try/catch + disabled + spinner; fromStatus='probing' em completeProbing; DebugBadge corrigido. 4 testes novos, 1732/1732 passando. CHUNK-09 liberado (AVAILABLE). Issue doc arquivada. Worktree removido. |
 | 0.23.6 | 21/04/2026 | INV-26: `.coord-id` é responsabilidade do start script | Coord nunca sobrescreve `.coord-id` — valor gravado pelo `cc-worktree-start.sh` no boot do listener. Anti-pattern: inventar session ID quando `$CLAUDE_SESSION_ID` retorna vazio. Lição #166. |
 | 0.23.5 | 21/04/2026 | Abertura #166 — lock CHUNK-09 + v1.40.0 reservada |
@@ -738,6 +739,7 @@ Chunks são conjuntos técnicos atômicos. Uma sessão faz check-out de chunks n
 **Locks ativos:**
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-02 | #164 | `feat/issue-164-dashboard-aluno-ajustes` | 21/04/2026 | Dashboard Aluno ajustes (E1 SWOT da Revisão / E2 Card Consistência CV+ΔT / E3 Matriz Emocional 4D / E5 EquityCurve multi-curva + ideal) |
 
 ### 6.4 Checklist de Check-Out
 
@@ -927,6 +929,20 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
+
+### [1.41.0] - RESERVADA — issue #164
+**Issue:** #164 (Ajuste Dashboard Aluno — Sev2)
+**PR:** _(pendente)_
+
+> Entrada definitiva preenchida no encerramento. Reservada na abertura para evitar conflito de versão entre sessões paralelas (§4.0 Fase 3).
+
+Escopo aprovado:
+- E1 SWOT do Dashboard reaproveita `review.swot` da última review CLOSED + fallback "aguardando revisão"
+- E2 Card "Consistência Operacional" (CV P&L + ΔT W/L) substitui "Consistência" RR Asymmetry e Tempo Médio isolado
+- E3 Matriz Emocional 4D (Opção A): expectância + payoff + shift rate + Δ WR vs baseline + sparkline PL acumulado
+- E5 EquityCurve com tabs por moeda (quando contexto agrega ≥2 moedas) + curva ideal do plano (meta/stop linear pelos dias corridos do ciclo, quando planId único; mantém extrapolação após meta)
+
+---
 
 ### [1.40.0] - 21/04/2026
 **Issue:** #166 (fix: Sessão travada no botão Finalizar — Sev1)
