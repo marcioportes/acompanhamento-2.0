@@ -164,8 +164,12 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
   // ============================================
 
   return (
-    <div className="w-full">
-      {!embedded && <DebugBadge component="ContextBar" />}
+    // relative + z-40 no wrapper: o backdrop-blur-sm abaixo cria um stacking
+    // context, e precisamos que ele fique acima dos glass-cards que vêm
+    // depois (tambem sao stacking contexts via backdrop-blur-xl). Sem isso,
+    // os dropdowns abrem "por baixo" dos cards de plano.
+    <div className="w-full relative z-40">
+      {!embedded && <DebugBadge component="ContextBar" embedded />}
 
       <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-900/60 backdrop-blur-sm rounded-xl border border-slate-800/60">
         <Dropdown
