@@ -71,7 +71,7 @@ const PinToReviewButton = ({ trade }) => {
     return () => { unsubPlan(); unsubTrades(); };
   }, [planId]);
 
-  const { reviews, createReview, appendTakeaway, addIncludedTrade, addTakeawayItem, actionLoading } = useWeeklyReviews(studentIdForReviews);
+  const { reviews, createReview, appendSessionNotes, addIncludedTrade, actionLoading } = useWeeklyReviews(studentIdForReviews);
 
   // Semana ISO de HOJE (quando o mentor está conduzindo a revisão).
   // Revisão é uma por semana. Mentor pode estar revisando trade antigo — o ponto
@@ -155,12 +155,11 @@ const PinToReviewButton = ({ trade }) => {
       if (trade?.id) {
         try { await addIncludedTrade(reviewId, trade.id); } catch { /* best-effort */ }
       }
-      // 2) Se mentor escreveu nota: cria takeawayItem estruturado (Stage 4)
-      //    + mantém append no takeaways string legado (para baseline ReviewToolsPanel).
+      // 2) Se mentor escreveu nota: anexa em sessionNotes (Notas da Sessão).
+      //    Takeaways são ações estruturadas criadas na própria WeeklyReviewPage.
       if (hasNote) {
-        try { await addTakeawayItem(reviewId, note, trade?.id || null); } catch { /* */ }
-        try { await appendTakeaway(reviewId, note); } catch { /* */ }
-        setFlash(`Trade pinado + takeaway em ${todayISO.key}`);
+        try { await appendSessionNotes(reviewId, note); } catch { /* */ }
+        setFlash(`Trade pinado + nota da sessão em ${todayISO.key}`);
       } else {
         setFlash(`Trade incluído em ${todayISO.key}`);
       }
@@ -173,7 +172,7 @@ const PinToReviewButton = ({ trade }) => {
     } finally {
       setBusy(false);
     }
-  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendTakeaway, addIncludedTrade, addTakeawayItem, trade?.id]);
+  }, [mentor, plan, todayISO, note, prefix, existingDraft, planTrades, createReview, appendSessionNotes, addIncludedTrade, trade?.id]);
 
   if (!mentor) return null;
   if (!planId) return null;
@@ -253,7 +252,7 @@ const PinToReviewButton = ({ trade }) => {
               onClick={handlePin}
               disabled={busy || actionLoading}
               className="px-3 py-1 text-[11px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1"
-              title={note.trim() && note.trim() !== prefix.trim() ? 'Incluir o trade e anotar o takeaway' : 'Apenas incluir o trade na revisão (sem nota)'}
+              title={note.trim() && note.trim() !== prefix.trim() ? 'Incluir o trade e anotar em Notas da Sessão' : 'Apenas incluir o trade na revisão (sem nota)'}
             >
               {busy && <Loader2 className="w-3 h-3 animate-spin" />}
               {note.trim() && note.trim() !== prefix.trim() ? 'Incluir + anotar' : 'Incluir'}

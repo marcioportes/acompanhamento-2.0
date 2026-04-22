@@ -358,6 +358,28 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId, reviews]);
 
+  // Pin rápido: anexa uma linha ao campo sessionNotes de uma revisão (DRAFT).
+  // Usado pelo PinToReviewButton — pontos observados no Feedback Trade são
+  // notas de sessão, não takeaways (takeaways = ação/item estruturado).
+  const appendSessionNotes = useCallback(async (reviewId, line) => {
+    if (!line || !String(line).trim()) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      const current = reviews.find(r => r.id === reviewId);
+      const existing = typeof current?.sessionNotes === 'string' ? current.sessionNotes : '';
+      const sep = existing && !existing.endsWith('\n') ? '\n' : '';
+      const next = existing + sep + String(line).trim();
+      await updateDoc(ref, { sessionNotes: next });
+    } catch (err) {
+      setError(err.message || 'Erro ao anotar nota da sessão');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId, reviews]);
+
   return {
     reviews,
     isLoading,
@@ -369,6 +391,7 @@ export const useWeeklyReviews = (studentId) => {
     archiveReview,
     deleteReview,
     appendTakeaway,
+    appendSessionNotes,
     addIncludedTrade,
     updateSessionNotes,
     saveDraftFields,
