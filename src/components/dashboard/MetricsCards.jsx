@@ -198,11 +198,12 @@ const MetricsCards = ({
   return (
     <div className="space-y-4 mb-6">
 
-      {/* === 3 paineis em linha === */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* === Grid 2x2 dos paineis indicadores === */}
+      {/* auto-rows-fr garante altura uniforme entre linhas; h-full em cada card ocupa o slot. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 auto-rows-fr">
 
         {/* FINANCEIRO */}
-        <div className="glass-card p-5 relative">
+        <div className="glass-card p-5 relative h-full flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-blue-400" />
@@ -279,7 +280,7 @@ const MetricsCards = ({
         </div>
 
         {/* ASSIMETRIA DE RISCO */}
-        <div className="glass-card p-5 relative">
+        <div className="glass-card p-5 relative h-full flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-purple-400" />
@@ -370,7 +371,7 @@ const MetricsCards = ({
         </div>
 
         {/* EV — Plano vs Resultado */}
-        <div className={`glass-card p-5 relative border ${evLeakage && evLeakage.leakage != null ? (leakLevel.color === 'text-red-400' ? 'border-red-500/30' : leakLevel.color === 'text-amber-400' ? 'border-amber-500/30' : 'border-slate-700/50') : 'border-slate-700/50'}`}>
+        <div className={`glass-card p-5 relative border h-full flex flex-col ${evLeakage && evLeakage.leakage != null ? (leakLevel.color === 'text-red-400' ? 'border-red-500/30' : leakLevel.color === 'text-amber-400' ? 'border-amber-500/30' : 'border-slate-700/50') : 'border-slate-700/50'}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <BarChart3 className={`w-4 h-4 ${leakLevel.color}`} />
@@ -431,19 +432,17 @@ const MetricsCards = ({
             <p className="text-sm text-slate-600">Dados insuficientes</p>
           )}
         </div>
-      </div>
 
-      {/* Consistência Operacional (E2 — issue #164) */}
-      {/* Combina CV de P&L (DEC-050) + ΔT W/L. Substitui o card isolado de Tempo Médio
-          (que voltou como sub-linha do card novo, integrado ao ΔT). */}
-      {(consistencyCV || durationDelta || (avgTradeDuration && avgTradeDuration.all > 0)) && (() => {
-        const cvTheme = consistencyCV ? getCVTheme(consistencyCV.level) : null;
-        const dtTheme = durationDelta ? getDeltaTTheme(durationDelta.level) : null;
-        const allClass = avgTradeDuration?.all ? classifyDuration(avgTradeDuration.all) : null;
+        {/* CONSISTÊNCIA OPERACIONAL (E2 — issue #164) */}
+        {/* Combina CV de P&L (DEC-050) + ΔT W/L. Substitui o card isolado de Tempo Médio
+            (que voltou como sub-linha do card novo, integrado ao ΔT). */}
+        {(consistencyCV || durationDelta || (avgTradeDuration && avgTradeDuration.all > 0)) && (() => {
+          const cvTheme = consistencyCV ? getCVTheme(consistencyCV.level) : null;
+          const dtTheme = durationDelta ? getDeltaTTheme(durationDelta.level) : null;
+          const allClass = avgTradeDuration?.all ? classifyDuration(avgTradeDuration.all) : null;
 
-        return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="glass-card p-5 relative">
+          return (
+            <div className="glass-card p-5 relative h-full flex flex-col">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-cyan-400" />
@@ -518,11 +517,11 @@ const MetricsCards = ({
                 </div>
               )}
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </div>
 
-      <DebugBadge component="MetricsCards" />
+      <DebugBadge component="MetricsCards" embedded />
     </div>
   );
 };
