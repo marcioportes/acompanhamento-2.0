@@ -108,4 +108,85 @@ artefatos_externos_criados: [~/cc-mailbox/bin/cc-notify-email.py, ...]
 - Worktree criado em `~/projects/issue-169`
 - Branch `arch/issue-169-scripts-protocolo-autonomo`
 
-### Próximo: Fase A1 (mailbox global + .env.example)
+### 22/04/2026 — Fase A (mailbox global + cc-notify-email.py)
+
+Criados (global, fora do repo):
+- `~/cc-mailbox/{bin,log,templates}/`
+- `~/cc-mailbox/.env.example` (versionável) + `~/cc-mailbox/.env` (600, não versionado) com `EMAIL_DRY_RUN=1` para smoke test
+- `~/cc-mailbox/bin/cc-notify-email.py` (+x, 280 linhas)
+
+Smoke tests executados:
+- Happy path dry-run → exit 0, body formatado com seção COMO RESPONDER
+- Rate limit ativo (2º envio em <4h) → exit 2 com log "SILENCED"
+- Type inválido → exit 4 com lista de válidos
+- stdin vazio → exit 4
+- `--force` bypass → dry-run roda mesmo dentro da janela de 4h
+
+### 22/04/2026 — Fase B (cc-validate-task.py + 12 testes pytest)
+
+Criados:
+- `~/cc-mailbox/bin/cc-validate-task.py` (+x, 233 linhas) — parseia bloco CLAIMS do report.md, roda 3 checks, STOP-HALLUCINATION granular por check
+- `~/cc-mailbox/bin/test_cc_validate_task.py` (266 linhas, 12 testes)
+
+Testes pytest: **12/12 passed em 0.92s** cobrindo:
+- Happy path, commit inexistente, tests count divergente, tests dentro da tolerância (±5), files_match (declared subset/superset do real), CLAIMS ausente, CLAIMS JSON malformado, skipped com .js (proibido), skipped com .md apenas (OK), report.md inexistente, performance <1500ms
+
+Integration test contra `feature/issue-170-setup-analysis-v2` (commit real `2bd11e82`):
+- CLAIMS verdadeira → `OK: commit_exists, tests_match, files_match` (exit 0)
+- CLAIMS com `deadbeef` → `STOP-HALLUCINATION: commit_exists: commit_hash 'deadbeef' não existe no worktree` (exit 1)
+
+### 22/04/2026 — Fase C (refactor cc-worktree-start.sh + template briefing)
+
+Refactor em `scripts/cc-worktree-start.sh` (commit `d78bb958`):
+- **Pré-condição dura** (§13.8 passo 8b): aborta com exit 2 se cwd ≠ `~/projects/issue-<NNN>` quando worktree existe. Mensagem de erro contém comando corretivo.
+- **Dirs §13.7 completos**: `inbox, outbox, processed, coord-inbox, locks, notify-scratch, log` (antes só os 3 primeiros)
+- **Session IDs READ-ONLY**: `.coord-id`, `.coord-dir`, `.interface-id` gravados e `chmod 444`. Amendment INV-26 v0.26.0 respeitada — tentativa de sobrescrever com valor diferente imprime aviso e mantém existente.
+- **Listener refactorado**: usa `flock -w 30 locks/coord.lock` antes de `--resume` (§13.8 passo 26) + `--permission-mode auto` + log estruturado em `log/listener.log`.
+
+Criado:
+- `~/cc-mailbox/templates/worker-briefing.md` — template canônico com cláusula CLAIMS obrigatória, formato exato do bloco JSON, regras de `tests: skipped`, tratamento de ambiguidades, critérios de gate humano, e exemplo mínimo de report válido.
+
+Smoke test end-to-end:
+- `cc-worktree-start.sh 170 feature/... smoke-coord-id` em cwd `~/projects/issue-170` → cria todos os 7 dirs, grava RO, lança tmux `cc-170`
+- Limpo após validação
+
+## 9. CLAIMS consolidado (INV-27 manual — esta sessão)
+
+```json
+{
+  "commit_chain_no_branch": ["6819a79c", "d78bb958"],
+  "commit_main_abertura": "315cecb9",
+  "tests": {
+    "pytest_cc_validate_task": {"passed": 12, "failed": 0, "cmd": "python3 -m pytest"},
+    "integration_real_commit": {"ok": true, "stop_on_fake": true},
+    "bash_syntax_check": {"ok": true, "cmd": "bash -n scripts/cc-worktree-start.sh"}
+  },
+  "files_touched_no_branch": [
+    "docs/dev/issues/issue-169-scripts-protocolo-autonomo.md",
+    "scripts/cc-worktree-start.sh"
+  ],
+  "files_created_outside_repo": [
+    "~/cc-mailbox/.env.example",
+    "~/cc-mailbox/.env  (600, dry-run)",
+    "~/cc-mailbox/bin/cc-notify-email.py",
+    "~/cc-mailbox/bin/cc-validate-task.py",
+    "~/cc-mailbox/bin/test_cc_validate_task.py",
+    "~/cc-mailbox/templates/worker-briefing.md",
+    "~/cc-mailbox/log/emails.log (criado pelo primeiro dry-run)",
+    "~/cc-mailbox/notify-state.json (criado pelo primeiro dry-run)"
+  ],
+  "invariants_touched": ["INV-25", "INV-26", "INV-27", "INV-28"],
+  "fora_de_escopo_desta_sessao": [
+    "Fase D (rodada end-to-end real com modo autônomo puro)",
+    "cc-notify-whatsapp.sh",
+    "Re-teste do Recovery §13.15 pós-amendment v0.26.0",
+    "Atualizar PROJECT.md §13.11 removendo 'A ESCREVER'"
+  ]
+}
+```
+
+### Próximo passo
+
+1. Rodada end-to-end (Fase D) com issue-teste trivial em modo autônomo — valida que tudo conecta ponta-a-ponta e que o email real chega
+2. Atualizar PROJECT.md §13.11 (`A ESCREVER` → `IMPLEMENTADO`) + bump 0.29.0 → 0.30.0 no encerramento
+3. Merge via PR com `Closes #169`
