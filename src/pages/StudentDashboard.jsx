@@ -335,10 +335,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // === Render ===
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* Barra de Contexto Unificado (issue #118 — DEC-047) */}
-      <ContextBar accounts={accounts} plans={plans} trades={trades} />
-
-      {/* Header (título + ações) — seletor de conta/plano/ciclo/período vive na ContextBar. */}
+      {/* Header (título + ações) */}
       <DashboardHeader
         viewAs={viewAs}
         showFilters={showFilters}
@@ -347,6 +344,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onCsvImport={() => setShowCsvWizard(true)}
         onOrderImport={() => setShowOrderImport(true)}
       />
+
+      {/* Barra de Contexto Unificado (#118 — DEC-047). Fica logo abaixo do header
+          para que os dropdowns (que abrem com top-full) caiam sobre o conteúdo
+          neutro abaixo, e não sobre o título/botões. */}
+      <ContextBar accounts={accounts} plans={plans} trades={trades} />
 
       {/* CSV Import — Card de staging */}
       {stagingTrades.length > 0 && (
