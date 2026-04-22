@@ -204,6 +204,16 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     return calculateIdealStatus(pl, aggregatedInitialBalance, idealEquitySeries);
   }, [idealEquitySeries, aggregatedCurrentBalance, aggregatedInitialBalance]);
 
+  // SwotAnalysis: quando há conta específica + plano=null, filtrar reviews pelos
+  // planos da conta (evita mostrar SWOT de review de outra conta/plano)
+  const swotAccountPlanIds = useMemo(() => {
+    if (selectedPlanId) return null; // precedência do planId
+    if (!studentCtx.accountId) return null; // "todas as contas" → sem filtro
+    return plans
+      .filter(p => p.accountId === studentCtx.accountId && p.active !== false)
+      .map(p => p.id);
+  }, [plans, studentCtx.accountId, selectedPlanId]);
+
   // === Handlers ===
   const handleViewFeedbackHistory = (trade) => {
     setViewingTrade(null);
@@ -484,6 +494,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         <SwotAnalysis
           studentId={overrideStudentId || user?.uid}
           planId={selectedPlanId}
+          accountPlanIds={swotAccountPlanIds}
           /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
              (hoje 'weekly-review' é restrita a mentor em App.jsx). */
         />

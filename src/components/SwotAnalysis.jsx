@@ -77,8 +77,10 @@ const SourceBadge = ({ swot }) => {
   );
 };
 
-const SwotAnalysis = ({ studentId, planId = null, onNavigateToReview }) => {
-  const { review, loading } = useLatestClosedReview(studentId || null, planId || null);
+const SwotAnalysis = ({ studentId, planId = null, accountPlanIds = null, onNavigateToReview }) => {
+  // Precedência: planId específico > accountPlanIds (conta sem plano) > null (global)
+  const planFilter = planId || accountPlanIds || null;
+  const { review, loading } = useLatestClosedReview(studentId || null, planFilter);
 
   if (loading) {
     return (
