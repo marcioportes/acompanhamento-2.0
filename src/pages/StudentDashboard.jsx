@@ -16,7 +16,7 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 
 // Componentes extraídos
@@ -73,6 +73,7 @@ import ContextBar from '../components/ContextBar';
 // Utils
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
+import { generateIdealEquitySeries, calculateIdealStatus } from '../utils/equityCurveIdeal';
 
 
 /**
@@ -189,6 +190,21 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     consistencyCV,
     durationDelta,
   } = metrics;
+
+  // === Curva ideal do plano (E5 — issue #164) ===
+  // Só ativa quando há plano único selecionado com ciclo ativo (datas válidas).
+  const idealEquitySeries = useMemo(() => {
+    const plan = studentCtx.selectedPlan;
+    const cycle = studentCtx.selectedCycle;
+    if (!plan || !cycle?.start || !cycle?.end) return null;
+    return generateIdealEquitySeries(plan, { startDate: cycle.start, endDate: cycle.end });
+  }, [studentCtx.selectedPlan, studentCtx.selectedCycle]);
+
+  const idealEquityStatus = useMemo(() => {
+    if (!idealEquitySeries) return null;
+    const pl = aggregatedCurrentBalance - aggregatedInitialBalance;
+    return calculateIdealStatus(pl, aggregatedInitialBalance, idealEquitySeries);
+  }, [idealEquitySeries, aggregatedCurrentBalance, aggregatedInitialBalance]);
 
   // === Handlers ===
   const handleViewFeedbackHistory = (trade) => {
@@ -411,7 +427,15 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         <div className="lg:col-span-2">
           <div className="glass-card h-[400px] w-full relative p-4">
             {filteredTrades.length > 0 ? (
-              <EquityCurve trades={filteredTrades} initialBalance={aggregatedInitialBalance} currency={dominantCurrency || 'BRL'} />
+              <EquityCurve
+                trades={filteredTrades}
+                initialBalance={aggregatedInitialBalance}
+                currency={dominantCurrency || 'BRL'}
+                currencies={balancesByCurrency}
+                accounts={filteredAccountsByType}
+                idealSeries={idealEquitySeries}
+                idealStatus={idealEquityStatus}
+              />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-500">
                 <Activity className="w-12 h-12 mb-2 opacity-20" />
