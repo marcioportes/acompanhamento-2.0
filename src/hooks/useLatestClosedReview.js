@@ -46,29 +46,38 @@ const useLatestClosedReview = (studentId, planFilter = null) => {
     setLoading(true);
     setError(null);
 
+    // Query broader (últimas N reviews CLOSED do aluno) e filtra client-side.
+    // Motivo: review.planId pode estar stale (plano renomeado/recriado); o
+    // valor canônico também vive em review.frozenSnapshot.planContext.planId.
     const reviewsRef = collection(db, 'students', studentId, 'reviews');
-    const clauses = [where('status', '==', 'CLOSED')];
-    if (typeof planFilter === 'string' && planFilter) {
-      clauses.push(where('planId', '==', planFilter));
-    } else if (Array.isArray(planFilter)) {
-      if (planFilter.length === 1) {
-        clauses.push(where('planId', '==', planFilter[0]));
-      } else {
-        clauses.push(where('planId', 'in', planFilter.slice(0, 30)));
-      }
-    }
-    clauses.push(orderBy('weekStart', 'desc'));
-    clauses.push(limit(1));
-    const q = query(reviewsRef, ...clauses);
+    const q = query(
+      reviewsRef,
+      where('status', '==', 'CLOSED'),
+      orderBy('weekStart', 'desc'),
+      limit(20)
+    );
+
+    const allowedSet = (() => {
+      if (typeof planFilter === 'string' && planFilter) return new Set([planFilter]);
+      if (Array.isArray(planFilter) && planFilter.length > 0) return new Set(planFilter);
+      return null; // null = sem filtro
+    })();
+
+    const matches = (data) => {
+      if (!allowedSet) return true;
+      const top = data?.planId;
+      const frozen = data?.frozenSnapshot?.planContext?.planId;
+      return (top && allowedSet.has(top)) || (frozen && allowedSet.has(frozen));
+    };
 
     const unsub = onSnapshot(
       q,
       (snap) => {
-        if (snap.empty || snap.docs.length === 0) {
-          setReview(null);
+        const picked = snap.docs.find(d => matches(d.data()));
+        if (picked) {
+          setReview({ id: picked.id, ...picked.data() });
         } else {
-          const d = snap.docs[0];
-          setReview({ id: d.id, ...d.data() });
+          setReview(null);
         }
         setLoading(false);
       },
