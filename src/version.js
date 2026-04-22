@@ -3,6 +3,14 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.41.0: feat: Ajustes Dashboard Aluno (issue #164, Sev2) — E1 SWOT reaproveita
+ *   `review.swot` da última review CLOSED + fallback "aguardando revisão semanal";
+ *   E2 card "Consistência Operacional" (CV P&L com semáforo DEC-050 + ΔT W/L com
+ *   semáforo ±20%/±10%) substitui "Consistência" RR Asymmetry e Tempo Médio isolado;
+ *   E3 Matriz Emocional 4D Opção A (expectância + payoff + shift rate entry→exit +
+ *   Δ WR vs baseline + sparkline PL); E5 EquityCurve com tabs por moeda quando
+ *   contexto agrega ≥2 moedas + curva ideal do plano (meta/stop linear pelos dias
+ *   corridos do ciclo, planId único). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.40.0: fix: Botão "Finalizar" travado na conclusão do aprofundamento (issue #166, Sev1) —
  *   loading state + disabled + try/catch no onClick de ProbingQuestionsFlow; fromStatus='probing'
  *   explícito em completeProbing (elimina stale closure); DebugBadge component= corrigido (INV-04).
@@ -87,10 +95,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.40.0',
+  version: '1.41.0',
   build: '20260421',
-  display: 'v1.40.0',
-  full: '1.40.0+20260421',
+  display: 'v1.41.0',
+  full: '1.41.0+20260421',
 };
 export default VERSION;
 export { VERSION };

@@ -303,11 +303,97 @@ export const calculatePayoff = (stats) => {
   };
 };
 
+/**
+ * Calcula Coeficiente de Variação do P&L por trade.
+ * CV = std(results) / |mean(results)|
+ *
+ * Mede consistência operacional — quanto a expectância varia trade-a-trade.
+ * Independe de WR e magnitude absoluta dos resultados.
+ *
+ * Semáforo (DEC-050):
+ *   < 0.5  → consistent (operação previsível)
+ *   0.5–1.0 → moderate
+ *   > 1.0  → erratic (resultado por trade muito imprevisível)
+ *
+ * Usa stdev populacional (divisão por n, não n-1) — alinhado com o cálculo
+ * de risk asymmetry deste mesmo arquivo.
+ *
+ * @param {Array<{result: number}>} trades
+ * @returns {{ cv: number, mean: number, stdDev: number, level: 'consistent'|'moderate'|'erratic', count: number }|null}
+ */
+export const calculateConsistencyCV = (trades) => {
+  if (!trades || trades.length < 2) return null;
+
+  const results = trades
+    .filter(t => t && t.result != null && !isNaN(Number(t.result)) && isFinite(Number(t.result)))
+    .map(t => Number(t.result));
+
+  if (results.length < 2) return null;
+
+  const mean = results.reduce((s, v) => s + v, 0) / results.length;
+  if (mean === 0) return null;
+
+  const variance = results.reduce((s, v) => s + (v - mean) ** 2, 0) / results.length;
+  const stdDev = Math.sqrt(variance);
+  const cv = stdDev / Math.abs(mean);
+
+  let level;
+  if (cv < 0.5) level = 'consistent';
+  else if (cv <= 1.0) level = 'moderate';
+  else level = 'erratic';
+
+  return {
+    cv: Math.round(cv * 100) / 100,
+    mean: Math.round(mean * 100) / 100,
+    stdDev: Math.round(stdDev * 100) / 100,
+    level,
+    count: results.length,
+  };
+};
+
+/**
+ * Calcula delta de duração entre wins e losses.
+ * deltaPercent = (durationWin - durationLoss) / durationLoss × 100
+ *
+ * Mede comportamento em posição:
+ *   ΔT > +20%   → winners-run (segura ganhos, corta perdas — saudável)
+ *   -10% ≤ ΔT ≤ +20% → neutral
+ *   ΔT < -10%   → holding-losses (segura loss esperando virar, corta ganho cedo)
+ *
+ * Recebe o objeto já calculado por useDashboardMetrics.avgTradeDuration
+ * (campos `win` e `loss` em minutos). Independente da unidade.
+ *
+ * @param {{ win: number|null, loss: number|null }|null} avgTradeDuration
+ * @returns {{ deltaPercent: number, level: 'winners-run'|'neutral'|'holding-losses', durationWin: number, durationLoss: number }|null}
+ */
+export const calculateDurationDelta = (avgTradeDuration) => {
+  if (!avgTradeDuration) return null;
+  const { win, loss } = avgTradeDuration;
+  if (win == null || loss == null || loss <= 0) return null;
+  if (!isFinite(win) || !isFinite(loss)) return null;
+
+  const deltaPercent = ((win - loss) / loss) * 100;
+
+  let level;
+  if (deltaPercent > 20) level = 'winners-run';
+  else if (deltaPercent >= -10) level = 'neutral';
+  else level = 'holding-losses';
+
+  return {
+    deltaPercent: Math.round(deltaPercent * 100) / 100,
+    level,
+    durationWin: win,
+    durationLoss: loss,
+  };
+};
+
 export default {
   calculateMaxDrawdown,
   calculatePlannedWinRate,
   calculateComplianceRate,
   calculateRiskAsymmetry,
   calculateEVLeakage,
-  calculatePayoff
+  calculatePayoff,
+  calculateConsistencyCV,
+  calculateDurationDelta,
 };

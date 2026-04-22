@@ -116,18 +116,34 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
     return [optAll, ...list];
   }, [accounts]);
 
+  // Quando "Todas as contas" (accountId=null) está ativo, listar todos os planos
+  // ativos de todas as contas — permite highlight do plano sem forçar troca de
+  // conta. Sublabel ganha o nome da conta para diferenciar.
   const planOptions = useMemo(() => {
-    if (!accountId) return [];
-    return (plans || [])
-      .filter(p => p.accountId === accountId)
-      .map(p => ({
+    const accountsById = new Map((accounts || []).map(a => [a.id, a]));
+    const matches = accountId
+      ? (plans || []).filter(p => p.accountId === accountId)
+      : (plans || []).filter(p => p.active !== false);
+    if (matches.length === 0) return [];
+    const optNone = {
+      value: null,
+      label: accountId ? 'Nenhum plano' : 'Todos os planos',
+      sublabel: accountId ? 'Sem plano selecionado' : `${matches.length} disponível${matches.length > 1 ? 'is' : ''}`
+    };
+    const list = matches.map(p => {
+      const acc = accountsById.get(p.accountId);
+      const accTag = !accountId && acc ? `${acc.name || acc.id}` : null;
+      const cycleTag = p.adjustmentCycle ? `Ciclo ${p.adjustmentCycle}` : null;
+      const rrTag = p.rrTarget ? `RR ${p.rrTarget}` : null;
+      const sublabel = [accTag, cycleTag, rrTag].filter(Boolean).join(' · ') || null;
+      return {
         value: p.id,
         label: p.name || `Plano ${String(p.id).slice(0, 6)}`,
-        sublabel: p.adjustmentCycle
-          ? `Ciclo ${p.adjustmentCycle} · RR ${p.rrTarget || '—'}`
-          : null
-      }));
-  }, [plans, accountId]);
+        sublabel,
+      };
+    });
+    return [optNone, ...list];
+  }, [plans, accounts, accountId]);
 
   // Ciclos disponíveis: gera chaves dos últimos 12 meses/4 trimestres a partir dos trades + atual
   const cycleOptions = useMemo(() => {
@@ -164,8 +180,12 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
   // ============================================
 
   return (
-    <div className="w-full">
-      {!embedded && <DebugBadge component="ContextBar" />}
+    // relative + z-40 no wrapper: o backdrop-blur-sm abaixo cria um stacking
+    // context, e precisamos que ele fique acima dos glass-cards que vêm
+    // depois (tambem sao stacking contexts via backdrop-blur-xl). Sem isso,
+    // os dropdowns abrem "por baixo" dos cards de plano.
+    <div className="w-full relative z-40">
+      {!embedded && <DebugBadge component="ContextBar" embedded />}
 
       <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-900/60 backdrop-blur-sm rounded-xl border border-slate-800/60">
         <Dropdown
@@ -184,8 +204,8 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
           value={planId}
           options={planOptions}
           onChange={setPlan}
-          disabled={!accountId || planOptions.length === 0}
-          placeholder={accountId ? 'Nenhum plano' : 'Escolha conta'}
+          disabled={planOptions.length === 0}
+          placeholder={accountId ? 'Nenhum plano' : 'Todos os planos'}
         />
         <span className="text-slate-600">›</span>
 

@@ -237,7 +237,7 @@ const AddTradeModal = ({
       setFormData({
         entryDate: eDate, entryTime: eTime,
         exitDate: xDate, exitTime: xTime,
-        ticker: editTrade.ticker, exchange: editTrade.exchange, side: editTrade.side,
+        ticker: editTrade.ticker, exchange: editTrade.exchange || (exchanges[0]?.code ?? 'B3'), side: editTrade.side,
         entry: editTrade.entry.toString(), exit: editTrade.exit.toString(), qty: editTrade.qty.toString(),
         stopLoss: editTrade.stopLoss != null ? editTrade.stopLoss.toString() : '',
         setup: editTrade.setup,

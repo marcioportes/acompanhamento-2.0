@@ -109,6 +109,22 @@ describe('StudentContextProvider', () => {
       expect(result.current.cycleKey).toBe(cycleBefore); // mesmo plano de ciclo Mensal → mesmo cycleKey pelo now
     });
 
+    // #164 review: overlay do EquityCurve sumia ao trocar plano porque o
+    // cycleKey anterior (de outro tipo de ciclo) não era invalidado. Troca de
+    // Mensal (p1) para Trimestral (p3) deve resetar cycleKey para o ciclo ativo
+    // do plano novo — não carregar o cycleKey mensal do anterior.
+    it('setPlan entre planos com cicloType diferente reseta cycleKey para o ciclo ativo do plano novo', () => {
+      const { result } = renderHook(() => useStudentContext(), wrap());
+      act(() => result.current.setPlan('p1')); // Mensal
+      const cycleMensal = result.current.cycleKey;
+      expect(cycleMensal).toMatch(/^\d{4}-\d{2}$/);
+
+      act(() => result.current.setPlan('p3')); // Trimestral
+      expect(result.current.planId).toBe('p3');
+      expect(result.current.cycleKey).not.toBe(cycleMensal);
+      expect(result.current.cycleKey).toMatch(/^\d{4}-Q[1-4]$/);
+    });
+
     it('setCycleKey mantém plano mas recalcula período', () => {
       const { result } = renderHook(() => useStudentContext(), wrap());
       act(() => result.current.setCycleKey('2026-01'));

@@ -11,7 +11,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { calculateMaxDrawdown } from '../../utils/dashboardMetrics';
+import {
+  calculateMaxDrawdown,
+  calculateConsistencyCV,
+  calculateDurationDelta,
+} from '../../utils/dashboardMetrics';
 
 describe('calculateMaxDrawdown', () => {
 
@@ -152,5 +156,237 @@ describe('calculateMaxDrawdown', () => {
     // peak=0, cumPnL: -100, -200, -300 → DD=300 no último
     expect(maxDD).toBe(300);
     expect(maxDDDate).toBe('2026-01-03');
+  });
+});
+
+/**
+ * Tests: calculateConsistencyCV (E2 — issue #164)
+ * @description Coeficiente de Variação do P&L por trade.
+ * CV = std(results) / |mean(results)|
+ * Semáforo (DEC-050): <0.5 consistent · 0.5–1.0 moderate · >1.0 erratic
+ */
+describe('calculateConsistencyCV', () => {
+
+  it('série uniforme com expectância positiva → CV baixo (consistente)', () => {
+    const trades = [
+      { result: 100 },
+      { result: 110 },
+      { result: 90 },
+      { result: 105 },
+      { result: 95 },
+    ];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv).not.toBeNull();
+    expect(cv.cv).toBeLessThan(0.5);
+    expect(cv.level).toBe('consistent');
+    expect(cv.mean).toBe(100);
+    expect(cv.count).toBe(5);
+  });
+
+  it('série moderadamente dispersa → level moderate', () => {
+    // mean = 100, dispersão tal que CV cai entre 0.5 e 1.0
+    const trades = [
+      { result: 200 },
+      { result: 50 },
+      { result: 150 },
+      { result: 30 },
+      { result: 70 },
+    ];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv).not.toBeNull();
+    expect(cv.cv).toBeGreaterThanOrEqual(0.5);
+    expect(cv.cv).toBeLessThanOrEqual(1.0);
+    expect(cv.level).toBe('moderate');
+  });
+
+  it('série altamente dispersa → level erratic', () => {
+    // Mistura grande de wins/losses com magnitudes muito diferentes
+    const trades = [
+      { result: 500 },
+      { result: -300 },
+      { result: 50 },
+      { result: -400 },
+      { result: 700 },
+      { result: -50 },
+    ];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv).not.toBeNull();
+    expect(cv.cv).toBeGreaterThan(1.0);
+    expect(cv.level).toBe('erratic');
+  });
+
+  it('lista vazia → null', () => {
+    expect(calculateConsistencyCV([])).toBeNull();
+    expect(calculateConsistencyCV(null)).toBeNull();
+    expect(calculateConsistencyCV(undefined)).toBeNull();
+  });
+
+  it('1 trade só → null (CV exige variância)', () => {
+    expect(calculateConsistencyCV([{ result: 100 }])).toBeNull();
+  });
+
+  it('mean = 0 (wins e losses se anulam) → null (CV indefinido)', () => {
+    const trades = [
+      { result: 100 },
+      { result: -100 },
+    ];
+
+    expect(calculateConsistencyCV(trades)).toBeNull();
+  });
+
+  it('ignora result inválido (null, undefined, NaN) sem quebrar', () => {
+    const trades = [
+      { result: 100 },
+      { result: null },
+      { result: undefined },
+      { result: NaN },
+      { result: 110 },
+      { result: 90 },
+    ];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv).not.toBeNull();
+    expect(cv.count).toBe(3);
+    expect(cv.mean).toBe(100);
+  });
+
+  it('expectância negativa (mean < 0) usa |mean| no denominador', () => {
+    // Trader perdedor — toda a série negativa, ainda dá pra medir consistência da perda
+    const trades = [
+      { result: -100 },
+      { result: -110 },
+      { result: -90 },
+      { result: -105 },
+      { result: -95 },
+    ];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv).not.toBeNull();
+    expect(cv.mean).toBe(-100);
+    expect(cv.cv).toBeLessThan(0.5);
+    expect(cv.level).toBe('consistent');
+  });
+
+  it('coverage do limite exato 0.5 → moderate (inclusive)', () => {
+    // Construir série com CV exatamente 0.5: mean=100, std=50
+    // Para n=2: std=|x1-x2|/2 (com divisão por n, não n-1). |x1-x2|/2 = 50 → |x1-x2|=100
+    // x1=150, x2=50 → mean=100, var=2500, std=50, CV=0.5
+    const trades = [{ result: 150 }, { result: 50 }];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv.cv).toBe(0.5);
+    expect(cv.level).toBe('moderate');
+  });
+
+  it('coverage do limite exato 1.0 → moderate (inclusive)', () => {
+    // mean=100, std=100. Para n=2: |x1-x2|/2 = 100 → |x1-x2|=200
+    // x1=200, x2=0 → mean=100, var=10000, std=100, CV=1.0
+    const trades = [{ result: 200 }, { result: 0 }];
+
+    const cv = calculateConsistencyCV(trades);
+
+    expect(cv.cv).toBe(1.0);
+    expect(cv.level).toBe('moderate');
+  });
+});
+
+/**
+ * Tests: calculateDurationDelta (E2 — issue #164)
+ * @description Delta de tempo médio entre wins e losses.
+ * deltaPercent = (durationWin - durationLoss) / durationLoss × 100
+ * Semáforo: >+20% winners-run · -10% a +20% neutral · <-10% holding-losses
+ */
+describe('calculateDurationDelta', () => {
+
+  it('winners run (W muito > L) → level winners-run', () => {
+    const avgTradeDuration = { win: 12, loss: 5, all: 8.5, count: 10 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta).not.toBeNull();
+    expect(delta.deltaPercent).toBe(140); // (12-5)/5 * 100
+    expect(delta.level).toBe('winners-run');
+    expect(delta.durationWin).toBe(12);
+    expect(delta.durationLoss).toBe(5);
+  });
+
+  it('tempos próximos (delta entre -10% e +20%) → level neutral', () => {
+    const avgTradeDuration = { win: 10.5, loss: 10, all: 10.25, count: 8 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.deltaPercent).toBe(5);
+    expect(delta.level).toBe('neutral');
+  });
+
+  it('aluno segura loss (W < L) → level holding-losses', () => {
+    const avgTradeDuration = { win: 5, loss: 15, all: 10, count: 6 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.deltaPercent).toBeCloseTo(-66.67, 2);
+    expect(delta.level).toBe('holding-losses');
+  });
+
+  it('input null/undefined → null', () => {
+    expect(calculateDurationDelta(null)).toBeNull();
+    expect(calculateDurationDelta(undefined)).toBeNull();
+  });
+
+  it('win ou loss null → null', () => {
+    expect(calculateDurationDelta({ win: null, loss: 10 })).toBeNull();
+    expect(calculateDurationDelta({ win: 10, loss: null })).toBeNull();
+    expect(calculateDurationDelta({ win: undefined, loss: 5 })).toBeNull();
+  });
+
+  it('loss = 0 → null (divisão por zero)', () => {
+    expect(calculateDurationDelta({ win: 10, loss: 0 })).toBeNull();
+  });
+
+  it('limite exato +20% → neutral (inclusive — boundary >20 é winners-run)', () => {
+    // (12 - 10) / 10 * 100 = 20%
+    const avgTradeDuration = { win: 12, loss: 10 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.deltaPercent).toBe(20);
+    expect(delta.level).toBe('neutral');
+  });
+
+  it('limite exato -10% → neutral (inclusive — boundary <-10 é holding-losses)', () => {
+    // (9 - 10) / 10 * 100 = -10%
+    const avgTradeDuration = { win: 9, loss: 10 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.deltaPercent).toBe(-10);
+    expect(delta.level).toBe('neutral');
+  });
+
+  it('logo acima de +20% → winners-run', () => {
+    // (12.1 - 10) / 10 = 21%
+    const avgTradeDuration = { win: 12.1, loss: 10 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.level).toBe('winners-run');
+  });
+
+  it('logo abaixo de -10% → holding-losses', () => {
+    // (8.9 - 10) / 10 = -11%
+    const avgTradeDuration = { win: 8.9, loss: 10 };
+
+    const delta = calculateDurationDelta(avgTradeDuration);
+
+    expect(delta.level).toBe('holding-losses');
   });
 });

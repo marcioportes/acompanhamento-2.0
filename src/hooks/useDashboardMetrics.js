@@ -17,7 +17,13 @@ import { useMemo } from 'react';
 import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
-import { calculateRiskAsymmetry, calculateEVLeakage, calculatePayoff } from '../utils/dashboardMetrics';
+import {
+  calculateRiskAsymmetry,
+  calculateEVLeakage,
+  calculatePayoff,
+  calculateConsistencyCV,
+  calculateDurationDelta,
+} from '../utils/dashboardMetrics';
 
 /** Labels de período para display */
 const PERIOD_LABELS = {
@@ -43,10 +49,22 @@ const useDashboardMetrics = ({
     return accounts;
   }, [accounts, accountTypeFilter]);
 
+  // selectedPlanId tem precedência sobre filters.accountId — plano pertence a uma
+  // conta, então seleção de plano deve restringir o escopo a essa conta.
   const selectedAccountIds = useMemo(() => {
+    if (selectedPlanId) {
+      const plan = plans.find(p => p.id === selectedPlanId);
+      if (plan?.accountId) return [plan.accountId];
+    }
     if (filters.accountId === 'all') return filteredAccountsByType.map(a => a.id);
     return [filters.accountId];
-  }, [filteredAccountsByType, filters.accountId]);
+  }, [filteredAccountsByType, filters.accountId, selectedPlanId, plans]);
+
+  // Contas dentro do escopo ativo — fonte única para saldos, moeda, agregações
+  const accountsInScope = useMemo(() => {
+    const idSet = new Set(selectedAccountIds);
+    return accounts.filter(a => idSet.has(a.id));
+  }, [accounts, selectedAccountIds]);
 
   // === Trades e Planos filtrados ===
   const allAccountTrades = useMemo(() => {
@@ -76,55 +94,25 @@ const useDashboardMetrics = ({
   const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
   // === Saldos agregados ===
-  const aggregatedInitialBalance = useMemo(() => {
-    if (selectedPlanId) {
-      const plan = plans.find(p => p.id === selectedPlanId);
-      if (plan) {
-        const acc = accounts.find(a => a.id === plan.accountId);
-        return acc ? (acc.initialBalance ?? 0) : 0;
-      }
-    }
-    if (filters.accountId !== 'all') {
-      const acc = accounts.find(a => a.id === filters.accountId);
-      return acc ? (acc.initialBalance ?? 0) : 0;
-    }
-    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.initialBalance ?? 0), 0);
-  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
+  // Todos derivam de accountsInScope (reflete selectedPlanId > filters.accountId > todas)
+  const aggregatedInitialBalance = useMemo(() =>
+    accountsInScope.reduce((sum, acc) => sum + (acc.initialBalance ?? 0), 0),
+  [accountsInScope]);
 
-  const aggregatedCurrentBalance = useMemo(() => {
-    if (selectedPlanId) {
-      const plan = plans.find(p => p.id === selectedPlanId);
-      if (plan) {
-        const acc = accounts.find(a => a.id === plan.accountId);
-        return acc ? (acc.currentBalance ?? acc.initialBalance ?? 0) : 0;
-      }
-    }
-    if (filters.accountId !== 'all') {
-      const acc = accounts.find(a => a.id === filters.accountId);
-      return acc ? (acc.currentBalance ?? acc.initialBalance ?? 0) : 0;
-    }
-    return filteredAccountsByType.reduce((sum, acc) => sum + (acc.currentBalance ?? acc.initialBalance ?? 0), 0);
-  }, [filteredAccountsByType, filters.accountId, accounts, selectedPlanId, plans]);
+  const aggregatedCurrentBalance = useMemo(() =>
+    accountsInScope.reduce((sum, acc) => sum + (acc.currentBalance ?? acc.initialBalance ?? 0), 0),
+  [accountsInScope]);
 
   // v1.15.0: Multi-moeda
-  const balancesByCurrency = useMemo(() => {
-    if (filters.accountId !== 'all') {
-      const acc = accounts.find(a => a.id === filters.accountId);
-      return aggregateBalancesByCurrency(acc ? [acc] : []);
-    }
-    return aggregateBalancesByCurrency(filteredAccountsByType);
-  }, [filteredAccountsByType, filters.accountId, accounts]);
+  const balancesByCurrency = useMemo(() =>
+    aggregateBalancesByCurrency(accountsInScope),
+  [accountsInScope]);
 
   const dominantCurrency = useMemo(() => {
-    if (filters.accountId !== 'all') {
-      const acc = accounts.find(a => a.id === filters.accountId);
-      return acc?.currency || 'BRL';
-    }
-    if (isSameCurrency(filteredAccountsByType)) {
-      return filteredAccountsByType[0]?.currency || 'BRL';
-    }
+    if (accountsInScope.length === 0) return 'BRL';
+    if (isSameCurrency(accountsInScope)) return accountsInScope[0]?.currency || 'BRL';
     return null;
-  }, [filteredAccountsByType, filters.accountId, accounts]);
+  }, [accountsInScope]);
 
   // === Métricas avançadas ===
   const drawdown = useMemo(() => {
@@ -240,6 +228,13 @@ const useDashboardMetrics = ({
     };
   }, [filteredTrades]);
 
+  // === Consistência Operacional (E2 — Issue #164) ===
+  // CV de P&L por trade — substitui semanticamente o "Consistência" RR Asymmetry (errado)
+  const consistencyCV = useMemo(() => calculateConsistencyCV(filteredTrades), [filteredTrades]);
+
+  // ΔT W vs L — derivado de avgTradeDuration; semáforo de comportamento em posição
+  const durationDelta = useMemo(() => calculateDurationDelta(avgTradeDuration), [avgTradeDuration]);
+
   // === P&L Contextual (B5 — Issue #71) ===
   const plContext = useMemo(() => {
     // Prioridade 1: filtro de período ativo
@@ -296,6 +291,9 @@ const useDashboardMetrics = ({
     plContext,
     // Tempo médio (Fase C — #134)
     avgTradeDuration,
+    // Consistência Operacional (E2 — #164)
+    consistencyCV,
+    durationDelta,
   };
 };
 

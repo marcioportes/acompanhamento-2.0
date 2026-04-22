@@ -324,6 +324,9 @@ export const useTrades = (overrideStudentId = null) => {
         }
       }
 
+      // Firestore rejeita undefined — stripar antes do write
+      Object.keys(updateData).forEach(k => updateData[k] === undefined && delete updateData[k]);
+
       // Write único do trade pai
       await updateDoc(tradeRef, updateData);
 

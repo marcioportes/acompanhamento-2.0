@@ -16,7 +16,7 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 
 // Componentes extraídos
@@ -73,6 +73,7 @@ import ContextBar from '../components/ContextBar';
 // Utils
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
+import { generateIdealEquitySeries, calculateIdealStatus } from '../utils/equityCurveIdeal';
 
 
 /**
@@ -128,7 +129,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [calendarSelectedDate, setCalendarSelectedDate] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [wizardComplete, setWizardComplete] = useState(false);
-  const [accountTypeFilter, setAccountTypeFilter] = useState('all');
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
   const [showOrderImport, setShowOrderImport] = useState(false);
@@ -156,19 +156,18 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const isLoading = tradesLoading || accountsLoading || plansLoading;
 
   // === Métricas calculadas (hook extraído) ===
+  // accountTypeFilter fixo em 'all' desde #164 (review): seletor de conta foi unificado
+  // na ContextBar (#118). O hook ainda aceita o filtro caso volte em issue futuro.
   const metrics = useDashboardMetrics({
     accounts,
     trades,
     plans,
     filters,
     selectedPlanId,
-    accountTypeFilter,
+    accountTypeFilter: 'all',
   });
 
   const {
-    filteredAccountsByType,
-    allAccountTrades,
-    plansToShow,
     availablePlans,
     filteredTrades,
     stats,
@@ -186,7 +185,34 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     asymmetryDiagnostic,
     plContext,
     avgTradeDuration,
+    consistencyCV,
+    durationDelta,
   } = metrics;
+
+  // === Curva ideal do plano (E5 — issue #164) ===
+  // Só ativa quando há plano único selecionado com ciclo ativo (datas válidas).
+  const idealEquitySeries = useMemo(() => {
+    const plan = studentCtx.selectedPlan;
+    const cycle = studentCtx.selectedCycle;
+    if (!plan || !cycle?.start || !cycle?.end) return null;
+    return generateIdealEquitySeries(plan, { startDate: cycle.start, endDate: cycle.end });
+  }, [studentCtx.selectedPlan, studentCtx.selectedCycle]);
+
+  const idealEquityStatus = useMemo(() => {
+    if (!idealEquitySeries) return null;
+    const pl = aggregatedCurrentBalance - aggregatedInitialBalance;
+    return calculateIdealStatus(pl, aggregatedInitialBalance, idealEquitySeries);
+  }, [idealEquitySeries, aggregatedCurrentBalance, aggregatedInitialBalance]);
+
+  // SwotAnalysis: quando há conta específica + plano=null, filtrar reviews pelos
+  // planos da conta (evita mostrar SWOT de review de outra conta/plano)
+  const swotAccountPlanIds = useMemo(() => {
+    if (selectedPlanId) return null; // precedência do planId
+    if (!studentCtx.accountId) return null; // "todas as contas" → sem filtro
+    return plans
+      .filter(p => p.accountId === studentCtx.accountId && p.active !== false)
+      .map(p => p.id);
+  }, [plans, studentCtx.accountId, selectedPlanId]);
 
   // === Handlers ===
   const handleViewFeedbackHistory = (trade) => {
@@ -319,10 +345,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // === Render ===
   return (
     <div className="p-6 lg:p-8 space-y-6">
-      {/* Barra de Contexto Unificado (issue #118 — DEC-047) */}
-      <ContextBar accounts={accounts} plans={plans} trades={trades} />
-
-      {/* Header + AccountFilterBar + Card informativo */}
+      {/* Header (título + ações) */}
       <DashboardHeader
         viewAs={viewAs}
         showFilters={showFilters}
@@ -330,20 +353,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onNewTrade={() => { setEditingTrade(null); setShowAddModal(true); }}
         onCsvImport={() => setShowCsvWizard(true)}
         onOrderImport={() => setShowOrderImport(true)}
-        accounts={accounts}
-        accountTypeFilter={accountTypeFilter}
-        onAccountTypeChange={setAccountTypeFilter}
-        selectedAccountId={filters.accountId}
-        onAccountSelect={(id) => {
-          // Fluxo de conta: delega para StudentContextProvider (que reseta plano/ciclo/período em cascata).
-          // Sync bidirecional propaga 'all' ↔ null automaticamente.
-          studentCtx.setAccount(id === 'all' ? null : id);
-        }}
-        filteredAccountsByType={filteredAccountsByType}
-        aggregatedCurrentBalance={aggregatedCurrentBalance}
-        dominantCurrency={dominantCurrency}
-        balancesByCurrency={balancesByCurrency}
       />
+
+      {/* Barra de Contexto Unificado (#118 — DEC-047). Fica logo abaixo do header
+          para que os dropdowns (que abrem com top-full) caiam sobre o conteúdo
+          neutro abaixo, e não sobre o título/botões. */}
+      <ContextBar accounts={accounts} plans={plans} trades={trades} />
 
       {/* CSV Import — Card de staging */}
       {stagingTrades.length > 0 && (
@@ -400,6 +415,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
         avgTradeDuration={avgTradeDuration}
+        consistencyCV={consistencyCV}
+        durationDelta={durationDelta}
       />
 
       {/* Gráficos */}
@@ -407,7 +424,15 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         <div className="lg:col-span-2">
           <div className="glass-card h-[400px] w-full relative p-4">
             {filteredTrades.length > 0 ? (
-              <EquityCurve trades={filteredTrades} initialBalance={aggregatedInitialBalance} currency={dominantCurrency || 'BRL'} />
+              <EquityCurve
+                trades={filteredTrades}
+                initialBalance={aggregatedInitialBalance}
+                currency={dominantCurrency || 'BRL'}
+                currencies={balancesByCurrency}
+                accounts={accounts}
+                idealSeries={idealEquitySeries}
+                idealStatus={idealEquityStatus}
+              />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-500">
                 <Activity className="w-12 h-12 mb-2 opacity-20" />
@@ -466,10 +491,16 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Análises */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <SwotAnalysis trades={allAccountTrades} plans={plansToShow} currentBalance={aggregatedCurrentBalance} />
+        <SwotAnalysis
+          studentId={overrideStudentId || user?.uid}
+          planId={selectedPlanId}
+          accountPlanIds={swotAccountPlanIds}
+          /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
+             (hoje 'weekly-review' é restrita a mentor em App.jsx). */
+        />
         <SetupAnalysis trades={filteredTrades} />
       </div>
-      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
+      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} globalWR={stats?.winRate} /></div>
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
