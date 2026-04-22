@@ -500,7 +500,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         />
         <SetupAnalysis trades={filteredTrades} />
       </div>
-      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} /></div>
+      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} globalWR={stats?.winRate} /></div>
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
