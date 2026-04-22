@@ -31,8 +31,8 @@ const shiftColor = (rate) => {
 
 const Sparkline = ({ series, positive }) => {
   if (!series || series.length === 0) return null;
-  const width = 80;
-  const height = 28;
+  const width = 60;
+  const height = 24;
   const padding = 2;
 
   if (series.length === 1) {
@@ -223,8 +223,8 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
         </div>
       </div>
 
-      {/* Lista de cards */}
-      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
+      {/* Grid de cards (2 colunas ≥ md, 1 coluna em telas menores) */}
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
         {cards.map((c) => {
           const profitable = c.totalPL >= 0;
           const borderClass = profitable ? 'border-emerald-500/20' : 'border-red-500/20';
@@ -251,7 +251,7 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
               </div>
 
               {/* Grid 2×2 de quadrantes 4D */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                 <Quadrant label="Financial">
                   <KPI
                     label="Expect"
