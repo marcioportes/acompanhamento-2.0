@@ -17,7 +17,13 @@ import { useMemo } from 'react';
 import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
-import { calculateRiskAsymmetry, calculateEVLeakage, calculatePayoff } from '../utils/dashboardMetrics';
+import {
+  calculateRiskAsymmetry,
+  calculateEVLeakage,
+  calculatePayoff,
+  calculateConsistencyCV,
+  calculateDurationDelta,
+} from '../utils/dashboardMetrics';
 
 /** Labels de período para display */
 const PERIOD_LABELS = {
@@ -240,6 +246,13 @@ const useDashboardMetrics = ({
     };
   }, [filteredTrades]);
 
+  // === Consistência Operacional (E2 — Issue #164) ===
+  // CV de P&L por trade — substitui semanticamente o "Consistência" RR Asymmetry (errado)
+  const consistencyCV = useMemo(() => calculateConsistencyCV(filteredTrades), [filteredTrades]);
+
+  // ΔT W vs L — derivado de avgTradeDuration; semáforo de comportamento em posição
+  const durationDelta = useMemo(() => calculateDurationDelta(avgTradeDuration), [avgTradeDuration]);
+
   // === P&L Contextual (B5 — Issue #71) ===
   const plContext = useMemo(() => {
     // Prioridade 1: filtro de período ativo
@@ -296,6 +309,9 @@ const useDashboardMetrics = ({
     plContext,
     // Tempo médio (Fase C — #134)
     avgTradeDuration,
+    // Consistência Operacional (E2 — #164)
+    consistencyCV,
+    durationDelta,
   };
 };
 
