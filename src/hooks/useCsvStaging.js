@@ -312,6 +312,7 @@ const useCsvStaging = (overrideStudentId = null) => {
     const tradeData = {
       planId: stagingTrade.planId,
       ticker: stagingTrade.ticker,
+      exchange: stagingTrade.exchange ?? null,
       side: stagingTrade.side,
       entry: stagingTrade.entry,
       exit: stagingTrade.exit,
