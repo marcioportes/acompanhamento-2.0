@@ -580,6 +580,14 @@ Total: **20 tasks** · 1-5 commits cada · ~30-90min por task.
 
 **Blast radius:** zero — é a única interpretação que fecha a aritmética. Worker task 02 implementa direto sem re-ambiguar.
 
+#### DEC-AUTO-119-04 — Clamp de `suggestedStage` em [1, stageCurrent-1] (Worker, task 05)
+
+**Contexto:** `detectRegressionSignal` usa `suggestedStage = min(mappedStage, stageCurrent - 1)`. Em stage 1, `stageCurrent - 1 = 0` quebra a enum 1..5. Gatilho 3 só dispara se `mappedStage < stageCurrent`, então em stage 1 o gatilho 3 não dispara; mas gatilhos 1 e 2 podem disparar com stageCurrent=1 e caem no mesmo `min(1, 0) = 0`.
+
+**Decisão:** clamp explícito `max(1, min(mappedStage, stageCurrent - 1))`. Semântica: "já está no stage mais baixo, não há regressão possível abaixo disso" — a regressão é sinalizada por `detected=true + reasons`, mas `suggestedStage` permanece 1 (sentinel que o consumer interpreta como "no piso").
+
+**Blast radius:** zero — alternativa (`null` em stage 1) exige branching adicional nos consumers. `1` é consistente com o contrato do tipo (`1..5 | null`).
+
 #### DEC-AUTO-119-05 — `firestore.rules` usa helpers existentes, não `users.role` (Worker, task 06)
 
 **Contexto:** §3.1 D10 mostra o bloco de rules com check inline `get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'mentor'`, mas o codebase já tem helper `isMentor()` (email hardcoded do mentor único) e não existe schema `users.role`.
@@ -599,33 +607,46 @@ match /students/{studentId}/maturity/{docId=**} {
 
 Decisões de implementação menor (posição do bloco em `firestore.rules`, regex de data permissiva, counts `number>=0` sem int estrito). Comentários em código já documentam; não reusáveis entre sessões.
 
-#### DEC-AUTO-119-06 — Path `history` como sub-sub-collection com `_historyBucket` (Worker, task 07)
+#### DEC-AUTO-119-06 — Path `history` como sub-sub-collection literal com sentinel `_historyBucket` (Worker, task 07)
 
-**Contexto:** §3.1 D10 literal `students/{uid}/maturity/history/{YYYY-MM-DD}` — mas path Firestore válida exige alternância coleção/doc. Worker resolveu: `maturity/current` (doc) + `maturity/_historyBucket/history/{YYYY-MM-DD}` (sub-sub-coleção via doc-sentinel).
+**Contexto:** §3.1 D10 descreve `students/{uid}/maturity/history/{YYYY-MM-DD}`. Firestore exige paths alternando col/doc; `maturity/history/{YYYY-MM-DD}` literal tem 5 segmentos, que interpretaria `{YYYY-MM-DD}` como nome de collection. Task 07 ofereceu três alternativas (recursiva literal, docId prefixado, subcollections irmãs).
 
-**Decisão:** sentinel `_historyBucket` preserva segmentos literais de D10 e firestore.rules com `{docId=**}` cobre recursivamente. Usado em `recomputeMaturity.js`, `useMaturityHistory.js`.
+**Decisão:** implementar como sub-sub-collection literal inserindo um doc-sentinel `_historyBucket` para preservar os segmentos `maturity/history/`:
 
-**Blast radius:** nenhum — escolha interna de persistência; UI/engine consomem shapes D10.
+```
+students/{uid}/maturity/current                                ← doc direto
+students/{uid}/maturity/_historyBucket/history/{YYYY-MM-DD}    ← sub-sub-collection
+```
 
-#### DEC-AUTO-119-07 — Stubs neutros em `preComputeShapes` (Worker, task 07)
+Usado em `recomputeMaturity.js`, `useMaturityHistory.js`. Consumers navegam com `.collection('maturity').doc('_historyBucket').collection('history')`. Doc `_historyBucket` em si nunca é lido/escrito; é container implícito para a subcollection.
 
-**Contexto:** `emotionalAnalysisV2` e `calculateEVLeakage` não têm mirror completo em `functions/`. Fazer mirror agora seria CHUNK-06 escrita sem lock.
+**Blast radius:** zero — `firestore.rules` cobre via `{docId=**}` recursivo (DEC-AUTO-119-05). Escolha interna de persistência; UI/engine consomem shapes D10.
 
-**Decisão:** `functions/maturity/preComputeShapes.js` espelha os utils pequenos (`calcStats`, `calcPayoff`, `calcMaxDrawdown`, `calcConsistencyCV`, `calcComplianceRate`) e stuba os pesados — `emotionalAnalysis` neutro, `evLeakage=null`, `advancedMetricsPresent=false`, `complianceRate100=complianceRate`. Mirror completo fica como follow-up.
+#### DEC-AUTO-119-07 — Stubs neutros em `functions/maturity/preComputeShapes.js` (Worker, task 07)
 
-**Blast radius:** scores emocionais no CF ficam neutros até mirror — aceitável no MVP; engine ainda produz snapshot válido.
+**Contexto:** orchestrator CF recebe shapes pré-computados (`stats`, `payoff`, `maxDrawdown`, `consistencyCV`, `complianceRate`, `evLeakage`, `emotionalAnalysis`, `advancedMetricsPresent`, `complianceRate100`). Nenhum dos utils correspondentes em `src/utils/` (`calculations.js`, `dashboardMetrics.js`, `emotionalAnalysisV2.js`) está mirrored em `functions/`. Fazer mirror completo agora seria CHUNK-06 escrita sem lock. Task spec permite "STUB com cálculo degradado + TODO mirror".
 
-#### DEC-AUTO-119-08 — `admin` opcional em `runMaturityRecompute` (Worker, task 07)
+**Decisão:**
+- Utils pequenos e puros (≤40 linhas) mirrored localmente em `functions/maturity/preComputeShapes.js` com logic idêntica à `src/`: `calcStats`, `calcPayoff`, `calcMaxDrawdown`, `calcConsistencyCV`, `calcComplianceRate`.
+- Utils pesados/com dependência de config: stubs neutros — `emotionalAnalysis = { periodScore: 50, tiltCount: 0, revengeCount: 0 }`, `evLeakage = null`, `advancedMetricsPresent = false`, `complianceRate100 = complianceRate` (placeholder — variante "últimos 100 trades" idêntica ao total por ora).
 
-**Contexto:** testabilidade sem ter `firebase-admin` instalado no root (só em `functions/package.json`).
+**Blast radius:** baixo — dimensão E fica neutra (50) no CF até mirror dedicado do `emotionalAnalysisV2`. Gates `financial-fortified`/`compliance-100` (stage 3-4) podem falhar por stub em `advancedMetricsPresent`/`complianceRate100` — aceitável em v1; gate `METRIC_UNAVAILABLE` aparece como "pendente" sem bloquear a evolução visível.
 
-**Decisão:** `runMaturityRecompute(db, { tradeId, trade, admin })` aceita `admin` opcional — produção cai no `require('firebase-admin')` lazy; testes injetam mock. Extendido em task 09 (`recomputeForStudent`) e task 13 (`runClassify`).
+**Follow-up:** issue separado para mirror completo de `emotionalAnalysisV2`/`calculateEVLeakage` em `functions/` quando houver prioridade.
+
+#### DEC-AUTO-119-08 — Injeção opcional de `admin` em `runMaturityRecompute` para testabilidade (Worker, task 07)
+
+**Contexto:** `runMaturityRecompute` usa `admin.firestore.FieldValue.serverTimestamp()` e `admin.firestore.Timestamp.fromDate()`. `firebase-admin` só está instalado em `functions/node_modules/`, não no root do projeto onde Vitest roda. `vi.mock('firebase-admin')` não intercepta `require()` confiavelmente (ESM vs CJS module graph).
+
+**Decisão:** assinatura `runMaturityRecompute(db, { tradeId, trade, admin: adminOverride })` — param opcional `admin`. Em produção (`index.js`) omitido, cai no `require('firebase-admin')` lazy interno. Em teste, injeta-se um fake admin com as duas APIs necessárias. Extendido em task 09 (`recomputeForStudent`) e task 13 (`runClassify`).
+
+**Blast radius:** zero — contrato preservado (CF não passa `admin`, comportamento idêntico). `buildMaturityPayloads` (pura) continua testável sem admin.
 
 #### DEC-AUTO-119-09 — Auth simples no callable `classifyMaturityProgression` (Worker, task 13)
 
 **Contexto:** §3.1 D12 não especifica política de auth para o callable. Opções: mentor-only, self-only, qualquer auth válida.
 
-**Decisão:** aceitar qualquer `request.auth` válido. A restrição de leitura (aluno vê só próprio, mentor vê alunos dele) já está no firestore.rules (DEC-AUTO-119-05). O callable grava em `maturity/current` — leitura cross-student é bloqueada no client.
+**Decisão:** aceitar qualquer `request.auth` válido. A restrição de leitura (aluno vê só próprio, mentor vê alunos dele) já está no `firestore.rules` (DEC-AUTO-119-05). O callable grava em `maturity/current` — leitura cross-student é bloqueada no client.
 
 **Blast radius:** zero — ataque "aluno X gera narrativa para aluno Y" só queima cota, não vaza dado (leitura bloqueada). Se virar problema de custo, refinar para self-only no futuro.
 
@@ -635,48 +656,9 @@ Decisões de implementação menor (posição do bloco em `firestore.rules`, reg
 
 **Decisão:** passar `maturity.dimensionScores` (scores atuais) como placeholder para `baselineScores` no payload do callable. Isso mantém o validator satisfeito sem adicionar fetch extra ou refatorar a CF para tornar o campo opcional. Prompt Sonnet ainda recebe `baselineStage` correto (do doc), então a análise comparativa continua viável — só perde a granularidade "quanto cada dimensão evoluiu em pontos". Narrativa segue focada em trigger + stage + gates, que são fontes primárias.
 
-**Blast radius:** baixo — a CF imprime os scores no prompt ("Scores de baseline ... Emocional: X"), mas Sonnet tipicamente foca em stage + gates + trigger para a narrativa. Refinar quando houver hook que exponha `initial_assessment.dimensionScores` ou quando engine persistir snapshot dos scores no momento do baseline. Follow-up: issue separado se for priorizado.
+**Blast radius:** baixo — a CF imprime os scores no prompt ("Scores de baseline ... Emocional: X"), mas Sonnet tipicamente foca em stage + gates + trigger para a narrativa. Refinar quando houver hook que exponha `initial_assessment.dimensionScores` ou quando engine persistir snapshot dos scores no momento do baseline.
 
-#### DEC-AUTO-119-04 — Clamp de `suggestedStage` em [1, stageCurrent-1] (Worker, task 05)
-
-**Contexto:** `detectRegressionSignal` usa `suggestedStage = min(mappedStage, stageCurrent - 1)`. Em stage 1, `stageCurrent - 1 = 0` quebra a enum 1..5. Gatilho 3 só dispara se `mappedStage < stageCurrent`, então em stage 1 o gatilho 3 não dispara; mas gatilhos 1 e 2 podem disparar com stageCurrent=1 e caem no mesmo `min(1, 0) = 0`.
-
-**Decisão:** clamp explícito `max(1, min(mappedStage, stageCurrent - 1))`. Semântica: "já está no stage mais baixo, não há regressão possível abaixo disso" — a regressão é sinalizada por `detected=true + reasons`, mas `suggestedStage` permanece 1 (sentinel que o consumer interpreta como "no piso").
-
-**Blast radius:** zero — alternativa (`null` em stage 1) exige branching adicional nos consumers. `1` é consistente com o contrato do tipo (`1..5 | null`).
-
-#### DEC-AUTO-119-06 — Path `history` como sub-sub-collection literal (Worker, task 07)
-
-**Contexto:** §3.1 D10 descreve `students/{uid}/maturity/history/{YYYY-MM-DD}`. A spec do task 07 ofereceu três alternativas (recursiva literal, docId prefixado, subcollections irmãs). Firestore exige paths alternando col/doc; `maturity/history/{YYYY-MM-DD}` literal tem 5 segmentos, que interpretaria `{YYYY-MM-DD}` como nome de collection.
-
-**Decisão:** implementar como sub-sub-collection literal inserindo um doc-sentinel `_historyBucket` para preservar os segmentos `maturity/history/`:
-
-```
-students/{uid}/maturity/current                                ← doc direto
-students/{uid}/maturity/_historyBucket/history/{YYYY-MM-DD}    ← sub-sub-collection
-```
-
-**Blast radius:** zero — `firestore.rules` já cobre via `{docId=**}` recursivo (task 06 DEC-AUTO-119-05). Consumers Fase C devem navegar com `.collection('maturity').doc('_historyBucket').collection('history')`. Doc `_historyBucket` em si nunca é lido/escrito; é container implícito para a subcollection.
-
-#### DEC-AUTO-119-07 — Stubs de shapes financeiros/emocional em `functions/maturity/preComputeShapes.js` (Worker, task 07)
-
-**Contexto:** Task 07 requer que o orchestrator CF receba shapes pré-computados (`stats`, `payoff`, `maxDrawdown`, `consistencyCV`, `complianceRate`, `evLeakage`, `emotionalAnalysis`, `advancedMetricsPresent`, `complianceRate100`). Nenhum dos utils correspondentes em `src/utils/` (calculations.js, dashboardMetrics.js, emotionalAnalysisV2.js) está mirrored em `functions/`. Task spec permite "STUB com cálculo degradado + TODO mirror".
-
-**Decisão:**
-- Utils pequenos e puros (≤40 linhas) mirrored localmente em `functions/maturity/preComputeShapes.js` com logic idêntica à src/: `calcStats`, `calcPayoff`, `calcMaxDrawdown`, `calcConsistencyCV`, `calcComplianceRate`.
-- Utils pesados/com dependência de config: stubs neutros — `emotionalAnalysis = { periodScore: 50, tiltCount: 0, revengeCount: 0 }`, `evLeakage = null`, `advancedMetricsPresent = false`, `complianceRate100 = complianceRate` (placeholder — variante "últimos 100 trades" idêntica ao total por ora).
-
-**Blast radius:** baixo — dimensão E fica neutra (50) no CF até mirror dedicado do `emotionalAnalysisV2` (follow-up). Gate `financial-fortified`/`compliance-100` (stage 3-4) pode falhar por stub no advancedMetricsPresent/complianceRate100 — aceitável em v1, pois gate METRIC_UNAVAILABLE aparece como "pendente" sem bloquear a evolução visível.
-
-**Follow-up:** criar issue separado para mirror completo de `emotionalAnalysisV2`/`calculateEVLeakage` em `functions/` quando houver prioridade.
-
-#### DEC-AUTO-119-08 — Injeção opcional de `admin` em `runMaturityRecompute` para testabilidade (Worker, task 07)
-
-**Contexto:** `runMaturityRecompute` usa `admin.firestore.FieldValue.serverTimestamp()` e `admin.firestore.Timestamp.fromDate()`. `firebase-admin` só está instalado em `functions/node_modules/`, não no root do projeto onde Vitest roda. `vi.mock('firebase-admin')` não intercepta `require()` confiavelmente (ESM vs CJS module graph).
-
-**Decisão:** assinatura `runMaturityRecompute(db, { tradeId, trade, admin: adminOverride })` — param opcional `admin`. Em produção (index.js) omitido, cai no `require('firebase-admin')` lazy interno. Em teste, injeta-se um fake admin com as duas APIs necessárias.
-
-**Blast radius:** zero — contrato preservado (CF não passa `admin`, comportamento idêntico). `buildMaturityPayloads` (pura) continua testável sem admin.
+**Follow-up:** issue separado se for priorizado.
 
 ---
 
@@ -713,30 +695,227 @@ Depois do remapping correto, desambiguação do issue em bloco único com Plan a
 
 **Próximo passo:** apresentar plano de 20 tasks para aprovação → spawn Coord via `cc-spawn-coord.sh` + `cc-worktree-start.sh` + `cc-dispatch-task.sh FIRST`.
 
+### Sessão — 23/04/2026 — Loop autônomo (CC-Coord + CC-Worker)
+
+Plano de 20 tasks (§3.1 D19) executado sequencialmente:
+
+- **Fase A — Engine puro (tasks 01-05):** fixtures + helpers puros, dimensões E/F/O/M, `evaluateGates`, `proposeStageTransition`, `detectRegressionSignal`, orquestrador `evaluateMaturity`. 
+- **Fase B — Persistência (tasks 06-09):** `firestore.rules` + schema validator, CF `onTradeCreated`/`onTradeUpdated` com recálculo isolado via try/catch, hooks `useMaturity`/`useMaturityHistory`, script admin `backfillMaturity.js`.
+- **Fase C — UI aluno (tasks 10-12):** `MaturityProgressionCard` + wire StudentDashboard + simplificação quadrante E3 Matriz 4D + gates colapsáveis mobile.
+- **Fase D — IA (tasks 13-14):** CF callable `classifyMaturityProgression` Sonnet 4.6 + wire narrativa com trigger UP/REGRESSION + cache.
+- **Fase E — Review (tasks 15-16):** freeze `maturitySnapshot` no close + `MaturityComparisonSection` N vs N-1.
+- **Fase F — Mentor (tasks 17-18):** `MaturitySemaphoreBadge` na Torre + `MentorMaturityAlert` card expandível.
+- **Fase G — Fechamento (tasks 19-20):** artefatos de encerramento (esta task 19) + validação browser/QA (task 20).
+
+**10 decisões autônomas canonicalizadas** (§3.2 DEC-AUTO-119-01..10). Cada uma resolveu ambiguidade não coberta em §3.1 pela ordem `spec → PROJECT.md → padrão do projeto → menor blast radius`.
+
+**Testes:** baseline 1890 → 2252 (+362), zero regressão.
+
+### Sessão — 23/04/2026 — Encerramento task 19 (CC-Worker)
+
+Artefatos finais de documentação:
+- §5 atualizado com deltas paste-ready para integrador aplicar no main pós-merge (`src/version.js` §5.1 + `docs/PROJECT.md` §5.2 actions a-e)
+- §3.2 consolidado: 10 DEC-AUTO-119 em ordem numérica clean (01..10), duplicatas removidas
+- §4 Sessões atualizado com resumo do loop autônomo + entrada desta task
+- Sanity check: `npm test -- --run` = 2252/2252 passed
+
+**Nenhum shared file foi tocado no worktree** (CLAUDE.md §4). Deltas para `src/version.js` e `docs/PROJECT.md` ficam documentados em §5 para aplicação pelo integrador.
+
 ---
 
-## §5 DELTAS EM SHARED FILES (para PR final)
+## §5 DELTAS EM SHARED FILES (para integrador aplicar no main pós-merge)
 
-### `src/version.js` — v1.43.0 definitiva
-- Entrada CHANGELOG inline com texto final (remover marca `[RESERVADA]`)
-- VERSION com dados finais
+> Shared files `src/version.js` e `docs/PROJECT.md` **NÃO** são editados no worktree (CLAUDE.md §4 — "locks e edições em shared files são feitos e commitados no main ANTES da criação do worktree"). Integrador aplica diretamente no `main` **após o merge do PR**.
+>
+> `firestore.rules` e `functions/index.js` foram editados na própria branch como parte do código do PR (tasks 06, 07, 13) — **não** são tocados nesta etapa.
 
-### `docs/PROJECT.md` — no encerramento
-- Bump minor para nova versão do doc (0.37.0+)
-- Entrada na tabela de histórico (encerramento)
-- §7 Decision Log: **DEC-086** (conteúdo em D18)
-- §9 Dívidas Técnicas: registrar DT nova se MFE/MAE virar lacuna persistente
-- §10 CHANGELOG: entrada v1.43.0 definitiva (replace da RESERVADA)
-- §6.3 Locks ativos: remover CHUNK-09 (liberar)
+### §5.1 `src/version.js` — finalizar entrada v1.43.0
 
-### `functions/index.js`
-- Export `classifyMaturityProgression` (Fase D)
-- Triggers `onTradeCreated`/`onTradeUpdated` ganham passo maturity (Fase B) — verificar se já existem e fazer append do try/catch isolado
+**Action:** substituir a entrada atual (com `[RESERVADA — entrada definitiva no encerramento.]` na última linha) pelo texto definitivo abaixo. O bloco da constante `VERSION` já está correto (`1.43.0` / `20260423`) — nada a mexer nele.
 
-### `firestore.rules`
-- Bloco novo `match /students/{uid}/maturity/{docId=**}` conforme D10
+**Buscar e substituir** o parágrafo atual da v1.43.0 no `CHANGELOG` (linhas ~6-17 de `src/version.js`) pelo bloco:
 
-### Nenhum toque em: `src/App.jsx`, `package.json`, `src/contexts/StudentContextProvider.jsx`, `src/utils/compliance.js`, `src/hooks/useComplianceRules.js` — só leitura.
+```js
+ * - 1.43.0: feat: Motor de progressão Maturidade 4D × 5 estágios (issue #119, modo autônomo, 20 tasks).
+ *   Engine puro em `src/utils/maturityEngine/` (11 módulos: helpers, fixtures, constants,
+ *   computeEmotional, computeFinancial, computeOperational, computeMaturity, evaluateGates,
+ *   proposeStageTransition, detectRegressionSignal, evaluateMaturity, maturityDocSchema).
+ *   Persistência `students/{uid}/maturity/current` (doc) + `maturity/_historyBucket/history/{YYYY-MM-DD}`
+ *   (sub-sub-collection — DEC-AUTO-119-06). CF `onTradeCreated`/`onTradeUpdated` com recálculo
+ *   isolado (try/catch — INV-03). Script admin `functions/maturity/backfillMaturity.js` CLI com
+ *   dry-run/concurrency/per-student-id. Hooks `useMaturity` + `useMaturityHistory` +
+ *   `useMentorMaturityOverview` (collectionGroup) + `useReviewMaturitySnapshot`. UI: card
+ *   `MaturityProgressionCard` no StudentDashboard com 5 stages colapsáveis mobile, substitui
+ *   sparkline Maturidade do quadrante E3 da Matriz 4D (consolidação, INV-17). CF callable
+ *   `classifyMaturityProgression` Sonnet 4.6 (temp 0.3, max 1500) em UP/REGRESSION com fallback
+ *   silencioso. Review snapshot: freeze `maturitySnapshot` no close da WeeklyReviewPage +
+ *   comparativo N vs N-1 via `MaturityComparisonSection` (scoreDeltas + gateDeltas). Mentor:
+ *   semáforo 🟢🟡🔴 por aluno via `MaturitySemaphoreBadge` na Torre + `MentorMaturityAlert`
+ *   card expandível de regressões. Janela rolling por stage (20/30/50/80/100 trades, piso 5),
+ *   composite 0.25·E + 0.25·F + 0.20·O + 0.30·M, DEC-020 respeitada (engine detecta regressão
+ *   mas NUNCA rebaixa automaticamente). 33 gates totais distribuídos nas 4 transições (6+8+10+9),
+ *   8 delas do framework §5.3/§9.2 literal. Regressão visível ao aluno tom "espelho" (diretriz
+ *   inegociável Marcio 23/04/2026). Evolução sempre visível — engine NUNCA retorna null;
+ *   amostra < 5 trades → blend com baseline + confidence LOW. DEC-086 registrada. 10 decisões
+ *   autônomas (DEC-AUTO-119-01..10). Follow-ups: mirror completo de `emotionalAnalysisV2` +
+ *   `calculateEVLeakage` em `functions/maturity/preComputeShapes.js` (DEC-AUTO-119-07), rules
+ *   live tests via `@firebase/rules-unit-testing` (task 06), `baselineScores` fetch via
+ *   `initial_assessment` (DEC-AUTO-119-10). 2252 testes verdes (baseline 1890 + 362 novos).
+```
+
+### §5.2 `docs/PROJECT.md` — entradas de encerramento
+
+#### Action (a) — header: bump `0.36.0 → 0.37.0`
+
+**Linha 4** substituir:
+```markdown
+> **Versão:** 0.36.0
+```
+Por:
+```markdown
+> **Versão:** 0.37.0
+```
+
+**Linha 5** substituir a "Última atualização" atual (que cobre `v0.36.0: Abertura #119 ...`) por:
+```markdown
+> **Última atualização:** 23/04/2026 — v0.37.0: Encerramento #119 v1.43.0. Motor de progressão Maturidade 4D × 5 estágios entregue em modo autônomo via 20 tasks (A1-A5 engine puro + B1-B4 persistência/CF/hooks/backfill + C1-C3 UI aluno + D1-D2 IA Sonnet 4.6 + E1-E2 review snapshot/comparativo + F1-F2 mentor semáforo/alert + G1-G2 closure). 362 testes novos (total 2252). DEC-086 registrada. 10 decisões autônomas (DEC-AUTO-119-01..10). Lock CHUNK-09 liberado. Baseado em v0.36.0.
+```
+
+(A antiga linha "Última atualização" vira "Última atualização (histórica)" — mesmo padrão das linhas subsequentes.)
+
+#### Action (b) — tabela §1 Histórico de versões do documento
+
+Adicionar **abaixo da linha `| 0.36.0 | 23/04/2026 | Abertura #119 ... |`** (atualmente na linha 84 do arquivo):
+
+```markdown
+| 0.37.0 | 23/04/2026 | Encerramento #119 v1.43.0 Motor de progressão Maturidade 4D | Motor de evolução 4D × 5 stages entregue em modo autônomo (20 tasks). Engine puro em `src/utils/maturityEngine/` (11 módulos) + persistência `students/{uid}/maturity/current` (doc) + `maturity/_historyBucket/history/{YYYY-MM-DD}` (sub-sub-collection, DEC-AUTO-119-06) via CF `onTradeCreated`/`onTradeUpdated` com recálculo isolado (try/catch, INV-03) + script admin `functions/maturity/backfillMaturity.js` + 4 hooks (`useMaturity`, `useMaturityHistory`, `useMentorMaturityOverview` via collectionGroup, `useReviewMaturitySnapshot`). UI aluno: `MaturityProgressionCard` no StudentDashboard com gates colapsáveis mobile, substitui sparkline Maturidade do quadrante E3 da Matriz 4D (consolidação INV-17). CF callable `classifyMaturityProgression` Sonnet 4.6 (temp 0.3, max 1500) em UP/REGRESSION com fallback silencioso. Review: freeze `maturitySnapshot` no close da WeeklyReviewPage + `MaturityComparisonSection` N vs N-1 (scoreDeltas + gateDeltas). Mentor: `MaturitySemaphoreBadge` 🟢🟡🔴 na Torre + `MentorMaturityAlert` card expandível de regressões. Janela rolling por stage (20/30/50/80/100 trades, piso 5), composite 0.25·E+0.25·F+0.20·O+0.30·M, 33 gates nas 4 transições (6+8+10+9), 8 literais do framework §5.3/§9.2. **Evolução sempre visível — engine NUNCA retorna null**; amostra < 5 trades → blend com baseline + confidence LOW. **DEC-020 respeitada** (engine detecta regressão, nunca rebaixa automaticamente). Regressão visível ao aluno tom "espelho" (diretriz inegociável Marcio 23/04/2026). 362 testes novos (total 2252). 10 decisões autônomas canonicalizadas em §3.2 do control file (DEC-AUTO-119-01..10). DEC-086 registrada. Follow-ups: (i) mirror completo de `emotionalAnalysisV2` + `calculateEVLeakage` em `functions/maturity/preComputeShapes.js` (DEC-AUTO-119-07); (ii) rules live tests via `@firebase/rules-unit-testing` (task 06); (iii) `baselineScores` fetch via `initial_assessment.dimensionScores` em `classifyMaturityProgression` payload (DEC-AUTO-119-10). Lock CHUNK-09 liberado (AVAILABLE). |
+```
+
+#### Action (c) — §7 Decision Log: adicionar DEC-086
+
+**Abaixo da linha do DEC-085** (atualmente linha 922 — `| DEC-085 | **Carry-over de takeaways ...` ) acrescentar:
+
+```markdown
+| DEC-086 | **Motor de evolução Maturidade 4D × 5 stages** — engine puro + gates hardcoded + fórmulas e janela rolling fixas na v1.43.0. Maturidade é dimensão **emergente** (função de E/F/O + gates_met_history + self-awareness), nunca medida isolada. Regressão detectada mas nunca aplicada automaticamente (DEC-020 respeitada — `stage.current` só muda por ação manual de mentor/system-boot, registrada em `stageHistory[]`). **Evolução sempre visível** — engine NUNCA retorna null; amostra < 5 trades → blend com baseline + `confidence: 'LOW'` + `sparseSample: true`. 33 gates distribuídos nas 4 transições (6+8+10+9), dos quais 8 literais do framework `trader_evolution_framework.md` §5.3/§9.2 (os outros 25 são regras de produto Espelho ou propostas aprovadas). Regressão visível ao aluno no `MaturityProgressionCard`, tom "espelho" (diretriz inegociável Marcio 23/04/2026 — opção c em review). Composite `0.25·E + 0.25·F + 0.20·O + 0.30·M` fixo nesta versão (mentor config futuro). Janelas rolling por stage: 20/30/50/80/100 trades, piso absoluto 5. Persistência: `students/{uid}/maturity/current` (1 doc, snapshot corrente) + `maturity/_historyBucket/history/{YYYY-MM-DD}` (1 doc/dia, via sub-sub-collection — DEC-AUTO-119-06). Recálculo via CF `onTradeCreated`/`onTradeUpdated` isolado por try/catch (INV-03); script admin `backfillMaturity.js` para backfill de alunos existentes. IA (Sonnet 4.6, temp 0.3, max 1500) dispara só em transição UP ou regressão detectada — fallback silencioso sem consumir cota. 10 decisões autônomas canonicalizadas em `docs/dev/issues/issue-119-maturidade-engine.md` §3.2 (DEC-AUTO-119-01..10). | #119 | 23/04/2026 |
+```
+
+#### Action (d) — §6.3 Registry de Chunks: liberar lock CHUNK-09
+
+Na sub-seção **"Locks ativos:"** (atualmente linhas 795-798), **remover integralmente** a linha:
+
+```markdown
+| CHUNK-09 | #119 | `feat/issue-119-maturidade-engine` | 23/04/2026 | Modo autônomo (CC-Interface + Coord + Worker) — escopo 6 fases (A engine puro + B persistência CF + C UI aluno + D IA Sonnet 4.6 + E review snapshot + F mentor Torre) |
+```
+
+Após a remoção, se a tabela ficar vazia (apenas o cabeçalho), manter o cabeçalho + uma linha com `| — | — | — | — | nenhum lock ativo |` **ou** deixar apenas o cabeçalho (padrão observado nas entradas históricas 0.10.2 e 0.22.1).
+
+A **tabela principal** (linha 785) já registra `CHUNK-09 | ... | AVAILABLE` — não requer alteração (`AVAILABLE` é o estado steady-state; só a entrada em "Locks ativos" precisa ser removida).
+
+#### Action (e) — §10 CHANGELOG: entrada v1.43.0 (Keep a Changelog)
+
+**No topo da seção §10** (linha 984+), **antes da entrada `[meta-infra v0.35.0]`** (linha 989), inserir:
+
+```markdown
+### [1.43.0] - 23/04/2026
+
+**Issue:** #119 (feat: Motor de progressão Maturidade 4D × 5 estágios)
+**Modo:** Autônomo (CC-Interface + CC-Coord + CC-Worker — §13 protocolo)
+**PR:** (a preencher quando mergeado)
+
+#### Adicionado
+
+- **Engine puro `src/utils/maturityEngine/`** (11 módulos): `helpers.js`, `fixtures.js`, `constants.js` (`STAGE_WINDOWS`, `STAGE_BASES`, `COMPOSITE_WEIGHTS`, `GATES_BY_TRANSITION`), `computeEmotional.js`, `computeFinancial.js`, `computeOperational.js`, `computeMaturity.js`, `evaluateGates.js`, `proposeStageTransition.js`, `detectRegressionSignal.js`, `evaluateMaturity.js` (orquestrador), `maturityDocSchema.js` (validator). Puro — zero Firestore, zero `fetch`, zero `Date.now()` direto.
+- **Persistência Firestore**: `students/{uid}/maturity/current` (1 doc snapshot corrente) + `students/{uid}/maturity/_historyBucket/history/{YYYY-MM-DD}` (sub-sub-collection com sentinel `_historyBucket`, DEC-AUTO-119-06). Shape completo em §3.1 D10 do control file.
+- **CF `onTradeCreated` / `onTradeUpdated`**: passo novo de recálculo maturity **isolado em try/catch** (INV-03) — falha em maturity NÃO bloqueia PL/compliance/emotional scoring. Recálculo apenas quando `status === 'CLOSED'` (ignora IMPORTED/REVIEWED/QUESTION/OPEN).
+- **CF callable `classifyMaturityProgression`** (Sonnet 4.6, `claude-sonnet-4-6`, temp 0.3, max_tokens 1500, secrets `ANTHROPIC_API_KEY`). Dispara **apenas** em `proposedTransition.proposed === 'UP'` OU `signalRegression.detected === true`. Cache em `maturity/current.aiNarrative*` até próximo trigger. Fallback determinístico silencioso (sem consumo de cota) em caso de falha.
+- **Script admin `functions/maturity/backfillMaturity.js`** (CLI): dry-run por default, `--concurrency`, `--student-id`, logs estruturados. Para backfill de alunos existentes no boot.
+- **4 hooks novos**: `useMaturity(studentId)` (listener em `current`), `useMaturityHistory(studentId, days)` (query range em `_historyBucket/history`), `useMentorMaturityOverview(mentorId)` (collectionGroup query), `useReviewMaturitySnapshot(reviewId, planId)`.
+- **UI aluno — `MaturityProgressionCard`**: 5 stages em barra horizontal, preenchimento parcial no stage atual (`gatesMet/gatesTotal`), tooltip por gate pendente, marcador vermelho + mensagem tom "espelho" quando `signalRegression.detected`, narrativa IA em markdown, mobile com gates colapsáveis default (lista vira accordion). DebugBadge `component="MaturityProgressionCard"` (INV-04). Wired no `StudentDashboard` após Matriz Emocional 4D.
+- **Consolidação INV-17**: sparkline Maturidade do quadrante E3 da Matriz Emocional 4D removida; quadrante agora mostra apenas stage atual + mini-barra de gates (forma compacta). Evita duplicação.
+- **Review snapshot**: `review.maturitySnapshot` populado no fechamento da `WeeklyReviewPage` (#102 status=CLOSED). `MaturityComparisonSection` renderiza comparativo revisão N vs N-1 (scoreDeltas por dimensão + gateDeltas ganhos/perdidos + stage transitions).
+- **Mentor — Torre de Controle**: `MaturitySemaphoreBadge` 🟢🟡🔴 por aluno na lista (`activeView === 'students'`). Verde = `proposedTransition.proposed === 'UP'` nos últimos 30 dias; Amarelo = `STAY` + gates estagnados > 30 dias (lê `history`); Vermelho = `signalRegression.detected`. Tooltip com "X/Y gates · faltam Z" ou mensagem de regressão.
+- **Mentor — Overview**: `MentorMaturityAlert` card expandível na `activeView === 'overview'` com lista de regressões ordenadas por severity (HIGH/MED/LOW), blockers por aluno, link para drill-down. DebugBadge `component="MentorMaturityAlert"`.
+- **`firestore.rules`**: bloco novo `match /students/{uid}/maturity/{docId=**}` — aluno lê próprio, mentor lê alunos dele (via helper `isMentor()`), só CF escreve. Ver DEC-AUTO-119-05.
+
+#### Parâmetros fixos (DEC-086)
+
+- **Composite:** `0.25·E + 0.25·F + 0.20·O + 0.30·M` (não configurável nesta versão)
+- **Janela rolling por stage:** `{1: 20t/30d, 2: 30t/45d, 3: 50t/60d, 4: 80t/90d, 5: 100t/90d}` — piso absoluto 5 trades
+- **Política de confidence:** HIGH (N ≥ floor+30), MED (floor ≤ N < floor+30), LOW (5 ≤ N < floor), LOW+`sparseSample` (N < 5 → blend com baseline)
+- **33 gates totais:** 6 em 1→2 (3 framework §5.3 + 3 regras de produto) · 8 em 2→3 (framework §9.2 literal) · 10 em 3→4 (framework §9.2 literal) · 9 em 4→5 (propostos e aprovados)
+- **DEC-020 respeitada:** `stage.current` NUNCA muda pela engine. Apenas `proposedTransition` e `signalRegression` — `stageHistory[]` é audit trail para mudanças manuais.
+- **Evolução sempre visível:** engine NUNCA retorna null. Submetrica indisponível → valor neutro do stage atual + flag `neutralFallback`.
+
+#### Testes
+
+- **362 testes novos** (baseline 1890 + 362 = **2252/2252 passing**, zero regressão).
+- Engine puro: unitários por dimensão (≥3 cenários cada), integração por stage (5 cenários ponta-a-ponta), política "evolução sempre visível" (5/15/30/50/100 trades), regressão (aluno Stage 3 com métricas Stage 2 → `signalRegression.detected=true`, `stage.current=3` inalterado), gates (thresholdMet e thresholdNotMet cases), helpers (`computeDailyReturns`, `computeSharpe`, `computeAnnualizedReturn`, `computeStrategyConsistencyWeeks`).
+- Persistência/CF: mock Firestore + mock admin injection (DEC-AUTO-119-08).
+- Hooks + UI: render cenários + estados vazios/loading + mobile collapse + IA narrativa states + trigger logic.
+- Review: freeze + comparativo N vs N-1.
+- Mentor: semáforo derivado + alert card com ordenação por severity.
+
+#### Decisões autônomas (DEC-AUTO-119-01..10)
+
+Canonicalizadas em `docs/dev/issues/issue-119-maturidade-engine.md` §3.2. Resumo:
+
+1. **Short-circuit em `computeSharpe` para retornos constantes** (task 01)
+2. **`void plans;` em `computeStrategyConsistencyWeeks`** para preservar assinatura spec (task 01)
+3. **Fórmulas E/F/O com helpers em escala 0-100** (descarta `·100` trailing da spec, erro de digitação — task 02)
+4. **Clamp de `suggestedStage` em [1, stageCurrent-1]** (task 05)
+5. **`firestore.rules` usa helpers existentes `isMentor()`/`isOwner()`** em vez de `users.role` inline (task 06)
+6. **Path `history` como sub-sub-collection com sentinel `_historyBucket`** (task 07)
+7. **Stubs neutros em `preComputeShapes.js`** para `emotionalAnalysisV2` e `calculateEVLeakage` (task 07) — **follow-up**: mirror completo
+8. **`admin` injetável em `runMaturityRecompute`** para testabilidade (task 07)
+9. **Auth simples no callable `classifyMaturityProgression`** — qualquer `request.auth` válido (restrição real no `firestore.rules`) (task 13)
+10. **`baselineScores` = `dimensionScores` atual como placeholder** no payload do callable (task 14) — **follow-up**: fetch via `initial_assessment.dimensionScores`
+
+#### Follow-ups para próxima sessão
+
+- Mirror completo de `emotionalAnalysisV2` + `calculateEVLeakage` em `functions/maturity/preComputeShapes.js` (hoje são stubs neutros — DEC-AUTO-119-07). Dimensão E no CF fica neutra (50) até esse mirror.
+- Rules live tests via `@firebase/rules-unit-testing` em vez de apenas asserts grep-based sobre `firestore.rules` (task 06).
+- `baselineScores` do callable `classifyMaturityProgression` puxado de `students/{uid}/assessment/initial_assessment.dimensionScores` em vez de placeholder (DEC-AUTO-119-10).
+
+#### Shared files
+
+- `src/version.js` bump `1.42.1 → 1.43.0` (reservada na abertura no commit main `487cd9a0`; entrada CHANGELOG definitiva aplicada neste encerramento).
+- `docs/PROJECT.md` v0.36.0 → v0.37.0 (encerramento + DEC-086 + §6.3 unlock CHUNK-09 + §10 entrada definitiva).
+- `firestore.rules`: bloco novo `match /students/{uid}/maturity/{docId=**}` (task 06, na branch).
+- `functions/index.js`: export `classifyMaturityProgression` + wiring do passo maturity em `onTradeCreated`/`onTradeUpdated` via try/catch isolado (tasks 07 e 13, na branch).
+
+#### Invariantes respeitadas
+
+- **INV-02** (Gateway `addTrade` — leitura apenas)
+- **INV-03** (Pipeline de side-effects inquebrável — recálculo de maturity é ramo isolado com try/catch; nunca propaga falha para PL/compliance/emotional)
+- **INV-04** (DebugBadge em `MaturityProgressionCard` e `MentorMaturityAlert`)
+- **INV-06** (Datas BR, semana começa segunda — em `computeStrategyConsistencyWeeks`)
+- **INV-15** (Subcollection `students/{uid}/maturity/*` aprovada com análise de custo ~$0.60/mês em 1k alunos)
+- **INV-17** (Card em Dashboard aluno + Mesa Mentor; sparkline removida do E3 — consolidação, não duplicação)
+- **INV-18** (Spec Review Gate — 7 decisões antecipadas fechadas via bloco único com Marcio antes do spawn)
+- **INV-27 + CLAIMS + validator** em todas as 20 tasks do modo autônomo.
+```
+
+#### Action (f) — §9 Dívidas Técnicas: (skip)
+
+Os 3 follow-ups (mirror `emotionalAnalysisV2`, rules live tests, `baselineScores` fetch) estão documentados como **follow-ups em DEC-AUTO-119-07/10** e no CHANGELOG v1.43.0 acima. Não precisam virar DT-XXX formais nesta entrega — são refinamentos de escopo previamente aceitos, não passivo técnico descoberto. **Skip desta action.**
+
+### §5.3 Arquivos da branch (já commitados, para referência do integrador)
+
+- `firestore.rules` — bloco `match /students/{uid}/maturity/{docId=**}` (task 06, commit `eb1be726`)
+- `functions/index.js` — export `classifyMaturityProgression` + wiring maturity em `onTradeCreated`/`onTradeUpdated` (tasks 07 e 13)
+- `functions/maturity/*` — mirror CJS do engine, orchestrator `recomputeMaturity`, `preComputeShapes`, `backfillMaturity`, `runClassify`
+- `src/utils/maturityEngine/*` — 11 módulos ESM puros
+- `src/utils/maturitySemaphore.js` + `maturityDelta.js` + `maturityAITrigger.js`
+- `src/hooks/useMaturity.js` + `useMaturityHistory.js` + `useMentorMaturityOverview.js` + `useReviewMaturitySnapshot.js`
+- `src/components/MaturityProgressionCard.jsx` + `MaturitySemaphoreBadge.jsx` + `MentorMaturityAlert.jsx` + `MaturityComparisonSection.jsx`
+- `src/pages/StudentDashboard.jsx` — wire do card (task 11); simplificação quadrante E3 Matriz 4D (task 11)
+- `src/pages/WeeklyReviewPage.jsx` — freeze snapshot + comparativo (tasks 15, 16)
+- `src/pages/MentorDashboard.jsx` — semáforo na lista + alert no overview (tasks 17, 18)
+- Testes em `src/__tests__/*` (362 novos)
+
+### §5.4 Arquivos NÃO tocados
+
+`src/App.jsx`, `package.json`, `src/contexts/StudentContextProvider.jsx`, `src/utils/compliance.js`, `src/hooks/useComplianceRules.js` — apenas leitura do engine/CF. Não requerem delta.
 
 ---
 
@@ -749,3 +928,7 @@ Depois do remapping correto, desambiguação do issue em bloco único com Plan a
 | CHUNK-05 | leitura | Compliance stats (`calculateComplianceRate`, `useComplianceRules`) |
 | CHUNK-06 | leitura | Score emocional (`emotionalAnalysisV2.*`, `useEmotionalProfile`) |
 | CHUNK-08 | leitura | Review history para `maturitySnapshot` (Fase E) |
+
+### Status de lock
+
+**Lock CHUNK-09 será liberado no merge do PR** — o integrador aplica o delta §5.2 Action (d) ao `docs/PROJECT.md` do main, removendo a linha da tabela "Locks ativos" da §6.3. A linha do registry principal (CHUNK-09 → AVAILABLE como status steady-state) já está correta e não requer alteração.
