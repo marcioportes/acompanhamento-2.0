@@ -11,7 +11,7 @@
  * INV-04: DebugBadge obrigatório quando !embedded.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import DebugBadge from './DebugBadge';
 import { STAGE_NAMES, STAGE_NAMES_SHORT } from '../utils/maturityEngine/constants';
 
@@ -19,6 +19,7 @@ const CONTAINER_CLS =
   'bg-slate-900/50 backdrop-blur border border-slate-700/50 rounded-xl p-4 relative';
 
 const MAX_VISIBLE_GATES = 5;
+const MAX_MOBILE_GATES = 2;
 
 function confidenceChipClass(c) {
   if (c === 'HIGH') return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
@@ -107,12 +108,34 @@ function StageBar({ currentStage, gatesRatio, mastery }) {
   );
 }
 
+function GateLineContent({ g }) {
+  const fmt = formatGateValueGap(g);
+  const unavailable = g.reason === 'METRIC_UNAVAILABLE';
+  return (
+    <>
+      <span className="text-slate-500">•</span>
+      <span>
+        {g.label}
+        {fmt && (
+          <span className="text-slate-400">
+            {' '}(você: {fmt.value}, faltam {fmt.gap})
+          </span>
+        )}
+        {unavailable && (
+          <span className="text-slate-500"> (aguardando dado)</span>
+        )}
+      </span>
+    </>
+  );
+}
+
 function MaturityProgressionCard({
   maturity = null,
   loading = false,
   error = null,
   embedded = false,
 }) {
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const showDebug = !embedded;
   const debugBadge = showDebug ? <DebugBadge component="MaturityProgressionCard" /> : null;
 
@@ -168,6 +191,10 @@ function MaturityProgressionCard({
   const pendingGates = (maturity.gates ?? []).filter((g) => g?.met !== true);
   const visibleGates = pendingGates.slice(0, MAX_VISIBLE_GATES);
   const extraGates = pendingGates.length - visibleGates.length;
+  const mobileVisibleGates = mobileExpanded
+    ? pendingGates
+    : pendingGates.slice(0, MAX_MOBILE_GATES);
+  const showMobileToggle = pendingGates.length > MAX_MOBILE_GATES;
   const regression = maturity.signalRegression?.detected === true;
   const aiNarrative = maturity.aiNarrative;
 
@@ -207,41 +234,55 @@ function MaturityProgressionCard({
         )}
       </div>
 
-      {!mastery && visibleGates.length > 0 && (
-        <div className="mt-3" data-testid="gates-pending">
-          <p className="text-xs text-slate-400 font-semibold mb-1">Gates pendentes:</p>
-          <ul className="text-xs text-slate-300 space-y-1">
-            {visibleGates.map((g) => {
-              const fmt = formatGateValueGap(g);
-              const unavailable = g.reason === 'METRIC_UNAVAILABLE';
-              return (
+      {!mastery && pendingGates.length > 0 && (
+        <>
+          <div className="mt-3 hidden sm:block" data-testid="gates-pending">
+            <p className="text-xs text-slate-400 font-semibold mb-1">Gates pendentes:</p>
+            <ul className="text-xs text-slate-300 space-y-1">
+              {visibleGates.map((g) => (
                 <li
                   key={g.id}
                   className="flex gap-1.5"
                   data-testid={`gate-${g.id}`}
                 >
-                  <span className="text-slate-500">•</span>
-                  <span>
-                    {g.label}
-                    {fmt && (
-                      <span className="text-slate-400">
-                        {' '}(você: {fmt.value}, faltam {fmt.gap})
-                      </span>
-                    )}
-                    {unavailable && (
-                      <span className="text-slate-500"> (aguardando dado)</span>
-                    )}
-                  </span>
+                  <GateLineContent g={g} />
                 </li>
-              );
-            })}
-            {extraGates > 0 && (
-              <li className="text-slate-500 italic" data-testid="gates-overflow">
-                ... e mais {extraGates} gates
-              </li>
+              ))}
+              {extraGates > 0 && (
+                <li className="text-slate-500 italic" data-testid="gates-overflow">
+                  ... e mais {extraGates} gates
+                </li>
+              )}
+            </ul>
+          </div>
+
+          <div className="mt-3 sm:hidden" data-testid="gates-mobile">
+            <p className="text-xs text-slate-400 font-semibold mb-1">Gates pendentes:</p>
+            <ul
+              id="maturity-gates-list-mobile"
+              className="text-xs text-slate-300 space-y-1"
+              data-mobile-expanded={mobileExpanded ? 'true' : 'false'}
+            >
+              {mobileVisibleGates.map((g) => (
+                <li key={g.id} className="flex gap-1.5">
+                  <GateLineContent g={g} />
+                </li>
+              ))}
+            </ul>
+            {showMobileToggle && (
+              <button
+                type="button"
+                onClick={() => setMobileExpanded((v) => !v)}
+                aria-expanded={mobileExpanded}
+                aria-controls="maturity-gates-list-mobile"
+                data-testid="mobile-toggle-gates"
+                className="text-xs text-slate-400 hover:text-slate-200 mt-1 underline underline-offset-2"
+              >
+                {mobileExpanded ? 'recolher' : `ver todos ${pendingGates.length}`}
+              </button>
             )}
-          </ul>
-        </div>
+          </div>
+        </>
       )}
 
       {mastery && (

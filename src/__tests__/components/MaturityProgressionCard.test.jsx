@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 
 vi.mock('../../components/DebugBadge', () => ({
   __esModule: true,
@@ -276,6 +276,96 @@ describe('MaturityProgressionCard', () => {
     });
     expect(Object.keys(STAGE_NAMES)).toHaveLength(5);
     expect(Object.keys(STAGE_NAMES_SHORT)).toHaveLength(5);
+  });
+
+  describe('mobile collapsible gates (< sm breakpoint)', () => {
+    it('colapsado por default: mostra apenas 2 gates + botão "ver todos N"', () => {
+      const gates = stage2Gates({ metCount: 0 }); // 8 pendentes
+      const maturity = makeMaturity({
+        gates,
+        gatesMet: 0,
+        gatesTotal: 8,
+        gatesRatio: 0,
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      const mobile = screen.getByTestId('gates-mobile');
+      const items = within(mobile).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+
+      const toggle = within(mobile).getByTestId('mobile-toggle-gates');
+      expect(toggle.textContent).toBe('ver todos 8');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.getAttribute('aria-controls')).toBe('maturity-gates-list-mobile');
+
+      const list = mobile.querySelector('#maturity-gates-list-mobile');
+      expect(list.getAttribute('data-mobile-expanded')).toBe('false');
+    });
+
+    it('click no botão expande para todos os gates + label "recolher"', () => {
+      const gates = stage2Gates({ metCount: 0 });
+      const maturity = makeMaturity({
+        gates,
+        gatesMet: 0,
+        gatesTotal: 8,
+        gatesRatio: 0,
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      const mobile = screen.getByTestId('gates-mobile');
+      const toggle = within(mobile).getByTestId('mobile-toggle-gates');
+      fireEvent.click(toggle);
+
+      const items = within(mobile).getAllByRole('listitem');
+      expect(items).toHaveLength(8);
+      expect(toggle.textContent).toBe('recolher');
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+      const list = mobile.querySelector('#maturity-gates-list-mobile');
+      expect(list.getAttribute('data-mobile-expanded')).toBe('true');
+    });
+
+    it('pendingGates.length ≤ 2: não renderiza botão mobile', () => {
+      const maturity = makeMaturity({
+        gates: [
+          makeGate({ id: 'g1', label: 'Gate 1' }),
+          makeGate({ id: 'g2', label: 'Gate 2' }),
+        ],
+        gatesMet: 0,
+        gatesTotal: 2,
+        gatesRatio: 0,
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      const mobile = screen.getByTestId('gates-mobile');
+      expect(within(mobile).getAllByRole('listitem')).toHaveLength(2);
+      expect(screen.queryByTestId('mobile-toggle-gates')).not.toBeInTheDocument();
+    });
+
+    it('sem pendingGates (mastery): não renderiza bloco mobile nem botão', () => {
+      const maturity = makeMaturity({
+        currentStage: 5,
+        gates: [],
+        gatesMet: 0,
+        gatesTotal: 0,
+        gatesRatio: null,
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      expect(screen.queryByTestId('gates-mobile')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('mobile-toggle-gates')).not.toBeInTheDocument();
+      expect(screen.getByTestId('mastery-note')).toBeInTheDocument();
+    });
+
+    it('loading=true: não renderiza botão mobile', () => {
+      render(<MaturityProgressionCard loading />);
+      expect(screen.queryByTestId('mobile-toggle-gates')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('gates-mobile')).not.toBeInTheDocument();
+    });
   });
 
   it('gate com METRIC_UNAVAILABLE exibe "(aguardando dado)"', () => {
