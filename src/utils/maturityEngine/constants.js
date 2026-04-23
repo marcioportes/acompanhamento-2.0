@@ -5,8 +5,7 @@
  *
  * Task 03: STAGE_BASES, STAGE_NAMES.
  * Task 04: GATES_BY_TRANSITION (catálogo literal da §3.1 D9).
- *
- * Demais constantes (STAGE_WINDOWS, COMPOSITE_WEIGHTS) chegam em A5.
+ * Task 05: STAGE_WINDOWS, COMPOSITE_WEIGHTS, ENGINE_VERSION.
  */
 
 // Pontuação base por stage atual (§3.1 D3). Componente principal de M.
@@ -78,3 +77,24 @@ export const GATES_BY_TRANSITION = {
     { id: 'sharpe-1_5', label: 'Sharpe anual ≥ 1.5', dim: 'fin', metric: 'annualSharpe', op: '>=', threshold: 1.5 },
   ],
 };
+
+// §3.1 D1 — janela rolling por stage. W = max(últimos minTrades, últimos minDays).
+// floorTrades é o piso mínimo para sparseSample=false (confidence sai de LOW).
+export const STAGE_WINDOWS = {
+  1: { minTrades: 20, minDays: 30, floorTrades: 5 },
+  2: { minTrades: 30, minDays: 45, floorTrades: 5 },
+  3: { minTrades: 50, minDays: 60, floorTrades: 5 },
+  4: { minTrades: 80, minDays: 90, floorTrades: 5 },
+  5: { minTrades: 100, minDays: 90, floorTrades: 5 },
+};
+
+// §3.1 D2 — pesos do score composto (E+F+O+M = 1).
+export const COMPOSITE_WEIGHTS = {
+  emotional: 0.25,
+  financial: 0.25,
+  operational: 0.20,
+  maturity: 0.30,
+};
+
+// Versão do engine — gravada em snapshots (Fase B).
+export const ENGINE_VERSION = '1.43.0-engine-a';

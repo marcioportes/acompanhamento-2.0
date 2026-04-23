@@ -8,6 +8,8 @@
  * Semana começa na segunda-feira (INV-06).
  */
 
+import { STAGE_WINDOWS } from './constants.js';
+
 // ---------------------------------------------------------------------------
 // 1.0 Helpers de normalização (escala 0-100)
 // ---------------------------------------------------------------------------
@@ -333,4 +335,188 @@ export function computeSelfAwareness(baseline, currentDims) {
   const meanDelta = deltas.reduce((a, x) => a + x, 0) / deltas.length;
   const score = 100 - meanDelta;
   return Math.max(0, Math.min(100, score));
+}
+
+// ---------------------------------------------------------------------------
+// 1.7 resolveWindow (§3.1 D1)
+// ---------------------------------------------------------------------------
+
+function toEpochMs(value) {
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  if (typeof value !== 'string') return null;
+  // Aceita ISO YYYY-MM-DD ou ISO completo; BR DD/MM/YYYY via parseDateToISO.
+  const iso = ISO_DATE_RE.test(value) ? value : parseDateToISO(value);
+  if (iso === null) {
+    // Última tentativa: string com timestamp
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : null;
+  }
+  const t = Date.parse(`${iso}T00:00:00Z`);
+  return Number.isFinite(t) ? t : null;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Janela rolling para o stage atual. W = max(últimos minTrades, últimos minDays).
+ * Retorna trades em ordem cronológica ASC. `sparseSample = true` quando
+ * `window.length < floorTrades`.
+ *
+ * Stage inválido → fallback para STAGE_WINDOWS[1].
+ * Trades sem date parseável são descartados.
+ *
+ * @param {Array<{date:string}>} trades
+ * @param {number} stageCurrent  1..5
+ * @param {Date|string} now
+ * @returns {{window: Array<object>, windowSize: number, sparseSample: boolean}}
+ */
+export function resolveWindow(trades, stageCurrent, now) {
+  const cfg = STAGE_WINDOWS[stageCurrent] ?? STAGE_WINDOWS[1];
+  const floor = cfg.floorTrades;
+
+  if (!Array.isArray(trades) || trades.length === 0) {
+    return { window: [], windowSize: 0, sparseSample: true };
+  }
+
+  const nowMs = toEpochMs(now);
+  if (nowMs === null) {
+    return { window: [], windowSize: 0, sparseSample: true };
+  }
+
+  const annotated = [];
+  for (const t of trades) {
+    const ms = toEpochMs(t?.date);
+    if (ms === null) continue;
+    annotated.push({ trade: t, ms });
+  }
+  if (annotated.length === 0) {
+    return { window: [], windowSize: 0, sparseSample: true };
+  }
+
+  // Ordena cronologicamente ASC (mais antigo primeiro).
+  annotated.sort((a, b) => a.ms - b.ms);
+
+  // Últimos minTrades (cauda do array ordenado).
+  const byCount = annotated.slice(Math.max(0, annotated.length - cfg.minTrades));
+
+  // Últimos minDays a partir de now (inclusivo).
+  const cutoffMs = nowMs - cfg.minDays * MS_PER_DAY;
+  const byDays = annotated.filter((x) => x.ms >= cutoffMs);
+
+  // Pega o MAIOR entre os dois conjuntos.
+  const chosen = byDays.length > byCount.length ? byDays : byCount;
+  const window = chosen.map((x) => x.trade);
+
+  return {
+    window,
+    windowSize: window.length,
+    sparseSample: window.length < floor,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 1.8 computeStrategyConsistencyMonths (§3.1 D8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Paralelo ao `computeStrategyConsistencyWeeks` agrupando por mês calendário
+ * (YYYY-MM). Setup dominante: > 60% dos trades do mês. Retorna run máximo
+ * consecutivo de meses com mesmo dominante não-null.
+ *
+ * @param {Array<{date:string, setup?:string}>} trades
+ * @param {Array<any>} plans  recebido para paridade com a versão semanal.
+ * @returns {number}
+ */
+export function computeStrategyConsistencyMonths(trades, plans) {
+  void plans;
+  if (!Array.isArray(trades) || trades.length === 0) return 0;
+
+  const byMonth = new Map();
+  for (const t of trades) {
+    const iso = parseDateToISO(t?.date);
+    const setup = t?.setup;
+    if (iso === null || typeof setup !== 'string' || setup.length === 0) continue;
+    const monthKey = iso.slice(0, 7); // YYYY-MM
+    let setupMap = byMonth.get(monthKey);
+    if (!setupMap) {
+      setupMap = new Map();
+      byMonth.set(monthKey, setupMap);
+    }
+    setupMap.set(setup, (setupMap.get(setup) ?? 0) + 1);
+  }
+
+  if (byMonth.size === 0) return 0;
+
+  const sortedMonths = Array.from(byMonth.keys()).sort();
+  const dominants = sortedMonths.map((m) => {
+    const setupMap = byMonth.get(m);
+    let total = 0;
+    for (const c of setupMap.values()) total += c;
+    for (const [setup, count] of setupMap) {
+      if (count / total > 0.6) return setup;
+    }
+    return null;
+  });
+
+  let maxRun = 0;
+  let currentRun = 0;
+  let currentSetup = null;
+  for (const dom of dominants) {
+    if (dom !== null && dom === currentSetup) {
+      currentRun += 1;
+    } else if (dom !== null) {
+      currentSetup = dom;
+      currentRun = 1;
+    } else {
+      currentSetup = null;
+      currentRun = 0;
+    }
+    if (currentRun > maxRun) maxRun = currentRun;
+  }
+
+  return maxRun;
+}
+
+// ---------------------------------------------------------------------------
+// 1.9 computeStopUsageRate (§3.1 D9 gate stop-usage)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fração de trades com stopLoss definido (não null/undefined). Janela vazia → 0.
+ *
+ * @param {Array<{stopLoss?: number}>} trades
+ * @returns {number} 0..1
+ */
+export function computeStopUsageRate(trades) {
+  if (!Array.isArray(trades) || trades.length === 0) return 0;
+  const withStop = trades.filter((t) => t?.stopLoss != null).length;
+  return withStop / trades.length;
+}
+
+// ---------------------------------------------------------------------------
+// 1.10 computeConfidence (§3.1 D6)
+// ---------------------------------------------------------------------------
+
+const CONF_RANK = { LOW: 0, MED: 1, HIGH: 2 };
+const CONF_BY_RANK = ['LOW', 'MED', 'HIGH'];
+
+/**
+ * Agrega confidences por dim usando MIN. Entrada ausente/vazia → 'MED'.
+ * Valores não reconhecidos são ignorados.
+ *
+ * @param {{E?:string, F?:string, O?:string, M?:string}} dimConfidences
+ * @returns {'HIGH'|'MED'|'LOW'}
+ */
+export function computeConfidence(dimConfidences) {
+  if (dimConfidences == null || typeof dimConfidences !== 'object') return 'MED';
+  const ranks = [];
+  for (const key of ['E', 'F', 'O', 'M']) {
+    const v = dimConfidences[key];
+    if (v in CONF_RANK) ranks.push(CONF_RANK[v]);
+  }
+  if (ranks.length === 0) return 'MED';
+  return CONF_BY_RANK[Math.min(...ranks)];
 }
