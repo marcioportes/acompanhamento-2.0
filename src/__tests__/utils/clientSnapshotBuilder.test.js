@@ -261,4 +261,69 @@ describe('buildClientSnapshot', () => {
       expect(snapSem.kpis).toEqual(snapVazio.kpis);
     });
   });
+
+  // === Fase E (issue #119 task 15) — freeze maturitySnapshot ===
+
+  describe('maturitySnapshot — freeze do students/{uid}/maturity/current', () => {
+    const mockMaturityDoc = {
+      id: 'current',
+      currentStage: 'AWARENESS',
+      dimensionScores: { emotional: 62, financial: 58, operational: 70, maturity: 64 },
+      gates: { stopRespect: true, rrTarget: false, complianceFloor: true },
+      proposedTransition: { from: 'AWARENESS', to: 'CONTROL', confidence: 0.74 },
+      signalRegression: false,
+      aiNarrative: { headline: 'Avanço consistente em controle.', body: '...' },
+      computedAt: { seconds: 1745000000, nanoseconds: 0 },     // serverTimestamp shape
+      asOf: { seconds: 1745000000, nanoseconds: 0 },
+      aiGeneratedAt: { seconds: 1745000000, nanoseconds: 0 },
+    };
+
+    it('maturity ausente (default) — maturitySnapshot é null', () => {
+      const snap = buildClientSnapshot({ plan, trades: [mkTrade({ id: 't', result: 50 })] });
+      expect(snap.maturitySnapshot).toBeNull();
+    });
+
+    it('maturity = null explícito — maturitySnapshot é null', () => {
+      const snap = buildClientSnapshot({ plan, trades: [], maturity: null });
+      expect(snap.maturitySnapshot).toBeNull();
+    });
+
+    it('congela maturity removendo computedAt/asOf/aiGeneratedAt e adicionando frozenAt ISO', () => {
+      const snap = buildClientSnapshot({ plan, trades: [], maturity: mockMaturityDoc });
+      const m = snap.maturitySnapshot;
+      expect(m).not.toBeNull();
+      expect(m.computedAt).toBeUndefined();
+      expect(m.asOf).toBeUndefined();
+      expect(m.aiGeneratedAt).toBeUndefined();
+      expect(typeof m.frozenAt).toBe('string');
+      expect(() => new Date(m.frozenAt).toISOString()).not.toThrow();
+      // Campos de domínio preservados
+      expect(m.currentStage).toBe('AWARENESS');
+      expect(m.dimensionScores).toEqual(mockMaturityDoc.dimensionScores);
+      expect(m.gates).toEqual(mockMaturityDoc.gates);
+      expect(m.proposedTransition).toEqual(mockMaturityDoc.proposedTransition);
+      expect(m.signalRegression).toBe(false);
+      expect(m.aiNarrative).toEqual(mockMaturityDoc.aiNarrative);
+    });
+
+    it('adicionar maturity não afeta KPIs nem rankings nem periodTrades', () => {
+      const trades = [
+        mkTrade({ id: 'w1', result: 200 }),
+        mkTrade({ id: 'l1', result: -50 }),
+      ];
+      const snapSem = buildClientSnapshot({ plan, trades });
+      const snapCom = buildClientSnapshot({ plan, trades, maturity: mockMaturityDoc });
+      expect(snapCom.kpis).toEqual(snapSem.kpis);
+      expect(snapCom.topTrades).toEqual(snapSem.topTrades);
+      expect(snapCom.bottomTrades).toEqual(snapSem.bottomTrades);
+      expect(snapCom.periodTrades).toEqual(snapSem.periodTrades);
+      expect(snapCom.planContext).toEqual(snapSem.planContext);
+    });
+
+    it('input não-objeto (string, número, array) → maturitySnapshot null (degrade silencioso)', () => {
+      expect(buildClientSnapshot({ plan, trades: [], maturity: 'invalid' }).maturitySnapshot).toBeNull();
+      expect(buildClientSnapshot({ plan, trades: [], maturity: 42 }).maturitySnapshot).toBeNull();
+      expect(buildClientSnapshot({ plan, trades: [], maturity: [] }).maturitySnapshot).toBeNull();
+    });
+  });
 });

@@ -168,6 +168,15 @@ const projectEmotionalMetrics = (metrics) => {
   };
 };
 
+// Cópia rasa do doc maturity/current sem timestamps voláteis do Firestore.
+// `frozenAt` ISO marca o instante em que a foto foi tirada — fonte de verdade temporal.
+const freezeMaturity = (maturity) => {
+  if (!maturity || typeof maturity !== 'object' || Array.isArray(maturity)) return null;
+  // eslint-disable-next-line no-unused-vars
+  const { computedAt, asOf, aiGeneratedAt, ...rest } = maturity;
+  return { ...rest, frozenAt: new Date().toISOString() };
+};
+
 /**
  * @param {Object}  params
  * @param {Object}  params.plan         — {id, adjustmentCycle, pl, riskPerOperation, rrTarget, ...}
@@ -176,7 +185,9 @@ const projectEmotionalMetrics = (metrics) => {
  *                  pode estar fora do período. Mesclado e deduplicado por id com `trades`.
  * @param {string}  [params.cycleKey]   — chave do ciclo ativo (ex: '2026-04')
  * @param {Object}  [params.emotionalMetrics] — metrics de useEmotionalProfile
- * @returns {Object} frozenSnapshot (planContext, kpis, topTrades, bottomTrades, periodTrades)
+ * @param {Object}  [params.maturity]   — doc students/{uid}/maturity/current ou null.
+ *                  Quando presente, congela como `maturitySnapshot` (Fase E — issue #119 task 15).
+ * @returns {Object} frozenSnapshot (planContext, kpis, topTrades, bottomTrades, periodTrades, maturitySnapshot)
  */
 export const buildClientSnapshot = ({
   plan,
@@ -184,6 +195,7 @@ export const buildClientSnapshot = ({
   extraTrades = [],
   cycleKey = null,
   emotionalMetrics = null,
+  maturity = null,
 }) => {
   if (!plan?.id) throw new Error('buildClientSnapshot: plan.id é obrigatório');
   const baseTrades = Array.isArray(trades) ? trades : [];
@@ -233,5 +245,9 @@ export const buildClientSnapshot = ({
 
   const baseSnapshot = buildWeeklyReviewSnapshot({ plan, trades: safeTrades, kpis, cycleKey });
   // periodTrades: todos os trades do período inline, para o Subitem 1 da nova tela.
-  return { ...baseSnapshot, periodTrades: pickPeriodTrades(safeTrades) };
+  return {
+    ...baseSnapshot,
+    periodTrades: pickPeriodTrades(safeTrades),
+    maturitySnapshot: freezeMaturity(maturity),
+  };
 };

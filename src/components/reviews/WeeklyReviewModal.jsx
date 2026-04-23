@@ -35,7 +35,8 @@ const filterTradesByRange = (trades, startISO, endISO) => {
 };
 
 // Busca plan + trades do período e reconstrói snapshot — usado no publish de DRAFT.
-const rebuildSnapshot = async (review) => {
+// Quando studentId presente, congela também o snapshot de maturity (Fase E — issue #119 task 15).
+const rebuildSnapshot = async (review, studentId) => {
   const planId = review?.frozenSnapshot?.planContext?.planId;
   if (!planId) return null;
   const planSnap = await getDoc(doc(db, 'plans', planId));
@@ -45,11 +46,23 @@ const rebuildSnapshot = async (review) => {
   const tradesSnap = await getDocs(tradesQ);
   const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const weekTrades = filterTradesByRange(allTrades, review.weekStart, review.weekEnd);
+
+  let maturity = null;
+  try {
+    if (studentId) {
+      const maturitySnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
+      maturity = maturitySnap.exists() ? { id: maturitySnap.id, ...maturitySnap.data() } : null;
+    }
+  } catch (err) {
+    console.warn('[rebuildSnapshot] maturity fetch failed (continuando sem maturitySnapshot):', err);
+  }
+
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
-    cycleKey: review.cycleKey || null,
+    cycleKey: review.cycleKey ?? null,
     emotionalMetrics: null,
+    maturity,
   });
 };
 
@@ -195,14 +208,14 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
     if (!isDraft || !review) return;
     setLiveRefreshing(true);
     try {
-      const snap = await rebuildSnapshot(review);
+      const snap = await rebuildSnapshot(review, studentId);
       if (snap) setLiveSnapshot(snap);
     } catch (e) {
       console.error('[WeeklyReviewModal] refresh live snapshot failed', e);
     } finally {
       setLiveRefreshing(false);
     }
-  }, [isDraft, review]);
+  }, [isDraft, review, studentId]);
 
   useEffect(() => {
     if (isDraft) refreshLiveSnapshot();
@@ -239,13 +252,13 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
     try {
       // Recomputa snapshot no momento do publish — KPIs congelam agora, não no create.
       // Se falhar, publica com o snapshot existente (best-effort).
-      const fresh = await rebuildSnapshot(review).catch(() => null);
+      const fresh = await rebuildSnapshot(review, studentId).catch(() => null);
       await closeReview(review.id, {
         takeaways, meetingLink, videoLink,
         frozenSnapshot: fresh || undefined,
       });
     } catch { /* already surfaced */ }
-  }, [canClose, closeReview, review, takeaways, meetingLink, videoLink,
+  }, [canClose, closeReview, review, studentId, takeaways, meetingLink, videoLink,
       takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
 
   const handleArchive = useCallback(async () => {
