@@ -25,6 +25,16 @@ export const STAGE_NAMES = {
   5: 'MASTERY',
 };
 
+// Labels curtos usados em telas estreitas (mobile) e layout de barra compacta.
+// Consumido pelo MaturityProgressionCard (§3.1 D13). Backend não consome.
+export const STAGE_NAMES_SHORT = {
+  1: 'CHAOS',
+  2: 'REACT',
+  3: 'METHOD',
+  4: 'PROF',
+  5: 'MASTERY',
+};
+
 /**
  * Catálogo de gates por transição (§3.1 D9 literal).
  *
