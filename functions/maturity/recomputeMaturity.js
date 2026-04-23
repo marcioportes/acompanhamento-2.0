@@ -1,0 +1,212 @@
+// ============================================
+// MATURITY ENGINE — Cloud Function orchestrator (issue #119 task 07)
+// ============================================
+//
+// Orquestra fetch + compute + write para `students/{uid}/maturity/{current|history/...}`.
+// Isolamento (INV-03): falhas internas NÃO propagam — sempre retorna { skipped, ... }.
+// Gate: roda apenas quando trade.status === 'CLOSED' (§3.1 D11).
+//
+// Path D10 (literal, sub-sub-collection):
+//   students/{uid}/maturity/current                                ← doc
+//   students/{uid}/maturity/_historyBucket/history/{YYYY-MM-DD}    ← sub-sub-collection
+// firestore.rules cobre via {docId=**} recursivo.
+
+const { evaluateMaturity } = require('./evaluateMaturity');
+const { validateCurrentDoc, validateHistoryDoc } = require('./maturityDocSchema');
+const { preComputeShapes } = require('./preComputeShapes');
+
+function pad2(n) {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function isoDate(d) {
+  const yyyy = d.getUTCFullYear();
+  const mm = pad2(d.getUTCMonth() + 1);
+  const dd = pad2(d.getUTCDate());
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function tradeIsoDay(value) {
+  if (value instanceof Date) return isoDate(value);
+  if (typeof value !== 'string') return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
+
+/**
+ * Lógica pura — recebe dados pré-fetched, retorna payloads para current+history.
+ * Zero side-effects. Testável diretamente sem mocks de Firestore.
+ */
+function buildMaturityPayloads({
+  trades,
+  plans,
+  now,
+  stageCurrent,
+  baselineStage,
+  baseline,
+  emotionalAnalysis,
+  complianceRate,
+  stats,
+  evLeakage,
+  payoff,
+  consistencyCV,
+  maxDrawdown,
+  advancedMetricsPresent,
+  complianceRate100,
+  lastTradeId,
+  serverTimestamp,
+  asOfTimestamp,
+}) {
+  const engineOutput = evaluateMaturity({
+    trades,
+    plans,
+    now,
+    stageCurrent,
+    baseline,
+    emotionalAnalysis,
+    complianceRate,
+    stats,
+    evLeakage,
+    payoff,
+    consistencyCV,
+    maxDrawdown,
+    advancedMetricsPresent,
+    complianceRate100,
+  });
+
+  const todayIso = isoDate(now);
+  const tradesInDay = (Array.isArray(trades) ? trades : []).filter(
+    (t) => tradeIsoDay(t?.date) === todayIso,
+  ).length;
+
+  const computedAt = serverTimestamp ?? null;
+
+  const currentDoc = {
+    ...engineOutput,
+    currentStage: stageCurrent,
+    baselineStage: baselineStage ?? stageCurrent,
+    stageHistory: [],
+    lastTradeId: lastTradeId ?? null,
+    computedAt,
+    asOf: asOfTimestamp ?? null,
+    aiNarrative: null,
+    aiPatternsDetected: [],
+    aiNextStageGuidance: null,
+    aiGeneratedAt: null,
+    aiTrigger: null,
+  };
+
+  const historyDoc = {
+    date: todayIso,
+    dimensionScores: engineOutput.dimensionScores,
+    currentStage: stageCurrent,
+    gatesMet: engineOutput.gatesMet,
+    gatesTotal: engineOutput.gatesTotal,
+    confidence: engineOutput.confidence,
+    tradesInDay,
+    computedAt,
+    engineVersion: engineOutput.engineVersion,
+  };
+
+  const currentValidation = validateCurrentDoc(currentDoc);
+  const historyValidation = validateHistoryDoc(historyDoc);
+
+  return {
+    currentDoc,
+    historyDoc,
+    valid: currentValidation.valid && historyValidation.valid,
+    errors: [...currentValidation.errors, ...historyValidation.errors],
+  };
+}
+
+/**
+ * Handler CF — orquestra fetch + compute + write. Isolamento total (INV-03).
+ * Gate: trade.status === 'CLOSED' E trade.studentId presente.
+ */
+async function runMaturityRecompute(db, { tradeId, trade }) {
+  if (!trade || trade.status !== 'CLOSED') {
+    return { skipped: true, reason: 'status != CLOSED' };
+  }
+
+  const studentId = trade.studentId;
+  if (!studentId) {
+    return { skipped: true, reason: 'missing studentId' };
+  }
+
+  // Lazy require: mantém buildMaturityPayloads testável fora do ambiente CF.
+  const admin = require('firebase-admin');
+
+  try {
+    const assessmentSnap = await db
+      .collection('students').doc(studentId)
+      .collection('assessment').doc('initial_assessment').get();
+    const assessment = assessmentSnap.exists ? assessmentSnap.data() : null;
+    const baselineStage = assessment?.stage ?? 1;
+    const baseline = assessment?.dimensionScores ?? { emotional: 50, financial: 50, operational: 50 };
+
+    const currentSnap = await db
+      .collection('students').doc(studentId)
+      .collection('maturity').doc('current').get();
+    const stageCurrent = currentSnap.exists
+      ? (currentSnap.data().currentStage ?? baselineStage)
+      : baselineStage;
+
+    const tradesSnap = await db.collection('trades')
+      .where('studentId', '==', studentId)
+      .where('status', '==', 'CLOSED')
+      .get();
+    const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const plansSnap = await db.collection('plans')
+      .where('studentId', '==', studentId)
+      .get();
+    const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const preComputed = preComputeShapes({ trades, plans });
+
+    const now = new Date();
+    const payloads = buildMaturityPayloads({
+      trades,
+      plans,
+      now,
+      stageCurrent,
+      baselineStage,
+      baseline,
+      ...preComputed,
+      lastTradeId: tradeId,
+      serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+      asOfTimestamp: admin.firestore.Timestamp.fromDate(now),
+    });
+
+    if (!payloads.valid) {
+      console.error('[maturityRecompute] schema validation failed:', payloads.errors);
+      return { skipped: true, reason: 'schema validation failed', errors: payloads.errors };
+    }
+
+    const batch = db.batch();
+    const currentRef = db.collection('students').doc(studentId)
+      .collection('maturity').doc('current');
+    const historyRef = db.collection('students').doc(studentId)
+      .collection('maturity').doc('_historyBucket')
+      .collection('history').doc(payloads.historyDoc.date);
+
+    batch.set(currentRef, payloads.currentDoc, { merge: true });
+    batch.set(historyRef, payloads.historyDoc, { merge: true });
+    await batch.commit();
+
+    return {
+      skipped: false,
+      tradeId,
+      studentId,
+      windowSize: payloads.currentDoc.windowSize,
+      currentStage: payloads.currentDoc.currentStage,
+    };
+  } catch (err) {
+    console.error('[maturityRecompute] exception:', studentId, tradeId, err);
+    return { skipped: true, reason: 'exception', error: err.message };
+  }
+}
+
+module.exports = { buildMaturityPayloads, runMaturityRecompute };
