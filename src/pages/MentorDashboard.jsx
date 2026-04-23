@@ -31,6 +31,7 @@ import MentorAlerts from '../components/MentorAlerts';
 import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
+import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
@@ -303,6 +304,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <EquityCurve trades={allTrades} />
             <CalendarHeatmap trades={allTrades} />
           </div>
+          {/* Alertas de regressão de maturidade — issue #119 task 18 */}
+          <MentorMaturityAlert
+            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+            maturityMap={maturityByStudentId}
+            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
+          />
           {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
           <PendingReviewsCard
             students={students}
