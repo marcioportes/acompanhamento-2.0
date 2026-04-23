@@ -9,6 +9,51 @@
  */
 
 // ---------------------------------------------------------------------------
+// 1.0 Helpers de normalização (escala 0-100)
+// ---------------------------------------------------------------------------
+
+/**
+ * Clipa um valor em [0, 1]. NaN → 0 (conservador p/ score composto).
+ *
+ * @param {number} v
+ * @returns {number}
+ */
+export function clip01(v) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * Normaliza x ∈ [min, max] para escala 0-100 (clipado).
+ * min === max ⇒ 0 (intervalo degenerado, sem sinal).
+ *
+ * @param {number} x
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+export function norm(x, min, max) {
+  if (max === min) return 0;
+  if (typeof x !== 'number' || !Number.isFinite(x)) return 0;
+  return clip01((x - min) / (max - min)) * 100;
+}
+
+/**
+ * Normalização invertida: x=min → 100, x=max → 0 (escala 0-100, clipada).
+ * min === max ⇒ 0.
+ *
+ * @param {number} x
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+export function normInverted(x, min, max) {
+  if (max === min) return 0;
+  if (typeof x !== 'number' || !Number.isFinite(x)) return 0;
+  return clip01(1 - (x - min) / (max - min)) * 100;
+}
+
+// ---------------------------------------------------------------------------
 // Parsers e utilitários internos
 // ---------------------------------------------------------------------------
 
