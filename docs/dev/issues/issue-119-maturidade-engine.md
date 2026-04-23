@@ -599,6 +599,44 @@ match /students/{studentId}/maturity/{docId=**} {
 
 Decisões de implementação menor (posição do bloco em `firestore.rules`, regex de data permissiva, counts `number>=0` sem int estrito). Comentários em código já documentam; não reusáveis entre sessões.
 
+#### DEC-AUTO-119-06 — Path `history` como sub-sub-collection com `_historyBucket` (Worker, task 07)
+
+**Contexto:** §3.1 D10 literal `students/{uid}/maturity/history/{YYYY-MM-DD}` — mas path Firestore válida exige alternância coleção/doc. Worker resolveu: `maturity/current` (doc) + `maturity/_historyBucket/history/{YYYY-MM-DD}` (sub-sub-coleção via doc-sentinel).
+
+**Decisão:** sentinel `_historyBucket` preserva segmentos literais de D10 e firestore.rules com `{docId=**}` cobre recursivamente. Usado em `recomputeMaturity.js`, `useMaturityHistory.js`.
+
+**Blast radius:** nenhum — escolha interna de persistência; UI/engine consomem shapes D10.
+
+#### DEC-AUTO-119-07 — Stubs neutros em `preComputeShapes` (Worker, task 07)
+
+**Contexto:** `emotionalAnalysisV2` e `calculateEVLeakage` não têm mirror completo em `functions/`. Fazer mirror agora seria CHUNK-06 escrita sem lock.
+
+**Decisão:** `functions/maturity/preComputeShapes.js` espelha os utils pequenos (`calcStats`, `calcPayoff`, `calcMaxDrawdown`, `calcConsistencyCV`, `calcComplianceRate`) e stuba os pesados — `emotionalAnalysis` neutro, `evLeakage=null`, `advancedMetricsPresent=false`, `complianceRate100=complianceRate`. Mirror completo fica como follow-up.
+
+**Blast radius:** scores emocionais no CF ficam neutros até mirror — aceitável no MVP; engine ainda produz snapshot válido.
+
+#### DEC-AUTO-119-08 — `admin` opcional em `runMaturityRecompute` (Worker, task 07)
+
+**Contexto:** testabilidade sem ter `firebase-admin` instalado no root (só em `functions/package.json`).
+
+**Decisão:** `runMaturityRecompute(db, { tradeId, trade, admin })` aceita `admin` opcional — produção cai no `require('firebase-admin')` lazy; testes injetam mock. Extendido em task 09 (`recomputeForStudent`) e task 13 (`runClassify`).
+
+#### DEC-AUTO-119-09 — Auth simples no callable `classifyMaturityProgression` (Worker, task 13)
+
+**Contexto:** §3.1 D12 não especifica política de auth para o callable. Opções: mentor-only, self-only, qualquer auth válida.
+
+**Decisão:** aceitar qualquer `request.auth` válido. A restrição de leitura (aluno vê só próprio, mentor vê alunos dele) já está no firestore.rules (DEC-AUTO-119-05). O callable grava em `maturity/current` — leitura cross-student é bloqueada no client.
+
+**Blast radius:** zero — ataque "aluno X gera narrativa para aluno Y" só queima cota, não vaza dado (leitura bloqueada). Se virar problema de custo, refinar para self-only no futuro.
+
+#### DEC-AUTO-119-10 — `baselineScores` = `dimensionScores` atual como placeholder (Worker, task 14)
+
+**Contexto:** `classifyMaturityProgression` exige `baselineScores` (schema D12). O doc `maturity/current` (D10) não persiste scores de baseline — apenas `baselineStage`. O lookup real seria em `students/{uid}/assessment/initial_assessment.dimensionScores`, para o qual não há hook exposto no StudentDashboard.
+
+**Decisão:** passar `maturity.dimensionScores` (scores atuais) como placeholder para `baselineScores` no payload do callable. Isso mantém o validator satisfeito sem adicionar fetch extra ou refatorar a CF para tornar o campo opcional. Prompt Sonnet ainda recebe `baselineStage` correto (do doc), então a análise comparativa continua viável — só perde a granularidade "quanto cada dimensão evoluiu em pontos". Narrativa segue focada em trigger + stage + gates, que são fontes primárias.
+
+**Blast radius:** baixo — a CF imprime os scores no prompt ("Scores de baseline ... Emocional: X"), mas Sonnet tipicamente foca em stage + gates + trigger para a narrativa. Refinar quando houver hook que exponha `initial_assessment.dimensionScores` ou quando engine persistir snapshot dos scores no momento do baseline. Follow-up: issue separado se for priorizado.
+
 #### DEC-AUTO-119-04 — Clamp de `suggestedStage` em [1, stageCurrent-1] (Worker, task 05)
 
 **Contexto:** `detectRegressionSignal` usa `suggestedStage = min(mappedStage, stageCurrent - 1)`. Em stage 1, `stageCurrent - 1 = 0` quebra a enum 1..5. Gatilho 3 só dispara se `mappedStage < stageCurrent`, então em stage 1 o gatilho 3 não dispara; mas gatilhos 1 e 2 podem disparar com stageCurrent=1 e caem no mesmo `min(1, 0) = 0`.

@@ -129,10 +129,112 @@ function GateLineContent({ g }) {
   );
 }
 
+function formatAiTimestamp(raw) {
+  if (!raw) return null;
+  let date = null;
+  if (typeof raw?.toDate === 'function') date = raw.toDate();
+  else if (raw instanceof Date) date = raw;
+  else if (typeof raw === 'number') date = new Date(raw);
+  else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return 'gerado hoje';
+  if (diffDays === 1) return 'gerado 1 dia atrás';
+  return `gerado ${diffDays} dias atrás`;
+}
+
+function AiNarrativeSection({ maturity, aiGenerating, aiError }) {
+  if (aiGenerating) {
+    return (
+      <div
+        data-testid="ai-generating"
+        className="mt-4 flex items-center gap-2 text-sm text-slate-400 animate-pulse"
+      >
+        <span
+          className="inline-block w-2 h-2 rounded-full bg-slate-500"
+          aria-hidden="true"
+        />
+        Gerando análise detalhada...
+      </div>
+    );
+  }
+
+  if (aiError) {
+    return (
+      <div
+        data-testid="ai-error"
+        className="mt-4 border border-slate-700 rounded-lg p-3 text-xs text-slate-400"
+      >
+        Análise IA temporariamente indisponível
+      </div>
+    );
+  }
+
+  const narrative = maturity?.aiNarrative ?? null;
+  const patterns = Array.isArray(maturity?.aiPatternsDetected)
+    ? maturity.aiPatternsDetected
+    : [];
+  const guidance = maturity?.aiNextStageGuidance ?? null;
+
+  if (!narrative && patterns.length === 0 && !guidance) return null;
+
+  const ts = formatAiTimestamp(maturity?.aiGeneratedAt);
+
+  return (
+    <div className="mt-4" data-testid="ai-section">
+      {narrative && (
+        <>
+          <p className="text-sm text-slate-400 uppercase tracking-wide mb-2">
+            Análise
+          </p>
+          <p
+            data-testid="ai-narrative"
+            className="whitespace-pre-wrap text-slate-300 text-sm mb-4"
+          >
+            {narrative}
+          </p>
+        </>
+      )}
+
+      {patterns.length > 0 && (
+        <div data-testid="ai-patterns" className="mb-4">
+          <p className="text-xs text-slate-500 mb-1">Padrões detectados</p>
+          <ul className="text-xs text-slate-400 list-disc pl-4 space-y-0.5">
+            {patterns.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {guidance && (
+        <div data-testid="ai-guidance">
+          <p className="text-xs text-slate-500 mb-1">Próximo passo</p>
+          <p className="whitespace-pre-wrap text-slate-300 text-sm">
+            {guidance}
+          </p>
+        </div>
+      )}
+
+      {ts && (
+        <p className="text-xs text-slate-600 mt-2 text-right" data-testid="ai-timestamp">
+          {ts}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MaturityProgressionCard({
   maturity = null,
   loading = false,
   error = null,
+  aiGenerating = false,
+  aiError = null,
   embedded = false,
 }) {
   const [mobileExpanded, setMobileExpanded] = useState(false);
@@ -196,7 +298,6 @@ function MaturityProgressionCard({
     : pendingGates.slice(0, MAX_MOBILE_GATES);
   const showMobileToggle = pendingGates.length > MAX_MOBILE_GATES;
   const regression = maturity.signalRegression?.detected === true;
-  const aiNarrative = maturity.aiNarrative;
 
   return (
     <div className={CONTAINER_CLS} data-testid="maturity-card">
@@ -313,14 +414,11 @@ function MaturityProgressionCard({
         </div>
       )}
 
-      {aiNarrative && (
-        <p
-          data-testid="ai-narrative"
-          className="whitespace-pre-wrap text-slate-300 text-sm mt-4"
-        >
-          {aiNarrative}
-        </p>
-      )}
+      <AiNarrativeSection
+        maturity={maturity}
+        aiGenerating={aiGenerating}
+        aiError={aiError}
+      />
 
       {debugBadge}
     </div>
