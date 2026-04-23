@@ -187,25 +187,28 @@ const SetupCard = ({ card }) => {
   return (
     <div
       data-testid={`setup-card-${card.setup}`}
-      className={`relative p-3 rounded-xl border ${borderClass} ${bgClass} transition-all`}
+      className={`relative p-3 rounded-xl border ${borderClass} ${bgClass} transition-all overflow-hidden`}
     >
-      <div className="flex justify-between items-center mb-3">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-200 text-sm">{card.setup}</span>
-          <span className="text-[10px] text-slate-500 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-700/50">
+      {/* Header em 2 linhas para não estourar em cards estreitos */}
+      <div className="mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-bold text-slate-200 text-sm truncate" title={card.setup}>
+            {card.setup}
+          </span>
+          <span className="shrink-0 text-[10px] text-slate-500 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-700/50 whitespace-nowrap">
             {card.n} {card.n === 1 ? 'trade' : 'trades'}
           </span>
         </div>
-        <div className="flex items-baseline gap-2">
-          <span className={`font-mono font-bold text-sm ${totalColor}`}>
+        <div className="flex items-baseline gap-2 mt-1">
+          <span className={`font-mono font-bold text-sm whitespace-nowrap ${totalColor}`}>
             {fmtSignedCurrency(card.totalPL)}
           </span>
-          <span className="text-[10px] text-slate-500">{fmtPct(card.wr, 0)}</span>
+          <span className="text-[10px] text-slate-500 whitespace-nowrap">WR {fmtPct(card.wr, 0)}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-        <Quadrant label="Financial" sublabel="EV por trade">
+        <Quadrant label="Financial" sublabel="por trade">
           <KPI
             label="EV"
             value={fmtSignedCurrency(card.ev)}
@@ -217,20 +220,20 @@ const SetupCard = ({ card }) => {
           />
         </Quadrant>
 
-        <Quadrant label="Operational" sublabel="ΔT W vs L">
+        <Quadrant label="Operational" sublabel="W vs L">
           <KPI
             label="ΔT"
             value={card.deltaT === null ? '—' : fmtSignedPct(card.deltaT, 0)}
             valueClassName={deltaTColor(card.deltaT)}
           />
           {card.durationWin !== null && card.durationLoss !== null && (
-            <div className="text-[10px] text-slate-500 leading-tight">
-              W {card.durationWin.toFixed(0)}min · L {card.durationLoss.toFixed(0)}min
+            <div className="text-[10px] text-slate-500 leading-tight truncate">
+              W {card.durationWin.toFixed(0)}m · L {card.durationLoss.toFixed(0)}m
             </div>
           )}
         </Quadrant>
 
-        <Quadrant label="Impact" sublabel="Contribuição ao EV">
+        <Quadrant label="Impact" sublabel="ao EV total">
           <KPI
             label="Contrib"
             value={fmtSignedPct(card.contribEV, 0)}
@@ -246,9 +249,9 @@ const SetupCard = ({ card }) => {
               testId={`setup-sparkline-${card.setup}`}
             />
             {profitable ? (
-              <TrendingUp className="w-3 h-3 text-emerald-400 opacity-60" />
+              <TrendingUp className="w-3 h-3 shrink-0 text-emerald-400 opacity-60" />
             ) : (
-              <TrendingDown className="w-3 h-3 text-red-400 opacity-60" />
+              <TrendingDown className="w-3 h-3 shrink-0 text-red-400 opacity-60" />
             )}
           </div>
         </Quadrant>
