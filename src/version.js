@@ -3,17 +3,22 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.42.0: feat: SetupAnalysis V2 — KPIs operacionais por setup (issue #170) —
- *   substitui `SetupAnalysis.jsx` atual (barra proporcional + WR) por card com 4
- *   KPIs em grid 2×2 (EV por trade, Payoff, ΔT W vs L com semáforo ±20%/±10%,
- *   Contribuição ao EV total) + Aderência RR condicional (quando `setups.targetRR`
- *   existe) + Sparkline 6m (reusa padrão EmotionAnalysis) + Insight 1-linha
- *   (`buildInsight` da Matriz 4D). Ordenação por |contribEV| desc; setups <3 trades
- *   em accordion "Esporádicos (N)" no rodapé. Util novo `src/utils/setupAnalysisV2.js`
- *   (zero campo Firestore novo). API externa preservada (prop `trades`) + nova prop
- *   opcional `setupsMeta` (array de docs `setups` com `targetRR`). Consumido em
- *   `StudentDashboard` e `MentorDashboard`. DebugBadge mantido. [RESERVADA — entrada
- *   definitiva no encerramento.]
+ * - 1.42.0: feat: SetupAnalysis V2 — KPIs operacionais por setup (issue #170, PR #173,
+ *   merge commit `15a6dca3`). Substitui `SetupAnalysis.jsx` (barra proporcional + WR)
+ *   por card de diagnóstico com 4 KPIs em grid 2×2 (EV por trade, Payoff avgWin/|avgLoss|,
+ *   ΔT W vs L com semáforo ±20%/±10% + tempos brutos, Contribuição ao EV total). Aderência
+ *   RR condicional (linha renderizada apenas quando `setups.targetRR` existe — banda
+ *   [target×0.8, target×1.2]). Sparkline 6m (PL acumulado mensal, mesmo visual da
+ *   Matriz 4D). Insight 1-linha (ofensor contribEV<-20% → best performer payoff≥1.5 →
+ *   aderência RR<50% → fallback positivo). Ordenação por |contribEV| desc; setups com
+ *   n<3 em accordion "Esporádicos (N)" colapsado (expandido por default quando nenhum
+ *   atinge n≥3). Util puro novo `src/utils/setupAnalysisV2.js` (245 linhas, zero campo
+ *   Firestore novo). API externa preservada (prop `trades`) + prop opcional `setupsMeta`.
+ *   Consumido em `StudentDashboard` via `useSetups` já presente. MentorDashboard sem
+ *   setupsMeta (não filtra por student — fast-follow). DebugBadge mantido (INV-04).
+ *   Fast-fix de overflow no card (header em 2 linhas, truncate, sublabels curtos,
+ *   tempos `Xm` em vez de `Xmin`) aplicado no commit `0bffe1f1` antes do merge.
+ *   1880/1880 testes (+40 novos: 23 util + 17 render).
  * - 1.41.0: feat: Ajustes Dashboard Aluno (issue #164, Sev2) — E1 SWOT reaproveita
  *   `review.swot` da última review CLOSED + fallback "aguardando revisão semanal";
  *   E2 card "Consistência Operacional" (CV P&L com semáforo DEC-050 + ΔT W/L com
