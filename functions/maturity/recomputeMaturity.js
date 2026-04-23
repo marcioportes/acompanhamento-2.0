@@ -135,6 +135,15 @@ async function runMaturityRecompute(db, { tradeId, trade, admin: adminOverride }
     return { skipped: true, reason: 'missing studentId' };
   }
 
+  return recomputeForStudent(db, studentId, { lastTradeId: tradeId, admin: adminOverride });
+}
+
+/**
+ * Student-level recompute. Reusável por CF trigger (via `runMaturityRecompute`)
+ * ou por script de backfill (iterando todos os alunos).
+ * Isolamento total: exceções viram `{ skipped: true, reason: 'exception' }`.
+ */
+async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: adminOverride = null } = {}) {
   // Lazy require: mantém buildMaturityPayloads testável sem firebase-admin instalado.
   // Tests podem injetar `admin` via param para evitar depender do package real.
   const admin = adminOverride ?? require('firebase-admin');
@@ -176,7 +185,7 @@ async function runMaturityRecompute(db, { tradeId, trade, admin: adminOverride }
       baselineStage,
       baseline,
       ...preComputed,
-      lastTradeId: tradeId,
+      lastTradeId,
       serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
       asOfTimestamp: admin.firestore.Timestamp.fromDate(now),
     });
@@ -199,15 +208,15 @@ async function runMaturityRecompute(db, { tradeId, trade, admin: adminOverride }
 
     return {
       skipped: false,
-      tradeId,
+      tradeId: lastTradeId,
       studentId,
       windowSize: payloads.currentDoc.windowSize,
       currentStage: payloads.currentDoc.currentStage,
     };
   } catch (err) {
-    console.error('[maturityRecompute] exception:', studentId, tradeId, err);
+    console.error('[maturityRecompute] exception:', studentId, lastTradeId, err);
     return { skipped: true, reason: 'exception', error: err.message };
   }
 }
 
-module.exports = { buildMaturityPayloads, runMaturityRecompute };
+module.exports = { buildMaturityPayloads, runMaturityRecompute, recomputeForStudent };
