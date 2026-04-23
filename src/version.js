@@ -3,14 +3,18 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.42.1: fix: wire setupsMeta em MentorDashboard (issue #174 — E4 out-of-scope de #170) —
- *   MentorDashboard passa a importar `useSetups` e filtrar por `s.isGlobal || s.studentId ===
- *   selectedStudent?.uid` antes de passar `setupsMeta` ao `<SetupAnalysis>`. Completa o E4
- *   da spec original do #170 ("Consumido em StudentDashboard e MentorDashboard") que foi
- *   cortado por conveniência durante o merge do #170 sem discussão com o Marcio. Aderência
- *   RR agora renderiza corretamente na visão do mentor quando o aluno tem setups com
- *   `targetRR`. Teste mínimo garante isolamento por aluno. [RESERVADA — entrada definitiva
- *   no encerramento.]
+ * - 1.42.1: fix: wire setupsMeta em MentorDashboard (issue #174, PR #175, merge commit
+ *   `d871fad2`). Completa o E4 da spec original do #170 ("Consumido em StudentDashboard
+ *   e MentorDashboard") cortado por conveniência durante o merge do #170 sem discussão.
+ *   Novo util puro `src/utils/setupsFilter.js` com `filterSetupsForStudent(setups,
+ *   studentId)` — retorna globais + pessoais do aluno; isolamento estrito (setup de
+ *   aluno X não vaza para aluno Y). MentorDashboard importa `useSetups`, memoiza
+ *   `filterSetupsForStudent(allSetups, selectedStudent?.studentId)` e passa
+ *   `setupsMeta={selectedStudentSetups}` ao `<SetupAnalysis>`. Aderência RR agora
+ *   renderiza na visão do mentor quando aluno tem setups com `targetRR`. 10 testes
+ *   unitários do filtro (defensivo + isolamento + edges). Memória operacional registrada
+ *   `feedback_spec_scope_respeito.md` — cortes de escopo declarados em spec NUNCA sem
+ *   discutir. 1890/1890 testes (baseline 1880 + 10 novos).
  * - 1.42.0: feat: SetupAnalysis V2 — KPIs operacionais por setup (issue #170, PR #173,
  *   merge commit `15a6dca3`). Substitui `SetupAnalysis.jsx` (barra proporcional + WR)
  *   por card de diagnóstico com 4 KPIs em grid 2×2 (EV por trade, Payoff avgWin/|avgLoss|,
