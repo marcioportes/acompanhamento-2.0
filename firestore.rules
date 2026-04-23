@@ -260,5 +260,13 @@ service cloud.firestore {
     match /{path=**}/subscriptions/{subscriptionId} {
       allow read: if isMentor();
     }
+
+    // ========== Maturity Engine — Progressão 4D × 5 stages (CHUNK-09, issue #119) ==========
+    // INV-15 aprovada. Subcollection /maturity/{current|history/{YYYY-MM-DD}}.
+    // Aluno lê próprio, mentor lê alunos dele. Apenas CF (admin SDK) escreve.
+    match /students/{studentId}/maturity/{docId=**} {
+      allow read: if isAuthenticated() && (isOwner(studentId) || isMentor());
+      allow write: if false;
+    }
   }
 }
