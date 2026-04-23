@@ -29,8 +29,10 @@ import {
   Award, Shield, Activity, ExternalLink,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
+import MaturityComparisonSection from '../components/reviews/MaturityComparisonSection';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
+import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
 
 const statusBadge = (status) => {
@@ -1046,6 +1048,15 @@ const WeeklyReviewPage = ({
     return () => unsub();
   }, [studentId]);
 
+  // Fase E2 (issue #119 task 16): comparativo de maturidade N vs N-1.
+  // Só dispara quando review.status === 'CLOSED' (o hook internamente guarda).
+  const {
+    current: maturityCurrent,
+    previous: maturityPrevious,
+    loading: maturityCmpLoading,
+    error: maturityCmpError,
+  } = useReviewMaturitySnapshot(studentId, review, planId);
+
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
 
@@ -1188,6 +1199,16 @@ const WeeklyReviewPage = ({
             <Section num="7" title="Evolução de maturidade (4D vs marco zero)">
               <MaturitySection assessment={initialAssessment} />
             </Section>
+
+            {/* 7b — Comparativo N vs N-1 (issue #119 task 16). Só em CLOSED. */}
+            {review.status === 'CLOSED' && (
+              <MaturityComparisonSection
+                current={maturityCurrent}
+                previous={maturityPrevious}
+                loading={maturityCmpLoading}
+                error={maturityCmpError}
+              />
+            )}
 
             {/* 8 — Navegação contextual */}
             <Section num="8" title="Navegação contextual">
