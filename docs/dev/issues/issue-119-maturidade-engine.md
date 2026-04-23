@@ -580,6 +580,25 @@ Total: **20 tasks** · 1-5 commits cada · ~30-90min por task.
 
 **Blast radius:** zero — é a única interpretação que fecha a aritmética. Worker task 02 implementa direto sem re-ambiguar.
 
+#### DEC-AUTO-119-05 — `firestore.rules` usa helpers existentes, não `users.role` (Worker, task 06)
+
+**Contexto:** §3.1 D10 mostra o bloco de rules com check inline `get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'mentor'`, mas o codebase já tem helper `isMentor()` (email hardcoded do mentor único) e não existe schema `users.role`.
+
+**Decisão:** manter consistência com blocos `assessment`, `emotionalProfile`, `reviews` que usam `isMentor()`. Seguir D10 literal exigiria migração de schema separada, fora de escopo. Final:
+
+```
+match /students/{studentId}/maturity/{docId=**} {
+  allow read: if isAuthenticated() && (isOwner(studentId) || isMentor());
+  allow write: if false;
+}
+```
+
+**Blast radius:** zero — equivalência funcional ("mentor lê alunos dele" é o comportamento efetivo de `isMentor()` num sistema de mentor único).
+
+#### DEC-AUTO-119-task06-01..04 (Worker, task 06) — não consolidadas
+
+Decisões de implementação menor (posição do bloco em `firestore.rules`, regex de data permissiva, counts `number>=0` sem int estrito). Comentários em código já documentam; não reusáveis entre sessões.
+
 #### DEC-AUTO-119-04 — Clamp de `suggestedStage` em [1, stageCurrent-1] (Worker, task 05)
 
 **Contexto:** `detectRegressionSignal` usa `suggestedStage = min(mappedStage, stageCurrent - 1)`. Em stage 1, `stageCurrent - 1 = 0` quebra a enum 1..5. Gatilho 3 só dispara se `mappedStage < stageCurrent`, então em stage 1 o gatilho 3 não dispara; mas gatilhos 1 e 2 podem disparar com stageCurrent=1 e caem no mesmo `min(1, 0) = 0`.
@@ -587,6 +606,39 @@ Total: **20 tasks** · 1-5 commits cada · ~30-90min por task.
 **Decisão:** clamp explícito `max(1, min(mappedStage, stageCurrent - 1))`. Semântica: "já está no stage mais baixo, não há regressão possível abaixo disso" — a regressão é sinalizada por `detected=true + reasons`, mas `suggestedStage` permanece 1 (sentinel que o consumer interpreta como "no piso").
 
 **Blast radius:** zero — alternativa (`null` em stage 1) exige branching adicional nos consumers. `1` é consistente com o contrato do tipo (`1..5 | null`).
+
+#### DEC-AUTO-119-06 — Path `history` como sub-sub-collection literal (Worker, task 07)
+
+**Contexto:** §3.1 D10 descreve `students/{uid}/maturity/history/{YYYY-MM-DD}`. A spec do task 07 ofereceu três alternativas (recursiva literal, docId prefixado, subcollections irmãs). Firestore exige paths alternando col/doc; `maturity/history/{YYYY-MM-DD}` literal tem 5 segmentos, que interpretaria `{YYYY-MM-DD}` como nome de collection.
+
+**Decisão:** implementar como sub-sub-collection literal inserindo um doc-sentinel `_historyBucket` para preservar os segmentos `maturity/history/`:
+
+```
+students/{uid}/maturity/current                                ← doc direto
+students/{uid}/maturity/_historyBucket/history/{YYYY-MM-DD}    ← sub-sub-collection
+```
+
+**Blast radius:** zero — `firestore.rules` já cobre via `{docId=**}` recursivo (task 06 DEC-AUTO-119-05). Consumers Fase C devem navegar com `.collection('maturity').doc('_historyBucket').collection('history')`. Doc `_historyBucket` em si nunca é lido/escrito; é container implícito para a subcollection.
+
+#### DEC-AUTO-119-07 — Stubs de shapes financeiros/emocional em `functions/maturity/preComputeShapes.js` (Worker, task 07)
+
+**Contexto:** Task 07 requer que o orchestrator CF receba shapes pré-computados (`stats`, `payoff`, `maxDrawdown`, `consistencyCV`, `complianceRate`, `evLeakage`, `emotionalAnalysis`, `advancedMetricsPresent`, `complianceRate100`). Nenhum dos utils correspondentes em `src/utils/` (calculations.js, dashboardMetrics.js, emotionalAnalysisV2.js) está mirrored em `functions/`. Task spec permite "STUB com cálculo degradado + TODO mirror".
+
+**Decisão:**
+- Utils pequenos e puros (≤40 linhas) mirrored localmente em `functions/maturity/preComputeShapes.js` com logic idêntica à src/: `calcStats`, `calcPayoff`, `calcMaxDrawdown`, `calcConsistencyCV`, `calcComplianceRate`.
+- Utils pesados/com dependência de config: stubs neutros — `emotionalAnalysis = { periodScore: 50, tiltCount: 0, revengeCount: 0 }`, `evLeakage = null`, `advancedMetricsPresent = false`, `complianceRate100 = complianceRate` (placeholder — variante "últimos 100 trades" idêntica ao total por ora).
+
+**Blast radius:** baixo — dimensão E fica neutra (50) no CF até mirror dedicado do `emotionalAnalysisV2` (follow-up). Gate `financial-fortified`/`compliance-100` (stage 3-4) pode falhar por stub no advancedMetricsPresent/complianceRate100 — aceitável em v1, pois gate METRIC_UNAVAILABLE aparece como "pendente" sem bloquear a evolução visível.
+
+**Follow-up:** criar issue separado para mirror completo de `emotionalAnalysisV2`/`calculateEVLeakage` em `functions/` quando houver prioridade.
+
+#### DEC-AUTO-119-08 — Injeção opcional de `admin` em `runMaturityRecompute` para testabilidade (Worker, task 07)
+
+**Contexto:** `runMaturityRecompute` usa `admin.firestore.FieldValue.serverTimestamp()` e `admin.firestore.Timestamp.fromDate()`. `firebase-admin` só está instalado em `functions/node_modules/`, não no root do projeto onde Vitest roda. `vi.mock('firebase-admin')` não intercepta `require()` confiavelmente (ESM vs CJS module graph).
+
+**Decisão:** assinatura `runMaturityRecompute(db, { tradeId, trade, admin: adminOverride })` — param opcional `admin`. Em produção (index.js) omitido, cai no `require('firebase-admin')` lazy interno. Em teste, injeta-se um fake admin com as duas APIs necessárias.
+
+**Blast radius:** zero — contrato preservado (CF não passa `admin`, comportamento idêntico). `buildMaturityPayloads` (pura) continua testável sem admin.
 
 ---
 
