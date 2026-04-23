@@ -125,7 +125,7 @@ function buildMaturityPayloads({
  * Handler CF — orquestra fetch + compute + write. Isolamento total (INV-03).
  * Gate: trade.status === 'CLOSED' E trade.studentId presente.
  */
-async function runMaturityRecompute(db, { tradeId, trade }) {
+async function runMaturityRecompute(db, { tradeId, trade, admin: adminOverride } = {}) {
   if (!trade || trade.status !== 'CLOSED') {
     return { skipped: true, reason: 'status != CLOSED' };
   }
@@ -135,8 +135,9 @@ async function runMaturityRecompute(db, { tradeId, trade }) {
     return { skipped: true, reason: 'missing studentId' };
   }
 
-  // Lazy require: mantém buildMaturityPayloads testável fora do ambiente CF.
-  const admin = require('firebase-admin');
+  // Lazy require: mantém buildMaturityPayloads testável sem firebase-admin instalado.
+  // Tests podem injetar `admin` via param para evitar depender do package real.
+  const admin = adminOverride ?? require('firebase-admin');
 
   try {
     const assessmentSnap = await db
