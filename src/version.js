@@ -3,6 +3,14 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.42.1: fix: wire setupsMeta em MentorDashboard (issue #174 — E4 out-of-scope de #170) —
+ *   MentorDashboard passa a importar `useSetups` e filtrar por `s.isGlobal || s.studentId ===
+ *   selectedStudent?.uid` antes de passar `setupsMeta` ao `<SetupAnalysis>`. Completa o E4
+ *   da spec original do #170 ("Consumido em StudentDashboard e MentorDashboard") que foi
+ *   cortado por conveniência durante o merge do #170 sem discussão com o Marcio. Aderência
+ *   RR agora renderiza corretamente na visão do mentor quando o aluno tem setups com
+ *   `targetRR`. Teste mínimo garante isolamento por aluno. [RESERVADA — entrada definitiva
+ *   no encerramento.]
  * - 1.42.0: feat: SetupAnalysis V2 — KPIs operacionais por setup (issue #170, PR #173,
  *   merge commit `15a6dca3`). Substitui `SetupAnalysis.jsx` (barra proporcional + WR)
  *   por card de diagnóstico com 4 KPIs em grid 2×2 (EV por trade, Payoff avgWin/|avgLoss|,
@@ -111,10 +119,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.42.0',
-  build: '20260422',
-  display: 'v1.42.0',
-  full: '1.42.0+20260422',
+  version: '1.42.1',
+  build: '20260423',
+  display: 'v1.42.1',
+  full: '1.42.1+20260423',
 };
 export default VERSION;
 export { VERSION };
