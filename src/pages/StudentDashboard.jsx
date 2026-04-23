@@ -498,7 +498,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
              (hoje 'weekly-review' é restrita a mentor em App.jsx). */
         />
-        <SetupAnalysis trades={filteredTrades} />
+        <SetupAnalysis trades={filteredTrades} setupsMeta={setups} />
       </div>
       <div className="mb-6"><EmotionAnalysis trades={filteredTrades} globalWR={stats?.winRate} /></div>
 
