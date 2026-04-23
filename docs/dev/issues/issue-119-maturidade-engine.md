@@ -558,7 +558,35 @@ Total: **20 tasks** · 1-5 commits cada · ~30-90min por task.
 
 > Preenchido pela **Coord** durante o loop autônomo quando ela resolver ambiguidade não coberta em §3.1. Ordem de fallback: §3.1 → PROJECT.md → padrão de código existente → menor blast radius.
 
-_(vazio na abertura)_
+#### DEC-AUTO-119-01 — Short-circuit em `computeSharpe` para retornos constantes (Worker, task 01)
+
+**Contexto:** contrato do briefing dizia `std === 0 → null`. Em JS, `[0.01, 0.01, ..., 0.01]×60` produz `std ≈ 3e-18` (não-zero literal), gerando Sharpe ≈ 3e16 — espúrio.
+
+**Decisão:** antes de computar mean/std, verificar se todos os `r` são estritamente iguais ao primeiro. Caso sim → `return null`. Preserva a intenção ("sem dispersão → Sharpe indefinido") sem hack de epsilon arbitrário, e não mascara casos legítimos de std tiny-but-não-zero.
+
+**Blast radius:** zero — A2..A5 consomem `null` da mesma forma que já consumiriam quando N < minDays.
+
+#### DEC-AUTO-119-02 — `void plans;` em `computeStrategyConsistencyWeeks` (Worker, task 01)
+
+**Contexto:** briefing exige manter `plans` na assinatura para futura extensão. ESLint `no-unused-vars` dispararia.
+
+**Decisão:** usar `void plans;` no corpo — sinaliza intenção, evita warning, mantém o nome do parâmetro conforme spec. Alternativas rejeitadas: `_plans` (viola a spec "mantenha na assinatura"); `eslint-disable-next-line` (não é padrão usado no projeto — `grep` não encontrou ocorrências em `src/utils/`).
+
+#### DEC-AUTO-119-03 — Fórmulas E/F/O com helpers em escala 0-100 (Coord, abertura task 02)
+
+**Contexto:** §3.1 D3 define `norm`/`normInverted` como retornando `× 100` (escala 0-100), mas as fórmulas de E, F, O escrevem `normInverted(..., a, b)·100` e `norm(..., a, b)·100` — essa multiplicação extra pela 100 daria escala 0-10000 e quebra o intent (E,F,O ∈ [0,100]).
+
+**Decisão:** tratar o `·100` trailing nas fórmulas como erro de digitação do spec. Os helpers `norm`/`normInverted` retornam 0-100 conforme §3.1 D3, e o `·100` nos termos das fórmulas é **descartado**. Verificação: com essa interpretação, E = 0.60·(0-100) + 0.25·(0-100) + 0.15·(0-100) = 0-100 ✓.
+
+**Blast radius:** zero — é a única interpretação que fecha a aritmética. Worker task 02 implementa direto sem re-ambiguar.
+
+#### DEC-AUTO-119-04 — Clamp de `suggestedStage` em [1, stageCurrent-1] (Worker, task 05)
+
+**Contexto:** `detectRegressionSignal` usa `suggestedStage = min(mappedStage, stageCurrent - 1)`. Em stage 1, `stageCurrent - 1 = 0` quebra a enum 1..5. Gatilho 3 só dispara se `mappedStage < stageCurrent`, então em stage 1 o gatilho 3 não dispara; mas gatilhos 1 e 2 podem disparar com stageCurrent=1 e caem no mesmo `min(1, 0) = 0`.
+
+**Decisão:** clamp explícito `max(1, min(mappedStage, stageCurrent - 1))`. Semântica: "já está no stage mais baixo, não há regressão possível abaixo disso" — a regressão é sinalizada por `detected=true + reasons`, mas `suggestedStage` permanece 1 (sentinel que o consumer interpreta como "no piso").
+
+**Blast radius:** zero — alternativa (`null` em stage 1) exige branching adicional nos consumers. `1` é consistente com o contrato do tipo (`1..5 | null`).
 
 ---
 
