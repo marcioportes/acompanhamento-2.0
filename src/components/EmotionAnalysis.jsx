@@ -6,7 +6,9 @@
  *   - Financial   → expectancy + payoff
  *   - Operational → shiftRate
  *   - Emotional   → WR e Δ WR (vs globalWR)
- *   - Maturity    → sparkline de PL acumulado (últimos 10 trades da emoção)
+ *   - Maturidade  → teaser compacto do stage atual + mini-barra de gates
+ *                   (detalhe rico mora no MaturityProgressionCard — INV-17
+ *                   consolidação, issue #119 D13)
  *
  * Rodapé traz insight acionável: prioriza shift rate alto em ofensor,
  * depois melhor performer com payoff, depois WR baixo com Δ positivo, e
@@ -14,9 +16,10 @@
  */
 
 import React, { useMemo } from 'react';
-import { Brain, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { Brain, Activity } from 'lucide-react';
 import { formatCurrency } from '../utils/calculations';
 import { buildEmotionMatrix4D } from '../utils/emotionMatrix4D';
+import { STAGE_NAMES } from '../utils/maturityEngine/constants';
 import DebugBadge from './DebugBadge';
 
 const fmtSignedCurrency = (v) => (v >= 0 ? `+${formatCurrency(v)}` : formatCurrency(v));
@@ -29,72 +32,81 @@ const shiftColor = (rate) => {
   return 'text-red-400';
 };
 
-const Sparkline = ({ series, positive }) => {
-  if (!series || series.length === 0) return null;
-  const width = 60;
-  const height = 24;
-  const padding = 2;
-
-  if (series.length === 1) {
-    const cx = width / 2;
-    const cy = height / 2;
+// Teaser compacto de maturidade (stage + mini-barra + fração de gates).
+// Detalhe rico (gates pendentes, regressão, narrativa IA) mora no
+// MaturityProgressionCard — INV-17 consolidação, issue #119 D13.
+const MaturityMini = ({ maturity }) => {
+  if (!maturity) {
     return (
-      <svg
-        data-testid="emotion-sparkline"
-        viewBox={`0 0 ${width} ${height}`}
-        width={width}
-        height={height}
-        className="overflow-visible"
-      >
-        <polyline
-          fill="none"
-          stroke={positive ? '#34d399' : '#f87171'}
-          strokeWidth="1.5"
-          points={`${cx - 4},${cy} ${cx + 4},${cy}`}
-        />
-      </svg>
+      <div data-testid="maturity-mini">
+        <div className="flex gap-0.5" data-testid="maturity-mini-bar">
+          {[1, 2, 3, 4, 5].map((s) => (
+            <div
+              key={s}
+              className="h-1.5 flex-1 rounded-sm bg-gray-700"
+              data-testid={`maturity-mini-seg-${s}`}
+            />
+          ))}
+        </div>
+        <p
+          className="text-[10px] text-slate-500 mt-1"
+          data-testid="maturity-mini-placeholder"
+        >
+          Aguardando primeiro trade
+        </p>
+      </div>
     );
   }
 
-  const values = series.map((p) => p.cumPL);
-  const min = Math.min(...values, 0);
-  const max = Math.max(...values, 0);
-  const range = max - min || 1;
-
-  const points = series
-    .map((p, i) => {
-      const x = padding + (i / (series.length - 1)) * (width - 2 * padding);
-      const y = height - padding - ((p.cumPL - min) / range) * (height - 2 * padding);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(' ');
-
-  const zeroY = height - padding - ((0 - min) / range) * (height - 2 * padding);
+  const currentStage = maturity.currentStage ?? 1;
+  const gatesRatio = maturity.gatesRatio ?? 0;
+  const mastery = currentStage === 5;
+  const stageName = STAGE_NAMES[currentStage] ?? '—';
+  const safeRatio = Math.max(0, Math.min(1, gatesRatio));
+  const stageColorCls = mastery ? 'text-emerald-400' : 'text-amber-400';
 
   return (
-    <svg
-      data-testid="emotion-sparkline"
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      className="overflow-visible"
-    >
-      <line
-        x1={padding}
-        x2={width - padding}
-        y1={zeroY}
-        y2={zeroY}
-        stroke="#334155"
-        strokeWidth="0.5"
-        strokeDasharray="2 2"
-      />
-      <polyline
-        fill="none"
-        stroke={positive ? '#34d399' : '#f87171'}
-        strokeWidth="1.5"
-        points={points}
-      />
-    </svg>
+    <div data-testid="maturity-mini">
+      <p
+        className={`text-[11px] font-mono font-bold ${stageColorCls}`}
+        data-testid="maturity-mini-stage"
+      >
+        {stageName}
+      </p>
+      <div className="flex gap-0.5 mt-1" data-testid="maturity-mini-bar">
+        {[1, 2, 3, 4, 5].map((s) => {
+          let cls = 'h-1.5 flex-1 rounded-sm overflow-hidden';
+          let isCurrent = false;
+          if (mastery || s < currentStage) {
+            cls += ' bg-emerald-500';
+          } else if (s === currentStage) {
+            cls += ' bg-gray-700 relative';
+            isCurrent = true;
+          } else {
+            cls += ' bg-gray-700';
+          }
+          return (
+            <div key={s} className={cls} data-testid={`maturity-mini-seg-${s}`}>
+              {isCurrent && (
+                <div
+                  className="h-full bg-amber-400"
+                  style={{ width: `${safeRatio * 100}%` }}
+                  data-testid={`maturity-mini-seg-${s}-fill`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p
+        className="text-[10px] text-slate-400 mt-1"
+        data-testid="maturity-mini-gates"
+      >
+        {mastery
+          ? 'Mastery'
+          : `${maturity.gatesMet ?? 0}/${maturity.gatesTotal ?? 0} gates para próximo`}
+      </p>
+    </div>
   );
 };
 
@@ -192,7 +204,7 @@ const buildInsight = (cards) => {
   };
 };
 
-const EmotionAnalysis = ({ trades, globalWR }) => {
+const EmotionAnalysis = ({ trades, globalWR, maturity = null }) => {
   const cards = useMemo(
     () => buildEmotionMatrix4D(trades, { globalWR, sparklineWindow: 10 }),
     [trades, globalWR],
@@ -289,15 +301,8 @@ const EmotionAnalysis = ({ trades, globalWR }) => {
                   )}
                 </Quadrant>
 
-                <Quadrant label="Maturidade" sublabel="evolução recente">
-                  <div className="flex items-center gap-2">
-                    <Sparkline series={c.sparklineSeries} positive={profitable} />
-                    {profitable ? (
-                      <TrendingUp className="w-3 h-3 text-emerald-400 opacity-60" />
-                    ) : (
-                      <TrendingDown className="w-3 h-3 text-red-400 opacity-60" />
-                    )}
-                  </div>
+                <Quadrant label="Maturidade" sublabel="stage atual">
+                  <MaturityMini maturity={maturity} />
                 </Quadrant>
               </div>
             </div>
