@@ -368,6 +368,98 @@ describe('MaturityProgressionCard', () => {
     });
   });
 
+  describe('narrativa IA (task 14)', () => {
+    it('aiGenerating=true: renderiza skeleton "Gerando análise"', () => {
+      const maturity = makeMaturity();
+      render(
+        <MaturityProgressionCard maturity={maturity} aiGenerating />
+      );
+      const gen = screen.getByTestId('ai-generating');
+      expect(gen).toBeInTheDocument();
+      expect(gen.textContent).toMatch(/Gerando análise detalhada/);
+      expect(gen.className).toMatch(/animate-pulse/);
+      expect(screen.queryByTestId('ai-section')).not.toBeInTheDocument();
+    });
+
+    it('aiError truthy: renderiza fallback discreto "Análise IA temporariamente indisponível"', () => {
+      const maturity = makeMaturity();
+      render(
+        <MaturityProgressionCard maturity={maturity} aiError="rate limit" />
+      );
+      const err = screen.getByTestId('ai-error');
+      expect(err).toBeInTheDocument();
+      expect(err.textContent).toMatch(/temporariamente indisponível/);
+      expect(err.className).toMatch(/border-slate-700/);
+      expect(screen.queryByTestId('ai-generating')).not.toBeInTheDocument();
+    });
+
+    it('narrative + patterns + guidance: todas as 3 seções renderizadas', () => {
+      const maturity = makeMaturity({
+        aiNarrative: 'Consolidou disciplina emocional ao longo das últimas 30 sessões.',
+        aiPatternsDetected: [
+          'Compliance rate subiu de 70% para 92%',
+          'Tilts praticamente zerados após mudança de setup',
+        ],
+        aiNextStageGuidance: 'Foco em estabilidade operacional pelas próximas 4 semanas.',
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      const section = screen.getByTestId('ai-section');
+      expect(section).toBeInTheDocument();
+
+      const narrative = screen.getByTestId('ai-narrative');
+      expect(narrative.textContent).toMatch(/Consolidou disciplina emocional/);
+
+      const patterns = screen.getByTestId('ai-patterns');
+      const items = within(patterns).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(items[0].textContent).toMatch(/Compliance rate subiu/);
+
+      const guidance = screen.getByTestId('ai-guidance');
+      expect(guidance.textContent).toMatch(/Foco em estabilidade operacional/);
+    });
+
+    it('narrative presente mas patternsDetected vazio: só narrativa + guidance', () => {
+      const maturity = makeMaturity({
+        aiNarrative: 'Narrativa gerada',
+        aiPatternsDetected: [],
+        aiNextStageGuidance: 'Guidance presente',
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      expect(screen.getByTestId('ai-narrative')).toBeInTheDocument();
+      expect(screen.getByTestId('ai-guidance')).toBeInTheDocument();
+      expect(screen.queryByTestId('ai-patterns')).not.toBeInTheDocument();
+    });
+
+    it('campos IA todos nulos + sem aiGenerating + sem aiError: nada renderizado na seção', () => {
+      const maturity = makeMaturity();
+      render(<MaturityProgressionCard maturity={maturity} />);
+      expect(screen.queryByTestId('ai-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ai-generating')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ai-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ai-narrative')).not.toBeInTheDocument();
+    });
+
+    it('aiGeneratedAt com toDate(): renderiza "gerado N dias atrás"', () => {
+      const days = 3;
+      const fakeTimestamp = {
+        toDate: () => new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+      };
+      const maturity = makeMaturity({
+        aiNarrative: 'Texto',
+        aiGeneratedAt: fakeTimestamp,
+      });
+
+      render(<MaturityProgressionCard maturity={maturity} />);
+
+      const ts = screen.getByTestId('ai-timestamp');
+      expect(ts.textContent).toMatch(/gerado 3 dias atrás/);
+    });
+  });
+
   it('gate com METRIC_UNAVAILABLE exibe "(aguardando dado)"', () => {
     const maturity = makeMaturity({
       gates: [
