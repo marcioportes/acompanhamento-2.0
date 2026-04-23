@@ -1016,21 +1016,29 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
   - Log estruturado em `.cc-mailbox/log/dispatch.log` + por-invocação em `dispatch-<slug>-<timestamp>.log`
   - Exit codes: 0 OK, 2 precondição, 3 lock timeout, 4 resume error, 5 UUID inválido
 
-#### Validado (smoke integration 5/5 OK)
+#### Validado (smoke parcial + E2E real)
 
-Worktree sintético `issue-998` criado a partir do branch deste PR:
+**Smoke parcial** (worktree sintético `issue-998`): valida apenas spawn + dispatch + Coord escreve inbox. Listener morto antes do worker. 5/5 OK.
 
-1. `cc-spawn-coord.sh 998 dry-run/...` → `COORD_SESSION_ID=2fbe3f35-d77d-43d9-8026-d4ead5f9f252` (session_id capturado e validado como UUID)
-2. `cc-worktree-start.sh 998 ... $COORD_ID` → `.coord-id`/`.coord-dir` gravados `chmod 444` (READ-ONLY INV-26), 7 dirs §13.7, tmux `cc-998` lançado
-3. `tmux kill-session cc-998` (isola o teste do listener automático)
-4. `cc-dispatch-task.sh 998 FIRST` → lock adquirido em 30s, `claude --resume` invocado com mensagem `DISPATCH_FIRST_TASK issue=998`, Coord acordou, leu o control file (plano sintético pedindo apenas `inbox/01-smoke.md` com `SMOKE_OK`), escreveu o arquivo literal (9 bytes), morreu
-5. Verificação final: `inbox/01-smoke.md` existe com conteúdo exato `SMOKE_OK\n`
+**E2E real** (worktree sintético `issue-997`, 23/04/2026 01:32-01:35 BRT, `EMAIL_DRY_RUN=0`):
+1. `cc-spawn-coord.sh 997 dry-run/...` → `COORD_SESSION_ID=f88e64e6-dffd-460d-8f10-44f9a4950007` ✓
+2. `cc-worktree-start.sh 997 ... $COORD_ID` → `.coord-id`/`.coord-dir` READ-ONLY, tmux `cc-997` lançado ✓
+3. `cc-dispatch-task.sh 997 FIRST` → Coord acordou via `--resume`, leu control file, compôs briefing completo do worker (baseado em `worker-briefing.md`) e gravou em `inbox/01-criar-scratch-file.md` ✓
+4. Listener pegou em ~25s, disparou `claude -p` headless, worker criou `scratch/dry-run-997.md` (16 bytes, `E2E DRY RUN 997\n`), commitou `cae656b244b0...` e gravou `outbox/01-criar-scratch-file-report.md` com CLAIMS JSON válido ✓
+5. Listener moveu `.md` inbox→processed, invocou `flock + claude --resume` com `TASK_DELIVERED issue=997 name=01-... result_log=... report=...` ✓
+6. Coord acordou (~30s mais), leu result.log antes do report (token budget), rodou `cc-validate-task.py` que retornou exit 0 (`OK: commit_exists, tests_match, files_match`) ✓
+7. Coord atualizou control file marcando `[x]` nos critérios de aceitação (side-effect benéfico não-pedido — inferência de "consolida §3.2") ✓
+8. Coord disparou email real via `cc-notify-email.py` com JSON stdin (type=FINISHED), SMTP iCloud aceitou ✓
+9. Email `[Espelho #997] FINISHED: E2E dry-run §13 concluído — todas as tasks OK` chegou em `marcio.portes@me.com` ✓ (log: `~/cc-mailbox/log/emails.log` + per-worktree `~/projects/issue-997/.cc-mailbox/log/emails.log`)
+10. Coord morreu ("Task 01 validada (exit 0), control file atualizado, email FINISHED enviado. Fim do plano. Morrendo.") ✓
 
-Custo: ~5k tokens (spawn + dispatch, sem worker). `EMAIL_DRY_RUN=1` durante o teste para garantir segurança.
+Custo E2E: ~20-30k tokens (spawn 2k + dispatch 3k + worker 10k + coord validate + email 5-10k). Tempo wallclock: ~3 minutos.
+
+**Observação colateral:** o per-worktree log de email foi gravado no modo real (EMAIL_DRY_RUN=0). O fast-follow de "EMAIL_DRY_RUN=1 não grava per-worktree log" permanece válido — é gap só no path DRY_RUN.
 
 #### Status do protocolo pós-entrega
 
-**OPERACIONAL END-TO-END.** Próxima sessão dispara "atacar #NNN em modo autônomo" e o protocolo trilha mecanicamente no spawn/dispatch sem improviso do modelo. Apenas Fase D (rodada real com worker + validator + email real + recovery §13.15) permanece pendente — não bloqueia uso mas recomenda-se supervisão no primeiro issue autônomo real.
+**OPERACIONAL END-TO-END — VALIDADO COM RODADA REAL.** E2E em `issue-997` (23/04/2026) executou o loop inteiro Interface → Coord → Worker → validator → email iCloud SEM intervenção humana. Apenas Recovery §13.15 re-teste pós-amendment v0.26.0 permanece pendente (caso de borda — kill manual da CC-Interface no meio do loop).
 
 #### Shared files
 
@@ -2028,7 +2036,7 @@ Exemplos:
 |------------|-------------|--------|
 | `cc-notify-email.py` | `~/cc-mailbox/bin/` | **IMPLEMENTADO** (#169 PR #172, v0.30.0) — email real via iCloud SMTP, 7 TIPOs, rate limit 4h, 280 linhas |
 | `cc-validate-task.py` | `~/cc-mailbox/bin/` | **IMPLEMENTADO** (#169 PR #172, v0.30.0) — 3 checks §13.9 em <300ms, 12/12 pytest, 233 linhas |
-| `cc-notify-whatsapp.sh` | `~/cc-mailbox/bin/` | A ESCREVER (trivial, opcional — não crítico pro loop) |
+| `cc-notify-whatsapp.sh` | `~/cc-mailbox/bin/` | LOW PRIORITY — canal opcional, não crítico pro loop (email iCloud é canal primário INV-28; WhatsApp fica como redundância caso Evolution API esteja de pé) |
 | `cc-worktree-start.sh` | `scripts/` (repo) | **REFATORADO 3-TIER** (#169 PR #172, v0.30.0) — pré-condição cwd=worktree, 7 dirs §13.7, `.coord-id`/`.coord-dir`/`.interface-id` READ-ONLY, `flock` no listener |
 | `~/cc-mailbox/templates/worker-briefing.md` | `~/cc-mailbox/templates/` | **IMPLEMENTADO** (#169 PR #172, v0.30.0) — cláusula CLAIMS obrigatória, formato exato do bloco JSON, regras skipped, exemplo de report |
 | `~/cc-mailbox/templates/coord-briefing.md` | `~/cc-mailbox/templates/` | **IMPLEMENTADO** (#176, v0.35.0) — template canônico com placeholders (`{{issue_num}}`, `{{issue_title}}`, `{{branch}}`, `{{worktree_path}}`, `{{control_file_path}}`), cobre identidade/ciclo-de-vida/TASK_DELIVERED/DISPATCH_TASK/HUMAN_GATE_RESOLVED + resolução de ambiguidades spec→PROJECT.md→padrão→§3.2 + tipos §13.10 |
@@ -2036,7 +2044,7 @@ Exemplos:
 | `cc-dispatch-task.sh` | `~/cc-mailbox/bin/` | **IMPLEMENTADO** (#176, v0.35.0) — wrapper §13.8 passos 8d/36: lê `.coord-id`/`.coord-dir`, `flock -w 30 locks/coord.lock`, `cd $COORD_DIR`, `claude --resume --permission-mode auto -p "DISPATCH_FIRST_TASK\|DISPATCH_TASK slug=...\|HUMAN_GATE_RESOLVED ref=..."`. Smoke OK em issue-998. |
 | `~/cc-mailbox/.env` | `~/cc-mailbox/` | Setup manual (EMAIL_PASSWORD iCloud — senha reusada de `~/morning_call_auto/.env` via decisão operacional) |
 
-**Status do protocolo:** **OPERACIONAL END-TO-END** a partir de v0.35.0 (#176). Smoke integration em worktree sintético `issue-998` validou toda a cadeia: `cc-spawn-coord.sh` retorna `session_id` válido → `cc-worktree-start.sh` grava READ-ONLY → `cc-dispatch-task.sh FIRST` via `flock` acorda Coord → Coord lê control file + obedece plano + escreve `inbox/<N>-<slug>.md` + morre. Próxima sessão dispara "atacar #NNN em modo autônomo" e o protocolo trilha sem improviso do modelo. **Pendente apenas a Fase D** (rodada end-to-end com issue-teste real envolvendo worker + validator + email real + recovery).
+**Status do protocolo:** **OPERACIONAL END-TO-END** a partir de v0.35.0 (#176). **Validado com rodada real** em worktree sintético `issue-997` (23/04/2026 01:32-01:35 BRT, ~3min, EMAIL_DRY_RUN=0): `cc-spawn-coord.sh` → `COORD_SESSION_ID=f88e64e6-...` → `cc-worktree-start.sh` grava RO + lança listener → `cc-dispatch-task.sh FIRST` → Coord escreve briefing completo do worker em `inbox/01-criar-scratch-file.md` → listener polling pega em ~25s → worker headless `claude -p` executa (cria arquivo, commita `cae656b2`, escreve report com CLAIMS válido `{commit_hash, tests.skipped:true, files_touched}`) → listener faz `TASK_DELIVERED` via `flock + --resume` → Coord acorda, roda `cc-validate-task.py` (exit 0 OK), atualiza control file marcando `[x]` nos critérios (side-effect benéfico não-pedido) → Coord dispara email real `[Espelho #997] FINISHED: E2E dry-run §13 concluído — todas as tasks OK` via `cc-notify-email.py` → email chega no iCloud do Marcio → Coord morre. Loop inteiro sem intervenção humana. **Pendente apenas**: Recovery §13.15 re-testado pós-amendment v0.26.0 (a rodada original usou protocolo anterior).
 
 **Fast-follows identificados nos dry-runs:**
 - `cc-notify-email.py` em `EMAIL_DRY_RUN=1` não escreve em per-worktree log (só no global); assimetria trivial de 3 linhas
