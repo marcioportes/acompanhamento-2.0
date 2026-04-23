@@ -30,6 +30,7 @@ import TradingCalendar from '../components/TradingCalendar';
 import SetupAnalysis from '../components/SetupAnalysis';
 import EquityCurve from '../components/EquityCurve';
 import EmotionAnalysis from '../components/EmotionAnalysis';
+import MaturityProgressionCard from '../components/MaturityProgressionCard';
 import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -64,6 +65,7 @@ import useOrders from '../hooks/useOrders';
 import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
+import { useMaturity } from '../hooks/useMaturity';
 
 // Contexto unificado (issue #118 — DEC-047)
 import StudentContextProvider from '../contexts/StudentContextProvider';
@@ -114,6 +116,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const orderStaging = useOrderStaging(overrideStudentId);
   const { orders, stats: orderStats } = useOrders(overrideStudentId);
   const crossCheckHook = useCrossCheck(overrideStudentId);
+
+  // Maturity snapshot (issue #119 task 11)
+  const maturityStudentId = overrideStudentId ?? user?.uid ?? null;
+  const { maturity, loading: maturityLoading, error: maturityError } =
+    useMaturity(maturityStudentId);
 
   // === UI State ===
   const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
@@ -500,7 +507,25 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         />
         <SetupAnalysis trades={filteredTrades} setupsMeta={setups} />
       </div>
-      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} globalWR={stats?.winRate} /></div>
+      <div className="mb-6">
+        <EmotionAnalysis
+          trades={filteredTrades}
+          globalWR={stats?.winRate}
+          maturity={maturity}
+        />
+      </div>
+
+      {/* Progressão de Maturidade (issue #119 D13) — posicionado logo após a
+          Matriz Emocional 4D para manter a ligação visual "depois da matriz".
+          PendingTakeaways permanece antes. INV-17 consolidação: quadrante
+          Maturidade da Matriz 4D foi reduzido a teaser. */}
+      <div className="mb-6">
+        <MaturityProgressionCard
+          maturity={maturity}
+          loading={maturityLoading}
+          error={maturityError}
+        />
+      </div>
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
