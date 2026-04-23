@@ -979,6 +979,41 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 > Histórico de versões. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/).
 > Adicionar entradas no topo. Nunca editar entradas antigas.
 
+### [1.42.0] - 23/04/2026
+**Issue:** #170 (feat: SetupAnalysis V2 — KPIs operacionais por setup, v1.2.0 Mentor Cockpit)
+**PR:** #173 (merge commit `15a6dca3`)
+
+#### Entregue — 4 entregas da spec aprovada
+
+- **E3 · util `analyzeBySetupV2`**: novo util puro em `src/utils/setupAnalysisV2.js` (245 linhas) que substitui `analyzeBySetup` legado. Por setup retorna `{ setup, n, totalPL, wr, ev, payoff, durationWin, durationLoss, deltaT, contribEV, adherenceRR, sparkline6m, isSporadic, trades }`. Multi-moeda ignorada por setup (soma crua, conforme spec). ΔT e Payoff retornam `null` quando faltam wins OU losses. Aderência RR é condicional: só calcula quando `setupsMeta[x].targetRR` existe (banda `[target×0.8, target×1.2]`). Sparkline 6m com 6 buckets mensais determinísticos (aceita `today` opcional p/ testes). Ordenação final por `|contribEV|` desc. Zero campo Firestore novo. 23 testes unitários cobrindo defensivo/agrupamento/KPIs/ΔT/contribEV/adherenceRR/sparkline/edges.
+- **E1 · UI SetupAnalysis V2**: `src/components/SetupAnalysis.jsx` reescrito (+349 linhas). Substitui barra proporcional + WR por card de diagnóstico com header em 2 linhas (nome+badge na primeira, PL total + WR na segunda) + grid 2×2 de quadrantes (**Financial** EV por trade + Payoff · **Operational** ΔT W vs L com semáforo ±20%/±10% + tempos brutos `Xm · Xm` · **Impact** Contribuição ao EV total com sinal · **Maturidade** Sparkline 6m + ícone Trend). Linha de **Aderência RR** sub-linha condicional (renderiza apenas quando `setupsMeta` traz `targetRR`) com cor `≥70% verde / ≥40% âmbar / <40% vermelho`. **Insight 1-linha** no rodapé priorizando: ofensor contribEV<-20% → best performer payoff≥1.5 → aderência RR<50% → fallback positivo. DebugBadge `component="SetupAnalysis"` preservado (INV-04). 17 testes render.
+- **E2 · Ordenação + accordion esporádicos**: cards não-esporádicos (n≥3) ordenados por `|contribEV|` desc (impacto absoluto primeiro, independe do sinal). Setups com `n<3` vão para accordion "Esporádicos (N)" colapsado por default no rodapé. Quando nenhum setup atinge n≥3, accordion expande por default.
+- **E4 · Wire em `StudentDashboard`**: prop `setupsMeta={setups}` passada ao `<SetupAnalysis>` via `useSetups()` já consumido na página. API externa do componente preservada (prop `trades` imutável + `setupsMeta` opcional). **MentorDashboard não alterado** — `useSetups` não está consumido lá e setups globais/pessoais mistos não têm filtro por `selectedStudent.uid` (fast-follow).
+
+#### Fast-fix pré-merge (overflow do card — commit `0bffe1f1`)
+
+Header em 2 linhas em vez de flex-row de 4 filhos (nome+badge+PL+WR não cabiam em cards estreitos em `xl:grid-cols-3`). `truncate min-w-0` no nome do setup com `title` tooltip; `shrink-0` no badge de N trades e nos ícones Trend; `whitespace-nowrap` no PL/WR. Sublabels encurtados: "EV por trade" → "por trade" · "ΔT W vs L" → "W vs L" · "Contribuição ao EV" → "ao EV total" · "PL 6m" mantido. Tempos brutos `Xm` em vez de `Xmin`. `overflow-hidden` no card container como guard final.
+
+#### Testes
+
+- 1840 → 1880 (+40). 23 util em `src/__tests__/utils/setupAnalysisV2.test.js`, 17 render em `src/__tests__/components/SetupAnalysisV2.test.jsx`. Baseline zero regressão pós-rebase.
+- Nota: rebase do branch dropou o commit original de abertura (`3b69ea4b`) via `git rebase --skip` porque sua diff já tinha entrado no main via squash do PR #172 (#169) — `version: 1.42.0`, lock CHUNK-02 e histórico §1 ficaram consistentes.
+
+#### Shared files
+
+- `src/version.js` bump 1.41.0 → 1.42.0 (originalmente reservada na abertura, entrou no main via squash do PR #172 antes do merge do #173; entrada `[RESERVADA]` removida neste encerramento)
+- `docs/PROJECT.md` v0.31.0: encerramento + CHUNK-02 liberado em §6.3 + entrada CHANGELOG definitiva
+
+#### Pendências / fase 2
+
+- Wire `setupsMeta` em `MentorDashboard` filtrado por `selectedStudent.uid` (mentor precisa do `useSetups` lá + filtro `isGlobal || studentId === selectedStudent.uid`)
+- Shift emocional por setup (join com `emotionMatrix4D`)
+- Aderência à checklist do setup (requer schema novo em `setups`)
+- Heatmap setup × emoção
+- Filtro drill-down por setup no dashboard
+
+---
+
 ### [1.41.0] - 22/04/2026
 **Issue:** #164 (Ajuste Dashboard Aluno — Sev2)
 **PR:** #171 (merge commit `f3d46895`)
