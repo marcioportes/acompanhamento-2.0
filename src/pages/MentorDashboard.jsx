@@ -37,10 +37,12 @@ import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 import useOrders from '../hooks/useOrders';
-import { 
-  calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention, 
-  formatCurrency, formatPercent, filterTradesByPeriod 
+import { useSetups } from '../hooks/useSetups';
+import {
+  calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention,
+  formatCurrency, formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
+import { filterSetupsForStudent } from '../utils/setupsFilter';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const { 
@@ -51,6 +53,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   } = useTrades();
   const { plans } = usePlans();
   const { orders } = useOrders();
+  const { setups: allSetups } = useSetups();
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
@@ -123,6 +126,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
+  // Setups isolados por aluno selecionado — garante que targetRR de aluno X
+  // não vaze para o cálculo de Aderência RR do aluno Y (issue #174, INV-27 spec-level).
+  const selectedStudentSetups = useMemo(
+    () => filterSetupsForStudent(allSetups, selectedStudent?.studentId),
+    [allSetups, selectedStudent?.studentId],
+  );
 
   // Perfil emocional do aluno selecionado
   const selectedStudentEmotional = useEmotionalProfile({
@@ -232,7 +241,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <CalendarHeatmap trades={selectedStudentTrades} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <SetupAnalysis trades={selectedStudentTrades} />
+          <SetupAnalysis trades={selectedStudentTrades} setupsMeta={selectedStudentSetups} />
           <EmotionAnalysis trades={selectedStudentTrades} />
         </div>
         {/* Perfil Emocional v2 */}
