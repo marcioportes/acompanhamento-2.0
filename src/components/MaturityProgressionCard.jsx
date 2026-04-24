@@ -1,0 +1,552 @@
+/**
+ * MaturityProgressionCard
+ * @description Barra de progressão 5 stages × gates pendentes × regressão × narrativa IA.
+ *              Puro/presentacional — recebe snapshot do motor de maturidade (§3.1 D10)
+ *              e derivados de estado. Não consome hooks de dados. Componente reutilizável
+ *              entre StudentDashboard (via `useMaturity`) e WeeklyReviewPage (via
+ *              `useReviewMaturitySnapshot`).
+ *
+ * Layout literal: §3.1 D13. Cores: emerald (passado), amber (atual parcial),
+ *                 gray (futuro), red (regressão), sky (amostra inicial).
+ * INV-04: DebugBadge obrigatório quando !embedded.
+ */
+
+import React, { useState, useEffect } from 'react';
+import DebugBadge from './DebugBadge';
+import { STAGE_NAMES, STAGE_NAMES_SHORT } from '../utils/maturityEngine/constants';
+
+const CONTAINER_CLS =
+  'bg-slate-900/50 backdrop-blur border border-slate-700/50 rounded-xl p-4 relative';
+
+const MAX_VISIBLE_GATES = 5;
+const MAX_MOBILE_GATES = 2;
+
+function confidenceChipClass(c) {
+  if (c === 'HIGH') return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+  if (c === 'MED') return 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+  return 'bg-slate-500/20 text-slate-300 border border-slate-500/30';
+}
+
+function formatGateNumber(n) {
+  if (n == null) return '—';
+  if (Number.isInteger(n)) return String(n);
+  return Number(n.toFixed(1)).toString();
+}
+
+// Normaliza valor/gap para exibição humana. Fractional (threshold 0..1) vira % e pp.
+function formatGateValueGap(gate) {
+  if (gate?.reason === 'METRIC_UNAVAILABLE') return null;
+  const { threshold, value, gap } = gate ?? {};
+  if (typeof threshold === 'boolean') return null;
+  if (typeof threshold !== 'number') return null;
+  if (value == null || gap == null) return null;
+
+  if (threshold > 0 && threshold <= 1) {
+    return {
+      value: `${Math.round(value * 100)}%`,
+      gap: `${Math.round(gap * 100)}pp`,
+    };
+  }
+  return { value: formatGateNumber(value), gap: formatGateNumber(gap) };
+}
+
+function StageBar({ currentStage, gatesRatio, mastery }) {
+  const segments = [1, 2, 3, 4, 5];
+  const safeRatio = Math.max(0, Math.min(1, gatesRatio ?? 0));
+
+  return (
+    <div data-testid="stage-bar">
+      <div
+        className="flex gap-1"
+        role="progressbar"
+        aria-valuenow={currentStage ?? 0}
+        aria-valuemin={1}
+        aria-valuemax={5}
+        aria-label="Progressão de maturidade"
+      >
+        {segments.map((s) => {
+          let segmentCls = 'h-3 flex-1 rounded-sm overflow-hidden';
+          let isCurrent = false;
+
+          if (currentStage == null) {
+            segmentCls += ' bg-gray-700';
+          } else if (mastery || s < currentStage) {
+            segmentCls += ' bg-emerald-500';
+          } else if (s === currentStage) {
+            segmentCls += ' bg-gray-700 relative';
+            isCurrent = true;
+          } else {
+            segmentCls += ' bg-gray-700';
+          }
+
+          return (
+            <div key={s} className={segmentCls} data-testid={`stage-seg-${s}`}>
+              {isCurrent && (
+                <div
+                  className="h-full bg-amber-400"
+                  style={{ width: `${safeRatio * 100}%` }}
+                  data-testid={`stage-seg-${s}-fill`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-1 mt-1">
+        {segments.map((s) => (
+          <div
+            key={s}
+            className="flex-1 text-center text-[10px] sm:text-[11px] text-slate-400 font-mono uppercase truncate"
+            data-testid={`stage-label-${s}`}
+          >
+            <span className="hidden sm:inline">{STAGE_NAMES[s]}</span>
+            <span className="sm:hidden">{STAGE_NAMES_SHORT[s]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GateLineContent({ g }) {
+  const fmt = formatGateValueGap(g);
+  const unavailable = g.reason === 'METRIC_UNAVAILABLE';
+  return (
+    <>
+      <span className="text-slate-500">•</span>
+      <span>
+        {g.label}
+        {fmt && (
+          <span className="text-slate-400">
+            {' '}(você: {fmt.value}, faltam {fmt.gap})
+          </span>
+        )}
+        {unavailable && (
+          <span className="text-slate-500"> (aguardando dado)</span>
+        )}
+      </span>
+    </>
+  );
+}
+
+function formatAiTimestamp(raw) {
+  if (!raw) return null;
+  let date = null;
+  if (typeof raw?.toDate === 'function') date = raw.toDate();
+  else if (raw instanceof Date) date = raw;
+  else if (typeof raw === 'number') date = new Date(raw);
+  else if (typeof raw === 'string') {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) date = parsed;
+  }
+  if (!date || Number.isNaN(date.getTime())) return null;
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return 'gerado hoje';
+  if (diffDays === 1) return 'gerado 1 dia atrás';
+  return `gerado ${diffDays} dias atrás`;
+}
+
+function AiNarrativeSection({ maturity, aiGenerating, aiError }) {
+  if (aiGenerating) {
+    return (
+      <div
+        data-testid="ai-generating"
+        className="mt-4 flex items-center gap-2 text-sm text-slate-400 animate-pulse"
+      >
+        <span
+          className="inline-block w-2 h-2 rounded-full bg-slate-500"
+          aria-hidden="true"
+        />
+        Gerando análise detalhada...
+      </div>
+    );
+  }
+
+  if (aiError) {
+    return (
+      <div
+        data-testid="ai-error"
+        className="mt-4 border border-slate-700 rounded-lg p-3 text-xs text-slate-400"
+      >
+        Análise IA temporariamente indisponível
+      </div>
+    );
+  }
+
+  const narrative = maturity?.aiNarrative ?? null;
+  const patterns = Array.isArray(maturity?.aiPatternsDetected)
+    ? maturity.aiPatternsDetected
+    : [];
+  const guidance = maturity?.aiNextStageGuidance ?? null;
+
+  if (!narrative && patterns.length === 0 && !guidance) return null;
+
+  const ts = formatAiTimestamp(maturity?.aiGeneratedAt);
+
+  return (
+    <div className="mt-4" data-testid="ai-section">
+      {narrative && (
+        <>
+          <p className="text-sm text-slate-400 uppercase tracking-wide mb-2">
+            Análise
+          </p>
+          <p
+            data-testid="ai-narrative"
+            className="whitespace-pre-wrap text-slate-300 text-sm mb-4"
+          >
+            {narrative}
+          </p>
+        </>
+      )}
+
+      {patterns.length > 0 && (
+        <div data-testid="ai-patterns" className="mb-4">
+          <p className="text-xs text-slate-500 mb-1">Padrões detectados</p>
+          <ul className="text-xs text-slate-400 list-disc pl-4 space-y-0.5">
+            {patterns.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {guidance && (
+        <div data-testid="ai-guidance">
+          <p className="text-xs text-slate-500 mb-1">Próximo passo</p>
+          <p className="whitespace-pre-wrap text-slate-300 text-sm">
+            {guidance}
+          </p>
+        </div>
+      )}
+
+      {ts && (
+        <p className="text-xs text-slate-600 mt-2 text-right" data-testid="ai-timestamp">
+          {ts}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Converte nextAllowedAt (ms | Firestore Timestamp { _seconds } | Date) para epoch ms
+function toEpochMs(nextAllowedAt) {
+  if (nextAllowedAt == null) return null;
+  if (typeof nextAllowedAt === 'number') return nextAllowedAt;
+  if (nextAllowedAt instanceof Date) return nextAllowedAt.getTime();
+  if (typeof nextAllowedAt === 'object' && typeof nextAllowedAt._seconds === 'number') {
+    return nextAllowedAt._seconds * 1000;
+  }
+  const parsed = new Date(nextAllowedAt).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+// Usa useState + useEffect para recomputar a cada segundo enquanto estiver em throttle
+function useRemainingSeconds(nextAllowedAt, enabled) {
+  const [remaining, setRemaining] = useState(() => {
+    const ms = toEpochMs(nextAllowedAt);
+    return ms == null ? 0 : Math.max(0, Math.ceil((ms - Date.now()) / 1000));
+  });
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const ms = toEpochMs(nextAllowedAt);
+    if (ms == null) {
+      setRemaining(0);
+      return undefined;
+    }
+    const tick = () => setRemaining(Math.max(0, Math.ceil((ms - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [nextAllowedAt, enabled]);
+  return remaining;
+}
+
+function formatMMSS(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+function RefreshControl({ onRefresh, refreshing, refreshThrottled, refreshNextAllowedAt, refreshError }) {
+  if (typeof onRefresh !== 'function') return null;
+
+  const throttleActive = refreshThrottled === true;
+  const remainingSec = useRemainingSeconds(refreshNextAllowedAt, throttleActive);
+  const disabled = refreshing === true || (throttleActive && remainingSec > 0);
+  const countdown = formatMMSS(remainingSec);
+
+  const label = refreshing
+    ? 'Atualizando...'
+    : (throttleActive && remainingSec > 0 ? `Aguarde ${countdown}` : 'Atualizar agora');
+
+  return (
+    <div className="flex flex-col items-end gap-1" data-testid="refresh-control">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={disabled}
+        data-testid="refresh-button"
+        aria-label="Atualizar maturidade agora"
+        className="text-[10px] px-2 py-0.5 rounded font-mono inline-flex items-center gap-1 border border-slate-600/50 bg-slate-800/60 text-slate-300 hover:bg-slate-700/60 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+      >
+        <span aria-hidden="true" className={refreshing ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
+        {label}
+      </button>
+      {throttleActive && remainingSec > 0 && (
+        <span
+          data-testid="refresh-throttled"
+          className="text-[10px] text-slate-400 font-mono"
+        >
+          Próxima em {countdown}
+        </span>
+      )}
+      {refreshError && (
+        <span
+          data-testid="refresh-error"
+          className="text-[10px] text-red-300 font-mono"
+          title={refreshError?.message ?? 'Falha ao atualizar'}
+        >
+          Falha ao atualizar
+        </span>
+      )}
+    </div>
+  );
+}
+
+function MaturityProgressionCard({
+  maturity = null,
+  loading = false,
+  error = null,
+  aiGenerating = false,
+  aiError = null,
+  embedded = false,
+  onRefresh = null,
+  refreshing = false,
+  refreshThrottled = false,
+  refreshNextAllowedAt = null,
+  refreshError = null,
+}) {
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+  const showDebug = !embedded;
+  const debugBadge = showDebug ? <DebugBadge component="MaturityProgressionCard" /> : null;
+
+  if (loading) {
+    return (
+      <div className={CONTAINER_CLS} data-testid="maturity-card">
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+        </div>
+        <div className="flex gap-1" data-testid="maturity-skeleton">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-3 flex-1 rounded-sm bg-slate-800 animate-pulse" />
+          ))}
+        </div>
+        {debugBadge}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="bg-slate-900/50 backdrop-blur border border-red-500/50 rounded-xl p-4 relative"
+        data-testid="maturity-card"
+      >
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
+        </div>
+        <p className="text-red-300 text-sm">
+          Erro ao carregar maturidade: {error?.message || String(error)}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-2">
+          Se o erro persistir, recarregue a página (Ctrl+Shift+R) ou clique em &quot;Atualizar agora&quot; acima.
+        </p>
+        {debugBadge}
+      </div>
+    );
+  }
+
+  if (!maturity) {
+    return (
+      <div className={CONTAINER_CLS} data-testid="maturity-card">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
+        </div>
+        <StageBar currentStage={null} gatesRatio={0} mastery={false} />
+        <p className="text-slate-300 text-sm mt-3">
+          Maturidade ainda não foi calculada.
+        </p>
+        <p className="text-[12px] text-slate-400 mt-1">
+          Clique em <span className="text-emerald-400 font-medium">Atualizar agora</span> para processar seus trades atuais, ou aguarde o próximo trade novo — a engine dispara automaticamente.
+        </p>
+        {debugBadge}
+      </div>
+    );
+  }
+
+  const currentStage = maturity.currentStage ?? 1;
+  const gatesRatio = maturity.gatesRatio ?? 0;
+  const mastery = currentStage === 5;
+  const currentStageName = STAGE_NAMES[currentStage] ?? '—';
+  const nextStageName = STAGE_NAMES[currentStage + 1];
+  const pendingGates = (maturity.gates ?? []).filter((g) => g?.met !== true);
+  const visibleGates = pendingGates.slice(0, MAX_VISIBLE_GATES);
+  const extraGates = pendingGates.length - visibleGates.length;
+  const mobileVisibleGates = mobileExpanded
+    ? pendingGates
+    : pendingGates.slice(0, MAX_MOBILE_GATES);
+  const showMobileToggle = pendingGates.length > MAX_MOBILE_GATES;
+  const regression = maturity.signalRegression?.detected === true;
+
+  return (
+    <div className={CONTAINER_CLS} data-testid="maturity-card">
+      <div className="flex justify-between items-start mb-3 gap-2">
+        <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+        <div className="flex items-start gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {maturity.sparseSample === true && (
+              <span
+                data-testid="sparse-sample-chip"
+                className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono"
+              >
+                amostra inicial
+              </span>
+            )}
+            <span
+              data-testid="confidence-chip"
+              className={`text-[10px] px-2 py-0.5 rounded font-mono ${confidenceChipClass(maturity.confidence)}`}
+            >
+              confidence: {maturity.confidence ?? 'LOW'}
+            </span>
+          </div>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
+        </div>
+      </div>
+
+      <StageBar currentStage={currentStage} gatesRatio={gatesRatio} mastery={mastery} />
+
+      <div className="mt-3 text-sm text-slate-300" data-testid="stage-summary">
+        Stage atual: <span className="font-semibold text-white">{currentStageName}</span>
+        {!mastery && nextStageName && (
+          <>
+            <span className="text-slate-500"> · </span>
+            <span>
+              {maturity.gatesMet ?? 0}/{maturity.gatesTotal ?? 0} gates para {nextStageName}
+            </span>
+          </>
+        )}
+      </div>
+
+      {!mastery && pendingGates.length > 0 && (
+        <>
+          <div className="mt-3 hidden sm:block" data-testid="gates-pending">
+            <p className="text-xs text-slate-400 font-semibold mb-1">Gates pendentes:</p>
+            <ul className="text-xs text-slate-300 space-y-1">
+              {visibleGates.map((g) => (
+                <li
+                  key={g.id}
+                  className="flex gap-1.5"
+                  data-testid={`gate-${g.id}`}
+                >
+                  <GateLineContent g={g} />
+                </li>
+              ))}
+              {extraGates > 0 && (
+                <li className="text-slate-500 italic" data-testid="gates-overflow">
+                  ... e mais {extraGates} gates
+                </li>
+              )}
+            </ul>
+          </div>
+
+          <div className="mt-3 sm:hidden" data-testid="gates-mobile">
+            <p className="text-xs text-slate-400 font-semibold mb-1">Gates pendentes:</p>
+            <ul
+              id="maturity-gates-list-mobile"
+              className="text-xs text-slate-300 space-y-1"
+              data-mobile-expanded={mobileExpanded ? 'true' : 'false'}
+            >
+              {mobileVisibleGates.map((g) => (
+                <li key={g.id} className="flex gap-1.5">
+                  <GateLineContent g={g} />
+                </li>
+              ))}
+            </ul>
+            {showMobileToggle && (
+              <button
+                type="button"
+                onClick={() => setMobileExpanded((v) => !v)}
+                aria-expanded={mobileExpanded}
+                aria-controls="maturity-gates-list-mobile"
+                data-testid="mobile-toggle-gates"
+                className="text-xs text-slate-400 hover:text-slate-200 mt-1 underline underline-offset-2"
+              >
+                {mobileExpanded ? 'recolher' : `ver todos ${pendingGates.length}`}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {mastery && (
+        <div className="mt-3 text-xs text-slate-400" data-testid="mastery-note">
+          Nenhum gate pendente — MASTERY alcançado.
+        </div>
+      )}
+
+      {regression && (
+        <div
+          data-testid="regression-alert"
+          className="mt-4 border border-red-500 rounded-lg p-3 bg-red-500/10"
+        >
+          <p className="text-red-300 font-semibold text-sm">
+            ⚠ Seus números recentes sugerem revisão
+          </p>
+          <p className="text-red-300/90 text-xs mt-1">
+            {maturity.signalRegression?.suggestedStage != null && (
+              <>sinal recente: Stage {maturity.signalRegression.suggestedStage}</>
+            )}
+            {maturity.signalRegression?.reasons?.[0] && (
+              <>
+                {maturity.signalRegression?.suggestedStage != null ? ' · ' : ''}
+                {maturity.signalRegression.reasons[0]}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      <AiNarrativeSection
+        maturity={maturity}
+        aiGenerating={aiGenerating}
+        aiError={aiError}
+      />
+
+      {debugBadge}
+    </div>
+  );
+}
+
+export default MaturityProgressionCard;

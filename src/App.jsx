@@ -29,6 +29,7 @@ import StudentOnboardingPage from './pages/StudentOnboardingPage';
 import SubscriptionsPage from './pages/SubscriptionsPage';
 import ReviewQueuePage from './pages/ReviewQueuePage';
 import WeeklyReviewPage from './pages/WeeklyReviewPage';
+import StudentReviewsPage from './pages/StudentReviewsPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -439,6 +440,8 @@ const AppContent = () => {
         case 'feedback':
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
           return <StudentFeedbackPage />;
+        case 'student-reviews':
+          return <StudentReviewsPage onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'baseline':
           // Marco Zero — BaselineReport do assessment validado pelo mentor
           return (

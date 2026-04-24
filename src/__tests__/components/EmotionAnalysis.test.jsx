@@ -48,7 +48,9 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
     expect(within(card).getByText(/Maturidade/i)).toBeInTheDocument();
   });
 
-  it('card renderiza sparkline SVG (polyline)', () => {
+  // issue #119 task 11: sparkline antiga do quadrante Maturidade foi removida.
+  // Consolidação INV-17 — detalhe rico mora no MaturityProgressionCard.
+  it('sparkline antiga do quadrante Maturidade não é mais renderizada', () => {
     const trades = [
       mk({ result: 100, date: '2026-04-01' }),
       mk({ result: 200, date: '2026-04-02' }),
@@ -56,9 +58,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
     ];
     render(<EmotionAnalysis trades={trades} />);
     const card = screen.getByTestId('emotion-card-Calmo');
-    const sparkline = within(card).getByTestId('emotion-sparkline');
-    expect(sparkline.tagName.toLowerCase()).toBe('svg');
-    expect(sparkline.querySelector('polyline')).not.toBeNull();
+    expect(within(card).queryByTestId('emotion-sparkline')).toBeNull();
   });
 
   it('badge de contagem aparece no header do card', () => {
@@ -127,5 +127,94 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
   it('DebugBadge renderiza com component="EmotionAnalysis"', () => {
     render(<EmotionAnalysis trades={[mk({ result: 10 })]} />);
     expect(screen.getByTestId('debug-badge').textContent).toBe('EmotionAnalysis');
+  });
+
+  // ── Quadrante Maturidade (issue #119 task 11) ────────────────────────────
+  // Detalhe rico mora no MaturityProgressionCard (INV-17 consolidação).
+  // Teaser compacto no quadrante: stage label + mini-barra + fração de gates.
+  describe('quadrante Maturidade (issue #119)', () => {
+    it('maturity com currentStage=2 e 5/8 gates → "Reativo" + barra parcial', () => {
+      const maturity = {
+        currentStage: 2,
+        gatesMet: 5,
+        gatesTotal: 8,
+        gatesRatio: 5 / 8,
+      };
+      render(
+        <EmotionAnalysis trades={[mk({ result: 100 })]} maturity={maturity} />,
+      );
+      const card = screen.getByTestId('emotion-card-Calmo');
+      expect(within(card).getByTestId('maturity-mini-stage').textContent).toBe(
+        'Reativo',
+      );
+      // Seg 1 passado = emerald; seg 2 atual = container gray + fill amber;
+      // segs 3-5 futuros = gray.
+      const seg1 = within(card).getByTestId('maturity-mini-seg-1');
+      expect(seg1.className).toMatch(/bg-emerald-500/);
+      const seg2 = within(card).getByTestId('maturity-mini-seg-2');
+      expect(seg2.className).toMatch(/bg-gray-700/);
+      const fill = within(card).getByTestId('maturity-mini-seg-2-fill');
+      expect(fill.className).toMatch(/bg-amber-400/);
+      expect(fill.style.width).toBe('62.5%');
+      for (const s of [3, 4, 5]) {
+        const seg = within(card).getByTestId(`maturity-mini-seg-${s}`);
+        expect(seg.className).toMatch(/bg-gray-700/);
+        expect(seg.className).not.toMatch(/bg-emerald-500/);
+      }
+      expect(within(card).getByTestId('maturity-mini-gates').textContent).toMatch(
+        /5\/8 gates para próximo/,
+      );
+    });
+
+    it('maturity com currentStage=5 → "Maestria", todos segmentos emerald', () => {
+      const maturity = {
+        currentStage: 5,
+        gatesMet: 0,
+        gatesTotal: 0,
+        gatesRatio: 0,
+      };
+      render(
+        <EmotionAnalysis trades={[mk({ result: 100 })]} maturity={maturity} />,
+      );
+      const card = screen.getByTestId('emotion-card-Calmo');
+      expect(within(card).getByTestId('maturity-mini-stage').textContent).toBe(
+        'Maestria',
+      );
+      for (const s of [1, 2, 3, 4, 5]) {
+        const seg = within(card).getByTestId(`maturity-mini-seg-${s}`);
+        expect(seg.className).toMatch(/bg-emerald-500/);
+      }
+      expect(
+        within(card).queryByTestId('maturity-mini-seg-5-fill'),
+      ).toBeNull();
+      expect(within(card).getByTestId('maturity-mini-gates').textContent).toBe(
+        'Mastery',
+      );
+    });
+
+    it('maturity === null → placeholder "Aguardando primeiro trade" + 5 segmentos cinza', () => {
+      render(
+        <EmotionAnalysis trades={[mk({ result: 100 })]} maturity={null} />,
+      );
+      const card = screen.getByTestId('emotion-card-Calmo');
+      expect(
+        within(card).getByTestId('maturity-mini-placeholder').textContent,
+      ).toMatch(/Aguardando primeiro trade/i);
+      for (const s of [1, 2, 3, 4, 5]) {
+        const seg = within(card).getByTestId(`maturity-mini-seg-${s}`);
+        expect(seg.className).toMatch(/bg-gray-700/);
+        expect(seg.className).not.toMatch(/bg-emerald-500/);
+      }
+      expect(within(card).queryByTestId('maturity-mini-stage')).toBeNull();
+      expect(within(card).queryByTestId('maturity-mini-gates')).toBeNull();
+    });
+
+    it('maturity prop omitida (undefined) → mesmo placeholder que null', () => {
+      render(<EmotionAnalysis trades={[mk({ result: 100 })]} />);
+      const card = screen.getByTestId('emotion-card-Calmo');
+      expect(
+        within(card).getByTestId('maturity-mini-placeholder'),
+      ).toBeInTheDocument();
+    });
   });
 });

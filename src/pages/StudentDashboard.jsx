@@ -16,8 +16,10 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase';
 
 // Componentes extraídos
 import DashboardHeader from '../components/dashboard/DashboardHeader';
@@ -30,6 +32,7 @@ import TradingCalendar from '../components/TradingCalendar';
 import SetupAnalysis from '../components/SetupAnalysis';
 import EquityCurve from '../components/EquityCurve';
 import EmotionAnalysis from '../components/EmotionAnalysis';
+import MaturityProgressionCard from '../components/MaturityProgressionCard';
 import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -64,6 +67,9 @@ import useOrders from '../hooks/useOrders';
 import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
+import { useMaturity } from '../hooks/useMaturity';
+import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
+import { currentTrigger, shouldGenerateAI } from '../utils/maturityAITrigger';
 
 // Contexto unificado (issue #118 — DEC-047)
 import StudentContextProvider from '../contexts/StudentContextProvider';
@@ -114,6 +120,30 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const orderStaging = useOrderStaging(overrideStudentId);
   const { orders, stats: orderStats } = useOrders(overrideStudentId);
   const crossCheckHook = useCrossCheck(overrideStudentId);
+
+  // Maturity snapshot (issue #119 task 11)
+  const maturityStudentId = overrideStudentId ?? user?.uid ?? null;
+  const { maturity, loading: maturityLoading, error: maturityError } =
+    useMaturity(maturityStudentId);
+
+  // Recompute sob demanda (issue #119 task 23 — I1)
+  const {
+    recompute: recomputeMaturity,
+    loading: recomputeLoading,
+    error: recomputeError,
+    throttled: recomputeThrottled,
+    nextAllowedAt: recomputeNextAllowedAt,
+  } = useRecomputeStudentMaturity();
+  const handleRefreshMaturity = useCallback(() => {
+    if (!maturityStudentId) return;
+    recomputeMaturity(maturityStudentId).catch(() => { /* erro é exposto via hook */ });
+  }, [recomputeMaturity, maturityStudentId]);
+
+  // Narrativa IA (issue #119 task 14) — dispara CF `classifyMaturityProgression`
+  // quando trigger UP/REGRESSION detectado e cache vazio/desatualizado.
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const inFlightTriggerRef = useRef(null);
 
   // === UI State ===
   const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
@@ -188,6 +218,85 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     consistencyCV,
     durationDelta,
   } = metrics;
+
+  // === Narrativa IA: dispara callable quando trigger muda (issue #119 task 14) ===
+  useEffect(() => {
+    if (!maturity || aiGenerating) return;
+    if (!shouldGenerateAI(maturity)) return;
+    const trig = currentTrigger(maturity);
+    if (inFlightTriggerRef.current === trig) return;
+
+    const uid = overrideStudentId ?? user?.uid ?? null;
+    if (!uid) return;
+
+    inFlightTriggerRef.current = trig;
+    setAiGenerating(true);
+    setAiError(null);
+
+    const journalCount = filteredTrades.reduce((acc, t) => {
+      const hasNote = (t?.notes?.trim().length ?? 0) >= 10;
+      const hasEmotion = !!t?.emotionEntry;
+      return acc + (hasNote || hasEmotion ? 1 : 0);
+    }, 0);
+    const journalRate = filteredTrades.length > 0
+      ? journalCount / filteredTrades.length
+      : 0;
+
+    const scoresPlaceholder = maturity.dimensionScores ?? {};
+    const input = {
+      studentId: uid,
+      currentStage: maturity.currentStage,
+      baselineStage: maturity.baselineStage,
+      scores: scoresPlaceholder,
+      // DEC-AUTO: baseline scores reais viriam de assessment/initial_assessment.
+      // Por ora passamos os atuais como placeholder para não quebrar o validator
+      // do callable — refinar em follow-up quando hook de assessment estiver exposto.
+      baselineScores: scoresPlaceholder,
+      gates: maturity.gates ?? [],
+      tradesSummary: {
+        windowSize: filteredTrades.length,
+        winRate: stats?.winRate ?? null,
+        payoff: payoff ?? null,
+        expectancy: stats?.expectancy ?? null,
+        maxDDPercent: maxDrawdownData?.maxDDPercent ?? null,
+        avgDuration: avgTradeDuration?.all ?? null,
+        tiltCount: 0,
+        revengeCount: 0,
+        complianceRate: complianceRate ?? null,
+        journalRate,
+      },
+      trigger: trig,
+    };
+
+    const callable = httpsCallable(functions, 'classifyMaturityProgression');
+    callable(input)
+      .then((res) => {
+        if (res?.data?.error) setAiError(res.data.error);
+      })
+      .catch((err) => {
+        console.error('[classifyMaturityProgression] callable error:', err);
+        setAiError(err?.message ?? 'Falha ao gerar narrativa');
+      })
+      .finally(() => {
+        // Mantém inFlightTriggerRef setado com o trigger corrente para evitar
+        // re-invocação entre o fim do callable e a chegada do snapshot do
+        // Firestore com `aiNarrative` preenchido (cache miss transitório).
+        // Limpeza implícita: quando `currentTrigger(maturity)` retornar valor
+        // diferente, a guarda `inFlightTriggerRef.current === trig` desbloqueia.
+        setAiGenerating(false);
+      });
+  }, [
+    maturity,
+    aiGenerating,
+    overrideStudentId,
+    user?.uid,
+    filteredTrades,
+    stats,
+    payoff,
+    maxDrawdownData,
+    avgTradeDuration,
+    complianceRate,
+  ]);
 
   // === Curva ideal do plano (E5 — issue #164) ===
   // Só ativa quando há plano único selecionado com ciclo ativo (datas válidas).
@@ -500,7 +609,32 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         />
         <SetupAnalysis trades={filteredTrades} setupsMeta={setups} />
       </div>
-      <div className="mb-6"><EmotionAnalysis trades={filteredTrades} globalWR={stats?.winRate} /></div>
+      <div className="mb-6">
+        <EmotionAnalysis
+          trades={filteredTrades}
+          globalWR={stats?.winRate}
+          maturity={maturity}
+        />
+      </div>
+
+      {/* Progressão de Maturidade (issue #119 D13) — posicionado logo após a
+          Matriz Emocional 4D para manter a ligação visual "depois da matriz".
+          PendingTakeaways permanece antes. INV-17 consolidação: quadrante
+          Maturidade da Matriz 4D foi reduzido a teaser. */}
+      <div className="mb-6">
+        <MaturityProgressionCard
+          maturity={maturity}
+          loading={maturityLoading}
+          error={maturityError}
+          aiGenerating={aiGenerating}
+          aiError={aiError}
+          onRefresh={handleRefreshMaturity}
+          refreshing={recomputeLoading}
+          refreshThrottled={recomputeThrottled}
+          refreshNextAllowedAt={recomputeNextAllowedAt}
+          refreshError={recomputeError}
+        />
+      </div>
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />

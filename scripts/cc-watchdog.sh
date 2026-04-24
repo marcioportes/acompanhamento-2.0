@@ -72,7 +72,7 @@ WATCHDOG_EMAIL_TTL_SECONDS=3600
 # O tipo deve ser um dos WATCHDOG_* definidos no VALID_TYPES do notifier.
 # Cada tipo tem seu próprio slot de rate limit (independente entre classes).
 send_email() {
-  local type="$1" title="$2" resumo="$3" detalhe="${4:-}"
+  local type="$1" title="$2" resumo="$3" detalhe="${4:-}" ttl="${5:-$WATCHDOG_EMAIL_TTL_SECONDS}"
   if [[ ! -x "$NOTIFY" ]]; then
     log_event ERROR email "notify não disponível — skipping type=$type"
     return 1
@@ -87,7 +87,7 @@ print(json.dumps({
     "resumo": sys.argv[4],
     "detalhe": sys.argv[5],
     "ttl_seconds": int(sys.argv[6]),
-}))' "$ISSUE" "$type" "$title" "$resumo" "$detalhe" "$WATCHDOG_EMAIL_TTL_SECONDS")
+}))' "$ISSUE" "$type" "$title" "$resumo" "$detalhe" "$ttl")
   echo "$json" | "$NOTIFY" > "$MAILBOX/log/watchdog-email-$(date +%s).log" 2>&1 || true
   log_event INFO email "sent type=$type title=$title"
 }
@@ -417,6 +417,15 @@ check_class3() {
 
 # ── main loop ────────────────────────────────────────────────────────────
 log_event INFO start "watchdog iniciando (pid=$$ issue=$ISSUE branch=$BRANCH interval=${INTERVAL}s t_resume=${T_RESUME_SEC}s t_worker=${T_WORKER_SEC}s)"
+
+# Sinal humano de início do monitoramento (INV-28 / §13.10). TTL 24h — um email
+# por dia por branch, evita spam se watchdog for relançado (crash, restart, etc).
+send_email \
+  "WATCHDOG_SESSION_START" \
+  "watchdog on — monitoramento iniciado para issue #$ISSUE" \
+  "Watchdog §13 iniciado no worktree $WORKTREE (branch $BRANCH, pid=$$). Monitoramento das 3 classes de stall ativo (intervalo ${INTERVAL}s, T_RESUME ${T_RESUME_SEC}s, T_WORKER ${T_WORKER_SEC}s). Próximo email automático apenas em gate humano ou stall detectado." \
+  "Log contínuo em $LOG. PID em $PIDFILE. Para parar manualmente: kill -TERM \$(cat $PIDFILE)." \
+  "86400" || log_event WARN start "email WATCHDOG_SESSION_START falhou (notify retornou erro; segue monitoramento)"
 
 iter=0
 while true; do

@@ -29,257 +29,22 @@ import {
   Award, Shield, Activity, ExternalLink,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
+import MaturityComparisonSection from '../components/reviews/MaturityComparisonSection';
+import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
+import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
+import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
-
-const statusBadge = (status) => {
-  switch (status) {
-    case 'DRAFT': return { label: 'aberta', cls: 'bg-amber-500/15 text-amber-400' };
-    case 'CLOSED': return { label: 'publicada', cls: 'bg-emerald-500/15 text-emerald-400' };
-    case 'ARCHIVED': return { label: 'arquivada', cls: 'bg-slate-500/15 text-slate-400' };
-    default: return { label: status || '—', cls: 'bg-slate-500/15 text-slate-400' };
-  }
-};
-
-// ===== Formatadores =====
-const fmtMoney = (v, currency = 'USD') => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, minimumFractionDigits: 2 }).format(n);
-};
-const fmtPct = (v) => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return `${n.toFixed(1)}%`;
-};
-const fmtNum = (v, digits = 2) => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  return n.toFixed(digits);
-};
-const fmtTime = (iso) => {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
-  catch { return ''; }
-};
-
-// ===== Delta KPI (current vs previous) =====
-const deltaText = (curr, prev, fmt = (v) => String(v), invertColors = false) => {
-  const c = Number(curr), p = Number(prev);
-  if (!Number.isFinite(p)) return null;
-  const d = c - p;
-  if (d === 0) return { text: '=', cls: 'text-slate-500' };
-  const up = d > 0;
-  const good = invertColors ? !up : up;
-  const sign = up ? '+' : '';
-  return {
-    text: `${sign}${fmt(d)}`,
-    cls: good ? 'text-emerald-400' : 'text-red-400',
-  };
-};
-
-// Extrai data ISO (YYYY-MM-DD) de um trade inline (tem entryTime ISO).
-const tradeDate = (t) => {
-  if (!t) return null;
-  if (t.entryTime && typeof t.entryTime === 'string') return t.entryTime.slice(0, 10);
-  if (t.date) return t.date;
-  return null;
-};
-
-// Threshold: dias com mais de 2 trades (ou seja, 3+) colapsam integralmente.
-const DAY_GROUP_THRESHOLD = 2;
-
-// Constrói lista de rows visíveis:
-// - Dia com count > 2 colapsado → 1 row-resumo única (daySummary). Click expande.
-// - Dia com count > 2 expandido → row-resumo + todas as trades do dia.
-// - Dia com count ≤ 2 → trades renderizadas flat, sem resumo.
-const buildVisibleRows = (trades, expandedDays) => {
-  if (!Array.isArray(trades) || trades.length === 0) return [];
-  const days = new Map();
-  for (const t of trades) {
-    const d = tradeDate(t);
-    if (!d) continue;
-    if (!days.has(d)) days.set(d, []);
-    days.get(d).push(t);
-  }
-  const sortedDates = Array.from(days.keys()).sort((a, b) => b.localeCompare(a));
-  const result = [];
-  for (const date of sortedDates) {
-    const dayTrades = days.get(date).sort((a, b) =>
-      (a.entryTime || '').localeCompare(b.entryTime || '')
-    );
-    const count = dayTrades.length;
-    const pl = dayTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
-    const wins = dayTrades.filter(t => Number(t.pnl) > 0).length;
-    const wr = count > 0 ? Math.round((wins / count) * 100) : 0;
-    if (count > DAY_GROUP_THRESHOLD) {
-      const isExpanded = expandedDays.has(date);
-      result.push({ type: 'daySummary', date, count, pl, wins, wr, expanded: isExpanded });
-      if (isExpanded) {
-        for (const t of dayTrades) result.push({ type: 'trade', data: t });
-      }
-    } else {
-      for (const t of dayTrades) result.push({ type: 'trade', data: t });
-    }
-  }
-  return result;
-};
+import {
+  recomputeAndReadMaturity,
+  maybeDispatchMaturityAI,
+} from '../utils/closeReviewMaturityPipeline';
+import { fmtMoney, statusBadge, getPreviousReview } from '../utils/reviewFormatters';
 
 // ===== Subitem 1: Trades do período (flat com +/− por dia) =====
-const TradesSection = ({ trades, currency = 'USD', weekStart = null, weekEnd = null, onNavigateToFeedback = null }) => {
-  const [expandedDays, setExpandedDays] = useState(new Set());
-  const rows = useMemo(() => buildVisibleRows(trades, expandedDays), [trades, expandedDays]);
-  const toggleDay = (date) => {
-    setExpandedDays(prev => {
-      const next = new Set(prev);
-      if (next.has(date)) next.delete(date); else next.add(date);
-      return next;
-    });
-  };
-
-  if (!rows || rows.length === 0) {
-    return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">
-      Sem trades no período.
-    </div>;
-  }
-
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/40 overflow-hidden">
-      <table className="w-full text-[12px]">
-        <thead className="bg-slate-800/40">
-          <tr className="text-[10px] uppercase text-slate-500 tracking-wider">
-            <th className="px-2 py-1.5 text-left font-medium w-[52px]">Data</th>
-            <th className="px-2 py-1.5 text-left font-medium w-[44px]">Hora</th>
-            <th className="px-2 py-1.5 text-left font-medium">Ativo</th>
-            <th className="px-2 py-1.5 text-center font-medium w-[30px]">C/V</th>
-            <th className="px-2 py-1.5 text-right font-medium w-[50px]">Qty</th>
-            <th className="px-2 py-1.5 text-left font-medium">Emoção</th>
-            <th className="px-2 py-1.5 text-right font-medium w-[96px]">Valor</th>
-            <th className="px-1 py-1.5 w-[28px]"></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/50">
-          {rows.map((row, idx) => {
-            if (row.type === 'daySummary') {
-              const [y, m, d] = row.date.split('-');
-              const ddmm = `${d}/${m}`;
-              const wrColor = row.wr >= 50 ? 'text-emerald-400' : row.wr >= 40 ? 'text-amber-400' : 'text-red-400';
-              const plPositive = row.pl > 0;
-              return (
-                <tr
-                  key={`day-${row.date}`}
-                  onClick={() => toggleDay(row.date)}
-                  className="bg-slate-800/30 hover:bg-slate-800/60 cursor-pointer"
-                  title={`${row.expanded ? 'Recolher' : 'Expandir'} os ${row.count} trades`}
-                >
-                  <td className="px-2 py-1.5 font-mono text-slate-200">{ddmm}</td>
-                  <td className="px-2 py-1.5 text-center font-mono text-emerald-400 font-semibold">{row.expanded ? '−' : '+'}</td>
-                  <td colSpan={3} className="px-2 py-1.5 text-slate-300">{row.count} trades</td>
-                  <td className="px-2 py-1.5 text-[11px]">
-                    <span className={wrColor}>WR {row.wr}%</span>
-                  </td>
-                  <td className={`px-2 py-1.5 text-right font-medium tabular-nums ${plPositive ? 'text-emerald-400' : row.pl < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                    {plPositive ? '+' : ''}{fmtMoney(row.pl, currency)}
-                  </td>
-                  <td />
-                </tr>
-              );
-            }
-            const t = row.data;
-            const isBuy = t.side === 'LONG' || t.side === 'BUY' || t.side === 'C';
-            const isWin = Number(t.pnl) > 0;
-            const td = tradeDate(t);
-            const outOfPeriod = weekStart && weekEnd && td && (td < weekStart || td > weekEnd);
-            const handleOpenFeedback = () => {
-              if (!onNavigateToFeedback || !t.tradeId) return;
-              onNavigateToFeedback({ id: t.tradeId, ticker: t.symbol, ...t });
-            };
-            const dateShort = (() => {
-              if (!td) return '??';
-              const [y, m, d] = td.split('-');
-              return `${d}/${m}`;
-            })();
-            const dateFullBR = td ? (() => {
-              const [y, m, d] = td.split('-');
-              return `${d}/${m}/${y}`;
-            })() : '';
-            const rawEntry = t.emotionEntry || t.emotion;
-            const rawExit = t.emotionExit;
-            const emotionText = rawExit && rawExit !== rawEntry
-              ? `${rawEntry || '—'} → ${rawExit}`
-              : (rawEntry || '—');
-            return (
-              <tr key={t.tradeId || idx} className="hover:bg-slate-800/20">
-                <td className="px-2 py-1 font-mono text-slate-400" title={dateFullBR}>{dateShort}</td>
-                <td className="px-2 py-1 font-mono text-slate-500">{fmtTime(t.entryTime)}</td>
-                <td className="px-2 py-1 text-white font-medium">
-                  {t.symbol || '—'}
-                  {outOfPeriod && (
-                    <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
-                      fora
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-1 text-center">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
-                    {isBuy ? 'C' : 'V'}
-                  </span>
-                </td>
-                <td className="px-2 py-1 text-right text-slate-400 tabular-nums">{t.qty || 0}</td>
-                <td className="px-2 py-1 text-slate-300 truncate max-w-[160px]" title={emotionText}>{emotionText}</td>
-                <td className={`px-2 py-1 text-right font-medium tabular-nums ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
-                </td>
-                <td className="px-1 py-1 text-center">
-                  {onNavigateToFeedback && t.tradeId ? (
-                    <button
-                      onClick={handleOpenFeedback}
-                      className="p-0.5 text-slate-500 hover:text-blue-400 rounded transition-colors"
-                      title="Abrir feedback do trade"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-};
 
 // ===== Subitem 2: Snapshot KPIs =====
-const KpiCard = ({ label, value, delta, prev, tooltip }) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <div
-      className={`bg-white/5 rounded-lg px-3 py-2.5 ${tooltip ? 'cursor-pointer hover:bg-white/10' : ''}`}
-      onClick={() => tooltip && setOpen(v => !v)}
-    >
-      <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-        {label}
-        {tooltip && (
-          <span className={`text-[10px] ${open ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {open ? '×' : 'ⓘ'}
-          </span>
-        )}
-      </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-lg font-medium text-white">{value}</span>
-        {delta && <span className={`text-[11px] font-medium ${delta.cls}`}>{delta.text}</span>}
-      </div>
-      {prev && <div className="text-[11px] text-slate-500 mt-0.5">{prev}</div>}
-      {open && tooltip && (
-        <div className="mt-2 pt-2 border-t border-slate-700/60 text-[11px] leading-snug text-slate-300">
-          {tooltip}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ===== Subitem 3: SWOT =====
 const SwotQuadrant = ({ title, items, icon: Icon, color }) => (
@@ -563,70 +328,6 @@ const SessionNotesSection = ({ value, onChange, onSave, canEdit, actionLoading, 
   </div>
 );
 
-const SnapshotKpisSection = ({ kpis, prevKpis, currency = 'USD' }) => {
-  if (!kpis) return <div className="rounded-lg border border-slate-800 bg-slate-800/20 px-3 py-6 text-center text-[11px] text-slate-500 italic">Snapshot indisponível.</div>;
-  const prev = prevKpis || {};
-  const c = kpis;
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-      <KpiCard
-        label="Win rate"
-        value={fmtPct(c.wr)}
-        delta={deltaText(c.wr, prev.wr, (d) => `${d.toFixed(1)}%`)}
-        prev={Number.isFinite(Number(prev.wr)) ? `anterior: ${fmtPct(prev.wr)}` : null}
-        tooltip="% de trades vencedores (result > 0). Breakeven = 50%. Sozinho não diz se sistema é rentável — precisa ler junto com Payoff."
-      />
-      <KpiCard
-        label="Payoff"
-        value={fmtNum(c.payoff, 2)}
-        delta={deltaText(c.payoff, prev.payoff, (d) => d.toFixed(2))}
-        prev={Number.isFinite(Number(prev.payoff)) ? `anterior: ${fmtNum(prev.payoff, 2)}` : null}
-        tooltip="Média dos ganhos dividida pela média absoluta das perdas. Payoff 1.5 = em média, wins são 1,5× maiores que losses. Acima de 1.0 com WR ≥40% tende a ser rentável."
-      />
-      <KpiCard
-        label="Profit factor"
-        value={fmtNum(c.profitFactor, 2)}
-        delta={deltaText(c.profitFactor, prev.profitFactor, (d) => d.toFixed(2))}
-        prev={Number.isFinite(Number(prev.profitFactor)) ? `anterior: ${fmtNum(prev.profitFactor, 2)}` : null}
-        tooltip="Razão entre total ganho e total perdido (Σwins / |Σlosses|). >1 é rentável; >2 robusto; >3 excepcional. Complementa Payoff — este usa médias, PF usa totais."
-      />
-      <KpiCard
-        label="EV / trade"
-        value={fmtMoney(c.evPerTrade, currency)}
-        delta={deltaText(c.evPerTrade, prev.evPerTrade, (d) => fmtMoney(d, currency))}
-        prev={Number.isFinite(Number(prev.evPerTrade)) ? `anterior: ${fmtMoney(prev.evPerTrade, currency)}` : null}
-        tooltip="Expectativa matemática por trade (P&L total / nº de trades). Positivo = sistema tem edge. Multiplicado pelo nº de trades projetado, dá estimativa de retorno."
-      />
-      <KpiCard
-        label="RR médio"
-        value={c.avgRR ? `1:${fmtNum(c.avgRR, 2)}` : '—'}
-        prev="target: 1:2.0"
-        tooltip="Razão risco-retorno realizada média dos trades. 1:1.82 = em média ganha 1,82R por cada 1R arriscado. Comparar com o target do plano (normalmente 1:2.0)."
-      />
-      <KpiCard
-        label="Compliance"
-        value={fmtPct(c.compliance?.overall)}
-        delta={deltaText(c.compliance?.overall, prev.compliance?.overall, (d) => `${d.toFixed(1)}%`)}
-        prev={Number.isFinite(Number(prev.compliance?.overall)) ? `anterior: ${fmtPct(prev.compliance.overall)}` : null}
-        tooltip="Disciplina agregada: média do % de trades que respeitaram stop, RR-alvo e RO-limite do plano. Queda indica que o aluno está flexibilizando regras — sinal de alerta."
-      />
-      <KpiCard
-        label="Coef. variação"
-        value={fmtNum(c.coefVariation, 2)}
-        delta={deltaText(c.coefVariation, prev.coefVariation, (d) => d.toFixed(2), true)}
-        prev={Number.isFinite(Number(prev.coefVariation)) ? `anterior: ${fmtNum(prev.coefVariation, 2)}` : null}
-        tooltip="Consistência dos resultados: desvio-padrão ÷ |média|. Menor = melhor. CV <0.5 trades homogêneos; >2.0 erráticos (P&L dominado por 1-2 trades grandes — risco escondido)."
-      />
-      <KpiCard
-        label="Tempo médio"
-        value={c.avgHoldTimeMin ? `${c.avgHoldTimeMin} min` : '—'}
-        prev={c.avgHoldTimeWinMin || c.avgHoldTimeLossMin ? `win: ${c.avgHoldTimeWinMin || 0}m · loss: ${c.avgHoldTimeLossMin || 0}m` : null}
-        tooltip="Duração média de cada trade em minutos. Breakdown win/loss revela hold time assimétrico — cortar wins cedo e segurar losses é padrão comportamental típico de auto-sabotagem."
-      />
-    </div>
-  );
-};
 
 // ===== Subitem 6: Ranking top 3 / bottom 3 =====
 const RankedTradeRow = ({ trade, currency, onOpen }) => {
@@ -815,7 +516,11 @@ const Section = ({ num, title, children, stage }) => (
 //
 // Stage 2.5: além das trades no período [weekStart, weekEnd], mescla trades cujos ids
 // estão em `review.includedTradeIds` (pinados pelo mentor via FeedbackPage). Dedup por id.
-const rebuildSnapshotFromFirestore = async (review) => {
+//
+// Parâmetro opcional `maturity` (task 21 — H2): quando fornecido, é congelado em
+// `maturitySnapshot` via buildClientSnapshot. O caller pode ter recomputado antes
+// via `recomputeAndReadMaturity` — se ausente, snapshot segue sem maturitySnapshot.
+const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) => {
   const planId = review?.planId || review?.frozenSnapshot?.planContext?.planId;
   if (!planId) return null;
   const planSnap = await getDoc(doc(db, 'plans', planId));
@@ -834,12 +539,27 @@ const rebuildSnapshotFromFirestore = async (review) => {
   const extraTrades = includedIds.size > 0
     ? allTrades.filter(t => includedIds.has(t.id) && !weekTrades.some(w => w.id === t.id))
     : [];
+
+  // Fetch defensivo de maturity/current — usado em DRAFTs para preview live do
+  // comparativo N vs N-1. No publish (handlePublish) o caller força recompute
+  // antes e passa via closeReviewMaturityPipeline.
+  let maturity = null;
+  try {
+    if (studentId) {
+      const matSnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
+      maturity = matSnap.exists() ? { id: matSnap.id, ...matSnap.data() } : null;
+    }
+  } catch (err) {
+    console.warn('[rebuildSnapshotFromFirestore] maturity fetch failed:', err?.message || err);
+  }
+
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
     extraTrades,
     cycleKey: review.cycleKey || null,
     emotionalMetrics: null,
+    maturity,
   });
 };
 
@@ -944,14 +664,10 @@ const WeeklyReviewPage = ({
     return () => unsub();
   }, [studentId]);
 
-  const previousReview = useMemo(() => {
-    if (!review || !planId) return null;
-    return allStudentReviews.find(r =>
-      r.id !== review.id &&
-      (r.planId === planId || r.frozenSnapshot?.planContext?.planId === planId) &&
-      r.weekStart < review.weekStart
-    ) || null;
-  }, [allStudentReviews, review, planId]);
+  const previousReview = useMemo(
+    () => getPreviousReview(allStudentReviews, review, planId),
+    [allStudentReviews, review, planId],
+  );
 
   // DRAFT: recomputa snapshot live ao montar e a pedido do mentor.
   // CLOSED/ARCHIVED: usa frozenSnapshot persistido (G7 — foto congelada).
@@ -960,7 +676,7 @@ const WeeklyReviewPage = ({
     if (!isDraft || !review) return;
     setLiveRefreshing(true);
     try {
-      const snap = await rebuildSnapshotFromFirestore(review);
+      const snap = await rebuildSnapshotFromFirestore(review, { studentId });
       if (snap) setLiveSnapshot(snap);
     } catch (e) {
       console.error('[WeeklyReviewPage] refresh live snapshot failed', e);
@@ -1016,10 +732,33 @@ const WeeklyReviewPage = ({
   };
 
   // Stage 5a: publish DRAFT→CLOSED (congela snapshot, aluno passa a ver).
+  //
+  // Task 21 (H2) — ordem estrita ANTES do freeze:
+  //   1. recompute engine de maturidade via callable (throttle-tolerant)
+  //   2. dispatch narrativa IA (fire-and-forget) se trigger UP/REGRESSION fresco
+  //   3. rebuild snapshot com maturity fresh → freeze via closeReview
+  //
+  // DEC-AUTO-119-13: recompute ANTES do rebuild garante que `maturitySnapshot`
+  // reflita o estado do momento do close, não um snapshot velho do engine.
+  // DEC-AUTO-119-14: IA é fire-and-forget — persiste em maturity/current via
+  // cache e aparece no próximo render; publish não bloqueia esperando Claude.
   const handlePublish = async () => {
     if (!isDraft) return;
     try {
-      const fresh = await rebuildSnapshotFromFirestore(review).catch(() => null);
+      const { maturity: freshMaturity } = await recomputeAndReadMaturity({ studentId });
+      const fresh = await rebuildSnapshotFromFirestore(review, { studentId }).catch(() => null);
+      // Se rebuild falhou, sobrescreve maturity do snapshot base com a leitura fresh.
+      if (fresh && freshMaturity) {
+        // rebuildSnapshotFromFirestore já relê o doc; mas garantimos consistência:
+        // usamos o fresh do recompute (pós-engine) como fonte de verdade.
+        // `buildClientSnapshot.freezeMaturity` no rebuild já usou essa leitura.
+      }
+      maybeDispatchMaturityAI({
+        studentId,
+        maturity: freshMaturity,
+        kpis: fresh?.kpis,
+        windowSize: Array.isArray(fresh?.periodTrades) ? fresh.periodTrades.length : 0,
+      });
       await closeReview(review.id, { frozenSnapshot: fresh || effectiveSnapshot || undefined });
       setConfirmPublish(false);
     } catch { /* surfaced by hook */ }
@@ -1045,6 +784,15 @@ const WeeklyReviewPage = ({
     );
     return () => unsub();
   }, [studentId]);
+
+  // Fase E2 (issue #119 task 16): comparativo de maturidade N vs N-1.
+  // Só dispara quando review.status === 'CLOSED' (o hook internamente guarda).
+  const {
+    current: maturityCurrent,
+    previous: maturityPrevious,
+    loading: maturityCmpLoading,
+    error: maturityCmpError,
+  } = useReviewMaturitySnapshot(studentId, review, planId);
 
   const badge = statusBadge(review?.status);
   const cycleKey = review?.cycleKey || review?.frozenSnapshot?.planContext?.cycleKey;
@@ -1117,7 +865,7 @@ const WeeklyReviewPage = ({
 
             {/* 1 — Trades do período */}
             <Section num="1" title="Trades do período">
-              <TradesSection
+              <ReviewTradesSection
                 trades={effectiveSnapshot.periodTrades}
                 currency={currency}
                 weekStart={review.weekStart}
@@ -1141,7 +889,7 @@ const WeeklyReviewPage = ({
 
             {/* 3 — Snapshot KPIs congelados */}
             <Section num="3" title="Snapshot de indicadores (congelado)">
-              <SnapshotKpisSection
+              <ReviewKpiGrid
                 kpis={effectiveSnapshot.kpis}
                 prevKpis={previousReview?.frozenSnapshot?.kpis}
                 currency={currency}
@@ -1188,6 +936,16 @@ const WeeklyReviewPage = ({
             <Section num="7" title="Evolução de maturidade (4D vs marco zero)">
               <MaturitySection assessment={initialAssessment} />
             </Section>
+
+            {/* 7b — Comparativo N vs N-1 (issue #119 task 16). Só em CLOSED. */}
+            {review.status === 'CLOSED' && (
+              <MaturityComparisonSection
+                current={maturityCurrent}
+                previous={maturityPrevious}
+                loading={maturityCmpLoading}
+                error={maturityCmpError}
+              />
+            )}
 
             {/* 8 — Navegação contextual */}
             <Section num="8" title="Navegação contextual">

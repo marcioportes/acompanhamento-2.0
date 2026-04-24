@@ -51,13 +51,14 @@ const Sidebar = ({
   // Menu do Aluno
   const studentMenuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { 
-      id: 'feedback', 
-      label: 'Feedback', 
+    {
+      id: 'feedback',
+      label: 'Feedback',
       icon: MessageSquare,
       badge: unreviewedFeedback > 0 ? unreviewedFeedback : null,
       badgeColor: 'green'
     },
+    { id: 'student-reviews', label: 'Revisões', icon: ClipboardCheck },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).

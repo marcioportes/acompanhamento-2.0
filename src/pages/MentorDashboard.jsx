@@ -30,12 +30,15 @@ import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
 import MentorAlerts from '../components/MentorAlerts';
 import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
+import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
+import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
@@ -71,6 +74,9 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   // Compliance rules do mentor (para detecção configurável)
   const { detectionConfig, statusThresholds } = useComplianceRules();
+
+  // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
+  const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
   const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking' };
   const activeView = viewMapping[currentView] || 'overview';
@@ -298,6 +304,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <EquityCurve trades={allTrades} />
             <CalendarHeatmap trades={allTrades} />
           </div>
+          {/* Alertas de regressão de maturidade — issue #119 task 18 */}
+          <MentorMaturityAlert
+            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+            maturityMap={maturityByStudentId}
+            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
+          />
           {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
           <PendingReviewsCard
             students={students}
@@ -328,12 +340,21 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             {students.map(student => {
               const studentTrades = getTradesByStudent(student.email);
               const stats = calculateStats(studentTrades);
+              // Map keyed by uid (parent.parent.id de students/{uid}/maturity/current).
+              // Fallback a undefined → semáforo UNKNOWN quando aluno sem studentId ou sem doc.
+              const studentMaturity = student.studentId ? maturityByStudentId.get(student.studentId) : undefined;
               return (
                 <div key={student.email} className="p-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <div onClick={() => setSelectedStudent(student)} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
-                      <div><p className="font-medium text-white">{student.name}</p><p className="text-sm text-slate-500">{student.email}</p></div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-white">{student.name}</p>
+                          <MaturitySemaphoreBadge maturity={studentMaturity} />
+                        </div>
+                        <p className="text-sm text-slate-500">{student.email}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-6">
                       <div className="text-right"><p className={`font-semibold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(stats.totalPL)}</p><p className="text-xs text-slate-500">{stats.totalTrades} trades</p></div>

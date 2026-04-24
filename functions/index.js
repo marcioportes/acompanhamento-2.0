@@ -1006,6 +1006,20 @@ exports.onTradeCreated = functions.firestore
         console.error('[onTradeCreated] Erro PropFirm engine:', propErr);
       }
 
+      // === 6. MATURITY ENGINE (#119 task 07) ===
+      // Guard CLOSED interno em runMaturityRecompute — trade criado começa OPEN, então
+      // skipa aqui no caminho comum. Mantém o wire por simetria com onTradeUpdated.
+      // Isolamento total: try/catch em volta do require + call (INV-03).
+      try {
+        const { runMaturityRecompute } = require('./maturity/recomputeMaturity');
+        const result = await runMaturityRecompute(db, { tradeId, trade });
+        if (!result.skipped) {
+          console.log(`[onTradeCreated] Maturity atualizado: studentId=${result.studentId}, stage=${result.currentStage}, windowSize=${result.windowSize}`);
+        }
+      } catch (matErr) {
+        console.error('[onTradeCreated] Erro maturity engine:', matErr);
+      }
+
     } catch (e) { console.error('[onTradeCreated]', e); }
     
     return null;
@@ -1111,6 +1125,19 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       } catch (propErr) {
         console.error('[onTradeUpdated] Erro PropFirm engine:', propErr);
       }
+    }
+
+    // === MATURITY ENGINE (#119 task 07) ===
+    // Recalcula sempre que o trade atualiza para CLOSED (ou já está CLOSED e foi editado).
+    // Guard interno: status !== 'CLOSED' → skip. Isolamento total (INV-03).
+    try {
+      const { runMaturityRecompute } = require('./maturity/recomputeMaturity');
+      const result = await runMaturityRecompute(db, { tradeId: context.params.tradeId, trade: after });
+      if (!result.skipped) {
+        console.log(`[onTradeUpdated] Maturity atualizado: studentId=${result.studentId}, stage=${result.currentStage}, windowSize=${result.windowSize}`);
+      }
+    } catch (matErr) {
+      console.error('[onTradeUpdated] Erro maturity engine:', matErr);
     }
 
     // === B1 (v1.19.0): Re-check alerta emocional se emotionEntry mudou ===
@@ -1367,6 +1394,12 @@ exports.classifyOpenResponse = require("./assessment/classifyOpenResponse");
 exports.generateProbingQuestions = require("./assessment/generateProbingQuestions");
 exports.analyzeProbingResponse = require("./assessment/analyzeProbingResponse");
 exports.generateAssessmentReport = require("./assessment/generateAssessmentReport");
+exports.classifyMaturityProgression = require("./assessment/classifyMaturityProgression");
+
+// ============================================
+// MATURITY — Recompute single-point (CHUNK-09, issue #119 task 20)
+// ============================================
+exports.recomputeStudentMaturity = require("./maturity/recomputeStudentMaturity");
 
 // ============================================
 // SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)
