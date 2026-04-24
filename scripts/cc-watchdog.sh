@@ -333,9 +333,11 @@ check_class2() {
     (( age < T_WORKER_SEC )) && continue
 
     # result.log existe e tem tamanho?
-    local result
-    result=$(ls "$MAILBOX/outbox/${n}"*-result.log 2>/dev/null | head -1 || true)
-    if [[ -f "$result" && -s "$result" ]]; then
+    # IMPORTANTE: com nullglob ativo, um glob sem match vira string vazia e
+    # `ls` sem args listaria o diretório corrente — por isso usamos array.
+    local -a result_matches=( "$MAILBOX/outbox/${n}"*-result.log )
+    local result="${result_matches[0]:-}"
+    if [[ -n "$result" && -f "$result" && -s "$result" ]]; then
       continue  # worker entregou
     fi
 
