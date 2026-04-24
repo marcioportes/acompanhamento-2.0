@@ -3,6 +3,18 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.43.0: feat: Motor de progressão Maturidade 4D × 5 estágios (issue #119, modo autônomo) —
+ *   engine puro `src/utils/maturityEngine.js` (funções puras `evaluateGates`,
+ *   `calculateStageScores`, `proposeStageTransition`) + persistência `students/{uid}/maturity/
+ *   {current|history}` via CF `onTradeCreated`/`onTradeUpdated` + hook `useMaturity(studentId)` +
+ *   UI card dedicado no StudentDashboard (substitui sparkline Maturidade do E3 da Matriz 4D) +
+ *   CF `classifyMaturityProgression` Sonnet 4.6 disparada em UP/regressão + snapshot
+ *   `review.maturitySnapshot` no WeeklyReviewPage + semáforo mentor na Torre de Controle.
+ *   Janela rolling por stage (20/30/50/80/100 trades), composite 0.25E + 0.25F + 0.20O + 0.30M,
+ *   DEC-020 respeitada (engine detecta regressão, nunca rebaixa automaticamente). 6 gates 1→2
+ *   (3 ancorados framework §5.3 + 3 regras de produto), 8 gates 2→3 e 10 gates 3→4 literais
+ *   do framework §9.2, 9 gates 4→5 propostos. Regressão visível ao aluno (tom "espelho").
+ *   [RESERVADA — entrada definitiva no encerramento.]
  * - 1.42.1: fix: wire setupsMeta em MentorDashboard (issue #174, PR #175, merge commit
  *   `d871fad2`). Completa o E4 da spec original do #170 ("Consumido em StudentDashboard
  *   e MentorDashboard") cortado por conveniência durante o merge do #170 sem discussão.
@@ -123,10 +135,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.42.1',
+  version: '1.43.0',
   build: '20260423',
-  display: 'v1.42.1',
-  full: '1.42.1+20260423',
+  display: 'v1.43.0',
+  full: '1.43.0+20260423',
 };
 export default VERSION;
 export { VERSION };

@@ -16,7 +16,18 @@ WORKTREE="$HOME/projects/issue-${ISSUE}"
 SESSION="cc-${ISSUE}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-# 1. Mata tmux session (se existir)
+# 1a. Mata watchdog (se PID registrado) — issue #178
+WATCHDOG_PIDFILE="$WORKTREE/.cc-mailbox/.watchdog-pid"
+if [ -f "$WATCHDOG_PIDFILE" ]; then
+  WPID=$(cat "$WATCHDOG_PIDFILE" 2>/dev/null || echo "")
+  if [ -n "$WPID" ] && kill -0 "$WPID" 2>/dev/null; then
+    kill -TERM "$WPID" 2>/dev/null || true
+    echo "[stop] Watchdog PID $WPID terminado"
+  fi
+  rm -f "$WATCHDOG_PIDFILE"
+fi
+
+# 1b. Mata tmux session (se existir)
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   tmux kill-session -t "$SESSION"
   echo "[stop] Tmux session '$SESSION' encerrada"
