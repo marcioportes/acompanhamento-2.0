@@ -173,9 +173,15 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
     const currentSnap = await db
       .collection('students').doc(studentId)
       .collection('maturity').doc('current').get();
-    const stageCurrent = currentSnap.exists
+    // DEC-020: regressão nunca automática. Stage atual é MAX(gravado, baseline) —
+    // engine jamais coloca o aluno abaixo do stage diagnosticado no assessment,
+    // a não ser que um reset manual do mentor apague/resete o baseline.
+    // Corrige bug onde primeiro recompute pré-fix (f4c72941) havia gravado
+    // stage=1 (Caos), prendendo alunos legados abaixo do baseline real.
+    const storedStage = currentSnap.exists
       ? (currentSnap.data().currentStage ?? baselineStage)
       : baselineStage;
+    const stageCurrent = Math.max(storedStage, baselineStage);
 
     const tradesSnap = await db.collection('trades')
       .where('studentId', '==', studentId)
