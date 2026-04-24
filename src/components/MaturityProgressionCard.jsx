@@ -316,8 +316,22 @@ function MaturityProgressionCard({
         className="bg-slate-900/50 backdrop-blur border border-red-500/50 rounded-xl p-4 relative"
         data-testid="maturity-card"
       >
-        <h3 className="font-bold text-white text-sm mb-2">Progressão de Maturidade</h3>
-        <p className="text-red-300 text-sm">Erro ao carregar maturidade</p>
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
+        </div>
+        <p className="text-red-300 text-sm">
+          Erro ao carregar maturidade: {error?.message || String(error)}
+        </p>
+        <p className="text-[11px] text-slate-500 mt-2">
+          Se o erro persistir, recarregue a página (Ctrl+Shift+R) ou clique em &quot;Atualizar agora&quot; acima.
+        </p>
         {debugBadge}
       </div>
     );
@@ -326,12 +340,22 @@ function MaturityProgressionCard({
   if (!maturity) {
     return (
       <div className={CONTAINER_CLS} data-testid="maturity-card">
-        <div className="flex justify-between items-center mb-3">
+        <div className="flex items-start justify-between gap-3 mb-3">
           <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
         </div>
         <StageBar currentStage={null} gatesRatio={0} mastery={false} />
-        <p className="text-slate-400 text-sm mt-3">
-          Aguardando primeiro trade para calcular maturidade
+        <p className="text-slate-300 text-sm mt-3">
+          Maturidade ainda não foi calculada.
+        </p>
+        <p className="text-[12px] text-slate-400 mt-1">
+          Clique em <span className="text-emerald-400 font-medium">Atualizar agora</span> para processar seus trades atuais, ou aguarde o próximo trade novo — a engine dispara automaticamente.
         </p>
         {debugBadge}
       </div>

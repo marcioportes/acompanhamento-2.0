@@ -203,7 +203,7 @@ describe('MaturityProgressionCard', () => {
   it('maturity null (CF nunca rodou): mensagem pendente + 5 segmentos cinza', () => {
     render(<MaturityProgressionCard maturity={null} />);
 
-    expect(screen.getByText(/Aguardando primeiro trade para calcular maturidade/)).toBeInTheDocument();
+    expect(screen.getByText(/Maturidade ainda não foi calculada/)).toBeInTheDocument();
     [1, 2, 3, 4, 5].forEach((s) => {
       expect(screen.getByTestId(`stage-seg-${s}`).className).toMatch(/bg-gray-700/);
     });
@@ -538,12 +538,20 @@ describe('MaturityProgressionCard', () => {
       expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
     });
 
-    it('error setado: botão NÃO renderiza mesmo com onRefresh', () => {
+    it('error setado: botão renderiza (permite retry do recálculo)', () => {
       const onRefresh = vi.fn();
       render(
         <MaturityProgressionCard error={new Error('boom')} onRefresh={onRefresh} />
       );
-      expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
+      // Após o fix do bug diagnóstico (issue #119), o botão aparece também no
+      // estado de erro para o usuário forçar retry sem recarregar a página.
+      expect(screen.getByTestId('refresh-button')).toBeInTheDocument();
+    });
+
+    it('maturity null (snapshot ausente): botão renderiza (permite forçar 1º recálculo)', () => {
+      const onRefresh = vi.fn();
+      render(<MaturityProgressionCard maturity={null} onRefresh={onRefresh} />);
+      expect(screen.getByTestId('refresh-button')).toBeInTheDocument();
     });
   });
 
