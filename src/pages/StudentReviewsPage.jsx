@@ -254,7 +254,7 @@ const StudentReviewsPage = ({ onNavigateToFeedback = null } = {}) => {
 
   if (mentor) {
     return (
-      <div className="min-h-screen bg-slate-950 py-6">
+      <div className="min-h-screen bg-slate-950 py-6 pb-20">
         <div className="max-w-[720px] mx-auto px-6">
           <h1 className="text-xl font-semibold text-white mb-2">Minhas revisões</h1>
           <p className="text-sm text-slate-400">
@@ -267,7 +267,7 @@ const StudentReviewsPage = ({ onNavigateToFeedback = null } = {}) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 py-6">
+    <div className="min-h-screen bg-slate-950 py-6 pb-20">
       <div className="max-w-[720px] mx-auto px-6">
         <header className="mb-4">
           <h1 className="text-xl font-semibold text-white">Minhas revisões</h1>
