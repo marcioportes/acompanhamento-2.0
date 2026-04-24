@@ -153,8 +153,22 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .collection('students').doc(studentId)
       .collection('assessment').doc('initial_assessment').get();
     const assessment = assessmentSnap.exists ? assessmentSnap.data() : null;
-    const baselineStage = assessment?.stage ?? 1;
-    const baseline = assessment?.dimensionScores ?? { emotional: 50, financial: 50, operational: 50 };
+    // Schema do initial_assessment (StudentOnboardingPage.jsx:437):
+    // - experience.stage (1..5) — stage diagnosticado pela IA + validado pelo mentor
+    // - emotional.score, financial.score, operational.fit_score — dimensões 0..100
+    // Fallback para `assessment.stage` / `assessment.dimensionScores` mantido por
+    // compatibilidade caso schema evolua; default neutro (stage=1 / scores=50).
+    const baselineStage = assessment?.experience?.stage
+      ?? assessment?.stage_diagnosis?.stage
+      ?? assessment?.stage
+      ?? 1;
+    const baseline = assessment
+      ? {
+        emotional: assessment.emotional?.score ?? 50,
+        financial: assessment.financial?.score ?? 50,
+        operational: assessment.operational?.fit_score ?? 50,
+      }
+      : (assessment?.dimensionScores ?? { emotional: 50, financial: 50, operational: 50 });
 
     const currentSnap = await db
       .collection('students').doc(studentId)

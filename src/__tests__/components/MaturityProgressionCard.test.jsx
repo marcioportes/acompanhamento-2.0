@@ -104,8 +104,8 @@ describe('MaturityProgressionCard', () => {
 
     render(<MaturityProgressionCard maturity={maturity} />);
 
-    expect(screen.getByTestId('stage-summary').textContent).toMatch(/REACTIVE/);
-    expect(screen.getByTestId('stage-summary').textContent).toMatch(/5\/8 gates para METHODICAL/);
+    expect(screen.getByTestId('stage-summary').textContent).toMatch(/Reativo/);
+    expect(screen.getByTestId('stage-summary').textContent).toMatch(/5\/8 gates para Metódico/);
 
     const chip = screen.getByTestId('confidence-chip');
     expect(chip.textContent).toMatch(/HIGH/);
@@ -162,7 +162,7 @@ describe('MaturityProgressionCard', () => {
 
     render(<MaturityProgressionCard maturity={maturity} />);
 
-    expect(screen.getByTestId('stage-summary').textContent).toMatch(/MASTERY/);
+    expect(screen.getByTestId('stage-summary').textContent).toMatch(/Maestria/);
     expect(screen.getByTestId('stage-summary').textContent).not.toMatch(/gates para/);
     [1, 2, 3, 4, 5].forEach((s) => {
       expect(screen.getByTestId(`stage-seg-${s}`).className).toMatch(/bg-emerald-500/);

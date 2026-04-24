@@ -17,22 +17,25 @@ export const STAGE_BASES = {
   5: 80,
 };
 
+// PT-BR — INV-06 aplicada a labels de UI. Consistente com BaselineReport.jsx
+// e com profileClassifier.js (faixas de experience stage). Backend mantém
+// identificadores numéricos (1..5) — tradução é só de apresentação.
 export const STAGE_NAMES = {
-  1: 'CHAOS',
-  2: 'REACTIVE',
-  3: 'METHODICAL',
-  4: 'PROFESSIONAL',
-  5: 'MASTERY',
+  1: 'Caos',
+  2: 'Reativo',
+  3: 'Metódico',
+  4: 'Profissional',
+  5: 'Maestria',
 };
 
 // Labels curtos usados em telas estreitas (mobile) e layout de barra compacta.
 // Consumido pelo MaturityProgressionCard (§3.1 D13). Backend não consome.
 export const STAGE_NAMES_SHORT = {
-  1: 'CHAOS',
-  2: 'REACT',
-  3: 'METHOD',
-  4: 'PROF',
-  5: 'MASTERY',
+  1: 'Caos',
+  2: 'Reat.',
+  3: 'Métod.',
+  4: 'Prof.',
+  5: 'Maestr.',
 };
 
 /**
