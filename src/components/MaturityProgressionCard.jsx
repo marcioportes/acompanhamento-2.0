@@ -11,7 +11,7 @@
  * INV-04: DebugBadge obrigatório quando !embedded.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DebugBadge from './DebugBadge';
 import { STAGE_NAMES, STAGE_NAMES_SHORT } from '../utils/maturityEngine/constants';
 
@@ -229,19 +229,57 @@ function AiNarrativeSection({ maturity, aiGenerating, aiError }) {
   );
 }
 
-function formatThrottleTime(nextAllowedAt) {
+// Converte nextAllowedAt (ms | Firestore Timestamp { _seconds } | Date) para epoch ms
+function toEpochMs(nextAllowedAt) {
   if (nextAllowedAt == null) return null;
-  const date = new Date(nextAllowedAt);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (typeof nextAllowedAt === 'number') return nextAllowedAt;
+  if (nextAllowedAt instanceof Date) return nextAllowedAt.getTime();
+  if (typeof nextAllowedAt === 'object' && typeof nextAllowedAt._seconds === 'number') {
+    return nextAllowedAt._seconds * 1000;
+  }
+  const parsed = new Date(nextAllowedAt).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+// Usa useState + useEffect para recomputar a cada segundo enquanto estiver em throttle
+function useRemainingSeconds(nextAllowedAt, enabled) {
+  const [remaining, setRemaining] = useState(() => {
+    const ms = toEpochMs(nextAllowedAt);
+    return ms == null ? 0 : Math.max(0, Math.ceil((ms - Date.now()) / 1000));
+  });
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const ms = toEpochMs(nextAllowedAt);
+    if (ms == null) {
+      setRemaining(0);
+      return undefined;
+    }
+    const tick = () => setRemaining(Math.max(0, Math.ceil((ms - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [nextAllowedAt, enabled]);
+  return remaining;
+}
+
+function formatMMSS(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
 }
 
 function RefreshControl({ onRefresh, refreshing, refreshThrottled, refreshNextAllowedAt, refreshError }) {
   if (typeof onRefresh !== 'function') return null;
 
-  const disabled = refreshing === true;
-  const label = refreshing ? 'Atualizando...' : 'Atualizar agora';
-  const throttleTime = refreshThrottled ? formatThrottleTime(refreshNextAllowedAt) : null;
+  const throttleActive = refreshThrottled === true;
+  const remainingSec = useRemainingSeconds(refreshNextAllowedAt, throttleActive);
+  const disabled = refreshing === true || (throttleActive && remainingSec > 0);
+  const countdown = formatMMSS(remainingSec);
+
+  const label = refreshing
+    ? 'Atualizando...'
+    : (throttleActive && remainingSec > 0 ? `Aguarde ${countdown}` : 'Atualizar agora');
 
   return (
     <div className="flex flex-col items-end gap-1" data-testid="refresh-control">
@@ -256,12 +294,12 @@ function RefreshControl({ onRefresh, refreshing, refreshThrottled, refreshNextAl
         <span aria-hidden="true" className={refreshing ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
         {label}
       </button>
-      {refreshThrottled && throttleTime && (
+      {throttleActive && remainingSec > 0 && (
         <span
           data-testid="refresh-throttled"
           className="text-[10px] text-slate-400 font-mono"
         >
-          Próxima atualização em {throttleTime}
+          Próxima em {countdown}
         </span>
       )}
       {refreshError && (

@@ -181,7 +181,7 @@ describe('recomputeStudentMaturity (callable)', () => {
     });
   });
 
-  it('rate limit: segunda chamada em <1h retorna throttled', async () => {
+  it('rate limit: segunda chamada em <5min retorna throttled', async () => {
     // lastCall = agora → dentro da janela
     const recentTs = { toMillis: () => Date.now() - 60 * 1000 };
     const rateLimitData = { calls: { 'student-1': recentTs } };
@@ -201,8 +201,8 @@ describe('recomputeStudentMaturity (callable)', () => {
     expect(rateSetSpy).not.toHaveBeenCalled();
   });
 
-  it('rate limit: chamada > 1h atrás permite recompute', async () => {
-    const oldTs = { toMillis: () => Date.now() - (60 * 60 * 1000 + 5_000) };
+  it('rate limit: chamada > 5min atrás permite recompute', async () => {
+    const oldTs = { toMillis: () => Date.now() - (5 * 60 * 1000 + 5_000) };
     const rateLimitData = { calls: { 'student-1': oldTs } };
 
     const currentDoc = { currentStage: 1, gatesMet: 0, gatesTotal: 4, computedAt: null };

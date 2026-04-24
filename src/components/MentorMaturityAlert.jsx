@@ -12,7 +12,7 @@
  *      D15 §3.1 (card expandível) + INV-04 DebugBadge.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { STAGE_NAMES } from '../utils/maturityEngine/constants';
 import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
 import DebugBadge from './DebugBadge';
@@ -25,15 +25,100 @@ const SEVERITY_CLASSES = {
 
 const SEVERITY_RANK = { HIGH: 3, MED: 2, LOW: 1 };
 
-function formatThrottleTime(nextAllowedAt) {
+// Converte nextAllowedAt em epoch ms, aceitando número, Date ou Firestore Timestamp
+function toEpochMs(nextAllowedAt) {
   if (nextAllowedAt == null) return null;
-  const ms =
-    typeof nextAllowedAt === 'object' && typeof nextAllowedAt._seconds === 'number'
-      ? nextAllowedAt._seconds * 1000
-      : nextAllowedAt;
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (typeof nextAllowedAt === 'number') return nextAllowedAt;
+  if (nextAllowedAt instanceof Date) return nextAllowedAt.getTime();
+  if (typeof nextAllowedAt === 'object' && typeof nextAllowedAt._seconds === 'number') {
+    return nextAllowedAt._seconds * 1000;
+  }
+  const parsed = new Date(nextAllowedAt).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatMMSS(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+}
+
+// Hook countdown que atualiza a cada segundo enquanto ativo; retorna segundos restantes
+function useRemainingSeconds(nextAllowedAt, enabled) {
+  const [remaining, setRemaining] = useState(() => {
+    const ms = toEpochMs(nextAllowedAt);
+    return ms == null ? 0 : Math.max(0, Math.ceil((ms - Date.now()) / 1000));
+  });
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const ms = toEpochMs(nextAllowedAt);
+    if (ms == null) {
+      setRemaining(0);
+      return undefined;
+    }
+    const tick = () => setRemaining(Math.max(0, Math.ceil((ms - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [nextAllowedAt, enabled]);
+  return remaining;
+}
+
+// Sub-componente do botão refresh por linha (um hook por linha ativa).
+// Extraído porque hooks não podem ser chamados dentro de .map() inline.
+function MentorRefreshButton({
+  studentId,
+  isLoading,
+  isThrottled,
+  isError,
+  refreshError,
+  refreshNextAllowedAt,
+  onRefresh,
+}) {
+  const remainingSec = useRemainingSeconds(refreshNextAllowedAt, isThrottled);
+  const countdown = formatMMSS(remainingSec);
+  const disabled = isLoading || (isThrottled && remainingSec > 0);
+  const label = isLoading
+    ? 'Atualizando...'
+    : (isThrottled && remainingSec > 0 ? `Aguarde ${countdown}` : 'Atualizar maturidade');
+  return (
+    <span className="inline-flex items-center gap-2 flex-wrap">
+      <button
+        type="button"
+        onClick={() => onRefresh(studentId)}
+        disabled={disabled}
+        data-testid={`alert-refresh-${studentId}`}
+        aria-label="Atualizar maturidade agora"
+        className="text-xs text-slate-300 hover:text-white underline underline-offset-2 inline-flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed disabled:no-underline"
+      >
+        <span
+          aria-hidden="true"
+          className={isLoading ? 'inline-block animate-spin' : 'inline-block'}
+        >
+          ↻
+        </span>
+        {label}
+      </button>
+      {isThrottled && remainingSec > 0 && (
+        <span
+          data-testid={`alert-refresh-throttled-${studentId}`}
+          className="text-xs text-slate-400 font-mono"
+        >
+          Próxima em {countdown}
+        </span>
+      )}
+      {isError && (
+        <span
+          data-testid={`alert-refresh-error-${studentId}`}
+          className="text-xs text-red-300"
+          title={refreshError?.message ?? 'Falha ao atualizar'}
+        >
+          Falha ao atualizar
+        </span>
+      )}
+    </span>
+  );
 }
 
 const MentorMaturityAlert = ({
@@ -200,47 +285,18 @@ const MentorMaturityAlert = ({
                     {(() => {
                       const isActive = activeRefreshId === student.id;
                       const isLoading = isActive && refreshLoading;
-                      const isThrottled = isActive && refreshThrottled && !refreshLoading;
-                      const isError = isActive && refreshError && !refreshLoading;
-                      const throttleTime = isThrottled
-                        ? formatThrottleTime(refreshNextAllowedAt)
-                        : null;
+                      const isThrottled = Boolean(isActive && refreshThrottled && !refreshLoading);
+                      const isError = Boolean(isActive && refreshError && !refreshLoading);
                       return (
-                        <span className="inline-flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => handleRefresh(student.id)}
-                            disabled={isLoading}
-                            data-testid={`alert-refresh-${student.id}`}
-                            aria-label="Atualizar maturidade agora"
-                            className="text-xs text-slate-300 hover:text-white underline underline-offset-2 inline-flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed"
-                          >
-                            <span
-                              aria-hidden="true"
-                              className={isLoading ? 'inline-block animate-spin' : 'inline-block'}
-                            >
-                              ↻
-                            </span>
-                            {isLoading ? 'Atualizando...' : 'Atualizar maturidade'}
-                          </button>
-                          {isThrottled && throttleTime && (
-                            <span
-                              data-testid={`alert-refresh-throttled-${student.id}`}
-                              className="text-xs text-slate-400 font-mono"
-                            >
-                              Próxima em {throttleTime}
-                            </span>
-                          )}
-                          {isError && (
-                            <span
-                              data-testid={`alert-refresh-error-${student.id}`}
-                              className="text-xs text-red-300"
-                              title={refreshError?.message ?? 'Falha ao atualizar'}
-                            >
-                              Falha ao atualizar
-                            </span>
-                          )}
-                        </span>
+                        <MentorRefreshButton
+                          studentId={student.id}
+                          isLoading={isLoading}
+                          isThrottled={isThrottled}
+                          isError={isError}
+                          refreshError={refreshError}
+                          refreshNextAllowedAt={refreshNextAllowedAt}
+                          onRefresh={handleRefresh}
+                        />
                       );
                     })()}
                   </div>

@@ -294,9 +294,9 @@ describe('MentorMaturityAlert', () => {
       });
     });
 
-    it('estado throttled exibe "Próxima em HH:MM" (formato BR 24h)', async () => {
-      const future = new Date();
-      future.setHours(14, 37, 0, 0);
+    it('estado throttled exibe countdown "Próxima em MM:SS" e desabilita o botão', async () => {
+      // 2 minutos no futuro → countdown deve começar em 02:00 (± 1s)
+      const future = new Date(Date.now() + 2 * 60 * 1000);
       mockCallable.mockResolvedValueOnce({
         data: { throttled: true, nextAllowedAt: future.getTime() },
       });
@@ -310,12 +310,11 @@ describe('MentorMaturityAlert', () => {
         fireEvent.click(screen.getByTestId('alert-refresh-u1'));
       });
 
-      const expected = future.toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
       const msg = screen.getByTestId('alert-refresh-throttled-u1');
-      expect(msg.textContent).toBe(`Próxima em ${expected}`);
+      expect(msg.textContent).toMatch(/^Próxima em 0[12]:\d{2}$/);
+      const btn = screen.getByTestId('alert-refresh-u1');
+      expect(btn).toBeDisabled();
+      expect(btn.textContent).toMatch(/Aguarde 0[12]:\d{2}/);
     });
   });
 });

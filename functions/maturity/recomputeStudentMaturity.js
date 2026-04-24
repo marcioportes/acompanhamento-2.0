@@ -40,7 +40,7 @@ const { onCall, HttpsError } = (() => {
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
 const isMentorEmail = (email) => MENTOR_EMAILS.includes(email?.toLowerCase?.());
 
-const RATE_LIMIT_MS = 60 * 60 * 1000; // 1 hora
+const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutos — anti-spam leve (custo de 1 recompute é desprezível; rate limit agora é só pra evitar clique repetido)
 
 function loadAdmin() {
   return require('firebase-admin');

@@ -494,11 +494,11 @@ describe('MaturityProgressionCard', () => {
       expect(btn.textContent).toMatch(/Atualizando\.\.\./);
     });
 
-    it('refreshThrottled=true + nextAllowedAt futuro: mostra "Próxima atualização em HH:MM" (BR)', () => {
+    it('refreshThrottled=true + nextAllowedAt futuro: mostra countdown MM:SS e desabilita o botão', () => {
       const maturity = makeMaturity();
       const onRefresh = vi.fn();
-      const future = new Date();
-      future.setHours(14, 37, 0, 0);
+      // 3 minutos e 30 segundos no futuro → countdown deve começar em 03:30
+      const future = new Date(Date.now() + (3 * 60 + 30) * 1000);
       render(
         <MaturityProgressionCard
           maturity={maturity}
@@ -510,8 +510,11 @@ describe('MaturityProgressionCard', () => {
 
       const msg = screen.getByTestId('refresh-throttled');
       expect(msg).toBeInTheDocument();
-      const expected = future.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      expect(msg.textContent).toBe(`Próxima atualização em ${expected}`);
+      // Aceita 03:30 ou 03:29 (dependendo do tick da inicialização)
+      expect(msg.textContent).toMatch(/^Próxima em 0[23]:\d{2}$/);
+      const btn = screen.getByTestId('refresh-button');
+      expect(btn).toBeDisabled();
+      expect(btn.textContent).toMatch(/Aguarde 0[23]:\d{2}/);
     });
 
     it('refreshError setado: indicador "Falha ao atualizar" visível', () => {
