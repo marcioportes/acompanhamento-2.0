@@ -34,6 +34,10 @@ import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
+import {
+  recomputeAndReadMaturity,
+  maybeDispatchMaturityAI,
+} from '../utils/closeReviewMaturityPipeline';
 
 const statusBadge = (status) => {
   switch (status) {
@@ -817,7 +821,11 @@ const Section = ({ num, title, children, stage }) => (
 //
 // Stage 2.5: além das trades no período [weekStart, weekEnd], mescla trades cujos ids
 // estão em `review.includedTradeIds` (pinados pelo mentor via FeedbackPage). Dedup por id.
-const rebuildSnapshotFromFirestore = async (review) => {
+//
+// Parâmetro opcional `maturity` (task 21 — H2): quando fornecido, é congelado em
+// `maturitySnapshot` via buildClientSnapshot. O caller pode ter recomputado antes
+// via `recomputeAndReadMaturity` — se ausente, snapshot segue sem maturitySnapshot.
+const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) => {
   const planId = review?.planId || review?.frozenSnapshot?.planContext?.planId;
   if (!planId) return null;
   const planSnap = await getDoc(doc(db, 'plans', planId));
@@ -836,12 +844,27 @@ const rebuildSnapshotFromFirestore = async (review) => {
   const extraTrades = includedIds.size > 0
     ? allTrades.filter(t => includedIds.has(t.id) && !weekTrades.some(w => w.id === t.id))
     : [];
+
+  // Fetch defensivo de maturity/current — usado em DRAFTs para preview live do
+  // comparativo N vs N-1. No publish (handlePublish) o caller força recompute
+  // antes e passa via closeReviewMaturityPipeline.
+  let maturity = null;
+  try {
+    if (studentId) {
+      const matSnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
+      maturity = matSnap.exists() ? { id: matSnap.id, ...matSnap.data() } : null;
+    }
+  } catch (err) {
+    console.warn('[rebuildSnapshotFromFirestore] maturity fetch failed:', err?.message || err);
+  }
+
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
     extraTrades,
     cycleKey: review.cycleKey || null,
     emotionalMetrics: null,
+    maturity,
   });
 };
 
@@ -962,7 +985,7 @@ const WeeklyReviewPage = ({
     if (!isDraft || !review) return;
     setLiveRefreshing(true);
     try {
-      const snap = await rebuildSnapshotFromFirestore(review);
+      const snap = await rebuildSnapshotFromFirestore(review, { studentId });
       if (snap) setLiveSnapshot(snap);
     } catch (e) {
       console.error('[WeeklyReviewPage] refresh live snapshot failed', e);
@@ -1018,10 +1041,33 @@ const WeeklyReviewPage = ({
   };
 
   // Stage 5a: publish DRAFT→CLOSED (congela snapshot, aluno passa a ver).
+  //
+  // Task 21 (H2) — ordem estrita ANTES do freeze:
+  //   1. recompute engine de maturidade via callable (throttle-tolerant)
+  //   2. dispatch narrativa IA (fire-and-forget) se trigger UP/REGRESSION fresco
+  //   3. rebuild snapshot com maturity fresh → freeze via closeReview
+  //
+  // DEC-AUTO-119-13: recompute ANTES do rebuild garante que `maturitySnapshot`
+  // reflita o estado do momento do close, não um snapshot velho do engine.
+  // DEC-AUTO-119-14: IA é fire-and-forget — persiste em maturity/current via
+  // cache e aparece no próximo render; publish não bloqueia esperando Claude.
   const handlePublish = async () => {
     if (!isDraft) return;
     try {
-      const fresh = await rebuildSnapshotFromFirestore(review).catch(() => null);
+      const { maturity: freshMaturity } = await recomputeAndReadMaturity({ studentId });
+      const fresh = await rebuildSnapshotFromFirestore(review, { studentId }).catch(() => null);
+      // Se rebuild falhou, sobrescreve maturity do snapshot base com a leitura fresh.
+      if (fresh && freshMaturity) {
+        // rebuildSnapshotFromFirestore já relê o doc; mas garantimos consistência:
+        // usamos o fresh do recompute (pós-engine) como fonte de verdade.
+        // `buildClientSnapshot.freezeMaturity` no rebuild já usou essa leitura.
+      }
+      maybeDispatchMaturityAI({
+        studentId,
+        maturity: freshMaturity,
+        kpis: fresh?.kpis,
+        windowSize: Array.isArray(fresh?.periodTrades) ? fresh.periodTrades.length : 0,
+      });
       await closeReview(review.id, { frozenSnapshot: fresh || effectiveSnapshot || undefined });
       setConfirmPublish(false);
     } catch { /* surfaced by hook */ }

@@ -23,6 +23,10 @@ import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
 import { validateReviewUrl, validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../../utils/reviewUrlValidator';
 import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
+import {
+  recomputeAndReadMaturity,
+  maybeDispatchMaturityAI,
+} from '../../utils/closeReviewMaturityPipeline';
 import DebugBadge from '../DebugBadge';
 
 const filterTradesByRange = (trades, startISO, endISO) => {
@@ -36,7 +40,11 @@ const filterTradesByRange = (trades, startISO, endISO) => {
 
 // Busca plan + trades do período e reconstrói snapshot — usado no publish de DRAFT.
 // Quando studentId presente, congela também o snapshot de maturity (Fase E — issue #119 task 15).
-const rebuildSnapshot = async (review, studentId) => {
+//
+// Task 21 (H2): aceita `preloadedMaturity` — quando caller já fez recompute+read
+// via closeReviewMaturityPipeline, não relemos o doc (evita race com gravação do
+// motor). Se ausente/undefined, cai no path antigo que lê direto do Firestore.
+const rebuildSnapshot = async (review, studentId, preloadedMaturity) => {
   const planId = review?.frozenSnapshot?.planContext?.planId;
   if (!planId) return null;
   const planSnap = await getDoc(doc(db, 'plans', planId));
@@ -47,14 +55,16 @@ const rebuildSnapshot = async (review, studentId) => {
   const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const weekTrades = filterTradesByRange(allTrades, review.weekStart, review.weekEnd);
 
-  let maturity = null;
-  try {
-    if (studentId) {
-      const maturitySnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
-      maturity = maturitySnap.exists() ? { id: maturitySnap.id, ...maturitySnap.data() } : null;
+  let maturity = preloadedMaturity === undefined ? null : preloadedMaturity;
+  if (preloadedMaturity === undefined) {
+    try {
+      if (studentId) {
+        const maturitySnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
+        maturity = maturitySnap.exists() ? { id: maturitySnap.id, ...maturitySnap.data() } : null;
+      }
+    } catch (err) {
+      console.warn('[rebuildSnapshot] maturity fetch failed (continuando sem maturitySnapshot):', err);
     }
-  } catch (err) {
-    console.warn('[rebuildSnapshot] maturity fetch failed (continuando sem maturitySnapshot):', err);
   }
 
   return buildClientSnapshot({
@@ -250,9 +260,20 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
     if (!canClose) return;
     if (!takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid) return;
     try {
-      // Recomputa snapshot no momento do publish — KPIs congelam agora, não no create.
-      // Se falhar, publica com o snapshot existente (best-effort).
-      const fresh = await rebuildSnapshot(review, studentId).catch(() => null);
+      // Task 21 (H2) — ordem estrita ANTES do freeze do maturitySnapshot:
+      //   1. recompute engine via callable → snapshot fresh de maturity/current
+      //   2. rebuild KPIs do período usando esse maturity pré-carregado
+      //   3. dispatch narrativa IA se trigger UP/REGRESSION (fire-and-forget)
+      //   4. closeReview com frozenSnapshot incluindo maturitySnapshot fresco
+      // Engine/IA failures são tolerantes — publish não bloqueia.
+      const { maturity: freshMaturity } = await recomputeAndReadMaturity({ studentId });
+      const fresh = await rebuildSnapshot(review, studentId, freshMaturity).catch(() => null);
+      maybeDispatchMaturityAI({
+        studentId,
+        maturity: freshMaturity,
+        kpis: fresh?.kpis,
+        windowSize: Array.isArray(fresh?.periodTrades) ? fresh.periodTrades.length : 0,
+      });
       await closeReview(review.id, {
         takeaways, meetingLink, videoLink,
         frozenSnapshot: fresh || undefined,

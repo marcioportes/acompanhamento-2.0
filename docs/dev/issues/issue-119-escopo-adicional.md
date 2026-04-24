@@ -38,6 +38,7 @@ Ver conversa de design 24/04/2026 (aprovada por Marcio em sessão interativa):
 
 ## Sessions
 _(preenchido por task — 1 linha cada)_
+- 24/04/2026 — Task 21 (H2) commit a51a558a ok
 
 ## Shared Deltas
 _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada continua suficiente — sem bump novo.)_
@@ -47,6 +48,8 @@ _(IDs DEC-AUTO-119-NN conforme surgem a partir de 11+)_
 
 - **DEC-AUTO-119-11** — Autorização mentor via `isMentorEmail(token.email)` (whitelist). Padrão canônico do repo (`functions/index.js`, `functions/reviews/validators.js`); `students/{id}.mentorId` não é usado hoje, então não há base confiável para a checagem alternativa proposta no brief. Alunos continuam limitados a si mesmos (`auth.uid === studentId`).
 - **DEC-AUTO-119-12** — Rate limit persistido em `students/{studentId}/maturity/_rateLimit.calls[<callerUid>]` (campo map, chave = uid). Permite mentor e aluno terem stamps independentes sem shadowing; `lastRecomputeAt` também é gravado como conveniência para observabilidade. Campo `calls` é um map inline no mesmo doc, não subcollection (segue INV-12 em espírito — zero estrutura nova).
+- **DEC-AUTO-119-13** — Ordem no close da revisão (task 21 H2): `recomputeStudentMaturity` ANTES do `rebuildSnapshot`. Garante que `frozenSnapshot.maturitySnapshot` reflita o motor fresco do momento do publish. Rate-limit throttled (1×/h por caller) é tolerante — se já recomputou há menos de 1h, o doc atual já é representativo e a sequência prossegue lendo direto `maturity/current`.
+- **DEC-AUTO-119-14** — `classifyMaturityProgression` no close é **fire-and-forget** (não aguarda). A CF persiste `aiNarrative/aiTrigger/aiGeneratedAt` em `maturity/current` via cache (§3.1 D12); o próximo render do dashboard/ReviewPage detecta via listener. Aguardar síncrono bloquearia o publish por segundos (Claude Sonnet) sem ganho — a narrativa entra no `maturitySnapshot` congelado da próxima revisão quando já estiver cacheada, e o `alunoNarrativePanel`/`MaturityNarrativeCard` atual lê o doc vivo, não o snapshot. `tradesSummary` enviado à CF é derivado do `kpis` já computado pelo `buildClientSnapshot` (winRate/payoff/evPerTrade/emotional/compliance) — não duplica engine.
 
 ## Chunks
 - CHUNK-09 (escrita) — já locked desde abertura #119
