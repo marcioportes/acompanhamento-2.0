@@ -219,6 +219,27 @@ EOF
   echo "[start] Acompanhe com: tmux attach -t $SESSION  (ctrl+b d para destacar)"
 fi
 
+# ── WATCHDOG per-worktree (issue #178) ───────────────────────────────────
+# Detecta stall em sessões autônomas §13: Classe 1 resume da Coord com API
+# error, Classe 2 worker travado, Classe 3 tmux/listener morto.
+# Opt-out: CC_WATCHDOG_DISABLE=1
+WATCHDOG_SCRIPT="$HOME/cc-mailbox/bin/cc-watchdog.sh"
+WATCHDOG_PIDFILE="$MAILBOX/.watchdog-pid"
+if [ "${CC_WATCHDOG_DISABLE:-}" = "1" ]; then
+  echo "[start] Watchdog desabilitado via CC_WATCHDOG_DISABLE=1"
+elif [ ! -x "$WATCHDOG_SCRIPT" ]; then
+  echo "[start] AVISO: $WATCHDOG_SCRIPT não encontrado — watchdog não lançado"
+elif [ -f "$WATCHDOG_PIDFILE" ] && kill -0 "$(cat "$WATCHDOG_PIDFILE")" 2>/dev/null; then
+  echo "[start] Watchdog já ativo (PID $(cat "$WATCHDOG_PIDFILE"))"
+else
+  BRANCH="$(git -C "$WORKTREE" symbolic-ref --short HEAD 2>/dev/null || echo "unknown")"
+  nohup bash "$WATCHDOG_SCRIPT" "$ISSUE" "$BRANCH" \
+    > "$MAILBOX/log/watchdog.stdout" 2>&1 &
+  WATCHDOG_PID=$!
+  disown
+  echo "[start] Watchdog lançado (PID $WATCHDOG_PID) — log em $MAILBOX/log/watchdog.log"
+fi
+
 cat <<SUMMARY
 [start] Pronto.
   Worktree:   $WORKTREE
@@ -226,6 +247,7 @@ cat <<SUMMARY
   Tmux:       $SESSION
   Coord:      ${COORD_SESSION_ID:-(ausente)}
   Interface:  ${INTERFACE_SESSION_ID:-(ausente)}
+  Watchdog:   ${WATCHDOG_PID:-(ausente)}
 
 Despache a primeira task escrevendo em:
   $MAILBOX/inbox/01-<nome>.md

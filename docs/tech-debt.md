@@ -1,0 +1,34 @@
+# Dívidas Técnicas Ativas
+
+> DT-001..037 — débitos técnicos rastreados. Remover só quando resolvidos (marcar com ~~~~).
+
+
+
+| ID | Descrição | Prioridade | Deadline | Issue |
+|----|-----------|-----------|----------|-------|
+| DT-002 | Cycle transitions sem fechamento formal — PL de entrada do novo ciclo não registrado | ALTA | — | #72 |
+| DT-007 | ~~DebugBadge duplo no ComplianceConfigPage embedded~~ RESOLVIDO — já usa `{!embedded && <DebugBadge>}` | BAIXA | — | #55 |
+| DT-008 | formatCurrency hardcoded R$ em MentorDashboard e labels | BAIXA | — | — |
+| DT-011 | Templates CSV vazam entre alunos (sem filtro por studentId) | MÉDIA | — | — |
+| DT-012 | Mentor não consegue editar feedback já enviado | MÉDIA | — | #91 |
+| DT-015 | recalculateCompliance não usa writeBatch (não atômico) | BAIXA | — | — |
+| DT-016 | ~~Cloud Functions Node.js 20 depreca 30/04/2026~~ RESOLVIDO v1.22.0 | **CRÍTICA** | **30/04/2026** | #96 |
+| DT-018 | FeedbackPage não reflete edições de trade em tempo real | BAIXA | — | — |
+| DT-020 | Teclas seta alteram valores em campos de preço/qty no modal de parciais | MÉDIA | — | — |
+| DT-022 | CF scheduled limpeza diária csvStagingTrades (23h) não implementada | MÉDIA | — | — |
+| DT-025 | Campos `hasPartials`/`partialsCount` legados nos documentos de trades | BAIXA | — | — |
+| DT-026 | ~~stageDiagnosis não gerado pelo Re-processar IA — só por handleProbingComplete~~ RESOLVIDO v1.21.4 | BAIXA | — | — |
+| DT-027 | Rename externo: title, logo, textos UI de "Acompanhamento 2.0" para "Espelho" | ALTA | Antes da comunicação ao grupo | #100 |
+| DT-028 | ~~firebase-functions SDK 4.9.0 → migrar para ≥5.1.0 (companion de DT-016)~~ RESOLVIDO v1.22.0 | **CRÍTICA** | **30/04/2026** | #96 |
+| DT-029 | ~~useProbing não rehydratava savedQuestions do Firestore — aluno em loop no aprofundamento~~ RESOLVIDO v1.21.5 | ALTA | — | #92 |
+| DT-030 | TradesJournal batch activate sem `setSuspendListener` — snapshots do onSnapshot processam trades intermediários durante batch, causando re-renders desnecessários. StudentDashboard tem o fix correto como referência | BAIXA | — | #93 |
+| DT-031 | `balanceBefore`/`balanceAfter` incorretos em movements criados em batch — cada `addTrade` lê o "último movement" mas em batch todos leem o mesmo. Saldo final correto via `FieldValue.increment` na CF. Afeta apenas visualização do extrato em movements intermediários (cosmético) | BAIXA | — | #93 |
+| DT-034 | Engine prop firm duplicado entre `src/utils/propFirmDrawdownEngine.js` (ESM, testado) e `functions/propFirmEngine.js` (CommonJS, executado). Sincronização manual com header de aviso. Mudanças de lógica exigem atualização nos 2 arquivos. Refactoring futuro: build step (rollup/esbuild) ou monorepo workspace permitindo import compartilhado. Engine é estável (58 testes, lógica determinística) — mudanças raras justificam pragmatismo de v1 | BAIXA | — | #52 |
+| DT-035 | ATR de NG (Natural Gas), HG (Copper) e 6A (Australian Dollar) na `instrumentsTable.js` não foram incluídos na recaptura TradingView v2 (09/04/2026). Mantêm valores v1 (alucinados). Não são usados em nenhum template Apex/MFF/Lucid/Tradeify atual — impacto baixo. Remedir trimestralmente junto com os outros | BAIXA | — | #52 |
+| DT-036 | `shadowBehavior` persistido inline em `trades` viola separação fato/opinião (SPEC #128 INV-21 / AP-10). Origem #129 v1.28.0 via `functions/analyzeShadowBehavior.js:416`. Consumidores: `TradeDetailModal.jsx`, `FeedbackPage.jsx`, `ShadowBehaviorPanel.jsx`. Migração para `shadow/{studentId}/patterns/{patternId}` adiada — 246 trades × ~13 padrões × ~50B = ~160KB total, ganho marginal hoje. **Reconsiderar quando trades > 5000 OU reclamação de performance OU query complexa de shadow patterns vira prioridade.** ISSUE 7 cancelada 19/04/2026 | BAIXA | — | #129 |
+| DT-037 | Reconciliação de agregados (INV-22 SPEC #128) — CF scheduled comparando Σ PL dos trades do ciclo vs `plans.currentPl` e `accounts.balance`, alertas em coleção `reconciliationEvents`, threshold R$ 1,00 configurável. Hoje inexistente; divergências seriam descobertas por aluno antes do mentor. Adiada por ganho marginal em escala atual (246 trades, 10 alunos) e baixa frequência histórica de divergências reportadas. **Reconsiderar quando trades > 1000 OU primeiro incidente real de divergência aluno-plano-conta OU produto em escala que exige observabilidade defensiva.** ISSUE 6 cancelada 19/04/2026. Prioridade do Marcio: valor concreto dia-a-dia + marketing/lead capture | MÉDIA | — | #128 |
+| DT-038 | Estrutura 3 camadas do documento `trade` (INV-21 SPEC #128: `_rawPayload` imutável + projeção canônica + `_enrichments[]` append-only). Proposta do deepdive para preservar estado original após N enrichments, histórico granular, rollback por enrichment específico, auditoria evolutiva. **Over-engineering para estágio atual:** `_enrichmentSnapshot` inline (`tradeGateway.enrichTrade`) já resolve 95% dos casos (1 snapshot before/after do último enrichment); trades com 2+ enrichments são raros (fluxo típico manual → import orders → fim); nenhum aluno/mentor pediu histórico granular; rollback hoje é caso de borda sempre do último. Migração custaria ~2-3 dias + risco em prod. **Reconsiderar quando:** (a) trades 3+ enrichments virarem norma, OU (b) mentor pedir "ver tudo que esse trade passou" como feature, OU (c) auditoria compliance regulatória exigir. Parte de ISSUE 1 cancelada 19/04/2026. Princípio: "não é falta de controle, é ritmo" — cancelar rigor arquitetural que responde perguntas ainda não feitas no produto | BAIXA | — | #128 |
+| DT-039 | Writers legados de `trades` fora do `tradeGateway.js` — descobertos durante Fase A da issue #156. 4 arquivos têm `updateDoc`/`deleteDoc`/`setDoc` direto em docs de `trades`: `src/hooks/useTrades.js` (CRUD core, :212, :213, :415, :442, :519 — 5 writes), `src/hooks/useAccounts.js:311` (cascade delete ao apagar conta), `src/hooks/usePlans.js:244` (cascade delete ao apagar plano), `src/utils/seedTestExtract.js:322` (seed de teste, não roda em prod). Todos pré-existentes, **não introduzem bug** — são features legadas. Nenhum bypassa lógica comportamental (shadow, compliance, PL). Invariante `tradeWriteBoundary.test.js` (criado em #156 Fase A, commit `1e034534`) aceita os 4 como `GRANDFATHERED` explícito; novos writers fora do gateway ficam **bloqueados**. Refatorar legados exige criar `updateTrade/deleteTrade/seedTrade` no gateway + migrar 8 call sites (~2-4h). **Adiado por:** (a) foco da #156 é UX conversacional, não consistência arquitetural; (b) refactor em `useTrades.js` (core CRUD) tem risco de regressão; (c) invariante já protege contra novos bypasses. **Reconsiderar quando:** ISSUE 1 do épico #128 for atacada (ela já inclui este refactor como parte do `tradeGateway` completo) OU primeiro novo bypass bloqueado pelo invariante exigir migração coordenada | BAIXA | — | #156 |
+
+---
+
