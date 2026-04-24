@@ -133,7 +133,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
   // Detalhe rico mora no MaturityProgressionCard (INV-17 consolidação).
   // Teaser compacto no quadrante: stage label + mini-barra + fração de gates.
   describe('quadrante Maturidade (issue #119)', () => {
-    it('maturity com currentStage=2 e 5/8 gates → "REACTIVE" + barra parcial', () => {
+    it('maturity com currentStage=2 e 5/8 gates → "Reativo" + barra parcial', () => {
       const maturity = {
         currentStage: 2,
         gatesMet: 5,
@@ -145,7 +145,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
       );
       const card = screen.getByTestId('emotion-card-Calmo');
       expect(within(card).getByTestId('maturity-mini-stage').textContent).toBe(
-        'REACTIVE',
+        'Reativo',
       );
       // Seg 1 passado = emerald; seg 2 atual = container gray + fill amber;
       // segs 3-5 futuros = gray.
@@ -166,7 +166,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
       );
     });
 
-    it('maturity com currentStage=5 → "MASTERY", todos segmentos emerald, texto "Mastery"', () => {
+    it('maturity com currentStage=5 → "Maestria", todos segmentos emerald', () => {
       const maturity = {
         currentStage: 5,
         gatesMet: 0,
@@ -178,7 +178,7 @@ describe('EmotionAnalysis (Matriz Emocional 4D)', () => {
       );
       const card = screen.getByTestId('emotion-card-Calmo');
       expect(within(card).getByTestId('maturity-mini-stage').textContent).toBe(
-        'MASTERY',
+        'Maestria',
       );
       for (const s of [1, 2, 3, 4, 5]) {
         const seg = within(card).getByTestId(`maturity-mini-seg-${s}`);

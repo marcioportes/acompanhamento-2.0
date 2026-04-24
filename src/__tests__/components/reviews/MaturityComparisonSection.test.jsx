@@ -86,7 +86,7 @@ describe('MaturityComparisonSection', () => {
 
     // Stage badge mostra UP com nomes
     expect(screen.getByText(/Stage avançou/i)).toBeInTheDocument();
-    expect(screen.getByText(/METHODICAL/)).toBeInTheDocument();
+    expect(screen.getByText(/Metódico/)).toBeInTheDocument();
 
     // Gates conquistados / perdidos
     expect(screen.getByTestId('gates-gained')).toBeInTheDocument();

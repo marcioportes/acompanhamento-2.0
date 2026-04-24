@@ -227,4 +227,103 @@ describe('StudentReviewsPage', () => {
     fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
     expect(screen.getByText(/Sem notas desta sessão/i)).toBeInTheDocument();
   });
+
+  it('seção Reunião: renderiza anchors para meetingLink e videoLink quando presentes', () => {
+    mockReviewsState.reviews = [
+      makeReview({
+        id: 'rev-1',
+        meetingLink: 'https://zoom.us/j/abc123',
+        videoLink: 'https://loom.com/share/xyz',
+      }),
+    ];
+    render(<StudentReviewsPage />);
+    fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
+
+    const section = screen.getByTestId('review-meeting-section');
+    const meetingAnchor = within(section).getByRole('link', { name: /Link da reunião/i });
+    const videoAnchor = within(section).getByRole('link', { name: /Link da gravação/i });
+
+    expect(meetingAnchor).toHaveAttribute('href', 'https://zoom.us/j/abc123');
+    expect(meetingAnchor).toHaveAttribute('target', '_blank');
+    expect(meetingAnchor).toHaveAttribute('rel', expect.stringContaining('noopener'));
+
+    expect(videoAnchor).toHaveAttribute('href', 'https://loom.com/share/xyz');
+  });
+
+  it('seção Reunião: omitida quando meetingLink e videoLink vazios', () => {
+    mockReviewsState.reviews = [makeReview({ id: 'rev-1', meetingLink: '', videoLink: '' })];
+    render(<StudentReviewsPage />);
+    fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
+    expect(screen.queryByTestId('review-meeting-section')).toBeNull();
+  });
+
+  it('seção Reunião: renderiza só o link presente (meetingLink sem videoLink)', () => {
+    mockReviewsState.reviews = [
+      makeReview({ id: 'rev-1', meetingLink: 'https://meet.google.com/abc-def', videoLink: '' }),
+    ];
+    render(<StudentReviewsPage />);
+    fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
+
+    const section = screen.getByTestId('review-meeting-section');
+    expect(within(section).getByRole('link', { name: /Link da reunião/i })).toHaveAttribute(
+      'href',
+      'https://meet.google.com/abc-def',
+    );
+    expect(within(section).queryByRole('link', { name: /Link da gravação/i })).toBeNull();
+  });
+
+  it('seção Takeaways: renderiza texto livre (review.takeaways) quando preenchido', () => {
+    mockReviewsState.reviews = [
+      makeReview({
+        id: 'rev-1',
+        takeaways: 'Observação geral da semana:\n- consistência caiu após trade 3',
+        takeawayItems: [],
+      }),
+    ];
+    render(<StudentReviewsPage />);
+    fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
+
+    const text = screen.getByTestId('review-takeaways-text');
+    expect(text).toBeInTheDocument();
+    expect(text.textContent).toMatch(/consistência caiu após trade 3/);
+    // Quando só há texto (sem items) NÃO mostra "Nenhum takeaway nesta revisão."
+    expect(screen.queryByText(/Nenhum takeaway nesta revisão/i)).toBeNull();
+  });
+
+  it('seção Takeaways: texto livre + checklist coexistem', () => {
+    mockReviewsState.reviews = [
+      makeReview({
+        id: 'rev-1',
+        takeaways: 'Observação livre',
+        takeawayItems: [{ id: 't-1', text: 'Ação estruturada', done: false }],
+      }),
+    ];
+    render(<StudentReviewsPage />);
+    fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
+    expect(screen.getByTestId('review-takeaways-text')).toHaveTextContent('Observação livre');
+    expect(screen.getByText('Ação estruturada')).toBeInTheDocument();
+  });
+
+  it('header do item: indica "com observações" e "reunião" no resumo quando presentes', () => {
+    mockReviewsState.reviews = [
+      makeReview({
+        id: 'rev-1',
+        takeaways: 'obs',
+        meetingLink: 'https://zoom.us/j/abc',
+      }),
+    ];
+    render(<StudentReviewsPage />);
+    const item = screen.getByTestId('review-item-rev-1');
+    expect(within(item).getByText(/com observações/i)).toBeInTheDocument();
+    expect(within(item).getByText(/reunião/i)).toBeInTheDocument();
+  });
+
+  it('header do item: omite marcadores extras quando campos vazios', () => {
+    mockReviewsState.reviews = [makeReview({ id: 'rev-1' })];
+    render(<StudentReviewsPage />);
+    const item = screen.getByTestId('review-item-rev-1');
+    expect(within(item).queryByText(/com observações/i)).toBeNull();
+    // "reunião" só aparece quando há link — garantir ausência no resumo do item
+    expect(within(item).queryByText(/·\s*reunião/i)).toBeNull();
+  });
 });
