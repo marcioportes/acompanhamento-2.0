@@ -46,14 +46,14 @@ Escopo completo no body: https://github.com/marcioportes/acompanhamento-2.0/issu
 
 | ID | Decisão | Justificativa |
 |----|---------|---------------|
-| DEC-AUTO-183-01 | Delete puro dos planos órfãos (sem remap) | Remap via `account.studentId` é heurística; mentor pode ter plano em conta própria/teste. Delete + recriar manual é mais seguro |
+| DEC-AUTO-183-01 | REMAP dos planos órfãos usando `account.studentId` como fonte | Trocado de DELETE (intenção original) para REMAP após descobrir, durante o teste em 5184, planos legados com trades reais vinculados. Delete perderia histórico. Safety net: skip quando account inexistente, sem studentId, ou também pertencente ao mentor |
 | DEC-AUTO-183-02 | Critério de órfão = `studentEmail == MENTOR_EMAIL` | Mentor é identificado por email fixo (`src/firebase.js:30`). Campo `studentEmail` é gravado pelo `addPlan` — filtro trivial |
 
 **Arquivos tocados:**
 - `src/hooks/usePlans.js` — aceita `overrideStudentId` em addPlan
 - `src/pages/AccountsPage.jsx` — propaga studentId do account
 - `src/hooks/__tests__/usePlans.addPlan.test.js` — teste novo
-- `scripts/issue-183-clean-orphan-plans.mjs` — script run-once
+- `scripts/issue-183-repair-orphan-plans.mjs` — script run-once REMAP
 - `src/version.js` — bump 1.43.0 → 1.43.1 (no Gate Pré-Entrega)
 - `CHANGELOG.md` — entrada 1.43.1 (no Gate Pré-Entrega)
 
