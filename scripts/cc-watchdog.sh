@@ -89,6 +89,31 @@ has_api_error() {
   grep -qiE 'API Error|socket|ECONNRESET|Overloaded|hit your limit|rate_limit|closed unexpectedly' "$file"
 }
 
+# Retorna 0 se o erro é especificamente de quota esgotada (sub-caso de has_api_error)
+has_quota_error() {
+  local file="$1"
+  [[ -f "$file" ]] || return 1
+  grep -qiE 'hit your limit|rate_limit|quota' "$file"
+}
+
+# Parseia horário de reset da quota do log; imprime epoch em stdout (vazio se falhar).
+# Formatos aceitos (GNU date): "resets 4:20pm", "resets 16:20", "resets 4:20 pm"
+parse_quota_reset_epoch() {
+  local file="$1"
+  [[ -f "$file" ]] || return 1
+  local raw hhmm epoch now
+  raw=$(grep -oiE 'resets[[:space:]]+[0-9]{1,2}:[0-9]{2}[[:space:]]*[ap]?\.?m?\.?' "$file" | head -1)
+  [[ -z "$raw" ]] && return 1
+  hhmm=$(printf '%s' "$raw" | sed -E 's/^resets[[:space:]]+//i; s/\.//g')
+  epoch=$(date -d "$hhmm today" +%s 2>/dev/null) || return 1
+  [[ -z "$epoch" ]] && return 1
+  now=$(date +%s)
+  if (( epoch < now )); then
+    epoch=$(date -d "$hhmm tomorrow" +%s 2>/dev/null) || return 1
+  fi
+  printf '%s' "$epoch"
+}
+
 # Última task que tem coord-response.log (maior N cujo *-coord-response.log existe)
 latest_responded_task() {
   ls "$MAILBOX/outbox/"*-coord-response.log 2>/dev/null \
@@ -96,9 +121,27 @@ latest_responded_task() {
     | sort -n | tail -1
 }
 
+# Dispara um claude --resume para a task N (usado pelo retry imediato transitório
+# e pelo retry agendado pós-reset de quota). Grava stdout+stderr em retry_log.
+# Args: n coord_id retry_log note
+do_resume_retry() {
+  local n="$1" coord_id="$2" retry_log="$3" note="$4"
+  (
+    cd "$WORKTREE" || exit 2
+    flock -w 30 "$MAILBOX/locks/coord.lock" \
+      timeout 300 claude --resume "$coord_id" --permission-mode auto \
+        -p "TASK_DELIVERED N=$n ($note)" \
+      > "$retry_log" 2>&1
+  )
+}
+
 # ── detector CLASSE 1 — resume da Coord falhou ───────────────────────────
 # Sintoma: último coord-response.log tem API error + existe N-report.md
 # + não existe inbox/(N+1)-*.md + flag <N>-retry.done ausente
+# Sub-casos:
+#  - TRANSITÓRIO (socket/Overloaded/ECONNRESET/closed unexpectedly): retry imediato
+#  - QUOTA (hit your limit/rate_limit/quota): agenda retry para o horário de reset,
+#    preserva budget (não grava retry.done), emite 2 emails — detecção + resultado
 check_class1() {
   local n
   n=$(latest_responded_task)
@@ -109,10 +152,9 @@ check_class1() {
   response_file=$(ls -t $response_file 2>/dev/null | head -1)
   [[ -f "$response_file" ]] || return 0
 
-  # já foi tentado retry? respeitamos o budget de 1
-  if [[ -f "$MAILBOX/outbox/${n}-retry.done" ]]; then
-    return 0
-  fi
+  # já consumiu retry ou já tem retry agendado? nada a fazer aqui
+  [[ -f "$MAILBOX/outbox/${n}-retry.done" ]] && return 0
+  [[ -f "$MAILBOX/outbox/${n}-quota-retry-at" ]] && return 0
 
   # o coord-response precisa ter erro conhecido
   has_api_error "$response_file" || return 0
@@ -141,16 +183,12 @@ check_class1() {
   fi
 
   # === STALL CLASSE 1 CONFIRMADO ===
-  log_event WARN class_1 "stall task=$n age=${age}s file=$(basename "$response_file")"
-
-  # marca flag ANTES do retry para evitar loop infinito se watchdog for kill+restart
-  touch "$MAILBOX/outbox/${n}-retry.done"
-
-  # coord-id
+  # coord-id é pré-requisito para qualquer ação (retry imediato ou agendado)
   local coord_id
   coord_id=$(cat "$MAILBOX/.coord-id" 2>/dev/null || echo "")
   if [[ -z "$coord_id" ]]; then
     log_event ERROR class_1 ".coord-id vazio — escalando humano"
+    touch "$MAILBOX/outbox/${n}-retry.done"  # evita re-entrar no próximo iter
     send_email HUMAN_GATE \
       "#$ISSUE stall Classe 1 (sem coord-id)" \
       "Coord falhou no --resume da task $n mas .coord-id está vazio; watchdog não pode retryar." \
@@ -158,17 +196,37 @@ check_class1() {
     return 1
   fi
 
+  # ── sub-caso QUOTA ──────────────────────────────────────────────────────
+  if has_quota_error "$response_file"; then
+    local reset_epoch
+    reset_epoch=$(parse_quota_reset_epoch "$response_file") || reset_epoch=""
+    if [[ -n "$reset_epoch" ]]; then
+      local reset_iso
+      reset_iso=$(date -d "@$reset_epoch" '+%Y-%m-%d %H:%M %Z')
+      echo "$reset_epoch" > "$MAILBOX/outbox/${n}-quota-retry-at"
+      log_event WARN class_1_quota "stall quota task=$n reset=$reset_iso epoch=$reset_epoch"
+      send_email HUMAN_GATE \
+        "#$ISSUE [QUOTA] task $n caiu — retry agendado $reset_iso" \
+        "Coord falhou no --resume da task $n por quota esgotada. Watchdog parseou o horário de reset ($reset_iso) e agendou retry automático. Um segundo email sairá quando o retry ocorrer (sucesso ou falha)." \
+        "response_file=$response_file reset_epoch=$reset_epoch"
+    else
+      log_event ERROR class_1_quota "stall quota task=$n — horário não parseável"
+      touch "$MAILBOX/outbox/${n}-retry.done"  # queima budget, requer intervenção manual
+      send_email HUMAN_GATE \
+        "#$ISSUE [QUOTA] task $n caiu — horário ilegível" \
+        "Coord falhou no --resume da task $n por quota, mas o watchdog não conseguiu parsear o horário de reset no log. Intervenção manual necessária." \
+        "response_file=$response_file"
+    fi
+    return 0
+  fi
+
+  # ── sub-caso TRANSITÓRIO ────────────────────────────────────────────────
+  log_event WARN class_1 "stall transiente task=$n age=${age}s file=$(basename "$response_file")"
+  touch "$MAILBOX/outbox/${n}-retry.done"
+
   local retry_log="$MAILBOX/outbox/${n}-retry-$(date +%s).log"
   log_event INFO class_1 "retry task=$n via flock+resume"
-
-  # retry: mesmo comando do listener, em subshell, com timeout guarda-chuva
-  (
-    cd "$WORKTREE" || exit 2
-    flock -w 30 "$MAILBOX/locks/coord.lock" \
-      timeout 300 claude --resume "$coord_id" --permission-mode auto \
-        -p "TASK_DELIVERED N=$n (watchdog retry — erro transitório anterior)" \
-      > "$retry_log" 2>&1
-  )
+  do_resume_retry "$n" "$coord_id" "$retry_log" "watchdog retry — erro transitório anterior"
   local rc=$?
 
   if [[ $rc -eq 0 ]] && ! has_api_error "$retry_log"; then
@@ -177,9 +235,68 @@ check_class1() {
     log_event ERROR class_1 "retry task=$n FAILED rc=$rc"
     send_email HUMAN_GATE \
       "#$ISSUE stall Classe 1 — retry falhou task $n" \
-      "Watchdog detectou API error no coord-response da task $n e tentou retry automático, mas o retry também falhou (rc=$rc)." \
+      "Watchdog detectou API error transitório no coord-response da task $n e tentou retry automático, mas o retry também falhou (rc=$rc)." \
       "response_file=$response_file retry_log=$retry_log coord_id=$coord_id"
   fi
+}
+
+# ── detector CLASSE 1b — retry agendado por quota ────────────────────────
+# Varre outbox/*-quota-retry-at. Se a hora chegou: dispara retry, consome budget
+# (retry.done), remove o marcador, e emite email de resultado (INFO ou FAIL).
+check_class1_pending_retry() {
+  shopt -s nullglob
+  local f
+  for f in "$MAILBOX/outbox/"*-quota-retry-at; do
+    local n
+    n=$(basename "$f" | sed 's/-quota-retry-at$//')
+    [[ -z "$n" ]] && continue
+
+    # budget já consumido por outro caminho? limpa marcador e segue
+    if [[ -f "$MAILBOX/outbox/${n}-retry.done" ]]; then
+      rm -f "$f"
+      continue
+    fi
+
+    local epoch now
+    epoch=$(head -1 "$f" 2>/dev/null)
+    [[ -z "$epoch" ]] && continue
+    now=$(date +%s)
+    (( now < epoch )) && continue  # ainda não é hora
+
+    # === hora de retryar ===
+    local coord_id
+    coord_id=$(cat "$MAILBOX/.coord-id" 2>/dev/null || echo "")
+    if [[ -z "$coord_id" ]]; then
+      log_event ERROR class_1_quota ".coord-id vazio no retry agendado task=$n"
+      send_email HUMAN_GATE \
+        "#$ISSUE [QUOTA] task $n retry abortado — sem coord-id" \
+        "Chegou o horário do retry agendado da task $n, mas .coord-id está vazio. Marcador preservado para intervenção manual." \
+        "marker=$f"
+      continue  # preserva marcador, humano decide
+    fi
+
+    local retry_log="$MAILBOX/outbox/${n}-retry-$(date +%s).log"
+    log_event INFO class_1_quota "retry agendado disparando task=$n"
+    touch "$MAILBOX/outbox/${n}-retry.done"
+    do_resume_retry "$n" "$coord_id" "$retry_log" "watchdog retry — quota resetou"
+    local rc=$?
+    rm -f "$f"
+
+    if [[ $rc -eq 0 ]] && ! has_api_error "$retry_log"; then
+      log_event INFO class_1_quota "retry agendado task=$n SUCCESS"
+      send_email HUMAN_GATE \
+        "#$ISSUE [QUOTA] [INFO] task $n retry OK" \
+        "Watchdog disparou o retry agendado da task $n após reset de quota e a Coord foi acordada com sucesso. Loop retomado." \
+        "retry_log=$retry_log"
+    else
+      log_event ERROR class_1_quota "retry agendado task=$n FAILED rc=$rc"
+      send_email HUMAN_GATE \
+        "#$ISSUE [QUOTA] task $n retry FALHOU rc=$rc" \
+        "Watchdog disparou o retry agendado da task $n após reset de quota, mas o retry também falhou (rc=$rc). Intervenção manual." \
+        "retry_log=$retry_log coord_id=$coord_id"
+    fi
+  done
+  shopt -u nullglob
 }
 
 # ── detector CLASSE 2 — worker travado ───────────────────────────────────
@@ -297,11 +414,14 @@ while true; do
 
   # heartbeat a cada 10 iterações (~15min)
   if (( iter % 10 == 0 )); then
-    log_event INFO heartbeat "iter=$iter tmux=$(tmux has-session -t cc-$ISSUE 2>/dev/null && echo alive || echo dead)"
+    pending_quota=$(ls "$MAILBOX/outbox/"*-quota-retry-at 2>/dev/null | wc -l)
+    log_event INFO heartbeat "iter=$iter tmux=$(tmux has-session -t cc-$ISSUE 2>/dev/null && echo alive || echo dead) pending_quota=$pending_quota"
   fi
 
-  # ordem importa: class 3 primeiro (se infra caiu, outras checagens são irrelevantes)
+  # ordem importa: class 3 primeiro (infra), depois retry agendado de quota
+  # (pode disparar antes do detector de novo stall), depois class 1, class 2.
   check_class3 || true
+  check_class1_pending_retry || true
   check_class1 || true
   check_class2 || true
 

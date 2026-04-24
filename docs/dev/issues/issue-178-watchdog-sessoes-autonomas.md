@@ -21,9 +21,11 @@ Em ambos os casos, o humano só descobriu por acaso (conversando com CC-Interfac
 ## §2 ACCEPTANCE CRITERIA
 
 ### Watchdog
-- [ ] `~/cc-mailbox/bin/cc-watchdog.sh` (bash, ~250 linhas)
+- [ ] `~/cc-mailbox/bin/cc-watchdog.sh` (bash, ~400 linhas)
 - [ ] Detecta 3 classes de stall (ver §3.1)
-- [ ] Retry 1× por (issue, task) via flag persistente `.retry.done`
+- [ ] Classe 1 separa sub-casos TRANSITÓRIO (retry imediato) vs QUOTA (retry agendado no horário de reset parseado do log)
+- [ ] Retry 1× por (issue, task) via flag persistente `.retry.done` — orçamento preservado até o retry efetivo no caso QUOTA
+- [ ] QUOTA emite 2 emails distintos: detecção (com horário agendado) + resultado (OK ou FAIL)
 - [ ] Email via `cc-notify-email.py` (já existente)
 - [ ] Self-exit limpo se `.cc-mailbox/` sumir
 
@@ -49,7 +51,8 @@ Em ambos os casos, o humano só descobriu por acaso (conversando com CC-Interfac
 
 | # | Sintoma | Ação |
 |---|---|---|
-| 1 | Último `*-coord-response.log` tem `API Error\|socket\|ECONNRESET\|Overloaded\|hit your limit` + existe `N-report.md` + não existe `inbox/(N+1)-*.md` | Retry 1× via `flock + claude --resume -p "TASK_DELIVERED N=<N> (watchdog retry)"`. Flag `outbox/<N>-retry.done`. Fail → email HUMAN_GATE |
+| 1a (TRANSITÓRIO) | `*-coord-response.log` com `socket\|ECONNRESET\|Overloaded\|closed unexpectedly` + `N-report.md` + sem `inbox/(N+1)` + idade ≥ T_RESUME_MAX | Retry imediato 1× via `flock + claude --resume`. Flag `outbox/<N>-retry.done` escrita ANTES do retry. Fail → email HUMAN_GATE |
+| 1b (QUOTA) | Mesmas precondições + erro `hit your limit\|rate_limit\|quota` | Parseia `resets HH:MM[am\|pm]` do log. Parse OK → grava `outbox/<N>-quota-retry-at` (epoch) + email `[QUOTA] retry agendado HH:MM`. **Budget preservado** (não grava `retry.done`). No horário, detector `check_class1_pending_retry` dispara retry, consome budget, emite 2º email (OK/FAIL). Parse falhou → email `[QUOTA] horário ilegível` + queima budget |
 | 2 | `inbox/N-*.md` há > T_WORKER_MAX min + `outbox/N-result.log` ausente ou size 0 | Email HUMAN_GATE com título "Worker task N travado >Xmin". Não mata. Flag `outbox/<N>-stall.notified` |
 | 3 | `tmux has-session -t cc-NNN` falso OU `pgrep -f "$MAILBOX/listener.sh"` vazio | `cc-worktree-start.sh <NNN> <branch>` idempotente relança; email HUMAN_GATE INFO |
 
@@ -64,7 +67,9 @@ Em ambos os casos, o humano só descobriu por acaso (conversando com CC-Interfac
 
 **Heartbeat da Coord:** rejeitado para MVP (Coord vive em surtos, heartbeat fica naturalmente stale entre wake-ups; não distingue "travada" de "entre tasks"). Registrado como fast-follow.
 
-**Tipo de email:** `HUMAN_GATE` genérico para Classes 1 (retry failed) e 2 (worker stall). Classe 3 (tmux relançado) usa `HUMAN_GATE` também com título prefixado `[INFO]`.
+**Tipo de email:** `HUMAN_GATE` genérico para Classes 1 (retry failed) e 2 (worker stall). Classe 3 (tmux relançado) e Classe 1b success usam `HUMAN_GATE` também com título prefixado `[INFO]`. Classe 1b (QUOTA) é o único caso que emite **2 emails** por incidente: detecção (stall + horário agendado) + resultado (OK/FAIL pós-reset).
+
+**Parse de horário de reset (Classe 1b):** `grep -oiE 'resets\s+\d{1,2}:\d{2}\s*[ap]?\.?m?\.?'` + `date -d "HH:MM today"`. Se resultado < now, reassume `tomorrow`. Formatos testados: `4:20pm`, `11:00 PM`, `23:45`, `9:30 a.m.`, `1:00am`. Timezone = host (WSL America/Sao_Paulo). Parse falha → email + queima budget (intervenção manual).
 
 **Relaunch automático Classe 3:** aprovado (`cc-worktree-start.sh` é idempotente; barato e seguro). Se tmux não parar de cair, o email agrupado vira sinal de causa-raiz externa.
 
