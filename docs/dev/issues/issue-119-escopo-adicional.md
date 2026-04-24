@@ -38,7 +38,7 @@ Ver conversa de design 24/04/2026 (aprovada por Marcio em sessão interativa):
 
 ## Sessions
 _(preenchido por task — 1 linha cada)_
-- 24/04/2026 — Task 21 (H2) commit a51a558a ok
+- 24/04/2026 — Task 21 (H2) commit 84dbfd50 ok
 
 ## Shared Deltas
 _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada continua suficiente — sem bump novo.)_
