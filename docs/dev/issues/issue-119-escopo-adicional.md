@@ -47,6 +47,7 @@ _(preenchido por task — 1 linha cada)_
 - 24/04/2026 — Task 26 (J2) sidebar aluno Revisões + rota 2a330f69 ok (validator exit 0, 2334 passed)
 - 24/04/2026 — Task 27 (J3) card takeaways última revisão fc693c82 ok (validator exit 0, 2343 passed, +9 testes, Approach A refator in-place). Plano tasks 20-27 completo.
 - 24/04/2026 — Task 28 (J4) revisão completa — mockup aprovado por Marcio ("go"). Extração ReviewKpiGrid + ReviewTradesSection + reviewFormatters. StudentReviewsPage expandida com 5 seções (espelho READ-ONLY do mentor). WeeklyReviewPage reusa os componentes extraídos. 45 testes novos nos componentes/utils.
+- 24/04/2026 tarde — Hotfix StudentReviewsPage: seção Reunião (meetingLink/videoLink) + takeaways texto livre (review.takeaways) renderizados no detail. Header do item passa a indicar `· com observações` / `· reunião`. commit 0d298d4c (+6 testes novos; 3 stage labels EN→PT-BR pré-existentes corrigidos de passagem em EmotionAnalysis.test / MaturityComparisonSection.test).
 
 ## Shared Deltas
 _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada continua suficiente — sem bump novo.)_
@@ -83,3 +84,19 @@ _(IDs DEC-AUTO-119-NN conforme surgem a partir de 11+)_
 
 ## Gate humano recomendado
 Após task 22 (backend completo), Marcio valida uma rodada manual (disparar callable, fechar revisão, testar snapshot) antes das tasks de frontend (23-27).
+
+## Follow-ups identificados (24/04/2026 tarde)
+
+Auditoria dos gates de maturidade vs recursos coletados pelo Espelho revelou **5 furos estruturais** que impedem ou distorcem promoção de stage. Cada um virou issue própria (já no projeto "Mentoria 2.0 - Product Board" → coluna In Progress, aguardando briefing + mockup + memória antes de código):
+
+1. **#189 — Score emocional real (furo UNIVERSAL)** — pipeline hoje usa valor constante 50/100 para a dimensão emocional. Consequência: aluno nunca evolui nessa dimensão, limita score composto em todos os stages. Maior impacto dos 5.
+2. **#190 — Tilt/revenge trades (gate Maestria)** — contadores `tiltCount`/`revengeCount` sempre zero; gate `zero-tilt-revenge` do stage 4→5 bloqueia Maestria de forma determinística mas desconectada do comportamento real.
+3. **#187 — MEP/MEN + Sharpe com benchmark** — métricas de exposição intra-trade e Sharpe ratio exigidas em 3→4 e 4→5, nunca coletadas. Form manual + imports ProfitPro/Tradovate + decisão de benchmark Sharpe.
+4. **#191 — Aderência recente na janela N (fix)** — `complianceRate100` hoje é alias de `complianceRate` (janela padrão), não filtra últimos N trades como o gate exige. Issue simples (fix semântico).
+5. **Cobertura parcial:** o gate `compliance-100` (3→4) depende do fix #191 para ter significado correto.
+
+Issues adicionais também criadas nesta sessão para follow-ups de revisão semanal:
+- **#184 — Imutabilidade de trades em revisões** (evitar que trade referenciado em revisão publicada seja editado/apagado)
+- **#185 — Painel de diagnóstico completo do trade atômico** (FeedbackPage do mentor)
+
+Todos os 6 issues carregam bloco "Instruções de captura (IA)" com protocolo de 5 passos (briefing em linguagem natural → decisões → mockup → memória → doc de controle como SSoT → gate humano) antes de qualquer código.
