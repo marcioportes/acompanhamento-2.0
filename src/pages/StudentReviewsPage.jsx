@@ -1,40 +1,37 @@
 /**
  * StudentReviewsPage
  * @description Tela somente-leitura onde o aluno vê suas revisões semanais
- *              já publicadas (CLOSED + ARCHIVED). Issue #119 task 25 (Fase J1).
+ *              já publicadas (CLOSED + ARCHIVED). Issue #119 task 25 (J1) + task 28.
  *
- *              - Lista ordenada por weekStart desc (hook já filtra para aluno).
- *              - Accordion: 1 item expandido por vez.
- *              - Detalhe expandido: takeaways (toggle "feito por mim"),
- *                comparativo de maturidade (reuso de MaturityComparisonSection),
- *                notas do mentor.
- *              - Sem ações de mutação além de toggleAlunoDone.
+ *              Seções do detalhe (espelho READ-ONLY do WeeklyReviewPage mentor):
+ *              1. KPIs congelados (`ReviewKpiGrid`) com delta vs revisão anterior
+ *              2. Trades revisados (`ReviewTradesSection`) com link por linha para FeedbackPage
+ *              3. Takeaways (abertos + fechados) — aluno pode marcar "feito por mim"
+ *              4. Comparativo maturidade 4D (`MaturityComparisonSection`)
+ *              5. Notas do mentor
+ *
+ *              Sem Action Footer Publicar/Arquivar, sem edit de takeaways,
+ *              sem PinToReviewButton.
  */
 
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, CheckSquare, Square, Lock } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import MaturityComparisonSection from '../components/reviews/MaturityComparisonSection';
+import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
+import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import { useAuth } from '../contexts/AuthContext';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
-
-// INV-06: datas BR (DD/MM/YYYY). weekStart vem como ISO YYYY-MM-DD.
-const fmtDateBR = (iso) => {
-  if (!iso || typeof iso !== 'string') return '—';
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-};
-
-const statusBadge = (status) => {
-  if (status === 'CLOSED') return { label: 'publicada', cls: 'bg-emerald-500/15 text-emerald-400' };
-  if (status === 'ARCHIVED') return { label: 'arquivada', cls: 'bg-slate-500/15 text-slate-400' };
-  return { label: status || '—', cls: 'bg-slate-500/15 text-slate-400' };
-};
+import { fmtDateBR, statusBadge, getPreviousReview } from '../utils/reviewFormatters';
 
 const getPlanIdFromReview = (review) =>
   review?.planId || review?.frozenSnapshot?.planContext?.planId || null;
+
+const getCurrencyFromReview = (review) =>
+  review?.frozenSnapshot?.currency
+  || review?.frozenSnapshot?.planContext?.currency
+  || 'USD';
 
 const TakeawayRow = ({ item, mentorDone, alunoDone, onToggle, disabled }) => (
   <li className="flex items-start gap-2 py-1.5">
@@ -63,8 +60,21 @@ const TakeawayRow = ({ item, mentorDone, alunoDone, onToggle, disabled }) => (
   </li>
 );
 
-const ReviewDetail = ({ review, studentId, onToggleAlunoDone, actionLoading }) => {
+const ReviewDetail = ({
+  review,
+  allReviews,
+  studentId,
+  onToggleAlunoDone,
+  onNavigateToFeedback,
+  actionLoading,
+}) => {
   const planId = getPlanIdFromReview(review);
+  const currency = getCurrencyFromReview(review);
+  const previousReview = useMemo(
+    () => getPreviousReview(allReviews || [], review, planId),
+    [allReviews, review, planId],
+  );
+
   const {
     current: maturityCurrent,
     previous: maturityPrevious,
@@ -76,9 +86,41 @@ const ReviewDetail = ({ review, studentId, onToggleAlunoDone, actionLoading }) =
   const alunoIds = Array.isArray(review.alunoDoneIds) ? review.alunoDoneIds : [];
   const hasFrozenSnapshot = Boolean(review?.frozenSnapshot?.maturitySnapshot);
   const sessionNotes = typeof review?.sessionNotes === 'string' ? review.sessionNotes : '';
+  const kpis = review?.frozenSnapshot?.kpis;
+  const prevKpis = previousReview?.frozenSnapshot?.kpis;
+  const periodTrades = review?.frozenSnapshot?.periodTrades;
 
   return (
     <div className="px-4 pb-4 pt-1 border-t border-slate-800/60 space-y-4">
+      {/* 1 — KPIs congelados com delta vs revisão anterior */}
+      <section>
+        <h3 className="text-sm font-semibold text-slate-200 mb-2">
+          Indicadores congelados
+          {previousReview && (
+            <span className="ml-2 text-[11px] font-normal text-slate-500">
+              vs revisão de {fmtDateBR(previousReview.weekStart)}
+            </span>
+          )}
+          {!previousReview && (
+            <span className="ml-2 text-[11px] font-normal text-slate-500">primeira revisão</span>
+          )}
+        </h3>
+        <ReviewKpiGrid kpis={kpis} prevKpis={prevKpis} currency={currency} />
+      </section>
+
+      {/* 2 — Trades revisados com link para FeedbackPage */}
+      <section>
+        <h3 className="text-sm font-semibold text-slate-200 mb-2">Trades revisados</h3>
+        <ReviewTradesSection
+          trades={periodTrades}
+          currency={currency}
+          weekStart={review.weekStart}
+          weekEnd={review.weekEnd}
+          onNavigateToFeedback={onNavigateToFeedback}
+        />
+      </section>
+
+      {/* 3 — Takeaways */}
       <section>
         <h3 className="text-sm font-semibold text-slate-200 mb-2">Takeaways</h3>
         {items.length === 0 ? (
@@ -99,6 +141,7 @@ const ReviewDetail = ({ review, studentId, onToggleAlunoDone, actionLoading }) =
         )}
       </section>
 
+      {/* 4 — Comparativo maturidade 4D */}
       <section>
         <h3 className="text-sm font-semibold text-slate-200 mb-2">Comparativo de maturidade</h3>
         {hasFrozenSnapshot ? (
@@ -114,6 +157,7 @@ const ReviewDetail = ({ review, studentId, onToggleAlunoDone, actionLoading }) =
         )}
       </section>
 
+      {/* 5 — Notas do mentor */}
       <section>
         <h3 className="text-sm font-semibold text-slate-200 mb-2">Notas do mentor</h3>
         {sessionNotes ? (
@@ -130,10 +174,12 @@ const ReviewDetail = ({ review, studentId, onToggleAlunoDone, actionLoading }) =
 
 const ReviewListItem = ({
   review,
+  allReviews,
   expanded,
   onToggleExpand,
   studentId,
   onToggleAlunoDone,
+  onNavigateToFeedback,
   actionLoading,
 }) => {
   const badge = statusBadge(review.status);
@@ -172,8 +218,10 @@ const ReviewListItem = ({
       {expanded && (
         <ReviewDetail
           review={review}
+          allReviews={allReviews}
           studentId={studentId}
           onToggleAlunoDone={onToggleAlunoDone}
+          onNavigateToFeedback={onNavigateToFeedback}
           actionLoading={actionLoading}
         />
       )}
@@ -181,7 +229,7 @@ const ReviewListItem = ({
   );
 };
 
-const StudentReviewsPage = () => {
+const StudentReviewsPage = ({ onNavigateToFeedback = null } = {}) => {
   const { user, isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
   const studentId = user?.uid || null;
@@ -252,10 +300,12 @@ const StudentReviewsPage = () => {
               <ReviewListItem
                 key={rv.id}
                 review={rv}
+                allReviews={sorted}
                 expanded={expandedId === rv.id}
                 onToggleExpand={handleToggleExpand}
                 studentId={studentId}
                 onToggleAlunoDone={toggleAlunoDone}
+                onNavigateToFeedback={onNavigateToFeedback}
                 actionLoading={actionLoading}
               />
             ))}

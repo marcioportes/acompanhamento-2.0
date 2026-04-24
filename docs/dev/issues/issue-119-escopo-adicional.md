@@ -33,13 +33,20 @@ Ver conversa de design 24/04/2026 (aprovada por Marcio em sessão interativa):
 - **J1 (task 25)** `StudentReviewsPage` — lista só revisões fechadas + visão leitura (takeaways abertos+fechados, comparativo maturidade, notas mentor)
 - **J2 (task 26)** Sidebar aluno: item "Revisões" abaixo de "Feedback"
 - **J3 (task 27)** Dashboard aluno: card "Takeaways abertos da última revisão"
+- **J4 (task 28)** Revisão completa — `StudentReviewsPage` expandida (KPIs congelados com delta vs anterior + tabela trades com link feedback). Extração de `ReviewKpiGrid` / `ReviewTradesSection` / `reviewFormatters.js` reusáveis no mentor também. Origem: task 25 entregue com spec pobre (3 blocos em vez de espelho READ-ONLY do mentor). Mockup aprovado por Marcio com "go" em 24/04/2026. Formalizada nova seção "Autorização + Mockup" no `docs/templates/issue-control.md`.
 
-**Ordem de dispatch:** 20 → 21 → 22 (backend) → [gate humano] → 23, 24 (paralelizáveis) → 25 → 26, 27 (paralelizáveis).
+**Ordem de dispatch:** 20 → 21 → 22 (backend) → [gate humano] → 23, 24 (paralelizáveis) → 25 → 26, 27 (paralelizáveis) → 28 (fix de spec da 25, aprovado via mockup).
 
 ## Sessions
 _(preenchido por task — 1 linha cada)_
 - 24/04/2026 — Task 21 (H2) commit 84dbfd50 ok
 - 24/04/2026 — Task 22 (H3) trigger engine+IA pós-onboarding ok
+- 24/04/2026 — Task 23 (I1) botão atualizar agora aluno commit 696e40d0 ok (validator false-positive em result.log PT — precedente task 10; CLAIMS bem-formada, files/commit conferem)
+- 24/04/2026 — Task 24 (I2) botão atualizar agora mentor commit e28be575 ok (validator exit 0, 2320 passed)
+- 24/04/2026 — Task 25 (J1) StudentReviewsPage leitura commit 93d72045 ok (validator exit 0, 2330 passed, +10 testes)
+- 24/04/2026 — Task 26 (J2) sidebar aluno Revisões + rota 2a330f69 ok (validator exit 0, 2334 passed)
+- 24/04/2026 — Task 27 (J3) card takeaways última revisão fc693c82 ok (validator exit 0, 2343 passed, +9 testes, Approach A refator in-place). Plano tasks 20-27 completo.
+- 24/04/2026 — Task 28 (J4) revisão completa — mockup aprovado por Marcio ("go"). Extração ReviewKpiGrid + ReviewTradesSection + reviewFormatters. StudentReviewsPage expandida com 5 seções (espelho READ-ONLY do mentor). WeeklyReviewPage reusa os componentes extraídos. 45 testes novos nos componentes/utils.
 
 ## Shared Deltas
 _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada continua suficiente — sem bump novo.)_

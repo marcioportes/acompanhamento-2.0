@@ -441,7 +441,7 @@ const AppContent = () => {
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
           return <StudentFeedbackPage />;
         case 'student-reviews':
-          return <StudentReviewsPage />;
+          return <StudentReviewsPage onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'baseline':
           // Marco Zero — BaselineReport do assessment validado pelo mentor
           return (
