@@ -39,6 +39,7 @@ Ver conversa de design 24/04/2026 (aprovada por Marcio em sessão interativa):
 ## Sessions
 _(preenchido por task — 1 linha cada)_
 - 24/04/2026 — Task 21 (H2) commit 84dbfd50 ok
+- 24/04/2026 — Task 22 (H3) trigger engine+IA pós-onboarding ok
 
 ## Shared Deltas
 _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada continua suficiente — sem bump novo.)_
@@ -50,6 +51,12 @@ _(IDs DEC-AUTO-119-NN conforme surgem a partir de 11+)_
 - **DEC-AUTO-119-12** — Rate limit persistido em `students/{studentId}/maturity/_rateLimit.calls[<callerUid>]` (campo map, chave = uid). Permite mentor e aluno terem stamps independentes sem shadowing; `lastRecomputeAt` também é gravado como conveniência para observabilidade. Campo `calls` é um map inline no mesmo doc, não subcollection (segue INV-12 em espírito — zero estrutura nova).
 - **DEC-AUTO-119-13** — Ordem no close da revisão (task 21 H2): `recomputeStudentMaturity` ANTES do `rebuildSnapshot`. Garante que `frozenSnapshot.maturitySnapshot` reflita o motor fresco do momento do publish. Rate-limit throttled (1×/h por caller) é tolerante — se já recomputou há menos de 1h, o doc atual já é representativo e a sequência prossegue lendo direto `maturity/current`.
 - **DEC-AUTO-119-14** — `classifyMaturityProgression` no close é **fire-and-forget** (não aguarda). A CF persiste `aiNarrative/aiTrigger/aiGeneratedAt` em `maturity/current` via cache (§3.1 D12); o próximo render do dashboard/ReviewPage detecta via listener. Aguardar síncrono bloquearia o publish por segundos (Claude Sonnet) sem ganho — a narrativa entra no `maturitySnapshot` congelado da próxima revisão quando já estiver cacheada, e o `alunoNarrativePanel`/`MaturityNarrativeCard` atual lê o doc vivo, não o snapshot. `tradesSummary` enviado à CF é derivado do `kpis` já computado pelo `buildClientSnapshot` (winRate/payoff/evPerTrade/emotional/compliance) — não duplica engine.
+
+- **DEC-AUTO-119-16** — Novo trigger `ONBOARDING_INITIAL` em `classifyMaturityProgression` para welcome narrative pós-assessment 4D (task 22 H3). Adição MÍNIMA: 1 linha no validator (`['UP', 'REGRESSION', 'ONBOARDING_INITIAL']`), 1 branch `else` no `triggerDescription` do prompt + 1 hint nos campos `narrative/nextStageGuidance`. Cache policy **inalterada**: `currentTrigger(maturity)` em `src/utils/maturityAITrigger.js` continua retornando apenas `'UP' | 'REGRESSION' | null`. O aiTrigger persistido pode valer `ONBOARDING_INITIAL`, e após o primeiro trade real a comparação `cachedTrigger !== currentTrigger` (cached='ONBOARDING_INITIAL' vs UP/REGRESSION) dispara a próxima narrativa como esperado.
+
+- **DEC-AUTO-119-17** — Pipeline pós-onboarding **bypassa `shouldGenerateAI`** (único caller que o faz). Motivo: no marco zero o aluno ainda não tem trades, logo `proposedTransition.proposed === null` e `signalRegression.detected === false` → `currentTrigger()` retorna `null` → `shouldGenerateAI()` retorna `false`. O pipeline força o dispatch porque o trigger é externo ao estado da maturidade (é um evento de ciclo de vida do aluno, não da engine). Isolamento: helper `dispatchOnboardingMaturityAI` é separado de `maybeDispatchMaturityAI` (close de revisão) exatamente para manter essa semântica explícita — o close respeita a cache policy, o onboarding a ignora por design.
+
+- **DEC-AUTO-119-18** — Wiring em `StudentOnboardingPage.handleMentorSave`, ANTES do `setSaving(false)` e DEPOIS do `saveInitialAssessment`. A transição `onboardingStatus: 'active'` é parte do `saveInitialAssessment` (useAssessment.js linha 290) e NÃO pode depender do pipeline de maturidade — se a engine/IA falhar, o aluno ainda fica ativo. O `await runOnboardingMaturityPipeline({ studentId })` é envelopado em try/catch warning; o pipeline em si nunca relança, mas o try/catch é defensivo.
 
 ## Chunks
 - CHUNK-09 (escrita) — já locked desde abertura #119

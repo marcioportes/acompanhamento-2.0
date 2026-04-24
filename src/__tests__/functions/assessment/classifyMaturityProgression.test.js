@@ -156,6 +156,39 @@ describe('classifyMaturityProgression', () => {
     expect(opts).toEqual({ merge: true });
   });
 
+  // #119 task 22 (DEC-AUTO-119-16): novo trigger ONBOARDING_INITIAL — marco
+  // zero pós-assessment 4D. Validator aceita, prompt ganha branch de
+  // triggerDescription, resto do fluxo é idêntico (parse + grava cache).
+  it('happy path ONBOARDING_INITIAL: aceita trigger e grava aiTrigger no doc', async () => {
+    const { admin, setSpy } = makeFakeAdmin();
+    const { client, createSpy } = makeFakeClient(async () =>
+      claudeTextResponse('```json\n' + validClaudePayload() + '\n```')
+    );
+
+    const req = buildRequest({
+      trigger: 'ONBOARDING_INITIAL',
+      tradesSummary: {
+        windowSize: 0,
+        winRate: null, payoff: null, expectancy: null,
+        maxDDPercent: null, avgDuration: null,
+        tiltCount: 0, revengeCount: 0,
+        complianceRate: null, journalRate: null,
+      },
+    });
+
+    const result = await runClassify(req, { adminOverride: admin, clientOverride: client });
+
+    expect(result.error).toBeNull();
+    expect(result.narrative).toContain('Evolução');
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy.mock.calls[0][0].aiTrigger).toBe('ONBOARDING_INITIAL');
+
+    // Prompt deve conter a descrição do trigger ONBOARDING_INITIAL
+    const prompt = createSpy.mock.calls[0][0].messages[0].content;
+    expect(prompt).toMatch(/diagnóstico inicial concluído/);
+  });
+
   it('happy path REGRESSION: retorno válido e aiTrigger=REGRESSION no doc', async () => {
     const { admin, setSpy } = makeFakeAdmin();
     const payload = validClaudePayload({

@@ -74,7 +74,13 @@ function validateInput(data) {
   if (!data?.scores || typeof data.scores !== 'object') errors.push('scores missing');
   if (!Array.isArray(data?.gates)) errors.push('gates must be array');
   if (!data?.tradesSummary || typeof data.tradesSummary !== 'object') errors.push('tradesSummary missing');
-  if (!['UP', 'REGRESSION'].includes(data?.trigger)) errors.push("trigger must be 'UP' or 'REGRESSION'");
+  // ONBOARDING_INITIAL adicionado em #119 task 22 (DEC-AUTO-119-16) — marco zero
+  // pós-assessment. Cache policy em src/utils/maturityAITrigger.js permanece
+  // inalterada: currentTrigger NUNCA retorna 'ONBOARDING_INITIAL', então
+  // shouldGenerateAI segue comparando apenas UP/REGRESSION.
+  if (!['UP', 'REGRESSION', 'ONBOARDING_INITIAL'].includes(data?.trigger)) {
+    errors.push("trigger must be 'UP', 'REGRESSION' or 'ONBOARDING_INITIAL'");
+  }
   return errors;
 }
 
@@ -91,10 +97,15 @@ function buildPrompt(input) {
   const gatesMet = input.gates.filter((g) => g.met === true);
   const gatesPending = input.gates.filter((g) => g.met !== true);
 
-  const triggerDescription =
-    input.trigger === 'UP'
-      ? `todos os gates para ${nextStageName} foram conquistados`
-      : 'métricas recentes sugerem regressão';
+  let triggerDescription;
+  if (input.trigger === 'UP') {
+    triggerDescription = `todos os gates para ${nextStageName} foram conquistados`;
+  } else if (input.trigger === 'REGRESSION') {
+    triggerDescription = 'métricas recentes sugerem regressão';
+  } else {
+    // ONBOARDING_INITIAL — marco zero do assessment 4D, ainda sem trades
+    triggerDescription = `diagnóstico inicial concluído em ${currentStageName} — primeira leitura do aluno`;
+  }
 
   const scores = input.scores ?? {};
   const baselineScores = input.baselineScores ?? {};
@@ -150,9 +161,9 @@ Gere um relatório em markdown com EXATAMENTE esta estrutura JSON como output:
 
 \`\`\`json
 {
-  "narrative": "<markdown 150-250 palavras sobre a evolução. Para trigger UP: celebra com precisão, aponta qual área consolidou mais. Para REGRESSION: identifica qual padrão emocional/operacional voltou a aparecer.>",
+  "narrative": "<markdown 150-250 palavras sobre a leitura atual. Para UP: celebra com precisão, aponta qual área consolidou mais. Para REGRESSION: identifica qual padrão emocional/operacional voltou a aparecer. Para ONBOARDING_INITIAL: apresenta o stage diagnosticado, destaca forças do baseline 4D e o gap principal a trabalhar — sem celebrar nem alarmar.>",
   "patternsDetected": ["<padrão 1 observado nos números — bullet conciso 10-20 palavras>", "<padrão 2>", "<até 5 bullets, mínimo 1>"],
-  "nextStageGuidance": "<markdown 80-150 palavras com orientação prática. Para UP: o que focar no próximo stage. Para REGRESSION: ação específica para estabilizar.>",
+  "nextStageGuidance": "<markdown 80-150 palavras com orientação prática. Para UP: o que focar no próximo stage. Para REGRESSION: ação específica para estabilizar. Para ONBOARDING_INITIAL: o que priorizar nas primeiras semanas de operação para consolidar o stage atual.>",
   "confidence": "HIGH|MED|LOW"
 }
 \`\`\`

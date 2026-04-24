@@ -25,6 +25,7 @@ import { detectAllIncongruences } from '../utils/incongruenceDetector.js';
 import { prepareProbingPayload } from '../utils/probingTriggers.js';
 import { prepareStagePayload } from '../utils/stageMapper.js';
 import { QUESTION_MAP } from '../utils/assessmentQuestions.js';
+import { runOnboardingMaturityPipeline } from '../utils/onboardingMaturityPipeline.js';
 
 import QuestionnaireFlow from '../components/Onboarding/QuestionnaireFlow.jsx';
 import ProbingIntro from '../components/Onboarding/ProbingIntro.jsx';
@@ -532,12 +533,24 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
 
       await saveInitialAssessment(assessmentDoc);
 
+      // Issue #119 task 22 (H3) — marco zero: dispara engine + IA pós-onboarding
+      // para que o aluno chegue ao dashboard com snapshot de maturidade fresh
+      // antes do primeiro trade. Engine é awaited; IA é fire-and-forget.
+      // Qualquer falha aqui é logada e silenciada — a transição onboardingStatus
+      // → 'active' já ocorreu via saveInitialAssessment e NÃO pode depender do
+      // motor de maturidade.
+      try {
+        await runOnboardingMaturityPipeline({ studentId });
+      } catch (pipelineErr) {
+        console.warn('[StudentOnboardingPage] maturity pipeline failed (non-blocking):', pipelineErr?.message || pipelineErr);
+      }
+
     } catch (err) {
       console.error('Mentor save error:', err);
     } finally {
       setSaving(false);
     }
-  }, [assessmentScores, stageDiagnosis, reportData, incongruenceData, saveInitialAssessment]);
+  }, [assessmentScores, stageDiagnosis, reportData, incongruenceData, saveInitialAssessment, studentId]);
 
   // ── Render ────────────────────────────────────────────────
 
