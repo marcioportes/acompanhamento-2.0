@@ -23,7 +23,7 @@ const DebugBadge = ({ component, embedded = false }) => {
 
   const positionClass = embedded
     ? 'relative mt-1 flex justify-end pr-2 pb-1 opacity-50 select-none cursor-pointer'
-    : 'fixed bottom-2 left-2 z-50 select-none cursor-pointer';
+    : `fixed bottom-2 right-2 z-50 select-none cursor-pointer ${expanded ? '' : 'opacity-60 hover:opacity-100'}`;
 
   return (
     <div
