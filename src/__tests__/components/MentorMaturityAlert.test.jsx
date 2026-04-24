@@ -6,12 +6,21 @@
  * (severity desconhecida, maturity sem gates/reasons/blockers, lista vazia).
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 
 vi.mock('../../components/DebugBadge', () => ({
   __esModule: true,
   default: ({ component }) => <div data-testid="debug-badge">{component}</div>,
+}));
+
+const mockCallable = vi.fn();
+vi.mock('firebase/functions', () => ({
+  httpsCallable: () => mockCallable,
+}));
+
+vi.mock('../../firebase', () => ({
+  functions: {},
 }));
 
 import MentorMaturityAlert from '../../components/MentorMaturityAlert';
@@ -37,6 +46,10 @@ const buildMaturity = ({
 });
 
 describe('MentorMaturityAlert', () => {
+  beforeEach(() => {
+    mockCallable.mockReset();
+  });
+
   it('retorna null quando nenhum aluno tem regressão detectada', () => {
     const students = [
       { id: 'u1', name: 'Aline', email: 'aline@x.com' },
@@ -220,5 +233,89 @@ describe('MentorMaturityAlert', () => {
       <MentorMaturityAlert students={students} maturityMap={map} embedded />
     );
     expect(screen.queryByTestId('debug-badge')).toBeNull();
+  });
+
+  describe('botão Atualizar maturidade (task 24 — I2)', () => {
+    it('renderiza botão dentro do detalhe expandido com aluno em regressão', () => {
+      const students = [{ id: 'u1', name: 'Marcos' }];
+      const map = new Map([['u1', buildMaturity()]]);
+      render(<MentorMaturityAlert students={students} maturityMap={map} />);
+      expect(screen.queryByTestId('alert-refresh-u1')).toBeNull();
+
+      fireEvent.click(screen.getByTestId('alert-toggle-u1'));
+      const btn = screen.getByTestId('alert-refresh-u1');
+      expect(btn).toBeInTheDocument();
+      expect(btn.textContent).toMatch(/Atualizar maturidade/);
+      expect(btn).not.toBeDisabled();
+    });
+
+    it('click dispara recompute(studentId) com o UID correto', async () => {
+      mockCallable.mockResolvedValueOnce({
+        data: { success: true, stageCurrent: 3, gatesMet: 4, gatesTotal: 6 },
+      });
+      const students = [{ id: 'u-target', name: 'Aline' }];
+      const map = new Map([['u-target', buildMaturity()]]);
+      render(<MentorMaturityAlert students={students} maturityMap={map} />);
+
+      fireEvent.click(screen.getByTestId('alert-toggle-u-target'));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('alert-refresh-u-target'));
+      });
+
+      expect(mockCallable).toHaveBeenCalledTimes(1);
+      expect(mockCallable).toHaveBeenCalledWith({ studentId: 'u-target' });
+    });
+
+    it('estado loading desabilita o botão e mostra "Atualizando..."', async () => {
+      let resolveCall;
+      mockCallable.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveCall = resolve;
+        })
+      );
+
+      const students = [{ id: 'u1', name: 'Marcos' }];
+      const map = new Map([['u1', buildMaturity()]]);
+      render(<MentorMaturityAlert students={students} maturityMap={map} />);
+
+      fireEvent.click(screen.getByTestId('alert-toggle-u1'));
+      act(() => {
+        fireEvent.click(screen.getByTestId('alert-refresh-u1'));
+      });
+
+      await waitFor(() => {
+        const btn = screen.getByTestId('alert-refresh-u1');
+        expect(btn).toBeDisabled();
+        expect(btn.textContent).toMatch(/Atualizando\.\.\./);
+      });
+
+      await act(async () => {
+        resolveCall({ data: { success: true, stageCurrent: 1, gatesMet: 0, gatesTotal: 0 } });
+      });
+    });
+
+    it('estado throttled exibe "Próxima em HH:MM" (formato BR 24h)', async () => {
+      const future = new Date();
+      future.setHours(14, 37, 0, 0);
+      mockCallable.mockResolvedValueOnce({
+        data: { throttled: true, nextAllowedAt: future.getTime() },
+      });
+
+      const students = [{ id: 'u1', name: 'Marcos' }];
+      const map = new Map([['u1', buildMaturity()]]);
+      render(<MentorMaturityAlert students={students} maturityMap={map} />);
+
+      fireEvent.click(screen.getByTestId('alert-toggle-u1'));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('alert-refresh-u1'));
+      });
+
+      const expected = future.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const msg = screen.getByTestId('alert-refresh-throttled-u1');
+      expect(msg.textContent).toBe(`Próxima em ${expected}`);
+    });
   });
 });

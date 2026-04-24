@@ -14,6 +14,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { STAGE_NAMES } from '../utils/maturityEngine/constants';
+import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
 import DebugBadge from './DebugBadge';
 
 const SEVERITY_CLASSES = {
@@ -23,6 +24,17 @@ const SEVERITY_CLASSES = {
 };
 
 const SEVERITY_RANK = { HIGH: 3, MED: 2, LOW: 1 };
+
+function formatThrottleTime(nextAllowedAt) {
+  if (nextAllowedAt == null) return null;
+  const ms =
+    typeof nextAllowedAt === 'object' && typeof nextAllowedAt._seconds === 'number'
+      ? nextAllowedAt._seconds * 1000
+      : nextAllowedAt;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
 
 const MentorMaturityAlert = ({
   students = [],
@@ -46,6 +58,14 @@ const MentorMaturityAlert = ({
   }, [students, maturityMap]);
 
   const [expanded, setExpanded] = useState(() => new Set());
+  const [activeRefreshId, setActiveRefreshId] = useState(null);
+  const {
+    recompute,
+    loading: refreshLoading,
+    error: refreshError,
+    throttled: refreshThrottled,
+    nextAllowedAt: refreshNextAllowedAt,
+  } = useRecomputeStudentMaturity();
 
   if (alerts.length === 0) return null;
 
@@ -56,6 +76,11 @@ const MentorMaturityAlert = ({
       else next.add(id);
       return next;
     });
+  };
+
+  const handleRefresh = (studentId) => {
+    setActiveRefreshId(studentId);
+    recompute(studentId).catch(() => {});
   };
 
   return (
@@ -161,8 +186,8 @@ const MentorMaturityAlert = ({
                     </div>
                   )}
 
-                  {onSelectStudent && (
-                    <div className="pt-1">
+                  <div className="pt-1 flex items-center gap-3 flex-wrap">
+                    {onSelectStudent && (
                       <button
                         type="button"
                         className="text-xs text-slate-300 hover:text-white underline underline-offset-2"
@@ -171,8 +196,54 @@ const MentorMaturityAlert = ({
                       >
                         ver aluno
                       </button>
-                    </div>
-                  )}
+                    )}
+                    {(() => {
+                      const isActive = activeRefreshId === student.id;
+                      const isLoading = isActive && refreshLoading;
+                      const isThrottled = isActive && refreshThrottled && !refreshLoading;
+                      const isError = isActive && refreshError && !refreshLoading;
+                      const throttleTime = isThrottled
+                        ? formatThrottleTime(refreshNextAllowedAt)
+                        : null;
+                      return (
+                        <span className="inline-flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleRefresh(student.id)}
+                            disabled={isLoading}
+                            data-testid={`alert-refresh-${student.id}`}
+                            aria-label="Atualizar maturidade agora"
+                            className="text-xs text-slate-300 hover:text-white underline underline-offset-2 inline-flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={isLoading ? 'inline-block animate-spin' : 'inline-block'}
+                            >
+                              ↻
+                            </span>
+                            {isLoading ? 'Atualizando...' : 'Atualizar maturidade'}
+                          </button>
+                          {isThrottled && throttleTime && (
+                            <span
+                              data-testid={`alert-refresh-throttled-${student.id}`}
+                              className="text-xs text-slate-400 font-mono"
+                            >
+                              Próxima em {throttleTime}
+                            </span>
+                          )}
+                          {isError && (
+                            <span
+                              data-testid={`alert-refresh-error-${student.id}`}
+                              className="text-xs text-red-300"
+                              title={refreshError?.message ?? 'Falha ao atualizar'}
+                            >
+                              Falha ao atualizar
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </li>
