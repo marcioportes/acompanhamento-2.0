@@ -3,6 +3,9 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.45.0: feat: FeedbackPage mentor edit+lock+recalc + MentorDashboard currency multi-moeda +
+ *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1) —
+ *   [RESERVADA — entrada definitiva no encerramento.]
  * - 1.43.1: fix: Plano criado por mentor não é visível pelo aluno (issue #183, Sev1) —
  *   `usePlans.addPlan` hardcodava `studentId: user.uid` mesmo quando o criador era
  *   o mentor atuando em nome do aluno. Plano ficava gravado com UID do mentor e o
