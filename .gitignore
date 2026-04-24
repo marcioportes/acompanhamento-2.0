@@ -71,3 +71,8 @@ codigo-fonte.zip
 # CC Coordinator Mailbox (inter-session comms via file-drop)
 # ==============================
 .cc-mailbox/
+
+# ==============================
+# Scripts: logs de run-once (issue #183 e afins)
+# ==============================
+scripts/logs/
