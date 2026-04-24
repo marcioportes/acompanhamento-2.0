@@ -5,4 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-09 | #119 | `feat/issue-119-maturidade-engine` | 23/04/2026 | Modo autônomo (CC-Interface + Coord + Worker) — escopo 6 fases (A engine puro + B persistência CF + C UI aluno + D IA Sonnet 4.6 + E review snapshot + F mentor Torre) |
+_(nenhum lock ativo — CHUNK-09 liberado em 24/04/2026 com merge do PR #192)_

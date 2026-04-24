@@ -8,6 +8,46 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.44.0] - 24/04/2026
+
+**Issue:** #119 (feat: Motor de progressão Maturidade 4D × 5 stages — modo autônomo)
+**PR:** #192
+
+Entrega consolidada das 28 tasks do issue #119 em 6 fases originais (A engine puro, B persistência CF, C UI aluno, D IA Sonnet 4.6, E freeze em review snapshot, F UI mentor Torre de Controle) + 2 fases de escopo adicional (H gatilhos single-point; I/J tela Revisões do aluno + hotfix final).
+
+Reservada originalmente como 1.43.0 em 23/04/2026; bump mecânico para 1.44.0 após o #183 consumir 1.43.1 antes do merge. Registry de versões atualizado.
+
+#### Adicionado
+
+- **Engine puro de maturidade** — `src/utils/maturityEngine/*` com funções puras `evaluateGates`, `calculateStageScores`, `proposeStageTransition`. 4 dimensões (Emocional / Financeira / Operacional / Maturidade composta) × 5 stages (Caos · Reativo · Metódico · Profissional · Maestria). Composite `0.25E + 0.25F + 0.20O + 0.30M`. Janela rolling por stage (20/30/50/80/100 trades). 6 gates 1→2, 8 gates 2→3, 10 gates 3→4, 9 gates 4→5. Labels PT-BR.
+- **Persistência** — `students/{uid}/maturity/{current|_historyBucket/history/{YYYY-MM-DD}}` via `functions/maturity/recomputeMaturity.js`. Schema validado em `maturityDocSchema.js`. Rules já cobrem via recursivo `{docId=**}`.
+- **Triggers** — `onTradeCreated`/`onTradeUpdated` (close de trade), close de revisão semanal (freeze de `frozenSnapshot.maturitySnapshot`), pós-onboarding (welcome narrative). Isolamento total (exceções viram `skipped`).
+- **Callable single-point** — `recomputeStudentMaturity` com rate limit 5min por caller (stamp em `_rateLimit.calls[<callerUid>]`). Mentor whitelist via `isMentorEmail(token.email)` pode recalcular qualquer aluno; aluno limitado a si mesmo.
+- **IA Sonnet 4.6** — `classifyMaturityProgression` gera narrativa + padrões detectados + guidance para próximo stage. Triggers: UP, REGRESSION, ONBOARDING_INITIAL (novo). Cache policy em `src/utils/maturityAITrigger.js`; pipeline pós-onboarding bypassa `shouldGenerateAI` (helper `dispatchOnboardingMaturityAI` isolado).
+- **UI aluno** — `MaturityProgressionCard` (stage atual, gates, barras 4D, botão "Atualizar agora" com countdown MM:SS e estados vazio/erro com CTA). `StudentReviewsPage` espelho READ-ONLY do mentor (5 seções: KPIs congelados com delta vs revisão anterior, trades revisados com link Feedback, takeaways checklist + texto livre, seção Reunião com meetingLink/videoLink, comparativo maturidade 4D, notas). Dashboard: card "Takeaways abertos da última revisão". Sidebar: rota "Revisões".
+- **UI mentor (Torre de Controle)** — `MaturitySemaphoreBadge` por aluno, `MentorMaturityAlert` card de regressão expandível, botão "Atualizar agora" disparando o callable.
+- **Componentes reusáveis extraídos da WeeklyReviewPage** — `ReviewKpiGrid`, `ReviewTradesSection`, `MaturityComparisonSection`, `reviewFormatters.js` (fmtMoney/fmtPct/fmtDateBR/deltaText/statusBadge etc.).
+- **DECs (auto-geradas no modo autônomo)** — DEC-AUTO-119-01..18 registradas no doc de controle da issue.
+
+#### Corrigido
+
+- **DEC-020 respeitada** — engine detecta regressão mas nunca rebaixa automaticamente (stage floor = `max(storedStage, baselineStage)`). Corrige bug onde primeiro recompute pré-fix (`f4c72941`) gravava stage=1 para alunos com baseline>1.
+- **Baseline lido do path correto** — `assessment.experience.stage` (schema real do StudentOnboardingPage) em vez de `assessment.stage` (nunca existiu). Dimensões lidas de `emotional.score`/`financial.score`/`operational.fit_score`.
+- **DebugBadge** — movido para `bottom-2 right-2` com `opacity-60 hover:opacity-100` (evita sobrepor conteúdo inferior de cards).
+- **Stage labels PT-BR em testes pré-existentes** — `EmotionAnalysis.test` e `MaturityComparisonSection.test` (METHODICAL/REACTIVE/MASTERY → Metódico/Reativo/Maestria).
+
+#### Observações
+
+- Auditoria de furos estruturais em gates × recursos (24/04 tarde) identificou 5 gaps que limitam promoção em stages específicos, mas não invalidam esta entrega. Todos em follow-up como issues próprias no projeto "Mentoria 2.0 - Product Board" com protocolo de captura (briefing + mockup + memória antes de código):
+  - **#187** — MEP/MEN (MFE/MAE em PT-BR) + Sharpe com benchmark (gate 3→4 e 4→5)
+  - **#189** — score emocional real (furo UNIVERSAL — dimensão E hardcoded em 50)
+  - **#190** — rastreamento tilt/revenge trades (gate Maestria)
+  - **#191** — fix semântico do gate `compliance-100` (janela dos últimos N trades)
+  - **#184** — imutabilidade de trades em revisões
+  - **#185** — painel diagnóstico do trade atômico (mentor)
+
+---
+
 ## [1.43.1] - 24/04/2026
 
 **Issue:** #183 (fix: Plano criado por mentor não é visível pelo aluno — Sev1)
