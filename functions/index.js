@@ -1397,6 +1397,11 @@ exports.generateAssessmentReport = require("./assessment/generateAssessmentRepor
 exports.classifyMaturityProgression = require("./assessment/classifyMaturityProgression");
 
 // ============================================
+// MATURITY — Recompute single-point (CHUNK-09, issue #119 task 20)
+// ============================================
+exports.recomputeStudentMaturity = require("./maturity/recomputeStudentMaturity");
+
+// ============================================
 // SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)
 // ============================================
 exports.checkSubscriptions = require("./subscriptions/checkSubscriptions");

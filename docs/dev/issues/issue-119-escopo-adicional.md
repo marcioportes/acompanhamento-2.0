@@ -45,6 +45,9 @@ _(nenhum shared file esperado além do próprio issue doc. v1.43.0 reservada con
 ## Decisions
 _(IDs DEC-AUTO-119-NN conforme surgem a partir de 11+)_
 
+- **DEC-AUTO-119-11** — Autorização mentor via `isMentorEmail(token.email)` (whitelist). Padrão canônico do repo (`functions/index.js`, `functions/reviews/validators.js`); `students/{id}.mentorId` não é usado hoje, então não há base confiável para a checagem alternativa proposta no brief. Alunos continuam limitados a si mesmos (`auth.uid === studentId`).
+- **DEC-AUTO-119-12** — Rate limit persistido em `students/{studentId}/maturity/_rateLimit.calls[<callerUid>]` (campo map, chave = uid). Permite mentor e aluno terem stamps independentes sem shadowing; `lastRecomputeAt` também é gravado como conveniência para observabilidade. Campo `calls` é um map inline no mesmo doc, não subcollection (segue INV-12 em espírito — zero estrutura nova).
+
 ## Chunks
 - CHUNK-09 (escrita) — já locked desde abertura #119
 - CHUNK-04, CHUNK-05, CHUNK-06, CHUNK-08 (leitura) — já declarados
