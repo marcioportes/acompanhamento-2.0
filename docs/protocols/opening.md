@@ -12,8 +12,9 @@
 □ Consultar Registry de Chunks (seção 6.3) — verificar que TODOS estão AVAILABLE
    → Se algum chunk está LOCKED: PARAR. Notificar Marcio com "CHUNK-XX locked por issue-YYY"
    → Se chunk não existe no registry: PARAR. Propor novo chunk ao Marcio
-□ AINDA NO MAIN: registrar locks na tabela §6.3 (chunk + issue + branch + data)
-□ AINDA NO MAIN: ler `src/version.js` e reservar o próximo minor disponível (ex: v1.30.0 → reservar v1.31.0)
+□ AINDA NO MAIN: registrar locks em `docs/registry/chunks.md` (chunk + issue + branch + data)
+□ AINDA NO MAIN: reservar versão seguindo **regra de base-released** (ver abaixo) e registrar
+  em `docs/registry/versions.md` com status "reservada"
 □ AINDA NO MAIN: commit único — "docs: registrar locks CHUNK-XX + reservar vX.Y.Z para issue-NNN"
 □ Criar worktree: git worktree add ~/projects/issue-{NNN} -b tipo/issue-NNN-descricao (INV-16)
    (worktree nasce com locks e versão já commitados — zero conflito no merge)
@@ -159,5 +160,26 @@ Descrição do problema ou feature. Por que existe. Qual o impacto.
 □ PARAR — aguardar confirmação do Marcio
 ```
 
-> **Regra de versão (Fase 3 → Gate Pré-Entrega):** a versão é reservada no main no ato de abertura da sessão (lida de `src/version.js` + próximo minor), commitada junto com os locks. A próxima sessão lê o main, vê a versão reservada, e reserva o próximo. Conflito de versão eliminado na origem — no gate pré-entrega a versão já está decidida, só aplica no `version.js` + CHANGELOG. Se a sessão da frente mergear primeiro (raro), rebase resolve a versão; se a própria sessão descobrir que precisa bumpar major, renegocia com Marcio.
+> **Regra de versão — base-released (Fase 3 → Gate Pré-Entrega):**
+>
+> **1. Base do cálculo:** a versão reservada é calculada sempre sobre a **última versão CONSUMIDA** no main (coluna `status = consumida` em `docs/registry/versions.md`), nunca sobre reservas pendentes. Reservas pendentes de outras sessões podem mergear em qualquer ordem — referenciá-las é aposta que quebra semver quando a ordem real de merge diverge.
+>
+> **2. Tipo do issue determina o bump:**
+> - **Feature / minor / refactor estrutural** → próximo minor acima da última consumida (ex: consumida = 1.43.1 → reservar 1.44.0)
+> - **Fix / patch / hotfix** → próximo patch sobre a última consumida (ex: consumida = 1.43.1 → reservar 1.43.2)
+> - **Breaking change** → próximo major, renegociado com Marcio
+>
+> **3. Coexistência:** duas ou mais reservas pendentes simultâneas são permitidas — cada uma aponta para o próximo número lógico a partir da mesma base consumida. Exemplo válido:
+> - Consumida: 1.43.1
+> - #A (feature) reserva 1.44.0
+> - #B (feature) reserva 1.45.0 *(lê o registry e vê que 1.44.0 já está reservada por #A)*
+> - #C (fix) reserva 1.43.2 *(patch sobre a consumida; não compete com 1.44.x)*
+>
+> **4. Registro obrigatório de conflito:** se nesta abertura há reserva anterior de MINOR da mesma faixa, a sessão NÃO "pula pro próximo slot" — ela documenta na mensagem de commit do lock que há reserva pendente concorrente e assume explicitamente o próximo slot coerente. Exemplo de commit message:
+> ```
+> docs: registrar lock CHUNK-XX + reservar v1.45.0 para issue-NNN
+> (v1.44.0 reservada por #A, pendente — este issue assume v1.45.0)
+> ```
+>
+> **5. Gate pré-entrega — sessão que merge depois pode precisar rebumpar:** se quando o issue encerra a versão reservada já foi tomada por outro issue (merge out-of-order), a sessão de encerramento faz o bump coerente com o estado atual do main (última consumida + tipo do issue) e documenta no commit de closure. Exemplo vivido em 24/04/2026: #119 reservou 1.43.0, #183 abriu depois reservando 1.43.1 (em vez de 1.44.0), #183 mergeou primeiro consumindo 1.43.1, #119 no encerramento rebumpou para 1.44.0. Evitável se #183 tivesse aplicado a regra 2 corretamente (fix/patch sobre a consumida 1.42.1 → reservar 1.42.2; não mexer em 1.43.x que estava reservada por #119).
 
