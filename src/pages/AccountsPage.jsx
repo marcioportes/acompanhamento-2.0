@@ -533,6 +533,20 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
     }
   };
 
+  // Handler: criação de plano em nome do dono da conta (issue #183).
+  // AccountsPage usa `usePlans()` sem overrideStudentId; sem este wrapper,
+  // `addPlan` cairia no fallback `user.uid` e gravaria o UID do MENTOR como dono
+  // → aluno não enxergaria o plano.
+  const handleCreatePlanForSelectedAccount = async (planData) => {
+    if (!selectedAccount) throw new Error('Nenhuma conta selecionada');
+    return addPlan({
+      ...planData,
+      studentId: selectedAccount.studentId,
+      studentEmail: selectedAccount.studentEmail,
+      studentName: selectedAccount.studentName,
+    });
+  };
+
   // Handler: Mentor salva plano via PlanManagementModal (chamado do accordion)
   const handleMentorSavePlan = async (planData) => {
     if (!editingPlan) return;
@@ -573,7 +587,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
-    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={addPlan} planSubmitting={planSubmitting} />;
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={handleCreatePlanForSelectedAccount} planSubmitting={planSubmitting} />;
   }
 
   return (

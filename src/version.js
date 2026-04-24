@@ -3,6 +3,19 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.43.1: fix: Plano criado por mentor não é visível pelo aluno (issue #183, Sev1) —
+ *   `usePlans.addPlan` hardcodava `studentId: user.uid` mesmo quando o criador era
+ *   o mentor atuando em nome do aluno. Plano ficava gravado com UID do mentor e o
+ *   aluno (filtro `where studentId == own.uid`) nunca enxergava. Fix: prioridade
+ *   do dono agora é `planData.studentId > overrideStudentId > user.uid`; campos
+ *   `studentEmail`/`studentName` herdam do `planData`; ausentes e criador != dono
+ *   ficam `null` (não vaza email do mentor); novo campo `createdBy`/`createdByEmail`
+ *   para audit. `AccountsPage` ganha wrapper `handleCreatePlanForSelectedAccount`
+ *   que propaga `studentId/Email/Name` de `account` para `addPlan`. Script run-once
+ *   `scripts/issue-183-repair-orphan-plans.mjs` (REMAP via `account.studentId`
+ *   com cascade em trades; dry-run default, `--execute --confirm=SIM` exige dupla
+ *   confirmação) — 2 planos órfãos em prod remapeados (commits `_repairedByIssue183*`
+ *   no doc para auditoria/rollback). 5 testes novos (1895/1895 total).
  * - 1.43.0: feat: Motor de progressão Maturidade 4D × 5 estágios (issue #119, modo autônomo) —
  *   engine puro `src/utils/maturityEngine.js` (funções puras `evaluateGates`,
  *   `calculateStageScores`, `proposeStageTransition`) + persistência `students/{uid}/maturity/
@@ -135,10 +148,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.43.0',
-  build: '20260423',
-  display: 'v1.43.0',
-  full: '1.43.0+20260423',
+  version: '1.43.1',
+  build: '20260424',
+  display: 'v1.43.1',
+  full: '1.43.1+20260424',
 };
 export default VERSION;
 export { VERSION };

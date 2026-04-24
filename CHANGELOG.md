@@ -8,6 +8,43 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.43.1] - 24/04/2026
+
+**Issue:** #183 (fix: Plano criado por mentor não é visível pelo aluno — Sev1)
+**PR:** (a preencher quando mergeado)
+
+Fast-track Sev1. `usePlans.addPlan` hardcodava `studentId: user.uid` mesmo quando o criador era o mentor atuando em nome do aluno. Plano ficava gravado com UID do mentor e o aluno (filtro `where studentId == own.uid`) nunca enxergava.
+
+#### Corrigido
+
+- **`src/hooks/usePlans.js:addPlan`** — prioridade do dono agora é `planData.studentId > overrideStudentId > user.uid`; campos `studentEmail`/`studentName` herdam do `planData`; ausentes e criador != dono ficam `null` (não vaza email do mentor para o dono); novo campo `createdBy`/`createdByEmail` sempre gravado para audit (pode diferir de `studentId` quando mentor cria em nome do aluno). Dependências do `useCallback` atualizadas com `overrideStudentId`.
+- **`src/pages/AccountsPage.jsx`** — novo wrapper `handleCreatePlanForSelectedAccount` que enriquece `planData` com `studentId`/`studentEmail`/`studentName` do `selectedAccount` antes de chamar `addPlan`. Consumido via `onCreatePlan={handleCreatePlanForSelectedAccount}` em `<AccountDetailPage>` (substitui `onCreatePlan={addPlan}` direto). `StudentDashboard` já usava `usePlans(overrideStudentId)` — depende apenas do fix no hook.
+
+#### Adicionado
+
+- **`scripts/issue-183-repair-orphan-plans.mjs`** (run-once, firebase-admin via `createRequire` do `functions/node_modules/`) — REMAP dos planos órfãos em produção usando `account.studentId` como fonte da verdade. Estratégia não-destrutiva (preserva trades vinculados); cascade em `trades` (atualiza `studentId`/`studentEmail`) para planos que tenham histórico. Safety nets: skip com motivo registrado quando plano sem `accountId`, account inexistente, account sem `studentId`, ou account também pertencente ao mentor (conta de teste). Backup dos valores antigos gravado em `_repairedByIssue183PreviousStudentId`/`_repairedByIssue183PreviousStudentEmail` + timestamp `_repairedByIssue183At` no doc. Dry-run default; `--execute --confirm=SIM` exige dupla confirmação. Log JSON persistente em `scripts/logs/issue-183-{dryrun\|execute}-<ISO8601>.json`.
+- **`src/__tests__/hooks/usePlans.addPlan.test.js`** — 5 casos cobrindo: aluno criando próprio plano (studentId = aluno.uid), mentor em view-as-student (studentId = aluno, createdBy = mentor, studentEmail/Name = null — não vaza mentor), `planData.studentId` prevalece sobre `overrideStudentId`, fallback legado (mentor sem contexto → studentId = mentor, cenário que o wrapper em `AccountsPage`/`StudentDashboard` elimina), preservação de campos financeiros (regressão).
+- **Entrada em `.gitignore`** — `scripts/logs/` (logs de run-once de issue #183 e afins).
+
+#### Operação em produção
+
+Script executado (com autorização explícita) em `acompanhamento-20`:
+- **2 planos remapeados**, 0 trades afetados (nenhum tinha histórico vinculado):
+  - `8obzgGmrspLx1qT4GB2K` (**xT**) → `marcio.portes@icloud.com` (`studentId: VXLMNLg7arODTeAOAPr0bDTZVN93`)
+  - `anhL0doKRm6Bg19nDQkv` (**PL-REAL20K**) → `rafael_perilo@hotmail.com` (`studentId: GWYzCCHHZEML0ThpZZUxzt8bldy2`)
+- Log: `scripts/logs/issue-183-execute-2026-04-24T20-18-15-548Z.json` (local — não comitado; `scripts/logs/` em `.gitignore`).
+
+#### Decisões
+
+- **DEC-AUTO-183-01** — REMAP (não DELETE) dos planos órfãos. Intenção original era delete puro (evita heurística arriscada se mentor tivesse plano em conta própria/teste). Durante validação em `localhost:5184`, plano legado com risco de ter trades reais vinculados motivou pivot para REMAP com safety nets. Delete perderia histórico operacional.
+- **DEC-AUTO-183-02** — Critério de órfão = `plan.studentEmail == 'marcio.portes@me.com'`. Mentor identificado por email fixo em `src/firebase.js:30` (`MENTOR_EMAIL`). Não há campo `role` no Firestore; derivação do papel vive nas rules e no frontend.
+
+#### Testes
+
+- 1895/1895 passando (baseline 1890 + 5 novos).
+
+---
+
 ### [meta-infra v0.35.0] - 23/04/2026
 
 **Issue:** #176 (arch: Scripts de orquestração §13 — meta-infra fora do produto Espelho)

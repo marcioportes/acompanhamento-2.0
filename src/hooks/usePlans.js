@@ -118,29 +118,39 @@ export const usePlans = (overrideStudentId = null) => {
     if (!user) throw new Error('Usuário não autenticado');
 
     try {
+      // #183: plano pode ser criado pelo mentor em nome do aluno.
+      // Prioridade do dono: planData.studentId > overrideStudentId > user.uid.
+      const targetStudentId = planData.studentId || overrideStudentId || user.uid;
+      const isOwnPlan = targetStudentId === user.uid;
+
       const newPlan = {
         name: planData.name || 'Plano de Trading',
         description: planData.description || '',
         accountId: planData.accountId,
-        
+
         pl: parseFloat(planData.pl) || 0,
         currentPl: parseFloat(planData.pl) || 0,
         plPercent: parseFloat(planData.plPercent) || 0,
-        
+
         riskPerOperation: parseFloat(planData.riskPerOperation) || 2,
         rrTarget: parseFloat(planData.rrTarget) || 2,
-        
+
         adjustmentCycle: planData.adjustmentCycle || 'Mensal',
         cycleGoal: parseFloat(planData.cycleGoal) || 10,
         cycleStop: parseFloat(planData.cycleStop) || 5,
-        
+
         operationPeriod: planData.operationPeriod || 'Diário',
         periodGoal: parseFloat(planData.periodGoal) || 2,
         periodStop: parseFloat(planData.periodStop) || 2,
-        
-        studentId: user.uid,
-        studentEmail: user.email,
-        studentName: user.displayName || user.email.split('@')[0],
+
+        studentId: targetStudentId,
+        studentEmail: planData.studentEmail ?? (isOwnPlan ? user.email : null),
+        studentName: planData.studentName ?? (isOwnPlan ? (user.displayName || user.email.split('@')[0]) : null),
+
+        // #183 audit: quem criou (pode diferir do dono)
+        createdBy: user.uid,
+        createdByEmail: user.email,
+
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -152,7 +162,7 @@ export const usePlans = (overrideStudentId = null) => {
       console.error('[usePlans] Erro criar:', err);
       throw err;
     }
-  }, [user]);
+  }, [user, overrideStudentId]);
 
   /**
    * Atualizar plano
