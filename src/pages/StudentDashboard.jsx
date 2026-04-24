@@ -16,7 +16,7 @@
  * - 1.0.6: View As Student suporte
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
@@ -68,6 +68,7 @@ import useCrossCheck from '../hooks/useCrossCheck';
 import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
 import { useMaturity } from '../hooks/useMaturity';
+import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
 import { currentTrigger, shouldGenerateAI } from '../utils/maturityAITrigger';
 
 // Contexto unificado (issue #118 — DEC-047)
@@ -124,6 +125,19 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const maturityStudentId = overrideStudentId ?? user?.uid ?? null;
   const { maturity, loading: maturityLoading, error: maturityError } =
     useMaturity(maturityStudentId);
+
+  // Recompute sob demanda (issue #119 task 23 — I1)
+  const {
+    recompute: recomputeMaturity,
+    loading: recomputeLoading,
+    error: recomputeError,
+    throttled: recomputeThrottled,
+    nextAllowedAt: recomputeNextAllowedAt,
+  } = useRecomputeStudentMaturity();
+  const handleRefreshMaturity = useCallback(() => {
+    if (!maturityStudentId) return;
+    recomputeMaturity(maturityStudentId).catch(() => { /* erro é exposto via hook */ });
+  }, [recomputeMaturity, maturityStudentId]);
 
   // Narrativa IA (issue #119 task 14) — dispara CF `classifyMaturityProgression`
   // quando trigger UP/REGRESSION detectado e cache vazio/desatualizado.
@@ -614,6 +628,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           error={maturityError}
           aiGenerating={aiGenerating}
           aiError={aiError}
+          onRefresh={handleRefreshMaturity}
+          refreshing={recomputeLoading}
+          refreshThrottled={recomputeThrottled}
+          refreshNextAllowedAt={recomputeNextAllowedAt}
+          refreshError={recomputeError}
         />
       </div>
 

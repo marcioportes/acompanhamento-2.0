@@ -460,6 +460,93 @@ describe('MaturityProgressionCard', () => {
     });
   });
 
+  describe('botão Atualizar agora (task 23 — I1)', () => {
+    it('sem onRefresh: botão NÃO renderiza (backwards compat / embedded)', () => {
+      const maturity = makeMaturity();
+      render(<MaturityProgressionCard maturity={maturity} />);
+      expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('refresh-control')).not.toBeInTheDocument();
+    });
+
+    it('com onRefresh + idle: botão renderiza e click chama handler uma vez', () => {
+      const maturity = makeMaturity();
+      const onRefresh = vi.fn();
+      render(<MaturityProgressionCard maturity={maturity} onRefresh={onRefresh} />);
+
+      const btn = screen.getByTestId('refresh-button');
+      expect(btn).toBeInTheDocument();
+      expect(btn.textContent).toMatch(/Atualizar agora/);
+      expect(btn).not.toBeDisabled();
+
+      fireEvent.click(btn);
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshing=true: botão desabilitado com texto "Atualizando..."', () => {
+      const maturity = makeMaturity();
+      const onRefresh = vi.fn();
+      render(
+        <MaturityProgressionCard maturity={maturity} onRefresh={onRefresh} refreshing />
+      );
+
+      const btn = screen.getByTestId('refresh-button');
+      expect(btn).toBeDisabled();
+      expect(btn.textContent).toMatch(/Atualizando\.\.\./);
+    });
+
+    it('refreshThrottled=true + nextAllowedAt futuro: mostra "Próxima atualização em HH:MM" (BR)', () => {
+      const maturity = makeMaturity();
+      const onRefresh = vi.fn();
+      const future = new Date();
+      future.setHours(14, 37, 0, 0);
+      render(
+        <MaturityProgressionCard
+          maturity={maturity}
+          onRefresh={onRefresh}
+          refreshThrottled
+          refreshNextAllowedAt={future.getTime()}
+        />
+      );
+
+      const msg = screen.getByTestId('refresh-throttled');
+      expect(msg).toBeInTheDocument();
+      const expected = future.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      expect(msg.textContent).toBe(`Próxima atualização em ${expected}`);
+    });
+
+    it('refreshError setado: indicador "Falha ao atualizar" visível', () => {
+      const maturity = makeMaturity();
+      const onRefresh = vi.fn();
+      const err = new Error('functions/unavailable');
+      render(
+        <MaturityProgressionCard
+          maturity={maturity}
+          onRefresh={onRefresh}
+          refreshError={err}
+        />
+      );
+
+      const errEl = screen.getByTestId('refresh-error');
+      expect(errEl).toBeInTheDocument();
+      expect(errEl.textContent).toMatch(/Falha ao atualizar/);
+      expect(errEl.getAttribute('title')).toBe('functions/unavailable');
+    });
+
+    it('loading=true (skeleton): botão NÃO renderiza mesmo com onRefresh', () => {
+      const onRefresh = vi.fn();
+      render(<MaturityProgressionCard loading onRefresh={onRefresh} />);
+      expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
+    });
+
+    it('error setado: botão NÃO renderiza mesmo com onRefresh', () => {
+      const onRefresh = vi.fn();
+      render(
+        <MaturityProgressionCard error={new Error('boom')} onRefresh={onRefresh} />
+      );
+      expect(screen.queryByTestId('refresh-button')).not.toBeInTheDocument();
+    });
+  });
+
   it('gate com METRIC_UNAVAILABLE exibe "(aguardando dado)"', () => {
     const maturity = makeMaturity({
       gates: [

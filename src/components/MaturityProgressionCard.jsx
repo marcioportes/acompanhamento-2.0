@@ -229,6 +229,54 @@ function AiNarrativeSection({ maturity, aiGenerating, aiError }) {
   );
 }
 
+function formatThrottleTime(nextAllowedAt) {
+  if (nextAllowedAt == null) return null;
+  const date = new Date(nextAllowedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function RefreshControl({ onRefresh, refreshing, refreshThrottled, refreshNextAllowedAt, refreshError }) {
+  if (typeof onRefresh !== 'function') return null;
+
+  const disabled = refreshing === true;
+  const label = refreshing ? 'Atualizando...' : 'Atualizar agora';
+  const throttleTime = refreshThrottled ? formatThrottleTime(refreshNextAllowedAt) : null;
+
+  return (
+    <div className="flex flex-col items-end gap-1" data-testid="refresh-control">
+      <button
+        type="button"
+        onClick={onRefresh}
+        disabled={disabled}
+        data-testid="refresh-button"
+        aria-label="Atualizar maturidade agora"
+        className="text-[10px] px-2 py-0.5 rounded font-mono inline-flex items-center gap-1 border border-slate-600/50 bg-slate-800/60 text-slate-300 hover:bg-slate-700/60 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+      >
+        <span aria-hidden="true" className={refreshing ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
+        {label}
+      </button>
+      {refreshThrottled && throttleTime && (
+        <span
+          data-testid="refresh-throttled"
+          className="text-[10px] text-slate-400 font-mono"
+        >
+          Próxima atualização em {throttleTime}
+        </span>
+      )}
+      {refreshError && (
+        <span
+          data-testid="refresh-error"
+          className="text-[10px] text-red-300 font-mono"
+          title={refreshError?.message ?? 'Falha ao atualizar'}
+        >
+          Falha ao atualizar
+        </span>
+      )}
+    </div>
+  );
+}
+
 function MaturityProgressionCard({
   maturity = null,
   loading = false,
@@ -236,6 +284,11 @@ function MaturityProgressionCard({
   aiGenerating = false,
   aiError = null,
   embedded = false,
+  onRefresh = null,
+  refreshing = false,
+  refreshThrottled = false,
+  refreshNextAllowedAt = null,
+  refreshError = null,
 }) {
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const showDebug = !embedded;
@@ -303,21 +356,30 @@ function MaturityProgressionCard({
     <div className={CONTAINER_CLS} data-testid="maturity-card">
       <div className="flex justify-between items-start mb-3 gap-2">
         <h3 className="font-bold text-white text-sm">Progressão de Maturidade</h3>
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-          {maturity.sparseSample === true && (
+        <div className="flex items-start gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {maturity.sparseSample === true && (
+              <span
+                data-testid="sparse-sample-chip"
+                className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono"
+              >
+                amostra inicial
+              </span>
+            )}
             <span
-              data-testid="sparse-sample-chip"
-              className="text-[10px] px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono"
+              data-testid="confidence-chip"
+              className={`text-[10px] px-2 py-0.5 rounded font-mono ${confidenceChipClass(maturity.confidence)}`}
             >
-              amostra inicial
+              confidence: {maturity.confidence ?? 'LOW'}
             </span>
-          )}
-          <span
-            data-testid="confidence-chip"
-            className={`text-[10px] px-2 py-0.5 rounded font-mono ${confidenceChipClass(maturity.confidence)}`}
-          >
-            confidence: {maturity.confidence ?? 'LOW'}
-          </span>
+          </div>
+          <RefreshControl
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            refreshThrottled={refreshThrottled}
+            refreshNextAllowedAt={refreshNextAllowedAt}
+            refreshError={refreshError}
+          />
         </div>
       </div>
 
