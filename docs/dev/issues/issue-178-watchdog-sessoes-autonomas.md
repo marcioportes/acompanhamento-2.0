@@ -67,7 +67,21 @@ Em ambos os casos, o humano só descobriu por acaso (conversando com CC-Interfac
 
 **Heartbeat da Coord:** rejeitado para MVP (Coord vive em surtos, heartbeat fica naturalmente stale entre wake-ups; não distingue "travada" de "entre tasks"). Registrado como fast-follow.
 
-**Tipo de email:** `HUMAN_GATE` genérico para Classes 1 (retry failed) e 2 (worker stall). Classe 3 (tmux relançado) e Classe 1b success usam `HUMAN_GATE` também com título prefixado `[INFO]`. Classe 1b (QUOTA) é o único caso que emite **2 emails** por incidente: detecção (stall + horário agendado) + resultado (OK/FAIL pós-reset).
+**Tipos de email granulares (7) + TTL 1h por tipo:**
+
+Smoke revelou que `HUMAN_GATE` universal + TTL 4h do notifier silenciava emails distintos do mesmo issue (ex: Classe 3 relaunch consumia slot e engolia Classe 1b QUOTA). Solução: tipos granulares — cada um com slot independente.
+
+| Tipo | Quem dispara | Semântica |
+|---|---|---|
+| `WATCHDOG_CLASS_1_TRANSIENT` | Classe 1 transitório | Retry imediato falhou ou sem coord-id |
+| `WATCHDOG_CLASS_1B_QUOTA_SCHEDULED` | Classe 1b detecção | Quota detectada + retry agendado |
+| `WATCHDOG_CLASS_1B_QUOTA_UNPARSEABLE` | Classe 1b detecção | Quota com horário não parseável |
+| `WATCHDOG_CLASS_1B_QUOTA_RESULT` | Classe 1b retry | Resultado do retry pós-reset (OK/FAIL) |
+| `WATCHDOG_CLASS_2_WORKER_STALL` | Classe 2 | Worker travado > T_WORKER_MAX |
+| `WATCHDOG_CLASS_3_RELAUNCH` | Classe 3 | Tmux morreu (OK/fail/ausente) |
+| `WATCHDOG_CLASS_3_LISTENER_MISSING` | Classe 3 | Listener ausente mas tmux vivo |
+
+TTL aplicado via payload `ttl_seconds: 3600` (cc-notify-email.py v2 — campo opcional, default 14400 mantido para outros callers). Classe 1b QUOTA segue emitindo **2 emails** por incidente (detecção + resultado), agora via tipos distintos.
 
 **Parse de horário de reset (Classe 1b):** `grep -oiE 'resets\s+\d{1,2}:\d{2}\s*[ap]?\.?m?\.?'` + `date -d "HH:MM today"`. Se resultado < now, reassume `tomorrow`. Formatos testados: `4:20pm`, `11:00 PM`, `23:45`, `9:30 a.m.`, `1:00am`. Timezone = host (WSL America/Sao_Paulo). Parse falha → email + queima budget (intervenção manual).
 
@@ -97,6 +111,14 @@ CC-Interface implementa direto. Motivação: meta-infra pequena (~250 linhas), i
 
 ### `scripts/cc-worktree-stop.sh`
 - Se não existir, criar; se existir, adicionar bloco que mata watchdog via `.watchdog-pid` antes de `tmux kill-session`
+
+### `~/cc-mailbox/bin/cc-notify-email.py` (fora do repo — infra compartilhada)
+- `VALID_TYPES` ganha 7 tipos `WATCHDOG_*` (vide tabela §3.1)
+- Payload aceita campo opcional `ttl_seconds` (default 14400) — watchdog passa `3600`
+- `is_silenced(issue, type_, now, force, ttl_seconds)` — aridade nova, compatível pra cima com callers que não passam ttl (usam default)
+- Docstring + log SILENCED refletem TTL dinâmico
+
+> Notifier ainda não é versionado no repo. Fast-follow: versionar em `scripts/cc-notify-email.py` para que mods viajem junto do código que depende delas.
 
 ### Nenhum toque em: produto Espelho (src/, functions/, firestore.rules)
 

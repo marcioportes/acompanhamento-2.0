@@ -63,7 +63,14 @@ log_event() {
 }
 
 # ── helpers ──────────────────────────────────────────────────────────────
-# Dispara email via cc-notify-email.py com payload JSON
+# TTL do rate limit do notifier para emails do watchdog (override por tipo).
+# 1h — curto o suficiente pra não perder eventos distintos do mesmo stall,
+# longo o suficiente pra barrar looping caso um detector dispare em rajada.
+WATCHDOG_EMAIL_TTL_SECONDS=3600
+
+# Dispara email via cc-notify-email.py com payload JSON.
+# O tipo deve ser um dos WATCHDOG_* definidos no VALID_TYPES do notifier.
+# Cada tipo tem seu próprio slot de rate limit (independente entre classes).
 send_email() {
   local type="$1" title="$2" resumo="$3" detalhe="${4:-}"
   if [[ ! -x "$NOTIFY" ]]; then
@@ -71,8 +78,16 @@ send_email() {
     return 1
   fi
   local json
-  json=$(python3 -c 'import json,sys; print(json.dumps({"issue":sys.argv[1],"type":sys.argv[2],"title":sys.argv[3],"resumo":sys.argv[4],"detalhe":sys.argv[5]}))' \
-    "$ISSUE" "$type" "$title" "$resumo" "$detalhe")
+  json=$(python3 -c '
+import json,sys
+print(json.dumps({
+    "issue": sys.argv[1],
+    "type": sys.argv[2],
+    "title": sys.argv[3],
+    "resumo": sys.argv[4],
+    "detalhe": sys.argv[5],
+    "ttl_seconds": int(sys.argv[6]),
+}))' "$ISSUE" "$type" "$title" "$resumo" "$detalhe" "$WATCHDOG_EMAIL_TTL_SECONDS")
   echo "$json" | "$NOTIFY" > "$MAILBOX/log/watchdog-email-$(date +%s).log" 2>&1 || true
   log_event INFO email "sent type=$type title=$title"
 }
@@ -189,7 +204,7 @@ check_class1() {
   if [[ -z "$coord_id" ]]; then
     log_event ERROR class_1 ".coord-id vazio — escalando humano"
     touch "$MAILBOX/outbox/${n}-retry.done"  # evita re-entrar no próximo iter
-    send_email HUMAN_GATE \
+    send_email WATCHDOG_CLASS_1_TRANSIENT \
       "#$ISSUE stall Classe 1 (sem coord-id)" \
       "Coord falhou no --resume da task $n mas .coord-id está vazio; watchdog não pode retryar." \
       "response_file=$response_file"
@@ -205,14 +220,14 @@ check_class1() {
       reset_iso=$(date -d "@$reset_epoch" '+%Y-%m-%d %H:%M %Z')
       echo "$reset_epoch" > "$MAILBOX/outbox/${n}-quota-retry-at"
       log_event WARN class_1_quota "stall quota task=$n reset=$reset_iso epoch=$reset_epoch"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_1B_QUOTA_SCHEDULED \
         "#$ISSUE [QUOTA] task $n caiu — retry agendado $reset_iso" \
         "Coord falhou no --resume da task $n por quota esgotada. Watchdog parseou o horário de reset ($reset_iso) e agendou retry automático. Um segundo email sairá quando o retry ocorrer (sucesso ou falha)." \
         "response_file=$response_file reset_epoch=$reset_epoch"
     else
       log_event ERROR class_1_quota "stall quota task=$n — horário não parseável"
       touch "$MAILBOX/outbox/${n}-retry.done"  # queima budget, requer intervenção manual
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_1B_QUOTA_UNPARSEABLE \
         "#$ISSUE [QUOTA] task $n caiu — horário ilegível" \
         "Coord falhou no --resume da task $n por quota, mas o watchdog não conseguiu parsear o horário de reset no log. Intervenção manual necessária." \
         "response_file=$response_file"
@@ -233,7 +248,7 @@ check_class1() {
     log_event INFO class_1 "retry task=$n SUCCESS"
   else
     log_event ERROR class_1 "retry task=$n FAILED rc=$rc"
-    send_email HUMAN_GATE \
+    send_email WATCHDOG_CLASS_1_TRANSIENT \
       "#$ISSUE stall Classe 1 — retry falhou task $n" \
       "Watchdog detectou API error transitório no coord-response da task $n e tentou retry automático, mas o retry também falhou (rc=$rc)." \
       "response_file=$response_file retry_log=$retry_log coord_id=$coord_id"
@@ -268,7 +283,7 @@ check_class1_pending_retry() {
     coord_id=$(cat "$MAILBOX/.coord-id" 2>/dev/null || echo "")
     if [[ -z "$coord_id" ]]; then
       log_event ERROR class_1_quota ".coord-id vazio no retry agendado task=$n"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_1B_QUOTA_RESULT \
         "#$ISSUE [QUOTA] task $n retry abortado — sem coord-id" \
         "Chegou o horário do retry agendado da task $n, mas .coord-id está vazio. Marcador preservado para intervenção manual." \
         "marker=$f"
@@ -284,13 +299,13 @@ check_class1_pending_retry() {
 
     if [[ $rc -eq 0 ]] && ! has_api_error "$retry_log"; then
       log_event INFO class_1_quota "retry agendado task=$n SUCCESS"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_1B_QUOTA_RESULT \
         "#$ISSUE [QUOTA] [INFO] task $n retry OK" \
         "Watchdog disparou o retry agendado da task $n após reset de quota e a Coord foi acordada com sucesso. Loop retomado." \
         "retry_log=$retry_log"
     else
       log_event ERROR class_1_quota "retry agendado task=$n FAILED rc=$rc"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_1B_QUOTA_RESULT \
         "#$ISSUE [QUOTA] task $n retry FALHOU rc=$rc" \
         "Watchdog disparou o retry agendado da task $n após reset de quota, mas o retry também falhou (rc=$rc). Intervenção manual." \
         "retry_log=$retry_log coord_id=$coord_id"
@@ -327,7 +342,7 @@ check_class2() {
     # === STALL CLASSE 2 CONFIRMADO ===
     log_event WARN class_2 "worker stall task=$n age=${age}s"
     touch "$MAILBOX/outbox/${n}-stall.notified"
-    send_email HUMAN_GATE \
+    send_email WATCHDOG_CLASS_2_WORKER_STALL \
       "#$ISSUE worker task $n travado >$(( age / 60 ))min" \
       "Task $n despachada há $(( age / 60 ))min, sem result.log ou result.log vazio. Worker possivelmente em loop, OOM ou rate-limit silencioso." \
       "inbox=$inbox result=$result"
@@ -347,7 +362,7 @@ check_class3() {
     # precondição: start.sh existe e é idempotente
     if [[ ! -x "$START_SCRIPT" ]]; then
       log_event ERROR class_3 "start.sh não encontrado em $START_SCRIPT"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_3_RELAUNCH \
         "#$ISSUE tmux morto + start.sh ausente" \
         "Tmux $session morreu e watchdog não encontra cc-worktree-start.sh para relaunch." \
         "expected=$START_SCRIPT"
@@ -359,7 +374,7 @@ check_class3() {
     coord_id=$(cat "$MAILBOX/.coord-id" 2>/dev/null || echo "")
     if [[ -z "$coord_id" ]]; then
       log_event ERROR class_3 "sem coord-id, não pode relaunch"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_3_RELAUNCH \
         "#$ISSUE tmux morto + sem coord-id" \
         "Tmux $session morreu e .coord-id está vazio; watchdog não pode relaunch start.sh." ""
       return 1
@@ -373,13 +388,13 @@ check_class3() {
     local rc=$?
     if [[ $rc -eq 0 ]] && tmux has-session -t "$session" 2>/dev/null; then
       log_event INFO class_3 "tmux $session relançado OK"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_3_RELAUNCH \
         "#$ISSUE [INFO] tmux relançado automaticamente" \
         "Watchdog detectou que tmux $session morreu e relançou via cc-worktree-start.sh com sucesso. Loop retomado." \
         "coord_id=$coord_id"
     else
       log_event ERROR class_3 "relaunch falhou rc=$rc"
-      send_email HUMAN_GATE \
+      send_email WATCHDOG_CLASS_3_RELAUNCH \
         "#$ISSUE tmux morto — relaunch falhou" \
         "Tmux $session morreu e o relaunch via start.sh falhou (rc=$rc). Intervenção manual necessária." \
         "log=$MAILBOX/log/watchdog-relaunch.log"
@@ -387,17 +402,14 @@ check_class3() {
     return 0
   fi
 
-  # tmux vivo; checa se listener está de fato rodando
+  # tmux vivo; checa se listener está de fato rodando.
+  # Rate limit: delegado ao notifier via WATCHDOG_EMAIL_TTL_SECONDS (1h).
+  # A flag local .listener-missing.notified foi removida — o notifier já cobre.
   if ! pgrep -fa "$MAILBOX/listener.sh" >/dev/null 2>&1; then
     log_event WARN class_3 "tmux vivo mas listener.sh não encontrado em pgrep"
-    # Não relança sozinho nesse caso — pode ser race; só alerta com rate limit
-    if [[ ! -f "$MAILBOX/.listener-missing.notified" ]] || \
-       [[ $(find "$MAILBOX/.listener-missing.notified" -mmin -60 2>/dev/null) == "" ]]; then
-      touch "$MAILBOX/.listener-missing.notified"
-      send_email HUMAN_GATE \
-        "#$ISSUE listener.sh ausente mas tmux vivo" \
-        "Tmux cc-$ISSUE está vivo mas pgrep não encontra listener.sh. Possível travamento silencioso." ""
-    fi
+    send_email WATCHDOG_CLASS_3_LISTENER_MISSING \
+      "#$ISSUE listener.sh ausente mas tmux vivo" \
+      "Tmux cc-$ISSUE está vivo mas pgrep não encontra listener.sh. Possível travamento silencioso." ""
   fi
 }
 
