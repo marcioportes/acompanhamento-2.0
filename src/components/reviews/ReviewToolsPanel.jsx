@@ -126,7 +126,7 @@ const ReviewToolsPanel = ({
   previousReview = null,
   onClose,
 }) => {
-  const { generateSwot, archiveReview, deleteReview, saveDraftFields, actionLoading, error } = useWeeklyReviews(studentId);
+  const { generateSwot, archiveReview, deleteReview, saveDraftFields, updateMeetingLinks, actionLoading, error } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
@@ -190,12 +190,28 @@ const ReviewToolsPanel = ({
   }, [canEdit, isDraft, saveDraftFields, review?.id, sessionNotes, takeaways, meetingLink, videoLink,
       takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
 
+  // Issue #197 — botão dedicado "Salvar links" funciona em DRAFT e CLOSED.
+  // Usa updateMeetingLinks (não muda status, persiste só os 2 campos + updatedAt).
+  // ARCHIVED bloqueia via canEdit. handleSaveDraft segue exclusivo de DRAFT.
+  const handleSaveLinks = useCallback(async () => {
+    if (!canEdit) return;
+    if (!meetingLinkValidation.valid || !videoLinkValidation.valid) return;
+    try {
+      await updateMeetingLinks(review.id, { meetingLink, videoLink });
+    } catch { /* error surfaced */ }
+  }, [canEdit, updateMeetingLinks, review?.id, meetingLink, videoLink,
+      meetingLinkValidation, videoLinkValidation]);
+
   const draftDirty = isDraft && (
     (sessionNotes || '') !== (review?.sessionNotes || '') ||
     (takeaways || '') !== (review?.takeaways || '') ||
     (meetingLink || '') !== (review?.meetingLink || '') ||
     (videoLink || '') !== (review?.videoLink || '')
   );
+
+  // Issue #197 — dirty separado para os 2 campos de link (independe de DRAFT).
+  const linksDirty = (meetingLink || '') !== (review?.meetingLink || '') ||
+    (videoLink || '') !== (review?.videoLink || '');
 
   const handleArchive = useCallback(async () => {
     if (!canArchive) return;
@@ -323,7 +339,7 @@ const ReviewToolsPanel = ({
           )}
         </Section>
 
-        {/* Reunião */}
+        {/* Reunião — issue #197: editável em DRAFT e CLOSED via botão dedicado */}
         <Section title="Reunião" icon={Video} defaultOpen={false}>
           <div className="space-y-2">
             <div>
@@ -350,6 +366,19 @@ const ReviewToolsPanel = ({
               />
               {videoLinkValidation.error && <div className="text-[10px] text-red-400 mt-0.5">{videoLinkValidation.error}</div>}
             </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveLinks}
+                  disabled={!linksDirty || !meetingLinkValidation.valid || !videoLinkValidation.valid || actionLoading}
+                  className="px-2 py-1 text-[10px] font-medium bg-slate-700/40 border border-slate-600 text-slate-300 rounded hover:bg-slate-700/60 disabled:opacity-40 inline-flex items-center gap-1"
+                  title="Persistir links sem mudar status (funciona em DRAFT e CLOSED)"
+                >
+                  {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Salvar links
+                </button>
+              </div>
+            )}
           </div>
         </Section>
 
