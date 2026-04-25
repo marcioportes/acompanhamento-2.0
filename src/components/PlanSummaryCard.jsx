@@ -60,6 +60,14 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
   const cycleStop = plan.cycleStop;
   const operationPeriod = plan.operationPeriod || 'Diário';
 
+  const cap = Number(plan.pl) || 0;
+  const pctToValue = (pct) => (cap && pct != null ? formatCurrencyDynamic((cap * Number(pct)) / 100, currency) : null);
+  const roValue = pctToValue(ro);
+  const periodGoalValue = pctToValue(periodGoal);
+  const periodStopValue = pctToValue(periodStop != null ? Math.abs(periodStop) : null);
+  const cycleGoalValue = pctToValue(cycleGoal);
+  const cycleStopValue = pctToValue(cycleStop != null ? Math.abs(cycleStop) : null);
+
   return (
     <div className={`glass-card p-4 ${className}`}>
       <button
@@ -68,12 +76,12 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
         className="w-full flex items-center justify-between gap-2 text-left"
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs uppercase tracking-wide text-slate-500">Plano</span>
-          <span className="font-semibold text-white">{plan.name || `#${plan.id?.slice(0, 6) || '—'}`}</span>
-          <span className="text-xs text-slate-500">·</span>
-          <span className="text-xs font-medium text-slate-400">{currency}</span>
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Plano</span>
+          <span className="font-semibold text-white text-[13px]">{plan.name || `#${plan.id?.slice(0, 6) || '—'}`}</span>
+          <span className="text-[11px] text-slate-500">·</span>
+          <span className="text-[11px] font-medium text-slate-400">{currency}</span>
           {isInactive && (
-            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
               <Archive className="w-3 h-3" />arquivado
             </span>
           )}
@@ -81,11 +89,16 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
         {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
       </button>
 
-      <div className="mt-3 space-y-1.5 text-sm">
+      <div className="mt-3 space-y-1.5 text-[13px]">
         <div className="flex items-center gap-2 text-slate-300">
           <Target className="w-4 h-4 text-blue-400" />
           <span>
-            RO {ro != null ? `${ro}%` : '—'} · RR {rr != null ? rr : '—'} · Cap {formatCurrencyDynamic(plan.pl, currency)}
+            RO {ro != null ? `${ro}%` : '—'}
+            {roValue && <span className="text-slate-500"> ({roValue})</span>}
+            <span className="text-slate-500 mx-1">·</span>
+            RR {rr != null ? rr : '—'}
+            <span className="text-slate-500 mx-1">·</span>
+            Cap {formatCurrencyDynamic(plan.pl, currency)}
           </span>
         </div>
 
@@ -108,14 +121,18 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
       </div>
 
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-sm">
+        <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-[13px]">
           {(periodGoal != null || periodStop != null) && (
             <div className="flex justify-between text-slate-300">
               <span className="text-slate-500">Período ({operationPeriod})</span>
               <span>
-                {periodGoal != null ? `Meta +${periodGoal}%` : 'Meta —'}
+                {periodGoal != null
+                  ? <>Meta +{periodGoal}%{periodGoalValue && <span className="text-slate-500"> ({periodGoalValue})</span>}</>
+                  : 'Meta —'}
                 <span className="text-slate-500 mx-1">·</span>
-                {periodStop != null ? `Stop -${Math.abs(periodStop)}%` : 'Stop —'}
+                {periodStop != null
+                  ? <>Stop -{Math.abs(periodStop)}%{periodStopValue && <span className="text-slate-500"> ({periodStopValue})</span>}</>
+                  : 'Stop —'}
               </span>
             </div>
           )}
@@ -123,9 +140,13 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
             <div className="flex justify-between text-slate-300">
               <span className="text-slate-500">Ciclo ({String(plan.adjustmentCycle || 'Mensal').toLowerCase()})</span>
               <span>
-                {cycleGoal != null ? `Meta +${cycleGoal}%` : 'Meta —'}
+                {cycleGoal != null
+                  ? <>Meta +{cycleGoal}%{cycleGoalValue && <span className="text-slate-500"> ({cycleGoalValue})</span>}</>
+                  : 'Meta —'}
                 <span className="text-slate-500 mx-1">·</span>
-                {cycleStop != null ? `Stop -${Math.abs(cycleStop)}%` : 'Stop —'}
+                {cycleStop != null
+                  ? <>Stop -{Math.abs(cycleStop)}%{cycleStopValue && <span className="text-slate-500"> ({cycleStopValue})</span>}</>
+                  : 'Stop —'}
               </span>
             </div>
           )}

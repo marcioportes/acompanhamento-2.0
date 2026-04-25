@@ -110,9 +110,9 @@ const MaturityMini = ({ maturity }) => {
   );
 };
 
-const Quadrant = ({ label, sublabel, children }) => (
-  <div className="flex-1 min-w-0">
-    <p className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold leading-tight">
+const Quadrant = ({ label, sublabel, tooltip, children }) => (
+  <div className="flex-1 min-w-0" title={tooltip}>
+    <p className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold leading-tight cursor-help">
       {label}
     </p>
     {sublabel && (
@@ -123,9 +123,9 @@ const Quadrant = ({ label, sublabel, children }) => (
   </div>
 );
 
-const KPI = ({ label, value, valueClassName = 'text-slate-200' }) => (
-  <div className="flex items-baseline justify-between gap-2">
-    <span className="text-[10px] text-slate-500">{label}</span>
+const KPI = ({ label, value, valueClassName = 'text-slate-200', tooltip }) => (
+  <div className="flex items-baseline justify-between gap-2" title={tooltip}>
+    <span className={`text-[10px] text-slate-500 ${tooltip ? 'cursor-help underline decoration-dotted decoration-slate-700 underline-offset-2' : ''}`}>{label}</span>
     <span className={`font-mono font-semibold ${valueClassName}`}>{value}</span>
   </div>
 );
@@ -258,50 +258,85 @@ const EmotionAnalysis = ({ trades, globalWR, maturity = null }) => {
               {/* Header do card */}
               <div className="flex justify-between items-center mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-200 text-sm">{c.name}</span>
-                  <span className="text-[10px] text-slate-500 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-700/50">
+                  <span
+                    className="font-bold text-slate-200 text-sm cursor-help"
+                    title={`Card agrupa ${c.count} trade(s) cuja emoção de entrada foi "${c.name}". Cores da borda: verde = lucro acumulado, vermelho = prejuízo.`}
+                  >
+                    {c.name}
+                  </span>
+                  <span
+                    className="text-[10px] text-slate-500 bg-slate-900/50 px-2 py-0.5 rounded-full border border-slate-700/50 cursor-help"
+                    title={`${c.count} operação(ões) com esta emoção no período/conta/plano selecionados na barra de contexto.`}
+                  >
                     {c.count}x
                   </span>
                 </div>
-                <span className={`font-mono font-bold text-sm ${totalColor}`}>
+                <span
+                  className={`font-mono font-bold text-sm ${totalColor} cursor-help`}
+                  title={`Resultado acumulado das ${c.count} operação(ões) nesta emoção. Sinal e cor seguem o saldo final.`}
+                >
                   {fmtSignedCurrency(c.totalPL)}
                 </span>
               </div>
 
               {/* Grid 2×2 de quadrantes 4D */}
               <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                <Quadrant label="Financial" sublabel="edge por trade">
+                <Quadrant
+                  label="Financial"
+                  sublabel="edge por trade"
+                  tooltip="Dimensão Financial — mede o edge financeiro desta emoção: quanto o trader ganha (ou perde) em média por operação e qual a relação payoff entre vitórias e derrotas."
+                >
                   <KPI
                     label="Expect"
                     value={fmtSignedCurrency(c.expectancy)}
                     valueClassName={c.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                    tooltip={`Expectancy = totalPL / count = ${fmtSignedCurrency(c.totalPL)} / ${c.count} = ${fmtSignedCurrency(c.expectancy)}. Resultado médio por trade nesta emoção. Positivo = edge a favor; negativo = sangria.`}
                   />
                   <KPI
                     label="Payoff"
                     value={c.payoff === null ? '—' : `${c.payoff.toFixed(1)}x`}
+                    tooltip={c.payoff === null ? 'Payoff indisponível — sem trades vencedores ou sem trades perdedores nesta emoção.' : `Payoff = |ganho médio| / |perda média| = ${c.payoff.toFixed(2)}x. Acima de 1.0x significa que o trader ganha mais quando acerta do que perde quando erra.`}
                   />
                 </Quadrant>
 
-                <Quadrant label="Operational" sublabel="aderência sob stress">
+                <Quadrant
+                  label="Operational"
+                  sublabel="aderência sob stress"
+                  tooltip="Dimensão Operational — mede a aderência ao plano sob stress. Shift indica quantos trades mudaram de estado emocional entre entrada e saída (proxy para descontrole / desvio do plano)."
+                >
                   <KPI
                     label="Shift"
                     value={fmtPct(c.shiftRate)}
                     valueClassName={shiftColor(c.shiftRate)}
+                    tooltip={`Shift Rate = (trades com emotionExit ≠ emotionEntry) / count × 100 = ${c.shiftRate.toFixed(1)}%. Verde <20% (controle), âmbar 20-40% (atenção), vermelho ≥40% (instabilidade emocional).`}
                   />
                 </Quadrant>
 
-                <Quadrant label="Emotional" sublabel="impacto da emoção no WR">
-                  <KPI label="WR" value={fmtPct(c.wrEmotion)} />
+                <Quadrant
+                  label="Emotional"
+                  sublabel="impacto da emoção no WR"
+                  tooltip="Dimensão Emotional — mede como esta emoção específica afeta o win rate. Δ compara o WR desta emoção contra o WR global do trader: positivo = emoção ajuda, negativo = emoção atrapalha."
+                >
+                  <KPI
+                    label="WR"
+                    value={fmtPct(c.wrEmotion)}
+                    tooltip={`Win Rate = wins / count × 100 = ${c.wrEmotion.toFixed(1)}%. Percentual de trades vencedores nesta emoção.`}
+                  />
                   {c.wrDelta !== null && (
                     <KPI
                       label="Δ"
                       value={fmtSignedPct(c.wrDelta)}
                       valueClassName={c.wrDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}
+                      tooltip={`Δ WR = WR(emoção) − WR(global) = ${fmtSignedPct(c.wrDelta)}. Diferença entre o WR desta emoção e o WR médio global. Positivo (verde) = esta emoção tem WR acima da média; negativo (vermelho) = abaixo.`}
                     />
                   )}
                 </Quadrant>
 
-                <Quadrant label="Maturidade" sublabel="stage atual">
+                <Quadrant
+                  label="Maturidade"
+                  sublabel="stage atual"
+                  tooltip="Dimensão Maturidade — espelho compacto do estágio atual no framework 4D × 5 stages (Caos → Reativo → Metódico → Profissional → Maestria). A barra mostra progresso até o próximo stage. Detalhe completo: card Maturidade no dashboard."
+                >
                   <MaturityMini maturity={maturity} />
                 </Quadrant>
               </div>
