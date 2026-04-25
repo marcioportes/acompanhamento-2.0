@@ -13,3 +13,4 @@
 | CHUNK-16 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F2 currency multi-moeda |
 | CHUNK-13 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F4 useDashboardMetrics aceita context |
 | CHUNK-02 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F4 StudentDashboard respeita ContextBar total |
+| CHUNK-09 | #191 | `fix/issue-191-compliance-recente-ciclo` | 24/04/2026 | Fix aderência recente — gate compliance-100 do stage Profissional usa janela de ciclo |
