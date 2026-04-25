@@ -9,7 +9,12 @@
  *   `emotionalAnalysisV2.calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2`. Fórmula
  *   DEC-AUTO-119-03 inalterada (`E = 0.60·periodScore + 0.25·invTilt + 0.15·invRevenge`).
  *   Janela STAGE_WINDOWS rolling (D1) e política "evolução sempre visível" (D6) preservadas.
- *   [RESERVADA — entrada definitiva no encerramento.]
+ *   Mirror em `functions/maturity/emotionalAnalysisMirror.js` (CommonJS, paridade ESM↔CJS
+ *   testada) com `calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2` +
+ *   `buildGetEmotionConfig` (replica `useMasterData.getEmotionConfig`). Os 5 gates
+ *   emocionais do framework (`emotional-out-of-fragile`, `-55`, `-75`, `-85`,
+ *   `zero-tilt-revenge`) passam a discriminar — antes travados em E=50. Suite 2438/2438
+ *   (baseline 2421 + 17 novos). Validado em browser (PR #196).
  * - 1.45.0: feat: FeedbackPage mentor edit+lock+recalc + MentorDashboard currency multi-moeda +
  *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1).
  *   Entrega em 8 fases A-H pair programming fast-track.
@@ -200,10 +205,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.45.0',
+  version: '1.46.0',
   build: '20260425',
-  display: 'v1.45.0',
-  full: '1.45.0+20260425',
+  display: 'v1.46.0',
+  full: '1.46.0+20260425',
 };
 export default VERSION;
 export { VERSION };

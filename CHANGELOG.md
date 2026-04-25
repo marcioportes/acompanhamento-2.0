@@ -8,6 +8,41 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.46.0] - 25/04/2026
+
+**Issue:** #189 (feat: score emocional real no motor de maturidade — furo universal de progressão)
+**PR:** #196
+
+#### Corrigido
+
+- **Score emocional real no motor de maturidade.** Substitui stub explícito `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em `functions/maturity/preComputeShapes.js:129` (DEC-AUTO-119-task07-02 declarava como TODO) por mirror CommonJS de `emotionalAnalysisV2.calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2`. Antes, a dimensão emocional travava em E=50 fixo independente de comportamento — bloqueando promoção em todos os stages. Agora os 5 gates emocionais do framework (`emotional-out-of-fragile`, `emotional-55`, `emotional-75`, `emotional-85`, `zero-tilt-revenge`) discriminam por dados reais.
+
+#### Adicionado
+
+- **`functions/maturity/emotionalAnalysisMirror.js`** (CommonJS) — mirror determinístico do source ESM em `src/utils/emotionalAnalysisV2.js`. Inclui `calculatePeriodScore`, `detectTiltV2`, `detectRevengeV2`, `calculateTradeEmotionalScore`, `buildGetEmotionConfig` (replica `useMasterData.getEmotionConfig`), `computeEmotionalAnalysisShape` (entry point para `preComputeShapes`), constants `DEFAULT_DETECTION_CONFIG` + `EVENT_PENALTIES` + `SCORE_WEIGHTS` + `UNKNOWN_EMOTION_CONFIG`. Paridade testada via 8 cenários ESM↔CJS.
+- **Carga de `emotions` em `recomputeForStudent`** — `functions/maturity/recomputeMaturity.js` lê collection `emotions` antes de invocar `preComputeShapes`. Falha no fetch é graceful (warn + fallback neutro `{50,0,0}` — preserva D6 "evolução sempre visível", INV-03 isolamento mantido).
+- **`preComputeShapes` aceita `emotions` ou `getEmotionConfig`** opcional. Sem inputs, mantém fallback histórico `{50,0,0}` — backward compat com testes legados e callers ainda não atualizados.
+
+#### Inalterado (decisões 23/04/2026 preservadas)
+
+- Fórmula DEC-AUTO-119-03: `E = 0.60·periodScore + 0.25·invTilt(0,0.30) + 0.15·invRevenge(0,0.20)`.
+- Janela rolling STAGE_WINDOWS (issue-119 §3.1 D1): Stage 1=20/30, 2=30/45, 3=50/60, 4=80/90, 5=100/90 (floor 5).
+- Política D6 "evolução sempre visível": engine NUNCA retorna null para emocional.
+- DEC-020 (regressão nunca automática) intocada.
+
+#### Testes
+
+- **17 testes novos** em `src/__tests__/functions/maturity/emotionalAnalysisMirror.test.js` (paridade ESM↔CJS + cobertura `buildGetEmotionConfig` + `computeEmotionalAnalysisShape`).
+- **Suite full 2438/2438** (baseline 2421 + 17 novos), zero regressão.
+
+#### Follow-ups (não bloqueadores, fora do escopo "remover stub")
+
+- `calculatePeriodScore([], ...)` retorna 100 (paridade com source ESM) enquanto D6 espera 50 quando trades vazios. Apenas `computeEmotionalAnalysisShape` aplica D6 via early return — consumidor futuro que invoque `calculatePeriodScore` direto pega 100. Mitigação: comentário no header do mirror.
+- Aluno legado sem `emotionEntry` em todos os trades pega E≈60 (consistency bonus em UNKNOWN/UNKNOWN, ambos NEUTRAL). Comportamento herdado do source ESM, não regressão — vale issue própria de revisão semântica.
+- CF carrega collection `emotions` por trigger (`db.collection('emotions').get()`). ~15-30 docs, latência baixa, mas escala linear com volume de triggers. Cache em memória runtime seria otimização futura.
+
+---
+
 ## [1.45.0] - 25/04/2026
 
 **Issue:** #188 (fix: Melhoria na Experiência de Feedback + Revisão — Sev1)

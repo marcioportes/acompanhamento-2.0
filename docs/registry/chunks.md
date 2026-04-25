@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-09 | #189 | `feat/issue-189-emotional-engine-real` | 25/04/2026 | Interativo — mirror emotionalAnalysisV2 + remove stub `preComputeShapes:129` (DEC-AUTO-119-task07-02) |
