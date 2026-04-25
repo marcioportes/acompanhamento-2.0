@@ -194,9 +194,9 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .get();
     const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    const preComputed = preComputeShapes({ trades, plans });
-
     const now = new Date();
+    const preComputed = preComputeShapes({ trades, plans, now });
+
     const payloads = buildMaturityPayloads({
       trades,
       plans,

@@ -6,6 +6,21 @@
  * - 1.45.0: feat: FeedbackPage mentor edit+lock+recalc + MentorDashboard currency multi-moeda +
  *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1) —
  *   [RESERVADA — entrada definitiva no encerramento.]
+ * - 1.44.1: fix: Aderência recente (últimos N trades) no gate compliance-100 do stage
+ *   Profissional (issue #191). Antes: `complianceRate100 = complianceRate` (alias do
+ *   cálculo da janela total — semanticamente errado). Agora: novo helper puro
+ *   `computeCycleBasedComplianceRate({trades, plans, now, minTrades=20})` aplica a
+ *   janela = união dos ciclos ativos do trader (todos os planos pelo `adjustmentCycle`
+ *   Mensal/Trimestral/Semestral/Anual). Mínimo 20 trades fechados; se não atinge,
+ *   retrocede simultaneamente 1 ciclo em cada plano até bater 20 ou esgotar histórico
+ *   (cap defensivo `MAX_LOOKBACK_CYCLES=36` ou iteração que não acrescenta nada).
+ *   Insuficiente (`<20` mesmo após esgotar) → retorna `null` → `evaluateGates` marca o
+ *   gate como `METRIC_UNAVAILABLE` (pendente, não promove e não rebaixa — DEC-020
+ *   preservada). Mirror espelhado em `functions/maturity/` (CommonJS) e
+ *   `src/utils/maturityEngine/` (ESM); `preComputeShapes.js` agora aceita `now` e
+ *   `recomputeMaturity.js` repassa. 20 testes novos cobrindo cenários A-E + invariantes
+ *   (datas BR/ISO/Date, dedup por id em planos sobrepostos, defaults, trimestral,
+ *   minTrades customizável). DEC-AUTO-191-01/-02. Suite: 2421/2421 passando.
  * - 1.43.1: fix: Plano criado por mentor não é visível pelo aluno (issue #183, Sev1) —
  *   `usePlans.addPlan` hardcodava `studentId: user.uid` mesmo quando o criador era
  *   o mentor atuando em nome do aluno. Plano ficava gravado com UID do mentor e o
@@ -157,10 +172,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.44.0',
+  version: '1.44.1',
   build: '20260424',
-  display: 'v1.44.0',
-  full: '1.44.0+20260424',
+  display: 'v1.44.1',
+  full: '1.44.1+20260424',
 };
 export default VERSION;
 export { VERSION };

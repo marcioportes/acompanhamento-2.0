@@ -8,6 +8,37 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.44.1] - 24/04/2026
+
+**Issue:** #191 (fix: aderência recente no gate compliance-100 do stage Profissional)
+
+#### Corrigido
+
+- **Gate `compliance-100` (Metódico → Profissional) agora avalia a janela recente correta.** Antes, `complianceRate100` era apenas alias de `complianceRate` (linha ~126 de `functions/maturity/preComputeShapes.js`) — o gate reusava o cálculo da janela total do histórico em vez da aderência recente que o nome promete. Resultado: traders com violações antigas mas excelentes recentes podiam ser reprovados; traders com histórico bom mas violações recentes podiam ser aprovados.
+
+#### Adicionado
+
+- **`computeCycleBasedComplianceRate({trades, plans, now, minTrades=20})`** — helper puro novo em `functions/maturity/computeCycleBasedComplianceRate.js` (CommonJS) com mirror espelhado em `src/utils/maturityEngine/computeCycleBasedComplianceRate.js` (ESM). Aplica a regra:
+  - **Janela** = união dos ranges `[cycleStart, cycleEnd]` do ciclo que contém `now` em cada plano (derivação por `adjustmentCycle`: Mensal/Trimestral/Semestral/Anual).
+  - **Mínimo 20 trades CLOSED.** Se `< 20`, retrocede simultaneamente 1 ciclo em CADA plano e recoleta. Repete até atingir o mínimo ou esgotar.
+  - **Esgotamento** = iteração que não acrescenta nenhum trade novo. Cap mecânico defensivo `MAX_LOOKBACK_CYCLES = 36`.
+  - **Insuficiente** (`< 20` mesmo após esgotar) → `null`. Em `evaluateGates`, `null` cai em `met: null`, `reason: 'METRIC_UNAVAILABLE'` → gate fica pendente: **não promove** (`gatesMet < gatesTotal` bloqueia `proposeStageTransition`) e **não rebaixa** (`detectRegressionSignal` não consome este campo, DEC-020 preservada).
+  - **Fórmula**: `(trades_sem_flag / total) * 100` sobre a janela final. Aceita `trade.date` em `YYYY-MM-DD`, `DD/MM/YYYY` ou `Date`. Dedup por `trade.id` em planos com ciclos sobrepostos.
+- `preComputeShapes({trades, plans, now})` agora aceita `now` (default: `new Date()`) e propaga para o novo helper. `recomputeMaturity.js` repassa o `now` que já calcula.
+
+#### Testes
+
+- 17 testes em `src/__tests__/utils/maturityEngine/computeCycleBasedComplianceRate.test.js` cobrindo cenários A-E da memória de cálculo aprovada + invariantes (vazios, dates inválidos, formato BR/ISO/Date, redFlags array vs hasRedFlags, dedup por id, plano Trimestral, `minTrades` customizável, default `adjustmentCycle`, retrocesso multi-ciclo).
+- 3 testes de paridade ESM↔CommonJS em `src/__tests__/functions/maturity/computeCycleBasedComplianceRate.test.js`.
+- Suite total: **2421 testes (144 arquivos), 100% verde**.
+
+#### Decisões
+
+- DEC-AUTO-191-01 — Janela = união de ciclos ativos por plano + fallback retroativo simultâneo.
+- DEC-AUTO-191-02 — Estado insuficiente = `null` (mapeia para `METRIC_UNAVAILABLE` no gate, semanticamente correto: pendente, não promove e não rebaixa).
+
+---
+
 ## [1.44.0] - 24/04/2026
 
 **Issue:** #119 (feat: Motor de progressão Maturidade 4D × 5 stages — modo autônomo)
