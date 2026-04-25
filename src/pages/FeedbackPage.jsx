@@ -35,11 +35,14 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
+import TradeLockBadge from '../components/TradeLockBadge';
 import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
+import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
+import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor } from '../utils/tradeGateway';
 import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
@@ -96,7 +99,16 @@ const StatusBadge = ({ status }) => {
 const TradeInfoCard = ({ trade, onImageClick }) => {
   const isWin = trade.result >= 0;
   const notes = trade.notes || trade.observation || trade.comment || trade.observacao || '';
-  
+
+  // Lock comportamental (#188 F1c): marca campos corrigidos pelo mentor com asterisco
+  // + tooltip com valor original.
+  const studentOriginal = trade._studentOriginal || null;
+  const wasEdited = (field) =>
+    studentOriginal && studentOriginal[field] != null && studentOriginal[field] !== trade[field];
+
+  const originalTooltip = (field) =>
+    wasEdited(field) ? `Original: ${studentOriginal[field] || '—'} · corrigido pelo mentor` : undefined;
+
   return (
     <div className="glass-card p-6 space-y-6">
       <div className="flex items-start justify-between">
@@ -110,6 +122,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
               <span className={`text-xs font-semibold px-2 py-1 rounded-full ${trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{trade.side}</span>
               {trade.exchange && <span className="text-xs text-slate-500 bg-slate-800/50 px-2 py-1 rounded">{trade.exchange}</span>}
               <TradeStatusBadges trade={trade} />
+              <TradeLockBadge trade={trade} />
             </div>
             <p className="text-slate-400 mt-1">{trade.studentName || trade.studentEmail?.split('@')[0]}</p>
           </div>
@@ -122,17 +135,26 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           <div className="flex items-center gap-2 text-slate-500 mb-1"><Calendar className="w-4 h-4" /><span className="text-xs">Data</span></div>
           <p className="text-white font-medium">{formatDate(trade.date)}</p>
         </div>
-        <div className="bg-slate-800/30 rounded-xl p-4">
+        <div className="bg-slate-800/30 rounded-xl p-4" title={originalTooltip('setup')}>
           <div className="flex items-center gap-2 text-slate-500 mb-1"><BarChart3 className="w-4 h-4" /><span className="text-xs">Setup</span></div>
-          <p className="text-white font-medium">{trade.setup || '-'}</p>
+          <p className="text-white font-medium">
+            {trade.setup || '-'}
+            {wasEdited('setup') && <span className="text-amber-400 ml-1" title="corrigido pelo mentor">*</span>}
+          </p>
         </div>
-        <div className="bg-slate-800/30 rounded-xl p-4">
+        <div className="bg-slate-800/30 rounded-xl p-4" title={originalTooltip('emotionEntry')}>
           <div className="flex items-center gap-2 text-slate-500 mb-1"><Brain className="w-4 h-4" /><span className="text-xs">Emoção Entrada</span></div>
-          <p className="text-white font-medium">{trade.emotionEntry || trade.emotion || '-'}</p>
+          <p className="text-white font-medium">
+            {trade.emotionEntry || trade.emotion || '-'}
+            {wasEdited('emotionEntry') && <span className="text-amber-400 ml-1" title="corrigido pelo mentor">*</span>}
+          </p>
         </div>
-        <div className="bg-slate-800/30 rounded-xl p-4">
+        <div className="bg-slate-800/30 rounded-xl p-4" title={originalTooltip('emotionExit')}>
           <div className="flex items-center gap-2 text-slate-500 mb-1"><Brain className="w-4 h-4" /><span className="text-xs">Emoção Saída</span></div>
-          <p className="text-white font-medium">{trade.emotionExit || '-'}</p>
+          <p className="text-white font-medium">
+            {trade.emotionExit || '-'}
+            {wasEdited('emotionExit') && <span className="text-amber-400 ml-1" title="corrigido pelo mentor">*</span>}
+          </p>
         </div>
       </div>
 
@@ -358,6 +380,27 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
     [plans, trade?.planId],
   );
 
+  // Mentor edit + lock (#188 F1c). Handlers inline para evitar duplicar useTrades
+  // listener. Gateway valida role e schema.
+  // isMentor é function no AuthContext — invocar pra obter bool.
+  const mentorCtx = useMemo(() => ({
+    uid: user?.uid,
+    email: user?.email,
+    displayName: user?.displayName,
+    isMentor: typeof isMentor === 'function' ? Boolean(isMentor()) : Boolean(isMentor),
+  }), [user, isMentor]);
+
+  const handleSaveAndLock = async (edits) => {
+    if (!trade?.id) throw new Error('Trade sem id');
+    await gatewayEditAsMentor(trade.id, edits, mentorCtx);
+    await gatewayLockByMentor(trade.id, mentorCtx);
+  };
+
+  const handleRevertToOriginal = async (originalEdits) => {
+    if (!trade?.id) throw new Error('Trade sem id');
+    await gatewayEditAsMentor(trade.id, originalEdits, mentorCtx);
+  };
+
   // === Image Paste State (mentor only) ===
   const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
   const textareaRef = useRef(null);
@@ -582,6 +625,15 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               </div>
             )}
             {userIsMentor && (
+              <div className="mt-3">
+                <MentorEditPanel
+                  trade={trade}
+                  onSaveAndLock={handleSaveAndLock}
+                  onRevertToOriginal={handleRevertToOriginal}
+                />
+              </div>
+            )}
+            {userIsMentor && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <PinToReviewButton trade={trade} />
                 <button
@@ -778,6 +830,15 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           {trade?.planId && (
             <div className="mt-4">
               <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+            </div>
+          )}
+          {userIsMentor && (
+            <div className="mt-4">
+              <MentorEditPanel
+                trade={trade}
+                onSaveAndLock={handleSaveAndLock}
+                onRevertToOriginal={handleRevertToOriginal}
+              />
             </div>
           )}
           {userIsMentor && trade.shadowBehavior && (
