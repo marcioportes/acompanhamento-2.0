@@ -17,6 +17,7 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { validateReviewUrl } from '../utils/reviewUrlValidator';
 
 export const useWeeklyReviews = (studentId) => {
   const { user, isMentor } = useAuth();
@@ -222,6 +223,39 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
+  // Issue #197: atualiza meetingLink/videoLink de uma revisão sem mudar status.
+  // Permite ao mentor corrigir/preencher o link da reunião e da gravação após
+  // publicar a revisão (links da gravação só existem depois da reunião terminar).
+  // Rules cobrem mentor em DRAFT/CLOSED→CLOSED; ARCHIVED é terminal e não chega aqui.
+  // Validação reaproveita validateReviewUrl (regex https + allowlist de hosts).
+  const updateMeetingLinks = useCallback(async (reviewId, { meetingLink, videoLink } = {}) => {
+    const hasMeeting = meetingLink !== undefined;
+    const hasVideo = videoLink !== undefined;
+    if (!hasMeeting && !hasVideo) return;
+    if (hasMeeting) {
+      const v = validateReviewUrl(meetingLink);
+      if (!v.valid) throw new Error(v.error);
+    }
+    if (hasVideo) {
+      const v = validateReviewUrl(videoLink);
+      if (!v.valid) throw new Error(v.error);
+    }
+    setActionLoading(true);
+    setError(null);
+    try {
+      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
+      const payload = { updatedAt: serverTimestamp() };
+      if (hasMeeting) payload.meetingLink = meetingLink;
+      if (hasVideo) payload.videoLink = videoLink;
+      await updateDoc(ref, payload);
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar links');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [studentId]);
+
   // Atualiza campo sessionNotes (Notas da Sessão) — texto livre do mentor sobre a reunião.
   // Usado em Stage 3 da nova tela WeeklyReviewPage (Subitem 4).
   const updateSessionNotes = useCallback(async (reviewId, notes) => {
@@ -395,6 +429,7 @@ export const useWeeklyReviews = (studentId) => {
     addIncludedTrade,
     updateSessionNotes,
     saveDraftFields,
+    updateMeetingLinks,
     addTakeawayItem,
     toggleTakeawayDone,
     removeTakeawayItem,
