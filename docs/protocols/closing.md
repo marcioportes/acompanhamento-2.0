@@ -1,85 +1,61 @@
-# Protocolo — Encerramento de Sessão (§4.3 + Verificação Crítica §4.4)
+# Protocolo §4.3 — Encerramento de Sessão
 
-> Protocolo obrigatório após PR mergeado. Inclui auto-arquivamento via `scripts/archive-issue.sh`.
+> **Regra absoluta:** todo encerramento via `./scripts/cc-close-issue.sh NNN`. Manual é exceção registrada com motivo no PR.
+> Refactor #199 (25/04/2026): GitHub (issue + PR) é SSoT do detalhe; docs locais são índice mínimo.
 
-### 4.3 Protocolo de Encerramento de Sessão
+---
 
-Ao final de cada sessão, antes de encerrar:
+## Pré-condições
 
-1. **Atualizar `docs/dev/issues/issue-NNN-nome.md`** com:
-   - Resumo do que foi feito
-   - Decisões tomadas (formato DEC-xxx)
-   - Arquivos tocados
-   - Comandos git executados
-   - Testes rodados
-   - Pendências para próxima sessão
+- PR para #NNN mergeado em main
+- Issue #NNN com state=CLOSED no GitHub (auto via `Closes #NNN` no PR body)
+- cwd no repo root (`acompanhamento-2.0`), branch `main` com pull recente
 
-2. **Atualizar este PROJECT.md** com:
-   - Novas entradas no Decision Log (seção 7)
-   - Novas/resolvidas dívidas técnicas (seção 9)
-   - Entrada no CHANGELOG (seção 10)
+## Execução
 
-3. **Commit dos docs** junto com o código:
-   ```bash
-   git add docs/PROJECT.md docs/dev/issues/issue-NNN-nome.md
-   git commit -m "docs: atualizar PROJECT.md e issue-NNN sessão DD/MM/YYYY"
-   ```
+```bash
+./scripts/cc-close-issue.sh NNN              # encerramento normal
+./scripts/cc-close-issue.sh NNN --dry-run    # mostra etapas sem executar
+```
 
-4. **Liberar locks de chunks desta sessão** no registry (seção 6.3) — liberar APENAS os locks registrados por esta sessão/issue. Nunca tocar em locks de outras sessões.
+O script orquestra 8 etapas e aborta no primeiro erro:
 
-5. **Encerrar infra autônoma + remover worktree** após merge confirmado. Ordem obrigatória (cada etapa cobre um resíduo distinto — pular qualquer uma deixa zumbi):
+1. **Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
+2. **Sync main** — `git pull --rebase origin main`.
+3. **Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
+4. **Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):
+   - `docs/PROJECT.md`: nova linha na tabela `| Versão | Issue/PR | Resumo | Data |`.
+   - `CHANGELOG.md`: entrada ≤8 linhas (`## [X.Y.Z] - DD/MM/YYYY · #NNN · PR #PPP` + tipo + bullet de DECs/testes/files).
+   - `src/version.js`: linha CHANGELOG inline + bump constante. Pulado se `PR_TYPE ∈ {refactor, docs}` (não toca código de produto).
+   - `docs/registry/versions.md`: marca versão consumida com sha do squash.
+   - `docs/registry/chunks.md`: remove linhas dos locks da sessão.
+   - `docs/decisions.md`: append do `.deccs-NNN.md` opcional (DECs aprovadas durante a sessão).
+5. **Delete control doc** — `git rm docs/dev/issues/issue-NNN-*.md` (não arquiva — Fase 2.4 do refactor #199).
+6. **Confirmação humana** — script mostra `git status --short` e pergunta antes de commit + push para main.
+7. **Encerrar infra** — `pkill -9 -f vite` + `cc-worktree-stop.sh NNN` + `rm -rf ~/projects/issue-NNN`.
+8. **Verificações + branch local** — `ls ~/projects/`, `git worktree list`, `tmux ls`, `pgrep cc-watchdog` devem passar; `git branch -D *issue-NNN-*`.
 
-   **5a.** Matar dev servers em background (cache `.vite` recria diretório se vite estiver vivo durante o `rm -rf`):
-   ```bash
-   pkill -9 -f vite || true
-   ```
+## Recovery manual
 
-   **5b.** Encerrar listener tmux + watchdog + remover worktree via script canônico:
-   ```bash
-   ./scripts/cc-worktree-stop.sh {NNN}
-   ```
-   O script faz, nesta ordem: (i) lê `.cc-mailbox/.watchdog-pid` e mata o watchdog (issue #178); (ii) `tmux kill-session -t cc-{NNN}`; (iii) `git worktree remove`. **Sempre rodar este script — não fazer `git worktree remove` manual**, senão tmux + watchdog ficam órfãos no host.
+Se `cc-close-issue.sh` falhar, ler `docs/protocols/closing-manual.md` e logar motivo no PR body. Após executar manual, abrir issue `type:debt` para corrigir o script.
 
-   **5c.** Remover diretório físico residual (`git worktree remove` desregistra do git mas pode deixar arquivos):
-   ```bash
-   rm -rf ~/projects/issue-{NNN}
-   ```
+## Stop hook
 
-   **5d.** Verificação obrigatória (todos devem passar):
-   ```bash
-   ls ~/projects/                                        # issue-{NNN} NÃO deve aparecer
-   git worktree list                                     # apenas main deve aparecer
-   tmux ls 2>&1 | grep -v "cc-{NNN}"                     # nenhuma sessão cc-{NNN} ativa
-   ps -ef | grep -v grep | grep "cc-watchdog.*{NNN}"     # nenhum watchdog rodando — saída vazia esperada
-   ```
-   Se `issue-{NNN}` ainda aparecer no `ls`, o `rm -rf` não foi executado — executar agora. Se `cc-{NNN}` aparecer no `tmux ls` ou watchdog ainda no `ps`, o script 5b não rodou ou falhou — investigar antes de prosseguir.
+Hook em `~/.claude/settings.json` detecta encerramento incompleto (PR mergeado <30 min + worktree órfão || vite vivo || control doc não arquivado) e bloqueia turno seguinte com mensagem orientando rodar o script. Solução não-disciplinar para improviso recorrente (#199).
 
-6. **Mover issue file para archive** após merge confirmado — usar o script:
-   ```
-   scripts/archive-issue.sh NNN       # move issue-NNN-*.md para docs/dev/archive/YYYY-QQ/
-   ```
-   O script normaliza padding (119 / 0119), determina o quarter automaticamente e usa `git mv` (preserva histórico). Variante `scripts/archive-issue.sh --all-closed` arquiva de uma vez todos os issues cujo estado no GitHub é `CLOSED`.
+---
 
-### 4.4 Diretriz Crítica de Verificação
+## §4.4 Verificação Crítica
 
 **Regra absoluta: toda afirmação verificável exige verificação prévia. Sem exceção.**
 
-Aplica-se a QUALQUER conclusão sobre o estado do projeto, incluindo mas não limitado a:
-
-- Fluxo de dados, origem de campos, estrutura de collections
-- Estado de branches, PRs, merges, deploys
-- Existência ou ausência de arquivos, funções, componentes, campos
-- Interpretação de outputs de terminal (git, npm, firebase, logs)
-- Interpretação de screenshots, erros, stack traces
-- Estado de features (implementado, pendente, quebrado)
-- Compatibilidade entre componentes, hooks, CFs
+Aplica-se a QUALQUER conclusão sobre o estado do projeto: fluxo de dados, origem de campos, estado de branches/PRs/merges, existência de arquivos/funções/componentes, interpretação de outputs de terminal e screenshots, estado de features, compatibilidade entre componentes/hooks/CFs.
 
 **Protocolo obrigatório (nesta ordem):**
-
 1. Classificar: "estou prestes a afirmar algo verificável?" → Se sim, PARAR
 2. Identificar a fonte de verdade (código, remote, Firestore, output direto)
-3. Verificar com `grep` + `view` + `bash`, ou solicitar ao Marcio o comando de verificação quando não houver acesso direto
-4. Cruzar com contexto existente (issue files, instruções de integração, PROJECT.md)
+3. Verificar com `grep` + `view` + `bash`, ou solicitar ao Marcio o comando
+4. Cruzar com contexto existente (issue files, PROJECT.md)
 5. Só então concluir
 
 **Se o Marcio colar um output de terminal, screenshot, ou log:**
@@ -87,7 +63,4 @@ Aplica-se a QUALQUER conclusão sobre o estado do projeto, incluindo mas não li
 - Cruzar com pelo menos uma fonte adicional antes de afirmar
 - Se houver ambiguidade, dizer "preciso confirmar — pode rodar `<comando>`?" em vez de assumir
 
-**Nunca inferir. Se não verificou, não afirma. Se está incerto, diz "preciso verificar" e verifica. Não existe output trivial — todo dado verificável passa pelo protocolo.**
-
----
-
+**Nunca inferir. Se não verificou, não afirma.** Se está incerto, diz "preciso verificar" e verifica.
