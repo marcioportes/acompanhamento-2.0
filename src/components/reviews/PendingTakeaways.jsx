@@ -17,8 +17,10 @@ import { Square, ClipboardCheck, MessageSquare, Loader2 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import useLatestClosedReview from '../../hooks/useLatestClosedReview';
 
-const PendingTakeaways = ({ studentId, onNavigateToFeedback = null }) => {
-  const { review, loading } = useLatestClosedReview(studentId);
+const PendingTakeaways = ({ studentId, planId = null, onNavigateToFeedback = null }) => {
+  // ContextBar respect (#188 F4): filtrar por planId do contexto quando definido.
+  // Sem planId (contexto "Todos os planos") → fallback broad (última review do aluno).
+  const { review, loading } = useLatestClosedReview(studentId, planId);
   const { toggleAlunoDone, actionLoading } = useWeeklyReviews(studentId);
 
   const pending = useMemo(() => {

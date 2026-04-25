@@ -93,12 +93,32 @@ service cloud.firestore {
     }
 
     // TRADES — DEC-024: dados do aluno, aluno tem acesso total
+    // DEC-AUTO-188-01/02: lock comportamental — quando _lockedByMentor == true, os
+    // 3 campos whitelisted (emotionEntry/emotionExit/setup) ficam imutáveis via rule.
+    // Metadados de lock/auditoria (_lockedByMentor, _lockedAt, _lockedBy, _mentorEdits,
+    // _studentOriginal, _unlockedAt, _unlockedBy) só podem ser escritos por mentor
+    // ou CF (admin SDK bypassa rules).
     match /trades/{tradeId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated(); 
-      allow update, delete: if isAuthenticated() && (
-        isMentor() || 
-        isOwner(resource.data.studentId) || 
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId) ||
+        isOwnerByEmail(resource.data.studentEmail)
+      ) && (
+        resource.data._lockedByMentor != true ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['emotionEntry', 'emotionExit', 'setup'])
+      ) && (
+        isMentor() ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          '_lockedByMentor', '_lockedAt', '_lockedBy',
+          '_unlockedAt', '_unlockedBy',
+          '_mentorEdits', '_studentOriginal'
+        ])
+      );
+      allow delete: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId) ||
         isOwnerByEmail(resource.data.studentEmail)
       );
 

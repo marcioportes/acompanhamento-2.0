@@ -1,10 +1,11 @@
 /**
  * useDashboardMetrics
- * @version 2.0.0 (v1.19.0)
+ * @version 2.1.0 (v1.45.0 — issue #188 F4)
  * @description Hook customizado que encapsula TODA a lógica de cálculo de métricas do Dashboard.
- *   Extraído do StudentDashboard para reduzir o arquivo principal e facilitar testes.
- *   v2.0.0: P&L contextual — label dinâmico indicando contexto do P&L exibido (B5 — Issue #71).
- * 
+ *   v2.1.0: Aceita param `context` com `periodRange`+`cycleKey` da ContextBar — TODOS os cards
+ *   consumidores filtram por essa janela temporal sem exceção. `filters.period` legado foi
+ *   removido (SoT única).
+ *
  * Retorna:
  *   - filteredAccountsByType, selectedAccountIds, allAccountTrades, plansToShow, availablePlans
  *   - filteredTrades, stats
@@ -14,7 +15,7 @@
  */
 
 import { useMemo } from 'react';
-import { calculateStats, filterTradesByPeriod, searchTrades } from '../utils/calculations';
+import { calculateStats, searchTrades } from '../utils/calculations';
 import { isSameCurrency, aggregateBalancesByCurrency } from '../utils/currency';
 import { isRealAccount, isDemoAccount } from '../utils/planCalculations';
 import {
@@ -25,13 +26,20 @@ import {
   calculateDurationDelta,
 } from '../utils/dashboardMetrics';
 
-/** Labels de período para display */
-const PERIOD_LABELS = {
-  today: 'Hoje',
-  week: 'Esta Semana',
-  month: 'Este Mês',
-  quarter: 'Este Trimestre',
-  year: 'Este Ano',
+/** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
+const PERIOD_KIND_LABELS = {
+  CYCLE: 'Ciclo',
+  MONTH: 'Este Mês',
+  WEEK: 'Esta Semana',
+};
+
+/** Converte trade.date ('YYYY-MM-DD') em Date local à meia-noite. */
+const parseTradeDate = (isoLike) => {
+  if (!isoLike) return null;
+  const raw = String(isoLike).split('T')[0];
+  const [y, m, d] = raw.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
 };
 
 const useDashboardMetrics = ({
@@ -41,6 +49,7 @@ const useDashboardMetrics = ({
   filters,
   selectedPlanId,
   accountTypeFilter,
+  context = null,
 }) => {
   // === Filtros de conta ===
   const filteredAccountsByType = useMemo(() => {
@@ -79,17 +88,31 @@ const useDashboardMetrics = ({
     return plansToShow.filter(p => p.active !== false);
   }, [plansToShow]);
 
+  // Janela temporal vem da ContextBar (issue #188 F4): quando `context.periodRange`
+  // está definido com start+end, TODOS os cards consumidores obedecem SEM exceção.
+  // `filters.period` legado foi removido. Granulares (ticker/setup/emotion/search) seguem.
   const filteredTrades = useMemo(() => {
     let result = allAccountTrades;
     if (selectedPlanId) result = result.filter(t => t.planId === selectedPlanId);
-    if (filters.period !== 'all') result = filterTradesByPeriod(result, filters.period);
+    const range = context?.periodRange;
+    if (range?.start && range?.end) {
+      const start = range.start instanceof Date ? range.start : new Date(range.start);
+      const end = range.end instanceof Date ? range.end : new Date(range.end);
+      // end inclusivo até fim do dia
+      const endInclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+      result = result.filter((t) => {
+        const d = parseTradeDate(t.date);
+        if (!d) return false;
+        return d >= start && d <= endInclusive;
+      });
+    }
     if (filters.ticker !== 'all') result = result.filter(t => t.ticker === filters.ticker);
     if (filters.setup !== 'all') result = result.filter(t => t.setup === filters.setup);
     if (filters.emotion !== 'all') result = result.filter(t => t.emotion === filters.emotion);
     if (filters.result !== 'all') result = result.filter(t => filters.result === 'win' ? t.result > 0 : t.result < 0);
     if (filters.search) result = searchTrades(result, filters.search);
     return result;
-  }, [allAccountTrades, selectedPlanId, filters]);
+  }, [allAccountTrades, selectedPlanId, filters, context?.periodRange]);
 
   const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
@@ -235,33 +258,24 @@ const useDashboardMetrics = ({
   // ΔT W vs L — derivado de avgTradeDuration; semáforo de comportamento em posição
   const durationDelta = useMemo(() => calculateDurationDelta(avgTradeDuration), [avgTradeDuration]);
 
-  // === P&L Contextual (B5 — Issue #71) ===
+  // === P&L Contextual (issue #71/#188 F4) ===
+  // Janela da ContextBar determina o label: ciclo/mês/semana → contextualizado;
+  // plano sem janela → plano; nenhum dos dois → total.
   const plContext = useMemo(() => {
-    // Prioridade 1: filtro de período ativo
-    if (filters.period !== 'all') {
-      return {
-        label: `P&L ${PERIOD_LABELS[filters.period] || filters.period}`,
-        type: 'filtered',
-      };
+    const kind = context?.periodRange?.kind;
+    if (kind && PERIOD_KIND_LABELS[kind]) {
+      return { label: `P&L ${PERIOD_KIND_LABELS[kind]}`, type: 'filtered' };
     }
 
-    // Prioridade 2: plano selecionado → P&L do plano
     if (selectedPlanId) {
       const plan = plans.find(p => p.id === selectedPlanId);
       if (plan) {
-        return {
-          label: `P&L Plano: ${plan.name}`,
-          type: 'plan',
-        };
+        return { label: `P&L Plano: ${plan.name}`, type: 'plan' };
       }
     }
 
-    // Prioridade 3: sem filtro, sem plano → total
-    return {
-      label: 'P&L Total',
-      type: 'total',
-    };
-  }, [filters.period, selectedPlanId, plans]);
+    return { label: 'P&L Total', type: 'total' };
+  }, [context?.periodRange?.kind, selectedPlanId, plans]);
 
   return {
     // Filtros
