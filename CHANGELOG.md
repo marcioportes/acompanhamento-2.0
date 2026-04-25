@@ -8,6 +8,94 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.46.0] - 25/04/2026
+
+**Issue:** #189 (feat: score emocional real no motor de maturidade — furo universal de progressão)
+**PR:** #196
+
+#### Corrigido
+
+- **Score emocional real no motor de maturidade.** Substitui stub explícito `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em `functions/maturity/preComputeShapes.js:129` (DEC-AUTO-119-task07-02 declarava como TODO) por mirror CommonJS de `emotionalAnalysisV2.calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2`. Antes, a dimensão emocional travava em E=50 fixo independente de comportamento — bloqueando promoção em todos os stages. Agora os 5 gates emocionais do framework (`emotional-out-of-fragile`, `emotional-55`, `emotional-75`, `emotional-85`, `zero-tilt-revenge`) discriminam por dados reais.
+
+#### Adicionado
+
+- **`functions/maturity/emotionalAnalysisMirror.js`** (CommonJS) — mirror determinístico do source ESM em `src/utils/emotionalAnalysisV2.js`. Inclui `calculatePeriodScore`, `detectTiltV2`, `detectRevengeV2`, `calculateTradeEmotionalScore`, `buildGetEmotionConfig` (replica `useMasterData.getEmotionConfig`), `computeEmotionalAnalysisShape` (entry point para `preComputeShapes`), constants `DEFAULT_DETECTION_CONFIG` + `EVENT_PENALTIES` + `SCORE_WEIGHTS` + `UNKNOWN_EMOTION_CONFIG`. Paridade testada via 8 cenários ESM↔CJS.
+- **Carga de `emotions` em `recomputeForStudent`** — `functions/maturity/recomputeMaturity.js` lê collection `emotions` antes de invocar `preComputeShapes`. Falha no fetch é graceful (warn + fallback neutro `{50,0,0}` — preserva D6 "evolução sempre visível", INV-03 isolamento mantido).
+- **`preComputeShapes` aceita `emotions` ou `getEmotionConfig`** opcional. Sem inputs, mantém fallback histórico `{50,0,0}` — backward compat com testes legados e callers ainda não atualizados.
+
+#### Inalterado (decisões 23/04/2026 preservadas)
+
+- Fórmula DEC-AUTO-119-03: `E = 0.60·periodScore + 0.25·invTilt(0,0.30) + 0.15·invRevenge(0,0.20)`.
+- Janela rolling STAGE_WINDOWS (issue-119 §3.1 D1): Stage 1=20/30, 2=30/45, 3=50/60, 4=80/90, 5=100/90 (floor 5).
+- Política D6 "evolução sempre visível": engine NUNCA retorna null para emocional.
+- DEC-020 (regressão nunca automática) intocada.
+
+#### Testes
+
+- **17 testes novos** em `src/__tests__/functions/maturity/emotionalAnalysisMirror.test.js` (paridade ESM↔CJS + cobertura `buildGetEmotionConfig` + `computeEmotionalAnalysisShape`).
+- **Suite full 2438/2438** (baseline 2421 + 17 novos), zero regressão.
+
+#### Follow-ups (não bloqueadores, fora do escopo "remover stub")
+
+- `calculatePeriodScore([], ...)` retorna 100 (paridade com source ESM) enquanto D6 espera 50 quando trades vazios. Apenas `computeEmotionalAnalysisShape` aplica D6 via early return — consumidor futuro que invoque `calculatePeriodScore` direto pega 100. Mitigação: comentário no header do mirror.
+- Aluno legado sem `emotionEntry` em todos os trades pega E≈60 (consistency bonus em UNKNOWN/UNKNOWN, ambos NEUTRAL). Comportamento herdado do source ESM, não regressão — vale issue própria de revisão semântica.
+- CF carrega collection `emotions` por trigger (`db.collection('emotions').get()`). ~15-30 docs, latência baixa, mas escala linear com volume de triggers. Cache em memória runtime seria otimização futura.
+
+---
+
+## [1.45.0] - 25/04/2026
+
+**Issue:** #188 (fix: Melhoria na Experiência de Feedback + Revisão — Sev1)
+**PR:** —
+
+Entrega consolidada de 4 frentes em 8 fases A-H (pair programming fast-track, tudo num PR):
+
+#### Adicionado
+
+- **F2 — Currency multi-moeda no MentorDashboard.** `aggregateTradesByCurrency(trades)` em `src/utils/currency.js` retorna `Map<currency, {totalPL, count}>` sem somar cross-currency. Novo componente `src/components/MultiCurrencyAmount.jsx` (stack vertical em multi-currency com cor por linha; cor semântica em single-currency). Aplicado em P&L Total Turma, P&L Total aluno detalhado, lista de alunos, ranking. Pending list + bulk modal usam `formatCurrencyDynamic(trade.result, trade.currency)` direto. FX conversion fora de escopo (DEC-AUTO-188-05).
+- **F3 — PlanSummaryCard no FeedbackPage.** `src/components/PlanSummaryCard.jsx` colapsado por default (chat continua sendo o foco). Header: nome do plano + moeda + badge "arquivado" se inativo. Linha 1: 🎯 RO/RR/Cap. Linha 2 (condicional): 🚫 Bloqueadas. Linha 3: 📅 Ciclo X/N. Expand mostra Período (Diário) Meta/Stop, Ciclo Meta/Stop, PL atual %ciclo. Inserido em ambos modos (embedded + standalone) entre `TradeInfoCard` e `ShadowBehaviorPanel`. `usePlans/useAccounts` com `overrideStudentId=trade.studentId` para mentor enxergar planos do aluno dono. Fallback "Plano deletado · ID NNN" quando `planId` sem match.
+- **F4 — TODOS os cards do StudentDashboard respeitam ContextBar sem exceção (DEC-AUTO-188-06).** `useDashboardMetrics` aceita parâmetro `context` (`{accountId, planId, cycleKey, periodRange}`). Filtragem central inclui janela temporal (end inclusivo até 23:59:59); todas as métricas derivadas (stats, MaxDD, payoff, EV, consistency, compliance, durations) herdam o filtro. `plContext.label` derivado de `periodRange.kind` (CYCLE/MONTH/WEEK). `filters.period` legado removido (SoT única). Dropdown "Período" do `Filters.jsx` removido (ContextBar é a única fonte). `PendingTakeaways` aceita prop `planId` e filtra última review CLOSED pelo plano selecionado. Teste invariante novo `src/__tests__/hooks/useDashboardMetrics.contextBar.test.js` com 7 cenários.
+- **F1 — Mentor edit + lock comportamental (Sev1 core, INV-15 aprovada).** 5 campos novos em `trades`:
+  - `_lockedByMentor: boolean` — flag binária do lock.
+  - `_lockedAt: Timestamp` — quando o lock foi aplicado.
+  - `_lockedBy: { uid, email, name }` — autor do lock.
+  - `_mentorEdits: array` (append-only auditável) — cada entry `{ field, oldValue, newValue, editedAt, editedBy:{uid,email} }`.
+  - `_studentOriginal: { emotionEntry, emotionExit, setup, capturedAt }` — gravado APENAS na 1ª edição do mentor; preserva o que o aluno declarou originalmente (imutável após).
+  - Metadata complementar: `_unlockedAt`, `_unlockedBy.{uid,email,reason}`.
+- **Gateway (INV-02).** `src/utils/tradeGateway.js`: `MENTOR_EDITABLE_FIELDS = ['emotionEntry','emotionExit','setup']`. Funções novas:
+  - `editTradeAsMentor(tradeId, edits, ctx, deps)` — whitelist; rejeita não-mentor; rejeita trade já locked; grava `_studentOriginal` na 1ª edit; `arrayUnion` em `_mentorEdits` apenas para campos que mudaram; aceita `null` (mentor remove emoção); noop quando edits não mudam nada.
+  - `lockTradeByMentor(tradeId, ctx, deps)` — grava `_lockedByMentor=true`, `_lockedAt`, `_lockedBy`. Rejeita não-mentor.
+  - `unlockTradeByMentor(tradeId, ctx, deps)` — preserva auditoria; captura motivo via `unlockReason`.
+- **Firestore rules.** Trades update agora tem 3 gates combinados:
+  1. Ownership: mentor OU owner OU owner-by-email.
+  2. Lock check: quando `_lockedByMentor==true`, `affectedKeys` NÃO pode tocar `emotionEntry`/`emotionExit`/`setup`.
+  3. Metadata guard: só mentor pode tocar `_lockedByMentor`/`_lockedAt`/`_lockedBy`/`_mentorEdits`/`_studentOriginal`/`_unlockedAt`/`_unlockedBy`. CFs bypassam via admin SDK.
+- **Cloud Function `onTradeUpdated`.** `complianceFields` agora inclui `emotionEntry` (corrige bug pré-existente: flag `BLOCKED_EMOTION` ficava estale quando aluno/mentor mudava emoção). Bloco de reconstrução de `redFlags` filtra `BLOCKED_EMOTION` antes de regerar conforme emoção corrente vs `plan.blockedEmotions`. Adicionalmente, novo bloco detecta `importBatchId` mudou + `after._lockedByMentor==true` e destrava server-side preservando `_mentorEdits`/`_studentOriginal` (DEC-AUTO-188-03 — broker é fonte de verdade superior ao mentor).
+- **UI mentor edit + lock.** `src/components/feedback/MentorEditPanel.jsx` colapsável (escondido pós-lock) com 3 selects (`useMasterData.emotions` + `useSetups` filtrados por aluno via `filterSetupsForStudent`), botão "Reverter ao original" (visível só com `_studentOriginal`), botão "Confirmar e travar (N)" abrindo modal de confirmação dupla. `src/components/TradeLockBadge.jsx` reutilizável (header do FeedbackPage, tooltip com autor + data DD/MM/AAAA, suporte Firestore Timestamp). Asterisco âmbar (`*`) nos campos corrigidos do `TradeInfoCard` com tooltip "Original: X · corrigido pelo mentor". Ícone `Lock` inline na `ExtractTable` ao lado do ticker. Bloco "Histórico de correções (N)" no rodapé do `TradeDetailModal` listando cada `_mentorEdits` (data · email · campo: old → new) + linha "🔒 Travado por <email>".
+- **Hooks.** `useTrades` expõe `editTradeAsMentor`/`lockTradeAsMentor`/`unlockTradeAsMentor` (import dinâmico do gateway).
+
+#### Decisões registradas
+
+- **DEC-AUTO-188-01** — Schema do lock: 5 campos inline no doc trade + array append-only `_mentorEdits` (não map). `_studentOriginal` imutável após 1ª edit (auditoria do que o aluno declarou).
+- **DEC-AUTO-188-02** — Escopo do lock limitado a 3 campos comportamentais (`emotionEntry`, `emotionExit`, `setup`); campos factuais (entry/exit/qty/result) seguem fluxo normal.
+- **DEC-AUTO-188-03** — Import (CSV/Order) destrava lock server-side via CF preservando auditoria; broker é fonte de verdade superior ao mentor.
+- **DEC-AUTO-188-04** — Admin destrava lock manualmente (sem UI dedicada v1; campo editável direto via Firestore console + `unlockTradeByMentor`).
+- **DEC-AUTO-188-05** — Agregação multi-moeda no MentorDashboard via stack vertical; FX conversion fora de escopo.
+- **DEC-AUTO-188-06** — ContextBar é SoT única de janela temporal no StudentDashboard; `filters.period` legado removido sem override vitalício.
+- **DEC-AUTO-188-07** — `onTradeUpdated.complianceFields` passa a incluir `emotionEntry` (fix bug pré-existente entra junto com a Sev1).
+
+#### Testes
+
+- 2445/2445 (baseline 2401 + 44 novos):
+  - 7 `aggregateTradesByCurrency`
+  - 11 `PlanSummaryCard`
+  - 7 `useDashboardMetrics.contextBar` (cenários: sem janela, com janela, borda end, combinado com granular, periodRange null, plContext label, MaxDD por ciclo)
+  - 13 `tradeGatewayMentorLock` (whitelist, rejeições, noop, null, _studentOriginal preservado)
+  - 6 `TradeLockBadge` (render condicional, tooltip, fallback email, Firestore Timestamp)
+- Build limpo. Lint sem erros novos.
+
+---
+
 ## [1.44.1] - 24/04/2026
 
 **Issue:** #191 (fix: aderência recente no gate compliance-100 do stage Profissional)

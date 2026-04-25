@@ -9,10 +9,36 @@
  *   `emotionalAnalysisV2.calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2`. Fórmula
  *   DEC-AUTO-119-03 inalterada (`E = 0.60·periodScore + 0.25·invTilt + 0.15·invRevenge`).
  *   Janela STAGE_WINDOWS rolling (D1) e política "evolução sempre visível" (D6) preservadas.
- *   [RESERVADA — entrada definitiva no encerramento.]
+ *   Mirror em `functions/maturity/emotionalAnalysisMirror.js` (CommonJS, paridade ESM↔CJS
+ *   testada) com `calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2` +
+ *   `buildGetEmotionConfig` (replica `useMasterData.getEmotionConfig`). Os 5 gates
+ *   emocionais do framework (`emotional-out-of-fragile`, `-55`, `-75`, `-85`,
+ *   `zero-tilt-revenge`) passam a discriminar — antes travados em E=50. Suite 2438/2438
+ *   (baseline 2421 + 17 novos). Validado em browser (PR #196).
  * - 1.45.0: feat: FeedbackPage mentor edit+lock+recalc + MentorDashboard currency multi-moeda +
- *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1) —
- *   [RESERVADA — entrada definitiva no encerramento.]
+ *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1).
+ *   Entrega em 8 fases A-H pair programming fast-track.
+ *   F2: aggregateTradesByCurrency + MultiCurrencyAmount; P&L Turma/ranking/lista alunos/detalhe
+ *   aluno agregam por moeda sem somar cross-currency; pending list + bulk modal usam
+ *   formatCurrencyDynamic(result, trade.currency). FX conversion fora (DEC-AUTO-188-05).
+ *   F3: PlanSummaryCard colapsável (RO/RR/Cap/Bloqueadas/Ciclo X-N) na coluna esquerda do
+ *   FeedbackPage em ambos modos. usePlans/useAccounts com overrideStudentId=trade.studentId.
+ *   Smoke-test polish: fontes -1pt, RO/Período/Ciclo Meta+Stop exibem valor absoluto da moeda.
+ *   F4: useDashboardMetrics aceita context{accountId,planId,cycleKey,periodRange}; TODOS os
+ *   cards do StudentDashboard obedecem à ContextBar sem exceção (DEC-AUTO-188-06).
+ *   filters.period legado removido. PendingTakeaways filtra por planId do contexto.
+ *   Tooltips em todos os KPIs/quadrantes da Matriz Emocional 4D com fórmulas calculadas.
+ *   F1 (Sev1 core): INV-15 aplicada. 5 campos novos em trades — _lockedByMentor, _lockedAt,
+ *   _lockedBy, _mentorEdits[] (append-only), _studentOriginal (imutável após 1ª edit).
+ *   Gateway expõe editTradeAsMentor/lockTradeByMentor/unlockTradeByMentor (INV-02).
+ *   firestore.rules: ownership + lock dos 3 campos quando _lockedByMentor=true + metadata
+ *   guard (só mentor toca campos de lock; CFs bypassam). onTradeUpdated.complianceFields agora
+ *   inclui emotionEntry — fix bug pré-existente onde BLOCKED_EMOTION ficava estale. UI:
+ *   MentorEditPanel (3 selects + reverter ao original + confirmação modal + travar),
+ *   TradeLockBadge no header, ícone Lock inline na ExtractTable, bloco "Histórico de correções"
+ *   no TradeDetailModal, asterisco âmbar com tooltip nos campos corrigidos. Import (CSV/Order)
+ *   destrava lock server-side via CF onTradeUpdated quando importBatchId muda (DEC-AUTO-188-03 —
+ *   broker é fonte de verdade superior ao mentor). 2445/2445 testes (+44 novos).
  * - 1.44.1: fix: Aderência recente (últimos N trades) no gate compliance-100 do stage
  *   Profissional (issue #191). Antes: `complianceRate100 = complianceRate` (alias do
  *   cálculo da janela total — semanticamente errado). Agora: novo helper puro
@@ -179,10 +205,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.44.1',
-  build: '20260424',
-  display: 'v1.44.1',
-  full: '1.44.1+20260424',
+  version: '1.46.0',
+  build: '20260425',
+  display: 'v1.46.0',
+  full: '1.46.0+20260425',
 };
 export default VERSION;
 export { VERSION };

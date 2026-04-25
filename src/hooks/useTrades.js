@@ -709,10 +709,52 @@ export const useTrades = (overrideStudentId = null) => {
     return allTrades.filter(t => t.studentEmail === studentEmail && t.status === status);
   }, [allTrades]);
   
-  return { 
-    trades, allTrades, loading, error, 
+  // ============================================
+  // LOCK COMPORTAMENTAL — issue #188 F1 (INV-02 gateway-preserving)
+  // ============================================
+
+  const editTradeAsMentorFn = useCallback(async (tradeId, edits) => {
+    if (!user) throw new Error('Auth required');
+    const { editTradeAsMentor } = await import('../utils/tradeGateway');
+    return editTradeAsMentor(tradeId, edits, {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      isMentor: isMentor(),
+    });
+  }, [user, isMentor]);
+
+  const lockTradeAsMentorFn = useCallback(async (tradeId) => {
+    if (!user) throw new Error('Auth required');
+    const { lockTradeByMentor } = await import('../utils/tradeGateway');
+    return lockTradeByMentor(tradeId, {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      isMentor: isMentor(),
+    });
+  }, [user, isMentor]);
+
+  const unlockTradeAsMentorFn = useCallback(async (tradeId, reason = 'manual') => {
+    if (!user) throw new Error('Auth required');
+    const { unlockTradeByMentor } = await import('../utils/tradeGateway');
+    return unlockTradeByMentor(tradeId, {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      isMentor: isMentor(),
+      unlockReason: reason,
+    });
+  }, [user, isMentor]);
+
+  return {
+    trades, allTrades, loading, error,
     addTrade, updateTrade, deleteTrade, setSuspendListener,
     addFeedback, addFeedbackComment, updateTradeStatus, addBulkFeedback, uploadFeedbackImage,
+    // Lock comportamental (#188 F1)
+    editTradeAsMentor: editTradeAsMentorFn,
+    lockTradeAsMentor: lockTradeAsMentorFn,
+    unlockTradeAsMentor: unlockTradeAsMentorFn,
     // Parciais (campo _partials no documento — NÃO subcollection)
     getPartials, recalculateFromPartials,
     // Helpers

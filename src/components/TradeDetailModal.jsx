@@ -600,6 +600,39 @@ const TradeDetailModal = ({
                 </div>
               )}
             </div>
+
+            {/* Histórico de correções do mentor (#188 F1c) */}
+            {Array.isArray(trade._mentorEdits) && trade._mentorEdits.length > 0 && (
+              <div className="p-6 border-t border-slate-800/50">
+                <h3 className="text-sm font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded text-xs">
+                    Histórico de correções ({trade._mentorEdits.length})
+                  </span>
+                </h3>
+                <div className="space-y-1.5 text-xs">
+                  {trade._mentorEdits.map((entry, i) => (
+                    <div key={`${entry.editedAt}-${i}`} className="flex items-center gap-2 text-slate-400">
+                      <span className="text-slate-500 font-mono">{entry.editedAt?.split('T')[0] || '—'}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-slate-400">{entry.editedBy?.email || 'mentor'}</span>
+                      <span className="text-slate-600">·</span>
+                      <span className="text-slate-500">{entry.field}:</span>
+                      <span className="text-slate-400 line-through">{entry.oldValue || '—'}</span>
+                      <span className="text-slate-600">→</span>
+                      <span className="text-amber-300 font-medium">{entry.newValue || '—'}</span>
+                    </div>
+                  ))}
+                  {trade._lockedByMentor && trade._lockedAt && (
+                    <div className="pt-2 mt-2 border-t border-slate-800 flex items-center gap-2 text-amber-300">
+                      <span>🔒 Travado</span>
+                      {trade._lockedBy?.email && (
+                        <span className="text-slate-500">por {trade._lockedBy.email}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1035,8 +1035,11 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     const planChanged = before.planId !== after.planId;
     const resultChanged = Math.abs(newResult - oldResult) > 0.01;
     
-    // Detectar mudanças em qualquer campo que afeta compliance
-    const complianceFields = ['stopLoss', 'entry', 'exit', 'qty', 'side'];
+    // Detectar mudanças em qualquer campo que afeta compliance.
+    // `emotionEntry` adicionado em v1.45.0 (#188 Fase E): mentor pode editar emoção
+    // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
+    // a flag ficava estale (bug pré-existente descoberto durante o #188).
+    const complianceFields = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry'];
     const complianceChanged = complianceFields.some(f => {
       const bv = before[f] ?? null;
       const av = after[f] ?? null;
@@ -1064,13 +1067,18 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         const plan = planDoc.data();
         const compliance = calculateTradeCompliance(after, plan);
         
-        // Reconstruir red flags — remove os de compliance, recria conforme novo cálculo
+        // Reconstruir red flags — remove os de compliance (incluindo BLOCKED_EMOTION —
+        // #188 Fase E: flag era estale quando mentor editava emotionEntry), recria
+        // conforme novo cálculo.
         const existingFlags = Array.isArray(after.redFlags) ? after.redFlags : [];
         let newFlags = existingFlags.filter(f => {
           const type = typeof f === 'string' ? f : f.type;
-          return type !== 'RISCO_ACIMA_PERMITIDO' && type !== 'RR_ABAIXO_MINIMO' && type !== 'TRADE_SEM_STOP';
+          return type !== 'RISCO_ACIMA_PERMITIDO'
+            && type !== 'RR_ABAIXO_MINIMO'
+            && type !== 'TRADE_SEM_STOP'
+            && type !== RED_FLAG_TYPES.BLOCKED_EMOTION;
         });
-        
+
         if (!after.stopLoss) {
           const tradeResult = after.result ?? 0;
           let noStopMsg = 'Trade sem stop loss definido';
@@ -1084,6 +1092,14 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
           newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: `RR ${compliance.rrRatio.toFixed(1)}x abaixo do mínimo (${plan.rrTarget}x)`, timestamp: new Date().toISOString() });
         }
+        // BLOCKED_EMOTION: recompila conforme a emoção CORRENTE vs blockedEmotions do plano.
+        if (Array.isArray(plan.blockedEmotions) && plan.blockedEmotions.includes(after.emotionEntry)) {
+          newFlags.push({
+            type: RED_FLAG_TYPES.BLOCKED_EMOTION,
+            message: `Emoção "${after.emotionEntry}" bloqueada`,
+            timestamp: new Date().toISOString(),
+          });
+        }
         
         // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades
         await change.after.ref.update({
@@ -1096,6 +1112,30 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         });
         const roDisplay = compliance.riskPercent != null ? compliance.riskPercent.toFixed(2) + '%' : 'N/A';
         console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
+      }
+    }
+
+    // === DESTRAVA LOCK COMPORTAMENTAL VIA IMPORT (#188 F1d / DEC-AUTO-188-03) ===
+    // Broker é fonte de verdade superior ao mentor. Quando enrichTrade roda
+    // (mudança em importBatchId E enrichedByImport=true) num trade locked,
+    // destrava preservando _mentorEdits/_studentOriginal. Aluno NÃO consegue
+    // executar isto via firestore.rules — só admin SDK aqui.
+    const importBatchChanged = before.importBatchId !== after.importBatchId
+      && after.importBatchId != null;
+    if (importBatchChanged && after._lockedByMentor === true) {
+      try {
+        await change.after.ref.update({
+          _lockedByMentor: false,
+          _unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+          _unlockedBy: {
+            uid: 'system',
+            email: null,
+            reason: `import:${after.importBatchId}`,
+          },
+        });
+        console.log(`[onTradeUpdated] Lock destravado por import (batch=${after.importBatchId})`);
+      } catch (unlockErr) {
+        console.error('[onTradeUpdated] Erro destrava por import:', unlockErr);
       }
     }
 
