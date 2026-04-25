@@ -318,7 +318,16 @@ ContextBar="Todas": filteredTrades=120, totalPL=+7300
 
 ## Sessions
 
-_(log linear — uma linha por task consolidada)_
+- 25/04/2026 — Fase A — F2 currency multi-moeda MentorDashboard — `aggregateTradesByCurrency` + `MultiCurrencyAmount.jsx` + 7 refactors em `MentorDashboard.jsx` (P&L Turma stack, ranking, lista, detalhe, pending list, bulk modal) — commit `6b9a2472`
+- 25/04/2026 — Fase B — F3 `PlanSummaryCard.jsx` colapsável + integração FeedbackPage embedded+standalone via `usePlans/useAccounts` com `overrideStudentId` — commit `7fe7628a`
+- 25/04/2026 — Fase C — F4 `useDashboardMetrics` v2.1.0 aceita `context{accountId,planId,cycleKey,periodRange}` + filtragem central por janela; `filters.period` removido; `Filters.jsx` 6→5 col; `PendingTakeaways` recebe `planId` — commit `9cc19e07`
+- 25/04/2026 — Fase D — F1a schema 5 campos + `tradeGateway.MENTOR_EDITABLE_FIELDS` + 3 novas funções gateway + `firestore.rules` ownership+lock+metadata guard — commit `3ee61d49`
+- 25/04/2026 — Fase E — F1b CF `onTradeUpdated.complianceFields` inclui `emotionEntry`; reconstrução de redFlags filtra/recompila `BLOCKED_EMOTION` — commit `ef80725f`
+- 25/04/2026 — Fase F — F1c UI `MentorEditPanel` + `TradeLockBadge` + asterisco campos editados + ícone `Lock` na ExtractTable + bloco "Histórico de correções" no TradeDetailModal — commit `2797d490`
+- 25/04/2026 — Fase G — F1d server-side unlock por import via CF `onTradeUpdated` quando `importBatchId` muda (admin SDK bypassa rules; preserva `_mentorEdits`/`_studentOriginal`) — commit `591ca8bf`
+- 25/04/2026 — Fase H — Gate Pré-Entrega: bump v1.45.0 + CHANGELOG + suite 2445/2445 + lint baseline pre-existente — commit `e2465233`
+- 25/04/2026 — Smoke-test polish — `PlanSummaryCard` fontes -1pt + valores absolutos da moeda em RO/Período/Ciclo Meta+Stop; tooltips com fórmulas calculadas em todos os KPIs/quadrantes da Matriz Emocional 4D — commit `9bc3d235`
+- 25/04/2026 — Merge `origin/main` resolvido em `CHANGELOG.md` + `src/version.js` (HEAD vence — entrada definitiva v1.45.0 + preserva v1.44.1 do #191) — merge commit `f90df662`
 
 ## Shared Deltas (aplicados na Abertura)
 
@@ -326,14 +335,14 @@ _(log linear — uma linha por task consolidada)_
 - `docs/registry/versions.md` — v1.45.0 reservada (commit `a9e9a90f`)
 - `src/version.js` — entrada CHANGELOG v1.45.0 `[RESERVADA]` (commit `a9e9a90f`)
 
-**Pendentes para o Encerramento:**
-- `src/version.js` — `version: '1.45.0'` + `build: 'YYYYMMDD'` + resumo final na entrada
-- `docs/registry/versions.md` — v1.45.0 consumida
-- `docs/registry/chunks.md` — liberar os 8 locks
-- `CHANGELOG.md` — entrada `[1.45.0] - DD/MM/YYYY`
-- `docs/PROJECT.md` — bump de versão + linha de changelog
-- `docs/firestore-schema.md` — documentar 5 campos novos em `trades`
-- `docs/decisions.md` — DEC-AUTO-188-* consolidadas
+## Shared Deltas (consumados no Encerramento)
+
+- `src/version.js` — `version: '1.45.0'` + `build: '20260425'` + resumo final consolidado (commit `e2465233` na branch; squash `a7b89c89` no main via PR #195)
+- `CHANGELOG.md` — entrada definitiva `[1.45.0] - 25/04/2026` (commit `e2465233` na branch; squash `a7b89c89` no main)
+- `docs/registry/versions.md` — v1.45.0 marcada `consumida (PR #195 squash a7b89c89)`
+- `docs/registry/chunks.md` — 8 locks liberados (CHUNK-02/03/04/05/06/08/13/16)
+- `docs/decisions.md` — DEC-AUTO-188-01..07 consolidadas
+- `docs/dev/archive/2026-Q2/` — este doc movido via `scripts/archive-issue.sh 188`
 
 ## Decisions
 
