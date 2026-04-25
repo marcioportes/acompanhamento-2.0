@@ -95,15 +95,39 @@ Trader com 1 plano `Mensal`, `now = 2026-04-24`. Ciclo ativo: `2026-04-01..2026-
 
 ## Sessions
 
-_(preenchido durante execução — 1 linha por task)_
+- 24/04/2026 — abertura no main: lock CHUNK-09 + reserva v1.44.1 (commit `02f71110`)
+- 24/04/2026 — worktree criado: `~/projects/issue-191`, branch `fix/issue-191-compliance-recente-ciclo`
+- 24/04/2026 — F1+F2+F3 implementação: helper `computeCycleBasedComplianceRate` (CommonJS + mirror ESM), wire em `preComputeShapes.js` substituindo alias linha 126, `now` propagado em `recomputeMaturity.js`
+- 24/04/2026 — F4 testes: 17 cenários ESM (A-E + 12 invariantes) + 3 paridade ESM↔CommonJS; suite total 2421/2421 verde
+- 24/04/2026 — F5 bump v1.44.0 → v1.44.1 + entrada `CHANGELOG.md`
+- 24/04/2026 — commit único `9d3f14b0` no worktree, push, PR #194 aberto com `Closes #191`
+- 25/04/2026 — merge da main em dia (commit `83c0bb7c` — único delta era `docs(closing): §4.3 passo 5 cobre tmux + watchdog`, sem conflito); PR #194 squash mergeado por Marcio como `eb4ff2ec`
+- 25/04/2026 — encerramento §4.3 no main: registries liberados, PROJECT.md → v0.40.2, decisions DEC-AUTO-191-01/-02, archive via `scripts/archive-issue.sh 191`. Worktree e branch local removidos. Verificação 5d limpa.
 
-## Shared Deltas
+## Shared Deltas (consumadas)
 
-- `src/version.js` — bump 1.44.0 → 1.44.1
-- `docs/registry/versions.md` — marcar 1.44.1 consumida (no encerramento §4.3)
-- `docs/registry/chunks.md` — liberar CHUNK-09 (no encerramento §4.3)
-- `CHANGELOG.md` — nova entrada `[1.44.1] - 24/04/2026`
-- `docs/PROJECT.md` — bump versão (no encerramento §4.3)
+- `src/version.js` — bump 1.44.0 → 1.44.1 (no PR #194)
+- `CHANGELOG.md` — entrada `[1.44.1] - 24/04/2026` (no PR #194)
+- `docs/registry/versions.md` — 1.44.1 marcada consumida (commit `3a5e8912`)
+- `docs/registry/chunks.md` — CHUNK-09 liberado (commit `3a5e8912`)
+- `docs/PROJECT.md` — bump 0.40.1 → 0.40.2 (commit `3a5e8912`)
+- `docs/decisions.md` — DEC-AUTO-191-01/-02 (commit `3a5e8912`)
+
+## Arquivos tocados (PR #194)
+
+- `functions/maturity/computeCycleBasedComplianceRate.js` (novo, CommonJS)
+- `src/utils/maturityEngine/computeCycleBasedComplianceRate.js` (novo, ESM mirror)
+- `functions/maturity/preComputeShapes.js` (modificado — aceita `now`, consome novo helper)
+- `functions/maturity/recomputeMaturity.js` (modificado — repassa `now`)
+- `src/__tests__/utils/maturityEngine/computeCycleBasedComplianceRate.test.js` (novo, 17 testes)
+- `src/__tests__/functions/maturity/computeCycleBasedComplianceRate.test.js` (novo, 3 paridade)
+- `src/version.js` (bump)
+- `CHANGELOG.md` (nova entrada)
+- `docs/dev/issues/issue-191-compliance-ciclo.md` (este doc, depois arquivado)
+
+## Pendências
+
+Nenhuma. Issue fechado pelo merge do PR #194 (`Closes #191`).
 
 ## Decisions
 
