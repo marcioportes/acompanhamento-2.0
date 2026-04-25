@@ -1115,6 +1115,30 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       }
     }
 
+    // === DESTRAVA LOCK COMPORTAMENTAL VIA IMPORT (#188 F1d / DEC-AUTO-188-03) ===
+    // Broker é fonte de verdade superior ao mentor. Quando enrichTrade roda
+    // (mudança em importBatchId E enrichedByImport=true) num trade locked,
+    // destrava preservando _mentorEdits/_studentOriginal. Aluno NÃO consegue
+    // executar isto via firestore.rules — só admin SDK aqui.
+    const importBatchChanged = before.importBatchId !== after.importBatchId
+      && after.importBatchId != null;
+    if (importBatchChanged && after._lockedByMentor === true) {
+      try {
+        await change.after.ref.update({
+          _lockedByMentor: false,
+          _unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+          _unlockedBy: {
+            uid: 'system',
+            email: null,
+            reason: `import:${after.importBatchId}`,
+          },
+        });
+        console.log(`[onTradeUpdated] Lock destravado por import (batch=${after.importBatchId})`);
+      } catch (unlockErr) {
+        console.error('[onTradeUpdated] Erro destrava por import:', unlockErr);
+      }
+    }
+
     // === PROP FIRM RECALC (#52 Fase 2) ===
     // LIMITAÇÃO v1: aplica delta incremental (newResult - oldResult), NÃO reconstrói histórico.
     // Trade editado muito antigo pode dessincronizar peakBalance. Aceito intencionalmente.

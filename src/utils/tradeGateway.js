@@ -304,6 +304,9 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
   };
 
   // 8. Patch — apenas campos enriquecidos. Preserva emoção/setup/feedback/etc.
+  // Destrava do lock comportamental (DEC-AUTO-188-03) é executada server-side
+  // pela CF onTradeUpdated quando detecta novo importBatchId — preserva
+  // firestore.rules estrita (aluno não pode tocar metadados de lock direto).
   const patch = {
     _partials: enrichment._partials || [],
     entry, exit, qty, stopLoss,
