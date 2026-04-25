@@ -48,7 +48,10 @@ Nada novo a decidir.
 
 ## Sessions
 
-_(log linear)_
+- 25/04/2026 — abertura: lock CHUNK-09 + reserva v1.46.0 (commit `8a26b45e` no main) + worktree + doc de controle (commit `39c679d7`)
+- 25/04/2026 — A1+A2+A3 mirror `emotionalAnalysisMirror.js` + wire `preComputeShapes` + carga `emotions` em `recomputeForStudent` (commit `50bdc1e5`); 17 testes paridade ESM↔CJS; suite 2438/2438 verde
+- 25/04/2026 — review contra framework + §3.1 D1-D18: aderência total, sem bloqueadores; follow-ups documentados (calculatePeriodScore([])=100 vs D6, aluno legado sem emotionEntry pega E≈60, cache de `emotions` no CF runtime)
+- 25/04/2026 — Marcio testou no browser, autorizou encerramento
 
 ## Shared Deltas
 
