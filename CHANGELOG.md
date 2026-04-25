@@ -8,6 +8,68 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.46.1] - 25/04/2026
+
+**Issue:** #197 (fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação)
+**PR:** #198
+
+#### Corrigido
+
+- **Atualização de `meetingLink`/`videoLink` pós-publicação.** Mentor publicava a revisão semanal (CLOSED) e ficava preso — único caminho de gravação dos 2 links era em DRAFT, mas o link da gravação (Loom/Drive/YouTube) só existe DEPOIS da reunião terminar. Caminho real impossível. Os campos passam a ser tratados como metadata operacional (não conteúdo congelável), editáveis por mentor em DRAFT e CLOSED, bloqueados em ARCHIVED. Não fazem parte do `frozenSnapshot` (DEC-AUTO-197-01).
+
+- **Acesso a revisões CLOSED na Fila de Revisão.** `ReviewQueuePage` filtrava apenas alunos com pelo menos 1 DRAFT (`StudentDraftProbe` com `where('status', '==', 'DRAFT')`). Mentor que publicou todas as revisões ficava sem caminho para reabrir CLOSED — bloqueando o fix do meetingLink na prática. Toggle "Incluir publicadas" (default OFF, preserva intent original da fila como working items) com probe paralelo de CLOSED ativado on-demand.
+
+#### Adicionado
+
+- **`useWeeklyReviews.updateMeetingLinks(reviewId, { meetingLink, videoLink })`** — `updateDoc` parcial em `students/{uid}/reviews/{rid}` com `{ meetingLink, videoLink, updatedAt: serverTimestamp() }`. Não muda `status`. Valida URLs via `validateReviewUrl` (regex https + allowlist `zoom.us`, `meet.google.com`, `teams.microsoft.com`, `loom.com`, `youtube.com`, `drive.google.com`, `vimeo.com`). Aceita parcial: `undefined` preserva valor existente.
+- **`MeetingLinksSection`** (inline em `WeeklyReviewPage.jsx`) — Subitem 3 "Reunião" entre Notas (2) e Snapshot (4). 2 inputs `<input type="url">` + botão "Salvar links" + validação inline + estado read-only em ARCHIVED com banner. Renumeração visível 3-9.
+- **Botão dedicado "Salvar links"** em `ReviewToolsPanel` (Section "Reunião" no Extrato) e `WeeklyReviewModal` (tab "Reunião"). Funciona em DRAFT e CLOSED, separado do "Salvar rascunho" (que segue exclusivo de DRAFT cobrindo takeaways/sessionNotes).
+- **`StudentStatusProbe`** (refatoração de `StudentDraftProbe`) — probe genérico parametrizável por status. `ReviewQueuePage` instancia 1 por aluno × DRAFT, e adicional para CLOSED on-demand via toggle.
+- **Toggle "Incluir publicadas"** no header da Fila de Revisão (default OFF). Quando ON, soma alunos com CLOSED > 0 ao filtro `studentsToShow`. Copy do header e empty state condicionais.
+
+#### Inalterado
+
+- `firestore.rules`: linhas 65-71 já permitiam mentor `CLOSED→CLOSED` com qualquer campo. Sem alteração.
+- Schema Firestore: `meetingLink`/`videoLink` aprovados em #102 (v1.33.0). INV-15 não acionada.
+- `ReviewToolsPanel.handleSaveDraft` permanece exclusivo de DRAFT — cobre takeaways/sessionNotes que continuam imutáveis pós-publicação.
+
+#### Decisões
+
+- **DEC-AUTO-197-01** — `meetingLink`/`videoLink` em `students/{uid}/reviews/{rid}` são metadata operacional, não conteúdo congelável. Editáveis por mentor em DRAFT e CLOSED via `updateMeetingLinks` (update parcial sem mudar status). ARCHIVED bloqueia. Não entram no `frozenSnapshot` ao publicar — preserva imutabilidade da análise (takeaways/SWOT/snapshot/maturity) sem travar metadata operacional.
+
+#### Testes
+
+- **7 testes novos** em `src/__tests__/hooks/useWeeklyReviews.test.js > updateMeetingLinks`:
+  - DRAFT/CLOSED feliz com ambos os campos
+  - Strings vazias para limpar links
+  - URL inválida (não-https) rejeita sem chamar `updateDoc`
+  - Host fora da allowlist rejeita sem `updateDoc`
+  - Ambos `undefined` = no-op defensivo (zero chamadas)
+  - Parcial: só `meetingLink` quando `videoLink` é `undefined`
+  - Erro do `updateDoc` propaga + `error` exposto no hook
+- Suite full: **2489/2489 verde** (149 arquivos). Sem regressão.
+
+#### Smoke
+
+- Validado em `localhost:5173` (Marcio, 25/04/2026): mentor publica → marca toggle "Incluir publicadas" → expande aluno → click em revisão CLOSED → Subitem 3 "Reunião" → cola link → "Salvar links" → recarrega → link persiste.
+
+#### Files Touched
+
+- `src/hooks/useWeeklyReviews.js` — novo método `updateMeetingLinks`, `validateReviewUrl` importado
+- `src/pages/WeeklyReviewPage.jsx` — `MeetingLinksSection` inline + state + handler + render como Subitem 3 + renumeração 3→9
+- `src/components/reviews/ReviewToolsPanel.jsx` — `handleSaveLinks` + `linksDirty` + botão dedicado
+- `src/components/reviews/WeeklyReviewModal.jsx` — idem na tab "Reunião"
+- `src/pages/ReviewQueuePage.jsx` — `StudentStatusProbe` + `closedCounts` + toggle "Incluir publicadas"
+- `src/__tests__/hooks/useWeeklyReviews.test.js` — 7 testes do `updateMeetingLinks`
+- `docs/decisions.md` — DEC-AUTO-197-01
+- `docs/firestore-schema.md` — nota sobre `meetingLink`/`videoLink` como metadata operacional
+- `docs/dev/issues/issue-197-...md` → `docs/dev/archive/2026-Q2/`
+- `docs/registry/{versions,chunks}.md` — consumida + liberado
+- `src/version.js` — bump 1.46.0 → 1.46.1
+- `docs/PROJECT.md` — bump v0.40.4 → v0.40.5
+
+---
+
 ## [1.46.0] - 25/04/2026
 
 **Issue:** #189 (feat: score emocional real no motor de maturidade — furo universal de progressão)

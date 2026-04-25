@@ -9,4 +9,4 @@
 | 1.45.0 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | consumida (PR #195 squash `a7b89c89`) |
 | 1.44.1 | #191 | `fix/issue-191-compliance-recente-ciclo` | 24/04/2026 | consumida (PR #194 squash `eb4ff2ec`) |
 | 1.46.0 | #189 | `feat/issue-189-emotional-engine-real` | 25/04/2026 | consumida (PR #196) |
-| 1.46.1 | #197 | `fix/issue-197-review-meeting-links-post-publish` | 25/04/2026 | reservada |
+| 1.46.1 | #197 | `fix/issue-197-review-meeting-links-post-publish` | 25/04/2026 | consumida (PR #198 squash `af9662b0`) |

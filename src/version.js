@@ -4,7 +4,27 @@
  *
  * CHANGELOG:
  * - 1.46.1: fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação
- *   (issue #197). [RESERVADA — entrada definitiva no encerramento.]
+ *   (issue #197, PR #198 squash `af9662b0`). Mentor publicava revisão (CLOSED) e ficava preso:
+ *   `meetingLink`/`videoLink` editáveis só em DRAFT — caminho real impossível porque link da
+ *   gravação só existe DEPOIS da reunião terminar, depois de publicar. Fix em 4 fases:
+ *   (B) novo `useWeeklyReviews.updateMeetingLinks(reviewId, {meetingLink, videoLink})` faz
+ *   `updateDoc` parcial sem mudar status; valida via `validateReviewUrl` antes de gravar;
+ *   aceita parcial (`undefined` preservado); ambos `undefined` = no-op defensivo.
+ *   (A) `WeeklyReviewPage` ganha Subitem 3 "Reunião" entre Notas (2) e Snapshot (4) —
+ *   renumeração visível 3→9; `MeetingLinksSection` inline (padrão dos siblings).
+ *   (C) `ReviewToolsPanel` (Extrato) e `WeeklyReviewModal` tab "Reunião": novo botão dedicado
+ *   "Salvar links" liberado em CLOSED, separado do "Salvar rascunho" (que segue exclusivo de
+ *   DRAFT cobrindo takeaways/sessionNotes). Tri-superficial consistente.
+ *   (G) Escopo expandido descoberto durante smoke: `ReviewQueuePage` filtrava só alunos com
+ *   DRAFT — sem caminho para reabrir CLOSED. Refatorado em `StudentStatusProbe` genérico +
+ *   `closedCounts` paralelo + toggle "Incluir publicadas" (default OFF, preserva intent
+ *   original como fila de working items); copy do header/empty state condicional.
+ *   `firestore.rules` sem alteração (linhas 65-71 já cobriam mentor CLOSED→CLOSED). Sem campo
+ *   Firestore novo (INV-15 não acionada — campos aprovados em #102/v1.33.0). DEC-AUTO-197-01:
+ *   campos são metadata operacional (não congelam em `frozenSnapshot`), editáveis em
+ *   DRAFT/CLOSED por mentor; ARCHIVED bloqueia. 7 testes novos (DRAFT/CLOSED felizes, strings
+ *   vazias, URL inválida, host fora allowlist, no-op defensivo, parcial, erro `updateDoc`).
+ *   Suite 2489/2489 (baseline 2438 + 7 + 44 contagem refresh). Validado em browser local.
  * - 1.46.0: feat: score emocional real no motor de maturidade (issue #189) — substitui stub
  *   `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em `functions/maturity/preComputeShapes.js:129`
  *   (DEC-AUTO-119-task07-02 declarava como TODO) por mirror CommonJS de

@@ -36,6 +36,7 @@
 
 ### `reviews`
 - Evento persistido (DEC-045) com `maturitySnapshot` congelado no fechamento (v1.43.0)
+- Campos `meetingLink`/`videoLink` são **metadata operacional** (DEC-AUTO-197-01, v1.46.1) — editáveis por mentor em DRAFT e CLOSED via `useWeeklyReviews.updateMeetingLinks`. Não fazem parte do `frozenSnapshot`. ARCHIVED bloqueia.
 
 ## Subcollections
 

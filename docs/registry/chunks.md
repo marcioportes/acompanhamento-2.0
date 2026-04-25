@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-08 | #197 | `fix/issue-197-review-meeting-links-post-publish` | 25/04/2026 | em andamento |
