@@ -146,7 +146,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const inFlightTriggerRef = useRef(null);
 
   // === UI State ===
-  const [filters, setFilters] = useState({ period: 'all', ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
+  // `period` legado removido em v1.45.0 (#188 F4) — ContextBar.periodRange é SoT única.
+  const [filters, setFilters] = useState({ ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
@@ -188,6 +189,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // === Métricas calculadas (hook extraído) ===
   // accountTypeFilter fixo em 'all' desde #164 (review): seletor de conta foi unificado
   // na ContextBar (#118). O hook ainda aceita o filtro caso volte em issue futuro.
+  // `context` traz periodRange+cycleKey da ContextBar — TODOS os cards obedecem (#188 F4).
   const metrics = useDashboardMetrics({
     accounts,
     trades,
@@ -195,6 +197,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     filters,
     selectedPlanId,
     accountTypeFilter: 'all',
+    context: {
+      accountId: studentCtx.accountId,
+      planId: studentCtx.planId,
+      cycleKey: studentCtx.cycleKey,
+      periodRange: studentCtx.periodRange,
+    },
   });
 
   const {
@@ -482,8 +490,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       )}
 
       {/* Pendências da mentoria — takeaways em aberto (Stage 4.5) */}
+      {/* ContextBar respect (#188 F4): filtra por studentCtx.planId quando definido. */}
       <PendingTakeaways
         studentId={overrideStudentId || user?.uid}
+        planId={studentCtx.planId || null}
         onNavigateToFeedback={onNavigateToFeedback}
       />
 
@@ -504,7 +514,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       {/* Filtros */}
       {showFilters && (
         <div className="mb-6 animate-in slide-in-from-top-2">
-          <Filters filters={filters} onFilterChange={setFilters} onReset={() => setFilters({period: 'all', ticker: 'all', accountId: filters.accountId, setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: ''})} tickers={[...new Set(filteredTrades.map(t => t.ticker))]} />
+          <Filters filters={filters} onFilterChange={setFilters} onReset={() => setFilters({ticker: 'all', accountId: filters.accountId, setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: ''})} tickers={[...new Set(filteredTrades.map(t => t.ticker))]} />
         </div>
       )}
 

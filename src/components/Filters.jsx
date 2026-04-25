@@ -10,12 +10,12 @@ const Filters = ({ filters = {}, onFilterChange, onReset, tickers = [] }) => {
     }
   };
 
-  const hasActiveFilters = 
-    (filters?.period || 'all') !== 'all' || 
+  // `period` legado removido em v1.45.0 (#188 F4): ContextBar é SoT única de janela temporal.
+  const hasActiveFilters =
     (filters?.ticker || 'all') !== 'all' ||
-    (filters?.setup || 'all') !== 'all' || 
-    (filters?.emotion || 'all') !== 'all' || 
-    (filters?.exchange || 'all') !== 'all' || 
+    (filters?.setup || 'all') !== 'all' ||
+    (filters?.emotion || 'all') !== 'all' ||
+    (filters?.exchange || 'all') !== 'all' ||
     (filters?.result || 'all') !== 'all' ||
     (filters?.search || '') !== '';
 
@@ -32,18 +32,7 @@ const Filters = ({ filters = {}, onFilterChange, onReset, tickers = [] }) => {
         />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="space-y-1">
-          <label className="text-[10px] uppercase font-bold text-slate-500 ml-1">Período</label>
-          <select value={filters?.period || 'all'} onChange={(e) => handleChange('period', e.target.value)} className="input-filter">
-            <option value="all">Todo período</option>
-            <option value="today">Hoje</option>
-            <option value="week">Esta Semana</option>
-            <option value="month">Este Mês</option>
-            <option value="year">Este Ano</option>
-          </select>
-        </div>
-
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <div className="space-y-1">
           <label className="text-[10px] uppercase font-bold text-slate-500 ml-1">Ativo</label>
           <select value={filters?.ticker || 'all'} onChange={(e) => handleChange('ticker', e.target.value)} className="input-filter uppercase">
