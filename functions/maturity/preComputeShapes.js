@@ -19,7 +19,13 @@
 //   emotionalAnalysis (CHUNK-06 emotionalAnalysisV2.calculatePeriodScore) — neutro 50
 //   evLeakage         (depende de plans com pl/riskPerOperation/rrTarget) — null
 //   advancedMetricsPresent — false (depende de MFE/MAE tracking)
-//   complianceRate100 — null (variante de calculateComplianceRate sobre últimos 100)
+//
+// Issue #191: complianceRate100 agora usa janela de ciclos ativos do trader
+// (computeCycleBasedComplianceRate). Quando a janela é insuficiente (<20 trades
+// mesmo após esgotar histórico), retorna null → evaluateGates marca o gate
+// compliance-100 como METRIC_UNAVAILABLE (pendente, não promove e não rebaixa).
+
+const { computeCycleBasedComplianceRate } = require('./computeCycleBasedComplianceRate');
 
 function isNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -107,11 +113,11 @@ function calcComplianceRate(trades) {
   return (compliant / trades.length) * 100;
 }
 
-function preComputeShapes({ trades, plans }) {
-  void plans;
+function preComputeShapes({ trades, plans, now } = {}) {
   const safeTrades = Array.isArray(trades) ? trades : [];
   const safePlans = Array.isArray(plans) ? plans : [];
   const initialBalance = safePlans[0]?.initialBalance ?? 0;
+  const refNow = now instanceof Date ? now : (now ? new Date(now) : new Date());
 
   const stats = calcStats(safeTrades);
   const payoff = calcPayoff(stats);
@@ -123,7 +129,11 @@ function preComputeShapes({ trades, plans }) {
   const emotionalAnalysis = { periodScore: 50, tiltCount: 0, revengeCount: 0 };
   const evLeakage = null;
   const advancedMetricsPresent = false;
-  const complianceRate100 = complianceRate;
+  const complianceRate100 = computeCycleBasedComplianceRate({
+    trades: safeTrades,
+    plans: safePlans,
+    now: refNow,
+  });
 
   return {
     stats,
@@ -145,4 +155,5 @@ module.exports = {
   calcMaxDrawdown,
   calcConsistencyCV,
   calcComplianceRate,
+  computeCycleBasedComplianceRate,
 };
