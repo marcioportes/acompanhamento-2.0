@@ -3,15 +3,16 @@
  * @version 0.1.0 (v1.33.0) — Stage 1: skeleton + navigation
  * @description Tela nova da Revisão Semanal conforme mockup-revisao-semanal-102.html.
  *
- * Single-column scroll, max-width 700px, 8 subitens numerados:
+ * Single-column scroll, max-width 700px, 9 subitens numerados:
  *   1. Trades do período          (Stage 2)
- *   2. Snapshot KPIs congelados   (Stage 2)
- *   3. SWOT (4 quadrantes)         (Stage 3)
- *   4. Notas da sessão             (Stage 3)
- *   5. Takeaways (checklist)       (Stage 4)
- *   6. Ranking top 3 / bottom 3    (Stage 5)
- *   7. Evolução maturidade 4D      (Stage 6)
- *   8. Navegação contextual        (Stage 6)
+ *   2. Notas da sessão             (Stage 3)
+ *   3. Reunião — links             (Issue #197)  ← metadata operacional editável pós-CLOSED
+ *   4. Snapshot KPIs congelados   (Stage 2)
+ *   5. SWOT (4 quadrantes)         (Stage 3)
+ *   6. Takeaways (checklist)       (Stage 4)
+ *   7. Ranking top 3 / bottom 3    (Stage 5)
+ *   8. Evolução maturidade 4D      (Stage 6)
+ *   9. Navegação contextual        (Stage 6)
  *
  * Coexiste com PlanLedgerExtract 3-col (baseline preservado) — entry point desta
  * tela é exclusivamente via Fila de Revisão > Aluno > click no rascunho.
@@ -35,7 +36,7 @@ import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
-import { validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
+import { validateTakeaways, validateReviewUrl, MAX_TAKEAWAYS_LENGTH } from '../utils/reviewUrlValidator';
 import {
   recomputeAndReadMaturity,
   maybeDispatchMaturityAI,
@@ -329,6 +330,64 @@ const SessionNotesSection = ({ value, onChange, onSave, canEdit, actionLoading, 
 );
 
 
+// ===== Subitem 9 — Reunião (issue #197): metadata operacional editável pós-CLOSED =====
+// Mentor pode atualizar links da reunião (Zoom/Meet/Teams) e da gravação
+// (Loom/Drive/YouTube/Vimeo) mesmo depois de publicar a revisão. Aluno vê read-only
+// via StudentReviewsPage. ARCHIVED bloqueia.
+const MeetingLinksSection = ({
+  meetingLink, videoLink, onMeetingChange, onVideoChange, onSave,
+  canEdit, actionLoading, dirty, meetingValid, videoValid,
+}) => (
+  <div className="space-y-2">
+    <div>
+      <label className="text-[11px] text-slate-400 block mb-1">Link da reunião (Zoom, Meet, Teams)</label>
+      <input
+        type="url"
+        value={meetingLink}
+        onChange={(e) => onMeetingChange(e.target.value)}
+        disabled={!canEdit || actionLoading}
+        className="w-full input-dark text-[13px]"
+        placeholder="https://zoom.us/j/..."
+      />
+      {meetingValid?.error && (
+        <div className="text-[10px] text-red-400 mt-0.5">{meetingValid.error}</div>
+      )}
+    </div>
+    <div>
+      <label className="text-[11px] text-slate-400 block mb-1">Link da gravação (Loom, Drive, YouTube, Vimeo)</label>
+      <input
+        type="url"
+        value={videoLink}
+        onChange={(e) => onVideoChange(e.target.value)}
+        disabled={!canEdit || actionLoading}
+        className="w-full input-dark text-[13px]"
+        placeholder="https://loom.com/share/..."
+      />
+      {videoValid?.error && (
+        <div className="text-[10px] text-red-400 mt-0.5">{videoValid.error}</div>
+      )}
+    </div>
+    {canEdit && (
+      <div className="flex justify-end mt-1">
+        <button
+          onClick={onSave}
+          disabled={!dirty || !meetingValid?.valid || !videoValid?.valid || actionLoading}
+          className="px-2.5 py-1 text-[11px] font-medium bg-slate-700/40 border border-slate-600 text-slate-300 rounded hover:bg-slate-700/60 disabled:opacity-40 inline-flex items-center gap-1"
+          title="Persistir links sem mudar status da revisão"
+        >
+          {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          Salvar links
+        </button>
+      </div>
+    )}
+    {!canEdit && (
+      <div className="text-[10px] text-slate-500 italic mt-1">
+        Revisão arquivada — links exibidos sem edição.
+      </div>
+    )}
+  </div>
+);
+
 // ===== Subitem 6: Ranking top 3 / bottom 3 =====
 const RankedTradeRow = ({ trade, currency, onOpen }) => {
   const td = trade.entryTime ? trade.entryTime.slice(0, 10) : null;
@@ -584,12 +643,16 @@ const WeeklyReviewPage = ({
   const {
     generateSwot, updateSessionNotes, closeReview, archiveReview,
     addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
+    updateMeetingLinks,
     actionLoading,
   } = useWeeklyReviews(studentId);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [sessionNotesDraft, setSessionNotesDraft] = useState('');
+  // Issue #197: drafts dos links de reunião/gravação (editáveis em DRAFT e CLOSED).
+  const [meetingLinkDraft, setMeetingLinkDraft] = useState('');
+  const [videoLinkDraft, setVideoLinkDraft] = useState('');
 
   // Listener no doc da revisão — reflete updates live (SWOT, takeaways, etc.)
   useEffect(() => {
@@ -716,6 +779,19 @@ const WeeklyReviewPage = ({
   const notesDirty = sessionNotesDraft !== persistedNotes;
   const notesValidation = useMemo(() => validateTakeaways(sessionNotesDraft), [sessionNotesDraft]);
 
+  // Issue #197 — sincroniza drafts dos links com o doc + dirty/validation memos.
+  useEffect(() => {
+    if (!review) return;
+    setMeetingLinkDraft(typeof review.meetingLink === 'string' ? review.meetingLink : '');
+    setVideoLinkDraft(typeof review.videoLink === 'string' ? review.videoLink : '');
+  }, [review?.id, review?.meetingLink, review?.videoLink]);
+
+  const persistedMeetingLink = typeof review?.meetingLink === 'string' ? review.meetingLink : '';
+  const persistedVideoLink = typeof review?.videoLink === 'string' ? review.videoLink : '';
+  const linksDirty = (meetingLinkDraft || '') !== persistedMeetingLink || (videoLinkDraft || '') !== persistedVideoLink;
+  const meetingLinkValidation = useMemo(() => validateReviewUrl(meetingLinkDraft), [meetingLinkDraft]);
+  const videoLinkValidation = useMemo(() => validateReviewUrl(videoLinkDraft), [videoLinkDraft]);
+
   const handleGenerateSwot = async () => {
     if (!canEdit || !isDraft) return;
     try {
@@ -729,6 +805,19 @@ const WeeklyReviewPage = ({
     try {
       await updateSessionNotes(review.id, sessionNotesDraft);
     } catch { /* */ }
+  };
+
+  // Issue #197: persiste links sem mudar status. Aceita DRAFT e CLOSED. ARCHIVED bloqueia
+  // pelo gate canEdit no componente. updateMeetingLinks valida URL antes de gravar.
+  const handleSaveMeetingLinks = async () => {
+    if (!canEdit || !linksDirty) return;
+    if (!meetingLinkValidation.valid || !videoLinkValidation.valid) return;
+    try {
+      await updateMeetingLinks(review.id, {
+        meetingLink: meetingLinkDraft,
+        videoLink: videoLinkDraft,
+      });
+    } catch { /* error surfaced by hook */ }
   };
 
   // Stage 5a: publish DRAFT→CLOSED (congela snapshot, aluno passa a ver).
@@ -887,8 +976,24 @@ const WeeklyReviewPage = ({
               />
             </Section>
 
-            {/* 3 — Snapshot KPIs congelados */}
-            <Section num="3" title="Snapshot de indicadores (congelado)">
+            {/* 3 — Reunião (issue #197) — links de Zoom/Meet/Loom editáveis em DRAFT e CLOSED */}
+            <Section num="3" title="Reunião">
+              <MeetingLinksSection
+                meetingLink={meetingLinkDraft}
+                videoLink={videoLinkDraft}
+                onMeetingChange={setMeetingLinkDraft}
+                onVideoChange={setVideoLinkDraft}
+                onSave={handleSaveMeetingLinks}
+                canEdit={canEdit}
+                actionLoading={actionLoading}
+                dirty={linksDirty}
+                meetingValid={meetingLinkValidation}
+                videoValid={videoLinkValidation}
+              />
+            </Section>
+
+            {/* 4 — Snapshot KPIs congelados */}
+            <Section num="4" title="Snapshot de indicadores (congelado)">
               <ReviewKpiGrid
                 kpis={effectiveSnapshot.kpis}
                 prevKpis={previousReview?.frozenSnapshot?.kpis}
@@ -896,8 +1001,8 @@ const WeeklyReviewPage = ({
               />
             </Section>
 
-            {/* 4 — SWOT (gerado pela IA) */}
-            <Section num="4" title="SWOT do aluno (gerado pela IA)">
+            {/* 5 — SWOT (gerado pela IA) */}
+            <Section num="5" title="SWOT do aluno (gerado pela IA)">
               <SwotSection
                 swot={swot}
                 canGenerate={canEdit && isDraft}
@@ -908,8 +1013,8 @@ const WeeklyReviewPage = ({
               />
             </Section>
 
-            {/* 5 — Takeaways (checklist) */}
-            <Section num="5" title="Takeaways">
+            {/* 6 — Takeaways (checklist) */}
+            <Section num="6" title="Takeaways">
               <TakeawaysSection
                 items={review.takeawayItems}
                 alunoDoneIds={review.alunoDoneIds}
@@ -922,8 +1027,8 @@ const WeeklyReviewPage = ({
               />
             </Section>
 
-            {/* 6 — Ranking */}
-            <Section num="6" title="Ranking de trades">
+            {/* 7 — Ranking */}
+            <Section num="7" title="Ranking de trades">
               <RankingSection
                 topTrades={effectiveSnapshot.topTrades}
                 bottomTrades={effectiveSnapshot.bottomTrades}
@@ -932,12 +1037,12 @@ const WeeklyReviewPage = ({
               />
             </Section>
 
-            {/* 7 — Evolução maturidade */}
-            <Section num="7" title="Evolução de maturidade (4D vs marco zero)">
+            {/* 8 — Evolução maturidade */}
+            <Section num="8" title="Evolução de maturidade (4D vs marco zero)">
               <MaturitySection assessment={initialAssessment} />
             </Section>
 
-            {/* 7b — Comparativo N vs N-1 (issue #119 task 16). Só em CLOSED. */}
+            {/* 8b — Comparativo N vs N-1 (issue #119 task 16). Só em CLOSED. */}
             {review.status === 'CLOSED' && (
               <MaturityComparisonSection
                 current={maturityCurrent}
@@ -947,8 +1052,8 @@ const WeeklyReviewPage = ({
               />
             )}
 
-            {/* 8 — Navegação contextual */}
-            <Section num="8" title="Navegação contextual">
+            {/* 9 — Navegação contextual */}
+            <Section num="9" title="Navegação contextual">
               <ContextNavSection
                 planId={planId}
                 studentId={studentId}
