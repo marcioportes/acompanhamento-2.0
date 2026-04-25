@@ -27,17 +27,32 @@ Ao final de cada sessão, antes de encerrar:
 
 4. **Liberar locks de chunks desta sessão** no registry (seção 6.3) — liberar APENAS os locks registrados por esta sessão/issue. Nunca tocar em locks de outras sessões.
 
-5. **Remover worktree** após merge confirmado (duas etapas — ambas obrigatórias, nenhuma pode ser omitida):
+5. **Encerrar infra autônoma + remover worktree** após merge confirmado. Ordem obrigatória (cada etapa cobre um resíduo distinto — pular qualquer uma deixa zumbi):
+
+   **5a.** Matar dev servers em background (cache `.vite` recria diretório se vite estiver vivo durante o `rm -rf`):
    ```bash
-   git worktree remove ~/projects/issue-{NNN}           # desregistra do git
-   rm -rf ~/projects/issue-{NNN}                        # remove diretório físico residual (cache .vite, node_modules stale, etc.)
+   pkill -9 -f vite || true
    ```
-   `git worktree remove` pode deixar o diretório físico intacto. O `rm -rf` é **sempre necessário** — não é opcional. Verificação obrigatória após ambos os comandos:
+
+   **5b.** Encerrar listener tmux + watchdog + remover worktree via script canônico:
+   ```bash
+   ./scripts/cc-worktree-stop.sh {NNN}
+   ```
+   O script faz, nesta ordem: (i) lê `.cc-mailbox/.watchdog-pid` e mata o watchdog (issue #178); (ii) `tmux kill-session -t cc-{NNN}`; (iii) `git worktree remove`. **Sempre rodar este script — não fazer `git worktree remove` manual**, senão tmux + watchdog ficam órfãos no host.
+
+   **5c.** Remover diretório físico residual (`git worktree remove` desregistra do git mas pode deixar arquivos):
+   ```bash
+   rm -rf ~/projects/issue-{NNN}
+   ```
+
+   **5d.** Verificação obrigatória (todos devem passar):
    ```bash
    ls ~/projects/                                        # issue-{NNN} NÃO deve aparecer
    git worktree list                                     # apenas main deve aparecer
+   tmux ls 2>&1 | grep -v "cc-{NNN}"                     # nenhuma sessão cc-{NNN} ativa
+   ps -ef | grep -v grep | grep "cc-watchdog.*{NNN}"     # nenhum watchdog rodando — saída vazia esperada
    ```
-   Se `issue-{NNN}` ainda aparecer no `ls`, o `rm -rf` não foi executado — executar agora.
+   Se `issue-{NNN}` ainda aparecer no `ls`, o `rm -rf` não foi executado — executar agora. Se `cc-{NNN}` aparecer no `tmux ls` ou watchdog ainda no `ps`, o script 5b não rodou ou falhou — investigar antes de prosseguir.
 
 6. **Mover issue file para archive** após merge confirmado — usar o script:
    ```
