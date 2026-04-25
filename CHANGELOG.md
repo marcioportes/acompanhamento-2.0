@@ -8,6 +8,90 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.45.0] - 25/04/2026
+
+**Issue:** #188 (fix: Melhoria na Experiência de Feedback + Revisão — Sev1)
+**PR:** —
+
+Entrega consolidada de 4 frentes em 8 fases A-H (pair programming fast-track, tudo num PR):
+
+#### Adicionado
+
+- **F2 — Currency multi-moeda no MentorDashboard.** `aggregateTradesByCurrency(trades)` em `src/utils/currency.js` retorna `Map<currency, {totalPL, count}>` sem somar cross-currency. Novo componente `src/components/MultiCurrencyAmount.jsx` (stack vertical em multi-currency com cor por linha; cor semântica em single-currency). Aplicado em P&L Total Turma, P&L Total aluno detalhado, lista de alunos, ranking. Pending list + bulk modal usam `formatCurrencyDynamic(trade.result, trade.currency)` direto. FX conversion fora de escopo (DEC-AUTO-188-05).
+- **F3 — PlanSummaryCard no FeedbackPage.** `src/components/PlanSummaryCard.jsx` colapsado por default (chat continua sendo o foco). Header: nome do plano + moeda + badge "arquivado" se inativo. Linha 1: 🎯 RO/RR/Cap. Linha 2 (condicional): 🚫 Bloqueadas. Linha 3: 📅 Ciclo X/N. Expand mostra Período (Diário) Meta/Stop, Ciclo Meta/Stop, PL atual %ciclo. Inserido em ambos modos (embedded + standalone) entre `TradeInfoCard` e `ShadowBehaviorPanel`. `usePlans/useAccounts` com `overrideStudentId=trade.studentId` para mentor enxergar planos do aluno dono. Fallback "Plano deletado · ID NNN" quando `planId` sem match.
+- **F4 — TODOS os cards do StudentDashboard respeitam ContextBar sem exceção (DEC-AUTO-188-06).** `useDashboardMetrics` aceita parâmetro `context` (`{accountId, planId, cycleKey, periodRange}`). Filtragem central inclui janela temporal (end inclusivo até 23:59:59); todas as métricas derivadas (stats, MaxDD, payoff, EV, consistency, compliance, durations) herdam o filtro. `plContext.label` derivado de `periodRange.kind` (CYCLE/MONTH/WEEK). `filters.period` legado removido (SoT única). Dropdown "Período" do `Filters.jsx` removido (ContextBar é a única fonte). `PendingTakeaways` aceita prop `planId` e filtra última review CLOSED pelo plano selecionado. Teste invariante novo `src/__tests__/hooks/useDashboardMetrics.contextBar.test.js` com 7 cenários.
+- **F1 — Mentor edit + lock comportamental (Sev1 core, INV-15 aprovada).** 5 campos novos em `trades`:
+  - `_lockedByMentor: boolean` — flag binária do lock.
+  - `_lockedAt: Timestamp` — quando o lock foi aplicado.
+  - `_lockedBy: { uid, email, name }` — autor do lock.
+  - `_mentorEdits: array` (append-only auditável) — cada entry `{ field, oldValue, newValue, editedAt, editedBy:{uid,email} }`.
+  - `_studentOriginal: { emotionEntry, emotionExit, setup, capturedAt }` — gravado APENAS na 1ª edição do mentor; preserva o que o aluno declarou originalmente (imutável após).
+  - Metadata complementar: `_unlockedAt`, `_unlockedBy.{uid,email,reason}`.
+- **Gateway (INV-02).** `src/utils/tradeGateway.js`: `MENTOR_EDITABLE_FIELDS = ['emotionEntry','emotionExit','setup']`. Funções novas:
+  - `editTradeAsMentor(tradeId, edits, ctx, deps)` — whitelist; rejeita não-mentor; rejeita trade já locked; grava `_studentOriginal` na 1ª edit; `arrayUnion` em `_mentorEdits` apenas para campos que mudaram; aceita `null` (mentor remove emoção); noop quando edits não mudam nada.
+  - `lockTradeByMentor(tradeId, ctx, deps)` — grava `_lockedByMentor=true`, `_lockedAt`, `_lockedBy`. Rejeita não-mentor.
+  - `unlockTradeByMentor(tradeId, ctx, deps)` — preserva auditoria; captura motivo via `unlockReason`.
+- **Firestore rules.** Trades update agora tem 3 gates combinados:
+  1. Ownership: mentor OU owner OU owner-by-email.
+  2. Lock check: quando `_lockedByMentor==true`, `affectedKeys` NÃO pode tocar `emotionEntry`/`emotionExit`/`setup`.
+  3. Metadata guard: só mentor pode tocar `_lockedByMentor`/`_lockedAt`/`_lockedBy`/`_mentorEdits`/`_studentOriginal`/`_unlockedAt`/`_unlockedBy`. CFs bypassam via admin SDK.
+- **Cloud Function `onTradeUpdated`.** `complianceFields` agora inclui `emotionEntry` (corrige bug pré-existente: flag `BLOCKED_EMOTION` ficava estale quando aluno/mentor mudava emoção). Bloco de reconstrução de `redFlags` filtra `BLOCKED_EMOTION` antes de regerar conforme emoção corrente vs `plan.blockedEmotions`. Adicionalmente, novo bloco detecta `importBatchId` mudou + `after._lockedByMentor==true` e destrava server-side preservando `_mentorEdits`/`_studentOriginal` (DEC-AUTO-188-03 — broker é fonte de verdade superior ao mentor).
+- **UI mentor edit + lock.** `src/components/feedback/MentorEditPanel.jsx` colapsável (escondido pós-lock) com 3 selects (`useMasterData.emotions` + `useSetups` filtrados por aluno via `filterSetupsForStudent`), botão "Reverter ao original" (visível só com `_studentOriginal`), botão "Confirmar e travar (N)" abrindo modal de confirmação dupla. `src/components/TradeLockBadge.jsx` reutilizável (header do FeedbackPage, tooltip com autor + data DD/MM/AAAA, suporte Firestore Timestamp). Asterisco âmbar (`*`) nos campos corrigidos do `TradeInfoCard` com tooltip "Original: X · corrigido pelo mentor". Ícone `Lock` inline na `ExtractTable` ao lado do ticker. Bloco "Histórico de correções (N)" no rodapé do `TradeDetailModal` listando cada `_mentorEdits` (data · email · campo: old → new) + linha "🔒 Travado por <email>".
+- **Hooks.** `useTrades` expõe `editTradeAsMentor`/`lockTradeAsMentor`/`unlockTradeAsMentor` (import dinâmico do gateway).
+
+#### Decisões registradas
+
+- **DEC-AUTO-188-01** — Schema do lock: 5 campos inline no doc trade + array append-only `_mentorEdits` (não map). `_studentOriginal` imutável após 1ª edit (auditoria do que o aluno declarou).
+- **DEC-AUTO-188-02** — Escopo do lock limitado a 3 campos comportamentais (`emotionEntry`, `emotionExit`, `setup`); campos factuais (entry/exit/qty/result) seguem fluxo normal.
+- **DEC-AUTO-188-03** — Import (CSV/Order) destrava lock server-side via CF preservando auditoria; broker é fonte de verdade superior ao mentor.
+- **DEC-AUTO-188-04** — Admin destrava lock manualmente (sem UI dedicada v1; campo editável direto via Firestore console + `unlockTradeByMentor`).
+- **DEC-AUTO-188-05** — Agregação multi-moeda no MentorDashboard via stack vertical; FX conversion fora de escopo.
+- **DEC-AUTO-188-06** — ContextBar é SoT única de janela temporal no StudentDashboard; `filters.period` legado removido sem override vitalício.
+- **DEC-AUTO-188-07** — `onTradeUpdated.complianceFields` passa a incluir `emotionEntry` (fix bug pré-existente entra junto com a Sev1).
+
+#### Testes
+
+- 2445/2445 (baseline 2401 + 44 novos):
+  - 7 `aggregateTradesByCurrency`
+  - 11 `PlanSummaryCard`
+  - 7 `useDashboardMetrics.contextBar` (cenários: sem janela, com janela, borda end, combinado com granular, periodRange null, plContext label, MaxDD por ciclo)
+  - 13 `tradeGatewayMentorLock` (whitelist, rejeições, noop, null, _studentOriginal preservado)
+  - 6 `TradeLockBadge` (render condicional, tooltip, fallback email, Firestore Timestamp)
+- Build limpo. Lint sem erros novos.
+
+---
+
+## [1.44.1] - 24/04/2026
+
+**Issue:** #191 (fix: aderência recente no gate compliance-100 do stage Profissional)
+
+#### Corrigido
+
+- **Gate `compliance-100` (Metódico → Profissional) agora avalia a janela recente correta.** Antes, `complianceRate100` era apenas alias de `complianceRate` (linha ~126 de `functions/maturity/preComputeShapes.js`) — o gate reusava o cálculo da janela total do histórico em vez da aderência recente que o nome promete. Resultado: traders com violações antigas mas excelentes recentes podiam ser reprovados; traders com histórico bom mas violações recentes podiam ser aprovados.
+
+#### Adicionado
+
+- **`computeCycleBasedComplianceRate({trades, plans, now, minTrades=20})`** — helper puro novo em `functions/maturity/computeCycleBasedComplianceRate.js` (CommonJS) com mirror espelhado em `src/utils/maturityEngine/computeCycleBasedComplianceRate.js` (ESM). Aplica a regra:
+  - **Janela** = união dos ranges `[cycleStart, cycleEnd]` do ciclo que contém `now` em cada plano (derivação por `adjustmentCycle`: Mensal/Trimestral/Semestral/Anual).
+  - **Mínimo 20 trades CLOSED.** Se `< 20`, retrocede simultaneamente 1 ciclo em CADA plano e recoleta. Repete até atingir o mínimo ou esgotar.
+  - **Esgotamento** = iteração que não acrescenta nenhum trade novo. Cap mecânico defensivo `MAX_LOOKBACK_CYCLES = 36`.
+  - **Insuficiente** (`< 20` mesmo após esgotar) → `null`. Em `evaluateGates`, `null` cai em `met: null`, `reason: 'METRIC_UNAVAILABLE'` → gate fica pendente: **não promove** (`gatesMet < gatesTotal` bloqueia `proposeStageTransition`) e **não rebaixa** (`detectRegressionSignal` não consome este campo, DEC-020 preservada).
+  - **Fórmula**: `(trades_sem_flag / total) * 100` sobre a janela final. Aceita `trade.date` em `YYYY-MM-DD`, `DD/MM/YYYY` ou `Date`. Dedup por `trade.id` em planos com ciclos sobrepostos.
+- `preComputeShapes({trades, plans, now})` agora aceita `now` (default: `new Date()`) e propaga para o novo helper. `recomputeMaturity.js` repassa o `now` que já calcula.
+
+#### Testes
+
+- 17 testes em `src/__tests__/utils/maturityEngine/computeCycleBasedComplianceRate.test.js` cobrindo cenários A-E da memória de cálculo aprovada + invariantes (vazios, dates inválidos, formato BR/ISO/Date, redFlags array vs hasRedFlags, dedup por id, plano Trimestral, `minTrades` customizável, default `adjustmentCycle`, retrocesso multi-ciclo).
+- 3 testes de paridade ESM↔CommonJS em `src/__tests__/functions/maturity/computeCycleBasedComplianceRate.test.js`.
+- Suite total: **2421 testes (144 arquivos), 100% verde**.
+
+#### Decisões
+
+- DEC-AUTO-191-01 — Janela = união de ciclos ativos por plano + fallback retroativo simultâneo.
+- DEC-AUTO-191-02 — Estado insuficiente = `null` (mapeia para `METRIC_UNAVAILABLE` no gate, semanticamente correto: pendente, não promove e não rebaixa).
+
+---
+
 ## [1.44.0] - 24/04/2026
 
 **Issue:** #119 (feat: Motor de progressão Maturidade 4D × 5 stages — modo autônomo)
