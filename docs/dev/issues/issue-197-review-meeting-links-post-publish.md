@@ -27,14 +27,14 @@ Dispensada. Não há cálculo: `updateMeetingLinks` é `updateDoc({ meetingLink,
 
 ## Phases
 
-- E1 — testes de `useWeeklyReviews.updateMeetingLinks` (DRAFT/CLOSED felizes, ARCHIVED falha, URL inválida não persiste)
+- E1 — testes de `useWeeklyReviews.updateMeetingLinks` (DRAFT/CLOSED felizes, ARCHIVED rejeita por guard, URL inválida rejeita)
 - B1 — implementar `useWeeklyReviews.updateMeetingLinks`
-- D1 — testes de firestore.rules (mentor CLOSED hasOnly passa; aluno falha; ARCHIVED falha; campos extras junto falha)
-- D2 — implementar regra `update` em `students/{uid}/reviews/{rid}` com `hasOnly(['meetingLink','videoLink','updatedAt'])`
+- ~~D1+D2 — SKIPPED~~. Rules atuais (`firestore.rules:65-71`) já permitem mentor update CLOSED→CLOSED com qualquer campo. Sem alteração de rules. Guard de ARCHIVED fica no hook + UI (ARCHIVED já é terminal e read-only nos componentes).
 - A1 — testes do componente `MeetingLinksSection` (3 estados × papel)
-- A2 — implementar `MeetingLinksSection` + integrar no `WeeklyReviewPage` (Subitem 5, posição abaixo de Notas)
+- A2 — implementar `MeetingLinksSection` + integrar no `WeeklyReviewPage` (render position: logo abaixo de Subitem 4 Notas; comentado como Subitem 9 para não renumerar 5-8 existentes)
 - C1 — destravar inputs do `ReviewToolsPanel` em CLOSED + botão "Salvar links" dedicado
 - C2 — espelho no `WeeklyReviewModal` tab "Reunião" — botão "Salvar links" se status=CLOSED (consistência tri-superficial)
+- G1 — escopo expandido (descoberto durante smoke 25/04/2026): `ReviewQueuePage` filtra apenas alunos com DRAFT (`ReviewQueuePage.jsx:36-39, 188-191`). Mentor que publicou tudo fica sem acesso. Toggle "Incluir publicadas" (default OFF) com probe paralelo de CLOSED. Marcio autorizou expansão sob mesma issue/versão/branch.
 - F1 — smoke browser (mentor publica → atualiza link → aluno vê novo link)
 
 ## Sessions
@@ -52,6 +52,7 @@ _(diffs propostos para o integrador aplicar no MAIN após o merge)_
 - `CHANGELOG.md` — nova entrada `[1.46.1] - 25/04/2026`
 - `docs/decisions.md` — DEC-AUTO-197-01 (`meetingLink`/`videoLink` editáveis em CLOSED; banidos em ARCHIVED)
 - `docs/firestore-schema.md` — nota na seção `reviews` declarando os 2 campos como metadata operacional editável pós-CLOSED
+- `firestore.rules` — sem alteração (já cobre CLOSED→CLOSED para mentor)
 
 ## Decisions
 

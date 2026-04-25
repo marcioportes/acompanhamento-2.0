@@ -28,18 +28,18 @@ const statusLabel = {
   ARCHIVED: 'Arquivada',
 };
 
-// Probe invisível — subscribe apenas à contagem de rascunhos do aluno.
-// Permite ao pai filtrar a lista para mostrar só quem tem rascunho ativo.
-const StudentDraftProbe = ({ studentId, onCount }) => {
+// Probe invisível — subscribe à contagem de revisões do aluno em determinado status.
+// Permite ao pai filtrar a lista por DRAFT (default) ou DRAFT+CLOSED (toggle issue #197).
+const StudentStatusProbe = ({ studentId, status, onCount }) => {
   useEffect(() => {
     if (!studentId) return undefined;
     const q = query(
       collection(db, 'students', studentId, 'reviews'),
-      where('status', '==', 'DRAFT'),
+      where('status', '==', status),
     );
-    const unsub = onSnapshot(q, (snap) => onCount(studentId, snap.size));
+    const unsub = onSnapshot(q, (snap) => onCount(studentId, status, snap.size));
     return () => unsub();
-  }, [studentId, onCount]);
+  }, [studentId, status, onCount]);
   return null;
 };
 
@@ -150,12 +150,20 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [search, setSearch] = useState('');
-  // Contagem de rascunhos por aluno — usada para filtrar quem aparece na fila.
+  // Contagens por aluno — usadas para filtrar quem aparece na fila.
+  // draftCounts: rascunhos abertos (default da fila).
+  // closedCounts: revisões publicadas (issue #197 — toggle "Incluir publicadas").
   const [draftCounts, setDraftCounts] = useState({});
+  const [closedCounts, setClosedCounts] = useState({});
+  const [includePublished, setIncludePublished] = useState(false);
   // Flag para saber se ao menos 1 probe já respondeu (evita "sem rascunhos" flashing).
   const [probesReady, setProbesReady] = useState(false);
-  const handleDraftCount = useCallback((studentId, count) => {
-    setDraftCounts(prev => {
+  const handleStatusCount = useCallback((studentId, status, count) => {
+    const setter = status === 'DRAFT' ? setDraftCounts
+      : status === 'CLOSED' ? setClosedCounts
+      : null;
+    if (!setter) return;
+    setter(prev => {
       if (prev[studentId] === count) return prev;
       return { ...prev, [studentId]: count };
     });
@@ -184,30 +192,52 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
     );
   }
 
-  // Apenas alunos com pelo menos 1 rascunho (status=DRAFT).
-  const studentsWithDrafts = useMemo(
-    () => students.filter(s => (draftCounts[s.id] || 0) > 0),
-    [students, draftCounts]
+  // Filtro: por padrão, só alunos com DRAFT. Com includePublished, soma quem tem CLOSED.
+  // Issue #197 — sem o toggle, mentor que publicou tudo fica sem acesso para atualizar
+  // link de reunião/gravação após CLOSED.
+  const studentsToShow = useMemo(
+    () => students.filter(s => {
+      const draft = draftCounts[s.id] || 0;
+      const closed = closedCounts[s.id] || 0;
+      return draft > 0 || (includePublished && closed > 0);
+    }),
+    [students, draftCounts, closedCounts, includePublished]
   );
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* Probes invisíveis — 1 por aluno ativo. Alimentam draftCounts. */}
+      {/* Probes invisíveis — 1 por aluno por status. Alimentam draftCounts/closedCounts. */}
       {students.map(s => (
-        <StudentDraftProbe key={`probe-${s.id}`} studentId={s.id} onCount={handleDraftCount} />
+        <StudentStatusProbe key={`probe-d-${s.id}`} studentId={s.id} status="DRAFT" onCount={handleStatusCount} />
+      ))}
+      {includePublished && students.map(s => (
+        <StudentStatusProbe key={`probe-c-${s.id}`} studentId={s.id} status="CLOSED" onCount={handleStatusCount} />
       ))}
 
       <div className="flex items-center gap-3 mb-5">
         <div className="p-2 bg-emerald-500/10 rounded-lg">
           <ClipboardCheck className="w-5 h-5 text-emerald-400" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-bold text-white">Fila de Revisão</h1>
-          <p className="text-xs text-slate-400">Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.</p>
+          <p className="text-xs text-slate-400">
+            {includePublished
+              ? 'Alunos com rascunho aberto ou revisões publicadas. Atualize links de reunião/gravação direto na revisão.'
+              : 'Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.'}
+          </p>
         </div>
+        <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={includePublished}
+            onChange={(e) => setIncludePublished(e.target.checked)}
+            className="w-3.5 h-3.5 accent-emerald-500"
+          />
+          Incluir publicadas
+        </label>
       </div>
 
-      {!loading && studentsWithDrafts.length > 0 && (
+      {!loading && studentsToShow.length > 0 && (
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
           <input
@@ -244,21 +274,27 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
         </div>
       )}
 
-      {!loading && students.length > 0 && probesReady && studentsWithDrafts.length === 0 && (
+      {!loading && students.length > 0 && probesReady && studentsToShow.length === 0 && (
         <div className="text-xs text-slate-500 italic py-6 text-center">
-          Nenhum aluno tem rascunho aberto no momento.
-          <div className="text-[11px] mt-1">Crie um pelo extrato do plano ({'>'} "Nova Revisão" ou pin de trade no feedback).</div>
+          {includePublished
+            ? 'Nenhum aluno tem rascunho ou revisão publicada no momento.'
+            : 'Nenhum aluno tem rascunho aberto no momento.'}
+          <div className="text-[11px] mt-1">
+            {includePublished
+              ? 'Crie um pelo extrato do plano ({\'>\'} "Nova Revisão" ou pin de trade no feedback).'
+              : <>Crie um pelo extrato do plano ({'>'} "Nova Revisão" ou pin de trade no feedback) ou marque <em>Incluir publicadas</em> acima para revisitar revisões já publicadas.</>}
+          </div>
         </div>
       )}
 
-      {!loading && probesReady && studentsWithDrafts.length > 0 && (() => {
+      {!loading && probesReady && studentsToShow.length > 0 && (() => {
         const term = search.trim().toLowerCase();
         const filtered = term
-          ? studentsWithDrafts.filter(s =>
+          ? studentsToShow.filter(s =>
               (s.name || '').toLowerCase().includes(term) ||
               (s.email || '').toLowerCase().includes(term)
             )
-          : studentsWithDrafts;
+          : studentsToShow;
         if (filtered.length === 0) {
           return <div className="text-xs text-slate-500 italic">Nenhum aluno para "{search}".</div>;
         }
