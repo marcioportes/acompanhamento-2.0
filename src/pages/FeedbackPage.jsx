@@ -36,7 +36,10 @@ import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
 import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
+import PlanSummaryCard from '../components/PlanSummaryCard';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import { usePlans } from '../hooks/usePlans';
+import { useAccounts } from '../hooks/useAccounts';
 import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
@@ -346,6 +349,15 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
 
+  // Plano + conta vinculados ao trade — F3 issue #188 (PlanSummaryCard).
+  // Override com trade.studentId: mentor vê planos/contas do aluno dono do trade.
+  const { plans } = usePlans(trade?.studentId);
+  const { accounts } = useAccounts(trade?.studentId);
+  const tradePlan = useMemo(
+    () => (trade?.planId ? plans?.find((p) => p.id === trade.planId) || null : null),
+    [plans, trade?.planId],
+  );
+
   // === Image Paste State (mentor only) ===
   const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
   const textareaRef = useRef(null);
@@ -564,6 +576,11 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           {/* Coluna Esquerda - Info do Trade */}
           <div className="lg:sticky lg:top-0 lg:self-start">
             <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+            {trade?.planId && (
+              <div className="mt-3">
+                <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+              </div>
+            )}
             {userIsMentor && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <PinToReviewButton trade={trade} />
@@ -758,6 +775,11 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
         {/* Coluna Esquerda - Info do Trade */}
         <div className="lg:sticky lg:top-6 lg:self-start">
           <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+          {trade?.planId && (
+            <div className="mt-4">
+              <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+            </div>
+          )}
           {userIsMentor && trade.shadowBehavior && (
             <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} />
           )}
