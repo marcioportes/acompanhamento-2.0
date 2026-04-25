@@ -14,9 +14,10 @@
 //   calculateMaxDrawdown    → src/utils/dashboardMetrics.js
 //   calculateConsistencyCV  → src/utils/dashboardMetrics.js
 //   calculateComplianceRate → src/utils/dashboardMetrics.js
+//   emotionalAnalysis        → ./emotionalAnalysisMirror (issue #189, sub de
+//                              src/utils/emotionalAnalysisV2.js)
 //
-// Stubs neutros (TODO mirror):
-//   emotionalAnalysis (CHUNK-06 emotionalAnalysisV2.calculatePeriodScore) — neutro 50
+// Stubs neutros remanescentes (TODO mirror):
 //   evLeakage         (depende de plans com pl/riskPerOperation/rrTarget) — null
 //   advancedMetricsPresent — false (depende de MFE/MAE tracking)
 //
@@ -24,8 +25,14 @@
 // (computeCycleBasedComplianceRate). Quando a janela é insuficiente (<20 trades
 // mesmo após esgotar histórico), retorna null → evaluateGates marca o gate
 // compliance-100 como METRIC_UNAVAILABLE (pendente, não promove e não rebaixa).
+//
+// Issue #189: emotionalAnalysis agora consome `computeEmotionalAnalysisShape` quando
+// o caller injetar `emotions` ou `getEmotionConfig` no input. Sem esses inputs (ex.:
+// testes legados, callers ainda não atualizados), mantém o fallback histórico
+// { 50, 0, 0 } — preserva D6 "evolução sempre visível" (NUNCA null).
 
 const { computeCycleBasedComplianceRate } = require('./computeCycleBasedComplianceRate');
+const { computeEmotionalAnalysisShape } = require('./emotionalAnalysisMirror');
 
 function isNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -113,7 +120,7 @@ function calcComplianceRate(trades) {
   return (compliant / trades.length) * 100;
 }
 
-function preComputeShapes({ trades, plans, now } = {}) {
+function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {}) {
   const safeTrades = Array.isArray(trades) ? trades : [];
   const safePlans = Array.isArray(plans) ? plans : [];
   const initialBalance = safePlans[0]?.initialBalance ?? 0;
@@ -125,8 +132,14 @@ function preComputeShapes({ trades, plans, now } = {}) {
   const consistencyCV = calcConsistencyCV(safeTrades);
   const complianceRate = calcComplianceRate(safeTrades);
 
-  // Stubs neutros (DEC-AUTO-119-task07-02): aguardam mirror dedicado.
-  const emotionalAnalysis = { periodScore: 50, tiltCount: 0, revengeCount: 0 };
+  // Issue #189: shape real quando o caller injeta emotions/getEmotionConfig;
+  // sem isso, fallback neutro { 50, 0, 0 } preserva D6 (NUNCA null).
+  const hasEmotionInputs = (Array.isArray(emotions) && emotions.length > 0)
+    || typeof getEmotionConfig === 'function';
+  const emotionalAnalysis = hasEmotionInputs
+    ? computeEmotionalAnalysisShape({ trades: safeTrades, emotions, getEmotionConfig })
+    : { periodScore: 50, tiltCount: 0, revengeCount: 0 };
+
   const evLeakage = null;
   const advancedMetricsPresent = false;
   const complianceRate100 = computeCycleBasedComplianceRate({

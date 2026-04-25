@@ -194,8 +194,19 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .get();
     const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+    // Issue #189: carrega tabela de emoções para o mirror emocional consumir.
+    // Sem isso, preComputeShapes cai no fallback { 50, 0, 0 } (D6 preservada).
+    let emotions = [];
+    try {
+      const emotionsSnap = await db.collection('emotions').get();
+      emotions = emotionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (emErr) {
+      console.warn('[maturityRecompute] failed to load emotions, fallback neutral:',
+        emErr.message);
+    }
+
     const now = new Date();
-    const preComputed = preComputeShapes({ trades, plans, now });
+    const preComputed = preComputeShapes({ trades, plans, now, emotions });
 
     const payloads = buildMaturityPayloads({
       trades,
