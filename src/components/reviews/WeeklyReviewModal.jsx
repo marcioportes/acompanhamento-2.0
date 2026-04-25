@@ -17,7 +17,7 @@ import { doc, getDoc, onSnapshot, collection, query, where, getDocs } from 'fire
 import { db } from '../../firebase';
 import {
   X, Loader2, Sparkles, AlertTriangle, CheckCircle2, RefreshCw,
-  TrendingUp, TrendingDown, Archive, Lock, FileText, Video, GitCompare, Trash2,
+  TrendingUp, TrendingDown, Archive, Lock, FileText, Video, GitCompare, Trash2, Save,
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
@@ -171,7 +171,7 @@ const KpiRow = ({ label, current, previous, fmt = fmtNum, invertColors = false }
 // Aceita `review` como prop (fast path quando caller já tem live data) OU `reviewId`
 // (modal escuta o doc via onSnapshot — usado quando caller não tem hook conectado).
 const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, studentId, previousReview = null, onClose }) => {
-  const { generateSwot, closeReview, archiveReview, deleteReview, actionLoading, error } = useWeeklyReviews(studentId);
+  const { generateSwot, closeReview, archiveReview, deleteReview, updateMeetingLinks, actionLoading, error } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
@@ -281,6 +281,19 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
     } catch { /* already surfaced */ }
   }, [canClose, closeReview, review, studentId, takeaways, meetingLink, videoLink,
       takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
+
+  // Issue #197 — botão dedicado "Salvar links" funciona em DRAFT e CLOSED.
+  // Não muda status, persiste só os 2 campos + updatedAt. ARCHIVED bloqueia via canEdit.
+  const linksDirty = (meetingLink || '') !== (review?.meetingLink || '') ||
+    (videoLink || '') !== (review?.videoLink || '');
+  const handleSaveLinks = useCallback(async () => {
+    if (!canEdit) return;
+    if (!meetingLinkValidation.valid || !videoLinkValidation.valid) return;
+    try {
+      await updateMeetingLinks(review.id, { meetingLink, videoLink });
+    } catch { /* error surfaced */ }
+  }, [canEdit, updateMeetingLinks, review?.id, meetingLink, videoLink,
+      meetingLinkValidation, videoLinkValidation]);
 
   const handleArchive = useCallback(async () => {
     if (!canArchive) return;
@@ -553,6 +566,20 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
                   <div className="text-[11px] text-red-400 mt-1">{videoLinkValidation.error}</div>
                 )}
               </div>
+              {/* Issue #197 — botão dedicado para atualizar links sem mudar status (DRAFT e CLOSED) */}
+              {canEdit && (
+                <div className="flex justify-end pt-1">
+                  <button
+                    onClick={handleSaveLinks}
+                    disabled={!linksDirty || !meetingLinkValidation.valid || !videoLinkValidation.valid || actionLoading}
+                    className="px-3 py-1.5 text-xs font-medium bg-slate-700/40 border border-slate-600 text-slate-300 rounded hover:bg-slate-700/60 disabled:opacity-40 inline-flex items-center gap-1.5"
+                    title="Persistir links sem mudar status (funciona em DRAFT e CLOSED)"
+                  >
+                    {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                    Salvar links
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

@@ -260,4 +260,90 @@ describe('useWeeklyReviews', () => {
     });
     expect(result.current.error).toBe('boom');
   });
+
+  // Issue #197 — atualização operacional dos links pós-publicação
+  describe('updateMeetingLinks', () => {
+    it('grava meetingLink + videoLink + updatedAt sem mudar status', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.updateMeetingLinks('r1', {
+          meetingLink: 'https://zoom.us/j/123',
+          videoLink: 'https://loom.com/share/abc',
+        });
+      });
+      expect(mockUpdateDoc).toHaveBeenCalled();
+      const [docRef, payload] = mockUpdateDoc.mock.calls[0];
+      expect(docRef.path).toBe('students/student-1/reviews/r1');
+      expect(payload).toEqual({
+        meetingLink: 'https://zoom.us/j/123',
+        videoLink: 'https://loom.com/share/abc',
+        updatedAt: { __type: 'serverTimestamp' },
+      });
+      expect(payload.status).toBeUndefined();
+    });
+
+    it('aceita strings vazias para limpar links', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.updateMeetingLinks('r1', { meetingLink: '', videoLink: '' });
+      });
+      const [, payload] = mockUpdateDoc.mock.calls[0];
+      expect(payload.meetingLink).toBe('');
+      expect(payload.videoLink).toBe('');
+    });
+
+    it('rejeita URL inválida sem chamar updateDoc', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await expect(result.current.updateMeetingLinks('r1', {
+          meetingLink: 'http://insecure.example.com/abc',
+          videoLink: '',
+        })).rejects.toThrow(/https/i);
+      });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+    });
+
+    it('rejeita host fora da allowlist sem chamar updateDoc', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await expect(result.current.updateMeetingLinks('r1', {
+          meetingLink: 'https://evil.example.com/abc',
+          videoLink: '',
+        })).rejects.toThrow(/Host/i);
+      });
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+    });
+
+    it('aceita ambos os campos undefined (no-op defensivo) sem persistir', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.updateMeetingLinks('r1', {});
+      });
+      // Quando ambos undefined, não tem o que salvar — não chama updateDoc.
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
+    });
+
+    it('persiste apenas o campo informado quando o outro é undefined', async () => {
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await result.current.updateMeetingLinks('r1', { meetingLink: 'https://meet.google.com/abc-defg-hij' });
+      });
+      const [, payload] = mockUpdateDoc.mock.calls[0];
+      expect(payload.meetingLink).toBe('https://meet.google.com/abc-defg-hij');
+      expect(payload.videoLink).toBeUndefined();
+      expect(payload.updatedAt).toEqual({ __type: 'serverTimestamp' });
+    });
+
+    it('expõe error quando updateDoc rejeita', async () => {
+      mockUpdateDoc.mockRejectedValueOnce(new Error('rules denied'));
+      const { result } = renderHook(() => useWeeklyReviews('student-1'));
+      await act(async () => {
+        await expect(result.current.updateMeetingLinks('r1', {
+          meetingLink: 'https://zoom.us/j/123',
+          videoLink: '',
+        })).rejects.toThrow('rules denied');
+      });
+      expect(result.current.error).toBe('rules denied');
+    });
+  });
 });
