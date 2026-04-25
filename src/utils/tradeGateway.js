@@ -19,11 +19,14 @@
 
 import {
   collection, query, where, addDoc, getDoc, getDocs, doc, serverTimestamp,
-  updateDoc,
+  updateDoc, arrayUnion,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
 import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
+
+// Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
+export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
 
 // Status constants (espelhado de useTrades)
 const DEFAULT_STATUS = 'OPEN';
@@ -323,5 +326,156 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
   await updateDocFn(tradeRef, patch);
 
   console.log(`[tradeGateway] Trade ${tradeId} enriquecido (batch ${enrichment.importBatchId})`);
+  return { id: tradeId, before, after: { ...before, ...patch } };
+}
+
+// ============================================
+// EDIÇÃO PELO MENTOR + LOCK COMPORTAMENTAL (#188 F1)
+// ============================================
+
+/**
+ * Edita campos comportamentais de um trade como MENTOR (DEC-AUTO-188-02).
+ * Whitelist: emotionEntry, emotionExit, setup. Primeira edição grava
+ * `_studentOriginal` (imutável depois). Cada campo alterado gera entry
+ * em `_mentorEdits[]` (append-only, auditável).
+ *
+ * Bloqueia edição se trade já está locked (rule client-side + server-side).
+ *
+ * Chama CF onTradeUpdated — que agora recompila compliance em mudança de
+ * emotionEntry (fix pré-existente aplicado na Fase E do mesmo issue).
+ *
+ * @param {string} tradeId
+ * @param {Object} edits - { emotionEntry?, emotionExit?, setup? }. Campos ausentes preservados.
+ * @param {Object} userContext - { uid, email, displayName, isMentor }
+ * @param {Object} [deps]
+ * @returns {Promise<{ id, before, after, editedFields: string[] }>}
+ */
+export async function editTradeAsMentor(tradeId, edits, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+  const timestamp = deps.now ?? (() => new Date().toISOString());
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!userContext?.isMentor) throw new Error('Apenas o mentor pode editar campos comportamentais');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+  if (!edits || typeof edits !== 'object') throw new Error('edits obrigatório');
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  if (before._lockedByMentor === true) {
+    throw new Error('Trade travado — destrave antes de editar');
+  }
+
+  const editedFields = [];
+  const patch = { updatedAt: serverTimestamp() };
+  const mentorEditEntries = [];
+  const editedAt = timestamp();
+  const editedBy = { uid: userContext.uid, email: userContext.email || null };
+
+  MENTOR_EDITABLE_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(edits, field)) {
+      const newValue = edits[field];
+      const oldValue = before[field] ?? null;
+      if (newValue !== oldValue) {
+        patch[field] = newValue ?? null;
+        editedFields.push(field);
+        mentorEditEntries.push({ field, oldValue, newValue: newValue ?? null, editedAt, editedBy });
+      }
+    }
+  });
+
+  if (editedFields.length === 0) {
+    return { id: tradeId, before, after: before, editedFields: [] };
+  }
+
+  // Preserva valor originalmente declarado pelo aluno (1ª edição congela, imutável depois).
+  if (!before._studentOriginal) {
+    patch._studentOriginal = {
+      emotionEntry: before.emotionEntry ?? null,
+      emotionExit: before.emotionExit ?? null,
+      setup: before.setup ?? null,
+      capturedAt: editedAt,
+    };
+  }
+
+  patch._mentorEdits = arrayUnion(...mentorEditEntries);
+
+  await updateDocFn(tradeRef, patch);
+  console.log(`[tradeGateway] Trade ${tradeId} editado por mentor: ${editedFields.join(', ')}`);
+  return { id: tradeId, before, after: { ...before, ...patch }, editedFields };
+}
+
+/**
+ * Trava o trade — após isso ninguém edita campos comportamentais (nem aluno nem mentor
+ * via fluxo normal). Admin destrava via unlockTradeByMentor ou edit direto.
+ * Import (CSV/Order) destrava automaticamente na Fase G.
+ *
+ * @returns {Promise<{ id, before, after }>}
+ */
+export async function lockTradeByMentor(tradeId, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!userContext?.isMentor) throw new Error('Apenas o mentor pode travar o trade');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  const patch = {
+    _lockedByMentor: true,
+    _lockedAt: serverTimestamp(),
+    _lockedBy: {
+      uid: userContext.uid,
+      email: userContext.email || null,
+      name: userContext.displayName || null,
+    },
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDocFn(tradeRef, patch);
+  console.log(`[tradeGateway] Trade ${tradeId} travado por mentor ${userContext.email}`);
+  return { id: tradeId, before, after: { ...before, ...patch } };
+}
+
+/**
+ * Destrava o trade — preserva auditoria (_mentorEdits/_studentOriginal intactos).
+ * Admin destrava manualmente; import destrava automaticamente (Fase G).
+ */
+export async function unlockTradeByMentor(tradeId, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!userContext?.isMentor) throw new Error('Apenas o mentor pode destravar o trade');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  const patch = {
+    _lockedByMentor: false,
+    _unlockedAt: serverTimestamp(),
+    _unlockedBy: {
+      uid: userContext.uid,
+      email: userContext.email || null,
+      reason: userContext.unlockReason || 'manual',
+    },
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDocFn(tradeRef, patch);
+  console.log(`[tradeGateway] Trade ${tradeId} destravado por ${userContext.email}`);
   return { id: tradeId, before, after: { ...before, ...patch } };
 }
