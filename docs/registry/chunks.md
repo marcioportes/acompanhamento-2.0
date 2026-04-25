@@ -13,3 +13,4 @@
 | CHUNK-16 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F2 currency multi-moeda |
 | CHUNK-13 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F4 useDashboardMetrics aceita context |
 | CHUNK-02 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | Interativo fast-track — F4 StudentDashboard respeita ContextBar total |
+| CHUNK-09 | #189 | `feat/issue-189-emotional-engine-real` | 25/04/2026 | Interativo — mirror emotionalAnalysisV2 + remove stub `preComputeShapes:129` (DEC-AUTO-119-task07-02) |

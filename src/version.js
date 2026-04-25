@@ -3,6 +3,13 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.46.0: feat: score emocional real no motor de maturidade (issue #189) — substitui stub
+ *   `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em `functions/maturity/preComputeShapes.js:129`
+ *   (DEC-AUTO-119-task07-02 declarava como TODO) por mirror CommonJS de
+ *   `emotionalAnalysisV2.calculatePeriodScore` + `detectTiltV2` + `detectRevengeV2`. Fórmula
+ *   DEC-AUTO-119-03 inalterada (`E = 0.60·periodScore + 0.25·invTilt + 0.15·invRevenge`).
+ *   Janela STAGE_WINDOWS rolling (D1) e política "evolução sempre visível" (D6) preservadas.
+ *   [RESERVADA — entrada definitiva no encerramento.]
  * - 1.45.0: feat: FeedbackPage mentor edit+lock+recalc + MentorDashboard currency multi-moeda +
  *   PlanSummaryCard + StudentDashboard cards respeitam ContextBar sem exceção (issue #188, Sev1).
  *   Entrega em 8 fases A-H pair programming fast-track.
