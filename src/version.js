@@ -3,6 +3,8 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.46.1: fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação
+ *   (issue #197). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.46.0: feat: score emocional real no motor de maturidade (issue #189) — substitui stub
  *   `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em `functions/maturity/preComputeShapes.js:129`
  *   (DEC-AUTO-119-task07-02 declarava como TODO) por mirror CommonJS de
@@ -205,10 +207,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.46.0',
+  version: '1.46.1',
   build: '20260425',
-  display: 'v1.46.0',
-  full: '1.46.0+20260425',
+  display: 'v1.46.1',
+  full: '1.46.1+20260425',
 };
 export default VERSION;
 export { VERSION };
