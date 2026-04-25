@@ -8,3 +8,4 @@
 | 1.44.0 | #119 | `feat/issue-119-maturidade-engine` | 23/04/2026 (reservada como 1.43.0) | consumida como 1.44.0 (PR #192) — bump mecânico após #183 consumir 1.43.1 antes do merge |
 | 1.45.0 | #188 | `fix/issue-188-feedback-lock-currency-context` | 24/04/2026 | reservada |
 | 1.44.1 | #191 | `fix/issue-191-compliance-recente-ciclo` | 24/04/2026 | consumida (PR #194 squash `eb4ff2ec`) |
+| 1.46.0 | #189 | `feat/issue-189-emotional-engine-real` | 25/04/2026 | reservada (1.45.0 pendente em #188 → próximo minor livre sobre 1.44.1 consumida) |
