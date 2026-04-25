@@ -11,9 +11,11 @@
  *   formatCurrencyDynamic(result, trade.currency). FX conversion fora (DEC-AUTO-188-05).
  *   F3: PlanSummaryCard colapsável (RO/RR/Cap/Bloqueadas/Ciclo X-N) na coluna esquerda do
  *   FeedbackPage em ambos modos. usePlans/useAccounts com overrideStudentId=trade.studentId.
+ *   Smoke-test polish: fontes -1pt, RO/Período/Ciclo Meta+Stop exibem valor absoluto da moeda.
  *   F4: useDashboardMetrics aceita context{accountId,planId,cycleKey,periodRange}; TODOS os
  *   cards do StudentDashboard obedecem à ContextBar sem exceção (DEC-AUTO-188-06).
  *   filters.period legado removido. PendingTakeaways filtra por planId do contexto.
+ *   Tooltips em todos os KPIs/quadrantes da Matriz Emocional 4D com fórmulas calculadas.
  *   F1 (Sev1 core): INV-15 aplicada. 5 campos novos em trades — _lockedByMentor, _lockedAt,
  *   _lockedBy, _mentorEdits[] (append-only), _studentOriginal (imutável após 1ª edit).
  *   Gateway expõe editTradeAsMentor/lockTradeByMentor/unlockTradeByMentor (INV-02).
