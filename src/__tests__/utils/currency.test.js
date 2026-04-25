@@ -13,6 +13,7 @@ import {
   isSameCurrency,
   groupByCurrency,
   aggregateBalancesByCurrency,
+  aggregateTradesByCurrency,
   getPlanCurrency,
 } from '../../utils/currency';
 
@@ -274,6 +275,94 @@ describe('aggregateBalancesByCurrency', () => {
     const result = aggregateBalancesByCurrency(accounts);
     expect(result.has('BRL')).toBe(true);
     expect(result.get('BRL').current).toBe(1100);
+  });
+});
+
+// ===== aggregateTradesByCurrency =====
+
+describe('aggregateTradesByCurrency', () => {
+  it('retorna Map vazio para input inválido', () => {
+    expect(aggregateTradesByCurrency(null).size).toBe(0);
+    expect(aggregateTradesByCurrency(undefined).size).toBe(0);
+    expect(aggregateTradesByCurrency([]).size).toBe(0);
+  });
+
+  it('agrega P&L de trades de mesma moeda', () => {
+    const trades = [
+      { result: 1500, currency: 'BRL' },
+      { result: -200, currency: 'BRL' },
+      { result: 800, currency: 'BRL' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    expect(result.size).toBe(1);
+    const brl = result.get('BRL');
+    expect(brl.totalPL).toBe(2100);
+    expect(brl.count).toBe(3);
+    expect(brl.currency).toBe('BRL');
+  });
+
+  it('não soma cross-currency', () => {
+    const trades = [
+      { result: 1500, currency: 'BRL' },
+      { result: -200, currency: 'BRL' },
+      { result: 300, currency: 'USD' },
+      { result: -50, currency: 'USD' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    expect(result.size).toBe(2);
+    expect(result.get('BRL').totalPL).toBe(1300);
+    expect(result.get('BRL').count).toBe(2);
+    expect(result.get('USD').totalPL).toBe(250);
+    expect(result.get('USD').count).toBe(2);
+  });
+
+  it('trade sem currency cai em BRL (legacy trades)', () => {
+    const trades = [
+      { result: 500 },
+      { result: 100, currency: null },
+      { result: 50, currency: 'USD' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    expect(result.get('BRL').totalPL).toBe(600);
+    expect(result.get('BRL').count).toBe(2);
+    expect(result.get('USD').totalPL).toBe(50);
+  });
+
+  it('trade sem result conta mas não soma', () => {
+    const trades = [
+      { currency: 'BRL' },
+      { result: null, currency: 'BRL' },
+      { result: 100, currency: 'BRL' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    expect(result.get('BRL').totalPL).toBe(100);
+    expect(result.get('BRL').count).toBe(3);
+  });
+
+  it('suporta múltiplas moedas', () => {
+    const trades = [
+      { result: 100, currency: 'BRL' },
+      { result: 200, currency: 'USD' },
+      { result: 300, currency: 'EUR' },
+      { result: 400, currency: 'GBP' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    expect(result.size).toBe(4);
+    ['BRL', 'USD', 'EUR', 'GBP'].forEach((cur) => {
+      expect(result.has(cur)).toBe(true);
+    });
+  });
+
+  it('preserva zero P&L (trade breakeven)', () => {
+    const trades = [
+      { result: 0, currency: 'BRL' },
+      { result: 100, currency: 'BRL' },
+      { result: -100, currency: 'BRL' },
+    ];
+    const result = aggregateTradesByCurrency(trades);
+    const brl = result.get('BRL');
+    expect(brl.totalPL).toBe(0);
+    expect(brl.count).toBe(3);
   });
 });
 

@@ -43,8 +43,10 @@ import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
   calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention,
-  formatCurrency, formatPercent, filterTradesByPeriod
+  formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
+import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
+import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { filterSetupsForStudent } from '../utils/setupsFilter';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
@@ -130,8 +132,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length, avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0 };
   }, [allTrades, students, todayTrades, ranking]);
 
+  // Agregados multi-moeda (F2 issue #188): P&L nunca soma cross-currency.
+  const overallTotalsByCurrency = useMemo(() => aggregateTradesByCurrency(allTrades), [allTrades]);
+
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
+  const selectedStudentTotals = useMemo(() => aggregateTradesByCurrency(selectedStudentTrades), [selectedStudentTrades]);
   // Setups isolados por aluno selecionado — garante que targetRR de aluno X
   // não vaze para o cálculo de Aderência RR do aluno Y (issue #174, INV-27 spec-level).
   const selectedStudentSetups = useMemo(
@@ -232,12 +238,17 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <h1 className="text-2xl font-display font-bold text-white">{selectedStudent.name}</h1>
             <p className="text-slate-400">{selectedStudent.email}</p>
           </div>
-          <div className={`px-4 py-2 rounded-xl ${selectedStudentStats.totalPL >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-            <span className="font-semibold">{formatCurrency(selectedStudentStats.totalPL)}</span>
+          <div className="px-4 py-2 rounded-xl bg-slate-800/50">
+            <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
           </div>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard title="P&L Total" value={formatCurrency(selectedStudentStats.totalPL)} icon={DollarSign} color={selectedStudentStats.totalPL >= 0 ? 'green' : 'red'} />
+          <StatCard
+            title="P&L Total"
+            value={<MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="stack" showSign />}
+            icon={DollarSign}
+            color={selectedStudentTotals.size <= 1 ? (selectedStudentStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
+          />
           <StatCard title="Win Rate" value={formatPercent(selectedStudentStats.winRate)} icon={Target} color={selectedStudentStats.winRate >= 50 ? 'green' : 'red'} />
           <StatCard title="Total Trades" value={selectedStudentStats.totalTrades} icon={Activity} color="blue" />
           <StatCard title="Profit Factor" value={selectedStudentStats.profitFactor === Infinity ? '∞' : selectedStudentStats.profitFactor.toFixed(2)} icon={TrendingUp} color={selectedStudentStats.profitFactor >= 1 ? 'green' : 'red'} />
@@ -295,7 +306,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       {activeView === 'overview' && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard title="P&L Total Turma" value={formatCurrency(overallStats.totalPL)} icon={DollarSign} color={overallStats.totalPL >= 0 ? 'green' : 'red'} />
+            <StatCard
+              title="P&L Total Turma"
+              value={<MultiCurrencyAmount totalsByCurrency={overallTotalsByCurrency} layout="stack" showSign />}
+              icon={DollarSign}
+              color={overallTotalsByCurrency.size <= 1 ? (overallStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
+            />
             <StatCard title="Win Rate Médio" value={formatPercent(overallStats.avgWinRate)} icon={Target} color={overallStats.avgWinRate >= 50 ? 'green' : 'yellow'} />
             <StatCard title="Alunos Ativos" value={students.length} icon={Users} color="blue" />
             <StatCard title="Trades Hoje" value={todayTrades.length} icon={Activity} color="purple" />
@@ -340,6 +356,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             {students.map(student => {
               const studentTrades = getTradesByStudent(student.email);
               const stats = calculateStats(studentTrades);
+              const studentTotalsByCurrency = aggregateTradesByCurrency(studentTrades);
               // Map keyed by uid (parent.parent.id de students/{uid}/maturity/current).
               // Fallback a undefined → semáforo UNKNOWN quando aluno sem studentId ou sem doc.
               const studentMaturity = student.studentId ? maturityByStudentId.get(student.studentId) : undefined;
@@ -357,7 +374,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                       </div>
                     </div>
                     <div className="flex items-center gap-6">
-                      <div className="text-right"><p className={`font-semibold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(stats.totalPL)}</p><p className="text-xs text-slate-500">{stats.totalTrades} trades</p></div>
+                      <div className="text-right min-w-[8rem]">
+                        <MultiCurrencyAmount totalsByCurrency={studentTotalsByCurrency} layout="stack" showSign className="font-semibold text-sm items-end" />
+                        <p className="text-xs text-slate-500">{stats.totalTrades} trades</p>
+                      </div>
                       <div className="text-right"><p className={`font-semibold ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{formatPercent(stats.winRate)}</p><p className="text-xs text-slate-500">Win Rate</p></div>
                       <ChevronRight className="w-5 h-5 text-slate-500" />
                     </div>
@@ -439,7 +459,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      <p className={`font-semibold ${trade.result >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.result >= 0 ? '+' : ''}{formatCurrency(trade.result)}</p>
+                      <p className={`font-semibold ${trade.result >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.result >= 0 ? '+' : ''}{formatCurrencyDynamic(trade.result, trade.currency)}</p>
                       <button onClick={() => handleGoToFeedback(trade)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                         <MessageSquare className="w-4 h-4" />{pendingFilter.status === 'OPEN' ? 'Dar Feedback' : 'Responder'}
                       </button>
@@ -485,7 +505,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                                 {' '}<span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span>
                                 {t.entryTime && <span className="text-slate-600 font-mono ml-1">{(() => { try { return t.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
                               </span>
-                              <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrency(t.result)}</span>
+                              <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrencyDynamic(t.result, t.currency)}</span>
                             </div>
                           ))}
                         </div>
@@ -588,13 +608,20 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             </select>
           </div>
           <div className="divide-y divide-slate-800/50">
-            {ranking.map((student, index) => (
+            {ranking.map((student, index) => {
+              const studentRankingTrades = groupedTrades[student.email] || [];
+              const studentTotalsByCurrency = aggregateTradesByCurrency(studentRankingTrades);
+              return (
               <div key={student.email} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>{index + 1}</div>
                 <div className="flex-1"><p className="font-medium text-white">{student.name}</p><p className="text-xs text-slate-500">{student.totalTrades} trades</p></div>
-                <div className="text-right"><p className={`font-semibold ${student.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(student.totalPL)}</p><p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p></div>
+                <div className="text-right min-w-[8rem]">
+                  <MultiCurrencyAmount totalsByCurrency={studentTotalsByCurrency} layout="stack" showSign className="font-semibold text-sm items-end" />
+                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p>
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

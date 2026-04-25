@@ -160,6 +160,30 @@ export const getPlanCurrency = (plan, accounts) => {
   return resolveCurrency(account?.currency);
 };
 
+/**
+ * Agrega resultado P&L de trades por moeda. Nunca soma cross-currency.
+ * Usado em agregados multi-moeda (P&L Turma, ranking, lista de alunos).
+ *
+ * @param {Array} trades - Trades com campos `result: number` e `currency: string`
+ * @returns {Map<string, { totalPL: number, count: number, currency: string }>}
+ */
+export const aggregateTradesByCurrency = (trades) => {
+  const result = new Map();
+  if (!Array.isArray(trades)) return result;
+
+  trades.forEach((t) => {
+    const currency = resolveCurrency(t?.currency);
+    if (!result.has(currency)) {
+      result.set(currency, { totalPL: 0, count: 0, currency });
+    }
+    const group = result.get(currency);
+    group.totalPL += Number(t?.result) || 0;
+    group.count += 1;
+  });
+
+  return result;
+};
+
 export default {
   formatCurrencyDynamic,
   formatCurrencyCompact,
@@ -168,5 +192,6 @@ export default {
   isSameCurrency,
   groupByCurrency,
   aggregateBalancesByCurrency,
+  aggregateTradesByCurrency,
   getPlanCurrency,
 };
