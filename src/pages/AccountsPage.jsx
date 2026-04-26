@@ -816,6 +816,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                         const rr = attackPlan.rrMinimum ?? 2;
                         const dailyStop = ro * maxT;
                         const dailyGoal = dailyStop * rr;
+                        // RO efetivo % do DD (não o orçado pelo profile — sizing discreto pode reduzir)
+                        const roPctEffective = attackPlan.drawdownMax > 0
+                          ? (ro / attackPlan.drawdownMax) * 100
+                          : 0;
+                        const sizing = attackPlan.sizing ?? attackPlan.contracts ?? 0;
                         return (
                           <div className="p-3 bg-slate-800/50 rounded-lg space-y-3">
                             <div>
@@ -841,20 +846,20 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = $${(attackPlan.drawdownMax * attackPlan.roPct).toFixed(0)}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop/trade</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR/trade</div><div className="text-slate-200 font-mono">1:{rr}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
-                                <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{sizing} contrato{sizing > 1 ? 's' : ''}</div></div>
                                 <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
                                 <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
                               </div>
-                              {maxT > 1 && (
+                              {maxT > 1 && sizing > 0 && (
                                 <p className="text-[10px] text-slate-500 leading-snug mt-2">
-                                  Execução: <span className="text-slate-400">{maxT} trades × 1 contrato</span> OU <span className="text-slate-400">1 trade × {maxT} contratos</span> — mesma distância em pontos. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
+                                  Execução: <span className="text-slate-400">{maxT} trades × {sizing} contrato{sizing > 1 ? 's' : ''}</span> = <span className="text-slate-400">{maxT * sizing} contrato-trades/dia</span>. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
                                 </p>
                               )}
                             </div>

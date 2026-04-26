@@ -401,14 +401,17 @@ export function calculatePlanMechanics(input) {
   const dailyStop = round(viability.effectiveMaxTrades * sizingMeta.roBudget, 2);
   const dailyGoal = round(dailyStop * profileObj.rr, 2);
 
-  // Stats informativos (preserva semântica do calculator atual)
+  // Stats informativos. Usa roEffective (realized com sizing discreto) para EV — é o que
+  // o aluno vai realmente capturar/perder por trade. lossesToBust também usa o realizado
+  // porque é o stop em $ que de fato bate (não o orçamento).
   const dataSourceMeta = resolveDataSource(profile4D, indicators, profileObj.family);
-  const winUSD = round(sizingMeta.roBudget * profileObj.rr, 2);
-  const lossesToBust = sizingMeta.roBudget > 0
-    ? Math.floor(constraints.drawdownBudget / sizingMeta.roBudget)
+  const roRealized = sizingMeta.roEffective || sizingMeta.roBudget;
+  const winUSD = round(roRealized * profileObj.rr, 2);
+  const lossesToBust = roRealized > 0
+    ? Math.floor(constraints.drawdownBudget / roRealized)
     : 0;
   const evPerTrade = round(
-    (dataSourceMeta.assumedWR * winUSD) - ((1 - dataSourceMeta.assumedWR) * sizingMeta.roBudget),
+    (dataSourceMeta.assumedWR * winUSD) - ((1 - dataSourceMeta.assumedWR) * roRealized),
     2
   );
   const wrBelowBreakeven = dataSourceMeta.assumedWR < RR2_BREAKEVEN_WR;

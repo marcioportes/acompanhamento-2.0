@@ -330,16 +330,19 @@ describe('calculatePlanMechanics — soft viability (sessões)', () => {
 describe('calculatePlanMechanics — métricas informativas', () => {
   const constraints = buildMesaConstraints(APEX_INTRADAY_50K);
 
-  it('lossesToBust = floor(drawdownBudget / roBudget)', () => {
+  it('lossesToBust = floor(drawdownBudget / roEffective)', () => {
     const r = calculatePlanMechanics({ constraints, instrument: mnq(), style: 'day', profile: 'CONS_B' });
-    // 2500 / 375 = 6.67 → 6
-    expect(r.mechanicalPlan.lossesToBust).toBe(6);
+    // roEffective = 3 × 54.9 × $2 = $329.40 → 2500 / 329.40 ≈ 7.59 → 7
+    expect(r.mechanicalPlan.lossesToBust).toBe(7);
   });
 
-  it('evPerTrade > 0 com WR 50% e RR 1:2', () => {
+  it('evPerTrade > 0 com WR 50% e RR 1:2 (baseado em roEffective)', () => {
     const r = calculatePlanMechanics({ constraints, instrument: mnq(), style: 'day', profile: 'CONS_B' });
-    // EV = 0.5 * 750 - 0.5 * 375 = 187.5
-    expect(r.mechanicalPlan.evPerTrade).toBeCloseTo(187.5, 1);
+    // EV = 0.5 × winUSD - 0.5 × roEffective
+    //    = 0.5 × ($329.40 × 2) - 0.5 × $329.40
+    //    = 0.5 × 329.40 = 164.70
+    expect(r.mechanicalPlan.evPerTrade).toBeCloseTo(164.7, 1);
+    expect(r.mechanicalPlan.winUSD).toBeCloseTo(658.8, 1);
     expect(r.mechanicalPlan.assumedWR).toBe(0.5);
     expect(r.mechanicalPlan.wrBelowBreakeven).toBe(false);
   });
