@@ -24,7 +24,9 @@ import { useMovements } from '../hooks/useMovements';
 import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
-import { DEFAULT_ATTACK_PROFILE } from '../constants/propFirmDefaults';
+import { calculatePlanMechanics, buildMesaConstraints, toLegacyAttackPlanShape } from '../utils/calculatePlanMechanics';
+import { DEFAULT_ATTACK_PROFILE, DEFAULT_ATTACK_STYLE } from '../constants/propFirmDefaults';
+import { getInstrument } from '../constants/instrumentsTable';
 import ContextBar from '../components/ContextBar';
 import PropAccountCard from '../components/dashboard/PropAccountCard';
 import PropAlertsBanner from '../components/dashboard/PropAlertsBanner';
@@ -106,17 +108,33 @@ const PropFirmPageBody = ({ viewAs }) => {
 
   const dangerAlerts = getDangerAlerts(alerts);
 
-  // Plano mecânico read-only para Zona 3
+  // Plano mecânico read-only para Zona 3 (#201: prefere motor novo quando style+instrument salvos)
   const attackPlan = useMemo(() => {
     if (!propTemplate) return null;
     const profile = propFirm?.suggestedPlan?.profile ?? DEFAULT_ATTACK_PROFILE;
-    const instrument = propFirm?.suggestedPlan?.instrument?.symbol ?? null;
+    const instrumentSymbol = propFirm?.suggestedPlan?.instrument?.symbol
+      ?? propFirm?.selectedInstrument?.symbol
+      ?? null;
+    const style = propFirm?.suggestedPlan?.style ?? DEFAULT_ATTACK_STYLE;
     try {
-      return calculateAttackPlan(propTemplate, null, null, profile, phase, instrument);
+      if (instrumentSymbol) {
+        const instrument = getInstrument(instrumentSymbol);
+        if (instrument) {
+          const constraints = buildMesaConstraints(propTemplate, phase);
+          const planNew = calculatePlanMechanics({
+            constraints,
+            instrument,
+            style,
+            profile
+          });
+          return toLegacyAttackPlanShape(planNew, propTemplate);
+        }
+      }
+      return calculateAttackPlan(propTemplate, null, null, profile, phase, instrumentSymbol);
     } catch {
       return null;
     }
-  }, [propTemplate, propFirm?.suggestedPlan, phase]);
+  }, [propTemplate, propFirm?.suggestedPlan, propFirm?.selectedInstrument, phase]);
 
   // Early return AFTER all hooks
   if (!selectedAccount) {

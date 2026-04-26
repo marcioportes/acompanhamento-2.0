@@ -486,6 +486,101 @@ export function calculatePlanMechanics(input) {
 }
 
 // ============================================
+// toLegacyAttackPlanShape — adapter para consumers legados
+// ============================================
+// Mapeia o output novo de `calculatePlanMechanics` para o shape esperado por
+// PlanoMecanicoCard / propPlanDefaults / propViabilityBadge / hooks que ainda
+// consomem o formato `calculateAttackPlan` legado. Permite migração faseada
+// sem tocar nos consumers até que sejam refatorados naturalmente.
+//
+// @param {Object} plan - output de calculatePlanMechanics
+// @param {Object} templateRules - template original (para campos do mesa-only)
+// @returns {Object} shape compatível com `mode: 'execution'` legado
+export function toLegacyAttackPlanShape(plan, templateRules = null) {
+  if (!plan) return null;
+  const evalTimeLimit = templateRules?.evalTimeLimit ?? 30;
+  const evalBusinessDays = evalTimeLimit > 0
+    ? Math.max(1, Math.floor(evalTimeLimit * BUSINESS_DAYS_RATIO))
+    : 21;
+  const profitTarget = templateRules?.profitTarget ?? 0;
+  const dailyTarget = profitTarget > 0
+    ? Math.ceil(profitTarget / evalBusinessDays)
+    : 0;
+  const daysToTarget = dailyTarget > 0
+    ? Math.ceil(profitTarget / dailyTarget)
+    : evalBusinessDays;
+  const drawdownMax = plan.constraintsType === 'prop'
+    ? (templateRules?.drawdown?.maxAmount ?? 0)
+    : 0;
+  const dailyLossLimitFromRules = templateRules?.dailyLossLimit;
+  const dailyLossLimit = dailyLossLimitFromRules && dailyLossLimitFromRules > 0
+    ? dailyLossLimitFromRules
+    : Math.max(1, Math.round(drawdownMax * NULL_DAILY_LOSS_FALLBACK_FRACTION));
+
+  return {
+    mode: 'execution',
+    profile: plan.profile.code,
+    profileName: plan.profile.name,
+    profileFamily: plan.profile.family,
+    profileRecommended: plan.profile.recommended,
+    style: plan.style,
+    dataSource: plan.meta.dataSource,
+    adjustmentFactor: plan.meta.adjustmentFactor,
+    assumedWR: plan.mechanicalPlan.assumedWR,
+    wrBelowBreakeven: plan.mechanicalPlan.wrBelowBreakeven,
+
+    drawdownMax,
+    dailyLossLimit,
+    profitTarget,
+    phase: null,
+
+    instrument: {
+      symbol: plan.instrument.symbol,
+      name: plan.instrument.name,
+      isMicro: plan.instrument.isMicro,
+      pointValue: plan.instrument.pointValue,
+      avgDailyRange: plan.instrument.avgDailyRange,
+      type: plan.instrument.type,
+      minViableStop: plan.meta.effectiveMinStop
+    },
+
+    roPct: plan.profile.roPct,
+    roPerTrade: plan.mechanicalPlan.roBudget,
+    stopPoints: plan.mechanicalPlan.stopBase,
+    stopPerTrade: plan.mechanicalPlan.stopUSDPerContract,
+    targetPoints: plan.mechanicalPlan.targetPoints,
+    targetPerTrade: plan.mechanicalPlan.targetUSDPerContract,
+    rrMinimum: plan.mechanicalPlan.rrMinimum,
+    stopNyPct: plan.viability.stopNyPct,
+    nyRangePoints: plan.viability.nyRangePoints,
+
+    winUSD: plan.mechanicalPlan.winUSD,
+    lossesToBust: plan.mechanicalPlan.lossesToBust,
+    evPerTrade: plan.mechanicalPlan.evPerTrade,
+    maxTradesPerDay: plan.mechanicalPlan.maxTradesPerDay,
+
+    dailyTarget,
+    evalBusinessDays,
+    daysToTarget,
+    bufferDays: Math.max(0, evalBusinessDays - daysToTarget),
+
+    sizing: plan.mechanicalPlan.contracts,
+    contracts: plan.mechanicalPlan.contracts,
+
+    incompatible: plan.viability.incompatible,
+    inviabilityReason: plan.viability.inviabilityReason,
+    microSuggestion: plan.viability.microSuggestion,
+    stopIsNoise: plan.viability.stopIsNoise,
+    nySessionViable: plan.viability.nySessionViable,
+    sessionRestricted: plan.viability.sessionRestricted,
+    recommendedSessions: plan.viability.recommendedSessions,
+    constraintsViolated: plan.viability.violations,
+
+    generatedAt: plan.meta.generatedAt
+  };
+}
+
+// ============================================
 // Helpers
 // ============================================
 

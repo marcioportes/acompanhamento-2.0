@@ -25,12 +25,17 @@ import {
   PROP_FIRM_PHASE_LABELS,
   ATTACK_PROFILES,
   DEFAULT_ATTACK_PROFILE,
+  STYLE_LABELS,
+  STYLE_DESCRIPTIONS,
+  STYLE_ATR_FRACTIONS,
+  DEFAULT_ATTACK_STYLE,
   normalizeAttackProfile,
   ATTACK_PLAN_PROFILE_LABELS,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { calculatePlanMechanics, buildMesaConstraints, toLegacyAttackPlanShape } from '../utils/calculatePlanMechanics';
 import { computePropPlanDefaults } from '../utils/propPlanDefaults';
 import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 import AccountDetailPage from './AccountDetailPage';
@@ -130,13 +135,14 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
     type: 'DEMO',
   });
 
-  // --- Prop firm state (#52) ---
+  // --- Prop firm state (#52, #201) ---
   const [propFirmData, setPropFirmData] = useState({
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
     attackProfile: DEFAULT_ATTACK_PROFILE,
-    selectedInstrument: '' // #52 Fase 1.5 — instrumento principal da conta
+    selectedInstrument: '', // #52 Fase 1.5 — instrumento principal da conta
+    attackStyle: DEFAULT_ATTACK_STYLE // #201 — estilo operacional (independente do profile)
   });
 
   const allTemplates = useMemo(
@@ -161,6 +167,21 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   const attackPlan = useMemo(() => {
     if (!selectedTemplate) return null;
     try {
+      // #201: quando aluno selecionou instrumento, usa motor novo (stop estrutural ATR
+      // por estilo + sizing dinâmico). Sem instrumento, fallback para abstract legado.
+      if (propFirmData.selectedInstrument && propFirmData.attackStyle) {
+        const instrument = getInstrument(propFirmData.selectedInstrument);
+        if (instrument) {
+          const constraints = buildMesaConstraints(selectedTemplate, propFirmData.phase);
+          const planNew = calculatePlanMechanics({
+            constraints,
+            instrument,
+            style: propFirmData.attackStyle,
+            profile: propFirmData.attackProfile
+          });
+          return toLegacyAttackPlanShape(planNew, selectedTemplate);
+        }
+      }
       return calculateAttackPlan(
         selectedTemplate,
         null,
@@ -170,7 +191,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         propFirmData.selectedInstrument || null
       );
     } catch { return null; }
-  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument]);
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
   // Preseleção externa (issue #156 Fase F) — aplica assim que `accounts` carregar
   // e a conta alvo estiver disponível. Propaga flag `_autoOpenPlanModal` ao
@@ -270,10 +291,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
           selectedTemplateId: account.propFirm.templateId || '',
           phase: account.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
           attackProfile: normalizeAttackProfile(account.propFirm.suggestedPlan?.profile),
-          selectedInstrument: account.propFirm.selectedInstrument?.symbol || ''
+          selectedInstrument: account.propFirm.selectedInstrument?.symbol || '',
+          attackStyle: account.propFirm.suggestedPlan?.style || DEFAULT_ATTACK_STYLE
         });
       } else {
-        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
+        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '', attackStyle: DEFAULT_ATTACK_STYLE });
       }
       setIsModalOpen(true);
       setShowBrokerSuggestions(false);
@@ -290,7 +312,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         type: 'DEMO'
       });
     }
-    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
+    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '', attackStyle: DEFAULT_ATTACK_STYLE });
     setIsModalOpen(true);
     setShowBrokerSuggestions(false);
   };
@@ -479,7 +501,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
               ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
               : null,
             selectedInstrument: instrumentField,
-            suggestedPlan: attackPlan
+            suggestedPlan: attackPlan ? { ...attackPlan, style: propFirmData.attackStyle } : null
           };
         }
         const newAccountId = await addAccount(createPayload);
@@ -668,13 +690,13 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           </select>
                         </div>
                         <div>
-                          <label className="input-label">Instrumento Principal</label>
+                          <label className="input-label">Instrumento Principal *</label>
                           <select
                             className="input-dark w-full"
                             value={propFirmData.selectedInstrument}
                             onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
                           >
-                            <option value="">— Sem instrumento (plano abstrato)</option>
+                            <option value="">Selecione o instrumento</option>
                             {allowedInstruments.map(inst => (
                               <option key={inst.symbol} value={inst.symbol}>
                                 {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
@@ -682,6 +704,21 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             ))}
                           </select>
                         </div>
+                      </div>
+                      {/* #201: estilo operacional independente do profile */}
+                      <div>
+                        <label className="input-label">Estilo Operacional *</label>
+                        <select
+                          className="input-dark w-full"
+                          value={propFirmData.attackStyle}
+                          onChange={(e) => setPropFirmData(prev => ({ ...prev, attackStyle: e.target.value }))}
+                        >
+                          {Object.entries(STYLE_LABELS).map(([key, label]) => (
+                            <option key={key} value={key}>
+                              {label} ({(STYLE_ATR_FRACTIONS[key] * 100).toFixed(0)}% ATR) — {STYLE_DESCRIPTIONS[key]}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="input-label">Perfil do Plano de Ataque</label>

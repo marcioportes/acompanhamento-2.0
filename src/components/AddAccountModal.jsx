@@ -20,11 +20,17 @@ import {
   PROP_FIRM_PHASE_LABELS,
   ATTACK_PROFILES,
   DEFAULT_ATTACK_PROFILE,
+  STYLE_LABELS,
+  STYLE_DESCRIPTIONS,
+  STYLE_ATR_FRACTIONS,
+  DEFAULT_ATTACK_STYLE,
   normalizeAttackProfile,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { calculatePlanMechanics, buildMesaConstraints, toLegacyAttackPlanShape } from '../utils/calculatePlanMechanics';
+import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 
 const AddAccountModal = ({ 
   isOpen, 
@@ -55,7 +61,9 @@ const AddAccountModal = ({
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
-    attackProfile: DEFAULT_ATTACK_PROFILE
+    attackProfile: DEFAULT_ATTACK_PROFILE,
+    selectedInstrument: '',
+    attackStyle: DEFAULT_ATTACK_STYLE
   });
 
   const [errors, setErrors] = useState({});
@@ -71,11 +79,31 @@ const AddAccountModal = ({
     () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
     [allTemplates, propFirmData.selectedTemplateId]
   );
+  // Lista de instrumentos permitidos para a firma selecionada
+  const allowedInstruments = useMemo(() => {
+    if (!selectedTemplate?.firm) return [];
+    return getAllowedInstrumentsForFirm(selectedTemplate.firm);
+  }, [selectedTemplate]);
 
-  // Plano de ataque calculado (sem 4D/indicadores na criação — usa defaults)
+  // Plano de ataque (sem 4D/indicadores na criação — usa defaults).
+  // Quando aluno selecionou instrumento + estilo, usa o motor novo (stop ATR-based + sizing dinâmico).
+  // Senão, fallback para o legado abstract — apenas constraints da mesa.
   const attackPlan = useMemo(() => {
     if (!selectedTemplate) return null;
     try {
+      if (propFirmData.selectedInstrument && propFirmData.attackStyle) {
+        const instrument = getInstrument(propFirmData.selectedInstrument);
+        if (instrument) {
+          const constraints = buildMesaConstraints(selectedTemplate, propFirmData.phase);
+          const planNew = calculatePlanMechanics({
+            constraints,
+            instrument,
+            style: propFirmData.attackStyle,
+            profile: propFirmData.attackProfile
+          });
+          return toLegacyAttackPlanShape(planNew, selectedTemplate);
+        }
+      }
       return calculateAttackPlan(
         selectedTemplate,
         null,
@@ -86,7 +114,7 @@ const AddAccountModal = ({
     } catch {
       return null;
     }
-  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase]);
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
   // Auto-fill currency (USD), balance (accountSize) e nome quando template selecionado
   useEffect(() => {
@@ -115,7 +143,9 @@ const AddAccountModal = ({
           selectedFirm: editAccount.propFirm.firmName || '',
           selectedTemplateId: editAccount.propFirm.templateId || '',
           phase: editAccount.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
-          attackProfile: normalizeAttackProfile(editAccount.propFirm.suggestedPlan?.profile)
+          attackProfile: normalizeAttackProfile(editAccount.propFirm.suggestedPlan?.profile),
+          selectedInstrument: editAccount.propFirm.selectedInstrument?.symbol || '',
+          attackStyle: editAccount.propFirm.suggestedPlan?.style || DEFAULT_ATTACK_STYLE
         });
       }
     } else {
@@ -130,7 +160,9 @@ const AddAccountModal = ({
         selectedFirm: '',
         selectedTemplateId: '',
         phase: PROP_FIRM_PHASES.EVALUATION,
-        attackProfile: DEFAULT_ATTACK_PROFILE
+        attackProfile: DEFAULT_ATTACK_PROFILE,
+        selectedInstrument: '',
+        attackStyle: DEFAULT_ATTACK_STYLE
       });
     }
     setErrors({});
@@ -185,6 +217,21 @@ const AddAccountModal = ({
       // Montar propFirm se tipo PROP
       if (formData.type === 'PROP' && selectedTemplate) {
         const evalDays = selectedTemplate.evalTimeLimit;
+        let instrumentField = null;
+        if (propFirmData.selectedInstrument) {
+          const inst = getInstrument(propFirmData.selectedInstrument);
+          if (inst) {
+            instrumentField = {
+              symbol: inst.symbol,
+              name: inst.name,
+              type: inst.type,
+              isMicro: inst.isMicro,
+              pointValue: inst.pointValue,
+              avgDailyRange: inst.avgDailyRange,
+              minStopPoints: inst.minStopPoints
+            };
+          }
+        }
         accountData.propFirm = {
           templateId: selectedTemplate.id,
           firmName: selectedTemplate.firm,
@@ -194,7 +241,8 @@ const AddAccountModal = ({
           evalDeadline: evalDays
             ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
             : null,
-          suggestedPlan: attackPlan
+          selectedInstrument: instrumentField,
+          suggestedPlan: attackPlan ? { ...attackPlan, style: propFirmData.attackStyle } : null
         };
       }
 
@@ -408,6 +456,40 @@ const AddAccountModal = ({
                   </select>
                 </div>
 
+                {/* Instrumento principal + estilo operacional (issue #201) */}
+                {selectedTemplate && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="input-group">
+                      <label className="input-label text-xs">Instrumento Principal *</label>
+                      <select
+                        value={propFirmData.selectedInstrument}
+                        onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
+                      >
+                        <option value="">Selecione o instrumento</option>
+                        {allowedInstruments.map(inst => (
+                          <option key={inst.symbol} value={inst.symbol}>
+                            {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="input-group">
+                      <label className="input-label text-xs">Estilo Operacional *</label>
+                      <select
+                        value={propFirmData.attackStyle}
+                        onChange={(e) => setPropFirmData(prev => ({ ...prev, attackStyle: e.target.value }))}
+                      >
+                        {Object.entries(STYLE_LABELS).map(([key, label]) => (
+                          <option key={key} value={key} title={STYLE_DESCRIPTIONS[key]}>
+                            {label} ({(STYLE_ATR_FRACTIONS[key] * 100).toFixed(0)}% ATR)
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1">{STYLE_DESCRIPTIONS[propFirmData.attackStyle]}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Perfil do plano de ataque (5 perfis) */}
                 {selectedTemplate && (
                   <div className="input-group">
@@ -441,12 +523,12 @@ const AddAccountModal = ({
                   </div>
                 )}
 
-                {/* Preview do plano de ataque (Fase 1.5: instrument-aware, modo abstract) */}
+                {/* Preview do plano de ataque */}
                 {attackPlan && attackPlan.mode === 'abstract' && (
                   <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
                     <div className="flex items-center gap-1 mb-2">
                       <Info className="w-3 h-3 text-slate-400" />
-                      <span className="text-xs text-slate-400">Constraints da mesa (sem instrumento)</span>
+                      <span className="text-xs text-slate-400">Constraints da mesa (selecione instrumento + estilo para plano completo)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <div className="text-slate-500">DD total:</div>
@@ -462,6 +544,48 @@ const AddAccountModal = ({
                       <div className="text-slate-500">Sizing:</div>
                       <div className="text-slate-400 italic text-[10px]">a definir conforme instrumento</div>
                     </div>
+                  </div>
+                )}
+                {attackPlan && attackPlan.mode === 'execution' && !attackPlan.incompatible && (
+                  <div className="p-3 bg-slate-800/50 rounded-lg space-y-1">
+                    <div className="flex items-center gap-1 mb-2">
+                      <Info className="w-3 h-3 text-emerald-400" />
+                      <span className="text-xs text-emerald-300">
+                        Plano viável — {attackPlan.instrument?.symbol} · {STYLE_LABELS[propFirmData.attackStyle]} · {attackPlan.profile}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="text-slate-500">Stop:</div>
+                      <div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts (${attackPlan.stopPerTrade}/contrato)</div>
+                      <div className="text-slate-500">Contratos:</div>
+                      <div className="text-slate-200 font-mono">{attackPlan.contracts}</div>
+                      <div className="text-slate-500">RO efetivo:</div>
+                      <div className="text-slate-200 font-mono">${(attackPlan.stopPerTrade * attackPlan.contracts).toLocaleString()}</div>
+                      <div className="text-slate-500">Target:</div>
+                      <div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts ({attackPlan.rrMinimum}:1)</div>
+                      <div className="text-slate-500">Trades/dia:</div>
+                      <div className="text-slate-200 font-mono">{attackPlan.maxTradesPerDay}</div>
+                      <div className="text-slate-500">Sessões:</div>
+                      <div className="text-slate-300 text-[11px]">{attackPlan.recommendedSessions?.join(', ') || '—'}</div>
+                    </div>
+                  </div>
+                )}
+                {attackPlan && attackPlan.mode === 'execution' && attackPlan.incompatible && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/40 rounded-lg space-y-1">
+                    <div className="flex items-center gap-1 mb-1">
+                      <AlertCircle className="w-3 h-3 text-red-400" />
+                      <span className="text-xs text-red-300">Plano inviável</span>
+                    </div>
+                    <p className="text-[11px] text-red-200">{attackPlan.inviabilityReason}</p>
+                    {attackPlan.microSuggestion && (
+                      <button
+                        type="button"
+                        onClick={() => setPropFirmData(prev => ({ ...prev, selectedInstrument: attackPlan.microSuggestion }))}
+                        className="mt-1 text-[11px] text-emerald-300 underline hover:text-emerald-200"
+                      >
+                        Trocar para {attackPlan.microSuggestion}
+                      </button>
+                    )}
                   </div>
                 )}
 
