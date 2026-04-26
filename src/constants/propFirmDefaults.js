@@ -158,8 +158,12 @@ export const ATTACK_PROFILES = {
 export const DEFAULT_ATTACK_PROFILE = 'CONS_B';
 
 // --- Viabilidade do stop por tipo de instrumento ---
-// Ref: Temp/attack-plan-deterministic-table.md §3
+// Ref: docs/dev/research/spec-original-attack-plan-2026-04-07.md §3
 // Stop em pontos abaixo desses valores é "ruído" no instrumento — sugerir micro variant.
+// Floor type-level. O motor `calculatePlanMechanics` aplica
+// `effectiveMinStop = max(MIN_VIABLE_STOP[type], instrument.minStopPoints || 0)`
+// — `minStopPoints` per-instrument na `instrumentsTable.js` é override mais conservador
+// quando aplicável (NQ=20, YM=25, RTY=3 etc.). Resolução de DT-042.
 export const MIN_VIABLE_STOP = {
   equity_index: 15,    // pontos — abaixo disso é ruído no MNQ/MES
   energy: 0.10,        // pontos — CL/MCL
@@ -168,6 +172,45 @@ export const MIN_VIABLE_STOP = {
   agriculture: 3,      // pontos — ZC/ZW/ZS
   crypto: 500          // pontos — MBT
 };
+
+// --- Frações de ATR por estilo operacional ---
+// Ref: docs/dev/research/spec-original-attack-plan-2026-04-07.md §7
+// Estilo é eixo INDEPENDENTE do profile (CONS_A..AGRES_B). Profile = orçamento e cadência;
+// estilo = estrutura do stop. Aluno escolhe ambos no preview do plano.
+// Calibração derivada da tabela seção 7 (range NY = 60% ATR diário):
+//   scalp 6-21% range NY ≈ 5% ATR
+//   day 21-33% range NY ≈ 10% ATR (borda inferior, conservador)
+//   swing 33-50% range NY ≈ 20% ATR
+//   conviction 50-70% range NY ≈ 30% ATR
+export const STYLE_ATR_FRACTIONS = {
+  scalp: 0.05,
+  day: 0.10,
+  swing: 0.20,
+  conviction: 0.30
+};
+
+export const STYLE_LABELS = {
+  scalp: 'Scalp',
+  day: 'Day trade',
+  swing: 'Swing intraday',
+  conviction: 'Convicção'
+};
+
+export const STYLE_DESCRIPTIONS = {
+  scalp: 'Stop apertado (~5% ATR), entrada cirúrgica',
+  day: 'Stop moderado (~10% ATR), pullback',
+  swing: 'Stop largo (~20% ATR), convicção',
+  conviction: 'Stop muito largo (~30% ATR), 1 trade do dia'
+};
+
+export const DEFAULT_ATTACK_STYLE = 'day';
+
+// --- Variação de stop entre profiles dentro do estilo ---
+// Profile modula o stopBase: conservador um tique mais largo (mais defesa de entrada),
+// agressivo um tique mais apertado (RR mais provável de hit).
+// CONS_B é referência (variance = 0); CONS_A → +6.7%, CONS_C → -6.7%, AGRES_A → -16.7%, AGRES_B → -33%.
+// Cap em ±PROFILE_STOP_VARIANCE para não destruir o sinal estrutural do estilo.
+export const PROFILE_STOP_VARIANCE = 0.10;
 
 // Stop > MAX_STOP_NY_PCT do range NY = inviável (vela única consome o stop).
 // Stop < MIN_STOP_NY_PCT do range NY = ruído puro.
