@@ -51,9 +51,12 @@ export function computePropPlanDefaults(attackPlan, initialBalance) {
     (periodStopPct * rrMinimum) ||
     DEFAULT_PERIOD_GOAL_PCT;
 
-  // RO% por trade = teto diário (periodStopPct), não o sizing mínimo de 1 contrato.
-  // Permite Path A (2 trades × 0.6%) e Path B (1 trade × 1.2%) sem flagrar compliance.
-  const riskPctPerOp = periodStopPct || DEFAULT_RISK_PCT;
+  // RO% por trade = roPerTrade direto (= drawdownBudget × profile.roPct, p.ex. 0.75% em CONS_B 50K).
+  // #201 supersedes DEC-072: motor novo já entrega `roPerTrade` como ORÇAMENTO por trade
+  // (não mais sizing-mínimo-de-1-contrato). Path B (1 trade × N contratos) virou escolha
+  // explícita de profile (AGRES_A/B); não precisa mais do alias periodStopPct → riskPerOp.
+  // Fallback: periodStopPct quando attackPlan abstract não tem roPerTrade > 0.
+  const riskPctPerOp = toPct(attackPlan.roPerTrade, pl) || periodStopPct || DEFAULT_RISK_PCT;
 
   const rrTarget = rrMinimum;
 

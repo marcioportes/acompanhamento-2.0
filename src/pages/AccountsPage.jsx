@@ -29,6 +29,7 @@ import {
   STYLE_DESCRIPTIONS,
   STYLE_ATR_FRACTIONS,
   DEFAULT_ATTACK_STYLE,
+  formatProfileMcTip,
   normalizeAttackProfile,
   ATTACK_PLAN_PROFILE_LABELS,
   DEFAULT_TEMPLATES_ENRICHED,
@@ -731,7 +732,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                                 key={p.code}
                                 type="button"
                                 onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
-                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}`}
+                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}\n\nMonte Carlo (Apex 50K · stop-on-win · 100k iter)\n${formatProfileMcTip(p)}\nFormato: PASS / BUST / dias médios`}
                                 className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                                   selected
                                     ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
@@ -749,6 +750,12 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
                           {' · '}{ATTACK_PROFILES[propFirmData.attackProfile]?.maxTradesPerDay ?? '—'} trade(s)/dia · RR 1:2
                         </p>
+                        {ATTACK_PROFILES[propFirmData.attackProfile]?.mcStats && (
+                          <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                            {formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
+                            <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC Apex 50K stop-on-win</span>
+                          </p>
+                        )}
                       </div>
 
                       {/* Preview do plano de ataque em 3 blocos semanticamente distintos (issue #136):

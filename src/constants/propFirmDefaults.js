@@ -96,6 +96,9 @@ export const ATTACK_PLAN_PROFILE_LABELS = {
   AGRES_B: 'Agressivo Máximo'
 };
 
+// Stats Monte Carlo (Apex Intraday 50K, DD $2500, target $3000, 21d úteis, RR 1:2,
+// comportamento real "stop-on-win/recovery", 100k iterações). Ver scripts/issue-201-mc-*.mjs.
+// Formato: { pass, bust, days } @ WR.
 export const ATTACK_PROFILES = {
   CONS_A: {
     code: 'CONS_A',
@@ -104,9 +107,14 @@ export const ATTACK_PROFILES = {
     roPct: 0.10,             // 10% do drawdown
     rr: 2,
     maxTradesPerDay: 2,
-    description: 'Scalp com margem. Máxima resiliência.',
+    description: 'Máxima resiliência. Aceita demorar para ganhar segurança.',
     idealFor: 'Stage 1-2, emocional baixo, sem histórico consistente',
-    minWR: 0.40
+    minWR: 0.40,
+    mcStats: {
+      wr45: { pass: 59, bust: 2.5, days: 13.6 },
+      wr50: { pass: 79, bust: 0.8, days: 12.8 },
+      wr55: { pass: 91, bust: 0.2, days: 11.8 }
+    }
   },
   CONS_B: {
     code: 'CONS_B',
@@ -115,10 +123,15 @@ export const ATTACK_PROFILES = {
     roPct: 0.15,             // 15% do drawdown
     rr: 2,
     maxTradesPerDay: 2,
-    description: 'Day trade clássico. Melhor relação aprovação/bust/tempo.',
+    description: 'Melhor relação aprovação/bust/tempo. 2 trades — segundo é recovery após loss; para no 1º win.',
     idealFor: 'Stage 2-3, WR ≥ 45%',
     minWR: 0.45,
-    recommended: true
+    recommended: true,
+    mcStats: {
+      wr45: { pass: 78, bust: 8.0, days: 10.3 },
+      wr50: { pass: 90, bust: 3.3, days: 9.4 },
+      wr55: { pass: 97, bust: 1.2, days: 8.4 }
+    }
   },
   CONS_C: {
     code: 'CONS_C',
@@ -127,9 +140,14 @@ export const ATTACK_PROFILES = {
     roPct: 0.20,             // 20% do drawdown
     rr: 2,
     maxTradesPerDay: 2,
-    description: 'Swing intraday. Mais rápido mas exige disciplina.',
+    description: 'Mais rápido que B mas dobra o bust. Exige disciplina para parar no 1º win.',
     idealFor: 'Stage 3+, WR ≥ 50%',
-    minWR: 0.50
+    minWR: 0.50,
+    mcStats: {
+      wr45: { pass: 80, bust: 16.2, days: 7.8 },
+      wr50: { pass: 90, bust: 8.4, days: 7.0 },
+      wr55: { pass: 95, bust: 4.3, days: 6.2 }
+    }
   },
   AGRES_A: {
     code: 'AGRES_A',
@@ -138,9 +156,14 @@ export const ATTACK_PROFILES = {
     roPct: 0.25,             // 25% do drawdown
     rr: 2,
     maxTradesPerDay: 1,
-    description: 'Swing com convicção. 1 trade/dia — o melhor setup.',
+    description: '1 trade do dia — alta convicção. Troca aprovação/bust por velocidade. ⚠ 4× mais bust que CONS_B.',
     idealFor: 'Stage 3-4, WR ≥ 55%, disciplina comprovada',
-    minWR: 0.55
+    minWR: 0.55,
+    mcStats: {
+      wr45: { pass: 72, bust: 21.3, days: 8.2 },
+      wr50: { pass: 83, bust: 13.1, days: 7.6 },
+      wr55: { pass: 90, bust: 7.7, days: 6.9 }
+    }
   },
   AGRES_B: {
     code: 'AGRES_B',
@@ -149,11 +172,28 @@ export const ATTACK_PROFILES = {
     roPct: 0.30,             // 30% do drawdown
     rr: 2,
     maxTradesPerDay: 1,
-    description: 'Trade de convicção máxima. Sem margem para erro.',
+    description: '1 trade de convicção máxima. Mais rápido mas 4× mais bust que CONS_B.',
     idealFor: 'Stage 4+, WR ≥ 55%, controle emocional alto',
-    minWR: 0.55
+    minWR: 0.55,
+    mcStats: {
+      wr45: { pass: 77, bust: 20.3, days: 6.5 },
+      wr50: { pass: 86, bust: 12.6, days: 6.0 },
+      wr55: { pass: 92, bust: 7.4, days: 5.4 }
+    }
   }
 };
+
+/**
+ * Formata `mcStats` de um profile em string compacta para tooltip/UI.
+ * Ex: "WR45 78%/8.0%/10d · WR50 90%/3.3%/9d · WR55 97%/1.2%/8d"
+ *     (PASS / BUST / DIAS médios para aprovar)
+ */
+export function formatProfileMcTip(profile) {
+  if (!profile?.mcStats) return '';
+  const fmt = (s) => `${s.pass}%/${s.bust}%/${Math.round(s.days)}d`;
+  const s = profile.mcStats;
+  return `WR45 ${fmt(s.wr45)} · WR50 ${fmt(s.wr50)} · WR55 ${fmt(s.wr55)}`;
+}
 
 export const DEFAULT_ATTACK_PROFILE = 'CONS_B';
 
