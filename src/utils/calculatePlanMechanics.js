@@ -545,7 +545,13 @@ export function toLegacyAttackPlanShape(plan, templateRules = null) {
     },
 
     roPct: plan.profile.roPct,
-    roPerTrade: plan.mechanicalPlan.roBudget,
+    // RO por trade = stop realizado em $ com sizing discreto (contracts × stopUSDPerContract).
+    // É o que o trader realmente perde se stop hit, NÃO o budget alocado pelo profile.
+    // Ex: Apex 50K + MNQ + day + CONS_B → roBudget $375 (alocado) mas roEffective $329 (real,
+    // 3 contratos × $109.80). Compliance e wizard precisam do realizado, não do orçamento.
+    // Fallback para roBudget quando contracts=0 (plano incompatível).
+    roPerTrade: plan.mechanicalPlan.roEffective || plan.mechanicalPlan.roBudget,
+    roBudget: plan.mechanicalPlan.roBudget,
     stopPoints: plan.mechanicalPlan.stopBase,
     stopPerTrade: plan.mechanicalPlan.stopUSDPerContract,
     targetPoints: plan.mechanicalPlan.targetPoints,
