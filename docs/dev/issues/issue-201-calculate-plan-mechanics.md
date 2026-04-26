@@ -240,7 +240,12 @@ OUTPUT:
 
 ## Sessions
 
-_(log linear; 1 linha por task — preencher conforme andamento)_
+- 25/04/2026 A1+A2 — `STYLE_ATR_FRACTIONS`/`PROFILE_STOP_VARIANCE`/`DEFAULT_ATTACK_STYLE` em propFirmDefaults; motor `calculatePlanMechanics.js` (4 camadas, ~520 linhas) + 44 testes (4 estilos × profiles × Apex; DT-042; retail; viability gates). 2533/2533 testes pass. Commit `c5bcaab9`.
+- 25/04/2026 B1 — `attackPlanCalculator.js` marcado @deprecated (banner header + jsdoc); re-exporta motor novo. 6 call sites preservados intactos. 52/52 testes legados pass. Commit `c5bcaab9` (mesmo).
+- 25/04/2026 C1+C2 — `AddAccountModal.jsx` ganhou seletores instrumento + estilo (mandatórios); `AccountsPage.jsx` ganhou estilo (instrumento já existia); ambos usam motor novo via `toLegacyAttackPlanShape` adapter. `PropFirmPage.jsx` lê style/instrument salvos e renderiza com motor novo. Persistência: `propFirm.suggestedPlan.style` + `propFirm.selectedInstrument`. Commit `1b44201c`.
+- 25/04/2026 D1 — DEC-AUTO-201-01..05 + DT-042 marcada resolvida. Commit `e71c04f8` (main).
+- 25/04/2026 E2 — `npm test`: 2533/2533 pass; `npx vite build`: clean.
+- _Pendente:_ E2 browser smoke (AP-08) — handoff Marcio: criar conta Apex Intraday 50K + MNQ + day, validar `stopBase ≈ 55pts × 3 contratos × $330 RO`. Trocar para conviction → 165pts × 1 contrato. Trocar profile AGRES_B → maxTradesPerDay=1.
 
 ## Shared Deltas
 
