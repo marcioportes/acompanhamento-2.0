@@ -8,6 +8,22 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.47.0] - 26/04/2026 · #201 · PR #202
+
+**refactor:** `calculatePlanMechanics` — motor universal de plano (mesa + retail), stop estrutural por estilo + sizing dinâmico
+
+- Substitui o back-calc linear de `attackPlanCalculator` (sizing fixo=1, stop = roUSD/pointValue) — causa do bug 187pts × 1 contrato MNQ Apex 50K — por motor de 4 camadas: Constraints → Tactical Stop (ATR × `STYLE_ATR_FRACTIONS[style]` × `profileVariance`) → Sizing dinâmico (`floor(roBudget / (stopBase × pointValue))`) → Viability (gates hard + soft).
+- Hard conditions: `instrument` e `style` mandatórios. Estilo (scalp 0.05 / day 0.10 / swing 0.20 / conviction 0.30 ATR) é eixo independente do profile; profile modula stopBase em ±10% (`PROFILE_STOP_VARIANCE`).
+- UIs (`AddAccountModal`, `AccountsPage`, `PropFirmPage`) ganharam seletores de instrumento + estilo. PlanoMecanicoCard, propPlanDefaults e propViabilityBadge consomem o motor via `toLegacyAttackPlanShape` (zero-regressão para call sites legados).
+- `riskPctPerOp` agora consome `roPerTrade` direto (DEC-AUTO-201-XX supersedes DEC-072 — Path B virou escolha explícita de profile AGRES_A/B).
+- `roPerTrade` no shape legacy mapeia para `roEffective` (realizado com sizing discreto), não `roBudget` (alocado pelo profile). Card e wizard agora alinhados em $329.40 (= 13.2% DD), não $375 (= 15% DD orçado).
+- Tooltips MC nos perfis: `ATTACK_PROFILES[*].mcStats` (PASS/BUST/dias para WR 45/50/55) baseado em comportamento real (stop-on-win + recovery, 100k iter Apex Intraday 50K). Scripts reproduzíveis em `scripts/issue-201-monte-carlo/`.
+- DT-042 resolvida: `effectiveMinStop = max(MIN_VIABLE_STOP[type], instrument.minStopPoints || 0)`. RTY scalp clipa em 15 (type) > 3 (instrument); MNQ scalp usa 20 (instrument) > 15 (type).
+- `attackPlanCalculator` marcado `@deprecated` (mantido para zero-regressão de 6 call sites; 52/52 testes legados verdes).
+- Decisões: DEC-AUTO-201-01..05 em `docs/decisions.md`.
+- Tests: 2533/2533 pass (44 novos em `calculatePlanMechanics.test.js`, 14 atualizados em `propPlanDefaults.test.js`).
+
+
 ## [1.46.1] - 25/04/2026
 
 **Issue:** #197 (fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação)
