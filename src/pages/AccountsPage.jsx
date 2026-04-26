@@ -25,12 +25,18 @@ import {
   PROP_FIRM_PHASE_LABELS,
   ATTACK_PROFILES,
   DEFAULT_ATTACK_PROFILE,
+  STYLE_LABELS,
+  STYLE_DESCRIPTIONS,
+  STYLE_ATR_FRACTIONS,
+  DEFAULT_ATTACK_STYLE,
+  formatProfileMcTip,
   normalizeAttackProfile,
   ATTACK_PLAN_PROFILE_LABELS,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
 } from '../constants/propFirmDefaults';
 import { calculateAttackPlan } from '../utils/attackPlanCalculator';
+import { calculatePlanMechanics, buildMesaConstraints, toLegacyAttackPlanShape } from '../utils/calculatePlanMechanics';
 import { computePropPlanDefaults } from '../utils/propPlanDefaults';
 import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instrumentsTable';
 import AccountDetailPage from './AccountDetailPage';
@@ -130,13 +136,14 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
     type: 'DEMO',
   });
 
-  // --- Prop firm state (#52) ---
+  // --- Prop firm state (#52, #201) ---
   const [propFirmData, setPropFirmData] = useState({
     selectedFirm: '',
     selectedTemplateId: '',
     phase: PROP_FIRM_PHASES.EVALUATION,
     attackProfile: DEFAULT_ATTACK_PROFILE,
-    selectedInstrument: '' // #52 Fase 1.5 — instrumento principal da conta
+    selectedInstrument: '', // #52 Fase 1.5 — instrumento principal da conta
+    attackStyle: DEFAULT_ATTACK_STYLE // #201 — estilo operacional (independente do profile)
   });
 
   const allTemplates = useMemo(
@@ -161,6 +168,21 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   const attackPlan = useMemo(() => {
     if (!selectedTemplate) return null;
     try {
+      // #201: quando aluno selecionou instrumento, usa motor novo (stop estrutural ATR
+      // por estilo + sizing dinâmico). Sem instrumento, fallback para abstract legado.
+      if (propFirmData.selectedInstrument && propFirmData.attackStyle) {
+        const instrument = getInstrument(propFirmData.selectedInstrument);
+        if (instrument) {
+          const constraints = buildMesaConstraints(selectedTemplate, propFirmData.phase);
+          const planNew = calculatePlanMechanics({
+            constraints,
+            instrument,
+            style: propFirmData.attackStyle,
+            profile: propFirmData.attackProfile
+          });
+          return toLegacyAttackPlanShape(planNew, selectedTemplate);
+        }
+      }
       return calculateAttackPlan(
         selectedTemplate,
         null,
@@ -170,7 +192,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         propFirmData.selectedInstrument || null
       );
     } catch { return null; }
-  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument]);
+  }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
   // Preseleção externa (issue #156 Fase F) — aplica assim que `accounts` carregar
   // e a conta alvo estiver disponível. Propaga flag `_autoOpenPlanModal` ao
@@ -270,10 +292,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
           selectedTemplateId: account.propFirm.templateId || '',
           phase: account.propFirm.phase || PROP_FIRM_PHASES.EVALUATION,
           attackProfile: normalizeAttackProfile(account.propFirm.suggestedPlan?.profile),
-          selectedInstrument: account.propFirm.selectedInstrument?.symbol || ''
+          selectedInstrument: account.propFirm.selectedInstrument?.symbol || '',
+          attackStyle: account.propFirm.suggestedPlan?.style || DEFAULT_ATTACK_STYLE
         });
       } else {
-        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
+        setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '', attackStyle: DEFAULT_ATTACK_STYLE });
       }
       setIsModalOpen(true);
       setShowBrokerSuggestions(false);
@@ -290,7 +313,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         type: 'DEMO'
       });
     }
-    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '' });
+    setPropFirmData({ selectedFirm: '', selectedTemplateId: '', phase: PROP_FIRM_PHASES.EVALUATION, attackProfile: DEFAULT_ATTACK_PROFILE, selectedInstrument: '', attackStyle: DEFAULT_ATTACK_STYLE });
     setIsModalOpen(true);
     setShowBrokerSuggestions(false);
   };
@@ -479,7 +502,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
               ? new Date(Date.now() + evalDays * 24 * 60 * 60 * 1000).toISOString()
               : null,
             selectedInstrument: instrumentField,
-            suggestedPlan: attackPlan
+            suggestedPlan: attackPlan ? { ...attackPlan, style: propFirmData.attackStyle } : null
           };
         }
         const newAccountId = await addAccount(createPayload);
@@ -668,13 +691,13 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           </select>
                         </div>
                         <div>
-                          <label className="input-label">Instrumento Principal</label>
+                          <label className="input-label">Instrumento Principal *</label>
                           <select
                             className="input-dark w-full"
                             value={propFirmData.selectedInstrument}
                             onChange={(e) => setPropFirmData(prev => ({ ...prev, selectedInstrument: e.target.value }))}
                           >
-                            <option value="">— Sem instrumento (plano abstrato)</option>
+                            <option value="">Selecione o instrumento</option>
                             {allowedInstruments.map(inst => (
                               <option key={inst.symbol} value={inst.symbol}>
                                 {inst.symbol} {inst.isMicro ? '(Micro)' : ''} — {inst.name}
@@ -682,6 +705,21 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             ))}
                           </select>
                         </div>
+                      </div>
+                      {/* #201: estilo operacional independente do profile */}
+                      <div>
+                        <label className="input-label">Estilo Operacional *</label>
+                        <select
+                          className="input-dark w-full"
+                          value={propFirmData.attackStyle}
+                          onChange={(e) => setPropFirmData(prev => ({ ...prev, attackStyle: e.target.value }))}
+                        >
+                          {Object.entries(STYLE_LABELS).map(([key, label]) => (
+                            <option key={key} value={key}>
+                              {label} ({(STYLE_ATR_FRACTIONS[key] * 100).toFixed(0)}% ATR) — {STYLE_DESCRIPTIONS[key]}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="input-label">Perfil do Plano de Ataque</label>
@@ -694,7 +732,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                                 key={p.code}
                                 type="button"
                                 onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
-                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}`}
+                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}\n\nMonte Carlo (Apex 50K · stop-on-win · 100k iter)\n${formatProfileMcTip(p)}\nFormato: PASS / BUST / dias médios`}
                                 className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                                   selected
                                     ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
@@ -712,6 +750,12 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
                           {' · '}{ATTACK_PROFILES[propFirmData.attackProfile]?.maxTradesPerDay ?? '—'} trade(s)/dia · RR 1:2
                         </p>
+                        {ATTACK_PROFILES[propFirmData.attackProfile]?.mcStats && (
+                          <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                            {formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
+                            <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC Apex 50K stop-on-win</span>
+                          </p>
+                        )}
                       </div>
 
                       {/* Preview do plano de ataque em 3 blocos semanticamente distintos (issue #136):
@@ -772,6 +816,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                         const rr = attackPlan.rrMinimum ?? 2;
                         const dailyStop = ro * maxT;
                         const dailyGoal = dailyStop * rr;
+                        // RO efetivo % do DD (não o orçado pelo profile — sizing discreto pode reduzir)
+                        const roPctEffective = attackPlan.drawdownMax > 0
+                          ? (ro / attackPlan.drawdownMax) * 100
+                          : 0;
+                        const sizing = attackPlan.sizing ?? attackPlan.contracts ?? 0;
                         return (
                           <div className="p-3 bg-slate-800/50 rounded-lg space-y-3">
                             <div>
@@ -797,20 +846,20 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]">({(attackPlan.roPct * 100).toFixed(0)}% DD)</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = $${(attackPlan.drawdownMax * attackPlan.roPct).toFixed(0)}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop/trade</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR/trade</div><div className="text-slate-200 font-mono">1:{rr}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
-                                <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{attackPlan.sizing} contrato</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{sizing} contrato{sizing > 1 ? 's' : ''}</div></div>
                                 <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
                                 <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
                               </div>
-                              {maxT > 1 && (
+                              {maxT > 1 && sizing > 0 && (
                                 <p className="text-[10px] text-slate-500 leading-snug mt-2">
-                                  Execução: <span className="text-slate-400">{maxT} trades × 1 contrato</span> OU <span className="text-slate-400">1 trade × {maxT} contratos</span> — mesma distância em pontos. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
+                                  Execução: <span className="text-slate-400">{maxT} trades × {sizing} contrato{sizing > 1 ? 's' : ''}</span> = <span className="text-slate-400">{maxT * sizing} contrato-trades/dia</span>. <span className="text-amber-400/80">Não reduzir stop/target para "compensar" mais contratos.</span>
                                 </p>
                               )}
                             </div>

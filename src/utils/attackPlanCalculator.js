@@ -1,9 +1,14 @@
 // ============================================
-// ATTACK PLAN CALCULATOR — Determinístico (5 perfis)
+// ATTACK PLAN CALCULATOR — Determinístico (5 perfis) — DEPRECATED
 // ============================================
-// Plano de ataque para conta prop firm. 100% rule-based.
+// @deprecated Substituído por `src/utils/calculatePlanMechanics.js` (issue #201).
+// Este arquivo é mantido como wrapper de back-compat enquanto os 6 call sites
+// migram para o motor novo. Novos consumidores DEVEM usar `calculatePlanMechanics`,
+// que recebe `style` (scalp|day|swing|conviction) + `instrument` mandatórios e
+// computa stop estrutural por ATR + sizing dinâmico (em vez do back-calc fixo
+// de `stopPoints = roUSD / pointValue` × `sizing = 1` deste módulo).
 //
-// MODELO (Fase 1.5 v2 — 07/04/2026):
+// MODELO LEGADO (Fase 1.5 v2 — 07/04/2026):
 //   RO por trade = drawdownMax × profile.roPct (10%, 15%, 20%, 25%, 30%)
 //   stopPoints   = roUSD / instrument.pointValue   ← back-calculado do RO
 //   targetPoints = stopPoints × profile.rr (RR fixo 1:2)
@@ -162,11 +167,17 @@ export function calculateMesaConstraints(templateRules, phase = 'EVALUATION') {
 }
 
 // ============================================
-// calculateAttackPlan — modos abstract / execution
+// calculateAttackPlan — modos abstract / execution — DEPRECATED
 // ============================================
 
 /**
- * Calcula plano de ataque determinístico.
+ * Calcula plano de ataque determinístico (modelo legado, back-calc).
+ *
+ * @deprecated Use `calculatePlanMechanics` (src/utils/calculatePlanMechanics.js).
+ * O modelo back-calc deste módulo produz `stopPoints = roUSD / pointValue` e
+ * `sizing = 1`, o que gera stops desconectados da volatilidade real do
+ * instrumento (ex: 187pts × 1 contrato MNQ em conta 50K). O motor novo
+ * substitui por stop estrutural ATR-based + sizing dinâmico.
  *
  * @param {Object} templateRules - template da mesa
  * @param {Object|null} profile4D
@@ -434,3 +445,11 @@ function round(value, decimals) {
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
 }
+
+// Re-export do motor novo para facilitar migração dos call sites.
+// Novos consumidores DEVEM usar este path em vez de `calculateAttackPlan`.
+export {
+  calculatePlanMechanics,
+  buildMesaConstraints,
+  buildRetailConstraints
+} from './calculatePlanMechanics';

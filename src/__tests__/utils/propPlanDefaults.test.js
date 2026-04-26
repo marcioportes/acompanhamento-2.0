@@ -114,16 +114,16 @@ describe('computePropPlanDefaults', () => {
     expect(Number.isFinite(result.periodGoalPct)).toBe(true);
   });
 
-  it('riskPctPerOp = periodStopPct (teto diário por trade, não sizing mínimo)', () => {
+  it('riskPctPerOp = roPerTrade direto (#201 — orçamento por trade do motor novo)', () => {
     const result = computePropPlanDefaults(baseApexEod25k, 25000);
-    // periodStopPct = 1.2% → riskPctPerOp = 1.2% (permite Path A e Path B sem flag compliance)
-    expect(result.riskPctPerOp).toBe(1.2);
-    expect(result.riskPctPerOp).toBe(result.periodStopPct);
+    // roPerTrade = $150 → riskPctPerOp = 150/25000 = 0.6%, NÃO mais o periodStopPct (1.2% = teto diário)
+    expect(result.riskPctPerOp).toBe(0.6);
+    expect(result.riskPctPerOp).toBe(result.periodStopPct / 2); // 1 trade vs 2 trades = metade
   });
 
-  it('riskPctPerOp abstract: periodStopPct fallback (dailyLossLimit 2% para Apex)', () => {
+  it('riskPctPerOp abstract: roPerTrade=0 → fallback periodStopPct (dailyLossLimit 2% para Apex)', () => {
     const result = computePropPlanDefaults(baseAbstractApex, 25000);
-    expect(result.riskPctPerOp).toBe(2); // periodStopPct = toPct(dailyLossLimit)
+    expect(result.riskPctPerOp).toBe(2); // fallback: periodStopPct quando roPerTrade ausente
   });
 
   it('rrTarget: usa attackPlan.rrMinimum', () => {
