@@ -3,6 +3,10 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.48.0: feat: coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — Form manual no Trade Entry +
+ *   parser ProfitPro (pts/% → preço) + loader Yahoo Finance 1m + CF enrichTradeWithExcursions
+ *   compute&discard (janela 7d) + integração engine maturidade Stage 3→4 não-bloqueante quando
+ *   `advancedMetricsPresent: false` (issue #187). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.46.1: fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação
  *   (issue #197, PR #198 squash `af9662b0`). Mentor publicava revisão (CLOSED) e ficava preso:
  *   `meetingLink`/`videoLink` editáveis só em DRAFT — caminho real impossível porque link da
