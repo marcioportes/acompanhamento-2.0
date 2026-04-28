@@ -15,6 +15,7 @@
 
 import { useMemo, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
+import ExcursionDisplay from '../ExcursionDisplay';
 import {
   buildVisibleRows,
   fmtMoney,
@@ -118,12 +119,15 @@ const ReviewTradesSection = ({
                 <td className="px-2 py-1 font-mono text-slate-400" title={dateFullBR}>{dateShort}</td>
                 <td className="px-2 py-1 font-mono text-slate-500">{fmtTime(t.entryTime)}</td>
                 <td className="px-2 py-1 text-white font-medium">
-                  {t.symbol || '—'}
-                  {outOfPeriod && (
-                    <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
-                      fora
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>{t.symbol || '—'}</span>
+                    {outOfPeriod && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
+                        fora
+                      </span>
+                    )}
+                  </div>
+                  <ExcursionDisplay trade={{ ...t, ticker: t.symbol }} variant="compact" className="mt-0.5" />
                 </td>
                 <td className="px-2 py-1 text-center">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${isBuy ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>

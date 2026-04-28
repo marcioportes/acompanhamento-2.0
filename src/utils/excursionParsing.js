@@ -89,3 +89,58 @@ export function convertExcursionRawToPrice({ entry, side, mepRaw, menRaw, instru
 function roundPrice(n) {
   return Math.round(n * 100000) / 100000;
 }
+
+/**
+ * Inverso de `convertExcursionRawToPrice`: deriva pts (futures) ou % (equity)
+ * a partir de mepPrice/menPrice, entry, side e instrumentType.
+ *
+ * Convenção de sinais no output (pensado para display):
+ *   MEP → sempre POSITIVO  (movimento favorável ao trader)
+ *   MEN → sempre NEGATIVO  (movimento adverso ao trader)
+ *
+ * Independente do side — quem chama não precisa saber se é LONG ou SHORT,
+ * basta exibir "+X pts" / "-Y pts" (ou %).
+ *
+ * @param {Object} input
+ * @param {number|null|undefined} input.mepPrice
+ * @param {number|null|undefined} input.menPrice
+ * @param {number} input.entry
+ * @param {'LONG'|'SHORT'} input.side
+ * @param {'futures'|'equity'} input.instrumentType
+ * @returns {{ mepDelta: number|null, menDelta: number|null, unit: 'pts'|'%' }}
+ */
+export function derivePtsFromPrice({ mepPrice, menPrice, entry, side, instrumentType }) {
+  const e = Number(entry);
+  const unit = instrumentType === 'equity' ? '%' : 'pts';
+  if (!Number.isFinite(e) || (side !== 'LONG' && side !== 'SHORT')) {
+    return { mepDelta: null, menDelta: null, unit };
+  }
+
+  const mep = mepPrice == null || !Number.isFinite(Number(mepPrice)) ? null : Number(mepPrice);
+  const men = menPrice == null || !Number.isFinite(Number(menPrice)) ? null : Number(menPrice);
+
+  const mepSign = side === 'LONG' ? 1 : -1;
+  const menSign = side === 'LONG' ? 1 : -1;
+
+  if (instrumentType === 'equity') {
+    return {
+      mepDelta: mep == null ? null : roundPct(((mep / e) - 1) * 100 * mepSign),
+      menDelta: men == null ? null : roundPct(((men / e) - 1) * 100 * menSign),
+      unit,
+    };
+  }
+
+  return {
+    mepDelta: mep == null ? null : roundPts((mep - e) * mepSign),
+    menDelta: men == null ? null : roundPts((men - e) * menSign),
+    unit,
+  };
+}
+
+function roundPts(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function roundPct(n) {
+  return Math.round(n * 100) / 100;
+}

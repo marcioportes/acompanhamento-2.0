@@ -221,6 +221,7 @@ trades/{id}: {
 - task 03 [fase-3-parser-profitpro] commit `abada37c` ok — `excursionParsing.js` + csvMapper integration, +27 testes (21 conversão + 6 mapper), 2590/2590
 - task 04 [fase-4-loader-yahoo] commit `32d57748^` ok — namespace `functions/marketData/` (4 módulos) + CF callable, +40 testes, 2630/2630
 - task 05 [fase-5-async-trigger] commit `32d57748` ok — `onTradeCreatedAutoEnrich` desacoplado, +10 testes, 2640/2640. Engine gate "insuficiente" já feito na Fase 1
+- task 07 [fase-7-correcoes-pos-revisao] em curso — fix de 3 gaps descobertos pelo Marcio em smoke test do PR #206: (a) **UX em pts/%**: AddTradeModal agora bloco colapsável "Métricas avançadas" com inputs em pts (futures) ou % (equity) via `convertExcursionRawToPrice` no submit; (b) **display universal**: novo `ExcursionDisplay` (compact/full) + helper `derivePtsFromPrice` aplicado em TradesList, ExtractTable, FeedbackPage, ReviewTradesSection, MentorDashboard, StudentFeedbackPage, TradeDetailModal (refator); (c) **DEC-AUTO-187-01 clarificada + DEC-AUTO-187-05 nova** (storage=preço, UX=pts/%). Tests: 2647 → 2666 (+19), zero regressão
 
 ## Shared Deltas
 
@@ -235,10 +236,11 @@ trades/{id}: {
 
 ## Decisions
 
-- DEC-AUTO-187-01 — storage como preço
+- DEC-AUTO-187-01 — storage como preço (rev. 28/04: clarifica que UX é pts/%)
 - DEC-AUTO-187-02 — Yahoo + compute&discard 7d
 - DEC-AUTO-187-03 — gate opcional/condicional (advancedMetricsPresent nunca `false`, só `true` ou `null`)
 - DEC-AUTO-187-04 — threshold derivação: ≥10 trades + ≥80% com MEP+MEN não-null → `true`; senão `null`
+- DEC-AUTO-187-05 — UX pts/% + ExcursionDisplay reutilizável (display universal nos 7 componentes onde trade renderiza)
 
 ## Chunks
 

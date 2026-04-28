@@ -11,6 +11,8 @@
 const TOP_BOTTOM_FIELDS = [
   'symbol', 'side', 'pnl', 'qty', 'entryTime', 'closeTime',
   'setup', 'emotionEntry', 'emotionExit', 'stopLoss',
+  // issue #187 — MEP/MEN: storage em preço, derivado em pts/% no display
+  'entry', 'mepPrice', 'menPrice', 'excursionSource',
 ];
 
 const toDate = (input) => {
