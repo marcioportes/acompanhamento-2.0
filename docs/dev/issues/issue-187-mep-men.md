@@ -216,7 +216,11 @@ trades/{id}: {
 
 ## Sessions
 
-- task 01 [fase-1-schema-gateway-precompute] commit `40692acf` ok — 30 novos testes (18 excursão + 12 advancedMetricsPresent), 2563/2563 total
+- task 01 [fase-1-schema-gateway-precompute] commit `40692acf` ok — +30 testes (18 excursão + 12 advancedMetricsPresent), 2563/2563
+- task 02 [fase-2-form-manual-modal] commit `190347a6` ok — AddTradeModal 2 inputs opcionais + validação inline reaproveita validateExcursionPrices; sem testes render novos (escopo)
+- task 03 [fase-3-parser-profitpro] commit `abada37c` ok — `excursionParsing.js` + csvMapper integration, +27 testes (21 conversão + 6 mapper), 2590/2590
+- task 04 [fase-4-loader-yahoo] commit `32d57748^` ok — namespace `functions/marketData/` (4 módulos) + CF callable, +40 testes, 2630/2630
+- task 05 [fase-5-async-trigger] commit `32d57748` ok — `onTradeCreatedAutoEnrich` desacoplado, +10 testes, 2640/2640. Engine gate "insuficiente" já feito na Fase 1
 
 ## Shared Deltas
 

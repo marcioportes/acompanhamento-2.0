@@ -8,6 +8,26 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.48.0] - 27/04/2026 · #187 · PR _pendente_
+
+**feat:** coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — fundação para gate Stage 3→4 do motor de maturidade (#119)
+
+- **Schema (DEC-AUTO-187-01):** novos campos `mepPrice` / `menPrice` (preço puro) + `excursionSource` (`'manual' | 'profitpro' | 'yahoo' | 'unavailable'`) em `trades/{id}`. Helper puro `validateExcursionPrices({side, entry, exit, mepPrice, menPrice})` valida coerência por lado: LONG → `mepPrice >= max(entry,exit)` e `menPrice <= min(entry,exit)`; SHORT inverte. `tradeGateway.createTrade` e `enrichTrade` aceitam, validam e persistem (este último é aditivo: só toca os 3 campos quando o payload trouxe ≥1).
+- **Engine maturidade (DEC-AUTO-187-03 + DEC-AUTO-187-04):** `preComputeShapes.js` substitui o stub `advancedMetricsPresent = false` (literal — bloqueava promoção 3→4 de QUALQUER aluno por falta de dado) por `deriveAdvancedMetricsPresent(trades)`, que retorna `null` ou `true`, **NUNCA `false`**. Threshold: ≥10 trades + ≥80% com `mepPrice` E `menPrice` não-null → `true`; senão `null`. `evaluateGates` já tratava `null` como `METRIC_UNAVAILABLE` — gate fica pendente (não promove + não rebaixa, DEC-020 preservada). Resultado: aluno sem dado fica parado em Metódico até começar a registrar; não rebaixa.
+- **Form manual (Fase 2):** AddTradeModal ganha 2 inputs opcionais (preço) após `Quantidade`, com validação inline reaproveitando `validateExcursionPrices`. Erros direcionados por campo (MEP separado de MEN). Submit converte para number e seta `excursionSource: 'manual'` quando ≥1 preenchido. Carrega valores existentes ao editar trade.
+- **Parser ProfitPro (Fase 3):** novo módulo `src/utils/excursionParsing.js` com `detectInstrumentType(ticker)` (futures B3 + CME por prefixo, equity como default) e `convertExcursionRawToPrice({entry, side, mepRaw, menRaw, instrumentType})` — futures somam pontos direto, equity multiplica proporcional `(1 ± |raw|/100)`, robusto a sinais arbitrários no input. `csvMapper.SYSTEM_FIELDS` ganha `mepRaw`/`menRaw` mapeáveis; `buildTradeFromRow` pós-processa após resolver entry/side, remove os campos raw do output e seta `excursionSource: 'profitpro'` (overridable via `defaults`).
+- **Loader Yahoo (Fase 4 — DEC-AUTO-187-02):** novo namespace `functions/marketData/`:
+  - `symbolMapper.mapToYahoo(ticker)` — 12 contratos CME (micros antes dos cheios pra prevenir match ambíguo MNQ/NQ, MES/ES, MGC/GC). BR futures retorna `null` por design (sem fonte 1m gratuita de B3; ProfitPro entrega nativamente).
+  - `fetchYahooBars` — endpoint público `query1.finance.yahoo.com/v8/finance/chart`, free tier, janela 7d hard-coded, retry só em 5xx, AbortController timeout 8s. Retorna `{ok, bars}` ou `{ok:false, reason}` em vez de throw.
+  - `computeExcursionFromBars({bars, side})` — função pura: LONG → `mep=max(highs)/men=min(lows)`; SHORT inverte. Ignora bars com h/l null (Yahoo às vezes retorna gaps). Guard explícito contra `Number(null)=0`.
+  - `enrichTradeWithExcursions` — CF callable v2 + helper puro `runEnrichment` reusável por triggers. Compute&discard: lê trade → mapeia symbol → fetch bars → calcula → grava `mepPrice/menPrice/source` → bars vão pro garbage collector. Idempotente. Authz: dono do trade ou mentor.
+- **Async trigger (Fase 5):** `onTradeCreatedAutoEnrich` Firestore trigger desacoplado do `onTradeCreated` principal. Skip rápido (sem fetch) quando: já tem MEP+MEN, source manual/profitpro, ticker não mapeia, trade > 7d ou sem timestamps. Falha silenciosa via catch global — import de trade NUNCA falha por enrichment opcional.
+- **Não-objetivos declarados:** Sharpe ratio (issue separado a abrir, com 4 decisões de negócio em aberto: rfr, janela, threshold, N mínimo); Tradovate Trade Performance Report (formato não exporta MFE/MAE); cache persistente de bars Yahoo; backfill > 7d; BR futures via Yahoo; UI de visualização MEP/MEN no TradeDetailModal (deferida).
+- **DebugBadge no AddTradeModal:** ausente pré-existente (INV-04 violation independente, fora de escopo).
+- **Tests:** 2533 → 2640 (+107). Distribuição: Fase 1 (+30), Fase 3 (+27), Fase 4 (+40), Fase 5 (+10). Zero regressão (159 test files).
+- **Decisões:** DEC-AUTO-187-01..04 em `docs/decisions.md`.
+
+
 ## [1.47.0] - 26/04/2026 · #201 · PR #202
 
 **refactor:** `calculatePlanMechanics` — motor universal de plano (mesa + retail), stop estrutural por estilo + sizing dinâmico

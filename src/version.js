@@ -3,10 +3,21 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.48.0: feat: coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — Form manual no Trade Entry +
- *   parser ProfitPro (pts/% → preço) + loader Yahoo Finance 1m + CF enrichTradeWithExcursions
- *   compute&discard (janela 7d) + integração engine maturidade Stage 3→4 não-bloqueante quando
- *   `advancedMetricsPresent: false` (issue #187). [RESERVADA — entrada definitiva no encerramento.]
+ * - 1.48.0: feat: coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — fundação para
+ *   gate Stage 3→4 do motor de maturidade (#119). Schema novo em `trades`: `mepPrice` /
+ *   `menPrice` (preço puro, DEC-AUTO-187-01) + `excursionSource` (manual/profitpro/yahoo/
+ *   unavailable). `tradeGateway.validateExcursionPrices` valida por lado (LONG: mep >= max,
+ *   men <= min; SHORT inverte). `preComputeShapes.deriveAdvancedMetricsPresent` substitui
+ *   stub literal `false` por null/true — NUNCA `false` (DEC-AUTO-187-03/04: ≥10 trades +
+ *   ≥80% com mep+men → true; senão null = METRIC_UNAVAILABLE no evaluateGates, não bloqueia).
+ *   Form manual no AddTradeModal. Parser ProfitPro via novo `excursionParsing.js` (futures
+ *   pontos / equity %), wired em csvMapper.SYSTEM_FIELDS (mepRaw/menRaw → mepPrice/menPrice).
+ *   Loader Yahoo Finance 1m em novo namespace `functions/marketData/`: symbolMapper (12
+ *   contratos CME), fetchYahooBars (free tier, janela 7d, retry 5xx), computeExcursionFromBars
+ *   (LONG max/min, SHORT inverte), CF callable enrichTradeWithExcursions (compute&discard,
+ *   idempotente). Trigger async `onTradeCreatedAutoEnrich` desacoplado, falha silenciosa.
+ *   Sharpe + Tradovate Trade Performance Report defer. Suite 2533 → 2640 (+107). DEC-AUTO-187-01..04
+ *   em `docs/decisions.md`. PR _pendente_.
  * - 1.46.1: fix: salvar/atualizar link de reunião e gravação na revisão semanal pós-publicação
  *   (issue #197, PR #198 squash `af9662b0`). Mentor publicava revisão (CLOSED) e ficava preso:
  *   `meetingLink`/`videoLink` editáveis só em DRAFT — caminho real impossível porque link da
@@ -231,10 +242,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.46.1',
-  build: '20260425',
-  display: 'v1.46.1',
-  full: '1.46.1+20260425',
+  version: '1.48.0',
+  build: '20260427',
+  display: 'v1.48.0',
+  full: '1.48.0+20260427',
 };
 export default VERSION;
 export { VERSION };
