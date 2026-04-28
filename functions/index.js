@@ -1466,3 +1466,4 @@ exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
 // MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
 // ============================================
 exports.enrichTradeWithExcursions = require("./marketData/enrichTradeWithExcursions");
+exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnrich");
