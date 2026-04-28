@@ -5,3 +5,5 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-04 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | autônomo |
+| CHUNK-07 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | autônomo |

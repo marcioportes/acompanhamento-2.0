@@ -86,7 +86,10 @@ CHUNK-01 Auth · CHUNK-02 Student · CHUNK-03 Plans · CHUNK-04 Trade Ledger · 
 ## Modo Autônomo vs Interativo
 
 **Default:** interativo (pair programming assíncrono).
-**Trigger autônomo (opt-in):** Marcio diz literalmente **"atacar #NNN em modo autônomo"**. Qualquer outro fraseamento → interativo. Na dúvida, perguntar.
+**Trigger autônomo (opt-in):** Marcio diz literalmente **"atacar #NNN em modo autônomo"** (ou variante explícita "em modo autônomo"). Qualquer outro fraseamento → interativo.
+
+**Regra de uma via — sem pushback após o trigger:** Se o trigger autônomo foi dito, a IA executa §13.8 Fase 1 imediatamente. NÃO pergunta "tem certeza", NÃO sugere interativo como alternativa, NÃO condiciona a uma "pré-avaliação" do issue, NÃO lista riscos pra induzir reconsideração. Único impedimento aceitável é técnico (script faltando, env quebrado, repo em estado incompatível); neste caso reporta o impedimento concreto e PARA — não converte para interativo. Os critérios "quando usar autônomo/interativo" em §13.2 são guia para Marcio antes do trigger, não checklist da IA depois dele.
+
 Spec completa: [`docs/protocols/autonomous.md`](docs/protocols/autonomous.md).
 
 INV-27 + CLAIMS + validator aplicam-se aos DOIS modos quando há delegação sem supervisão ativa.
@@ -94,6 +97,14 @@ INV-27 + CLAIMS + validator aplicam-se aos DOIS modos quando há delegação sem
 ---
 
 ## Regra de ativação automática
+
+**Roteamento por trigger:**
+- Marcio diz **"atacar #NNN em modo autônomo"** (ou variante explícita) → executa imediatamente [`docs/protocols/autonomous.md`](docs/protocols/autonomous.md) §13.8 Fase 1 (que reusa os passos 1-9 abaixo nos seus próprios passos 3-6).
+- Qualquer outra menção a issue / feature / fix / debt / arquitetura → iniciar imediatamente o protocolo §4.0 abaixo.
+
+A regra de uma via (CLAUDE.md "Modo Autônomo vs Interativo") vale para os dois caminhos: trigger presente → autônomo, sem perguntar; trigger ausente → interativo, sem perguntar. A IA não tenta "validar" o trigger ou sugerir o caminho contrário.
+
+---
 
 Ao mencionar issue / feature / fix / debt / arquitetura, iniciar imediatamente o protocolo §4.0:
 

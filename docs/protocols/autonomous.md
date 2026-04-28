@@ -17,9 +17,22 @@ Executar issues do projeto em modo autônomo: Marcio dispara "atacar #NNN em mod
 **O modo autônomo é opt-in explícito.** O modo **padrão do projeto continua sendo o modo interativo** (§4.0 — pair programming assíncrono com coder, bundle formal INV-19 descartado em v0.22.2).
 
 **Triggers:**
-- Marcio diz "atacar #NNN em modo autônomo" (ou variante "em modo autônomo") → Fase 1 desta seção
+- Marcio diz "atacar #NNN em modo autônomo" (ou variante "em modo autônomo") → Fase 1 desta seção, **execução imediata**
 - Qualquer outro fraseamento → modo interativo (§4.0)
-- Na dúvida, a sessão PERGUNTA. Autônomo nunca é assumido.
+- Trigger ausente → interativo. Trigger presente → autônomo. Não há terceira via "na dúvida".
+
+**Regra de uma via — sem pushback após o trigger.** Quando o trigger explícito foi dito, a IA NÃO pode:
+- (a) Sugerir interativo como alternativa
+- (b) Perguntar "tem certeza", "confirma?", "prefere mesmo?"
+- (c) Condicionar a uma "pré-avaliação" do issue (escopo, ambiguidade, complexidade)
+- (d) Listar riscos do autônomo pra induzir reconsideração
+- (e) Consultar os critérios abaixo para "validar" se autônomo é apropriado — esses critérios são guia para **Marcio** antes do trigger, não checklist da **IA** depois dele
+
+Único impedimento aceitável para não executar Fase 1: **impossibilidade técnica concreta** (script `cc-spawn-coord.sh`/`cc-dispatch-task.sh` ausente, `~/cc-mailbox/.env` sem `EMAIL_PASSWORD`, repo em estado de merge conflict, lock CHUNK indisponível). Neste caso a IA reporta o impedimento específico e **para — não converte para interativo**. Marcio decide se desbloqueia ou cancela.
+
+---
+
+**Guia de uso (para Marcio antes do trigger — não consultar pela IA após):**
 
 **Quando usar AUTÔNOMO:**
 - Issue bem desambiguado (spec claro, decisões estruturais já fechadas)
@@ -33,13 +46,15 @@ Executar issues do projeto em modo autônomo: Marcio dispara "atacar #NNN em mod
 - Feature pequena (1 commit, <30min)
 - Marcio disponível para pair em tempo real
 
-**Regra prática:** se a conversa precisa de deliberação livre entre Marcio e CC, é interativo. Se pode ser reduzida a "tasks pré-especificadas + gates humanos pontuais", é autônomo.
+**Heurística para Marcio:** se a conversa precisa de deliberação livre entre Marcio e CC, é interativo. Se pode ser reduzida a "tasks pré-especificadas + gates humanos pontuais", é autônomo. Após decidir e digitar o trigger, a IA executa — não re-deriva a decisão.
 
 ### 13.3 O Que É Universal (Aplica aos Dois Modos)
 
 INV-27 + bloco CLAIMS + `cc-validate-task.py` **não são exclusivos do modo autônomo**. Aplicam-se sempre que CC executa tasks sem supervisão humana ativa — inclui delegações durante modo interativo ("vai implementando isso enquanto eu faço outra coisa"). No interativo, o CC roda `cc-validate-task.py` contra o próprio commit antes de relatar "pronto"; se fail → para e sinaliza.
 
 Seção `§3.2 Decisões Autônomas` no control file do issue também é universal: registra qualquer decisão tomada pelo CC sem consulta explícita ao Marcio, independentemente do modo.
+
+**Esses controles compartilhados NÃO diluem a diferença entre os modos.** Validator + CLAIMS + DEC-AUTO existem nos dois lados como rede de segurança contra alucinação, mas o autônomo entrega coisas que o interativo não entrega: paralelismo coord/worker, gate humano por email, ausência sustentável do Marcio, custo zero quando idle. Não usar "o interativo já roda validator" como argumento para preferir interativo após o trigger autônomo (§13.2 regra de uma via).
 
 ### 13.4 Atores
 
@@ -98,7 +113,9 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
                                      # READ-ONLY depois. Consumido pelo listener antes de `claude --resume`.
                                      # Mesma disciplina READ-ONLY da INV-26 (amendment v0.26.0).
                                      # Divergência main vs worktree → --resume falha silenciosa
-                                     # (JSONL em project-scope errado). Bug observado na rodada #164.
+                                     # (JSONL em project-scope errado). Bug observado na rodada #164,
+                                     # MITIGADO desde #176 v0.35.0: cc-spawn-coord.sh + cc-worktree-start.sh
+                                     # impõem cwd correto. Não justifica preferir interativo (§13.2).
 ```
 
 ### 13.8 Fluxo das 6 Fases
@@ -108,14 +125,14 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 | # | Ator | Ação |
 |---|------|------|
 | 1 | Marcio → CC-Interface | "Atacar issue #NNN em modo autônomo" |
-| 2 | CC-Interface | Confirma protocolo, ativa INV-27, avisa que RC só ativa depois |
+| 2 | CC-Interface | **Inicia execução §13.8 Fase 1 imediatamente** (sem perguntar "tem certeza" — §13.2 regra de uma via). Ativa INV-27, avisa que RC só ativa depois (informativo, não-bloqueante) |
 | 3 | CC-Interface | §4.0 NO MAIN: verifica versão PROJECT.md (INV-14), `gh issue view NNN`, valida chunks §6.3 |
 | 4 | CC-Interface | NO MAIN: registra locks + reserva próximo minor em `version.js` |
 | 5 | CC-Interface | Commit no main: `docs: registrar locks + reservar vX.Y.Z para issue-NNN` |
 | 6 | CC-Interface | `git worktree add ~/projects/issue-NNN -b tipo/issue-NNN-descricao` |
 | 7 | CC-Interface | `cd worktree`, cria `docs/dev/issues/issue-NNN-*.md`, preenche §1-3, §6 |
 | 8a | CC-Interface | Cria `.cc-mailbox/{inbox,outbox,coord-inbox,locks,notify-scratch,log}/` |
-| 8b | CC-Interface | **Pré-condição dura: cwd = `~/projects/issue-NNN`** (herdado do passo 7). Executar do main repo invalida o session_id — JSONL fica em project-scope `-acompanhamento-2-0`, listener do worktree invocando `--resume` falha silenciosa por project-scope mismatch. Comando: `claude --permission-mode auto --output-format json -p "<contexto>; confirme ready e morra"` → captura `coord_session_id` do JSON. Bug observado na rodada #164 (v0.26.0). |
+| 8b | CC-Interface | **Pré-condição dura: cwd = `~/projects/issue-NNN`** (herdado do passo 7). Executar do main repo invalida o session_id — JSONL fica em project-scope `-acompanhamento-2-0`, listener do worktree invocando `--resume` falha silenciosa por project-scope mismatch. Comando recomendado: `cc-spawn-coord.sh NNN <worktree> <control_file>` (#176 v0.35.0) — wrapper que impõe cwd, renderiza template, captura `COORD_SESSION_ID`. Equivalente manual: `claude --permission-mode auto --output-format json -p "<contexto>; confirme ready e morra"` → captura `coord_session_id` do JSON. Bug observado na rodada #164 está MITIGADO desde v0.35.0 — não é justificativa pra preferir interativo (§13.2 regra de uma via). |
 | 8c | CC-Interface | `cc-worktree-start.sh NNN <path> <coord_session_id>` → cria tmux + grava `.coord-id` (INV-26) |
 | 8d | CC-Interface | `flock -w 30 locks/coord.lock claude --resume <coord-id> --permission-mode auto -p "DISPATCH_FIRST_TASK"` → coord despacha `inbox/01.md`, morre |
 
@@ -127,7 +144,7 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 | 10 | CC-Interface | Aplica INV-18 em bloco: cada ambiguidade = pergunta concreta com opções |
 | 11 | Marcio | Responde bloco completo |
 | 12 | CC-Interface | Registra em `§3.1 Decisões Antecipadas` do control file |
-| 13 | CC-Interface | Re-varre spec; se restar ambiguidade → volta ao 10 |
+| 13 | CC-Interface | Re-varre spec; se restar ambiguidade → volta ao 10. **Cap operacional: máximo 3 rodadas.** Após a 3ª rodada, ambiguidades remanescentes viram DEC-AUTO no §3.2 (Coord resolve no loop autônomo via ordem de prioridade spec → PROJECT.md → padrão → menor blast radius — passo 30) — não justificam adiar Fase 3. Inflar ambiguidades pra estender Fase 2 indefinidamente é violação de §13.2 regra de uma via |
 | 14 | CC-Interface | Decompõe issue em tasks usando spec desambiguada (regra: 1-5 commits, ~30-90min; micro-tasks merge na próxima — heurística, não regra dura) |
 | 15-16 | CC-Interface ↔ Marcio | Plano de fases apresentado e aprovado |
 
@@ -180,7 +197,7 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 
 > Você DEVE entregar, no `report.md`, bloco `## CLAIMS (machine-readable, do not edit)` em JSON com `commit_hash`, `tests{passed,failed,cmd}`, `files_touched`. Ausência → coord marca STOP-HALLUCINATION automaticamente.
 
-Sem essa cláusula explícita, o worker entrega em formato livre e o validator (`cc-validate-task.py` ou equivalente manual) não tem artefato parseável. Observado na rodada #164: worker E3 entregou sem CLAIMS por omissão da Interface ao compor o briefing — validação INV-27 ficou totalmente manual (`git cat-file -e` + `vitest run`), funcional mas frágil. Template de briefing canônico com cláusula CLAIMS deve ser parte de `~/cc-mailbox/templates/worker-briefing.md` (componente da issue formal futura dos scripts).
+Sem essa cláusula explícita, o worker entrega em formato livre e o validator (`cc-validate-task.py` ou equivalente manual) não tem artefato parseável. Observado na rodada #164: worker E3 entregou sem CLAIMS por omissão da Interface ao compor o briefing — validação INV-27 ficou totalmente manual (`git cat-file -e` + `vitest run`). **Mitigado desde #169 v0.30.0**: `~/cc-mailbox/templates/worker-briefing.md` impõe a cláusula CLAIMS canônica e a Interface usa o template como base. Histórico citado para contexto, não como argumento de fragilidade pós-trigger (§13.2 regra de uma via).
 
 **Bloco CLAIMS obrigatório em todo `<N>-report.md` do worker:**
 
@@ -254,7 +271,7 @@ Exemplos:
 | `cc-dispatch-task.sh` | `~/cc-mailbox/bin/` | **IMPLEMENTADO** (#176, v0.35.0) — wrapper §13.8 passos 8d/36: lê `.coord-id`/`.coord-dir`, `flock -w 30 locks/coord.lock`, `cd $COORD_DIR`, `claude --resume --permission-mode auto -p "DISPATCH_FIRST_TASK\|DISPATCH_TASK slug=...\|HUMAN_GATE_RESOLVED ref=..."`. Smoke OK em issue-998. |
 | `~/cc-mailbox/.env` | `~/cc-mailbox/` | Setup manual (EMAIL_PASSWORD iCloud — senha reusada de `~/morning_call_auto/.env` via decisão operacional) |
 
-**Status do protocolo:** **OPERACIONAL END-TO-END** a partir de v0.35.0 (#176). **Validado com rodada real** em worktree sintético `issue-997` (23/04/2026 01:32-01:35 BRT, ~3min, EMAIL_DRY_RUN=0): `cc-spawn-coord.sh` → `COORD_SESSION_ID=f88e64e6-...` → `cc-worktree-start.sh` grava RO + lança listener → `cc-dispatch-task.sh FIRST` → Coord escreve briefing completo do worker em `inbox/01-criar-scratch-file.md` → listener polling pega em ~25s → worker headless `claude -p` executa (cria arquivo, commita `cae656b2`, escreve report com CLAIMS válido `{commit_hash, tests.skipped:true, files_touched}`) → listener faz `TASK_DELIVERED` via `flock + --resume` → Coord acorda, roda `cc-validate-task.py` (exit 0 OK), atualiza control file marcando `[x]` nos critérios (side-effect benéfico não-pedido) → Coord dispara email real `[Espelho #997] FINISHED: E2E dry-run §13 concluído — todas as tasks OK` via `cc-notify-email.py` → email chega no iCloud do Marcio → Coord morre. Loop inteiro sem intervenção humana. **Pendente apenas**: Recovery §13.15 re-testado pós-amendment v0.26.0 (a rodada original usou protocolo anterior).
+**Status do protocolo:** **OPERACIONAL END-TO-END** a partir de v0.35.0 (#176). **Validado com rodada real** em worktree sintético `issue-997` (23/04/2026 01:32-01:35 BRT, ~3min, EMAIL_DRY_RUN=0): `cc-spawn-coord.sh` → `COORD_SESSION_ID=f88e64e6-...` → `cc-worktree-start.sh` grava RO + lança listener → `cc-dispatch-task.sh FIRST` → Coord escreve briefing completo do worker em `inbox/01-criar-scratch-file.md` → listener polling pega em ~25s → worker headless `claude -p` executa (cria arquivo, commita `cae656b2`, escreve report com CLAIMS válido `{commit_hash, tests.skipped:true, files_touched}`) → listener faz `TASK_DELIVERED` via `flock + --resume` → Coord acorda, roda `cc-validate-task.py` (exit 0 OK), atualiza control file marcando `[x]` nos critérios (side-effect benéfico não-pedido) → Coord dispara email real `[Espelho #997] FINISHED: E2E dry-run §13 concluído — todas as tasks OK` via `cc-notify-email.py` → email chega no iCloud do Marcio → Coord morre. Loop inteiro sem intervenção humana. Fast-follow: re-validação do Recovery §13.15 pós-amendment v0.26.0 (não bloqueia execução de novos issues; o protocolo de Recovery está implementado e foi validado historicamente na rodada #164).
 
 **Fast-follows identificados nos dry-runs:**
 - `cc-notify-email.py` em `EMAIL_DRY_RUN=1` não escreve em per-worktree log (só no global); assimetria trivial de 3 linhas
