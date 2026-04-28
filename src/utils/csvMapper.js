@@ -21,6 +21,8 @@
  *   parseNumericValue(value) → number | null
  */
 
+import { detectInstrumentType, convertExcursionRawToPrice } from './excursionParsing.js';
+
 // ============================================
 // DATE PARSING
 // ============================================
@@ -237,6 +239,10 @@ export const SYSTEM_FIELDS = [
   { key: 'sellTimestamp', label: 'Timestamp Venda (para inferência)', required: false, type: 'datetime', group: 'inference' },
   { key: 'result', label: 'Resultado', required: false, type: 'number' },
   { key: 'stopLoss', label: 'Stop Loss', required: false, type: 'number' },
+  // Issue #187 — MEP/MEN brutos (pontos para futures, % para ações).
+  // O parser converte para preço (`mepPrice`/`menPrice`) usando entry + side + type.
+  { key: 'mepRaw', label: 'MEP — Máxima Excursão Positiva (pontos ou %)', required: false, type: 'number' },
+  { key: 'menRaw', label: 'MEN — Máxima Excursão Negativa (pontos ou %)', required: false, type: 'number' },
 ];
 
 /** Campos obrigatórios mínimos (sem inferência) */
@@ -383,6 +389,27 @@ export const buildTradeFromRow = (row, mapping, valueMap = {}, defaults = {}, da
   // Limpar campos de inferência residuais
   delete trade.buyTimestamp;
   delete trade.sellTimestamp;
+
+  // Issue #187 Fase 3 — converter MEP/MEN brutos (pontos/%) → preço (DEC-AUTO-187-01).
+  // Requer entry e side já resolvidos. Source = 'profitpro' como default ProfitPro;
+  // caller pode override via defaults se vier de outro broker.
+  if ((trade.mepRaw != null || trade.menRaw != null) && trade.entry != null && trade.side) {
+    const instrumentType = detectInstrumentType(trade.ticker);
+    const { mepPrice, menPrice } = convertExcursionRawToPrice({
+      entry: trade.entry,
+      side: trade.side,
+      mepRaw: trade.mepRaw,
+      menRaw: trade.menRaw,
+      instrumentType,
+    });
+    if (mepPrice != null) trade.mepPrice = mepPrice;
+    if (menPrice != null) trade.menPrice = menPrice;
+    if (mepPrice != null || menPrice != null) {
+      trade.excursionSource = trade.excursionSource || defaults.excursionSource || 'profitpro';
+    }
+  }
+  delete trade.mepRaw;
+  delete trade.menRaw;
 
   // Validar entry/exit
   if (trade.entry == null) errors.push('Preço de entrada não resolvido (mapeie Preço Compra/Venda ou Entrada)');

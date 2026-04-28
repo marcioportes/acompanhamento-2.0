@@ -15,8 +15,8 @@ Status do gate pré-código:
 
 - [x] Mockup apresentado (seção abaixo)
 - [x] Memória de cálculo apresentada (seção abaixo)
-- [ ] Marcio autorizou mockup + memória (pendente — gate humano deste doc)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou ("Go" — 27/04/2026)
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -216,7 +216,7 @@ trades/{id}: {
 
 ## Sessions
 
-_(preenchido task a task)_
+- task 01 [fase-1-schema-gateway-precompute] commit `40692acf` ok — 30 novos testes (18 excursão + 12 advancedMetricsPresent), 2563/2563 total
 
 ## Shared Deltas
 
@@ -233,7 +233,8 @@ _(preenchido task a task)_
 
 - DEC-AUTO-187-01 — storage como preço
 - DEC-AUTO-187-02 — Yahoo + compute&discard 7d
-- DEC-AUTO-187-03 — gate opcional/condicional
+- DEC-AUTO-187-03 — gate opcional/condicional (advancedMetricsPresent nunca `false`, só `true` ou `null`)
+- DEC-AUTO-187-04 — threshold derivação: ≥10 trades + ≥80% com MEP+MEN não-null → `true`; senão `null`
 
 ## Chunks
 
