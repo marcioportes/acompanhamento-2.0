@@ -34,6 +34,7 @@ import {
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
 import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
+import ExcursionSourceBadge from './ExcursionSourceBadge';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -350,6 +351,32 @@ const TradeDetailModal = ({
                 <span className="text-white font-mono text-lg">{trade.qty}</span>
               </div>
             </div>
+
+            {/* MEP/MEN — issue #187. Só renderiza se há ao menos 1 valor ou source registrada. */}
+            {(trade.mepPrice != null || trade.menPrice != null || trade.excursionSource) && (
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+                  <span className="text-xs text-slate-500 block mb-1" title="Máxima Excursão Positiva — pico favorável durante o trade">
+                    MEP
+                  </span>
+                  <span className="text-white font-mono text-lg">
+                    {trade.mepPrice != null ? trade.mepPrice : '—'}
+                  </span>
+                </div>
+                <div className="bg-slate-800/30 rounded-xl p-4 text-center">
+                  <span className="text-xs text-slate-500 block mb-1" title="Máxima Excursão Negativa — pior tick adverso durante o trade">
+                    MEN
+                  </span>
+                  <span className="text-white font-mono text-lg">
+                    {trade.menPrice != null ? trade.menPrice : '—'}
+                  </span>
+                </div>
+                <div className="bg-slate-800/30 rounded-xl p-4 text-center flex flex-col items-center justify-center">
+                  <span className="text-xs text-slate-500 block mb-1">Fonte</span>
+                  <ExcursionSourceBadge source={trade.excursionSource} />
+                </div>
+              </div>
+            )}
 
             {/* Resultado editado vs calculado */}
             {trade.resultEdited && trade.resultCalculated != null && (
