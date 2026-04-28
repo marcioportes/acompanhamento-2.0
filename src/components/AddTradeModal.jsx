@@ -18,6 +18,7 @@ import {
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { calculateFromPartials } from '../utils/tradeCalculations';
+import { validateExcursionPrices } from '../utils/tradeGateway';
 
 const SIDES = ['LONG', 'SHORT'];
 
@@ -63,6 +64,8 @@ const AddTradeModal = ({
     entry: '',
     exit: '',
     stopLoss: '',
+    mepPrice: '',
+    menPrice: '',
     qty: '',
     setup: '',
     emotionEntry: '',
@@ -240,6 +243,8 @@ const AddTradeModal = ({
         ticker: editTrade.ticker, exchange: editTrade.exchange || (exchanges[0]?.code ?? 'B3'), side: editTrade.side,
         entry: editTrade.entry.toString(), exit: editTrade.exit.toString(), qty: editTrade.qty.toString(),
         stopLoss: editTrade.stopLoss != null ? editTrade.stopLoss.toString() : '',
+        mepPrice: editTrade.mepPrice != null ? editTrade.mepPrice.toString() : '',
+        menPrice: editTrade.menPrice != null ? editTrade.menPrice.toString() : '',
         setup: editTrade.setup,
         emotionEntry: editTrade.emotionEntry || editTrade.emotion || '',
         emotionExit: editTrade.emotionExit || editTrade.emotion || '',
@@ -288,6 +293,7 @@ const AddTradeModal = ({
         exitDate: todayIso, exitTime: '',
         ticker: '', exchange: defaultExchange, side: 'LONG', entry: '', exit: '', qty: '',
         stopLoss: '',
+        mepPrice: '', menPrice: '',
         setup: defaultSetup, emotionEntry: defaultEmotion, emotionExit: defaultEmotion,
         notes: '',
         planId: prev.planId && plans.find(p => p.id === prev.planId) ? prev.planId : (plans[0]?.id || ''),
@@ -598,6 +604,33 @@ const AddTradeModal = ({
         }
       }
     }
+
+    // Validar MEP/MEN (opcionais, issue #187 — DEC-AUTO-187-01).
+    // Por campo, com mensagem específica. Reutiliza validateExcursionPrices
+    // mas separa em duas tentativas (MEP isolado, MEN isolado) para mensagem direcionada.
+    const mepNum = formData.mepPrice ? parseFloat(formData.mepPrice) : null;
+    const menNum = formData.menPrice ? parseFloat(formData.menPrice) : null;
+    if (formData.mepPrice && (isNaN(mepNum) || mepNum <= 0)) {
+      newErrors.mepPrice = 'MEP inválido';
+    }
+    if (formData.menPrice && (isNaN(menNum) || menNum <= 0)) {
+      newErrors.menPrice = 'MEN inválido';
+    }
+    if (!newErrors.mepPrice && !newErrors.menPrice && formData.entry && formData.exit) {
+      try {
+        validateExcursionPrices({
+          side: formData.side,
+          entry: parseFloat(formData.entry),
+          exit: parseFloat(formData.exit),
+          mepPrice: mepNum,
+          menPrice: menNum,
+        });
+      } catch (err) {
+        if (err.message.includes('MEP')) newErrors.mepPrice = err.message;
+        else if (err.message.includes('MEN')) newErrors.menPrice = err.message;
+        else newErrors.mepPrice = err.message;
+      }
+    }
     
     // Validar parciais (sempre)
     const validPartials = partials.filter(p => p.price && p.qty);
@@ -684,12 +717,15 @@ const AddTradeModal = ({
     // Item 5: SEMPRE sanitizar resultOverride como número puro
     const sanitizedResultOverride = resultOverride != null ? parseResultInput(resultOverride) : null;
 
-    const payload = { 
+    const payload = {
       ...formData,
       entryTime: entryTimeISO,
       exitTime: exitTimeISO,
       date: entryTimeISO.split('T')[0],
       stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : null,
+      mepPrice: formData.mepPrice ? parseFloat(formData.mepPrice) : null,
+      menPrice: formData.menPrice ? parseFloat(formData.menPrice) : null,
+      excursionSource: (formData.mepPrice || formData.menPrice) ? 'manual' : null,
       tickerRule: activeAssetRule ? {
         tickSize: activeAssetRule.tickSize,
         tickValue: activeAssetRule.tickValue,
@@ -799,6 +835,41 @@ const AddTradeModal = ({
               </div>
 
               <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} disabled placeholder="Calculado das parciais" /></div>
+
+              {/* MEP/MEN — Maximum Excursion Positiva/Negativa (issue #187, opcional).
+                  Usado pelo motor de maturidade Stage 3→4. Aceita preço (não R$, não %).
+                  LONG: MEP >= max(entry,exit), MEN <= min(entry,exit). SHORT: invertido. */}
+              <div>
+                <label className="input-label" title="Pico favorável durante o trade — preço">
+                  MEP <span className="text-[9px] text-slate-500">(opcional)</span>
+                </label>
+                <input
+                  type="number"
+                  name="mepPrice"
+                  step="any"
+                  value={formData.mepPrice}
+                  onChange={handleChange}
+                  className={`input-dark w-full ${errors.mepPrice ? 'border-red-500' : ''}`}
+                  placeholder="Pico favorável (preço)"
+                />
+                {errors.mepPrice && <span className="text-[10px] text-red-400 mt-0.5 block">{errors.mepPrice}</span>}
+              </div>
+
+              <div>
+                <label className="input-label" title="Pior tick adverso durante o trade — preço">
+                  MEN <span className="text-[9px] text-slate-500">(opcional)</span>
+                </label>
+                <input
+                  type="number"
+                  name="menPrice"
+                  step="any"
+                  value={formData.menPrice}
+                  onChange={handleChange}
+                  className={`input-dark w-full ${errors.menPrice ? 'border-red-500' : ''}`}
+                  placeholder="Pior tick adverso (preço)"
+                />
+                {errors.menPrice && <span className="text-[10px] text-red-400 mt-0.5 block">{errors.menPrice}</span>}
+              </div>
 
               {/* GRID DE PARCIAIS — Item 1: Labels Compra/Venda + Item 2: Inputs DD/MM/AAAA + HH:MM:SS */}
               <div className="md:col-span-2 lg:col-span-3">
