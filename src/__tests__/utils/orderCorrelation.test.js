@@ -1,7 +1,7 @@
 /**
  * orderCorrelation.test.js
- * @version 1.0.0 (v1.20.0)
- * Testes para correlação ordem↔trade.
+ * @version 2.0.0 (v1.49.0 — issue #208 Fase 1)
+ * Testes para correlação ordem↔trade. N:1: múltiplas orders por trade.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -148,17 +148,98 @@ describe('correlateOrders', () => {
     expect(result.stats.total).toBe(2);
   });
 
-  it('não atribui mesmo trade a múltiplas ordens', () => {
+  it('N:1 — entry + exit casam com o mesmo trade (bracket OCO sem ghost falso)', () => {
+    // Cenário real: trade LONG abre 10:30 (BUY) e fecha 10:35 (SELL). Em 1:1 exclusivo
+    // o exit virava ghost. Em N:1 ambos casam com o mesmo tradeId em roles distintas.
     const orders = [
-      makeOrder({ _rowIndex: 1, externalOrderId: 'ORD001', filledAt: '2026-03-15T10:30:00Z' }),
-      makeOrder({ _rowIndex: 2, externalOrderId: 'ORD002', filledAt: '2026-03-15T10:30:02Z' }),
+      makeOrder({
+        _rowIndex: 1, externalOrderId: 'ORD001',
+        side: 'BUY', filledAt: '2026-03-15T10:30:01Z',
+      }),
+      makeOrder({
+        _rowIndex: 2, externalOrderId: 'ORD002',
+        side: 'SELL', filledAt: '2026-03-15T10:35:00Z',
+      }),
     ];
-    const trades = [makeTrade({ id: 'trade001' })]; // apenas 1 trade
-    const result = correlateOrders(orders, trades);
+    const trades = [makeTrade({
+      id: 'trade001', side: 'LONG',
+      entryTime: '2026-03-15T10:30:00Z', exitTime: '2026-03-15T10:35:00Z',
+    })];
 
+    const result = correlateOrders(orders, trades);
     const matched = result.correlations.filter(c => c.tradeId != null);
-    const uniqueTrades = new Set(matched.map(c => c.tradeId));
-    expect(uniqueTrades.size).toBe(matched.length); // cada trade atribuído uma vez
+    expect(matched).toHaveLength(2);
+    expect(matched.every(c => c.tradeId === 'trade001')).toBe(true);
+    expect(matched.map(c => c.role).sort()).toEqual(['entry', 'exit']);
+    expect(result.stats.ghost).toBe(0);
+  });
+
+  it('coverage stats: trade com entry+exit conta como full coverage', () => {
+    const orders = [
+      makeOrder({ _rowIndex: 1, externalOrderId: 'E1', side: 'BUY', filledAt: '2026-03-15T10:30:01Z' }),
+      makeOrder({ _rowIndex: 2, externalOrderId: 'X1', side: 'SELL', filledAt: '2026-03-15T10:35:00Z' }),
+    ];
+    const trades = [makeTrade({
+      id: 'trade001', side: 'LONG',
+      entryTime: '2026-03-15T10:30:00Z', exitTime: '2026-03-15T10:35:00Z',
+    })];
+    const result = correlateOrders(orders, trades);
+    expect(result.stats.tradesWithFullCoverage).toBe(1);
+    expect(result.stats.tradesWithPartialCoverage).toBe(0);
+    expect(result.stats.tradesWithoutOrders).toBe(0);
+  });
+
+  it('coverage stats: trade só com entry conta como partial', () => {
+    const orders = [
+      makeOrder({ _rowIndex: 1, externalOrderId: 'E1', side: 'BUY', filledAt: '2026-03-15T10:30:01Z' }),
+    ];
+    const trades = [makeTrade({
+      id: 'trade001', side: 'LONG',
+      entryTime: '2026-03-15T10:30:00Z', exitTime: '2026-03-15T10:35:00Z',
+    })];
+    const result = correlateOrders(orders, trades);
+    expect(result.stats.tradesWithFullCoverage).toBe(0);
+    expect(result.stats.tradesWithPartialCoverage).toBe(1);
+    expect(result.stats.tradesWithoutOrders).toBe(0);
+  });
+
+  it('coverage stats: trade sem orders correlacionadas conta como tradesWithoutOrders', () => {
+    const orders = [
+      makeOrder({ _rowIndex: 1, externalOrderId: 'E1', instrument: 'NQH6', filledAt: '2026-03-15T10:30:01Z' }),
+    ];
+    const trades = [makeTrade({ id: 'trade001', ticker: 'ESH6' })];
+    const result = correlateOrders(orders, trades);
+    expect(result.stats.tradesWithoutOrders).toBe(1);
+    expect(result.stats.orphanFills).toBe(1);
+  });
+
+  it('correlation expõe snapshot do order para inspeção downstream', () => {
+    const orders = [makeOrder({
+      _rowIndex: 1, externalOrderId: 'E1', side: 'BUY',
+      quantity: 2, filledPrice: 5100.5, filledAt: '2026-03-15T10:30:01Z',
+    })];
+    const trades = [makeTrade({ id: 'trade001', side: 'LONG' })];
+    const result = correlateOrders(orders, trades);
+    const c = result.correlations[0];
+    expect(c.order).toBeDefined();
+    expect(c.order.side).toBe('BUY');
+    expect(c.order.qty).toBe(2);
+    expect(c.order.price).toBe(5100.5);
+  });
+
+  it('correlation registra role (entry|exit) usado no match', () => {
+    const orders = [
+      makeOrder({ _rowIndex: 1, externalOrderId: 'E1', side: 'BUY', filledAt: '2026-03-15T10:30:01Z' }),
+      makeOrder({ _rowIndex: 2, externalOrderId: 'X1', side: 'SELL', filledAt: '2026-03-15T10:35:00Z' }),
+    ];
+    const trades = [makeTrade({
+      id: 'trade001', side: 'LONG',
+      entryTime: '2026-03-15T10:30:00Z', exitTime: '2026-03-15T10:35:00Z',
+    })];
+    const result = correlateOrders(orders, trades);
+    const byOrder = Object.fromEntries(result.correlations.map(c => [c.externalOrderId, c.role]));
+    expect(byOrder.E1).toBe('entry');
+    expect(byOrder.X1).toBe('exit');
   });
 
   it('avgConfidence calculado corretamente', () => {

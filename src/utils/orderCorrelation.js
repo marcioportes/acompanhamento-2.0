@@ -1,20 +1,23 @@
 /**
  * orderCorrelation.js
- * @version 1.0.0 (v1.20.0)
- * @description Correlação ordem↔trade. Recebe ordens (FILLED) e trades do mesmo
- *   aluno/plano/instrumento e produz matches com confidence score.
+ * @version 2.0.0 (v1.49.0 — issue #208 Fase 1)
+ * @description Correlação ordem↔trade. N:1 — múltiplas orders por trade (entry + exit + parciais).
  *
- * ALGORITMO:
- *   1. Filtrar ordens FILLED
- *   2. Para cada ordem, buscar trades com: mesmo instrumento, timestamp próximo, side compatível
- *   3. Scoring: timestamp proximity + side match + quantity match
- *   4. Match único → confidence 1.0
- *   5. Múltiplos matches → melhor score, confidence 0.7-0.9
- *   6. Nenhum match → ghost order (correlatedTradeId = null)
+ * ALGORITMO (N:1):
+ *   1. Filtrar ordens FILLED|PARTIALLY_FILLED
+ *   2. Para cada ordem, encontrar o melhor par (trade, role∈{entry,exit}) por:
+ *      - instrument match
+ *      - timestamp dentro da janela do entryTime ou exitTime do trade
+ *      - side compatível com role (entry: BUY↔LONG, SELL↔SHORT; exit: inverso)
+ *   3. Múltiplas orders podem casar com o MESMO trade (entry + exit + fills parciais)
+ *   4. Stats reportam coverage por trade: full (entry+exit), partial (só uma role), zero
+ *
+ * Resolve bug v1.0.0: correlator anterior fazia 1:1 exclusivo — em bracket OCO o
+ * exit virava ghost falso porque entry consumia o trade. Agora exit também casa.
  *
  * EXPORTS:
  *   correlateOrders(orders, trades) → CorrelationResult[]
- *   correlateOrder(order, trades) → { tradeId, confidence, matchType }
+ *   correlateOrder(order, trades) → { tradeId, confidence, matchType } (single-order, retrocompat)
  *   CORRELATION_WINDOW_MS — janela de correlação (5 min default)
  */
 
@@ -217,17 +220,59 @@ export const correlateOrder = (order, trades) => {
 };
 
 // ============================================
-// BATCH CORRELATION
+// BATCH CORRELATION (N:1 — múltiplas orders por trade)
 // ============================================
 
 /**
- * Correlaciona todas as ordens FILLED com trades.
+ * Side compatibility por role do trade:
+ *   entry: BUY↔LONG, SELL↔SHORT
+ *   exit:  SELL↔LONG, BUY↔SHORT
+ * Ordens sem side declarado passam (não penalizar — timestamp + instrument já filtram).
+ */
+const isSideCompatibleForRole = (orderSide, tradeSide, role) => {
+  if (!orderSide || !tradeSide) return true;
+  if (role === 'entry') {
+    return (orderSide === 'BUY' && tradeSide === 'LONG') ||
+           (orderSide === 'SELL' && tradeSide === 'SHORT');
+  }
+  if (role === 'exit') {
+    return (orderSide === 'SELL' && tradeSide === 'LONG') ||
+           (orderSide === 'BUY' && tradeSide === 'SHORT');
+  }
+  return true;
+};
+
+/**
+ * Snapshot mínimo do order para inspeção downstream (UI ghost expand, sensor comportamental).
+ */
+const snapshotOrder = (order) => ({
+  side: order.side ?? null,
+  qty: order.filledQuantity ?? order.quantity ?? null,
+  price: order.filledPrice ?? order.price ?? null,
+  stopPrice: order.stopPrice ?? null,
+  type: order.type ?? null,
+  status: order.status ?? null,
+  submittedAt: order.submittedAt ?? null,
+  filledAt: order.filledAt ?? null,
+  cancelledAt: order.cancelledAt ?? null,
+});
+
+/**
+ * Correlaciona todas as ordens FILLED com trades. N:1 — uma order casa com 1 trade,
+ * mas múltiplas orders podem casar com o mesmo trade (entry, exit, fills parciais).
+ *
+ * Resolve bug v1.0.0: correlator anterior fazia 1:1 exclusivo — em bracket OCO o
+ * exit virava ghost falso porque entry consumia o trade.
  *
  * @param {Object[]} orders — ordens normalizadas (qualquer status, filtra internamente)
  * @param {Object[]} trades — trades do aluno (com id, ticker, side, qty, entryTime, exitTime)
  * @returns {{
- *   correlations: Array<{ orderId: string, ...correlationResult }>,
- *   stats: { total: number, matched: number, ghost: number, avgConfidence: number }
+ *   correlations: Array<{ orderId, tradeId, role, matchType, confidence, ... }>,
+ *   stats: {
+ *     total, matched, ghost, avgConfidence,
+ *     tradesWithFullCoverage, tradesWithPartialCoverage, tradesWithoutOrders,
+ *     orphanFills,
+ *   }
  * }}
  */
 export const correlateOrders = (orders, trades) => {
@@ -236,43 +281,133 @@ export const correlateOrders = (orders, trades) => {
   if (!filledOrders.length) {
     return {
       correlations: [],
-      stats: { total: 0, matched: 0, ghost: 0, avgConfidence: 0 },
+      stats: {
+        total: 0, matched: 0, ghost: 0, avgConfidence: 0,
+        tradesWithFullCoverage: 0,
+        tradesWithPartialCoverage: 0,
+        tradesWithoutOrders: trades?.length || 0,
+        orphanFills: 0,
+      },
     };
   }
 
-  const correlations = [];
-  let matchedCount = 0;
-  let totalConfidence = 0;
-
-  // Track which trades have been matched to avoid double-assignment
-  const assignedTrades = new Set();
-
-  // Sort orders by timestamp for consistent assignment
+  // Ordena cronologicamente para correlations[] preservar fluxo temporal.
   const sortedOrders = [...filledOrders].sort((a, b) => {
     const tsA = new Date(a.filledAt || a.submittedAt || 0).getTime();
     const tsB = new Date(b.filledAt || b.submittedAt || 0).getTime();
     return tsA - tsB;
   });
 
-  for (const order of sortedOrders) {
-    // Filtrar trades já atribuídas
-    const availableTrades = trades.filter(t => !assignedTrades.has(t.id));
-    const result = correlateOrder(order, availableTrades);
+  const correlations = [];
+  let totalConfidence = 0;
+  let matchedCount = 0;
 
-    if (result.tradeId) {
-      assignedTrades.add(result.tradeId);
-      matchedCount++;
-      totalConfidence += result.confidence;
+  for (const order of sortedOrders) {
+    const orderTs = toMs(order.filledAt || order.submittedAt);
+
+    if (!orderTs) {
+      correlations.push({
+        orderIndex: order._rowIndex,
+        externalOrderId: order.externalOrderId,
+        instrument: order.instrument,
+        order: snapshotOrder(order),
+        tradeId: null,
+        role: null,
+        confidence: 0,
+        matchType: 'ghost',
+        details: 'Ordem sem timestamp',
+      });
+      continue;
     }
 
-    correlations.push({
-      orderIndex: order._rowIndex,
-      externalOrderId: order.externalOrderId,
-      instrument: order.instrument,
-      ...result,
-    });
+    // Procura melhor (trade, role∈{entry,exit}). Múltiplas orders podem casar
+    // com o mesmo trade — sem exclusão mútua.
+    let best = null;
+    const orderInstrument = (order.instrument || '').toUpperCase();
+
+    for (const trade of trades) {
+      const tradeInstrument = (trade.ticker || '').toUpperCase();
+      if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
+
+      const tradeEntryTs = toMs(trade.entryTime || trade.openedAt);
+      const tradeExitTs = toMs(trade.exitTime || trade.closedAt);
+      const tradeHasTime = hasTimeComponent(trade.entryTime) || hasTimeComponent(trade.exitTime);
+      const window = tradeHasTime ? CORRELATION_WINDOW_MS : CORRELATION_WINDOW_DAY_MS;
+
+      if (tradeEntryTs) {
+        const delta = Math.abs(orderTs - tradeEntryTs);
+        if (delta < window) {
+          const sideOk = isSideCompatibleForRole(order.side, trade.side, 'entry');
+          const timeScore = 1.0 - (delta / window);
+          const sScore = sideOk ? 1.0 : 0.3;
+          const score = (timeScore * 0.6) + (sScore * 0.4);
+          if (!best || score > best.score) {
+            best = { tradeId: trade.id, role: 'entry', score, delta, sideOk };
+          }
+        }
+      }
+
+      if (tradeExitTs) {
+        const delta = Math.abs(orderTs - tradeExitTs);
+        if (delta < window) {
+          const sideOk = isSideCompatibleForRole(order.side, trade.side, 'exit');
+          const timeScore = 1.0 - (delta / window);
+          const sScore = sideOk ? 1.0 : 0.3;
+          const score = (timeScore * 0.6) + (sScore * 0.4);
+          if (!best || score > best.score) {
+            best = { tradeId: trade.id, role: 'exit', score, delta, sideOk };
+          }
+        }
+      }
+    }
+
+    if (best) {
+      const confidence = Math.round(best.score * 100) / 100;
+      matchedCount++;
+      totalConfidence += confidence;
+      correlations.push({
+        orderIndex: order._rowIndex,
+        externalOrderId: order.externalOrderId,
+        instrument: order.instrument,
+        order: snapshotOrder(order),
+        tradeId: best.tradeId,
+        role: best.role,
+        confidence,
+        matchType: 'exact',
+        details: `Match ${best.role} (delta: ${Math.round(best.delta / 1000)}s${best.sideOk ? '' : ', side mismatch'})`,
+      });
+    } else {
+      correlations.push({
+        orderIndex: order._rowIndex,
+        externalOrderId: order.externalOrderId,
+        instrument: order.instrument,
+        order: snapshotOrder(order),
+        tradeId: null,
+        role: null,
+        confidence: 0,
+        matchType: 'ghost',
+        details: 'Nenhum trade dentro da janela de correlação',
+      });
+    }
   }
 
+  // Coverage por trade: full (entry+exit), partial (só uma role), zero (sem orders).
+  const coverage = new Map();
+  for (const c of correlations) {
+    if (!c.tradeId) continue;
+    const cov = coverage.get(c.tradeId) || { entry: false, exit: false };
+    if (c.role === 'entry') cov.entry = true;
+    if (c.role === 'exit') cov.exit = true;
+    coverage.set(c.tradeId, cov);
+  }
+
+  let tradesWithFullCoverage = 0;
+  let tradesWithPartialCoverage = 0;
+  for (const cov of coverage.values()) {
+    if (cov.entry && cov.exit) tradesWithFullCoverage++;
+    else tradesWithPartialCoverage++;
+  }
+  const tradesWithoutOrders = (trades?.length || 0) - coverage.size;
   const ghostCount = filledOrders.length - matchedCount;
 
   return {
@@ -282,6 +417,10 @@ export const correlateOrders = (orders, trades) => {
       matched: matchedCount,
       ghost: ghostCount,
       avgConfidence: matchedCount > 0 ? Math.round((totalConfidence / matchedCount) * 100) / 100 : 0,
+      tradesWithFullCoverage,
+      tradesWithPartialCoverage,
+      tradesWithoutOrders,
+      orphanFills: ghostCount,
     },
   };
 };

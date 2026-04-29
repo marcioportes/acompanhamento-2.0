@@ -1,0 +1,23 @@
+df8d4e80d005dd5ce604af5008d3338b,20/04/2026,22/04/2026
+Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criação;Última Atualização;Preço;Preço Stop;Qtd;Preço Médio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estratégia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260420120820439179;WINM26;C;Executada;20/04/2026 12:08:20;20/04/2026 12:08:21;200.225,00;-;2;200.225,00;2;-;80.090,00;80.090,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;20/04/2026 12:08:21;;;;;200.225,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260420120836439493;WINM26;V;Executada;20/04/2026 12:08:36;20/04/2026 12:58:20;200.725,00;-;2;200.725,00;2;-;80.290,00;80.290,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;20/04/2026 12:58:20;;;;;200.725,00;1
+;;;;;;Trade;20/04/2026 12:58:20;;;;;200.725,00;1
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260420120836439492;WINM26;V;Cancelada;20/04/2026 12:08:36;20/04/2026 12:58:20;200.095,00;200.245,00;1;-;-;-;40.019,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Estratégia
+;;;;;;Cancel;20/04/2026 12:58:20;;;;;0,00;1
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422103615297106;WINM26;V;Cancelada;22/04/2026 10:36:15;22/04/2026 10:36:52;198.670,00;-;2;-;-;-;79.468,00;-;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Cancel;22/04/2026 10:36:52;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422105543359605;WINM26;V;Executada;22/04/2026 10:55:43;22/04/2026 10:55:43;198.305,00;-;2;198.500,00;2;-;79.322,00;79.400,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;22/04/2026 10:55:43;;;;;198.500,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422105555360113;WINM26;C;Executada;22/04/2026 10:55:55;22/04/2026 11:00:52;198.900,00;198.750,00;2;198.750,00;2;-;79.560,00;79.500,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;22/04/2026 11:00:52;;;;;198.750,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422105555360114;WINM26;C;Cancelada;22/04/2026 10:55:55;22/04/2026 11:00:52;198.000,00;-;2;-;-;-;79.200,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Cancel;22/04/2026 11:00:52;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422110752387639;WINM26;V;Executada;22/04/2026 11:07:52;22/04/2026 11:07:52;198.180,00;-;2;198.370,00;2;-;79.272,00;79.348,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;22/04/2026 11:07:52;;;;;198.370,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422110800388166;WINM26;C;Executada;22/04/2026 11:08:00;22/04/2026 11:19:49;197.870,00;-;2;197.870,00;2;-;79.148,00;79.148,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;22/04/2026 11:19:49;;;;;197.870,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260422110800388165;WINM26;C;Cancelada;22/04/2026 11:08:00;22/04/2026 11:19:49;198.500,00;198.350,00;2;-;-;-;79.400,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Estratégia
+;;;;;;Cancel;22/04/2026 11:19:49;;;;;0,00;2
