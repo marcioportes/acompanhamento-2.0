@@ -33,6 +33,7 @@
 
 const { computeCycleBasedComplianceRate } = require('./computeCycleBasedComplianceRate');
 const { computeEmotionalAnalysisShape } = require('./emotionalAnalysisMirror');
+const { detectExecutionEvents } = require('./executionBehaviorMirror');
 
 function isNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -120,9 +121,10 @@ function calcComplianceRate(trades) {
   return (compliant / trades.length) * 100;
 }
 
-function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {}) {
+function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig, orders } = {}) {
   const safeTrades = Array.isArray(trades) ? trades : [];
   const safePlans = Array.isArray(plans) ? plans : [];
+  const safeOrders = Array.isArray(orders) ? orders : [];
   const initialBalance = safePlans[0]?.initialBalance ?? 0;
   const refNow = now instanceof Date ? now : (now ? new Date(now) : new Date());
 
@@ -148,6 +150,22 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {
     now: refNow,
   });
 
+  // Issue #208 — Option C (DEC-AUTO-208-02): compute on-the-fly. Sem persistir
+  // events em collection nova. Eventos derivados de orders já correlacionadas
+  // (campo `correlatedTradeId` populado pela pipeline Order Import).
+  const executionEvents = detectExecutionEvents({
+    trades: safeTrades,
+    orders: safeOrders,
+  });
+  const tradeIdsWithOrders = new Set(
+    safeOrders
+      .filter((o) => o && o.correlatedTradeId)
+      .map((o) => o.correlatedTradeId)
+  );
+  const tradesWithOrderData = safeTrades.filter(
+    (t) => t && t.id && tradeIdsWithOrders.has(t.id)
+  ).length;
+
   return {
     stats,
     payoff,
@@ -158,6 +176,8 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {
     evLeakage,
     advancedMetricsPresent,
     complianceRate100,
+    executionEvents,
+    tradesWithOrderData,
   };
 }
 
