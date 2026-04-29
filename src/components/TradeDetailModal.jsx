@@ -34,6 +34,7 @@ import {
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
 import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
+import ExecutionPatternsPanel from './Trades/ExecutionPatternsPanel';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -600,6 +601,9 @@ const TradeDetailModal = ({
                 </div>
               )}
             </div>
+
+            {/* Padrões de execução detectados (#208 Fase 6) */}
+            <ExecutionPatternsPanel trade={trade} orders={orders} />
 
             {/* Histórico de correções do mentor (#188 F1c) */}
             {Array.isArray(trade._mentorEdits) && trade._mentorEdits.length > 0 && (
