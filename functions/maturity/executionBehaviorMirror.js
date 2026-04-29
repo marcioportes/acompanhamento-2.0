@@ -72,12 +72,9 @@ function ordersForTrade(orders, tradeId) {
   return orders.filter(function (o) { return o.correlatedTradeId === tradeId; });
 }
 
-function tradeClosedByStop(orders, tradeId) {
-  return orders.some(function (o) {
-    return o.correlatedTradeId === tradeId &&
-           o.isStopOrder === true &&
-           o.status === 'FILLED';
-  });
+// Trade fechou em loss? Gatilho comportamental do RAPID_REENTRY (Coval&Shumway 2005).
+function tradeClosedInLoss(trade) {
+  return trade && typeof trade.result === 'number' && trade.result < 0;
 }
 
 function detectStopTampering(trade, orders) {
@@ -150,7 +147,7 @@ function detectPartialSizing(trade, orders) {
   }];
 }
 
-function detectRapidReentry(trades, orders, config) {
+function detectRapidReentry(trades, _orders, config) {
   const sorted = trades.slice()
     .map(function (t) {
       return Object.assign({}, t, {
@@ -170,7 +167,7 @@ function detectRapidReentry(trades, orders, config) {
     if (!sameInstrument(curr.ticker, prev.ticker)) continue;
     const gap = curr._entry - prev._exit;
     if (gap <= 0 || gap >= config.rapidReentryWindowMs) continue;
-    if (!tradeClosedByStop(orders, prev.id)) continue;
+    if (!tradeClosedInLoss(prev)) continue;
 
     events.push({
       type: EVENT_TYPES.RAPID_REENTRY_POST_STOP,
@@ -180,6 +177,7 @@ function detectRapidReentry(trades, orders, config) {
       timestamp: curr.entryTime || null,
       evidence: {
         prevTradeId: prev.id,
+        prevResult: prev.result,
         gapMs: gap,
         gapMinutes: Math.round((gap / 60000) * 10) / 10,
         side: curr.side,

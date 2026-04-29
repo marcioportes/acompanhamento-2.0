@@ -163,65 +163,46 @@ describe('detectExecutionEvents — STOP_PARTIAL_SIZING', () => {
 // RAPID_REENTRY_POST_STOP
 // ============================================
 describe('detectExecutionEvents — RAPID_REENTRY_POST_STOP', () => {
-  it('detecta reentrada <10min após stop, mesmo side, mesmo instrument', () => {
-    const t1 = makeTrade({ id: 'T1', side: 'SHORT',
+  it('detecta reentrada <10min após exit em loss, mesmo side, mesmo instrument', () => {
+    const t1 = makeTrade({ id: 'T1', side: 'SHORT', result: -100,
       entryTime: '2026-04-22T10:50:00Z', exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', side: 'SHORT',
       entryTime: '2026-04-22T11:07:00Z', exitTime: '2026-04-22T11:15:00Z' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        correlatedTradeId: 'T1', filledAt: '2026-04-22T11:00:00Z' }),
-    ];
-    const events = detectExecutionEvents({ trades: [t1, t2], orders });
+    const events = detectExecutionEvents({ trades: [t1, t2], orders: [makeOrder()] });
     const rapid = events.filter(e => e.type === EVENT_TYPES.RAPID_REENTRY_POST_STOP);
     expect(rapid).toHaveLength(1);
     expect(rapid[0].tradeId).toBe('T2');
     expect(rapid[0].evidence.prevTradeId).toBe('T1');
+    expect(rapid[0].evidence.prevResult).toBe(-100);
     expect(rapid[0].evidence.gapMinutes).toBe(7);
     expect(rapid[0].severity).toBe(EVENT_SEVERITY.MEDIUM);
   });
 
   it('NÃO detecta quando gap >= 10min', () => {
-    const t1 = makeTrade({ id: 'T1', exitTime: '2026-04-22T11:00:00Z' });
+    const t1 = makeTrade({ id: 'T1', result: -50, exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', entryTime: '2026-04-22T11:15:00Z' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        correlatedTradeId: 'T1' }),
-    ];
-    const events = detectExecutionEvents({ trades: [t1, t2], orders });
+    const events = detectExecutionEvents({ trades: [t1, t2], orders: [makeOrder()] });
     expect(events.filter(e => e.type === EVENT_TYPES.RAPID_REENTRY_POST_STOP)).toHaveLength(0);
   });
 
-  it('NÃO detecta quando trade prev não fechou por stop', () => {
-    const t1 = makeTrade({ id: 'T1', exitTime: '2026-04-22T11:00:00Z' });
+  it('NÃO detecta quando trade prev fechou em lucro (result >= 0)', () => {
+    const t1 = makeTrade({ id: 'T1', result: 100, exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', entryTime: '2026-04-22T11:05:00Z' });
-    const orders = [
-      makeOrder({ externalOrderId: 'X1', isStopOrder: false, status: 'FILLED',
-        correlatedTradeId: 'T1' }),
-    ];
-    const events = detectExecutionEvents({ trades: [t1, t2], orders });
+    const events = detectExecutionEvents({ trades: [t1, t2], orders: [makeOrder()] });
     expect(events.filter(e => e.type === EVENT_TYPES.RAPID_REENTRY_POST_STOP)).toHaveLength(0);
   });
 
   it('NÃO detecta side diferente', () => {
-    const t1 = makeTrade({ id: 'T1', side: 'LONG', exitTime: '2026-04-22T11:00:00Z' });
+    const t1 = makeTrade({ id: 'T1', side: 'LONG', result: -50, exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', side: 'SHORT', entryTime: '2026-04-22T11:05:00Z' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        correlatedTradeId: 'T1' }),
-    ];
-    const events = detectExecutionEvents({ trades: [t1, t2], orders });
+    const events = detectExecutionEvents({ trades: [t1, t2], orders: [makeOrder()] });
     expect(events.filter(e => e.type === EVENT_TYPES.RAPID_REENTRY_POST_STOP)).toHaveLength(0);
   });
 
   it('NÃO detecta instrument diferente', () => {
-    const t1 = makeTrade({ id: 'T1', ticker: 'WINM26', exitTime: '2026-04-22T11:00:00Z' });
+    const t1 = makeTrade({ id: 'T1', ticker: 'WINM26', result: -50, exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', ticker: 'WDOM26', entryTime: '2026-04-22T11:05:00Z' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        correlatedTradeId: 'T1' }),
-    ];
-    const events = detectExecutionEvents({ trades: [t1, t2], orders });
+    const events = detectExecutionEvents({ trades: [t1, t2], orders: [makeOrder()] });
     expect(events.filter(e => e.type === EVENT_TYPES.RAPID_REENTRY_POST_STOP)).toHaveLength(0);
   });
 });
@@ -316,42 +297,43 @@ describe('detectExecutionEvents — CHASE_REENTRY', () => {
 describe('detectExecutionEvents — fixture SEM1 (integração)', () => {
   // Dataset real: 3 trades WINM26 em 20-22/04/2026.
   // T1 (LONG 20/04): stop qty=1 com entry qty=2 → STOP_PARTIAL_SIZING
-  // T2 (SHORT 22/04): cancel 10:36 → entry 10:55 → HESITATION_PRE_ENTRY
-  // T3 (SHORT 22/04): T2 stop 11:00 → T3 entry 11:07 → RAPID_REENTRY_POST_STOP
-  const t1 = { id: 'T1', ticker: 'WINM26', side: 'LONG', qty: 2,
+  // T2 (SHORT 22/04): cancel 10:36 → entry 10:55 → HESITATION_PRE_ENTRY; result=-100
+  // T3 (SHORT 22/04): T2 fechou em loss → T3 entry 11:07:52 (7min) → RAPID_REENTRY_POST_STOP
+  const t1 = { id: 'T1', ticker: 'WINM26', side: 'LONG', qty: 2, result: 200,
     entryTime: '2026-04-20T10:00:00Z', exitTime: '2026-04-20T10:30:00Z' };
-  const t2 = { id: 'T2', ticker: 'WINM26', side: 'SHORT', qty: 1,
+  const t2 = { id: 'T2', ticker: 'WINM26', side: 'SHORT', qty: 2, result: -100,
     entryTime: '2026-04-22T10:55:00Z', exitTime: '2026-04-22T11:00:52Z' };
-  const t3 = { id: 'T3', ticker: 'WINM26', side: 'SHORT', qty: 1,
-    entryTime: '2026-04-22T11:07:52Z', exitTime: '2026-04-22T11:15:00Z' };
+  const t3 = { id: 'T3', ticker: 'WINM26', side: 'SHORT', qty: 2, result: 200,
+    entryTime: '2026-04-22T11:07:52Z', exitTime: '2026-04-22T11:19:49Z' };
 
   const orders = [
-    // T1 — entry qty=2 + stop qty=1 (partial)
+    // T1 — entry qty=2 + stop qty=1 (partial sizing — protegeu metade)
     { externalOrderId: 'NLGC...111', instrument: 'WINM26', side: 'BUY',
-      type: 'MARKET', status: 'FILLED', quantity: 2, filledPrice: 100000,
+      type: 'LIMIT', status: 'FILLED', quantity: 2, filledPrice: 200225,
       submittedAt: '2026-04-20T10:00:00Z', filledAt: '2026-04-20T10:00:01Z',
       isStopOrder: false, correlatedTradeId: 'T1' },
     { externalOrderId: 'NLGC...439492', instrument: 'WINM26', side: 'SELL',
-      type: 'STOP', status: 'CANCELLED', quantity: 1, stopPrice: 99500,
+      type: 'STOP', status: 'CANCELLED', quantity: 1, stopPrice: 200245,
       submittedAt: '2026-04-20T10:00:30Z', cancelledAt: '2026-04-20T10:30:00Z',
       isStopOrder: true, correlatedTradeId: 'T1' },
-    // T2 — cancel 10:36 + entry 10:55 + stop hit 11:00:52.
-    // Cancel sem price comparável (limit não casou → entry posterior foi MARKET)
+    // T2 — cancel 10:36 + entry 10:55 (HESITATION). Saída via ordem LIMITE
+    // comum, NÃO ordem stop — refletindo dataset real onde aluno fechou em
+    // loss manualmente, sem ter ordem stop colocada.
     { externalOrderId: 'NLGC...297106', instrument: 'WINM26', side: 'SELL',
-      type: 'LIMIT', status: 'CANCELLED', quantity: 1, price: null,
+      type: 'LIMIT', status: 'CANCELLED', quantity: 2, price: null,
       submittedAt: '2026-04-22T10:36:00Z', cancelledAt: '2026-04-22T10:36:30Z',
       isStopOrder: false, correlatedTradeId: 'T2' },
     { externalOrderId: 'NLGC...359605', instrument: 'WINM26', side: 'SELL',
-      type: 'MARKET', status: 'FILLED', quantity: 1, filledPrice: 99800,
+      type: 'LIMIT', status: 'FILLED', quantity: 2, filledPrice: 198500,
       submittedAt: '2026-04-22T10:55:00Z', filledAt: '2026-04-22T10:55:01Z',
       isStopOrder: false, correlatedTradeId: 'T2' },
-    { externalOrderId: 'NLGC...t2stop', instrument: 'WINM26', side: 'BUY',
-      type: 'STOP', status: 'FILLED', quantity: 1, stopPrice: 99900,
+    { externalOrderId: 'NLGC...t2exit', instrument: 'WINM26', side: 'BUY',
+      type: 'LIMIT', status: 'FILLED', quantity: 2, filledPrice: 198750,
       submittedAt: '2026-04-22T10:55:30Z', filledAt: '2026-04-22T11:00:52Z',
-      isStopOrder: true, correlatedTradeId: 'T2' },
-    // T3 — entry 11:07:52 (7min após T2 stop)
+      isStopOrder: false, correlatedTradeId: 'T2' },
+    // T3 — entry 11:07:52 (7min após exit em loss de T2)
     { externalOrderId: 'NLGC...t3entry', instrument: 'WINM26', side: 'SELL',
-      type: 'MARKET', status: 'FILLED', quantity: 1, filledPrice: 99700,
+      type: 'LIMIT', status: 'FILLED', quantity: 2, filledPrice: 198370,
       submittedAt: '2026-04-22T11:07:52Z', filledAt: '2026-04-22T11:07:53Z',
       isStopOrder: false, correlatedTradeId: 'T3' },
   ];
@@ -407,13 +389,13 @@ describe('detectExecutionEvents — edge cases', () => {
   });
 
   it('eventos retornam ordenados por timestamp', () => {
-    const t1 = makeTrade({ id: 'T1', side: 'SHORT',
+    const t1 = makeTrade({ id: 'T1', side: 'SHORT', result: -100,
       entryTime: '2026-04-22T10:50:00Z', exitTime: '2026-04-22T11:00:00Z' });
     const t2 = makeTrade({ id: 'T2', side: 'SHORT', qty: 2,
       entryTime: '2026-04-22T11:07:00Z', exitTime: '2026-04-22T11:15:00Z' });
     const orders = [
-      // T1 stop hit
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
+      // T1 — order qualquer (não precisa mais ser stop FILLED)
+      makeOrder({ externalOrderId: 'X1', isStopOrder: false, status: 'FILLED',
         correlatedTradeId: 'T1', filledAt: '2026-04-22T11:00:00Z' }),
       // T2 partial sizing
       makeOrder({ externalOrderId: 'S2', isStopOrder: true, status: 'CANCELLED',

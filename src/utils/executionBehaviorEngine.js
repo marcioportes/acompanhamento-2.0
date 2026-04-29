@@ -99,13 +99,14 @@ const isPriceWorse = (orderSide, prevPrice, currPrice) => {
 const ordersForTrade = (orders, tradeId) =>
   orders.filter(o => o.correlatedTradeId === tradeId);
 
-/** Trade fechou por stop? Verifica se há stop FILLED correlacionado. */
-const tradeClosedByStop = (orders, tradeId) =>
-  orders.some(o =>
-    o.correlatedTradeId === tradeId &&
-    o.isStopOrder === true &&
-    o.status === 'FILLED'
-  );
+/**
+ * Trade fechou em loss? Esse é o gatilho comportamental do RAPID_REENTRY:
+ * loss-chasing acontece após perda realizada, independente de como (stop
+ * disparou OU fechamento manual em loss via ordem limite). Aderente a
+ * Coval&Shumway 2005, que mede loss-chasing operacional, não execução literal.
+ */
+const tradeClosedInLoss = (trade) =>
+  typeof trade?.result === 'number' && trade.result < 0;
 
 // ============================================
 // DETECTORS
@@ -185,10 +186,11 @@ const detectPartialSizing = (trade, orders) => {
 };
 
 /**
- * RAPID_REENTRY_POST_STOP — entry mesmo side <10min após exit por stop, mesmo instrument.
+ * RAPID_REENTRY_POST_STOP — entry mesmo side <10min após exit em LOSS,
+ * mesmo instrument. Loss-chasing operacional independente de stop literal.
  * Fonte: Coval & Shumway 2005; Locke & Mann 2005.
  */
-const detectRapidReentry = (trades, orders, config) => {
+const detectRapidReentry = (trades, _orders, config) => {
   const sorted = [...trades]
     .map(t => ({ ...t, _entry: toMs(t.entryTime), _exit: toMs(t.exitTime) }))
     .filter(t => t._entry != null)
@@ -203,7 +205,7 @@ const detectRapidReentry = (trades, orders, config) => {
     if (!sameInstrument(curr.ticker, prev.ticker)) continue;
     const gap = curr._entry - prev._exit;
     if (gap <= 0 || gap >= config.rapidReentryWindowMs) continue;
-    if (!tradeClosedByStop(orders, prev.id)) continue;
+    if (!tradeClosedInLoss(prev)) continue;
 
     events.push({
       type: EVENT_TYPES.RAPID_REENTRY_POST_STOP,
@@ -213,6 +215,7 @@ const detectRapidReentry = (trades, orders, config) => {
       timestamp: curr.entryTime ?? null,
       evidence: {
         prevTradeId: prev.id,
+        prevResult: prev.result,
         gapMs: gap,
         gapMinutes: Math.round((gap / 60000) * 10) / 10,
         side: curr.side,
