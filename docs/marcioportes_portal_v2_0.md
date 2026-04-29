@@ -1,10 +1,17 @@
-# marcioportes.com.br — Portal Institucional v2.0
+> ⚠️ **SUPERSEDED em 28/04/2026 pelo v3.0.**
+> Master atual: `/mnt/c/000-Marcio/marcioportes.com.br/marcioportes_portal_v3_0.md`
+> Mudanças principais: identidade recalibrada (revisao.txt), DEC-P02 revogada (Modelo Portes sai do público), catálogo expandido para 7 produtos, compliance CVM (§14), cronograma com gate email (cutover 02/05/2026), métricas calibradas em faixas.
+> Cópia local mantida para histórico — **NÃO usar como referência ativa**.
+
+---
+
+# marcioportes.com.br — Portal Institucional v2.0 [ARCHIVED]
 
 ## Documento de Referência: Branding, Arquitetura e Roadmap
 
 **Versão:** 2.0
 **Data:** 29/03/2026
-**Status:** Decisões consolidadas — pronto para execução
+**Status:** SUPERSEDED por v3.0 (28/04/2026)
 **Origem:** Evolução do v1.0, incorporando sessão estratégica de 29/03/2026
 
 ---

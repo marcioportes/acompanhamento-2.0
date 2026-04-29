@@ -372,7 +372,7 @@ Card expandível: gates completos + sugestão de stage natural.
 
 ## Referência externa
 
-- Framework completo: `docs/dev/trader_evolution_framework.md` (1287 linhas, ground truth do "Modelo Portes").
+- Framework completo: `docs/dev/trader_evolution_framework.md` (1287 linhas, ground truth do framework comportamental de 4 dimensões — termo "Modelo Portes" mantido aqui em referência interna; revogado para uso público pela DEC-086).
 - Implementação ESM: `src/utils/maturityEngine/`
 - Mirror CommonJS para CF: `functions/maturity/`
 
