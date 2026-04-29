@@ -33,6 +33,7 @@ import SetupAnalysis from '../components/SetupAnalysis';
 import EquityCurve from '../components/EquityCurve';
 import EmotionAnalysis from '../components/EmotionAnalysis';
 import MaturityProgressionCard from '../components/MaturityProgressionCard';
+import ExecutionPatternsAggregateCard from '../components/Trades/ExecutionPatternsAggregateCard';
 import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -624,6 +625,19 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           trades={filteredTrades}
           globalWR={stats?.winRate}
           maturity={maturity}
+        />
+      </div>
+
+      {/* Padrões de execução (issue #208 — Fase 7 visibilidade): card
+          agregado entre matriz emocional e maturidade. Conecta "como você
+          executou" → "como o score 4D moveu" → "qual gate você está
+          quebrando". */}
+      <div className="mb-6">
+        <ExecutionPatternsAggregateCard
+          trades={filteredTrades}
+          orders={orders}
+          windowLabel="janela filtrada"
+          onTradeClick={(t) => setViewingTrade(t)}
         />
       </div>
 

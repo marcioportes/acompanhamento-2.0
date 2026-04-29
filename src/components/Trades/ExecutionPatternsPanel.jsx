@@ -7,50 +7,12 @@
 
 import { useMemo } from 'react';
 import { detectExecutionEvents } from '../../utils/executionBehaviorEngine';
-
-const SEVERITY_STYLES = {
-  HIGH: 'bg-red-500/15 border-red-500/40 text-red-300',
-  MEDIUM: 'bg-amber-500/15 border-amber-500/40 text-amber-300',
-  LOW: 'bg-slate-500/15 border-slate-500/40 text-slate-300',
-};
-
-const EVENT_LABELS = {
-  STOP_TAMPERING: 'Stop reemitido para mais largo',
-  STOP_PARTIAL_SIZING: 'Stop dimensionado para meio lote',
-  RAPID_REENTRY_POST_STOP: 'Reentrada rápida após stop',
-  HESITATION_PRE_ENTRY: 'Hesitação pré-entrada',
-  CHASE_REENTRY: 'Reentrada com preço pior (chase)',
-};
-
-const formatEvidence = (event) => {
-  const e = event.evidence || {};
-  switch (event.type) {
-    case 'STOP_TAMPERING':
-      return `Stop movido de ${e.from} para ${e.to} (${e.tradeSide || ''} — risco ampliado)`;
-    case 'STOP_PARTIAL_SIZING':
-      return `Stop qty=${e.stopQty} enquanto trade qty=${e.tradeQty} (cobertura ${Math.round((e.ratio || 0) * 100)}%)`;
-    case 'RAPID_REENTRY_POST_STOP':
-      return `${e.gapMinutes}min após stop do trade anterior · ${e.side} ${e.instrument}`;
-    case 'HESITATION_PRE_ENTRY':
-      return `Cancelamento ${e.gapMinutes}min antes da entrada efetiva`;
-    case 'CHASE_REENTRY':
-      return `Re-submetida com preço pior em ${e.worseBy} (${e.side} ${e.prevPrice} → ${e.currPrice})`;
-    default:
-      return null;
-  }
-};
-
-const formatCitation = (event) => {
-  if (event.source === 'literature' && event.citation) {
-    return `Fonte: ${event.citation}`;
-  }
-  if (event.source === 'heuristic') {
-    return event.citation
-      ? `Fonte: ${event.citation} (heurística)`
-      : 'Fonte: heurística operacional';
-  }
-  return null;
-};
+import {
+  SEVERITY_STYLES,
+  EVENT_LABELS,
+  formatEvidence,
+  formatCitation,
+} from './executionPatternsDisplay';
 
 const ExecutionPatternsPanel = ({ trade, orders }) => {
   const events = useMemo(() => {
