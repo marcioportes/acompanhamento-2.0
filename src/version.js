@@ -3,6 +3,17 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.49.0: feat: sensor comportamental de execução — Order Import como input de tilt/revenge no 4D
+ *   (issue #208). Pipeline atual descarta cancels em `orderReconstruction.js:99-100` e
+ *   `orderCorrelation.js:234`; correlator 1:1 quebra com bracket OCO (gera "ghost orders" falsos).
+ *   Entrega em 7 fases: (1) correlator N:1; (2) `executionBehaviorEngine.js` com 5 detectores
+ *   (STOP_TAMPERING, STOP_PARTIAL_SIZING, RAPID_REENTRY_POST_STOP, HESITATION_PRE_ENTRY, CHASE_REENTRY);
+ *   (3) integração em `emotionalAnalysisV2` via `EVENT_PENALTIES` + `executionEvents` em detectTilt/Revenge;
+ *   (4) gates Stage 3→4 condicionais (`no-stop-tampering`, `no-chase`, `disciplined-sizing`) — pattern
+ *   DEC-AUTO-187-03 (`null` quando sample insuficiente, não promove e não rebaixa); (5) persistência
+ *   Opção C (compute on-the-fly, sem schema novo, INV-15 não acionada); (6) UI mínima TradeDetailModal +
+ *   MaturityProgressionCard; (7) encerramento. Fundamento: Kahneman&Tversky 1979, Shefrin&Statman 1985,
+ *   Coval&Shumway 2005, Barber&Odean 2000 (já em DEC-048). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.48.0: feat: coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — Form manual no Trade Entry +
  *   parser ProfitPro (pts/% → preço) + loader Yahoo Finance 1m + CF enrichTradeWithExcursions
  *   compute&discard (janela 7d) + integração engine maturidade Stage 3→4 não-bloqueante quando

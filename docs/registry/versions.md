@@ -12,3 +12,4 @@
 | 1.46.1 | #197 | `fix/issue-197-review-meeting-links-post-publish` | 25/04/2026 | consumida (PR #198 squash `af9662b0`) |
 | 1.47.0 | #201 | `refactor/issue-201-calculate-plan-mechanics` | 26/04/2026 | consumida (PR #202 squash `f5fbd87e`) |
 | 1.48.0 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | reservada |
+| 1.49.0 | #208 | `feat/issue-208-execution-behavior-sensor` | 29/04/2026 | reservada |

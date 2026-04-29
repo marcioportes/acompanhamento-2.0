@@ -7,3 +7,5 @@
 |-------|-------|--------|------|--------|
 | CHUNK-04 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | autônomo |
 | CHUNK-07 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | autônomo |
+| CHUNK-06 | #208 | `feat/issue-208-execution-behavior-sensor` | 29/04/2026 | interativo |
+| CHUNK-10 | #208 | `feat/issue-208-execution-behavior-sensor` | 29/04/2026 | interativo |
