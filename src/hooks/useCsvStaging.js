@@ -159,6 +159,12 @@ const useCsvStaging = (overrideStudentId = null) => {
           exchange: trade.exchange ?? null,
           directionInferred: trade.directionInferred ?? false,
 
+          // Issue #187 — MEP/MEN convertidos pelo csvMapper de pts/% para preço.
+          // Persistir no staging para sobreviver ao ciclo staging → activate → trade.
+          mepPrice: trade.mepPrice ?? null,
+          menPrice: trade.menPrice ?? null,
+          excursionSource: trade.excursionSource ?? null,
+
           // Complemento do aluno (preenchido depois)
           emotionEntry: trade.emotionEntry ?? null,
           emotionExit: trade.emotionExit ?? null,
@@ -325,6 +331,10 @@ const useCsvStaging = (overrideStudentId = null) => {
       setup: stagingTrade.setup,
       // Se CSV trouxe resultado, passar como override
       resultOverride: stagingTrade.resultOverride ?? stagingTrade.result ?? null,
+      // Issue #187 — MEP/MEN persistidos no staging propagam para o trade final.
+      mepPrice: stagingTrade.mepPrice ?? null,
+      menPrice: stagingTrade.menPrice ?? null,
+      excursionSource: stagingTrade.excursionSource ?? null,
       // Metadados de origem
       importSource: stagingTrade.importSource ?? 'csv',
       importBatchId: stagingTrade.importBatchId ?? null,
