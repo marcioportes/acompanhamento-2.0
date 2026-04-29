@@ -376,9 +376,12 @@ const OrderImportPage = ({
         })),
       ];
 
-      // 6. Gate de cobertura: operações em datas sem plano vigente na conta.
+      // 6. Gate de cobertura: SÓ operações NOVAS (toCreate) precisam de plano
+      // cobrindo a data. Operações MATCH_CONFIDENT/AMBIGUOUS/AUTOLIQ já casaram
+      // com trades existentes e portanto já estavam cobertas no momento em que
+      // o trade foi criado — não exigir plano retroativo nelas.
       const gap = detectCoverageGap({
-        operations: confirmedOps,
+        operations: toCreate,
         plans,
         accountId,
       });
@@ -583,88 +586,6 @@ const OrderImportPage = ({
     tradesById,
     analyzeShadow,
   ]);
-
-  // ============================================
-  // MODO CONFRONTO (V1.1b) — ações para trades enriquecidos
-  // ============================================
-
-  const handleAcceptMatched = useCallback(async (_item) => {
-    return { success: true };
-  }, []);
-
-  const handleEnrichMatched = useCallback(async (item) => {
-    if (!userContext?.uid) {
-      return { success: false, error: 'Contexto de usuário indisponível' };
-    }
-
-    const { trade, operation } = item;
-
-    try {
-      let tickerRule = null;
-      const symbol = (operation.instrument || '').toUpperCase();
-      try {
-        const tickerSnap = await getDocs(
-          query(collection(db, 'tickers'), where('symbol', '==', symbol))
-        );
-        if (!tickerSnap.empty) {
-          const tickerDoc = tickerSnap.docs[0].data();
-          if (tickerDoc.tickSize && tickerDoc.tickValue) {
-            tickerRule = {
-              tickSize: tickerDoc.tickSize,
-              tickValue: tickerDoc.tickValue,
-              pointValue: tickerDoc.pointValue ?? null,
-            };
-          }
-        }
-      } catch (err) {
-        console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
-      }
-
-      const partials = [];
-      let seq = 1;
-      for (const entry of (operation.entryOrders || [])) {
-        partials.push({
-          type: 'ENTRY',
-          price: parseFloat(entry.filledPrice ?? entry.price) || 0,
-          qty: parseFloat(entry.filledQuantity ?? entry.quantity) || 0,
-          dateTime: entry.filledAt || entry.submittedAt || null,
-          seq: seq++,
-        });
-      }
-      for (const exit of (operation.exitOrders || [])) {
-        partials.push({
-          type: 'EXIT',
-          price: parseFloat(exit.filledPrice ?? exit.price) || 0,
-          qty: parseFloat(exit.filledQuantity ?? exit.quantity) || 0,
-          dateTime: exit.filledAt || exit.submittedAt || null,
-          seq: seq++,
-        });
-      }
-
-      let stopLoss = null;
-      if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
-        const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
-        stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
-      }
-
-      const enrichment = {
-        _partials: partials,
-        entry: operation.avgEntryPrice,
-        exit: operation.avgExitPrice,
-        qty: operation.totalQty,
-        stopLoss,
-        tickerRule,
-        importBatchId: batchId,
-      };
-
-      await enrichTrade(trade.id, enrichment, userContext);
-      console.log(`[OrderImportPage] Trade ${trade.id} enriquecido com dados da corretora`);
-      return { success: true, tradeId: trade.id };
-    } catch (err) {
-      console.error('[OrderImportPage] Erro enrichTrade:', err);
-      return { success: false, error: err.message };
-    }
-  }, [userContext, batchId]);
 
   // ============================================
   // RENDER
@@ -889,11 +810,7 @@ const OrderImportPage = ({
               )}
 
               {confrontData && (
-                <MatchedOperationsPanel
-                  confrontData={confrontData}
-                  onAccept={handleAcceptMatched}
-                  onEnrich={handleEnrichMatched}
-                />
+                <MatchedOperationsPanel confrontData={confrontData} />
               )}
 
               <div className="flex justify-end pt-2">
