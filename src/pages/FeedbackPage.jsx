@@ -35,6 +35,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
+import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradeLockBadge from '../components/TradeLockBadge';
 import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
@@ -172,6 +173,8 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           <span className="text-white font-mono text-lg">{trade.qty}</span>
         </div>
       </div>
+
+      <ExcursionDisplay trade={trade} variant="full" />
 
       {/* Métricas de Risco — Stop, RR, Resultado % PL */}
       {(() => {

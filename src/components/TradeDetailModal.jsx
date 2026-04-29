@@ -35,6 +35,7 @@ import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
 import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
 import ExecutionPatternsPanel from './Trades/ExecutionPatternsPanel';
+import ExcursionDisplay from './ExcursionDisplay';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -351,6 +352,10 @@ const TradeDetailModal = ({
                 <span className="text-white font-mono text-lg">{trade.qty}</span>
               </div>
             </div>
+
+            {/* MEP/MEN — issue #187. Display em pts (futures) ou % (equity), derivado do storage em preço. */}
+            <ExcursionDisplay trade={trade} variant="full" className="mb-6" />
+
 
             {/* Resultado editado vs calculado */}
             {trade.resultEdited && trade.resultCalculated != null && (

@@ -20,6 +20,7 @@ import {
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
+import ExcursionDisplay from '../components/ExcursionDisplay';
 import StudentFeedbackCard from '../components/StudentFeedbackCard';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import EquityCurve from '../components/EquityCurve';
@@ -456,6 +457,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                           {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
                           {' • '}{trade.setup || 'Sem setup'}
                         </p>
+                        <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
                       </div>
                     </div>
                     <div className="flex items-center gap-4">

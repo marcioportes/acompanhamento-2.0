@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { formatCurrencyDynamic } from '../utils/currency';
 import TradeStatusBadges from './TradeStatusBadges';
+import ExcursionDisplay from './ExcursionDisplay';
 
 /**
  * Formatadores Visuais (Helpers)
@@ -184,6 +185,7 @@ const TradesList = ({
                     )}
                     <TradeStatusBadges trade={trade} />
                   </div>
+                  <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
                 </td>
 
                 {/* SETUP (Escondido em Mobile) */}

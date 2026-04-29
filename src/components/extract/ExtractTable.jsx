@@ -18,6 +18,7 @@ import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
 import { matchEmotionalEventsToTrade } from '../../utils/extractInlineEvents';
 import TradeStatusBadges from '../TradeStatusBadges';
+import ExcursionDisplay from '../ExcursionDisplay';
 import { Lock } from 'lucide-react';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
@@ -226,6 +227,7 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                       title="Trade travado pelo mentor"
                     />
                   )}
+                  <ExcursionDisplay trade={trade} variant="compact" className="mt-0.5" />
                 </td>
 
                 {/* Emoção — só emojis, tooltip com nomes completos */}

@@ -30,6 +30,7 @@ import { useAuth } from '../contexts/AuthContext';
 import FeedbackPage from './FeedbackPage';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import ExcursionDisplay from '../components/ExcursionDisplay';
 
 // ============================================
 // CONSTANTS
@@ -161,6 +162,7 @@ const TradeListItem = ({ trade, isSelected, onClick }) => {
             </>
           )}
         </div>
+        <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
       </div>
       <span className={`text-sm font-semibold flex-shrink-0 ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
         {isWin ? '+' : ''}{formatCurrency(trade.result)}
