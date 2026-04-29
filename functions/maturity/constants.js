@@ -52,6 +52,11 @@ const GATES_BY_TRANSITION = {
     { id: 'payoff-2', label: 'Payoff ≥ 2.0', dim: 'fin', metric: 'payoff', op: '>=', threshold: 2.0 },
     { id: 'maxdd-5', label: 'MaxDD ≤ 5%', dim: 'fin', metric: 'maxDDPercent', op: '<=', threshold: 5 },
     { id: 'sharpe-1_2', label: 'Sharpe mensal ≥ 1.2', dim: 'fin', metric: 'monthlySharpe', op: '>=', threshold: 1.2 },
+    // Issue #208 — gates comportamentais. METRIC_UNAVAILABLE quando <30 trades
+    // com order data linked (DEC-AUTO-208-03).
+    { id: 'no-stop-tampering', label: 'Sem stop tampering', dim: 'op', metric: 'stopTamperingCount', op: '==', threshold: 0 },
+    { id: 'no-chase', label: 'Sem chase reentry', dim: 'op', metric: 'chaseCount', op: '==', threshold: 0 },
+    { id: 'disciplined-sizing', label: 'Sizing de stop disciplinado', dim: 'op', metric: 'partialStopCount', op: '==', threshold: 0 },
   ],
   '4-5': [
     { id: 'emotional-85', label: 'Emocional ≥ 85 (SAGE)', dim: 'emo', metric: 'E', op: '>=', threshold: 85 },
