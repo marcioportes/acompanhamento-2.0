@@ -33,7 +33,6 @@ import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
-import ExecutionPatternsAggregateCard from '../components/Trades/ExecutionPatternsAggregateCard';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import { useTrades } from '../hooks/useTrades';
@@ -154,14 +153,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     statusThresholds
   });
 
-  // Issue #208 — orders do aluno selecionado, filtradas por correlatedTradeId
-  // dentro do conjunto de trades do aluno. Evita expor ordens de outros alunos
-  // quando mentor está em view-as-student (cf. useOrders mentor-mode lê todas).
-  const selectedStudentOrders = useMemo(() => {
-    if (!selectedStudent) return [];
-    const tradeIds = new Set(selectedStudentTrades.map((t) => t.id).filter(Boolean));
-    return orders.filter((o) => o.correlatedTradeId && tradeIds.has(o.correlatedTradeId));
-  }, [orders, selectedStudent, selectedStudentTrades]);
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -284,17 +275,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             />
           </div>
         )}
-        {/* Padrões de execução observados (issue #208 — Fase 7 visibilidade
-            ao mentor). Listados após perfil emocional para o mentor enxergar
-            "o que aconteceu na execução" antes de descer para a lista. */}
-        <div className="mb-8">
-          <ExecutionPatternsAggregateCard
-            trades={selectedStudentTrades}
-            orders={selectedStudentOrders}
-            windowLabel={`${selectedStudent.name} · todas as operações`}
-            onTradeClick={(t) => setViewingTrade(t)}
-          />
-        </div>
         <div className="glass-card">
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>

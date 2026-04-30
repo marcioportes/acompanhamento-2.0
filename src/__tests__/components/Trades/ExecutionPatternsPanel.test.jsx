@@ -44,7 +44,8 @@ describe('ExecutionPatternsPanel', () => {
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    expect(screen.getByText(/Padrões de execução · 1 detectado/)).toBeInTheDocument();
+    expect(screen.getByText(/Padrões de execução detectados/)).toBeInTheDocument();
+    expect(screen.getByText(/baseados nas ordens acima/)).toBeInTheDocument();
     expect(screen.getByText('HIGH')).toBeInTheDocument();
     expect(screen.getByText(/Stop dimensionado para meio lote/)).toBeInTheDocument();
     expect(screen.getByText(/Shefrin & Statman/)).toBeInTheDocument();
@@ -64,9 +65,8 @@ describe('ExecutionPatternsPanel', () => {
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    // 2 detectados: STOP_TAMPERING + STOP_PARTIAL_SIZING (qty soma=1+2=3 ≥ 2 NÃO; qty 1+2=3 vs trade qty 2 → não dispara). Recheck:
     // Trade qty=2; stop qtys = [2, 1] = soma 3 ≥ 2 → não dispara partial. Apenas STOP_TAMPERING.
-    expect(screen.getByText(/Padrões de execução · 1 detectado/)).toBeInTheDocument();
+    expect(screen.getByText(/Padrões de execução detectados/)).toBeInTheDocument();
     expect(screen.getByText(/Stop reemitido para mais largo/)).toBeInTheDocument();
   });
 

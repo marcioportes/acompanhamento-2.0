@@ -426,6 +426,12 @@ const TradeDetailModal = ({
             {/* Ordens da Corretora (V1.1c — issue #93) */}
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
 
+            {/* Padrões de execução detectados a partir das ordens correlacionadas
+                (#208 Fase 6 — visibilidade atômica). Posicionado logo após o
+                TradeOrdersPanel para que aluno/mentor leiam "estas ordens →
+                este padrão" na sequência natural. */}
+            <ExecutionPatternsPanel trade={trade} orders={orders} embedded />
+
             {/* Shadow Behavior — mentor-only (#129) */}
             {isMentor && trade.shadowBehavior && (
               <ShadowBehaviorPanel trade={trade} isMentor={isMentor} embedded />
@@ -606,9 +612,6 @@ const TradeDetailModal = ({
                 </div>
               )}
             </div>
-
-            {/* Padrões de execução detectados (#208 Fase 6) */}
-            <ExecutionPatternsPanel trade={trade} orders={orders} />
 
             {/* Histórico de correções do mentor (#188 F1c) */}
             {Array.isArray(trade._mentorEdits) && trade._mentorEdits.length > 0 && (

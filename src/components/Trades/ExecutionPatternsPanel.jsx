@@ -14,7 +14,7 @@ import {
   formatCitation,
 } from './executionPatternsDisplay';
 
-const ExecutionPatternsPanel = ({ trade, orders }) => {
+const ExecutionPatternsPanel = ({ trade, orders, embedded = false }) => {
   const events = useMemo(() => {
     if (!trade?.id || !Array.isArray(orders) || orders.length === 0) return [];
     const correlated = orders.filter((o) => o.correlatedTradeId === trade.id);
@@ -25,13 +25,19 @@ const ExecutionPatternsPanel = ({ trade, orders }) => {
 
   if (events.length === 0) return null;
 
+  const wrapperClass = embedded ? 'mb-6' : 'p-6 border-t border-slate-800/50';
+
   return (
-    <div className="p-6 border-t border-slate-800/50">
-      <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
-        <span className="px-2 py-0.5 bg-slate-700/50 border border-slate-600/50 rounded text-xs">
-          Padrões de execução · {events.length} detectado{events.length === 1 ? '' : 's'}
+    <div className={wrapperClass}>
+      <div className="flex items-center gap-2 text-slate-400 mb-3">
+        <span className="text-sm font-medium">Padrões de execução detectados</span>
+        <span className="text-xs bg-rose-500/15 text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/30">
+          {events.length}
         </span>
-      </h3>
+        <span className="text-[10px] text-slate-500 italic">
+          baseados nas ordens acima
+        </span>
+      </div>
       <div className="space-y-3">
         {events.map((event, i) => {
           const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.LOW;
