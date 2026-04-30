@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.49.0] - 30/04/2026 · #208 · PR #209
+
+**feat:** sensor comportamental de execução (5 detectores + gates 3→4)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.48.0] - 27/04/2026 · #187 · PR _pendente_
 
 **feat:** coleta de MEP/MEN (Maximum Excursion Positiva/Negativa) — fundação para gate Stage 3→4 do motor de maturidade (#119)

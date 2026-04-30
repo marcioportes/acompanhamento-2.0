@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+* - 1.49.0: #208 feat sensor comportamental de execução (5 detectores + gates 3→4) (PR #209, 30/04/2026)
  * - 1.49.0: feat: sensor comportamental de execução — Order Import como input de tilt/revenge no 4D
  *   (issue #208). Pipeline atual descarta cancels em `orderReconstruction.js:99-100` e
  *   `orderCorrelation.js:234`; correlator 1:1 quebra com bracket OCO (gera "ghost orders" falsos).
@@ -253,10 +254,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.48.0',
-  build: '20260427',
-  display: 'v1.48.0',
-  full: '1.48.0+20260427',
+  version: '1.49.0',
+  build: '20260430',
+  display: 'v1.49.0',
+  full: '1.49.0+20260430',
 };
 export default VERSION;
 export { VERSION };
