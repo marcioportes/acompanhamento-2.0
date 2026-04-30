@@ -866,20 +866,23 @@ exports.onTradeCreated = functions.firestore
       }
 
       // === 2. COMPLIANCE E RED FLAGS ===
-      // DEC-006: Red flag NO_STOP contextualizada
+      // DEC-006 + DEC-AUTO-208-04: NO_STOP é violação SALVO em stop implícito
+      // (loss sem stop formal — saída em prejuízo é o stop praticado).
       if (!trade.stopLoss) {
         const tradeResult = trade.result ?? 0;
-        let noStopMsg = 'Trade sem stop loss definido';
-        if (tradeResult < 0) {
-          noStopMsg += ` — risco retroativo`;
-        } else if (tradeResult > 0) {
-          noStopMsg += ' — risco não mensurado (win sem stop)';
+        const isImplicitStop = tradeResult < 0;
+        if (!isImplicitStop) {
+          let noStopMsg = 'Trade sem stop loss definido';
+          if (tradeResult > 0) {
+            noStopMsg += ' — risco não mensurado (win sem stop)';
+          }
+          redFlags.push({
+            type: RED_FLAG_TYPES.NO_STOP,
+            message: noStopMsg,
+            timestamp: new Date().toISOString()
+          });
         }
-        redFlags.push({ 
-          type: RED_FLAG_TYPES.NO_STOP, 
-          message: noStopMsg, 
-          timestamp: new Date().toISOString() 
-        });
+        // Loss sem stop → stop implícito (DEC-AUTO-208-04). Não emite NO_STOP.
       }
 
       if (!trade.planId) {
@@ -1080,11 +1083,14 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         });
 
         if (!after.stopLoss) {
+          // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
           const tradeResult = after.result ?? 0;
-          let noStopMsg = 'Trade sem stop loss definido';
-          if (tradeResult < 0) noStopMsg += ' — risco retroativo';
-          else if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
-          newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
+          const isImplicitStop = tradeResult < 0;
+          if (!isImplicitStop) {
+            let noStopMsg = 'Trade sem stop loss definido';
+            if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
+            newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
+          }
         }
         if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
           newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${compliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, timestamp: new Date().toISOString() });
@@ -1402,11 +1408,14 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     });
     
     if (!trade.stopLoss) {
+      // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
       const tradeResult = trade.result ?? 0;
-      let noStopMsg = 'Trade sem stop loss definido';
-      if (tradeResult < 0) noStopMsg += ' — risco retroativo';
-      else if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
-      newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
+      const isImplicitStop = tradeResult < 0;
+      if (!isImplicitStop) {
+        let noStopMsg = 'Trade sem stop loss definido';
+        if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
+        newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
+      }
     }
     if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
       newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: 'Risco ' + compliance.riskPercent.toFixed(1) + '% excede maximo (' + plan.riskPerOperation + '%)', timestamp: new Date().toISOString() });
@@ -1461,3 +1470,9 @@ exports.generatePropFirmApproachPlan = require("./propFirm/generatePropFirmAppro
 // ============================================
 exports.createWeeklyReview = require("./reviews/createWeeklyReview");
 exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
+
+// ============================================
+// MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
+// ============================================
+exports.enrichTradeWithExcursions = require("./marketData/enrichTradeWithExcursions");
+exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnrich");

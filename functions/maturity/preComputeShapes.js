@@ -19,7 +19,14 @@
 //
 // Stubs neutros remanescentes (TODO mirror):
 //   evLeakage         (depende de plans com pl/riskPerOperation/rrTarget) — null
-//   advancedMetricsPresent — false (depende de MFE/MAE tracking)
+//
+// Issue #187 (DEC-AUTO-187-04): advancedMetricsPresent agora deriva de mepPrice/menPrice
+// nos trades. Política:
+//   - amostra < 10 trades → null (insuficiente; gate marca METRIC_UNAVAILABLE)
+//   - ≥ 80% dos trades têm mepPrice E menPrice não-null → true (rastreamento habitual)
+//   - < 80% → null (NÃO bloqueia — DEC-AUTO-187-03; gate fica insuficiente até aluno preencher)
+// Nunca retorna false: gate Stage 3→4 é opcional/condicional, sem dado o aluno
+// não progride além do Metódico, mas tampouco rebaixa.
 //
 // Issue #191: complianceRate100 agora usa janela de ciclos ativos do trader
 // (computeCycleBasedComplianceRate). Quando a janela é insuficiente (<20 trades
@@ -33,6 +40,7 @@
 
 const { computeCycleBasedComplianceRate } = require('./computeCycleBasedComplianceRate');
 const { computeEmotionalAnalysisShape } = require('./emotionalAnalysisMirror');
+const { detectExecutionEvents } = require('./executionBehaviorMirror');
 
 function isNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -111,6 +119,19 @@ function calcConsistencyCV(trades) {
   return { cv: Math.round(cv * 100) / 100, mean, stdDev, count: results.length };
 }
 
+// Issue #187 — DEC-AUTO-187-04
+const ADVANCED_METRICS_MIN_TRADES = 10;
+const ADVANCED_METRICS_MIN_RATIO = 0.8;
+
+function deriveAdvancedMetricsPresent(trades) {
+  if (!Array.isArray(trades) || trades.length < ADVANCED_METRICS_MIN_TRADES) return null;
+  const tracked = trades.filter(
+    (t) => t && t.mepPrice != null && t.menPrice != null,
+  ).length;
+  const ratio = tracked / trades.length;
+  return ratio >= ADVANCED_METRICS_MIN_RATIO ? true : null;
+}
+
 function calcComplianceRate(trades) {
   if (!Array.isArray(trades) || trades.length === 0) return null;
   const withFlags = trades.filter(
@@ -120,9 +141,10 @@ function calcComplianceRate(trades) {
   return (compliant / trades.length) * 100;
 }
 
-function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {}) {
+function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig, orders } = {}) {
   const safeTrades = Array.isArray(trades) ? trades : [];
   const safePlans = Array.isArray(plans) ? plans : [];
+  const safeOrders = Array.isArray(orders) ? orders : [];
   const initialBalance = safePlans[0]?.initialBalance ?? 0;
   const refNow = now instanceof Date ? now : (now ? new Date(now) : new Date());
 
@@ -141,12 +163,28 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {
     : { periodScore: 50, tiltCount: 0, revengeCount: 0 };
 
   const evLeakage = null;
-  const advancedMetricsPresent = false;
+  const advancedMetricsPresent = deriveAdvancedMetricsPresent(safeTrades);
   const complianceRate100 = computeCycleBasedComplianceRate({
     trades: safeTrades,
     plans: safePlans,
     now: refNow,
   });
+
+  // Issue #208 — Option C (DEC-AUTO-208-02): compute on-the-fly. Sem persistir
+  // events em collection nova. Eventos derivados de orders já correlacionadas
+  // (campo `correlatedTradeId` populado pela pipeline Order Import).
+  const executionEvents = detectExecutionEvents({
+    trades: safeTrades,
+    orders: safeOrders,
+  });
+  const tradeIdsWithOrders = new Set(
+    safeOrders
+      .filter((o) => o && o.correlatedTradeId)
+      .map((o) => o.correlatedTradeId)
+  );
+  const tradesWithOrderData = safeTrades.filter(
+    (t) => t && t.id && tradeIdsWithOrders.has(t.id)
+  ).length;
 
   return {
     stats,
@@ -158,6 +196,8 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig } = {
     evLeakage,
     advancedMetricsPresent,
     complianceRate100,
+    executionEvents,
+    tradesWithOrderData,
   };
 }
 
@@ -169,4 +209,7 @@ module.exports = {
   calcConsistencyCV,
   calcComplianceRate,
   computeCycleBasedComplianceRate,
+  deriveAdvancedMetricsPresent,
+  ADVANCED_METRICS_MIN_TRADES,
+  ADVANCED_METRICS_MIN_RATIO,
 };

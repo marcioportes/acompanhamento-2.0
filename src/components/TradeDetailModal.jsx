@@ -34,6 +34,8 @@ import {
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
 import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
+import ExecutionPatternsPanel from './Trades/ExecutionPatternsPanel';
+import ExcursionDisplay from './ExcursionDisplay';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -121,12 +123,13 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const TradeDetailModal = ({ 
-  isOpen, 
-  onClose, 
-  trade, 
+const TradeDetailModal = ({
+  isOpen,
+  onClose,
+  trade,
   plans = [],
   orders = [],
+  allTrades = [],
   isMentor = false,
   onAddFeedback,
   feedbackLoading = false,
@@ -351,6 +354,10 @@ const TradeDetailModal = ({
               </div>
             </div>
 
+            {/* MEP/MEN — issue #187. Display em pts (futures) ou % (equity), derivado do storage em preço. */}
+            <ExcursionDisplay trade={trade} variant="full" className="mb-6" />
+
+
             {/* Resultado editado vs calculado */}
             {trade.resultEdited && trade.resultCalculated != null && (
               <div className="mb-6 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-center gap-3">
@@ -419,6 +426,12 @@ const TradeDetailModal = ({
 
             {/* Ordens da Corretora (V1.1c — issue #93) */}
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
+
+            {/* Padrões de execução detectados a partir das ordens correlacionadas
+                (#208 Fase 6 — visibilidade atômica). Posicionado logo após o
+                TradeOrdersPanel para que aluno/mentor leiam "estas ordens →
+                este padrão" na sequência natural. */}
+            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={allTrades} embedded />
 
             {/* Shadow Behavior — mentor-only (#129) */}
             {isMentor && trade.shadowBehavior && (

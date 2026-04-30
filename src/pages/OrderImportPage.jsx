@@ -36,7 +36,7 @@ import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
-import { correlateOrders } from '../utils/orderCorrelation';
+import { correlateOrders, correlateCancelledOrders } from '../utils/orderCorrelation';
 import { categorizeConfirmedOps, CLASSIFICATION } from '../utils/orderTradeCreation';
 import { createTradesBatch } from '../utils/orderTradeBatch';
 import { compareOperationWithTrade } from '../utils/orderTradeComparison';
@@ -318,14 +318,42 @@ const OrderImportPage = ({
       const confirmedSet = new Set(confirmedOrderKeys || []);
       const confirmedOrders = parsedOrders.filter(o => confirmedSet.has(makeOrderKey(o)));
 
-      // 1. Ingest (staging → orders, deleta o resto) — mantido intacto.
-      setProgress('Ingerindo ordens das operações confirmadas...');
-      await orderStaging.ingestBatch(batchId, {}, confirmedOrderKeys);
-
-      // 2. Correlate com trades do plano.
+      // 1. Correlate ANTES de ingerir — issue #208: o pipeline anterior chamava
+      //    ingestBatch(batchId, {}, ...) e gravava todas as orders com
+      //    correlatedTradeId=null, deixando o sensor comportamental cego.
+      //    Agora correlacionamos primeiro (FILLED + CANCELLED) e passamos o
+      //    mapping pra ingestBatch.
       setProgress('Correlacionando com trades...');
       const { correlations, stats: corrStats } = correlateOrders(confirmedOrders, planTrades);
+      const cancelledCorrs = correlateCancelledOrders(
+        confirmedOrders.filter(o => o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED'),
+        planTrades,
+      );
       setCorrelationResult({ correlations, stats: corrStats });
+
+      // 2. Mapear externalOrderId → stagingDoc.id (snapshot atual do hook).
+      //    addStagingBatch já gravou; o listener onSnapshot já trouxe os docs.
+      const stagingByExternalId = new Map();
+      for (const sd of (orderStaging.stagingOrders || [])) {
+        if (sd.importBatchId === batchId && sd.externalOrderId) {
+          stagingByExternalId.set(sd.externalOrderId, sd.id);
+        }
+      }
+      const correlationsByStagingId = {};
+      for (const c of correlations) {
+        if (!c.externalOrderId || !c.tradeId) continue;
+        const stagingId = stagingByExternalId.get(c.externalOrderId);
+        if (stagingId) correlationsByStagingId[stagingId] = { tradeId: c.tradeId, confidence: c.confidence };
+      }
+      for (const c of cancelledCorrs) {
+        if (!c.externalOrderId || !c.tradeId) continue;
+        const stagingId = stagingByExternalId.get(c.externalOrderId);
+        if (stagingId) correlationsByStagingId[stagingId] = { tradeId: c.tradeId, confidence: c.confidence };
+      }
+
+      // 3. Ingest (staging → orders, deleta o resto) com correlatedTradeId populado.
+      setProgress('Ingerindo ordens das operações confirmadas...');
+      await orderStaging.ingestBatch(batchId, correlationsByStagingId, confirmedOrderKeys);
 
       // 3. Cross-check (persistido — não exibido ao aluno).
       if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
@@ -376,9 +404,12 @@ const OrderImportPage = ({
         })),
       ];
 
-      // 6. Gate de cobertura: operações em datas sem plano vigente na conta.
+      // 6. Gate de cobertura: SÓ operações NOVAS (toCreate) precisam de plano
+      // cobrindo a data. Operações MATCH_CONFIDENT/AMBIGUOUS/AUTOLIQ já casaram
+      // com trades existentes e portanto já estavam cobertas no momento em que
+      // o trade foi criado — não exigir plano retroativo nelas.
       const gap = detectCoverageGap({
-        operations: confirmedOps,
+        operations: toCreate,
         plans,
         accountId,
       });
@@ -583,88 +614,6 @@ const OrderImportPage = ({
     tradesById,
     analyzeShadow,
   ]);
-
-  // ============================================
-  // MODO CONFRONTO (V1.1b) — ações para trades enriquecidos
-  // ============================================
-
-  const handleAcceptMatched = useCallback(async (_item) => {
-    return { success: true };
-  }, []);
-
-  const handleEnrichMatched = useCallback(async (item) => {
-    if (!userContext?.uid) {
-      return { success: false, error: 'Contexto de usuário indisponível' };
-    }
-
-    const { trade, operation } = item;
-
-    try {
-      let tickerRule = null;
-      const symbol = (operation.instrument || '').toUpperCase();
-      try {
-        const tickerSnap = await getDocs(
-          query(collection(db, 'tickers'), where('symbol', '==', symbol))
-        );
-        if (!tickerSnap.empty) {
-          const tickerDoc = tickerSnap.docs[0].data();
-          if (tickerDoc.tickSize && tickerDoc.tickValue) {
-            tickerRule = {
-              tickSize: tickerDoc.tickSize,
-              tickValue: tickerDoc.tickValue,
-              pointValue: tickerDoc.pointValue ?? null,
-            };
-          }
-        }
-      } catch (err) {
-        console.warn(`[OrderImportPage] tickerRule não encontrado para ${symbol}:`, err.message);
-      }
-
-      const partials = [];
-      let seq = 1;
-      for (const entry of (operation.entryOrders || [])) {
-        partials.push({
-          type: 'ENTRY',
-          price: parseFloat(entry.filledPrice ?? entry.price) || 0,
-          qty: parseFloat(entry.filledQuantity ?? entry.quantity) || 0,
-          dateTime: entry.filledAt || entry.submittedAt || null,
-          seq: seq++,
-        });
-      }
-      for (const exit of (operation.exitOrders || [])) {
-        partials.push({
-          type: 'EXIT',
-          price: parseFloat(exit.filledPrice ?? exit.price) || 0,
-          qty: parseFloat(exit.filledQuantity ?? exit.quantity) || 0,
-          dateTime: exit.filledAt || exit.submittedAt || null,
-          seq: seq++,
-        });
-      }
-
-      let stopLoss = null;
-      if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
-        const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
-        stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
-      }
-
-      const enrichment = {
-        _partials: partials,
-        entry: operation.avgEntryPrice,
-        exit: operation.avgExitPrice,
-        qty: operation.totalQty,
-        stopLoss,
-        tickerRule,
-        importBatchId: batchId,
-      };
-
-      await enrichTrade(trade.id, enrichment, userContext);
-      console.log(`[OrderImportPage] Trade ${trade.id} enriquecido com dados da corretora`);
-      return { success: true, tradeId: trade.id };
-    } catch (err) {
-      console.error('[OrderImportPage] Erro enrichTrade:', err);
-      return { success: false, error: err.message };
-    }
-  }, [userContext, batchId]);
 
   // ============================================
   // RENDER
@@ -889,11 +838,7 @@ const OrderImportPage = ({
               )}
 
               {confrontData && (
-                <MatchedOperationsPanel
-                  confrontData={confrontData}
-                  onAccept={handleAcceptMatched}
-                  onEnrich={handleEnrichMatched}
-                />
+                <MatchedOperationsPanel confrontData={confrontData} />
               )}
 
               <div className="flex justify-end pt-2">

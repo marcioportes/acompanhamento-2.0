@@ -197,7 +197,10 @@ export const useTrades = (overrideStudentId = null) => {
 
   const addTrade = useCallback(async (tradeData, htfFile, ltfFile) => {
     if (!user) throw new Error('Usuário não autenticado');
-    setLoading(true);
+    // NÃO mexer no `loading` global — o listener onSnapshot re-emite quando o
+    // doc aparece. Toggle de loading durante writes faz a página inteira virar
+    // fullscreen "Carregando..." (TradesJournal:156, StudentDashboard:187),
+    // gerando 1 piscada por trade ativado em loop (CsvImportManager).
     setError(null);
 
     try {
@@ -217,14 +220,13 @@ export const useTrades = (overrideStudentId = null) => {
       console.error('[useTrades] Erro:', err);
       setError(err.message);
       throw err;
-    } finally {
-      setLoading(false);
     }
   }, [user]);
 
   const updateTrade = useCallback(async (tradeId, updates, htfFile, ltfFile) => {
     if (!user) throw new Error('Auth required');
-    setLoading(true); setError(null);
+    // Listener cobre estado pós-write — não tocar loading global.
+    setError(null);
 
     try {
       const tradeRef = doc(db, 'trades', tradeId);
@@ -404,12 +406,12 @@ export const useTrades = (overrideStudentId = null) => {
       }
 
       return { id: tradeId, ...currentTrade, ...updateData };
-    } catch (err) { console.error(err); setError(err.message); throw err; } finally { setLoading(false); }
+    } catch (err) { console.error(err); setError(err.message); throw err; }
   }, [user]);
 
   const deleteTrade = useCallback(async (tradeId) => {
     if (!user) throw new Error('Auth required');
-    setLoading(true);
+    // Listener cobre estado pós-delete — não tocar loading global.
 
     try {
       const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
@@ -417,11 +419,9 @@ export const useTrades = (overrideStudentId = null) => {
       try { await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref))); } catch (e) { console.error(e); }
       await deleteDoc(doc(db, 'trades', tradeId));
       return true;
-    } catch(err) { 
+    } catch(err) {
       console.error('[useTrades] Erro fatal:', err);
-      throw err; 
-    } finally { 
-      setLoading(false); 
+      throw err;
     }
   }, [user]);
 

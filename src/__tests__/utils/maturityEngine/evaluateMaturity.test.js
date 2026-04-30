@@ -104,7 +104,7 @@ describe('evaluateMaturity — integração por stage', () => {
     });
     expect(isScoreOk(out.dimensionScores.composite)).toBe(true);
     expect(out.dimensionScores.composite).toBeGreaterThan(50);
-    expect(out.gatesTotal).toBe(10); // 3→4 tem 10 gates
+    expect(out.gatesTotal).toBe(13); // 3→4: 10 gates legacy + 3 gates comportamentais (#208)
   });
 
   it('Stage 4 professional — 80 trades, métricas 4→5 fortes mas nem todas perfeitas', () => {

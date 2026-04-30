@@ -28,8 +28,77 @@ import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
 
+// Fontes válidas de MEP/MEN (issue #187 — DEC-AUTO-187-01).
+export const EXCURSION_SOURCES = ['manual', 'profitpro', 'yahoo', 'unavailable'];
+
 // Status constants (espelhado de useTrades)
 const DEFAULT_STATUS = 'OPEN';
+
+/**
+ * Valida MEP/MEN como preço (DEC-AUTO-187-01) coerente com o lado do trade.
+ *
+ * Regras:
+ *   LONG  → mepPrice >= max(entry, exit), menPrice <= min(entry, exit)
+ *   SHORT → mepPrice <= min(entry, exit), menPrice >= max(entry, exit)
+ *
+ * Aceita null em ambos (nenhum dado de excursão).
+ * Aceita apenas um dos dois preenchido (validação por campo independente).
+ *
+ * @param {Object} input — { side, entry, exit, mepPrice, menPrice }
+ * @throws {Error} mensagem clara em caso de inconsistência
+ */
+export function validateExcursionPrices({ side, entry, exit, mepPrice, menPrice }) {
+  if (mepPrice == null && menPrice == null) return;
+
+  const e = parseFloat(entry);
+  const x = parseFloat(exit);
+  if (!Number.isFinite(e) || !Number.isFinite(x)) {
+    throw new Error('MEP/MEN exigem entry e exit numéricos válidos para validação');
+  }
+  if (side !== 'LONG' && side !== 'SHORT') {
+    throw new Error(`MEP/MEN: side desconhecido (${side})`);
+  }
+
+  const hi = Math.max(e, x);
+  const lo = Math.min(e, x);
+
+  if (side === 'LONG') {
+    if (mepPrice != null && mepPrice < hi) {
+      throw new Error(`MEP de LONG (${mepPrice}) deve ser >= max(entry, exit) (${hi})`);
+    }
+    if (menPrice != null && menPrice > lo) {
+      throw new Error(`MEN de LONG (${menPrice}) deve ser <= min(entry, exit) (${lo})`);
+    }
+  } else {
+    if (mepPrice != null && mepPrice > lo) {
+      throw new Error(`MEP de SHORT (${mepPrice}) deve ser <= min(entry, exit) (${lo})`);
+    }
+    if (menPrice != null && menPrice < hi) {
+      throw new Error(`MEN de SHORT (${menPrice}) deve ser >= max(entry, exit) (${hi})`);
+    }
+  }
+}
+
+/**
+ * Normaliza tripla MEP/MEN/source vinda do caller para forma persistente.
+ * Aceita strings numéricas vazias → null. Source desconhecida → null.
+ */
+function normalizeExcursionInput({ mepPrice, menPrice, excursionSource }) {
+  const parsePriceOrNull = (v) => {
+    if (v == null || v === '') return null;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const mep = parsePriceOrNull(mepPrice);
+  const men = parsePriceOrNull(menPrice);
+  let source = null;
+  if (excursionSource && EXCURSION_SOURCES.includes(excursionSource)) {
+    source = excursionSource;
+  }
+  // Sem dado e sem source → tudo null. Com pelo menos um dado e sem source → 'manual' default.
+  if ((mep != null || men != null) && source == null) source = 'manual';
+  return { mepPrice: mep, menPrice: men, excursionSource: source };
+}
 
 /**
  * Calcula duração em minutos entre dois ISO timestamps
@@ -102,6 +171,18 @@ export async function createTrade(tradeData, userContext) {
     resultInPoints = side === 'LONG' ? exit - entry : entry - exit;
   }
 
+  // === 2.1. EXCURSION (MEP/MEN — issue #187) ===
+  const excursion = normalizeExcursionInput({
+    mepPrice: tradeData.mepPrice,
+    menPrice: tradeData.menPrice,
+    excursionSource: tradeData.excursionSource,
+  });
+  validateExcursionPrices({
+    side, entry, exit,
+    mepPrice: excursion.mepPrice,
+    menPrice: excursion.menPrice,
+  });
+
   // === 3. TIMESTAMPS ===
   const entryTime = tradeData.entryTime;
   const exitTime = tradeData.exitTime || null;
@@ -158,6 +239,9 @@ export async function createTrade(tradeData, userContext) {
     status: DEFAULT_STATUS,
     accountId: derivedAccountId,
     currency: derivedCurrency,
+    mepPrice: excursion.mepPrice,
+    menPrice: excursion.menPrice,
+    excursionSource: excursion.excursionSource,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     htfUrl: null, ltfUrl: null, mentorFeedback: null,
@@ -247,6 +331,27 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
   const side = before.side; // preserva side do trade original
   const tickerRule = enrichment.tickerRule || before.tickerRule || null;
 
+  // 4.1. Excursion (MEP/MEN — issue #187): aditivo. Quando o caller fornece, valida
+  // contra entry/exit pós-enrichment e passa para o patch. Quando ausente, preserva
+  // valores existentes no trade (mepPrice/menPrice/excursionSource ficam de fora do patch).
+  const hasExcursionPayload = enrichment.mepPrice !== undefined
+    || enrichment.menPrice !== undefined
+    || enrichment.excursionSource !== undefined;
+  let excursionPatch = null;
+  if (hasExcursionPayload) {
+    const norm = normalizeExcursionInput({
+      mepPrice: enrichment.mepPrice,
+      menPrice: enrichment.menPrice,
+      excursionSource: enrichment.excursionSource,
+    });
+    validateExcursionPrices({
+      side, entry, exit,
+      mepPrice: norm.mepPrice,
+      menPrice: norm.menPrice,
+    });
+    excursionPatch = norm;
+  }
+
   // 5. Recalcular result (mesma lógica de createTrade)
   let result;
   let resultInPoints = 0;
@@ -323,6 +428,11 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
     importBatchId: enrichment.importBatchId || null,
     _enrichmentSnapshot: snapshot,
     updatedAt: serverTimestamp(),
+    ...(excursionPatch ? {
+      mepPrice: excursionPatch.mepPrice,
+      menPrice: excursionPatch.menPrice,
+      excursionSource: excursionPatch.excursionSource,
+    } : {}),
   };
 
   // 9. updateDoc — CF onTradeUpdated dispara PL diff + compliance + redFlags

@@ -44,11 +44,19 @@ const SCORE_WEIGHTS = {
   worsenPenaltyFactor: 0.3,
 };
 
+// Issue #208 — adicionados 5 eventos de execução produzidos por
+// `executionBehaviorMirror.detectExecutionEvents`. Pesos heurísticos
+// (DEC-AUTO-208-04) — calibração empírica obrigatória 90 dias.
 const EVENT_PENALTIES = {
   TILT_DETECTED: 20,
   REVENGE_DETECTED: 15,
   STOP_WORSENED: 10,
   GOAL_TO_STOP: 25,
+  STOP_TAMPERING: 20,
+  STOP_PARTIAL_SIZING: 10,
+  RAPID_REENTRY_POST_STOP: 15,
+  HESITATION_PRE_ENTRY: 5,
+  CHASE_REENTRY: 10,
 };
 
 const UNKNOWN_EMOTION_CONFIG = {
@@ -200,9 +208,19 @@ function calculatePeriodScore(trades, getEmotionConfig, complianceEvents = []) {
 // DETECÇÃO TILT (paridade com ESM linhas 241-308)
 // ============================================
 
-function detectTiltV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.tilt) {
+function detectTiltV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.tilt, executionEvents = []) {
+  // Issue #208 — STOP_TAMPERING + STOP_PARTIAL_SIZING contam como tilt.
+  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING']);
+  const executionTiltCount = (executionEvents || [])
+    .filter((e) => e && TILT_EXEC_TYPES.has(e.type)).length;
+
   if (!config.enabled || !trades || trades.length < config.consecutiveTrades) {
-    return { detected: false, sequences: [], totalTiltTrades: 0 };
+    return {
+      detected: executionTiltCount > 0,
+      sequences: [],
+      totalTiltTrades: 0,
+      executionTiltCount,
+    };
   }
 
   const sorted = sortTradesChronologically(trades);
@@ -248,9 +266,10 @@ function detectTiltV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFI
   flush();
 
   return {
-    detected: sequences.length > 0,
+    detected: sequences.length > 0 || executionTiltCount > 0,
     sequences,
     totalTiltTrades: sequences.reduce((sum, s) => sum + s.trades.length, 0),
+    executionTiltCount,
   };
 }
 
@@ -258,9 +277,19 @@ function detectTiltV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFI
 // DETECÇÃO REVENGE (paridade com ESM linhas 325-421)
 // ============================================
 
-function detectRevengeV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.revenge) {
+function detectRevengeV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.revenge, executionEvents = []) {
+  // Issue #208 — RAPID_REENTRY_POST_STOP + CHASE_REENTRY contam como revenge.
+  const REVENGE_EXEC_TYPES = new Set(['RAPID_REENTRY_POST_STOP', 'CHASE_REENTRY']);
+  const executionRevengeCount = (executionEvents || [])
+    .filter((e) => e && REVENGE_EXEC_TYPES.has(e.type)).length;
+
   if (!config.enabled || !trades || trades.length < 2) {
-    return { detected: false, instances: [], count: 0 };
+    return {
+      detected: executionRevengeCount > 0,
+      instances: [],
+      count: 0,
+      executionRevengeCount,
+    };
   }
 
   const sorted = sortTradesChronologically(trades);
@@ -341,9 +370,10 @@ function detectRevengeV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CO
   });
 
   return {
-    detected: instances.length > 0,
+    detected: instances.length > 0 || executionRevengeCount > 0,
     instances,
     count: instances.length,
+    executionRevengeCount,
   };
 }
 

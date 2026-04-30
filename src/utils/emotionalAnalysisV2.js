@@ -66,12 +66,23 @@ const SCORE_WEIGHTS = {
 
 /**
  * Penalidades por eventos de compliance (pontos debitados do score 0-100)
+ *
+ * Issue #208 — adicionados 5 eventos comportamentais de execução produzidos por
+ * `executionBehaviorEngine.detectExecutionEvents`. Pesos heurísticos iniciais
+ * (DEC-AUTO-208-04) — calibração empírica obrigatória 90 dias antes de
+ * promover gates 3→4 a bloqueantes.
  */
 const EVENT_PENALTIES = {
   TILT_DETECTED: 20,
   REVENGE_DETECTED: 15,
   STOP_WORSENED: 10,
-  GOAL_TO_STOP: 25
+  GOAL_TO_STOP: 25,
+  // Issue #208 — eventos de execução
+  STOP_TAMPERING: 20,
+  STOP_PARTIAL_SIZING: 10,
+  RAPID_REENTRY_POST_STOP: 15,
+  HESITATION_PRE_ENTRY: 5,
+  CHASE_REENTRY: 10,
 };
 
 // ============================================
@@ -238,9 +249,22 @@ export const calculatePeriodScore = (trades, getEmotionConfig, complianceEvents 
  * @param {Object} config - Configuração de detecção (default: DEFAULT_DETECTION_CONFIG.tilt)
  * @returns {Object} { detected, sequences, totalTiltTrades }
  */
-export const detectTiltV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.tilt) => {
+export const detectTiltV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.tilt, executionEvents = []) => {
+  // Issue #208 — STOP_TAMPERING + STOP_PARTIAL_SIZING contam como tilt
+  // (loss aversion + disposition effect indicam descontrole emocional sobre
+  // proteção). Sumarizados aqui mas devolvidos no shape original para não
+  // quebrar consumidores; campo `executionTiltCount` adicionado.
+  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING']);
+  const executionTiltCount = (executionEvents || [])
+    .filter(e => e && TILT_EXEC_TYPES.has(e.type)).length;
+
   if (!config.enabled || !trades || trades.length < config.consecutiveTrades) {
-    return { detected: false, sequences: [], totalTiltTrades: 0 };
+    return {
+      detected: executionTiltCount > 0,
+      sequences: [],
+      totalTiltTrades: 0,
+      executionTiltCount,
+    };
   }
 
   const sorted = sortTradesChronologically(trades);
@@ -301,9 +325,10 @@ export const detectTiltV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTIO
   }
 
   return {
-    detected: sequences.length > 0,
+    detected: sequences.length > 0 || executionTiltCount > 0,
     sequences,
-    totalTiltTrades: sequences.reduce((sum, s) => sum + s.trades.length, 0)
+    totalTiltTrades: sequences.reduce((sum, s) => sum + s.trades.length, 0),
+    executionTiltCount,
   };
 };
 
@@ -322,9 +347,20 @@ export const detectTiltV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTIO
  * @param {Object} config - Configuração de detecção
  * @returns {Object} { detected, instances, count }
  */
-export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.revenge) => {
+export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.revenge, executionEvents = []) => {
+  // Issue #208 — RAPID_REENTRY_POST_STOP + CHASE_REENTRY contam como revenge
+  // (loss-chasing direto após perda; overtrading agregado).
+  const REVENGE_EXEC_TYPES = new Set(['RAPID_REENTRY_POST_STOP', 'CHASE_REENTRY']);
+  const executionRevengeCount = (executionEvents || [])
+    .filter(e => e && REVENGE_EXEC_TYPES.has(e.type)).length;
+
   if (!config.enabled || !trades || trades.length < 2) {
-    return { detected: false, instances: [], count: 0 };
+    return {
+      detected: executionRevengeCount > 0,
+      instances: [],
+      count: 0,
+      executionRevengeCount,
+    };
   }
 
   const sorted = sortTradesChronologically(trades);
@@ -414,9 +450,10 @@ export const detectRevengeV2 = (trades, getEmotionConfig, config = DEFAULT_DETEC
   });
 
   return {
-    detected: instances.length > 0,
+    detected: instances.length > 0 || executionRevengeCount > 0,
     instances,
-    count: instances.length
+    count: instances.length,
+    executionRevengeCount,
   };
 };
 

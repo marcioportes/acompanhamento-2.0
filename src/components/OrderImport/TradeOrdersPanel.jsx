@@ -56,45 +56,77 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
     return orders.filter(o => o.correlatedTradeId === trade.id);
   }, [trade?.id, orders]);
 
-  // Separar por tipo
-  const { entryOrders, exitOrders, stopOrders, otherOrders } = useMemo(() => {
-    const entry = [];
-    const exit = [];
-    const stop = [];
-    const other = [];
+  // Classifica cada ordem em uma role (entry/exit/stop/cancel) e ordena
+  // CRONOLOGICAMENTE — issue #208: aluno/mentor leem a sequência da operação
+  // como ela aconteceu no tempo. Antes o panel agrupava por categoria e o
+  // entry às vezes aparecia depois do exit por causa do agrupamento.
+  //
+  // Stop implícito: se o trade fechou em loss e não há stop formal, a saída
+  // em loss conta como stop "praticado" — adicionamos uma linha sintética
+  // representando o exit-as-stop, alinhada ao timestamp da saída.
+  const { orderedRows, hasFormalStop, hasImplicitStop } = useMemo(() => {
+    const tsOf = (o) => {
+      const raw = o.filledAt || o.submittedAt || o.cancelledAt;
+      if (!raw) return 0;
+      if (raw?.toMillis) return raw.toMillis();
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+    };
 
-    for (const o of tradeOrders) {
-      if (o.isStopOrder) {
-        stop.push(o);
-      } else if (o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED') {
-        other.push(o);
+    const tradeSide = trade?.side;
+    const rows = tradeOrders.map((o) => {
+      let role;
+      if (o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED') {
+        role = 'cancel';
+      } else if (o.isStopOrder) {
+        role = 'stop';
+      } else if (
+        (tradeSide === 'LONG' && o.side === 'BUY') ||
+        (tradeSide === 'SHORT' && o.side === 'SELL')
+      ) {
+        role = 'entry';
       } else {
-        // Determinar se é entrada ou saída pelo side vs trade side
-        const tradeSide = trade.side;
-        if (
-          (tradeSide === 'LONG' && o.side === 'BUY') ||
-          (tradeSide === 'SHORT' && o.side === 'SELL')
-        ) {
-          entry.push(o);
-        } else {
-          exit.push(o);
-        }
+        role = 'exit';
+      }
+      return { order: o, role, ts: tsOf(o) };
+    });
+
+    const formal = rows.some((r) => r.role === 'stop');
+    const isLoss = typeof trade?.result === 'number' && trade.result < 0;
+    let implicit = false;
+    if (!formal && isLoss && trade?.exitTime) {
+      const exitTs = (() => {
+        const raw = trade.exitTime;
+        if (raw?.toMillis) return raw.toMillis();
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+      })();
+      const exitPrice = trade.avgExit ?? trade.exit ?? null;
+      if (exitTs && exitPrice != null) {
+        rows.push({
+          order: {
+            externalOrderId: '__implicit__',
+            side: tradeSide === 'LONG' ? 'SELL' : 'BUY',
+            stopPrice: exitPrice,
+            quantity: trade.qty ?? null,
+            status: 'FILLED',
+            filledAt: trade.exitTime,
+            __implicit: true,
+          },
+          role: 'stop',
+          ts: exitTs,
+        });
+        implicit = true;
       }
     }
 
-    // Ordenar por timestamp
-    const sortByTime = (a, b) => (a.filledAt || a.submittedAt || '').localeCompare(b.filledAt || b.submittedAt || '');
-    entry.sort(sortByTime);
-    exit.sort(sortByTime);
-    stop.sort(sortByTime);
-    other.sort(sortByTime);
-
-    return { entryOrders: entry, exitOrders: exit, stopOrders: stop, otherOrders: other };
-  }, [tradeOrders, trade?.side]);
+    rows.sort((a, b) => a.ts - b.ts);
+    return { orderedRows: rows, hasFormalStop: formal, hasImplicitStop: implicit };
+  }, [tradeOrders, trade?.side, trade?.result, trade?.exitTime, trade?.avgExit, trade?.exit, trade?.qty]);
 
   if (tradeOrders.length === 0) return null;
 
-  const hasStop = stopOrders.length > 0;
+  const hasStop = hasFormalStop || hasImplicitStop;
 
   return (
     <div className="mb-6">
@@ -104,9 +136,16 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
         <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full">
           {tradeOrders.length}
         </span>
-        {hasStop ? (
+        {hasFormalStop ? (
           <span className="flex items-center gap-1 text-[10px] text-emerald-400">
             <ShieldCheck className="w-3 h-3" /> Stop
+          </span>
+        ) : hasImplicitStop ? (
+          <span
+            className="flex items-center gap-1 text-[10px] text-amber-400"
+            title="Trade fechou em loss sem stop formal — saída em prejuízo conta como stop praticado"
+          >
+            <ShieldCheck className="w-3 h-3" /> Stop implícito
           </span>
         ) : (
           <span className="flex items-center gap-1 text-[10px] text-amber-400">
@@ -126,61 +165,54 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
           <span>Data/Hora</span>
         </div>
 
-        {/* Entry orders */}
-        {entryOrders.map((o, i) => (
-          <div key={`entry-${i}`} className="grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20">
-            <span className="text-[10px] font-medium text-emerald-400 flex items-center gap-0.5">
-              <ArrowDownRight className="w-3 h-3" /> Entrada
-            </span>
-            <span className="text-[10px] text-slate-400">{o.side}</span>
-            <span className="text-white font-mono text-[11px]">{o.filledPrice ?? o.price ?? '-'}</span>
-            <span className="text-white font-mono text-[11px]">{o.filledQuantity ?? o.quantity ?? '-'}</span>
-            <StatusBadge status={o.status} />
-            <span className="text-slate-500 text-[10px] font-mono">{formatTime(o.filledAt || o.submittedAt)}</span>
-          </div>
-        ))}
-
-        {/* Exit orders */}
-        {exitOrders.map((o, i) => (
-          <div key={`exit-${i}`} className="grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20">
-            <span className="text-[10px] font-medium text-red-400 flex items-center gap-0.5">
-              <ArrowUpRight className="w-3 h-3" /> Saída
-            </span>
-            <span className="text-[10px] text-slate-400">{o.side}</span>
-            <span className="text-white font-mono text-[11px]">{o.filledPrice ?? o.price ?? '-'}</span>
-            <span className="text-white font-mono text-[11px]">{o.filledQuantity ?? o.quantity ?? '-'}</span>
-            <StatusBadge status={o.status} />
-            <span className="text-slate-500 text-[10px] font-mono">{formatTime(o.filledAt || o.submittedAt)}</span>
-          </div>
-        ))}
-
-        {/* Stop orders */}
-        {stopOrders.map((o, i) => (
-          <div key={`stop-${i}`} className="grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20 bg-amber-500/5">
-            <span className="text-[10px] font-medium text-amber-400 flex items-center gap-0.5">
-              <ShieldCheck className="w-3 h-3" /> Stop
-            </span>
-            <span className="text-[10px] text-slate-400">{o.side}</span>
-            <span className="text-white font-mono text-[11px]">{o.stopPrice ?? o.price ?? '-'}</span>
-            <span className="text-white font-mono text-[11px]">{o.quantity ?? '-'}</span>
-            <StatusBadge status={o.status} />
-            <span className="text-slate-500 text-[10px] font-mono">{formatTime(o.filledAt || o.submittedAt)}</span>
-          </div>
-        ))}
-
-        {/* Cancelled/other orders */}
-        {otherOrders.map((o, i) => (
-          <div key={`other-${i}`} className="grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20 opacity-60">
-            <span className="text-[10px] font-medium text-slate-500 flex items-center gap-0.5">
-              <XCircle className="w-3 h-3" /> Cancel
-            </span>
-            <span className="text-[10px] text-slate-500">{o.side}</span>
-            <span className="text-slate-400 font-mono text-[11px]">{o.price ?? '-'}</span>
-            <span className="text-slate-400 font-mono text-[11px]">{o.quantity ?? '-'}</span>
-            <StatusBadge status={o.status} />
-            <span className="text-slate-600 text-[10px] font-mono">{formatTime(o.cancelledAt || o.submittedAt)}</span>
-          </div>
-        ))}
+        {/* Linhas em ordem cronológica unificada (issue #208). Cada linha
+            renderiza com o estilo da role para que entry/exit/stop/cancel
+            sejam visualmente distinguíveis sem perder a sequência temporal. */}
+        {orderedRows.map(({ order: o, role }, i) => {
+          const cancelled = role === 'cancel';
+          const implicit = o.__implicit === true;
+          const rowClass = cancelled
+            ? 'opacity-60'
+            : implicit ? 'bg-amber-500/10 border-dashed'
+            : role === 'stop' ? 'bg-amber-500/5' : '';
+          const labelByRole = {
+            entry: { Icon: ArrowDownRight, label: 'Entrada', tone: 'text-emerald-400' },
+            exit: { Icon: ArrowUpRight, label: 'Saída', tone: 'text-red-400' },
+            stop: implicit
+              ? { Icon: ShieldCheck, label: 'Stop (impl.)', tone: 'text-amber-300' }
+              : { Icon: ShieldCheck, label: 'Stop', tone: 'text-amber-400' },
+            cancel: { Icon: XCircle, label: 'Cancel', tone: 'text-slate-500' },
+          }[role];
+          const { Icon, label, tone } = labelByRole;
+          const priceCell = role === 'stop' ? (o.stopPrice ?? o.price ?? '-')
+            : (o.filledPrice ?? o.price ?? '-');
+          const qtyCell = role === 'cancel'
+            ? (o.quantity ?? '-')
+            : (o.filledQuantity ?? o.quantity ?? '-');
+          const tsCell = formatTime(cancelled
+            ? (o.cancelledAt || o.submittedAt)
+            : (o.filledAt || o.submittedAt));
+          return (
+            <div
+              key={`${role}-${o.externalOrderId || i}-${i}`}
+              className={`grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20 ${rowClass}`}
+              title={implicit ? 'Stop não foi colocado: a saída em loss é o stop praticado' : undefined}
+            >
+              <span className={`text-[10px] font-medium ${tone} flex items-center gap-0.5`}>
+                <Icon className="w-3 h-3" /> {label}
+              </span>
+              <span className={`text-[10px] ${cancelled ? 'text-slate-500' : 'text-slate-400'}`}>{o.side}</span>
+              <span className={`font-mono text-[11px] ${cancelled ? 'text-slate-400' : 'text-white'}`}>{priceCell}</span>
+              <span className={`font-mono text-[11px] ${cancelled ? 'text-slate-400' : 'text-white'}`}>{qtyCell}</span>
+              {implicit ? (
+                <span className="text-[9px] text-amber-300 italic">implícito</span>
+              ) : (
+                <StatusBadge status={o.status} />
+              )}
+              <span className={`text-[10px] font-mono ${cancelled ? 'text-slate-600' : 'text-slate-500'}`}>{tsCell}</span>
+            </div>
+          );
+        })}
       </div>
 
       {!embedded && <DebugBadge component="TradeOrdersPanel" />}

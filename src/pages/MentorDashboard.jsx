@@ -20,6 +20,7 @@ import {
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
+import ExcursionDisplay from '../components/ExcursionDisplay';
 import StudentFeedbackCard from '../components/StudentFeedbackCard';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import EquityCurve from '../components/EquityCurve';
@@ -152,6 +153,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     statusThresholds
   });
 
+
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
     try {
@@ -276,7 +278,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         <div className="glass-card">
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
-        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       </div>
     );
   }
@@ -456,6 +458,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                           {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
                           {' • '}{trade.setup || 'Sem setup'}
                         </p>
+                        <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -626,7 +629,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <DebugBadge component="MentorDashboard" />
     </div>
   );

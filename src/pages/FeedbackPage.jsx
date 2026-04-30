@@ -35,11 +35,16 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
+import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradeLockBadge from '../components/TradeLockBadge';
 import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
+import ExecutionPatternsPanel from '../components/Trades/ExecutionPatternsPanel';
+import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import useOrders from '../hooks/useOrders';
+import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor } from '../utils/tradeGateway';
@@ -172,6 +177,8 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
           <span className="text-white font-mono text-lg">{trade.qty}</span>
         </div>
       </div>
+
+      <ExcursionDisplay trade={trade} variant="full" />
 
       {/* Métricas de Risco — Stop, RR, Resultado % PL */}
       {(() => {
@@ -375,6 +382,13 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   // Override com trade.studentId: mentor vê planos/contas do aluno dono do trade.
   const { plans } = usePlans(trade?.studentId);
   const { accounts } = useAccounts(trade?.studentId);
+  // Issue #208 — orders do aluno dono do trade (mentor abre FeedbackPage de
+  // qualquer trade da turma, useOrders sem override leria a turma toda).
+  const { orders } = useOrders(trade?.studentId);
+  // Issue #208 — todos os trades do aluno: detectores inter-trade
+  // (RAPID_REENTRY_POST_STOP) precisam ver o trade anterior para saber se
+  // este foi loss-chasing pós-perda.
+  const { trades: studentTrades } = useTrades(trade?.studentId);
   const tradePlan = useMemo(
     () => (trade?.planId ? plans?.find((p) => p.id === trade.planId) || null : null),
     [plans, trade?.planId],
@@ -652,6 +666,14 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 )}
               </div>
             )}
+            {/* Ordens correlacionadas + padrões de execução (#208 — visível
+                ao mentor durante feedback para contextualizar o que vai
+                escrever). Mesma sequência narrativa do TradeDetailModal:
+                ordens → padrões. */}
+            <div className="mt-3">
+              <TradeOrdersPanel trade={trade} orders={orders} embedded />
+            </div>
+            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
             {userIsMentor && trade.shadowBehavior && (
               <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} embedded />
             )}
@@ -841,6 +863,12 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               />
             </div>
           )}
+          {/* Ordens correlacionadas + padrões de execução (#208 — também
+              presentes na variante standalone). */}
+          <div className="mt-4">
+            <TradeOrdersPanel trade={trade} orders={orders} embedded />
+          </div>
+          <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
           {userIsMentor && trade.shadowBehavior && (
             <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} />
           )}

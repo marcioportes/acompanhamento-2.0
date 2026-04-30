@@ -55,6 +55,8 @@ import { proposeStageTransition } from './proposeStageTransition.js';
  *   maxDrawdown?: { maxDDPercent?: number } | null,
  *   advancedMetricsPresent?: boolean,
  *   complianceRate100?: number,
+ *   executionEvents?: Array<{ type, tradeId? }>,    // Issue #208 — eventos do sensor
+ *   tradesWithOrderData?: number,                    // Issue #208 — cobertura na janela
  * }} input
  * @returns {object} snapshot §3.1 D10 (campos da engine, sem computedAt/asOf).
  */
@@ -73,6 +75,8 @@ export function evaluateMaturity({
   maxDrawdown,
   advancedMetricsPresent,
   complianceRate100,
+  executionEvents,
+  tradesWithOrderData,
 } = {}) {
   // 1. Janela
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
@@ -110,6 +114,20 @@ export function evaluateMaturity({
   const maxDDPercent = maxDrawdown?.maxDDPercent ?? null;
   const cv = consistencyCV?.cv ?? null;
 
+  // Issue #208 — métricas comportamentais derivadas dos execution events da janela.
+  // METRIC_UNAVAILABLE (null) quando <30 trades com order data linked
+  // (DEC-AUTO-208-03 — gate fica pendente, DEC-020 preservada).
+  const EXECUTION_COVERAGE_FLOOR = 30;
+  const hasOrderCoverage = (tradesWithOrderData ?? 0) >= EXECUTION_COVERAGE_FLOOR;
+  const tradeIdsInWindow = new Set(W.map((t) => t?.id).filter(Boolean));
+  const eventsInWindow = (executionEvents ?? []).filter(
+    (e) => e?.tradeId && tradeIdsInWindow.has(e.tradeId)
+  );
+  const countByType = (type) => eventsInWindow.filter((e) => e.type === type).length;
+  const stopTamperingCount = hasOrderCoverage ? countByType('STOP_TAMPERING') : null;
+  const chaseCount = hasOrderCoverage ? countByType('CHASE_REENTRY') : null;
+  const partialStopCount = hasOrderCoverage ? countByType('STOP_PARTIAL_SIZING') : null;
+
   const metrics = {
     maxDDPercent,
     complianceRate,
@@ -130,6 +148,10 @@ export function evaluateMaturity({
     tiltRevengeCount,
     annualizedReturn: annualizedReturnPct,
     annualSharpe,
+    // Issue #208 — gates 3→4 comportamentais
+    stopTamperingCount,
+    chaseCount,
+    partialStopCount,
   };
 
   // 4. Gates

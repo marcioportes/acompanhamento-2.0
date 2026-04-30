@@ -54,6 +54,10 @@ const metrics34AllMet = {
   payoff: 2.0,
   maxDDPercent: 5,
   monthlySharpe: 1.2,
+  // Issue #208 — gates comportamentais (counts == 0 quando há cobertura)
+  stopTamperingCount: 0,
+  chaseCount: 0,
+  partialStopCount: 0,
 };
 
 const metrics34AllMissed = {
@@ -67,6 +71,10 @@ const metrics34AllMissed = {
   payoff: 1.5,
   maxDDPercent: 10,
   monthlySharpe: 0.8,
+  // Issue #208 — gates comportamentais (counts > 0 falham)
+  stopTamperingCount: 3,
+  chaseCount: 2,
+  partialStopCount: 4,
 };
 
 const metrics45AllMet = {
@@ -131,18 +139,18 @@ describe('evaluateGates — transições', () => {
     expect(out.gates.every((g) => g.met === false)).toBe(true);
   });
 
-  it('stage 3 com todas métricas no limiar → todos os 10 gates met', () => {
+  it('stage 3 com todas métricas no limiar → todos os 13 gates met', () => {
     const out = evaluateGates(3, metrics34AllMet);
     expect(out.transition).toBe('3-4');
-    expect(out.gatesTotal).toBe(10);
-    expect(out.gatesMet).toBe(10);
+    expect(out.gatesTotal).toBe(13);
+    expect(out.gatesMet).toBe(13);
     expect(out.gatesRatio).toBe(1);
   });
 
   it('stage 3 com métricas abaixo → nenhum gate met', () => {
     const out = evaluateGates(3, metrics34AllMissed);
     expect(out.transition).toBe('3-4');
-    expect(out.gatesTotal).toBe(10);
+    expect(out.gatesTotal).toBe(13);
     expect(out.gatesMet).toBe(0);
   });
 

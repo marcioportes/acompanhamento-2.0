@@ -90,7 +90,7 @@ describe('pickTopTrades / pickBottomTrades', () => {
     expect(bottom.map(t => t.tradeId)).toEqual(['loss4', 'loss3', 'loss2']);
   });
 
-  it('uses inline fields (A2): tradeId, symbol, side, pnl, qty, entryTime, closeTime, setup, emotionEntry, emotionExit, stopLoss', () => {
+  it('uses inline fields (A2): tradeId + tx fields + excursion fields (issue #187)', () => {
     const top = pickTopTrades(trades, 1)[0];
     expect(top).toEqual({
       tradeId: 'win1',
@@ -104,6 +104,11 @@ describe('pickTopTrades / pickBottomTrades', () => {
       emotionEntry: 'Confiante',
       emotionExit: 'Confiante',
       stopLoss: 100,
+      // issue #187 — campos de excursion (opcionais, undefined no mkTrade base)
+      entry: null,
+      mepPrice: null,
+      menPrice: null,
+      excursionSource: null,
     });
   });
 

@@ -18,6 +18,8 @@ import {
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { calculateFromPartials } from '../utils/tradeCalculations';
+import { validateExcursionPrices } from '../utils/tradeGateway';
+import { detectInstrumentType, convertExcursionRawToPrice, derivePtsFromPrice } from '../utils/excursionParsing';
 
 const SIDES = ['LONG', 'SHORT'];
 
@@ -63,6 +65,8 @@ const AddTradeModal = ({
     entry: '',
     exit: '',
     stopLoss: '',
+    mepRaw: '',
+    menRaw: '',
     qty: '',
     setup: '',
     emotionEntry: '',
@@ -240,6 +244,18 @@ const AddTradeModal = ({
         ticker: editTrade.ticker, exchange: editTrade.exchange || (exchanges[0]?.code ?? 'B3'), side: editTrade.side,
         entry: editTrade.entry.toString(), exit: editTrade.exit.toString(), qty: editTrade.qty.toString(),
         stopLoss: editTrade.stopLoss != null ? editTrade.stopLoss.toString() : '',
+        // MEP/MEN: storage é preço, mas form trabalha em pts/% (issue #187)
+        ...(() => {
+          const it = detectInstrumentType(editTrade.ticker);
+          const { mepDelta, menDelta } = derivePtsFromPrice({
+            mepPrice: editTrade.mepPrice, menPrice: editTrade.menPrice,
+            entry: editTrade.entry, side: editTrade.side, instrumentType: it,
+          });
+          return {
+            mepRaw: mepDelta != null ? Math.abs(mepDelta).toString() : '',
+            menRaw: menDelta != null ? Math.abs(menDelta).toString() : '',
+          };
+        })(),
         setup: editTrade.setup,
         emotionEntry: editTrade.emotionEntry || editTrade.emotion || '',
         emotionExit: editTrade.emotionExit || editTrade.emotion || '',
@@ -288,6 +304,7 @@ const AddTradeModal = ({
         exitDate: todayIso, exitTime: '',
         ticker: '', exchange: defaultExchange, side: 'LONG', entry: '', exit: '', qty: '',
         stopLoss: '',
+        mepRaw: '', menRaw: '',
         setup: defaultSetup, emotionEntry: defaultEmotion, emotionExit: defaultEmotion,
         notes: '',
         planId: prev.planId && plans.find(p => p.id === prev.planId) ? prev.planId : (plans[0]?.id || ''),
@@ -598,6 +615,37 @@ const AddTradeModal = ({
         }
       }
     }
+
+    // Validar MEP/MEN — opcionais. Storage é preço (DEC-AUTO-187-01) mas o form
+    // recebe pts (futures) ou % (equity). Convertemos antes da validação cruzada.
+    const mepRawNum = formData.mepRaw ? parseFloat(formData.mepRaw) : null;
+    const menRawNum = formData.menRaw ? parseFloat(formData.menRaw) : null;
+    if (formData.mepRaw && (isNaN(mepRawNum) || mepRawNum <= 0)) {
+      newErrors.mepRaw = 'MEP deve ser um número positivo';
+    }
+    if (formData.menRaw && (isNaN(menRawNum) || menRawNum <= 0)) {
+      newErrors.menRaw = 'MEN deve ser um número positivo';
+    }
+    if (!newErrors.mepRaw && !newErrors.menRaw && formData.entry && formData.exit && formData.ticker) {
+      try {
+        const it = detectInstrumentType(formData.ticker);
+        const { mepPrice: mepP, menPrice: menP } = convertExcursionRawToPrice({
+          entry: parseFloat(formData.entry), side: formData.side,
+          mepRaw: mepRawNum, menRaw: menRawNum, instrumentType: it,
+        });
+        validateExcursionPrices({
+          side: formData.side,
+          entry: parseFloat(formData.entry),
+          exit: parseFloat(formData.exit),
+          mepPrice: mepP,
+          menPrice: menP,
+        });
+      } catch (err) {
+        if (err.message.includes('MEP')) newErrors.mepRaw = err.message;
+        else if (err.message.includes('MEN')) newErrors.menRaw = err.message;
+        else newErrors.mepRaw = err.message;
+      }
+    }
     
     // Validar parciais (sempre)
     const validPartials = partials.filter(p => p.price && p.qty);
@@ -684,12 +732,26 @@ const AddTradeModal = ({
     // Item 5: SEMPRE sanitizar resultOverride como número puro
     const sanitizedResultOverride = resultOverride != null ? parseResultInput(resultOverride) : null;
 
-    const payload = { 
+    const payload = {
       ...formData,
       entryTime: entryTimeISO,
       exitTime: exitTimeISO,
       date: entryTimeISO.split('T')[0],
       stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : null,
+      // MEP/MEN: form recebe pts/%, converte para preço antes de persistir (DEC-AUTO-187-01).
+      ...(() => {
+        const mepRawNum = formData.mepRaw ? parseFloat(formData.mepRaw) : null;
+        const menRawNum = formData.menRaw ? parseFloat(formData.menRaw) : null;
+        if (mepRawNum == null && menRawNum == null) {
+          return { mepPrice: null, menPrice: null, excursionSource: null };
+        }
+        const it = detectInstrumentType(formData.ticker);
+        const { mepPrice, menPrice } = convertExcursionRawToPrice({
+          entry: parseFloat(formData.entry), side: formData.side,
+          mepRaw: mepRawNum, menRaw: menRawNum, instrumentType: it,
+        });
+        return { mepPrice, menPrice, excursionSource: 'manual' };
+      })(),
       tickerRule: activeAssetRule ? {
         tickSize: activeAssetRule.tickSize,
         tickValue: activeAssetRule.tickValue,
@@ -799,6 +861,59 @@ const AddTradeModal = ({
               </div>
 
               <div><label className="input-label">Quantidade *</label><input type="number" name="qty" value={formData.qty} onChange={handleChange} className="input-dark w-full" step={activeAssetRule?.minLot || 1} disabled placeholder="Calculado das parciais" /></div>
+
+              {/* MEP/MEN — Maximum Excursion Positiva/Negativa (issue #187, opcional).
+                  Bloco colapsável seguindo mockup M1. Storage = preço (DEC-AUTO-187-01),
+                  UX = pts (futures) ou % (equity). Conversão acontece no submit. */}
+              <div className="md:col-span-2 lg:col-span-3">
+                <details className="bg-slate-800/30 rounded-xl border border-slate-700/50">
+                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 hover:text-slate-200">
+                    <ChevronDown className="w-3.5 h-3.5 transition-transform" />
+                    Métricas avançadas (opcional)
+                    <span
+                      className="text-[10px] normal-case font-normal text-slate-500"
+                      title="MEP/MEN são usados pelo motor de maturidade na transição Stage 3 → Stage 4. Preencher é opcional, mas libera o gate quando ≥80% dos seus trades têm os campos."
+                    >
+                      ⓘ Usado pelo motor de maturidade Stage 3→4
+                    </span>
+                  </summary>
+                  <div className="px-3 pb-3 pt-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="input-label" title="Pico favorável durante o trade">
+                        MEP — Pico favorável <span className="text-[9px] text-slate-500">({formData.ticker ? (detectInstrumentType(formData.ticker) === 'futures' ? 'pts' : '%') : 'pts/%'})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="mepRaw"
+                        step="any"
+                        min="0"
+                        value={formData.mepRaw}
+                        onChange={handleChange}
+                        className={`input-dark w-full ${errors.mepRaw ? 'border-red-500' : ''}`}
+                        placeholder={formData.ticker && detectInstrumentType(formData.ticker) === 'equity' ? 'Ex: 1.27' : 'Ex: 10'}
+                      />
+                      {errors.mepRaw && <span className="text-[10px] text-red-400 mt-0.5 block">{errors.mepRaw}</span>}
+                    </div>
+
+                    <div>
+                      <label className="input-label" title="Pior tick adverso durante o trade">
+                        MEN — Pior tick adverso <span className="text-[9px] text-slate-500">({formData.ticker ? (detectInstrumentType(formData.ticker) === 'futures' ? 'pts' : '%') : 'pts/%'})</span>
+                      </label>
+                      <input
+                        type="number"
+                        name="menRaw"
+                        step="any"
+                        min="0"
+                        value={formData.menRaw}
+                        onChange={handleChange}
+                        className={`input-dark w-full ${errors.menRaw ? 'border-red-500' : ''}`}
+                        placeholder={formData.ticker && detectInstrumentType(formData.ticker) === 'equity' ? 'Ex: 0.5' : 'Ex: 180'}
+                      />
+                      {errors.menRaw && <span className="text-[10px] text-red-400 mt-0.5 block">{errors.menRaw}</span>}
+                    </div>
+                  </div>
+                </details>
+              </div>
 
               {/* GRID DE PARCIAIS — Item 1: Labels Compra/Venda + Item 2: Inputs DD/MM/AAAA + HH:MM:SS */}
               <div className="md:col-span-2 lg:col-span-3">

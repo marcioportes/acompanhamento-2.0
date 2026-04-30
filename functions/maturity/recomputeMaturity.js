@@ -55,6 +55,8 @@ function buildMaturityPayloads({
   maxDrawdown,
   advancedMetricsPresent,
   complianceRate100,
+  executionEvents,
+  tradesWithOrderData,
   lastTradeId,
   serverTimestamp,
   asOfTimestamp,
@@ -74,6 +76,8 @@ function buildMaturityPayloads({
     maxDrawdown,
     advancedMetricsPresent,
     complianceRate100,
+    executionEvents,
+    tradesWithOrderData,
   });
 
   const todayIso = isoDate(now);
@@ -194,6 +198,19 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .get();
     const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+    // Issue #208 — orders só têm valor se correlacionadas. Carrega todas e o
+    // sensor filtra por `correlatedTradeId` populado pela pipeline.
+    let orders = [];
+    try {
+      const ordersSnap = await db.collection('orders')
+        .where('studentId', '==', studentId)
+        .get();
+      orders = ordersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (ordErr) {
+      console.warn('[maturityRecompute] failed to load orders, executionEvents=[]:',
+        ordErr.message);
+    }
+
     // Issue #189: carrega tabela de emoções para o mirror emocional consumir.
     // Sem isso, preComputeShapes cai no fallback { 50, 0, 0 } (D6 preservada).
     let emotions = [];
@@ -206,7 +223,7 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
     }
 
     const now = new Date();
-    const preComputed = preComputeShapes({ trades, plans, now, emotions });
+    const preComputed = preComputeShapes({ trades, plans, now, emotions, orders });
 
     const payloads = buildMaturityPayloads({
       trades,

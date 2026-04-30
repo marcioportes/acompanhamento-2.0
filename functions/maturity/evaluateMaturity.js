@@ -40,6 +40,8 @@ function evaluateMaturity({
   maxDrawdown,
   advancedMetricsPresent,
   complianceRate100,
+  executionEvents,
+  tradesWithOrderData,
 } = {}) {
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
 
@@ -74,6 +76,19 @@ function evaluateMaturity({
   const maxDDPercent = maxDrawdown?.maxDDPercent ?? null;
   const cv = consistencyCV?.cv ?? null;
 
+  // Issue #208 — gates 3→4 comportamentais. METRIC_UNAVAILABLE quando
+  // <30 trades com order data (DEC-AUTO-208-03).
+  const EXECUTION_COVERAGE_FLOOR = 30;
+  const hasOrderCoverage = (tradesWithOrderData != null ? tradesWithOrderData : 0) >= EXECUTION_COVERAGE_FLOOR;
+  const tradeIdsInWindow = new Set(W.map((t) => t && t.id).filter(Boolean));
+  const eventsInWindow = (executionEvents || []).filter(
+    (e) => e && e.tradeId && tradeIdsInWindow.has(e.tradeId)
+  );
+  const countByType = (type) => eventsInWindow.filter((e) => e.type === type).length;
+  const stopTamperingCount = hasOrderCoverage ? countByType('STOP_TAMPERING') : null;
+  const chaseCount = hasOrderCoverage ? countByType('CHASE_REENTRY') : null;
+  const partialStopCount = hasOrderCoverage ? countByType('STOP_PARTIAL_SIZING') : null;
+
   const metrics = {
     maxDDPercent,
     complianceRate,
@@ -94,6 +109,9 @@ function evaluateMaturity({
     tiltRevengeCount,
     annualizedReturn: annualizedReturnPct,
     annualSharpe,
+    stopTamperingCount,
+    chaseCount,
+    partialStopCount,
   };
 
   const gatesResult = evaluateGates(stageCurrent, metrics);
