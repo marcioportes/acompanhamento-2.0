@@ -424,3 +424,77 @@ export const correlateOrders = (orders, trades) => {
     },
   };
 };
+
+// ============================================
+// CANCELLED ORDER CORRELATION
+// ============================================
+//
+// Cancels precisam de correlatedTradeId populado para o sensor comportamental
+// detectar STOP_TAMPERING / HESITATION_PRE_ENTRY / CHASE_REENTRY (issue #208).
+// `correlateOrders` filtra cancels (status !== FILLED), então este helper opera
+// só sobre cancels e usa critério diferente: a vida útil [submittedAt, cancelledAt]
+// da ordem precisa intersectar a vida útil do trade [entryTs - 60s, exitTs + 60s].
+//
+// Confidence é fixo em 0.7 — heurística temporal é menos confiável que match de
+// fill por timestamp pontual, mas suficiente para o detector comportamental.
+
+const CANCEL_TRADE_PADDING_MS = 60 * 1000;
+
+/**
+ * Correlaciona ordens canceladas (CANCELLED/REJECTED/EXPIRED) com trades por
+ * sobreposição temporal e match de instrumento.
+ *
+ * @param {Object[]} cancelledOrders — orders com status CANCELLED/REJECTED/EXPIRED
+ * @param {Object[]} trades — trades do plano
+ * @returns {Array<{externalOrderId, tradeId, confidence}>}
+ */
+export const correlateCancelledOrders = (cancelledOrders, trades) => {
+  if (!Array.isArray(cancelledOrders) || !Array.isArray(trades)) return [];
+
+  const results = [];
+  for (const order of cancelledOrders) {
+    const status = order?.status;
+    if (status !== 'CANCELLED' && status !== 'REJECTED' && status !== 'EXPIRED') continue;
+
+    const submittedTs = toMs(order.submittedAt);
+    const cancelledTs = toMs(order.cancelledAt) || toMs(order.filledAt) || submittedTs;
+    if (!submittedTs && !cancelledTs) continue;
+
+    const orderStart = submittedTs ?? cancelledTs;
+    const orderEnd = cancelledTs ?? submittedTs;
+    const orderInstrument = (order.instrument || '').toUpperCase();
+
+    let bestMatch = null;
+    let bestOverlap = 0;
+
+    for (const trade of trades) {
+      const tradeInstrument = (trade.ticker || trade.instrument || '').toUpperCase();
+      if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
+
+      const entryTs = toMs(trade.entryTime || trade.openedAt);
+      const exitTs = toMs(trade.exitTime || trade.closedAt);
+      if (!entryTs) continue;
+
+      const tradeStart = entryTs - CANCEL_TRADE_PADDING_MS;
+      const tradeEnd = (exitTs || entryTs) + CANCEL_TRADE_PADDING_MS;
+
+      const overlapStart = Math.max(orderStart, tradeStart);
+      const overlapEnd = Math.min(orderEnd, tradeEnd);
+      const overlap = overlapEnd - overlapStart;
+
+      if (overlap >= 0 && overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestMatch = trade;
+      }
+    }
+
+    if (bestMatch) {
+      results.push({
+        externalOrderId: order.externalOrderId,
+        tradeId: bestMatch.id,
+        confidence: 0.7,
+      });
+    }
+  }
+  return results;
+};
