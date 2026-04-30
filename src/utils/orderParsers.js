@@ -304,8 +304,12 @@ export const parseProfitChartPro = (text) => {
       const status = normalizeOrderStatus(rawStatus);
       const orderType = normalizeOrderType(getCol('tipoOrdem'));
       const stopPrice = parsePriceBR(getCol('precoStop'));
-      const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT' ||
-                          (stopPrice != null && stopPrice > 0);
+      // isStopOrder reflete EXCLUSIVAMENTE o tipo de ordem (STOP/STOP_LIMIT).
+      // ProfitChartPro preenche `Preço Stop` em Limites também (entries SuperDOM
+      // com stop anexado, legs de bracket OCO com gatilho), então usar
+      // `stopPrice != null` classificava entradas e saídas comuns como stops e
+      // bagunçava a detecção de STOP_TAMPERING/PARTIAL_SIZING (issue #208).
+      const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT';
 
       if (!meta.corretora) {
         meta = {
@@ -430,8 +434,8 @@ export const parseGenericOrders = (rows, columnMapping) => {
 
     const orderType = normalizeOrderType(getValue('orderType'));
     const stopPrice = parsePriceBR(getValue('stopPrice'));
-    const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT' ||
-                        (stopPrice != null && stopPrice > 0);
+    // Ver comentário no parser ProfitChartPro: classificar por orderType apenas.
+    const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT';
 
     orders.push({
       _rowIndex: i + 1,
@@ -541,8 +545,7 @@ export const parseTradovateOrders = (text) => {
     // Price canônico: limit se LIMIT/STOP_LIMIT, stop se STOP sem limit, fill se MARKET
     const price = limitPrice ?? (orderType === 'MARKET' ? avgFillPrice : null);
 
-    const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT' ||
-                        (stopPrice != null && stopPrice > 0);
+    const isStopOrder = orderType === 'STOP' || orderType === 'STOP_LIMIT';
 
     // Eventos: Tradovate é flat, mas se a ordem foi Filled, reconstrói 1 evento de trade
     const events = [];

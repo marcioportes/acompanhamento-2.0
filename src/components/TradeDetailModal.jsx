@@ -123,12 +123,13 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const TradeDetailModal = ({ 
-  isOpen, 
-  onClose, 
-  trade, 
+const TradeDetailModal = ({
+  isOpen,
+  onClose,
+  trade,
   plans = [],
   orders = [],
+  allTrades = [],
   isMentor = false,
   onAddFeedback,
   feedbackLoading = false,
@@ -430,7 +431,7 @@ const TradeDetailModal = ({
                 (#208 Fase 6 — visibilidade atômica). Posicionado logo após o
                 TradeOrdersPanel para que aluno/mentor leiam "estas ordens →
                 este padrão" na sequência natural. */}
-            <ExecutionPatternsPanel trade={trade} orders={orders} embedded />
+            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={allTrades} embedded />
 
             {/* Shadow Behavior — mentor-only (#129) */}
             {isMentor && trade.shadowBehavior && (

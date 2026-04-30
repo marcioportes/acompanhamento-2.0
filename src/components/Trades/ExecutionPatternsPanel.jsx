@@ -14,17 +14,27 @@ import {
   formatCitation,
 } from './executionPatternsDisplay';
 
-const ExecutionPatternsPanel = ({ trade, orders, embedded = false }) => {
+const ExecutionPatternsPanel = ({ trade, orders, allTrades, embedded = false }) => {
   const { events, correlatedCount } = useMemo(() => {
     if (!trade?.id || !Array.isArray(orders) || orders.length === 0) {
       return { events: [], correlatedCount: 0 };
     }
     const correlated = orders.filter((o) => o.correlatedTradeId === trade.id);
     if (correlated.length === 0) return { events: [], correlatedCount: 0 };
-    const detected = detectExecutionEvents({ trades: [trade], orders: correlated })
+    // Detectores inter-trade (RAPID_REENTRY_POST_STOP) precisam dos trades
+    // adjacentes — sem allTrades, o painel ficaria cego para o padrão de
+    // loss-chasing e só veria padrões intra-trade. Quando allTrades não é
+    // fornecido, degrada para [trade] (modo legado, INTRA-trade only).
+    const tradesContext = Array.isArray(allTrades) && allTrades.length > 0
+      ? allTrades
+      : [trade];
+    // Para detectores intra-trade reusarmos só as orders correlacionadas a
+    // este trade; para inter-trade precisamos de todas as orders também,
+    // mas detectExecutionEvents já filtra por correlatedTradeId internamente.
+    const detected = detectExecutionEvents({ trades: tradesContext, orders })
       .filter((e) => e.tradeId === trade.id);
     return { events: detected, correlatedCount: correlated.length };
-  }, [trade, orders]);
+  }, [trade, orders, allTrades]);
 
   // Sem ordens correlacionadas → não há análise comportamental para reportar.
   // (TradeOrdersPanel já dá o feedback de "sem ordens" para esse caso.)
@@ -43,7 +53,7 @@ const ExecutionPatternsPanel = ({ trade, orders, embedded = false }) => {
           {events.length === 0 ? 'nenhum detectado' : `${events.length} detectado${events.length === 1 ? '' : 's'}`}
         </span>
         <span className="text-[10px] text-slate-500 italic">
-          analisadas {correlatedCount} ordem{correlatedCount === 1 ? '' : 's'} acima
+          analisadas {correlatedCount} {correlatedCount === 1 ? 'ordem' : 'ordens'} acima
         </span>
       </div>
 

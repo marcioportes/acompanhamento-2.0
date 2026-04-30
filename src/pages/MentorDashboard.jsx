@@ -278,7 +278,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         <div className="glass-card">
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
-        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+        <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       </div>
     );
   }
@@ -629,7 +629,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <DebugBadge component="MentorDashboard" />
     </div>
   );

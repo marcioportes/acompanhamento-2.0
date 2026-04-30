@@ -44,6 +44,7 @@ import PlanSummaryCard from '../components/PlanSummaryCard';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import useOrders from '../hooks/useOrders';
+import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor } from '../utils/tradeGateway';
@@ -384,6 +385,10 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   // Issue #208 — orders do aluno dono do trade (mentor abre FeedbackPage de
   // qualquer trade da turma, useOrders sem override leria a turma toda).
   const { orders } = useOrders(trade?.studentId);
+  // Issue #208 — todos os trades do aluno: detectores inter-trade
+  // (RAPID_REENTRY_POST_STOP) precisam ver o trade anterior para saber se
+  // este foi loss-chasing pós-perda.
+  const { trades: studentTrades } = useTrades(trade?.studentId);
   const tradePlan = useMemo(
     () => (trade?.planId ? plans?.find((p) => p.id === trade.planId) || null : null),
     [plans, trade?.planId],
@@ -668,7 +673,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <div className="mt-3">
               <TradeOrdersPanel trade={trade} orders={orders} embedded />
             </div>
-            <ExecutionPatternsPanel trade={trade} orders={orders} embedded />
+            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
             {userIsMentor && trade.shadowBehavior && (
               <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} embedded />
             )}
@@ -863,7 +868,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <div className="mt-4">
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
           </div>
-          <ExecutionPatternsPanel trade={trade} orders={orders} embedded />
+          <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
           {userIsMentor && trade.shadowBehavior && (
             <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} />
           )}
