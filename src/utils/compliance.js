@@ -140,11 +140,22 @@ export const calculateTradeCompliance = (trade, plan) => {
 /**
  * Gera lista de red flags de compliance para um trade
  * Usado para reconstruir flags após recálculo.
- * 
- * DEC-006 (v1.19.1): Red flag NO_STOP continua existindo (trade sem stop É uma violação
- * de disciplina), mas a mensagem é contextualizada e NÃO implica risco de 100%.
- * A flag RISK_EXCEEDED só é gerada quando riskPercent é numérico.
- * 
+ *
+ * DEC-006 (v1.19.1) + DEC-AUTO-208-04 (v1.49.0):
+ *   NO_STOP segue como violação SALVO no caso de stop implícito.
+ *   Stop implícito = trade fechou em loss e não havia stop formal — a saída
+ *   em prejuízo é o stop praticado (exit-as-stop). Não penalizamos quem saiu
+ *   manual no loss porque o risco foi efetivamente delimitado pela saída.
+ *   Continuam sendo violação:
+ *     - Trade sem stop formal e em WIN → operou sem proteção, sem evidência
+ *       contraditória
+ *     - Trade sem stop formal e em BREAKEVEN → operou sem proteção
+ *     - Trade sem Order Import correlacionada e sem stopLoss informado → não
+ *       há evidência de proteção, segue violação
+ *
+ * RISK_EXCEEDED segue ativa quando há base numérica (com stop ou loss
+ * retroativo) e o riscoPercent excede o teto do plano.
+ *
  * @param {Object} trade - Trade com dados completos
  * @param {Object} plan - Plano vinculado
  * @param {Object} complianceResult - Resultado de calculateTradeCompliance
@@ -152,24 +163,27 @@ export const calculateTradeCompliance = (trade, plan) => {
  */
 export const generateComplianceRedFlags = (trade, plan, complianceResult) => {
   const flags = [];
-  
+
   if (!trade.stopLoss) {
-    // DEC-006: Mensagem contextualizada — não afirma mais "risco ilimitado"
     const tradeResult = trade.result ?? 0;
-    let noStopMessage = 'Trade sem stop loss definido';
-    if (tradeResult < 0 && complianceResult.riskPercent != null) {
-      noStopMessage += ` — risco retroativo: ${complianceResult.riskPercent.toFixed(1)}%`;
-    } else if (tradeResult > 0) {
-      noStopMessage += ' — risco não mensurado (win sem stop)';
+    const isImplicitStop = tradeResult < 0;
+    if (!isImplicitStop) {
+      // Sem stop e não houve loss → não há evidência de proteção, viola.
+      let noStopMessage = 'Trade sem stop loss definido';
+      if (tradeResult > 0) {
+        noStopMessage += ' — risco não mensurado (win sem stop)';
+      }
+      flags.push({
+        type: RED_FLAG_TYPES.NO_STOP,
+        message: noStopMessage,
+        timestamp: new Date().toISOString(),
+      });
     }
-    
-    flags.push({ 
-      type: RED_FLAG_TYPES.NO_STOP, 
-      message: noStopMessage, 
-      timestamp: new Date().toISOString() 
-    });
+    // Loss sem stop → stop implícito (DEC-AUTO-208-04). Saída em loss é o
+    // stop praticado, não emite NO_STOP. RISK_EXCEEDED ainda pode disparar
+    // logo abaixo se o risco retroativo exceder o plano.
   }
-  
+
   // RISK_EXCEEDED: só quando riskPercent é numérico (com stop ou loss retroativo)
   if (complianceResult.riskPercent != null && complianceResult.compliance.roStatus === 'FORA_DO_PLANO') {
     flags.push({ 

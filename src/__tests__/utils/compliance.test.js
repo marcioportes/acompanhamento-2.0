@@ -216,26 +216,25 @@ describe('calculateTradeCompliance', () => {
   });
 
   // =============================================
-  // T3: Red Flags DEC-006
+  // T3: Red Flags DEC-006 + DEC-AUTO-208-04 (stop implícito)
   // =============================================
-  describe('T3 -- Red Flags DEC-006', () => {
-    it('sem stop + loss -> red flag NO_STOP com mensagem retroativa', () => {
+  describe('T3 -- Red Flags DEC-006 + DEC-AUTO-208-04 (stop implícito)', () => {
+    it('sem stop + loss -> stop implícito, NÃO gera NO_STOP', () => {
+      // DEC-AUTO-208-04: trade fechou em loss e não há stop formal — a saída
+      // em prejuízo conta como stop praticado (exit-as-stop).
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -200, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
-      const noStopFlag = flags.find(f => f.type === RED_FLAG_TYPES.NO_STOP);
-      expect(noStopFlag).toBeTruthy();
-      expect(noStopFlag.message).toContain('risco retroativo');
-      expect(noStopFlag.message).toContain('1.0%');
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
     });
 
-    it('sem stop + loss FORA_DO_PLANO -> gera AMBAS flags NO_STOP + RISK_EXCEEDED', () => {
+    it('sem stop + loss FORA_DO_PLANO -> stop implícito, mas RISK_EXCEEDED dispara', () => {
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -500, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
-      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
       expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
     });
 
@@ -258,6 +257,8 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('sem stop + breakeven -> red flag NO_STOP generica, sem RISK_EXCEEDED', () => {
+      // Breakeven sem loss → não há stop implícito (saída não foi prejuízo),
+      // segue como violação porque operou sem evidência de proteção.
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: 0, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
@@ -266,18 +267,17 @@ describe('calculateTradeCompliance', () => {
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
     });
 
-    it('sem stop + loss pequeno CONFORME -> NO_STOP only (loss nao viola RR)', () => {
-      // Loss R$10, 0.05% < 0.4% -> RO CONFORME
-      // DEC-007: RR assumido = -10/80 = -0.13, mas loss -> rrStatus CONFORME (nao avalia RR em loss)
+    it('sem stop + loss pequeno CONFORME -> NENHUMA flag (stop implícito + loss não viola RR/RO)', () => {
+      // Loss R$10, 0.05% < 0.4% → RO CONFORME. Stop implícito → sem NO_STOP.
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: -10, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
       expect(compliance.compliance.rrStatus).toBe('CONFORME');
-      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
-      expect(flags.length).toBe(1);
+      expect(flags.length).toBe(0);
     });
 
     it('com stop CONFORME -> NENHUMA flag', () => {
@@ -469,8 +469,10 @@ describe('calculateTradeCompliance', () => {
       expect(compliance.rrRatio).toBe(-1.25); // -100/80
       expect(compliance.compliance.rrStatus).toBe('CONFORME');
       expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
-      // Deve ter apenas NO_STOP + RISK_EXCEEDED (100/20000=0.5% > 0.4%)
-      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
+      // DEC-AUTO-208-04: stop implícito (loss sem stop) → não emite NO_STOP.
+      // Mas RISK_EXCEEDED dispara via risco retroativo (100/20000=0.5% > 0.4%).
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.NO_STOP }));
+      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RISK_EXCEEDED }));
     });
   });
 
