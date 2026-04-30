@@ -60,7 +60,11 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
   // CRONOLOGICAMENTE — issue #208: aluno/mentor leem a sequência da operação
   // como ela aconteceu no tempo. Antes o panel agrupava por categoria e o
   // entry às vezes aparecia depois do exit por causa do agrupamento.
-  const orderedRows = useMemo(() => {
+  //
+  // Stop implícito: se o trade fechou em loss e não há stop formal, a saída
+  // em loss conta como stop "praticado" — adicionamos uma linha sintética
+  // representando o exit-as-stop, alinhada ao timestamp da saída.
+  const { orderedRows, hasFormalStop, hasImplicitStop } = useMemo(() => {
     const tsOf = (o) => {
       const raw = o.filledAt || o.submittedAt || o.cancelledAt;
       if (!raw) return 0;
@@ -86,13 +90,43 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
       }
       return { order: o, role, ts: tsOf(o) };
     });
+
+    const formal = rows.some((r) => r.role === 'stop');
+    const isLoss = typeof trade?.result === 'number' && trade.result < 0;
+    let implicit = false;
+    if (!formal && isLoss && trade?.exitTime) {
+      const exitTs = (() => {
+        const raw = trade.exitTime;
+        if (raw?.toMillis) return raw.toMillis();
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+      })();
+      const exitPrice = trade.avgExit ?? trade.exit ?? null;
+      if (exitTs && exitPrice != null) {
+        rows.push({
+          order: {
+            externalOrderId: '__implicit__',
+            side: tradeSide === 'LONG' ? 'SELL' : 'BUY',
+            stopPrice: exitPrice,
+            quantity: trade.qty ?? null,
+            status: 'FILLED',
+            filledAt: trade.exitTime,
+            __implicit: true,
+          },
+          role: 'stop',
+          ts: exitTs,
+        });
+        implicit = true;
+      }
+    }
+
     rows.sort((a, b) => a.ts - b.ts);
-    return rows;
-  }, [tradeOrders, trade?.side]);
+    return { orderedRows: rows, hasFormalStop: formal, hasImplicitStop: implicit };
+  }, [tradeOrders, trade?.side, trade?.result, trade?.exitTime, trade?.avgExit, trade?.exit, trade?.qty]);
 
   if (tradeOrders.length === 0) return null;
 
-  const hasStop = orderedRows.some((r) => r.role === 'stop');
+  const hasStop = hasFormalStop || hasImplicitStop;
 
   return (
     <div className="mb-6">
@@ -102,9 +136,16 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
         <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full">
           {tradeOrders.length}
         </span>
-        {hasStop ? (
+        {hasFormalStop ? (
           <span className="flex items-center gap-1 text-[10px] text-emerald-400">
             <ShieldCheck className="w-3 h-3" /> Stop
+          </span>
+        ) : hasImplicitStop ? (
+          <span
+            className="flex items-center gap-1 text-[10px] text-amber-400"
+            title="Trade fechou em loss sem stop formal — saída em prejuízo conta como stop praticado"
+          >
+            <ShieldCheck className="w-3 h-3" /> Stop implícito
           </span>
         ) : (
           <span className="flex items-center gap-1 text-[10px] text-amber-400">
@@ -129,13 +170,17 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
             sejam visualmente distinguíveis sem perder a sequência temporal. */}
         {orderedRows.map(({ order: o, role }, i) => {
           const cancelled = role === 'cancel';
+          const implicit = o.__implicit === true;
           const rowClass = cancelled
             ? 'opacity-60'
+            : implicit ? 'bg-amber-500/10 border-dashed'
             : role === 'stop' ? 'bg-amber-500/5' : '';
           const labelByRole = {
             entry: { Icon: ArrowDownRight, label: 'Entrada', tone: 'text-emerald-400' },
             exit: { Icon: ArrowUpRight, label: 'Saída', tone: 'text-red-400' },
-            stop: { Icon: ShieldCheck, label: 'Stop', tone: 'text-amber-400' },
+            stop: implicit
+              ? { Icon: ShieldCheck, label: 'Stop (impl.)', tone: 'text-amber-300' }
+              : { Icon: ShieldCheck, label: 'Stop', tone: 'text-amber-400' },
             cancel: { Icon: XCircle, label: 'Cancel', tone: 'text-slate-500' },
           }[role];
           const { Icon, label, tone } = labelByRole;
@@ -151,6 +196,7 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
             <div
               key={`${role}-${o.externalOrderId || i}-${i}`}
               className={`grid grid-cols-[70px_60px_80px_80px_70px_1fr] gap-2 px-3 py-2 items-center border-b border-slate-700/20 ${rowClass}`}
+              title={implicit ? 'Stop não foi colocado: a saída em loss é o stop praticado' : undefined}
             >
               <span className={`text-[10px] font-medium ${tone} flex items-center gap-0.5`}>
                 <Icon className="w-3 h-3" /> {label}
@@ -158,7 +204,11 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
               <span className={`text-[10px] ${cancelled ? 'text-slate-500' : 'text-slate-400'}`}>{o.side}</span>
               <span className={`font-mono text-[11px] ${cancelled ? 'text-slate-400' : 'text-white'}`}>{priceCell}</span>
               <span className={`font-mono text-[11px] ${cancelled ? 'text-slate-400' : 'text-white'}`}>{qtyCell}</span>
-              <StatusBadge status={o.status} />
+              {implicit ? (
+                <span className="text-[9px] text-amber-300 italic">implícito</span>
+              ) : (
+                <StatusBadge status={o.status} />
+              )}
               <span className={`text-[10px] font-mono ${cancelled ? 'text-slate-600' : 'text-slate-500'}`}>{tsCell}</span>
             </div>
           );
