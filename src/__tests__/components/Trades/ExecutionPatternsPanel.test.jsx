@@ -21,7 +21,7 @@ describe('ExecutionPatternsPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('não renderiza quando orders correlacionadas não disparam eventos', () => {
+  it('renderiza estado "nenhum padrão" quando há orders correlacionadas mas sem eventos', () => {
     const orders = [
       { externalOrderId: 'E1', instrument: 'WINM26', side: 'BUY', type: 'MARKET',
         status: 'FILLED', quantity: 2, filledPrice: 100000,
@@ -32,8 +32,9 @@ describe('ExecutionPatternsPanel', () => {
         submittedAt: '2026-04-22T10:00:30Z', filledAt: '2026-04-22T10:30:00Z',
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
-    const { container } = render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    expect(container).toBeEmptyDOMElement();
+    render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
+    expect(screen.getByText(/nenhum detectado/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nenhum dos 5 padrões/i)).toBeInTheDocument();
   });
 
   it('renderiza badge HIGH para STOP_PARTIAL_SIZING com fonte literária', () => {
@@ -44,8 +45,9 @@ describe('ExecutionPatternsPanel', () => {
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    expect(screen.getByText(/Padrões de execução detectados/)).toBeInTheDocument();
-    expect(screen.getByText(/baseados nas ordens acima/)).toBeInTheDocument();
+    expect(screen.getByText(/Padrões de execução/)).toBeInTheDocument();
+    expect(screen.getByText(/1 detectado/)).toBeInTheDocument();
+    expect(screen.getByText(/analisadas 1 ordem/)).toBeInTheDocument();
     expect(screen.getByText('HIGH')).toBeInTheDocument();
     expect(screen.getByText(/Stop dimensionado para meio lote/)).toBeInTheDocument();
     expect(screen.getByText(/Shefrin & Statman/)).toBeInTheDocument();
@@ -66,7 +68,7 @@ describe('ExecutionPatternsPanel', () => {
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
     // Trade qty=2; stop qtys = [2, 1] = soma 3 ≥ 2 → não dispara partial. Apenas STOP_TAMPERING.
-    expect(screen.getByText(/Padrões de execução detectados/)).toBeInTheDocument();
+    expect(screen.getByText(/1 detectado/)).toBeInTheDocument();
     expect(screen.getByText(/Stop reemitido para mais largo/)).toBeInTheDocument();
   });
 

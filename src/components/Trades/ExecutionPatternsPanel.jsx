@@ -15,29 +15,47 @@ import {
 } from './executionPatternsDisplay';
 
 const ExecutionPatternsPanel = ({ trade, orders, embedded = false }) => {
-  const events = useMemo(() => {
-    if (!trade?.id || !Array.isArray(orders) || orders.length === 0) return [];
+  const { events, correlatedCount } = useMemo(() => {
+    if (!trade?.id || !Array.isArray(orders) || orders.length === 0) {
+      return { events: [], correlatedCount: 0 };
+    }
     const correlated = orders.filter((o) => o.correlatedTradeId === trade.id);
-    if (correlated.length === 0) return [];
-    return detectExecutionEvents({ trades: [trade], orders: correlated })
+    if (correlated.length === 0) return { events: [], correlatedCount: 0 };
+    const detected = detectExecutionEvents({ trades: [trade], orders: correlated })
       .filter((e) => e.tradeId === trade.id);
+    return { events: detected, correlatedCount: correlated.length };
   }, [trade, orders]);
 
-  if (events.length === 0) return null;
+  // Sem ordens correlacionadas → não há análise comportamental para reportar.
+  // (TradeOrdersPanel já dá o feedback de "sem ordens" para esse caso.)
+  if (correlatedCount === 0) return null;
 
   const wrapperClass = embedded ? 'mb-6' : 'p-6 border-t border-slate-800/50';
+  const headerStyle = events.length > 0
+    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+    : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
 
   return (
     <div className={wrapperClass}>
       <div className="flex items-center gap-2 text-slate-400 mb-3">
-        <span className="text-sm font-medium">Padrões de execução detectados</span>
-        <span className="text-xs bg-rose-500/15 text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/30">
-          {events.length}
+        <span className="text-sm font-medium">Padrões de execução</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full border ${headerStyle}`}>
+          {events.length === 0 ? 'nenhum detectado' : `${events.length} detectado${events.length === 1 ? '' : 's'}`}
         </span>
         <span className="text-[10px] text-slate-500 italic">
-          baseados nas ordens acima
+          analisadas {correlatedCount} ordem{correlatedCount === 1 ? '' : 's'} acima
         </span>
       </div>
+
+      {events.length === 0 && (
+        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300">
+          Nenhum dos 5 padrões comportamentais foi detectado neste trade
+          <span className="text-emerald-400/70 ml-1">
+            (stop tampering, sub-sizing de stop, reentrada rápida, hesitação, chase)
+          </span>.
+        </div>
+      )}
+
       <div className="space-y-3">
         {events.map((event, i) => {
           const style = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.LOW;
