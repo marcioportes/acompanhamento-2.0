@@ -13,3 +13,4 @@
 | 1.47.0 | #201 | `refactor/issue-201-calculate-plan-mechanics` | 26/04/2026 | consumida (PR #202 squash `f5fbd87e`) | consumida (PR #209 squash `adb39591`) 
 | 1.48.0 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | reservada | consumida (PR #209 squash `adb39591`) 
 | 1.49.0 | #208 | `feat/issue-208-execution-behavior-sensor` | 29/04/2026 | reservada | consumida (PR #209 squash `adb39591`) 
+| 1.49.1 | #210 | `chore/issue-210-remove-takeaways-legacy` | 30/04/2026 | reservada |

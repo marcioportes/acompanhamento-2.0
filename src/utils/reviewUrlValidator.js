@@ -26,7 +26,7 @@ const ALLOWED_HOSTS = [
 
 const URL_REGEX = /^https:\/\//i;
 
-export const MAX_TAKEAWAYS_LENGTH = 5000;
+export const MAX_NOTES_LENGTH = 5000;
 
 /**
  * @param {string|null|undefined} url
@@ -48,11 +48,11 @@ export const validateReviewUrl = (url) => {
   return { valid: true, error: null };
 };
 
-export const validateTakeaways = (text) => {
+export const validateNotesText = (text) => {
   if (text == null || text === '') return { valid: true, error: null };
-  if (typeof text !== 'string') return { valid: false, error: 'Takeaways inválido' };
-  if (text.length > MAX_TAKEAWAYS_LENGTH) {
-    return { valid: false, error: `Máximo ${MAX_TAKEAWAYS_LENGTH} caracteres (atual: ${text.length})` };
+  if (typeof text !== 'string') return { valid: false, error: 'Texto inválido' };
+  if (text.length > MAX_NOTES_LENGTH) {
+    return { valid: false, error: `Máximo ${MAX_NOTES_LENGTH} caracteres (atual: ${text.length})` };
   }
   return { valid: true, error: null };
 };

@@ -272,58 +272,54 @@ describe('StudentReviewsPage', () => {
     expect(within(section).queryByRole('link', { name: /Link da gravação/i })).toBeNull();
   });
 
-  it('seção Takeaways: renderiza texto livre (review.takeaways) quando preenchido', () => {
+  it('seção Takeaways: NÃO renderiza campo legado review.takeaways (string) — só takeawayItems[]', () => {
     mockReviewsState.reviews = [
       makeReview({
         id: 'rev-1',
-        takeaways: 'Observação geral da semana:\n- consistência caiu após trade 3',
+        takeaways: 'Observação legacy órfã que NÃO deve aparecer',
         takeawayItems: [],
       }),
     ];
     render(<StudentReviewsPage />);
     fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
 
-    const text = screen.getByTestId('review-takeaways-text');
-    expect(text).toBeInTheDocument();
-    expect(text.textContent).toMatch(/consistência caiu após trade 3/);
-    // Quando só há texto (sem items) NÃO mostra "Nenhum takeaway nesta revisão."
-    expect(screen.queryByText(/Nenhum takeaway nesta revisão/i)).toBeNull();
+    expect(screen.queryByTestId('review-takeaways-text')).toBeNull();
+    expect(screen.queryByText(/Observação legacy órfã/i)).toBeNull();
+    expect(screen.getByText(/Nenhum takeaway nesta revisão/i)).toBeInTheDocument();
   });
 
-  it('seção Takeaways: texto livre + checklist coexistem', () => {
+  it('seção Takeaways: renderiza checklist quando há takeawayItems[]', () => {
     mockReviewsState.reviews = [
       makeReview({
         id: 'rev-1',
-        takeaways: 'Observação livre',
+        takeaways: 'lixo legado a ignorar',
         takeawayItems: [{ id: 't-1', text: 'Ação estruturada', done: false }],
       }),
     ];
     render(<StudentReviewsPage />);
     fireEvent.click(within(screen.getByTestId('review-item-rev-1')).getAllByRole('button')[0]);
-    expect(screen.getByTestId('review-takeaways-text')).toHaveTextContent('Observação livre');
+    expect(screen.queryByTestId('review-takeaways-text')).toBeNull();
     expect(screen.getByText('Ação estruturada')).toBeInTheDocument();
   });
 
-  it('header do item: indica "com observações" e "reunião" no resumo quando presentes', () => {
+  it('header do item: indica "reunião" no resumo quando há link, ignora campo takeaways legado', () => {
     mockReviewsState.reviews = [
       makeReview({
         id: 'rev-1',
-        takeaways: 'obs',
+        takeaways: 'obs legacy',
         meetingLink: 'https://zoom.us/j/abc',
       }),
     ];
     render(<StudentReviewsPage />);
     const item = screen.getByTestId('review-item-rev-1');
-    expect(within(item).getByText(/com observações/i)).toBeInTheDocument();
+    expect(within(item).queryByText(/com observações/i)).toBeNull();
     expect(within(item).getByText(/reunião/i)).toBeInTheDocument();
   });
 
-  it('header do item: omite marcadores extras quando campos vazios', () => {
+  it('header do item: omite marcador "reunião" quando campos vazios', () => {
     mockReviewsState.reviews = [makeReview({ id: 'rev-1' })];
     render(<StudentReviewsPage />);
     const item = screen.getByTestId('review-item-rev-1');
-    expect(within(item).queryByText(/com observações/i)).toBeNull();
-    // "reunião" só aparece quando há link — garantir ausência no resumo do item
     expect(within(item).queryByText(/·\s*reunião/i)).toBeNull();
   });
 });

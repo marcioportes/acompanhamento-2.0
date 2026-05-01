@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateReviewUrl, validateTakeaways, MAX_TAKEAWAYS_LENGTH, ALLOWED_URL_HOSTS } from '../../utils/reviewUrlValidator';
+import { validateReviewUrl, validateNotesText, MAX_NOTES_LENGTH, ALLOWED_URL_HOSTS } from '../../utils/reviewUrlValidator';
 
 describe('validateReviewUrl', () => {
   it('accepts null/empty/undefined as valid (optional field)', () => {
@@ -56,27 +56,27 @@ describe('validateReviewUrl', () => {
   });
 });
 
-describe('validateTakeaways', () => {
+describe('validateNotesText', () => {
   it('accepts null/empty', () => {
-    expect(validateTakeaways(null).valid).toBe(true);
-    expect(validateTakeaways('').valid).toBe(true);
+    expect(validateNotesText(null).valid).toBe(true);
+    expect(validateNotesText('').valid).toBe(true);
   });
 
-  it('accepts strings up to MAX_TAKEAWAYS_LENGTH', () => {
-    expect(MAX_TAKEAWAYS_LENGTH).toBe(5000);
-    const long = 'x'.repeat(MAX_TAKEAWAYS_LENGTH);
-    expect(validateTakeaways(long).valid).toBe(true);
+  it('accepts strings up to MAX_NOTES_LENGTH', () => {
+    expect(MAX_NOTES_LENGTH).toBe(5000);
+    const long = 'x'.repeat(MAX_NOTES_LENGTH);
+    expect(validateNotesText(long).valid).toBe(true);
   });
 
-  it('rejects strings longer than MAX_TAKEAWAYS_LENGTH', () => {
-    const tooLong = 'x'.repeat(MAX_TAKEAWAYS_LENGTH + 1);
-    const r = validateTakeaways(tooLong);
+  it('rejects strings longer than MAX_NOTES_LENGTH', () => {
+    const tooLong = 'x'.repeat(MAX_NOTES_LENGTH + 1);
+    const r = validateNotesText(tooLong);
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/5000/);
   });
 
   it('rejects non-string', () => {
-    expect(validateTakeaways(42).valid).toBe(false);
-    expect(validateTakeaways({}).valid).toBe(false);
+    expect(validateNotesText(42).valid).toBe(false);
+    expect(validateNotesText({}).valid).toBe(false);
   });
 });

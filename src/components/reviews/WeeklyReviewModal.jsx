@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
-import { validateReviewUrl, validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../../utils/reviewUrlValidator';
+import { validateReviewUrl } from '../../utils/reviewUrlValidator';
+import TakeawaysSection from './TakeawaysSection';
 import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
 import {
   recomputeAndReadMaturity,
@@ -171,7 +172,11 @@ const KpiRow = ({ label, current, previous, fmt = fmtNum, invertColors = false }
 // Aceita `review` como prop (fast path quando caller já tem live data) OU `reviewId`
 // (modal escuta o doc via onSnapshot — usado quando caller não tem hook conectado).
 const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, studentId, previousReview = null, onClose }) => {
-  const { generateSwot, closeReview, archiveReview, deleteReview, updateMeetingLinks, actionLoading, error } = useWeeklyReviews(studentId);
+  const {
+    generateSwot, closeReview, archiveReview, deleteReview, updateMeetingLinks,
+    addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
+    actionLoading, error,
+  } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
@@ -191,7 +196,6 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
   const review = reviewProp || selfReview;
 
   const [tab, setTab] = useState('swot');
-  const [takeaways, setTakeaways] = useState(review?.takeaways || '');
   const [meetingLink, setMeetingLink] = useState(review?.meetingLink || '');
   const [videoLink, setVideoLink] = useState(review?.videoLink || '');
   const [confirmRegen, setConfirmRegen] = useState(false);
@@ -207,10 +211,9 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
   const isCustomPeriod = !!review?.customPeriod;
 
   useEffect(() => {
-    setTakeaways(review?.takeaways || '');
     setMeetingLink(review?.meetingLink || '');
     setVideoLink(review?.videoLink || '');
-  }, [review?.id, review?.takeaways, review?.meetingLink, review?.videoLink]);
+  }, [review?.id, review?.meetingLink, review?.videoLink]);
 
   // DRAFT: recomputa snapshot live ao abrir e quando mentor pedir refresh.
   // CLOSED/ARCHIVED: nunca recomputa (frozenSnapshot é a foto definitiva).
@@ -237,7 +240,6 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
   const canArchive = canEdit && review?.status === 'CLOSED';
   const canDelete = mentor && review?.status !== 'ARCHIVED'; // rules bloqueiam ARCHIVED
 
-  const takeawaysValidation = useMemo(() => validateTakeaways(takeaways), [takeaways]);
   const meetingLinkValidation = useMemo(() => validateReviewUrl(meetingLink), [meetingLink]);
   const videoLinkValidation = useMemo(() => validateReviewUrl(videoLink), [videoLink]);
 
@@ -258,7 +260,7 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
 
   const handleClose = useCallback(async () => {
     if (!canClose) return;
-    if (!takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid) return;
+    if (!meetingLinkValidation.valid || !videoLinkValidation.valid) return;
     try {
       // Task 21 (H2) — ordem estrita ANTES do freeze do maturitySnapshot:
       //   1. recompute engine via callable → snapshot fresh de maturity/current
@@ -275,12 +277,12 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
         windowSize: Array.isArray(fresh?.periodTrades) ? fresh.periodTrades.length : 0,
       });
       await closeReview(review.id, {
-        takeaways, meetingLink, videoLink,
+        meetingLink, videoLink,
         frozenSnapshot: fresh || undefined,
       });
     } catch { /* already surfaced */ }
-  }, [canClose, closeReview, review, studentId, takeaways, meetingLink, videoLink,
-      takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
+  }, [canClose, closeReview, review, studentId, meetingLink, videoLink,
+      meetingLinkValidation, videoLinkValidation]);
 
   // Issue #197 — botão dedicado "Salvar links" funciona em DRAFT e CLOSED.
   // Não muda status, persiste só os 2 campos + updatedAt. ARCHIVED bloqueia via canEdit.
@@ -516,24 +518,15 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
           )}
 
           {tab === 'takeaways' && (
-            <div>
-              <label className="text-xs text-slate-400 mb-1 block">
-                Notas da mentoria (markdown leve, máx {MAX_TAKEAWAYS_LENGTH} caracteres)
-              </label>
-              <textarea
-                value={takeaways}
-                onChange={(e) => setTakeaways(e.target.value)}
-                disabled={!canEdit || actionLoading}
-                rows={12}
-                className="w-full input-dark font-mono text-xs"
-                placeholder="Padrões observados, pontos de alavancagem, próximos passos..."
-              />
-              <div className="flex justify-between items-center mt-1 text-[11px]">
-                <span className={takeawaysValidation.valid ? 'text-slate-500' : 'text-red-400'}>
-                  {takeawaysValidation.error || `${takeaways.length}/${MAX_TAKEAWAYS_LENGTH}`}
-                </span>
-              </div>
-            </div>
+            <TakeawaysSection
+              items={review.takeawayItems}
+              alunoDoneIds={review.alunoDoneIds}
+              canEdit={canEdit}
+              onAdd={(text) => addTakeawayItem(review.id, text, null)}
+              onToggle={(itemId) => toggleTakeawayDone(review.id, itemId)}
+              onRemove={(itemId) => removeTakeawayItem(review.id, itemId)}
+              actionLoading={actionLoading}
+            />
           )}
 
           {tab === 'meeting' && (
@@ -647,7 +640,7 @@ const WeeklyReviewModal = ({ review: reviewProp = null, reviewId = null, student
             {canClose && (
               <button
                 onClick={handleClose}
-                disabled={actionLoading || !takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid}
+                disabled={actionLoading || !meetingLinkValidation.valid || !videoLinkValidation.valid}
                 className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
               >
                 {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}

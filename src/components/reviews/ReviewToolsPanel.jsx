@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
-import { validateReviewUrl, validateTakeaways, MAX_TAKEAWAYS_LENGTH } from '../../utils/reviewUrlValidator';
+import { validateReviewUrl } from '../../utils/reviewUrlValidator';
+import TakeawaysSection from './TakeawaysSection';
 
 
 const fmtMoney = (v) => {
@@ -126,11 +127,15 @@ const ReviewToolsPanel = ({
   previousReview = null,
   onClose,
 }) => {
-  const { generateSwot, archiveReview, deleteReview, saveDraftFields, updateMeetingLinks, actionLoading, error } = useWeeklyReviews(studentId);
+  const {
+    generateSwot, archiveReview, deleteReview, saveDraftFields, updateMeetingLinks,
+    addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
+    actionLoading, error,
+  } = useWeeklyReviews(studentId);
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
-  // Self-listener no doc (garante SWOT/takeaways atualizarem live).
+  // Self-listener no doc (garante SWOT/takeawayItems atualizarem live).
   const [selfReview, setSelfReview] = useState(null);
   useEffect(() => {
     if (reviewProp || !reviewId || !studentId) { setSelfReview(null); return undefined; }
@@ -145,7 +150,6 @@ const ReviewToolsPanel = ({
   const review = reviewProp || selfReview;
 
   const [sessionNotes, setSessionNotes] = useState(review?.sessionNotes || '');
-  const [takeaways, setTakeaways] = useState(review?.takeaways || '');
   const [meetingLink, setMeetingLink] = useState(review?.meetingLink || '');
   const [videoLink, setVideoLink] = useState(review?.videoLink || '');
   const [confirmRegen, setConfirmRegen] = useState(false);
@@ -153,10 +157,9 @@ const ReviewToolsPanel = ({
 
   useEffect(() => {
     setSessionNotes(review?.sessionNotes || '');
-    setTakeaways(review?.takeaways || '');
     setMeetingLink(review?.meetingLink || '');
     setVideoLink(review?.videoLink || '');
-  }, [review?.id, review?.sessionNotes, review?.takeaways, review?.meetingLink, review?.videoLink]);
+  }, [review?.id, review?.sessionNotes, review?.meetingLink, review?.videoLink]);
 
   const swot = review?.swot || null;
   const isDraft = review?.status === 'DRAFT';
@@ -166,7 +169,6 @@ const ReviewToolsPanel = ({
   const canArchive = canEdit && review?.status === 'CLOSED';
   const canDelete = mentor && review?.status !== 'ARCHIVED';
 
-  const takeawaysValidation = useMemo(() => validateTakeaways(takeaways), [takeaways]);
   const meetingLinkValidation = useMemo(() => validateReviewUrl(meetingLink), [meetingLink]);
   const videoLinkValidation = useMemo(() => validateReviewUrl(videoLink), [videoLink]);
 
@@ -178,17 +180,16 @@ const ReviewToolsPanel = ({
     try { await generateSwot({ reviewId: review.id }); } catch { /* */ }
   }, [swot, confirmRegen, generateSwot, review?.id]);
 
-  // Salvar SEM publicar — persiste as edições de takeaways/links no DRAFT.
-  // Resolve perda de estado no baseline: mentor digita na extrato, muda de plano,
-  // volta e o texto estava lá. Só habilita em DRAFT.
+  // Salvar SEM publicar — persiste sessionNotes/links no DRAFT.
+  // Takeaways são gerenciados via TakeawaysSection (mutações imediatas, sem botão Salvar).
   const handleSaveDraft = useCallback(async () => {
     if (!canEdit || !isDraft) return;
-    if (!takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid) return;
+    if (!meetingLinkValidation.valid || !videoLinkValidation.valid) return;
     try {
-      await saveDraftFields(review.id, { sessionNotes, takeaways, meetingLink, videoLink });
+      await saveDraftFields(review.id, { sessionNotes, meetingLink, videoLink });
     } catch { /* error surfaced */ }
-  }, [canEdit, isDraft, saveDraftFields, review?.id, sessionNotes, takeaways, meetingLink, videoLink,
-      takeawaysValidation, meetingLinkValidation, videoLinkValidation]);
+  }, [canEdit, isDraft, saveDraftFields, review?.id, sessionNotes, meetingLink, videoLink,
+      meetingLinkValidation, videoLinkValidation]);
 
   // Issue #197 — botão dedicado "Salvar links" funciona em DRAFT e CLOSED.
   // Usa updateMeetingLinks (não muda status, persiste só os 2 campos + updatedAt).
@@ -204,7 +205,6 @@ const ReviewToolsPanel = ({
 
   const draftDirty = isDraft && (
     (sessionNotes || '') !== (review?.sessionNotes || '') ||
-    (takeaways || '') !== (review?.takeaways || '') ||
     (meetingLink || '') !== (review?.meetingLink || '') ||
     (videoLink || '') !== (review?.videoLink || '')
   );
@@ -322,21 +322,21 @@ const ReviewToolsPanel = ({
           />
         </Section>
 
-        {/* Takeaways */}
+        {/* Takeaways — checklist canônico (review.takeawayItems[]) */}
         <Section title="Takeaways" icon={FileText} badge={
-          <span className="text-[10px] text-slate-500">{takeaways.length}/{MAX_TAKEAWAYS_LENGTH}</span>
+          <span className="text-[10px] text-slate-500">
+            {Array.isArray(review.takeawayItems) ? review.takeawayItems.length : 0}
+          </span>
         }>
-          <textarea
-            value={takeaways}
-            onChange={(e) => setTakeaways(e.target.value)}
-            disabled={!canEdit || actionLoading}
-            rows={8}
-            className="w-full input-dark font-mono text-[11px]"
-            placeholder="Pontos, padrões observados..."
+          <TakeawaysSection
+            items={review.takeawayItems}
+            alunoDoneIds={review.alunoDoneIds}
+            canEdit={canEdit}
+            onAdd={(text) => addTakeawayItem(review.id, text, null)}
+            onToggle={(itemId) => toggleTakeawayDone(review.id, itemId)}
+            onRemove={(itemId) => removeTakeawayItem(review.id, itemId)}
+            actionLoading={actionLoading}
           />
-          {!takeawaysValidation.valid && (
-            <div className="text-[10px] text-red-400 mt-1">{takeawaysValidation.error}</div>
-          )}
         </Section>
 
         {/* Reunião — issue #197: editável em DRAFT e CLOSED via botão dedicado */}
@@ -412,7 +412,7 @@ const ReviewToolsPanel = ({
           {canEdit && isDraft && (
             <button
               onClick={handleSaveDraft}
-              disabled={actionLoading || !draftDirty || !takeawaysValidation.valid || !meetingLinkValidation.valid || !videoLinkValidation.valid}
+              disabled={actionLoading || !draftDirty || !meetingLinkValidation.valid || !videoLinkValidation.valid}
               className="px-2 py-1.5 text-[11px] font-medium bg-slate-700/40 border border-slate-600 text-slate-300 rounded hover:bg-slate-700/60 disabled:opacity-40 inline-flex items-center justify-center gap-1"
               title="Salvar edições sem publicar"
             >
