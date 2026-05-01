@@ -3,6 +3,17 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.52.0: feat: mentor limpa violações com toggle (compliance + emocional) (issue #221,
+ *   parte 3/3 de #218). Compliance e detecções emocionais hoje são determinísticas — STOP
+ *   de R$1.005 num RO de R$1.000 (0,5% acima) é flagrado; mentor entende contexto, sistema
+ *   não. Solução: mentor toggle = lei dentro de v1, sem audit metadata. Schema: 1 campo
+ *   novo `mentorClearedViolations: string[]` em trades/{id} (chave compliance = código;
+ *   chave emocional = `${type}:${timestamp}`). Helpers `effectiveRedFlags` /
+ *   `effectiveEmotionalEvents` aplicados em complianceRate, calculatePeriodScore, gates
+ *   de maturity. CF onTradeUpdated detecta mudança no array → invoca recompute pipeline
+ *   paralela à de plano. Mirrors ESM↔CJS. Aluno read-only via rules. [RESERVADA — entrada
+ *   definitiva no encerramento.]
+ *
  * - 1.51.0: feat: pendency guard no StudentDashboard — modal de pendências bloqueante
  *   (issue #220, parte 2/3 de #218). Aluno deixa de fechar trades já revisados
  *   pelo mentor (sinal de não estar lendo) e takeaways das revisões ficam abertos.

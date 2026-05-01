@@ -5,3 +5,7 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-04 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | abertura |
+| CHUNK-05 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | abertura |
+| CHUNK-06 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | abertura |
+| CHUNK-08 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | abertura |
