@@ -28,6 +28,12 @@ import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
 
+// Issue #219 — classificação discricionária do mentor sobre o trade.
+// 'tecnico' = seguiu modelo operacional. 'sorte' = narrativa solta, sizing fora,
+// alucinação. Maturity v1 NÃO consome; KPI diagnóstico apenas.
+export const MENTOR_CLASSIFICATION_VALUES = ['tecnico', 'sorte'];
+export const MENTOR_CLASSIFICATION_FLAGS = ['narrativa', 'sizing', 'desvio_modelo', 'outro'];
+
 // Fontes válidas de MEP/MEN (issue #187 — DEC-AUTO-187-01).
 export const EXCURSION_SOURCES = ['manual', 'profitpro', 'yahoo', 'unavailable'];
 
@@ -590,5 +596,77 @@ export async function unlockTradeByMentor(tradeId, userContext, deps = {}) {
 
   await updateDocFn(tradeRef, patch);
   console.log(`[tradeGateway] Trade ${tradeId} destravado por ${userContext.email}`);
+  return { id: tradeId, before, after: { ...before, ...patch } };
+}
+
+/**
+ * Classifica o trade sob ótica do mentor (issue #219, parte 1/3 do épico #218).
+ *
+ * Mentor registra julgamento qualitativo: 'tecnico' (seguiu modelo operacional)
+ * ou 'sorte' (narrativa solta, sizing fora do plano, desvio do modelo). Quando
+ * 'sorte', flags estruturadas (subset de MENTOR_CLASSIFICATION_FLAGS) qualificam.
+ * Motivo livre opcional. Aluno read-only via firestore.rules.
+ *
+ * Discricionário — sistema NÃO infere. Maturity engine v1 NÃO consome (defer v2).
+ * Campo serve diagnóstico (% técnico vs % sorte por aluno/setup/período).
+ *
+ * Idempotente: passar `classification: null` limpa a classificação (e flags/reason).
+ *
+ * @param {string} tradeId
+ * @param {Object} input - { classification: 'tecnico'|'sorte'|null, flags?: string[], reason?: string|null }
+ * @param {Object} userContext - { uid, email, isMentor }
+ * @param {Object} [deps]
+ * @returns {Promise<{ id, before, after }>}
+ */
+export async function classifyTradeAsMentor(tradeId, input, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!userContext?.isMentor) throw new Error('Apenas o mentor pode classificar o trade');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+  if (!input || typeof input !== 'object') throw new Error('input obrigatório');
+
+  const { classification = null, flags = [], reason = null } = input;
+
+  if (classification !== null && !MENTOR_CLASSIFICATION_VALUES.includes(classification)) {
+    throw new Error(`classification inválida: '${classification}' (esperado: 'tecnico'|'sorte'|null)`);
+  }
+  if (!Array.isArray(flags)) throw new Error('flags deve ser array');
+  if (flags.some(f => !MENTOR_CLASSIFICATION_FLAGS.includes(f))) {
+    throw new Error(`flags inválidas — subset esperado: ${MENTOR_CLASSIFICATION_FLAGS.join('|')}`);
+  }
+  if (classification === 'tecnico' && flags.length > 0) {
+    throw new Error('flags só são aceitas quando classification === "sorte"');
+  }
+  if (classification === null && (flags.length > 0 || (reason !== null && reason !== ''))) {
+    throw new Error('limpar classificação (null) zera flags e reason — não envie valor');
+  }
+  if (reason !== null && typeof reason !== 'string') {
+    throw new Error('reason deve ser string ou null');
+  }
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  const patch = {
+    mentorClassification: classification,
+    mentorClassificationFlags: classification === null ? [] : flags,
+    mentorClassificationReason: classification === null ? null : (reason || null),
+    mentorClassifiedAt: classification === null ? null : serverTimestamp(),
+    mentorClassifiedBy: classification === null
+      ? null
+      : { uid: userContext.uid, email: userContext.email || null },
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDocFn(tradeRef, patch);
+  console.log(
+    `[tradeGateway] Trade ${tradeId} classificado por mentor: ${classification ?? 'null'}` +
+    (flags.length ? ` flags=[${flags.join(',')}]` : '')
+  );
   return { id: tradeId, before, after: { ...before, ...patch } };
 }

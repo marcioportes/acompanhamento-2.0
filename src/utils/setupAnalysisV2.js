@@ -1,12 +1,13 @@
 /**
- * setupAnalysisV2.js — issue #170
+ * setupAnalysisV2.js — issue #170 (issue #219 estendeu com luckRate).
  *
  * Util puro que agrupa trades por `setup` e calcula KPIs operacionais para o
  * componente `SetupAnalysis` V2 (Dashboard do Aluno + Mentor Dashboard).
  *
  * Por setup retorna:
  *   { setup, n, totalPL, wr, ev, payoff, durationWin, durationLoss, deltaT,
- *     contribEV, adherenceRR, sparkline6m, isSporadic, trades }
+ *     contribEV, adherenceRR, sparkline6m, isSporadic, trades,
+ *     classifiedCount, luckCount, luckRate }
  *
  * Regras:
  * - Multi-moeda é ignorada por setup (soma crua, sem conversão — spec issue #170).
@@ -14,7 +15,11 @@
  * - Aderência RR é condicional: só calcula quando `setupsMeta[x].targetRR` existe.
  * - Sparkline 6m: 6 buckets mensais (mais antigo → mais recente), PL acumulado.
  * - Ordenação final: |contribEV| desc.
+ * - luckRate (issue #219): % de trades classificados como 'sorte' pelo mentor
+ *   sobre os classificados (não sobre n total). null se zero classificados.
  */
+
+import { computeLuckRateForSetup } from './mentorClassificationStats';
 
 /**
  * Calcula duração em minutos entre dois ISO timestamps.
@@ -211,6 +216,10 @@ export const analyzeBySetupV2 = (trades, options = {}) => {
     // Sparkline 6m
     const sparkline6m = buildSparkline6m(gTrades, today);
 
+    // Issue #219 — luckRate por setup (% sorte sobre TOTAL do setup;
+    // null/tecnico contam como técnico — exception-based workflow).
+    const { sorte: luckCount, luckRate } = computeLuckRateForSetup(gTrades);
+
     rows.push({
       setup: group.setup,
       n,
@@ -226,6 +235,8 @@ export const analyzeBySetupV2 = (trades, options = {}) => {
       sparkline6m,
       isSporadic: n < 3,
       trades: gTrades,
+      luckCount,
+      luckRate,
     });
   }
 
