@@ -166,13 +166,16 @@ elif [ -n "$VER" ]; then
 fi
 
 # 3d. registry/versions.md — marcar consumida
+# Delimitador `~` evita conflito com `|` literal das colunas da tabela e com
+# `[^|]` no regex. Bug histórico (issue #212): usar `s|...|` com `[^|]` quebra
+# parser GNU sed — delimitador dentro da char class é tratado como fim do
+# pattern e o regex degenerado casa todas as linhas do arquivo.
 if [ -n "$VER" ]; then
-  REPLACE="| ${VER} | #${ISSUE} | "
   CONSUMED_NOTE="consumida (PR #${PR} squash \`${PR_SHA:0:8}\`)"
   if $DRY_RUN; then
     echo "  [dry-run] registry/versions.md ← marcar v${VER} como '${CONSUMED_NOTE}'"
   else
-    sed -i -E "s|^(\| ${VER} \| #${ISSUE} \| [^|]+ \| [^|]+ \|) [^|]+ \|$|\1 ${CONSUMED_NOTE} |" "$REPO/docs/registry/versions.md"
+    sed -i -E "s~^(\| ${VER} \| #${ISSUE} \| [^|]+ \| [^|]+ \|) [^|]+ \|\$~\1 ${CONSUMED_NOTE} |~" "$REPO/docs/registry/versions.md"
   fi
 fi
 
