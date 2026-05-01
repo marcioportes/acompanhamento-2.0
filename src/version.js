@@ -7,10 +7,13 @@
  *   (issue #220, parte 2/3 de #218). Aluno deixa de fechar trades já revisados
  *   pelo mentor (sinal de não estar lendo) e takeaways das revisões ficam abertos.
  *   Sem email (custo). Modal popup ao abrir StudentDashboard listando 2 categorias
- *   (trades REVIEWED + takeawayItems !done && !alunoDoneIds). OK dispensa por sessão
- *   (sessionStorage `pendency_dismissed_${uid}`); volta na sessão seguinte se persistirem.
- *   Zero campo Firestore novo — derivado de estado existente. Skip em viewingAsStudent
- *   e onboarding ativo. [RESERVADA — entrada definitiva no encerramento.]
+ *   (trades REVIEWED + takeawayItems !done && !alunoDoneIds). Persistência por
+ *   *fingerprint* do conjunto dispensado em sessionStorage (não boolean): F5 mantém
+ *   se set for o mesmo; mentor adiciona novo trade REVIEWED → fingerprint diverge →
+ *   modal volta na mesma sessão. Zero campo Firestore novo. Skip por composição em
+ *   viewingAsStudent e onboarding ativo. Reorg de #219: % Sorte (mentor) integrado
+ *   como subcampo inline no card FINANCEIRO/Profit factor, junto com Conformidade
+ *   (card standalone removido). Suite 2797/2797 (PR #223 squash `20c8c751`).
  *
  * - 1.50.0: feat: mentor classifica trade — técnico ou sorte (issue #219, parte 1/3 de #218).
  *   Mentor registra julgamento qualitativo por trade (técnico = seguiu modelo operacional;
@@ -280,10 +283,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.50.0',
+  version: '1.51.0',
   build: '20260501',
-  display: 'v1.50.0',
-  full: '1.50.0+20260501',
+  display: 'v1.51.0',
+  full: '1.51.0+20260501',
 };
 export default VERSION;
 export { VERSION };

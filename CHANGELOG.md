@@ -8,6 +8,33 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.51.0] - 01/05/2026 · #220 · PR #223
+
+**feat:** pendency guard no StudentDashboard — modal de pendências bloqueante (Phase C de #218)
+
+Aluno deixa de fechar trades já revisados pelo mentor (sinal de não estar lendo) e takeaways das revisões ficam abertos. Sem email (custo). Resolução: modal popup ao abrir StudentDashboard listando 2 categorias de pendência derivadas de estado existente — zero campo Firestore novo.
+
+**Categorias:**
+- Trades pendentes: `t.status === 'REVIEWED'` (já existe — badge sidebar v1.19.7).
+- Takeaways pendentes: por revisão CLOSED/ARCHIVED, `item.done=false` E `item.id` NÃO em `alunoDoneIds`.
+
+**Persistência por fingerprint (não boolean):**
+- `sessionStorage[pendency_dismissed_${uid}]` guarda o fingerprint do conjunto dispensado (`{trades: [ids], takeaways: [reviewId:itemId]}` JSON ordenado).
+- Modal só fica fechado enquanto o conjunto for exatamente o mesmo. F5 mantém. Mentor adiciona novo trade REVIEWED → fingerprint diverge → modal volta automaticamente, mesmo na mesma sessão.
+- `closeForNow()` (clique em item da lista) é state local; auto-reset quando set muda.
+
+**Implementação:**
+- `src/hooks/usePendencyGuard.js` (novo) — agrega via `useTrades` + `useWeeklyReviews`; helpers puros `computePendencies` + `computeFingerprint`.
+- `src/components/PendencyGuard.jsx` (novo) — modal glass z-60, 2 seções (âmbar trades + emerald takeaways), top-5 + contador "+N", clique navega.
+- `src/App.jsx` — mount alongside `<StudentDashboard>` no case dashboard default. Skip por composição: não monta em `viewingAsStudent`; AssessmentGuard já redireciona onboarding ativo antes.
+
+**Reorganização de #219 (qualidade técnica):**
+- Card faixa horizontal `MentorClassificationCard` removido (dead code).
+- `% Sorte (mentor)` agora é linha inline no card FINANCEIRO, slot Profit factor, junto com Conformidade — par de sinais qualitativos no mesmo lugar visual. Mais compacto. Semáforo: 0% verde · <30% amber · ≥30% red. `MetricsCards` ganha prop `mentorClassificationStats`.
+
+**Testes:** 31 novos (19 hook + 12 componente). Suite full **2797/2797** (baseline 2785 + 31 − reorg = +12 net).
+
+
 ## [1.50.0] - 01/05/2026 · #219 · PR #222
 
 **feat:** mentor classifica trade — técnico ou sorte (Phase A de #218)
