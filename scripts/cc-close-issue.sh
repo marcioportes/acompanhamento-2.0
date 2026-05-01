@@ -314,6 +314,23 @@ else
   echo "  [skip] nenhuma branch local issue-${ISSUE}-*"
 fi
 
+# ---------- 9. Alerta CF deploy ----------
+# Cloud Functions deploya manualmente (`firebase deploy --only functions`).
+# Se o squash commit do PR tocou `functions/`, imprime alerta no fim do output
+# pra evitar que CF mergeada fique fora de prod por esquecimento. Não bloqueia
+# (deploy é fora do flow). Issue histórico: #211/#210 mergeou mudança em
+# `functions/reviews/createWeeklyReview.js` sem deploy — por sorte benigna.
+if [ -n "$PR_SHA" ]; then
+  CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
+  if [ -n "$CF_FILES" ]; then
+    echo
+    echo "⚠️  [ALERTA] PR #${PR} tocou Cloud Functions — deploy manual necessário:"
+    echo "$CF_FILES" | sed 's/^/    /'
+    echo
+    echo "    Comando:  firebase deploy --only functions"
+  fi
+fi
+
 echo
 echo "Encerramento #${ISSUE} ${VER:+v${VER}} completo."
 $DRY_RUN && echo "(dry-run — nada foi modificado)"
