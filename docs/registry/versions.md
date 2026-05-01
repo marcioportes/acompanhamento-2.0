@@ -14,4 +14,4 @@
 | 1.48.0 | #187 | `feat/issue-187-mep-men` | 27/04/2026 | cancelada (#187 closed em 30/04 sem consumir; trabalho absorvido por #208/PR #209) |
 | 1.49.0 | #208 | `feat/issue-208-execution-behavior-sensor` | 29/04/2026 | consumida (PR #209 squash `adb39591`) |
 | 1.49.1 | #210 | `chore/issue-210-remove-takeaways-legacy` | 30/04/2026 | consumida (PR #211 squash `2f7a6a78`) |
-| 1.50.0 | #219 | `feat/issue-219-mentor-classification` | 01/05/2026 | reservada |
+| 1.50.0 | #219 | `feat/issue-219-mentor-classification` | 01/05/2026 | consumida (PR #222 squash `03689977`) |

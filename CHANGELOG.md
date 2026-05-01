@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.50.0] - 01/05/2026 · #219 · PR #222
+
+**feat:** mentor classifica trade — técnico ou sorte (Phase A de #218)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.49.1] - 30/04/2026 · #210 · PR #211
 
 **chore:** remover campo takeaways (string) — tratar apenas takeawayItems[]
