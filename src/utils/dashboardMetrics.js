@@ -1,10 +1,12 @@
 /**
  * Dashboard Metrics — Cálculos puros
- * @version 1.0.0
- * 
+ * @version 1.1.0 (issue #221 — respeita mentorClearedViolations)
+ *
  * Lógica extraída de StudentDashboard.jsx para permitir testes unitários.
  * Funções que estavam inline em useMemo agora são importáveis e testáveis.
  */
+
+import { hasEffectiveRedFlags } from './violationFilter';
 
 /**
  * Calcula Max Drawdown peak-to-trough na série histórica de PL acumulado.
@@ -89,17 +91,18 @@ export const calculatePlannedWinRate = (trades, plans) => {
 /**
  * Calcula taxa de conformidade: % de trades sem red flags.
  * Semáforo: ≥80% verde, 60-80% amarelo, <60% vermelho.
- * 
- * @param {Array<{hasRedFlags?: boolean, redFlags?: Array}>} trades 
+ *
+ * Issue #221 — respeita `mentorClearedViolations`: trade com TODAS as red flags
+ * limpas pelo mentor é tratado como compliant.
+ *
+ * @param {Array<{hasRedFlags?: boolean, redFlags?: Array, mentorClearedViolations?: Array}>} trades
  * @returns {{ rate: number, compliant: number, total: number, violations: number }|null}
  */
 export const calculateComplianceRate = (trades) => {
   if (!trades || trades.length === 0) return null;
-  
-  const withFlags = trades.filter(t => 
-    t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0)
-  ).length;
-  
+
+  const withFlags = trades.filter(t => hasEffectiveRedFlags(t)).length;
+
   const compliant = trades.length - withFlags;
   return {
     rate: (compliant / trades.length) * 100,

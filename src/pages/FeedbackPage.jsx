@@ -48,7 +48,8 @@ import useOrders from '../hooks/useOrders';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
-import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify } from '../utils/tradeGateway';
+import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify, toggleViolationClearedAsMentor as gatewayToggleViolation } from '../utils/tradeGateway';
+import { effectiveRedFlags, isViolationCleared } from '../utils/violationFilter';
 import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
@@ -241,24 +242,71 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
         );
       })()}
 
-      {/* Red Flags — ou indicador de processamento se CF ainda não respondeu */}
+      {/* Red Flags — issue #221: efetivas (não cleared) + bloco "Limpas pelo mentor" */}
       {trade.compliance === undefined && trade.riskPercent === undefined ? (
         <div className="bg-slate-800/50 border border-slate-700/30 rounded-xl p-3 flex items-center gap-2">
           <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
           <span className="text-xs text-slate-400">Processando compliance...</span>
         </div>
       ) : trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 ? (
-        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
-          <div className="flex items-center gap-2 text-amber-400 mb-2">
-            <AlertTriangle className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Violações ({trade.redFlags.length})</span>
-          </div>
-          <div className="space-y-1">
-            {trade.redFlags.map((flag, i) => (
-              <p key={i} className="text-xs text-amber-300/80">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
-            ))}
-          </div>
-        </div>
+        (() => {
+          const effective = effectiveRedFlags(trade);
+          const cleared = (Array.isArray(trade.redFlags) ? trade.redFlags : [])
+            .filter(f => isViolationCleared(trade, f.type));
+          return (
+            <div className="space-y-2">
+              {effective.length > 0 && (
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
+                  <div className="flex items-center gap-2 text-amber-400 mb-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Violações ({effective.length})</span>
+                  </div>
+                  <div className="space-y-1">
+                    {effective.map((flag, i) => (
+                      <div key={`eff-${i}`} className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-amber-300/80 flex-1">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
+                        {userIsMentor && flag.type && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleViolation(flag.type)}
+                            title="Limpar esta violação (toggle)"
+                            className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 transition-colors"
+                          >
+                            ✕ Limpar
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {cleared.length > 0 && (
+                <div className="bg-slate-800/30 border border-slate-700/30 rounded-xl p-3">
+                  <div className="flex items-center gap-2 text-slate-500 mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider">Limpas pelo mentor ({cleared.length})</span>
+                  </div>
+                  <div className="space-y-1">
+                    {cleared.map((flag, i) => (
+                      <div key={`cleared-${i}`} className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-slate-500 line-through flex-1">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
+                        {userIsMentor && flag.type && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleViolation(flag.type)}
+                            title="Restaurar — volta a contar como violação"
+                            className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200 transition-colors"
+                          >
+                            ↺ Restaurar
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()
       ) : null}
 
       {/* Parciais — exibe quando trade tem dados carregados */}
@@ -420,6 +468,12 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const handleClassify = async (input) => {
     if (!trade?.id) throw new Error('Trade sem id');
     await gatewayClassify(trade.id, input, mentorCtx);
+  };
+
+  // Issue #221 — toggle de "limpar violação" (compliance + emocional). Mentor toggle = lei.
+  const handleToggleViolation = async (violationKey) => {
+    if (!trade?.id) throw new Error('Trade sem id');
+    await gatewayToggleViolation(trade.id, violationKey, mentorCtx);
   };
 
   // === Image Paste State (mentor only) ===

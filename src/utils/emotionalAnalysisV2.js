@@ -24,6 +24,8 @@
  * - V2 aceita trades com `emotionEntry` ou `emotion` (legado)
  */
 
+import { effectiveEmotionalEventsForPeriod } from './violationFilter';
+
 // ============================================
 // CONSTANTES E DEFAULTS
 // ============================================
@@ -216,8 +218,10 @@ export const calculatePeriodScore = (trades, getEmotionConfig, complianceEvents 
   // +3.5 = score máximo possível (3 + 0.5 bônus consistência)
   const normalized = Math.round(((rawAverage + 4) / 7.5) * 100);
 
-  // Penalidades por eventos
-  const penalties = complianceEvents.reduce((sum, event) => {
+  // Penalidades por eventos — issue #221: filtra eventos cleared pelo mentor
+  // (trade com `mentorClearedViolations` contendo `${type}:${tradeId}`).
+  const effectiveEvents = effectiveEmotionalEventsForPeriod(trades, complianceEvents);
+  const penalties = effectiveEvents.reduce((sum, event) => {
     return sum + (EVENT_PENALTIES[event.type] || 0);
   }, 0);
 
@@ -746,15 +750,19 @@ const getOverallEmotionalCategory = (trades, getEmotionConfig) => {
  * @param {Object} thresholds - Thresholds configuráveis (default)
  * @returns {Object} { status, adjustedScore, label, color }
  */
-export const calculateStudentStatus = (periodScore, complianceEvents = [], thresholds = {}) => {
+export const calculateStudentStatus = (periodScore, complianceEvents = [], thresholds = {}, trades = null) => {
   const {
     healthyMinScore = 70,
     attentionMinScore = 50,
     warningMinScore = 30
   } = thresholds;
 
-  // Penalidades por eventos
-  const penalty = complianceEvents.reduce((sum, event) => {
+  // Penalidades por eventos — issue #221: filtra eventos cleared pelo mentor.
+  // `trades` opcional para preservar callers legados; quando passado, aplica filter.
+  const eventsToCount = trades
+    ? effectiveEmotionalEventsForPeriod(trades, complianceEvents)
+    : complianceEvents;
+  const penalty = eventsToCount.reduce((sum, event) => {
     return sum + (EVENT_PENALTIES[event.type] || 0);
   }, 0);
 

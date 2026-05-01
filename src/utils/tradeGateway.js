@@ -19,7 +19,7 @@
 
 import {
   collection, query, where, addDoc, getDoc, getDocs, doc, serverTimestamp,
-  updateDoc, arrayUnion,
+  updateDoc, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
@@ -669,4 +669,65 @@ export async function classifyTradeAsMentor(tradeId, input, userContext, deps = 
     (flags.length ? ` flags=[${flags.join(',')}]` : '')
   );
   return { id: tradeId, before, after: { ...before, ...patch } };
+}
+
+/**
+ * Toggle de "limpar violação" (issue #221, Phase B do épico #218).
+ *
+ * Mentor adiciona/remove uma chave de violação ao array `mentorClearedViolations`.
+ * Quando presente, agregadores (complianceRate, calculatePeriodScore, gates de
+ * maturity) filtram a violação correspondente via `effectiveRedFlags` /
+ * `effectiveEmotionalEventsForPeriod`.
+ *
+ * Sem audit metadata (sem reason/clearedAt/clearedBy) — DEC-AUTO-221-02. Refactor
+ * trivial pra `Array<{key,reason?,by?,at?}>` se necessário no futuro.
+ *
+ * Cliente faz só `arrayUnion`/`arrayRemove`; recompute server-side é responsabilidade
+ * da CF `onTradeUpdated` que detecta mudança no campo e dispara pipeline igual à
+ * de mudança de plano (`recomputeStudentMaturity`).
+ *
+ * Schema de chaves:
+ *  - Compliance: o próprio code (`NO_STOP`, `RR_BELOW_MINIMUM`, `RISK_EXCEEDED`,
+ *    `DAILY_LOSS_EXCEEDED`, `BLOCKED_EMOTION`).
+ *  - Emocional: `${eventType}:${tradeId}` — ver `getEventKey` em violationFilter.js.
+ *
+ * @param {string} tradeId
+ * @param {string} violationKey - chave da violação a alternar
+ * @param {Object} userContext - { uid, email, isMentor }
+ * @param {Object} [deps]
+ * @returns {Promise<{ id, action: 'added'|'removed', violationKey }>}
+ */
+export async function toggleViolationClearedAsMentor(tradeId, violationKey, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!userContext?.isMentor) throw new Error('Apenas o mentor pode limpar violações');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+  if (!violationKey || typeof violationKey !== 'string') {
+    throw new Error('violationKey obrigatório (string não-vazia)');
+  }
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  const current = Array.isArray(before.mentorClearedViolations)
+    ? before.mentorClearedViolations
+    : [];
+  const isCurrentlyCleared = current.includes(violationKey);
+  const action = isCurrentlyCleared ? 'removed' : 'added';
+
+  const patch = {
+    mentorClearedViolations: isCurrentlyCleared
+      ? arrayRemove(violationKey)
+      : arrayUnion(violationKey),
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDocFn(tradeRef, patch);
+  console.log(`[tradeGateway] Trade ${tradeId} violation ${action}: ${violationKey}`);
+  return { id: tradeId, action, violationKey };
 }

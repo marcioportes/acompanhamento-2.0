@@ -83,7 +83,8 @@ export const useEmotionalProfile = ({
     return calculateStudentStatus(
       analysis.periodScore.score,
       analysis.complianceEvents,
-      statusThresholds
+      statusThresholds,
+      analysis.trades || null  // issue #221 — passa trades para filtro de cleared
     );
   }, [analysis, statusThresholds]);
 
