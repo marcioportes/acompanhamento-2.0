@@ -34,6 +34,7 @@ import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
 import PlanLedgerExtract from './components/PlanLedgerExtract';
+import PendencyGuard from './components/PendencyGuard';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
 import { useAccounts } from './hooks/useAccounts';
@@ -478,7 +479,16 @@ const AppContent = () => {
         }
         case 'dashboard':
         default:
-          return <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} onRequestRetroactivePlan={handleRequestRetroactivePlan} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />;
+          return (
+            <>
+              <StudentDashboard onNavigateToFeedback={handleNavigateToFeedback} onOpenLedger={handleOpenLedger} onRequestRetroactivePlan={handleRequestRetroactivePlan} returnToPlanId={feedbackReturnPlanId} onReturnConsumed={() => setFeedbackReturnPlanId(null)} />
+              <PendencyGuard
+                studentId={user?.uid}
+                onNavigateToFeedback={handleNavigateToFeedback}
+                onNavigateToReviews={() => setCurrentView('student-reviews')}
+              />
+            </>
+          );
       }
     }
   };
