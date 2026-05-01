@@ -30,6 +30,7 @@ const PendencyGuard = ({ studentId, onNavigateToFeedback = null, onNavigateToRev
     pendingTrades,
     pendingTakeaways,
     dismiss,
+    closeForNow,
   } = usePendencyGuard(studentId);
 
   useEffect(() => {
@@ -48,14 +49,16 @@ const PendencyGuard = ({ studentId, onNavigateToFeedback = null, onNavigateToRev
 
   const handleClickTrade = (trade) => {
     if (onNavigateToFeedback) {
-      dismiss();
+      // closeForNow: fecha pra navegar e resolver, não persiste dismiss.
+      // Se mais pendência surgir depois (ex.: novo trade REVIEWED), modal volta.
+      closeForNow();
       onNavigateToFeedback(trade);
     }
   };
 
   const handleClickTakeaway = () => {
     if (onNavigateToReviews) {
-      dismiss();
+      closeForNow();
       onNavigateToReviews();
     }
   };

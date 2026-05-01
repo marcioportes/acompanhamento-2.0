@@ -8,32 +8,42 @@
  *   - Trades pendentes: `t.status === 'REVIEWED'`.
  *   - Takeaways pendentes: por revisão, item.done=false E item.id não em alunoDoneIds.
  *
- * Dismiss: chave `pendency_dismissed_${studentId}` em sessionStorage. F5 mantém dismiss;
- * fechar aba/janela e abrir nova → aparece de novo se categorias persistirem.
+ * Persistência por *fingerprint* (não boolean):
+ *   - Quando o usuário clica OK/Escape/X, gravamos o fingerprint do conjunto atual de
+ *     pendências em `sessionStorage`. Modal não reabre enquanto o conjunto for o mesmo
+ *     (F5 mantém dispensado).
+ *   - Quando uma nova pendência surge (ex.: mentor revisa novo trade), o fingerprint
+ *     muda → modal reabre automaticamente, mesmo na sessão atual.
+ *   - `closeForNow()` (clique em item da lista) é estado local e auto-resetado quando
+ *     o conjunto de pendências muda.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTrades } from './useTrades';
 import { useWeeklyReviews } from './useWeeklyReviews';
 
-const dismissKeyFor = (studentId) =>
+const fingerprintKeyFor = (studentId) =>
   studentId ? `pendency_dismissed_${studentId}` : null;
 
-const readDismissed = (key) => {
-  if (!key) return true;
+const readFingerprint = (key) => {
+  if (!key) return null;
   try {
-    return globalThis?.sessionStorage?.getItem(key) === '1';
+    return globalThis?.sessionStorage?.getItem(key) || null;
   } catch {
-    return false;
+    return null;
   }
 };
 
-const writeDismissed = (key) => {
+const writeFingerprint = (key, value) => {
   if (!key) return;
   try {
-    globalThis?.sessionStorage?.setItem(key, '1');
+    if (value == null) {
+      globalThis?.sessionStorage?.removeItem(key);
+    } else {
+      globalThis?.sessionStorage?.setItem(key, value);
+    }
   } catch {
-    /* ignore — modo privado ou sandbox sem storage */
+    /* ignore */
   }
 };
 
@@ -58,26 +68,64 @@ export const computePendencies = ({ trades, reviews }) => {
   return { pendingTrades, pendingTakeaways };
 };
 
+/** Stable string for the current pending set (sorted ids). Empty set → empty string. */
+export const computeFingerprint = (pendingTrades, pendingTakeaways) => {
+  if (pendingTrades.length === 0 && pendingTakeaways.length === 0) return '';
+  const t = pendingTrades.map(x => x.id).sort();
+  const k = pendingTakeaways.map(x => `${x.reviewId}:${x.id}`).sort();
+  return JSON.stringify({ t, k });
+};
+
 export const usePendencyGuard = (studentId) => {
   const { trades, isLoading: tradesLoading } = useTrades(studentId);
   const { reviews, isLoading: reviewsLoading } = useWeeklyReviews(studentId);
 
-  const dismissKey = dismissKeyFor(studentId);
-  const [dismissed, setDismissed] = useState(() => readDismissed(dismissKey));
+  const fingerprintKey = fingerprintKeyFor(studentId);
+
+  const [closedForNow, setClosedForNow] = useState(false);
+  const [dismissedFingerprint, setDismissedFingerprint] = useState(() =>
+    readFingerprint(fingerprintKey),
+  );
 
   const { pendingTrades, pendingTakeaways } = useMemo(
     () => computePendencies({ trades, reviews }),
     [trades, reviews],
   );
 
+  const currentFingerprint = useMemo(
+    () => computeFingerprint(pendingTrades, pendingTakeaways),
+    [pendingTrades, pendingTakeaways],
+  );
+
+  // Quando o conjunto de pendências muda, closedForNow não vale mais (era pra outro set).
+  const lastFpRef = useRef(currentFingerprint);
+  useEffect(() => {
+    if (lastFpRef.current !== currentFingerprint) {
+      setClosedForNow(false);
+      lastFpRef.current = currentFingerprint;
+    }
+  }, [currentFingerprint]);
+
   const dismiss = useCallback(() => {
-    writeDismissed(dismissKey);
-    setDismissed(true);
-  }, [dismissKey]);
+    writeFingerprint(fingerprintKey, currentFingerprint);
+    setDismissedFingerprint(currentFingerprint);
+  }, [fingerprintKey, currentFingerprint]);
+
+  const closeForNow = useCallback(() => {
+    setClosedForNow(true);
+  }, []);
 
   const loading = tradesLoading || reviewsLoading;
   const hasPendencies = pendingTrades.length > 0 || pendingTakeaways.length > 0;
-  const shouldShow = !!studentId && !loading && !dismissed && hasPendencies;
+  const isDismissedForCurrentSet =
+    !!currentFingerprint && currentFingerprint === dismissedFingerprint;
+
+  const shouldShow =
+    !!studentId
+    && !loading
+    && hasPendencies
+    && !isDismissedForCurrentSet
+    && !closedForNow;
 
   return {
     shouldShow,
@@ -85,7 +133,9 @@ export const usePendencyGuard = (studentId) => {
     pendingTrades,
     pendingTakeaways,
     dismiss,
-    dismissed,
+    closeForNow,
+    dismissed: isDismissedForCurrentSet,
+    currentFingerprint,
   };
 };
 
