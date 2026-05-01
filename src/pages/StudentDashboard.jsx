@@ -33,6 +33,7 @@ import SetupAnalysis from '../components/SetupAnalysis';
 import EquityCurve from '../components/EquityCurve';
 import EmotionAnalysis from '../components/EmotionAnalysis';
 import MaturityProgressionCard from '../components/MaturityProgressionCard';
+import MentorClassificationCard from '../components/dashboard/MentorClassificationCard';
 import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -618,6 +619,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
              (hoje 'weekly-review' é restrita a mentor em App.jsx). */
         />
         <SetupAnalysis trades={filteredTrades} setupsMeta={setups} />
+      </div>
+      {/* Issue #219 — qualidade técnica (% técnico vs % sorte) sob ótica do mentor */}
+      <div className="mb-6">
+        <MentorClassificationCard trades={filteredTrades} />
       </div>
       <div className="mb-6">
         <EmotionAnalysis

@@ -275,6 +275,34 @@ const SetupCard = ({ card }) => {
           </span>
         </div>
       )}
+
+      {/* Issue #219 — luckRate (% sorte segundo mentor sobre total do setup;
+          default técnico — só conta o que mentor explicitamente flagou) */}
+      {card.n > 0 && (
+        <div className="mt-2 pt-2 border-t border-slate-700/40 flex items-center justify-between">
+          <span
+            className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold"
+            title="% trades flagados 'sorte' pelo mentor sobre o total do setup. Trades sem flag explícita contam como técnico (default)."
+          >
+            Sorte (mentor)
+          </span>
+          <span
+            className={`text-xs font-mono font-semibold ${
+              card.luckRate === null
+                ? 'text-slate-500'
+                : card.luckRate > 0.7
+                ? 'text-red-400'
+                : card.luckRate > 0.5
+                ? 'text-amber-400'
+                : card.luckRate > 0
+                ? 'text-amber-300'
+                : 'text-emerald-400'
+            }`}
+          >
+            {card.luckCount}/{card.n} ({fmtPct((card.luckRate || 0) * 100, 0)})
+          </span>
+        </div>
+      )}
     </div>
   );
 };

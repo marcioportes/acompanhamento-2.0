@@ -42,12 +42,13 @@ import ExecutionPatternsPanel from '../components/Trades/ExecutionPatternsPanel'
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
+import MentorClassificationPanel from '../components/feedback/MentorClassificationPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import useOrders from '../hooks/useOrders';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
-import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor } from '../utils/tradeGateway';
+import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify } from '../utils/tradeGateway';
 import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
@@ -415,6 +416,12 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
     await gatewayEditAsMentor(trade.id, originalEdits, mentorCtx);
   };
 
+  // Issue #219 — classificação mentor (técnico/sorte). Discricionária.
+  const handleClassify = async (input) => {
+    if (!trade?.id) throw new Error('Trade sem id');
+    await gatewayClassify(trade.id, input, mentorCtx);
+  };
+
   // === Image Paste State (mentor only) ===
   const [pastedImage, setPastedImage] = useState(null); // { file: File, preview: string }
   const textareaRef = useRef(null);
@@ -647,6 +654,14 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 />
               </div>
             )}
+            {/* Issue #219 — classificação mentor sempre visível; aluno read-only */}
+            <div className="mt-3">
+              <MentorClassificationPanel
+                trade={trade}
+                onSave={userIsMentor ? handleClassify : undefined}
+                readOnly={!userIsMentor}
+              />
+            </div>
             {userIsMentor && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <PinToReviewButton trade={trade} />
@@ -863,6 +878,14 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               />
             </div>
           )}
+          {/* Issue #219 — classificação mentor sempre visível; aluno read-only */}
+          <div className="mt-4">
+            <MentorClassificationPanel
+              trade={trade}
+              onSave={userIsMentor ? handleClassify : undefined}
+              readOnly={!userIsMentor}
+            />
+          </div>
           {/* Ordens correlacionadas + padrões de execução (#208 — também
               presentes na variante standalone). */}
           <div className="mt-4">

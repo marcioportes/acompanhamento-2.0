@@ -113,7 +113,10 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           '_lockedByMentor', '_lockedAt', '_lockedBy',
           '_unlockedAt', '_unlockedBy',
-          '_mentorEdits', '_studentOriginal'
+          '_mentorEdits', '_studentOriginal',
+          // Issue #219 — classificação mentor (técnico/sorte). Aluno read-only.
+          'mentorClassification', 'mentorClassificationFlags',
+          'mentorClassificationReason', 'mentorClassifiedAt', 'mentorClassifiedBy'
         ])
       );
       allow delete: if isAuthenticated() && (
