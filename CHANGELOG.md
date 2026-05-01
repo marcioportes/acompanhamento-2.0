@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.49.1] - 30/04/2026 · #210 · PR #211
+
+**chore:** remover campo takeaways (string) — tratar apenas takeawayItems[]
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.49.0] - 30/04/2026 · #208 · PR #209
 
 **feat:** sensor comportamental de execução (5 detectores + gates 3→4)

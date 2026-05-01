@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+* - 1.49.1: #210 chore remover campo takeaways (string) — tratar apenas takeawayItems[] (PR #211, 30/04/2026)
  * - 1.49.1: chore: remover campo `takeaways` (string) — tratar apenas `takeawayItems[]` (issue #210).
  *   Após Stage 4 (#102, `b11e73bf`), a collection `students/{uid}/reviews/{rid}` ficou com dois
  *   campos paralelos representando takeaways: `takeaways` (string legacy) e `takeawayItems[]`
