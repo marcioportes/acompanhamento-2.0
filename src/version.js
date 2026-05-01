@@ -3,6 +3,15 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.51.0: feat: pendency guard no StudentDashboard — modal de pendências bloqueante
+ *   (issue #220, parte 2/3 de #218). Aluno deixa de fechar trades já revisados
+ *   pelo mentor (sinal de não estar lendo) e takeaways das revisões ficam abertos.
+ *   Sem email (custo). Modal popup ao abrir StudentDashboard listando 2 categorias
+ *   (trades REVIEWED + takeawayItems !done && !alunoDoneIds). OK dispensa por sessão
+ *   (sessionStorage `pendency_dismissed_${uid}`); volta na sessão seguinte se persistirem.
+ *   Zero campo Firestore novo — derivado de estado existente. Skip em viewingAsStudent
+ *   e onboarding ativo. [RESERVADA — entrada definitiva no encerramento.]
+ *
  * - 1.50.0: feat: mentor classifica trade — técnico ou sorte (issue #219, parte 1/3 de #218).
  *   Mentor registra julgamento qualitativo por trade (técnico = seguiu modelo operacional;
  *   sorte = narrativa solta, sizing fora do plano, desvio do modelo). Aluno read-only. Sistema

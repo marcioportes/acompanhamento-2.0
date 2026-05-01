@@ -173,6 +173,7 @@ const MetricsCards = ({
   avgTradeDuration,
   consistencyCV,
   durationDelta,
+  mentorClassificationStats = null,
 }) => {
   const [openTooltip, setOpenTooltip] = useState(null);
   const toggle = (name) => setOpenTooltip(prev => prev === name ? null : name);
@@ -273,6 +274,24 @@ const MetricsCards = ({
                 <p className="text-[11px] text-slate-500 mt-1">
                   Conformidade: <span className={`font-mono ${complianceRate.rate >= 80 ? 'text-emerald-400' : complianceRate.rate >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{safe(complianceRate.rate, 0)}%</span>
                   {complianceRate.violations > 0 && <span className="text-red-400/70 ml-1">({complianceRate.violations})</span>}
+                </p>
+              )}
+              {mentorClassificationStats && mentorClassificationStats.total > 0 && (
+                <p
+                  className="text-[11px] text-slate-500 mt-1"
+                  title={`${mentorClassificationStats.sorte} de ${mentorClassificationStats.total} trades flagados como sorte pelo mentor (rest = t\u00E9cnico presumido). Issue #219.`}
+                >
+                  Sorte (mentor):{' '}
+                  <span className={`font-mono ${
+                    mentorClassificationStats.pctSorte === 0 ? 'text-emerald-400' :
+                    mentorClassificationStats.pctSorte < 30 ? 'text-amber-400' :
+                    'text-red-400'
+                  }`}>
+                    {Math.round(mentorClassificationStats.pctSorte)}%
+                  </span>
+                  <span className="text-slate-600 ml-1">
+                    ({mentorClassificationStats.sorte}/{mentorClassificationStats.total})
+                  </span>
                 </p>
               )}
             </div>
