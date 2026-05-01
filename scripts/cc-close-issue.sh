@@ -102,7 +102,10 @@ run "gh pr view ${PR} --json number,title,body,state,mergedAt,mergeCommit >> '$S
 echo "[3/8] Aplicando deltas (formato Fase 2)…"
 
 # 3a. PROJECT.md — nova linha na tabela de versões
-# (formato espera tabela existente; se não existir, mostra warning)
+# Formato esperado é tabela | Versão | Issue/PR | resumo | data |. Se ausente,
+# pula silenciosamente (a tabela "Histórico de versões do documento" existente
+# tem semântica diferente — é versão do PROJECT.md, não do produto). Marcio
+# atualiza PROJECT.md manualmente quando relevante.
 if [ -n "$VER" ] && grep -qE "^\| Versão \| Issue/PR \|" "$REPO/docs/PROJECT.md" 2>/dev/null; then
   NEW_ROW="| ${VER} | #${ISSUE}/#${PR} | ${PR_TYPE}: ${PR_SUMMARY} | ${TODAY} |"
   if $DRY_RUN; then
@@ -117,7 +120,7 @@ if [ -n "$VER" ] && grep -qE "^\| Versão \| Issue/PR \|" "$REPO/docs/PROJECT.md
     ' "$REPO/docs/PROJECT.md" > "$REPO/docs/PROJECT.md.tmp" && mv "$REPO/docs/PROJECT.md.tmp" "$REPO/docs/PROJECT.md"
   fi
 else
-  echo "  [warn] PROJECT.md sem tabela | Versão | Issue/PR | … | (formato antigo). Edite manualmente."
+  echo "  [skip] PROJECT.md sem tabela | Versão | Issue/PR | (semântica de produto não casa com tabela de docs)"
 fi
 
 # 3b. CHANGELOG.md — nova entrada ≤8 linhas (formato Fase 2)
@@ -142,20 +145,69 @@ EOF
   fi
 fi
 
-# 3c. src/version.js — linha CHANGELOG + bump (só para tipos que tocam produto)
+# 3c. src/version.js — entrada CHANGELOG + bump (só para tipos que tocam produto)
+# Bug histórico (issue #214): inserir oneliner sem checar reserva duplicava a
+# entrada quando a §4.0 já havia gravado entrada longa marcada com tag
+# `[RESERVADA — entrada definitiva no encerramento.]`. Comportamento corrigido:
+#   - reservada → remove APENAS a tag do bloco v${VER} (consome a reserva)
+#   - não reservada → insere oneliner como antes (back-compat com fluxo legado)
+# Bump das constantes acontece sempre que TOUCHES_PRODUCT.
 TOUCHES_PRODUCT=true
 [ "$PR_TYPE" = "refactor" ] || [ "$PR_TYPE" = "docs" ] && TOUCHES_PRODUCT=false
 
 if [ -n "$VER" ] && $TOUCHES_PRODUCT; then
   VERSION_LINE=" * - ${VER}: #${ISSUE} ${PR_TYPE} ${PR_SUMMARY} (PR #${PR}, ${TODAY})"
+
+  # Detecta tag [RESERVADA dentro do bloco v${VER} (entre o header da versão e
+  # o próximo header X.Y.Z: ou o fim do comentário JSDoc).
+  HAS_RESERVATION=$(awk -v ver="$VER" '
+    /^ ?\* - [0-9]+\.[0-9]+\.[0-9]+:/ { in_block = ($0 ~ "^ ?\\* - " ver ":") }
+    /^ \*\// { in_block = 0 }
+    in_block && /\[RESERVADA/ { found = 1 }
+    END { print (found ? "yes" : "no") }
+  ' "$REPO/src/version.js")
+
   if $DRY_RUN; then
-    echo "  [dry-run] src/version.js ← inserir após 'CHANGELOG':"
-    echo "    ${VERSION_LINE}"
+    if [ "$HAS_RESERVATION" = "yes" ]; then
+      echo "  [dry-run] src/version.js ← consumir reserva v${VER} (remover tag [RESERVADA …])"
+    else
+      echo "  [dry-run] src/version.js ← inserir após 'CHANGELOG':"
+      echo "    ${VERSION_LINE}"
+    fi
     echo "  [dry-run] src/version.js ← bump constante para '${VER}', build '${TODAY_BUILD}'"
   else
-    # Insere linha após "* CHANGELOG"
-    sed -i "/^ \* CHANGELOG/a ${VERSION_LINE}" "$REPO/src/version.js"
-    # Bump da constante VERSION
+    if [ "$HAS_RESERVATION" = "yes" ]; then
+      # Remove a tag [RESERVADA …] do bloco v${VER}. Aceita single-line ou
+      # split em duas linhas (`[RESERVADA — entrada definitiva\n *   no encerramento.]`).
+      awk -v ver="$VER" '
+        BEGIN { in_block = 0; pending = "" }
+        {
+          if ($0 ~ /^ ?\* - [0-9]+\.[0-9]+\.[0-9]+:/) in_block = ($0 ~ "^ ?\\* - " ver ":")
+          if ($0 ~ /^ \*\//) in_block = 0
+          if (pending != "") {
+            if (/\]/) { print pending; pending = ""; next }
+            next
+          }
+          if (in_block && /\[RESERVADA/) {
+            if (/\[RESERVADA[^][]*\]/) {
+              gsub(/ \[RESERVADA[^][]*\]\.?/, "")
+              print; next
+            }
+            sub(/ \[RESERVADA.*$/, "")
+            pending = $0; next
+          }
+          print
+        }
+      ' "$REPO/src/version.js" > "$REPO/src/version.js.tmp" && mv "$REPO/src/version.js.tmp" "$REPO/src/version.js"
+    else
+      # Insere oneliner após "* CHANGELOG". Usa awk em vez de sed para preservar
+      # o espaço inicial (GNU sed `a` strip leading whitespace por design).
+      awk -v line="$VERSION_LINE" '
+        { print }
+        /^ \* CHANGELOG/ { print line }
+      ' "$REPO/src/version.js" > "$REPO/src/version.js.tmp" && mv "$REPO/src/version.js.tmp" "$REPO/src/version.js"
+    fi
+    # Bump da constante VERSION (sempre que TOUCHES_PRODUCT, independente de reserva).
     sed -i -E "s/version: '[^']+'/version: '${VER}'/" "$REPO/src/version.js"
     sed -i -E "s/build: '[^']+'/build: '${TODAY_BUILD}'/" "$REPO/src/version.js"
     sed -i -E "s/display: '[^']+'/display: 'v${VER}'/" "$REPO/src/version.js"
