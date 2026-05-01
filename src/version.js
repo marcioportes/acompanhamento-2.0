@@ -3,6 +3,15 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.49.1: chore: remover campo `takeaways` (string) — tratar apenas `takeawayItems[]` (issue #210).
+ *   Após Stage 4 (#102, `b11e73bf`), a collection `students/{uid}/reviews/{rid}` ficou com dois
+ *   campos paralelos representando takeaways: `takeaways` (string legacy) e `takeawayItems[]`
+ *   (array canônico). Migração nunca concluída — `ReviewToolsPanel` (Extrato) e
+ *   `WeeklyReviewModal` continuavam escrevendo no string; `StudentReviewsPage` renderizava o
+ *   string como bloco isolado acima do checklist; `WeeklyReviewPage` tinha fallback de leitura
+ *   do string como `sessionNotes`. Decisão: canonizar `takeawayItems[]` e remover o string do
+ *   código. Conteúdo legado em prod fica órfão (não migrado). [RESERVADA — entrada definitiva
+ *   no encerramento.]
 * - 1.49.0: #208 feat sensor comportamental de execução (5 detectores + gates 3→4) (PR #209, 30/04/2026)
  * - 1.49.0: feat: sensor comportamental de execução — Order Import como input de tilt/revenge no 4D
  *   (issue #208). Pipeline atual descarta cancels em `orderReconstruction.js:99-100` e
@@ -254,10 +263,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.49.0',
+  version: '1.49.1',
   build: '20260430',
-  display: 'v1.49.0',
-  full: '1.49.0+20260430',
+  display: 'v1.49.1',
+  full: '1.49.1+20260430',
 };
 export default VERSION;
 export { VERSION };
