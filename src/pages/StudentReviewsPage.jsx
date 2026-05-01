@@ -86,7 +86,6 @@ const ReviewDetail = ({
   const alunoIds = Array.isArray(review.alunoDoneIds) ? review.alunoDoneIds : [];
   const hasFrozenSnapshot = Boolean(review?.frozenSnapshot?.maturitySnapshot);
   const sessionNotes = typeof review?.sessionNotes === 'string' ? review.sessionNotes : '';
-  const takeawaysText = typeof review?.takeaways === 'string' ? review.takeaways.trim() : '';
   const meetingLink = typeof review?.meetingLink === 'string' ? review.meetingLink.trim() : '';
   const videoLink = typeof review?.videoLink === 'string' ? review.videoLink.trim() : '';
   const hasMeetingSection = Boolean(meetingLink || videoLink);
@@ -161,19 +160,8 @@ const ReviewDetail = ({
       <section>
         <h3 className="text-sm font-semibold text-slate-200 mb-2">Takeaways</h3>
 
-        {takeawaysText && (
-          <div
-            data-testid="review-takeaways-text"
-            className="text-sm text-slate-300 whitespace-pre-wrap bg-slate-900/40 border border-slate-800/60 rounded p-3 mb-3"
-          >
-            {takeawaysText}
-          </div>
-        )}
-
         {items.length === 0 ? (
-          !takeawaysText && (
-            <p className="text-xs text-slate-500">Nenhum takeaway nesta revisão.</p>
-          )
+          <p className="text-xs text-slate-500">Nenhum takeaway nesta revisão.</p>
         ) : (
           <ul className="divide-y divide-slate-800/50">
             {items.map((it) => (
@@ -237,7 +225,6 @@ const ReviewListItem = ({
   const total = items.length;
   const closedCount = items.filter((it) => Boolean(it.done) || alunoIds.includes(it.id)).length;
   const openCount = total - closedCount;
-  const hasTakeawaysText = typeof review?.takeaways === 'string' && review.takeaways.trim() !== '';
   const hasMeetingLinks = Boolean(
     (typeof review?.meetingLink === 'string' && review.meetingLink.trim())
     || (typeof review?.videoLink === 'string' && review.videoLink.trim())
@@ -263,7 +250,6 @@ const ReviewListItem = ({
           </span>
           <span className="block text-[11px] text-slate-500 mt-0.5">
             {total} takeaway{total === 1 ? '' : 's'} · {openCount} em aberto · {closedCount} encerrado{closedCount === 1 ? '' : 's'}
-            {hasTakeawaysText && ' · com observações'}
             {hasMeetingLinks && ' · reunião'}
           </span>
         </span>

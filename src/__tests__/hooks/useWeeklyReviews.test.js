@@ -131,13 +131,14 @@ describe('useWeeklyReviews', () => {
   it('closeReview updates doc with status=CLOSED + closedAt', async () => {
     const { result } = renderHook(() => useWeeklyReviews('student-1'));
     await act(async () => {
-      await result.current.closeReview('r1', { takeaways: 'ok' });
+      await result.current.closeReview('r1', { meetingLink: 'https://zoom.us/j/1' });
     });
     expect(mockUpdateDoc).toHaveBeenCalled();
     const [, payload] = mockUpdateDoc.mock.calls[0];
     expect(payload.status).toBe('CLOSED');
-    expect(payload.takeaways).toBe('ok');
+    expect(payload.meetingLink).toBe('https://zoom.us/j/1');
     expect(payload.closedAt).toEqual({ __type: 'serverTimestamp' });
+    expect('takeaways' in payload).toBe(false);
   });
 
   it('archiveReview updates doc with status=ARCHIVED + archivedAt', async () => {

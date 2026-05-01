@@ -148,8 +148,8 @@ export const useWeeklyReviews = (studentId) => {
 
   // closeReview publica o rascunho. Se frozenSnapshot for fornecido, sobrescreve
   // o snapshot atual (recomputado no momento do publish — indicadores congelam aqui,
-  // não no create). Campos takeaways/meetingLink/videoLink são opcionais: só vão ao
-  // payload se EXPLICITAMENTE passados (undefined preserva o valor atual do doc).
+  // não no create). Campos meetingLink/videoLink são opcionais: só vão ao payload se
+  // EXPLICITAMENTE passados (undefined preserva o valor atual do doc).
   const closeReview = useCallback(async (reviewId, opts = {}) => {
     setActionLoading(true);
     setError(null);
@@ -159,7 +159,6 @@ export const useWeeklyReviews = (studentId) => {
         status: 'CLOSED',
         closedAt: serverTimestamp(),
       };
-      if (opts.takeaways !== undefined) payload.takeaways = opts.takeaways;
       if (opts.meetingLink !== undefined) payload.meetingLink = opts.meetingLink;
       if (opts.videoLink !== undefined) payload.videoLink = opts.videoLink;
       if (opts.frozenSnapshot) payload.frozenSnapshot = opts.frozenSnapshot;
@@ -204,16 +203,19 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Salva campos editáveis do rascunho (takeaways, meetingLink, videoLink, sessionNotes) SEM
-  // mudar o status. Usado pelo baseline ReviewToolsPanel — mentor digita e persiste
-  // sem precisar publicar antes.
-  const saveDraftFields = useCallback(async (reviewId, { takeaways = null, meetingLink = null, videoLink = null, sessionNotes = undefined } = {}) => {
+  // Salva campos editáveis do rascunho (sessionNotes, meetingLink, videoLink) SEM mudar
+  // o status. Usado pelo ReviewToolsPanel/WeeklyReviewModal — mentor digita e persiste
+  // sem precisar publicar antes. Cada campo é opcional (undefined preserva valor atual).
+  const saveDraftFields = useCallback(async (reviewId, { meetingLink, videoLink, sessionNotes } = {}) => {
     setActionLoading(true);
     setError(null);
     try {
       const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const delta = { takeaways, meetingLink, videoLink };
+      const delta = {};
+      if (meetingLink !== undefined) delta.meetingLink = meetingLink;
+      if (videoLink !== undefined) delta.videoLink = videoLink;
       if (sessionNotes !== undefined) delta.sessionNotes = sessionNotes;
+      if (Object.keys(delta).length === 0) return;
       await updateDoc(ref, delta);
     } catch (err) {
       setError(err.message || 'Erro ao salvar rascunho');
@@ -371,27 +373,6 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Pin rápido: anexa uma linha ao campo takeaways de uma revisão (DRAFT).
-  // Usado pelo PinToReviewButton (FeedbackPage) — evita context switch.
-  const appendTakeaway = useCallback(async (reviewId, line) => {
-    if (!line || !String(line).trim()) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const current = reviews.find(r => r.id === reviewId);
-      const existing = current?.takeaways || '';
-      const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-      const next = existing + sep + String(line).trim();
-      await updateDoc(ref, { takeaways: next });
-    } catch (err) {
-      setError(err.message || 'Erro ao anotar takeaway');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId, reviews]);
-
   // Pin rápido: anexa uma linha ao campo sessionNotes de uma revisão (DRAFT).
   // Usado pelo PinToReviewButton — pontos observados no Feedback Trade são
   // notas de sessão, não takeaways (takeaways = ação/item estruturado).
@@ -424,7 +405,6 @@ export const useWeeklyReviews = (studentId) => {
     closeReview,
     archiveReview,
     deleteReview,
-    appendTakeaway,
     appendSessionNotes,
     addIncludedTrade,
     updateSessionNotes,

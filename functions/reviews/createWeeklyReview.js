@@ -126,7 +126,6 @@ module.exports = onCall(
       archivedAt: null,
       frozenSnapshot: snapshot,
       swot: null,
-      takeaways: null,
       meetingLink: null,
       videoLink: null,
     };
