@@ -18,17 +18,17 @@
 ./scripts/cc-close-issue.sh NNN --dry-run    # mostra etapas sem executar
 ```
 
-O script orquestra 8 etapas e aborta no primeiro erro:
+O script orquestra 9 etapas (`[0/8]` a `[8/8]`, com gate `[0a/8]` adicional) e aborta no primeiro erro. Numeração casa com os prints do terminal:
 
-1. **Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
-1a. **Gate de Cloud Functions deploy** (issue #225) — se o squash do PR tocou `functions/`, exige marker file `.cf-deployed-${PR}` no repo root confirmando deploy. Aborta com comando de retomada caso ausente:
+- **`[0/8]` Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
+- **`[0a/8]` Gate de Cloud Functions deploy** (issue #225) — se o squash do PR tocou `functions/`, exige marker file `.cf-deployed-${PR}` no repo root confirmando deploy. Aborta com comando de retomada caso ausente:
    ```
    firebase deploy --only functions && touch .cf-deployed-${PR}
    ```
    Marker é deletado após verificação (não vai para git). Substitui o alerta não-bloqueante histórico (#216) que permitia esquecer o deploy e quebrar paridade prod↔main.
-2. **Sync main** — `git pull --rebase origin main`.
-3. **Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
-4. **Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):
+- **`[1/8]` Sync main** — `git pull --rebase origin main`.
+- **`[2/8]` Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
+- **`[3/8]` Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):
    - `docs/PROJECT.md`: nova linha na tabela `| Versão | Issue/PR | Resumo | Data |`.
    - `CHANGELOG.md`: entrada ≤8 linhas (`## [X.Y.Z] - DD/MM/YYYY · #NNN · PR #PPP` + tipo + bullet de DECs/testes/files).
    - `src/version.js`: linha CHANGELOG inline + bump constante. Pulado se `PR_TYPE ∈ {refactor, docs}` (não toca código de produto).
@@ -38,10 +38,11 @@ O script orquestra 8 etapas e aborta no primeiro erro:
      ```
      - **DEC-AUTO-NNN-01** (DD/MM/YYYY): <texto da decisão>.
      ```
-5. **Delete control doc** — `git rm docs/dev/issues/issue-NNN-*.md` (não arquiva — Fase 2.4 do refactor #199).
-6. **Confirmação humana** — script mostra `git status --short` e pergunta antes de commit + push para main.
-7. **Encerrar infra** — `pkill -9 -f vite` + `cc-worktree-stop.sh NNN` + `rm -rf ~/projects/issue-NNN`.
-8. **Verificações + branch local** — `ls ~/projects/`, `git worktree list`, `tmux ls`, `pgrep cc-watchdog` devem passar; `git branch -D *issue-NNN-*`.
+- **`[4/8]` Delete control doc** — `git rm docs/dev/issues/issue-NNN-*.md` (não arquiva — Fase 2.4 do refactor #199).
+- **`[5/8]` Confirmação humana** — script mostra `git status --short` e pergunta antes de commit + push para main.
+- **`[6/8]` Encerrar infra** — `pkill -9 -f vite` + `cc-worktree-stop.sh NNN` + `rm -rf ~/projects/issue-NNN`.
+- **`[7/8]` Verificações finais** — `ls ~/projects/`, `git worktree list`, `tmux ls`, `pgrep cc-watchdog` devem passar.
+- **`[8/8]` Branch local** — `git branch -D *issue-NNN-*`.
 
 ## Recovery manual
 

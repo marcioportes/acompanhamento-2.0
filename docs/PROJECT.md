@@ -144,7 +144,7 @@ Este é o **overview enxuto** do projeto. Detalhes técnicos moram em arquivos t
 - Nunca remover entradas antigas — marcar como `SUPERSEDED` se inválida.
 
 ### O que NÃO vive em arquivo nenhum permanente
-- Especificação por issue → `docs/dev/issues/issue-NNN-*.md` (arquivado após merge em `docs/dev/archive/YYYY-QQ/` via `scripts/archive-issue.sh`)
+- Especificação por issue → `docs/dev/issues/issue-NNN-*.md` (deletado no encerramento via `scripts/cc-close-issue.sh` — GitHub é SSoT do detalhe; refactor #199 Fase 2.4)
 - Deploy / install / migration → `docs/ops/`
 - Arquivos de referência citáveis (specs pré-aprovação, SPEC/IMPACT) → `docs/reference/`
 

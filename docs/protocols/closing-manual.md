@@ -13,6 +13,10 @@
 
 ## Sequência (não pular passos)
 
+### 0a. Gate de Cloud Functions deploy (issue #225)
+
+Se o squash do PR tocou `functions/`, rodar `firebase deploy --only functions` antes de prosseguir. Recovery manual não usa o marker `.cf-deployed-${PR}` — o operador é o próprio juiz da paridade prod↔main. Esquecer este passo = casos #211/#210/#221 (CF mergeada fora de prod).
+
 ### 1. Atualizar `docs/dev/issues/issue-NNN-*.md`
 Resumo do que foi feito, decisões DEC-xxx, arquivos tocados, comandos git executados, testes rodados, pendências.
 
@@ -24,6 +28,10 @@ Resumo do que foi feito, decisões DEC-xxx, arquivos tocados, comandos git execu
 - `docs/registry/versions.md` — marcar versão consumida com `(PR #NNN squash <sha>)`
 - `docs/registry/chunks.md` — liberar locks da sessão
 - `docs/decisions.md` — append DECs aprovadas
+
+### 2.6. Cross-check anti-órfã DEC (issue #225)
+
+Antes do `git rm` do control doc: para cada `DEC-AUTO-NNN-XX` mencionada em PR body, issue body ou `CHANGELOG.md`, conferir que existe linha correspondente em `docs/decisions.md`. Append manual no formato `- **DEC-AUTO-NNN-XX** (DD/MM/YYYY): <texto>.` se faltar. Sem isso a SSoT canônica de decisões fica corrompida (caso histórico: #221 → DECs órfãs detectadas em #225).
 
 ### 3. Commit deltas + push
 
