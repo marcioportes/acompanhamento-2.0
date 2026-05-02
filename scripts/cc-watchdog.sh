@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # cc-watchdog.sh — per-worktree watchdog para Protocolo Autônomo §13
-# Detecta 3 classes de stall e toma ação automática limitada (retry 1×)
+# Detecta 4 classes de stall e toma ação automática limitada (retry 1×)
 # ou escala humano via email (cc-notify-email.py).
+#
+# Classes:
+#   1  — Coord falhou no --resume após worker entregar report (transiente ou quota)
+#   1b — retry pós-quota agendado (sub-caso de 1)
+#   2  — worker travado em inbox/ sem result.log >T_WORKER_MAX min
+#   3  — tmux/listener morto
+#   4  — worker hit API error em result.log antes de entregar report (transiente ou quota)
+#   4b — retry pós-quota agendado para worker (sub-caso de 4)
 #
 # Uso:
 #   cc-watchdog.sh <issue-num> <branch>
@@ -354,6 +362,142 @@ check_class2() {
   return $found
 }
 
+# ── detector CLASSE 4 — worker hit API error antes de entregar report ────
+# Sintoma: outbox/<NN>-<slug>-result.log com erro conhecido + sem report.md.
+# Worker morreu antes de gerar o report (rate limit, ECONNRESET, Overloaded
+# silencioso). Class 1 não pega porque exige report.md presente; class 2 não
+# pega porque briefing já foi movido para processed/ pelo listener.
+# Sub-casos:
+#  - QUOTA: agenda re-dispatch via cc-dispatch-task.sh para horário de reset
+#  - TRANSIENT: emite 1 email humano (sem retry automático — humano decide)
+check_class4_worker_api_error() {
+  shopt -s nullglob
+  local f
+  for f in "$MAILBOX/outbox/"*-result.log; do
+    # Excluir result.logs irrelevantes (defensivo — globs distintos mas garantia).
+    [[ "$f" == *coord-response.log ]] && continue
+    [[ "$f" == *retry-*.log ]] && continue
+
+    # Extrai N + slug: "07-helper-avg-excursion-result.log" → n=07, slug=07-helper-avg-excursion
+    local base slug n
+    base=$(basename "$f" -result.log)
+    n=$(echo "$base" | grep -oE '^[0-9]+' || echo "")
+    [[ -z "$n" ]] && continue
+    slug="$base"
+
+    # Pula o "NN-result.log" curto (sem slug textual): listener cria 2 result.logs
+    # — esse é status, não worker output. Slug deve ter pelo menos um traço além do N.
+    [[ "$slug" == "$n" ]] && continue
+
+    # Já tratado?
+    [[ -f "$MAILBOX/outbox/${n}-worker-retry.done" ]] && continue
+    [[ -f "$MAILBOX/outbox/${n}-worker-retry-at" ]] && continue
+
+    # Worker entregou report? Pula (não é falha pré-entrega).
+    # NOTE: nullglob está ON aqui, então `ls glob*` com no-match listaria o cwd
+    # e retornaria 0 (falso positivo). Usar array + test -f como class_2 faz.
+    local -a maybe_reports=( "$MAILBOX/outbox/${n}-report.md" "$MAILBOX/outbox/${n}"*"-report.md" )
+    local has_report=0
+    local r
+    for r in "${maybe_reports[@]}"; do
+      [[ -f "$r" ]] && { has_report=1; break; }
+    done
+    (( has_report )) && continue
+
+    # Tem erro conhecido?
+    has_api_error "$f" || continue
+
+    # ── sub-caso QUOTA ──────────────────────────────────────────────────────
+    if has_quota_error "$f"; then
+      local coord_id
+      coord_id=$(cat "$MAILBOX/.coord-id" 2>/dev/null || echo "")
+      local reset_epoch
+      reset_epoch=$(parse_quota_reset_epoch "$f") || reset_epoch=""
+      if [[ -n "$reset_epoch" ]]; then
+        local reset_iso
+        reset_iso=$(date -d "@$reset_epoch" '+%Y-%m-%d %H:%M %Z')
+        printf '%s|%s\n' "$reset_epoch" "$slug" > "$MAILBOX/outbox/${n}-worker-retry-at"
+        log_event WARN class_4_quota "worker quota stall task=$n slug=$slug reset=$reset_iso"
+        send_email WATCHDOG_CLASS_4_WORKER_QUOTA_SCHEDULED \
+          "#$ISSUE [QUOTA] worker task $n caiu — retry agendado $reset_iso" \
+          "Worker da task $n bateu rate limit antes de gerar report. Watchdog parseou reset ($reset_iso) e agendou re-dispatch automático via cc-dispatch-task.sh slug=$slug. Segundo email sairá no resultado." \
+          "result_log=$f reset_epoch=$reset_epoch slug=$slug"
+      else
+        touch "$MAILBOX/outbox/${n}-worker-retry.done"  # queima budget, manual
+        log_event ERROR class_4_quota "worker quota stall task=$n — horário não parseável"
+        send_email WATCHDOG_CLASS_4_WORKER_QUOTA_SCHEDULED \
+          "#$ISSUE [QUOTA] worker task $n caiu — horário ilegível" \
+          "Worker da task $n bateu rate limit, horário de reset não parseado no log. Re-dispatch manual: cc-dispatch-task.sh $ISSUE $slug" \
+          "result_log=$f"
+      fi
+      continue
+    fi
+
+    # ── sub-caso TRANSIENT ──────────────────────────────────────────────────
+    # Sem retry automático aqui (slug-based dispatch acorda Coord, side effects);
+    # melhor emitir 1 email e deixar humano decidir. Queima budget pra evitar spam.
+    touch "$MAILBOX/outbox/${n}-worker-retry.done"
+    log_event WARN class_4 "worker API error task=$n slug=$slug"
+    send_email WATCHDOG_CLASS_4_WORKER_API_ERROR \
+      "#$ISSUE worker task $n falhou — API error transitório" \
+      "Worker da task $n retornou erro de API antes de gerar report (não é quota — Overloaded/ECONNRESET/socket). Re-dispatch manual recomendado: cc-dispatch-task.sh $ISSUE $slug" \
+      "result_log=$f slug=$slug"
+  done
+  shopt -u nullglob
+}
+
+# ── detector CLASSE 4b — retry agendado pós-quota para worker ─────────────
+# Varre outbox/*-worker-retry-at. Se a hora chegou: re-dispatcha via
+# cc-dispatch-task.sh (Coord re-emite briefing, listener processa fresh).
+check_class4_pending_retry() {
+  shopt -s nullglob
+  local f
+  for f in "$MAILBOX/outbox/"*-worker-retry-at; do
+    local base n
+    base=$(basename "$f" -worker-retry-at)
+    n=$(echo "$base" | grep -oE '^[0-9]+' || echo "")
+    [[ -z "$n" ]] && continue
+
+    # budget já consumido por outro caminho?
+    if [[ -f "$MAILBOX/outbox/${n}-worker-retry.done" ]]; then
+      rm -f "$f"
+      continue
+    fi
+
+    local entry epoch slug now
+    entry=$(head -1 "$f" 2>/dev/null)
+    epoch="${entry%%|*}"
+    slug="${entry#*|}"
+    [[ -z "$epoch" || -z "$slug" || "$slug" == "$entry" ]] && continue
+    now=$(date +%s)
+    (( now < epoch )) && continue  # ainda não é hora
+
+    # === hora de retryar ===
+    log_event INFO class_4_quota "worker retry agendado disparando task=$n slug=$slug"
+    touch "$MAILBOX/outbox/${n}-worker-retry.done"
+
+    local retry_log="$MAILBOX/outbox/${n}-worker-retry-$(date +%s).log"
+    "$HOME/cc-mailbox/bin/cc-dispatch-task.sh" "$ISSUE" "$slug" > "$retry_log" 2>&1
+    local rc=$?
+    rm -f "$f"
+
+    if [[ $rc -eq 0 ]]; then
+      log_event INFO class_4_quota "worker retry task=$n SUCCESS"
+      send_email WATCHDOG_CLASS_4_WORKER_QUOTA_RESULT \
+        "#$ISSUE [QUOTA] [INFO] worker task $n re-dispatchado" \
+        "Re-dispatch automático da task $n após reset de quota OK. Coord acordada para re-emitir briefing, loop retomado." \
+        "retry_log=$retry_log slug=$slug"
+    else
+      log_event ERROR class_4_quota "worker retry task=$n FAILED rc=$rc"
+      send_email WATCHDOG_CLASS_4_WORKER_QUOTA_RESULT \
+        "#$ISSUE [QUOTA] worker task $n re-dispatch FALHOU rc=$rc" \
+        "Re-dispatch automático da task $n falhou (rc=$rc). Intervenção manual: cc-dispatch-task.sh $ISSUE $slug" \
+        "retry_log=$retry_log slug=$slug"
+    fi
+  done
+  shopt -u nullglob
+}
+
 # ── detector CLASSE 3 — tmux morto ───────────────────────────────────────
 check_class3() {
   local session="cc-$ISSUE"
@@ -441,11 +585,13 @@ while true; do
     log_event INFO heartbeat "iter=$iter tmux=$(tmux has-session -t cc-$ISSUE 2>/dev/null && echo alive || echo dead) pending_quota=$pending_quota"
   fi
 
-  # ordem importa: class 3 primeiro (infra), depois retry agendado de quota
-  # (pode disparar antes do detector de novo stall), depois class 1, class 2.
+  # ordem importa: class 3 primeiro (infra), depois retries agendados (podem
+  # disparar antes dos detectores de novo stall), depois detectores stall.
   check_class3 || true
   check_class1_pending_retry || true
+  check_class4_pending_retry || true
   check_class1 || true
+  check_class4_worker_api_error || true
   check_class2 || true
 
   # oneshot para testes
