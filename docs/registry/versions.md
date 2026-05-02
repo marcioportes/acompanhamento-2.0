@@ -17,4 +17,4 @@
 | 1.50.0 | #219 | `feat/issue-219-mentor-classification` | 01/05/2026 | consumida (PR #222 squash `03689977`) |
 | 1.51.0 | #220 | `feat/issue-220-pendency-guard` | 01/05/2026 | consumida (PR #223 squash `20c8c751`) |
 | 1.52.0 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | consumida (PR #224 squash `af1aa289`) |
-| 1.53.0 | #229 | `feat/issue-229-stop-breakeven-hesitation-detectors` | 01/05/2026 | reservada |
+| 1.53.0 | #229 | `feat/issue-229-stop-breakeven-hesitation-detectors` | 01/05/2026 | consumida (PR #230 squash `fa23e496`) |

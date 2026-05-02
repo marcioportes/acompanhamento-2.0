@@ -5,5 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-06 | #229 | `feat/issue-229-stop-breakeven-hesitation-detectors` | 01/05/2026 | issue-229 |
-| CHUNK-11 | #229 | `feat/issue-229-stop-breakeven-hesitation-detectors` | 01/05/2026 | issue-229 |

@@ -13,8 +13,7 @@
  *   stop com preço idêntico — heurística operacional; severity LOW; só rebate em periodScore,
  *   não entra em TILT). Tolerance por prefix B3/CME + fallback max(0.01, 0.05%·entry).
  *   Penalties: BREAKEVEN=12, HESITATION=5. Mirror ESM↔CJS obrigatório. Schema: zero campo
- *   Firestore novo (compute on-the-fly, padrão Opção C de #208). [RESERVADA — entrada
- *   definitiva no encerramento.]
+ *   Firestore novo (compute on-the-fly, padrão Opção C de #208).
  *
  * - 1.52.0: feat: mentor limpa violações com toggle (compliance + emocional) (issue #221,
  *   parte 3/3 de #218). Compliance e detecções emocionais hoje são determinísticas — STOP
@@ -309,10 +308,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.52.0',
+  version: '1.53.0',
   build: '20260501',
-  display: 'v1.52.0',
-  full: '1.52.0+20260501',
+  display: 'v1.53.0',
+  full: '1.53.0+20260501',
 };
 export default VERSION;
 export { VERSION };
