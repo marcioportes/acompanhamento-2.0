@@ -278,6 +278,8 @@ Exemplos:
 - `cc-notify-email.py` em `EMAIL_DRY_RUN=1` não escreve em per-worktree log (só no global); assimetria trivial de 3 linhas
 - Criar worktree novo a partir do `main` pós-merge #172 pega a versão refatorada do `cc-worktree-start.sh` automaticamente (nota operacional: worktrees criados ANTES do merge continuam com script antigo até recriarem)
 
+**Política de SoT para infra autônoma duplicada (#231):** scripts que vivem em `scripts/` (repo, versionado) são canônicos. Cópias antigas em `~/cc-mailbox/bin/` (não versionadas) que existirem para os mesmos arquivos — `cc-watchdog.sh`, `cc-status.sh` — são deprecated; consumidores programáticos (ex.: `cc-worktree-start.sh:226`) apontam para `$REPO/scripts/`. Cleanup local das cópias velhas em `~/cc-mailbox/bin/` é decisão operacional do Marcio (fora do repo). Scripts que existem APENAS em `~/cc-mailbox/bin/` (`cc-notify-email.py`, `cc-validate-task.py`, `cc-spawn-coord.sh`, `cc-dispatch-task.sh`) seguem lá até fast-follow do `cc-notify-email.py:262` ser executado.
+
 ### 13.12 Decisões de Design (Bugs 1-10)
 
 Ver histórico em `/mnt/c/000-Marcio/Temp/proto-autonomo-state.md` para o design completo. Síntese:
