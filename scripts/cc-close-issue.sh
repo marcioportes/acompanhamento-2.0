@@ -92,9 +92,9 @@ echo "  resumo: ${PR_SUMMARY}"
 # Bug histórico: o alerta original no fim do script (#216) era não-bloqueante
 # — Marcio podia esquecer e deixar CF mergeada fora de prod (paridade
 # prod↔main quebrada). Casos #211/#210 e #221 mergearam mudança em
-# `functions/` sem deploy imediato. Fix (issue #225 v2): se o squash tocou
-# `functions/`, exige marker file `.cf-deployed-${PR}` confirmando deploy
-# antes de prosseguir. Operador roda no main após o merge:
+# `functions/` sem deploy imediato. Fix (issue #225 — Parte D): se o squash
+# tocou `functions/`, exige marker file `.cf-deployed-${PR}` confirmando
+# deploy antes de prosseguir. Operador roda no main após o merge:
 #   firebase deploy --only functions && touch .cf-deployed-${PR}
 # Marker é deletado após verificação (não vai pro git).
 echo "[0a/8] Gate de Cloud Functions deploy…"
