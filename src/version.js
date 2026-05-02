@@ -8,11 +8,13 @@
  *   de R$1.005 num RO de R$1.000 (0,5% acima) é flagrado; mentor entende contexto, sistema
  *   não. Solução: mentor toggle = lei dentro de v1, sem audit metadata. Schema: 1 campo
  *   novo `mentorClearedViolations: string[]` em trades/{id} (chave compliance = código;
- *   chave emocional = `${type}:${timestamp}`). Helpers `effectiveRedFlags` /
- *   `effectiveEmotionalEvents` aplicados em complianceRate, calculatePeriodScore, gates
- *   de maturity. CF onTradeUpdated detecta mudança no array → invoca recompute pipeline
- *   paralela à de plano. Mirrors ESM↔CJS. Aluno read-only via rules. [RESERVADA — entrada
- *   definitiva no encerramento.]
+ *   chave emocional = `${type}:${tradeId}` — DEC-AUTO-221-01). Helpers
+ *   `effectiveRedFlags` / `effectiveEmotionalEvents` aplicados em complianceRate,
+ *   calculatePeriodScore, gates de maturity. CF onTradeUpdated detecta mudança no
+ *   array via fingerprint sorted → invoca `recomputeForStudent` (paralelo a plan-change).
+ *   Mirrors ESM↔CJS obrigatórios. UI: FeedbackPage com botões `✕ Limpar` / `↺ Restaurar`
+ *   inline; bloco separado "Limpas pelo mentor" para auditoria visual. Aluno read-only
+ *   via rules. Suite 2838/2838 (PR #224 squash `af1aa289`).
  *
  * - 1.51.0: feat: pendency guard no StudentDashboard — modal de pendências bloqueante
  *   (issue #220, parte 2/3 de #218). Aluno deixa de fechar trades já revisados
@@ -294,10 +296,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.51.0',
+  version: '1.52.0',
   build: '20260501',
-  display: 'v1.51.0',
-  full: '1.51.0+20260501',
+  display: 'v1.52.0',
+  full: '1.52.0+20260501',
 };
 export default VERSION;
 export { VERSION };

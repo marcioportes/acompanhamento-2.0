@@ -8,6 +8,43 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.52.0] - 01/05/2026 · #221 · PR #224
+
+**feat:** mentor limpa violações com toggle (compliance + emocional) (Phase B de #218)
+
+Compliance e detecções emocionais hoje são determinísticas; mentor entende contexto, sistema não. Solução: mentor toggle = lei dentro de v1, sem audit metadata. Pipeline de recompute automático paralelo a mudança de plano.
+
+**Schema (INV-15 aprovada):**
+- 1 campo novo em `trades/{id}`: `mentorClearedViolations: string[]`. Aluno read-only via `firestore.rules`.
+- Chave compliance: o code (`NO_STOP`, `RR_BELOW_MINIMUM`, `RISK_EXCEEDED`, `DAILY_LOSS_EXCEEDED`, `BLOCKED_EMOTION`).
+- Chave emocional: `${eventType}:${tradeId}` — DEC-AUTO-221-01 (revisão do plano original que usava timestamp; tradeId é mais estável e mantém isolamento por trade).
+
+**Helper puro `violationFilter`:**
+- `effectiveRedFlags(trade)` — filtra `trade.redFlags` pelo type cleared.
+- `hasEffectiveRedFlags(trade)` — boolean para `complianceRate`. Trade com `hasRedFlags: true` legacy sem array fica intacto (sem types não dá pra limpar parcialmente).
+- `effectiveEmotionalEventsForTrade(trade, events)` — UI per-row.
+- `effectiveEmotionalEventsForPeriod(trades, events)` — agregação. Mantém evento se ALGUM trade vinculado ainda não limpou.
+
+**Mirror CJS** em `functions/maturity/violationFilter.js` — paridade obrigatória ESM↔CJS.
+
+**Gateway:** `toggleViolationClearedAsMentor(tradeId, key, ctx)` com `arrayUnion`/`arrayRemove`. Validação mentor + key string + trade existe.
+
+**Wire `effective*`** em 6 consumidores: `dashboardMetrics.calculateComplianceRate`, `useDashboardMetrics.complianceRate`, `computeCycleBasedComplianceRate` ESM + CJS (gate compliance-100), `emotionalAnalysisV2.calculatePeriodScore` + `calculateStudentStatus`, `emotionalAnalysisMirror.calculatePeriodScore`, `useEmotionalProfile`.
+
+**UI mentor (FeedbackPage):** bloco "Violações" mostra effective com botão `✕ Limpar` mentor-only; bloco separado "Limpas pelo mentor" com strike-through + `↺ Restaurar`. Aluno vê ambos em read-only.
+
+**`firestore.rules`:** allowlist mentor-only para `mentorClearedViolations`.
+
+**CF `onTradeUpdated`:** detecta mudança no array via fingerprint sorted; invoca `recomputeForStudent(db, studentId, {admin})` igual a plan-change. Erros logados, não bloqueiam outros side-effects (PropFirm, etc).
+
+**Decisões:**
+- DEC-AUTO-221-01: chave compliance = code; chave emocional = `${type}:${tradeId}`
+- DEC-AUTO-221-02: sem audit metadata (sem reason/clearedAt/clearedBy)
+- DEC-AUTO-221-03: detectores não re-rodam — só agregação filtra
+
+**Testes:** 41 novos (25 helper + 4 mirror paridade + 12 gateway). Suite full **2838/2838** (baseline 2797).
+
+
 ## [1.51.0] - 01/05/2026 · #220 · PR #223
 
 **feat:** pendency guard no StudentDashboard — modal de pendências bloqueante (Phase C de #218)
