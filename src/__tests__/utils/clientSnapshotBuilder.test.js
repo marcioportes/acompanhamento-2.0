@@ -330,9 +330,8 @@ describe('buildClientSnapshot', () => {
   // === Issue #235 F3.1 — kpis.cvNormalized (CV normalizado per-ciclo) ===
 
   describe('kpis.cvNormalized — CV normalizado per-ciclo (issue #235)', () => {
-    // Plano com targetRR para ativar fórmula analítica de cv_exp.
-    // Note: o helper lê `plan.targetRR` (não `plan.rrTarget`).
-    const planCycle = { id: 'plan1', adjustmentCycle: 'Mensal', pl: 10000, targetRR: 3, expectedWinRate: 0.5 };
+    // Plano com rrTarget (campo canônico) para ativar fórmula analítica de cv_exp.
+    const planCycle = { id: 'plan1', adjustmentCycle: 'Mensal', pl: 10000, rrTarget: 3 };
 
     it('C1 — sem cycleStart/cycleEnd → cvNormalized é null (campo presente, valor null)', () => {
       const snap = buildClientSnapshot({ plan: planCycle, trades: [mkTrade({ id: 't1', result: 50 })] });
@@ -340,7 +339,7 @@ describe('buildClientSnapshot', () => {
       expect(snap.kpis.cvNormalized).toBeNull();
     });
 
-    it('C2 — com cycleStart/cycleEnd válidos + trades em ≥5 dias + targetRR → value populado', () => {
+    it('C2 — com cycleStart/cycleEnd válidos + trades em ≥5 dias + rrTarget → value populado', () => {
       // 5 dias com trade (mínimo do helper) com magnitudes variando para ter std/mean computáveis.
       const trades = [
         mkTrade({ id: 'd1', result: 100, date: '2026-04-01', status: 'CLOSED' }),
@@ -364,7 +363,7 @@ describe('buildClientSnapshot', () => {
       expect(typeof snap.kpis.cvNormalized.cvExp).toBe('number');
     });
 
-    it('C3 — com cycleStart/cycleEnd, plan sem targetRR → value null + insufficientReason="no_target_rr"', () => {
+    it('C3 — com cycleStart/cycleEnd, plan sem rrTarget → value null + insufficientReason="no_target_rr"', () => {
       const trades = [
         mkTrade({ id: 'd1', result: 100, date: '2026-04-01', status: 'CLOSED' }),
         mkTrade({ id: 'd2', result: -50, date: '2026-04-02', status: 'CLOSED' }),
@@ -372,9 +371,10 @@ describe('buildClientSnapshot', () => {
         mkTrade({ id: 'd4', result: -80, date: '2026-04-04', status: 'CLOSED' }),
         mkTrade({ id: 'd5', result: 300, date: '2026-04-05', status: 'CLOSED' }),
       ];
-      // Plan sem targetRR — herda de `plan` base (que tem rrTarget mas NÃO targetRR).
+      // Plan sem rrTarget definido (campo ausente).
+      const planNoRR = { id: 'plan1', adjustmentCycle: 'Mensal', pl: 10000 };
       const snap = buildClientSnapshot({
-        plan,
+        plan: planNoRR,
         trades,
         cycleStart: '2026-04-01',
         cycleEnd: '2026-04-30',

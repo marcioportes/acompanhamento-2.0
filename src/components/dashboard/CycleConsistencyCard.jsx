@@ -4,17 +4,18 @@
  * @description Card "Consistência Operacional" do StudentDashboard. Substitui
  *   CV puro + ΔT W/L (que confundiam concentração/estabilidade/aderência) por
  *   4 métricas científicas: Sharpe per-ciclo (Selic descontada), CV normalizado
- *   (cv_obs / cv_exp(plan.targetRR, WR)), MEP médio e MEN médio em % por entry.
+ *   (cv_obs / cv_exp(plan.rrTarget, WR)), MEP médio e MEN médio em % por entry.
  *
  *   Spec / mockup: docs/dev/issues/issue-235-cycle-consistency-redesign.md
  *   Hook orquestrador: src/hooks/useCycleConsistency.js (commit 10b941ec)
  *
- *   ΔT W/L e tempo médio geral foram removidos do card (DEC-AUTO-235-T09-B —
- *   se voltarem, será em outro card / outro issue, conforme spec do issue).
+ *   ΔT W/L removido (sem substituto direto no novo modelo). Tempo medio geral
+ *   preservado como sub-linha (info universal, sem indicadores de tempo
+ *   ainda assertivos pro aluno — DEC-AUTO-235-T09-B revisada em review).
  */
 /* eslint-disable react/prop-types */
 
-import { Activity } from 'lucide-react';
+import { Activity, Clock } from 'lucide-react';
 import { useCycleConsistency } from '../../hooks/useCycleConsistency';
 import DebugBadge from '../DebugBadge';
 
@@ -62,24 +63,43 @@ function menTheme(value) {
   return { text: 'text-red-400', dot: 'bg-red-400' };
 }
 
+const SELIC_BADGE_TOOLTIP_BCB =
+  'Selic histórica diária via BCB SGS-11 sendo descontada no Sharpe (taxa livre de risco real do dia).';
+const SELIC_BADGE_TOOLTIP_FALLBACK =
+  'Selic do BCB indisponível no período — Sharpe calculado com taxa anual constante hardcoded (~14.75% a.a.). ' +
+  'Após CF agendada `fetchSelicDaily` rodar (próximo 09h BRT) e bootstrap histórico ser executado, ' +
+  'o badge fica verde com a Selic real do dia.';
+const SELIC_BADGE_TOOLTIP_MIXED =
+  'Parte do período usa Selic do BCB e parte usa fallback hardcoded (gap em dias específicos). ' +
+  'Sharpe ainda é confiável; badge alerta para a mistura.';
+
 function selicBadge(source) {
   if (source === 'BCB') {
     return (
-      <span className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+      <span
+        title={SELIC_BADGE_TOOLTIP_BCB}
+        className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5"
+      >
         📊 BCB
       </span>
     );
   }
   if (source === 'FALLBACK') {
     return (
-      <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+      <span
+        title={SELIC_BADGE_TOOLTIP_FALLBACK}
+        className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
+      >
         ⚠ fallback
       </span>
     );
   }
   if (source === 'MIXED') {
     return (
-      <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+      <span
+        title={SELIC_BADGE_TOOLTIP_MIXED}
+        className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
+      >
         ⚠ misto
       </span>
     );
@@ -95,6 +115,47 @@ function MetricRow({ label, value, theme, badge, tooltip, valueClassName }) {
         <span className={`text-sm font-bold font-mono ${valueClassName ?? theme.text}`}>{value}</span>
         {badge}
         <span className={`w-2 h-2 rounded-full ${theme.dot}`} aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+function DualMetricRow({ label, left, right }) {
+  // Quando ambos lados estão em estado "insuficiente" (mesma mensagem), colapsa
+  // para uma linha só com a mensagem — evita duplicação visual.
+  const sameInsufficient =
+    left.view.valueClassName && right.view.valueClassName && left.view.value === right.view.value;
+  if (sameInsufficient) {
+    return (
+      <div className="flex items-center justify-between py-2.5">
+        <span className="text-xs text-slate-500">{label}</span>
+        <span className={`text-xs font-medium ${left.view.valueClassName}`}>{left.view.value}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between py-2.5">
+      <span className="text-xs text-slate-500">{label}</span>
+      <div className="flex items-center gap-3">
+        <span className="flex items-center gap-1.5" title={left.tooltip}>
+          <span className="text-[10px] text-slate-600 font-mono">{left.caption}</span>
+          <span
+            className={`text-sm font-bold font-mono ${left.view.valueClassName ?? left.view.theme.text}`}
+          >
+            {left.view.value}
+          </span>
+          <span className={`w-2 h-2 rounded-full ${left.view.theme.dot}`} aria-hidden="true" />
+        </span>
+        <span className="text-slate-700">·</span>
+        <span className="flex items-center gap-1.5" title={right.tooltip}>
+          <span className="text-[10px] text-slate-600 font-mono">{right.caption}</span>
+          <span
+            className={`text-sm font-bold font-mono ${right.view.valueClassName ?? right.view.theme.text}`}
+          >
+            {right.view.value}
+          </span>
+          <span className={`w-2 h-2 rounded-full ${right.view.theme.dot}`} aria-hidden="true" />
+        </span>
       </div>
     </div>
   );
@@ -153,42 +214,38 @@ function cvContent(cv) {
   };
 }
 
+function excursionInsufficientLabel(avg) {
+  if (avg?.insufficientReason === 'no_excursion_data') return 'Sem dado MEP/MEN nos trades do ciclo';
+  if (avg?.insufficientReason === 'no_trades') return 'Sem trades no ciclo';
+  return '-';
+}
+
 function mepContent(avg) {
   if (!avg || avg.avgMEP == null) {
-    const label = avg?.insufficientReason === 'no_excursion_data'
-      ? 'Sem dado MEP/MEN nos trades do ciclo'
-      : avg?.insufficientReason === 'no_trades'
-        ? 'Sem trades no ciclo'
-        : '-';
     return {
-      value: label,
+      value: excursionInsufficientLabel(avg),
       theme: mepTheme(null),
       valueClassName: 'text-xs font-medium text-slate-500',
     };
   }
   const v = avg.avgMEP;
   return {
-    value: `${v >= 0 ? '+' : ''}${v.toFixed(1)}% / entry`,
+    value: `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`,
     theme: mepTheme(v),
   };
 }
 
 function menContent(avg) {
   if (!avg || avg.avgMEN == null) {
-    const label = avg?.insufficientReason === 'no_excursion_data'
-      ? 'Sem dado MEP/MEN nos trades do ciclo'
-      : avg?.insufficientReason === 'no_trades'
-        ? 'Sem trades no ciclo'
-        : '-';
     return {
-      value: label,
+      value: excursionInsufficientLabel(avg),
       theme: menTheme(null),
       valueClassName: 'text-xs font-medium text-slate-500',
     };
   }
   const v = avg.avgMEN;
   return {
-    value: `${v >= 0 ? '+' : ''}${v.toFixed(1)}% / entry`,
+    value: `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`,
     theme: menTheme(v),
   };
 }
@@ -204,13 +261,11 @@ function buildSharpeTooltip(sharpe, cycleLabel) {
 }
 
 function buildCvTooltip(cv, plan) {
-  const rrText = plan && typeof plan.targetRR === 'number' ? plan.targetRR.toFixed(1) : '?';
-  const wrText = cv && typeof cv.cvObs === 'number' && plan && typeof plan.expectedWinRate === 'number'
-    ? `${(plan.expectedWinRate * 100).toFixed(0)}%`
-    : '—';
+  const rrText = plan && typeof plan.rrTarget === 'number' ? plan.rrTarget.toFixed(1) : '?';
   return (
-    `CV normalizado compara a variabilidade do seu P&L com a esperada pelo seu plano (RR ${rrText}, ` +
-    `WR ${wrText}). 1.0 = executando exatamente o plano · >1.5 = mais errático · <0.8 = mais estável ` +
+    `CV normalizado compara a variabilidade do seu P&L com a esperada pelo seu plano (RR ${rrText}). ` +
+    'Se a WR efetiva do ciclo não for calculável, é usada a WR de breakeven 1/(1+RR) como referência. ' +
+    '1.0 = executando exatamente o plano · >1.5 = mais errático · <0.8 = mais estável ' +
     '(verificar amostra ou overfitting).'
   );
 }
@@ -223,7 +278,23 @@ const MEN_TOOLTIP =
   'MEN médio (Máxima Excursão Negativa): em média seus trades chegaram a −X% antes de fechar. ' +
   'Mostra quanto risco você aceitou correr antes do desfecho.';
 
-const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, opts }) => {
+function formatDuration(minutes) {
+  if (minutes == null || !Number.isFinite(minutes)) return '-';
+  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
+  if (minutes < 60) return `${Math.round(minutes)}min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
+function classifyDuration(minutes) {
+  if (minutes == null || !Number.isFinite(minutes)) return null;
+  if (minutes < 5) return { label: 'Scalping', color: 'text-purple-400' };
+  if (minutes <= 60) return { label: 'Day Trade', color: 'text-blue-400' };
+  return { label: 'Swing', color: 'text-emerald-400' };
+}
+
+const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, opts, avgTradeDuration }) => {
   const state = useCycleConsistency({ trades, plan, cycleStart, cycleEnd, opts });
   const { sharpe, cvNormalized, avgExcursion, loading, error } = state;
 
@@ -273,19 +344,10 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
             tooltip={buildCvTooltip(cvNormalized, plan)}
             valueClassName={cvView.valueClassName}
           />
-          <MetricRow
-            label="MEP médio"
-            value={mepView.value}
-            theme={mepView.theme}
-            tooltip={MEP_TOOLTIP}
-            valueClassName={mepView.valueClassName}
-          />
-          <MetricRow
-            label="MEN médio"
-            value={menView.value}
-            theme={menView.theme}
-            tooltip={MEN_TOOLTIP}
-            valueClassName={menView.valueClassName}
+          <DualMetricRow
+            label="MEP / MEN médio (% / entry)"
+            left={{ caption: 'MEP', view: mepView, tooltip: MEP_TOOLTIP }}
+            right={{ caption: 'MEN', view: menView, tooltip: MEN_TOOLTIP }}
           />
 
           {avgExcursion?.coverageBelowThreshold && avgExcursion.coverageLabel && (
@@ -295,6 +357,24 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
           )}
         </div>
       )}
+
+      {(() => {
+        const allMin = avgTradeDuration?.all;
+        const klass = classifyDuration(allMin);
+        if (!klass) return null;
+        return (
+          <div className="border-t border-slate-700/50 mt-4 pt-3">
+            <div className="flex items-center gap-3 text-[11px]">
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-slate-500">Tempo medio geral:</span>
+              <span className={`font-bold ${klass.color}`}>{formatDuration(allMin)}</span>
+              <span className={`px-1.5 py-0.5 rounded ${klass.color} bg-slate-800/50`}>
+                {klass.label}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       <DebugBadge component="CycleConsistencyCard" embedded />
     </div>

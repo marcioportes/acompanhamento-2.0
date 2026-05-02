@@ -16,7 +16,7 @@
  *
  * @param {Object} args
  * @param {Array} args.trades                — trades do escopo (já filtrados por conta/plano)
- * @param {Object} args.plan                 — plano ativo (lê targetRR + pl inicial)
+ * @param {Object} args.plan                 — plano ativo (lê rrTarget + pl inicial)
  * @param {string} args.cycleStart           — ISO `YYYY-MM-DD` (inclusive)
  * @param {string} args.cycleEnd             — ISO `YYYY-MM-DD` (inclusive)
  * @param {Object} [args.opts]               — overrides (testabilidade)

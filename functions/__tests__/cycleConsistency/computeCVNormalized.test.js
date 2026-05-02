@@ -36,7 +36,7 @@ const CALIB_TRADES = [
 
 describe('computeCVNormalized (CJS)', () => {
   it('C1 — janela vazia retorna null com insufficientReason min_days', () => {
-    const result = computeCVNormalized([], { targetRR: 3 }, '2026-02-01', '2026-02-28');
+    const result = computeCVNormalized([], { rrTarget: 3 }, '2026-02-01', '2026-02-28');
     expect(result.value).toBeNull();
     expect(result.cvObs).toBeNull();
     expect(result.cvExp).toBeNull();
@@ -52,13 +52,13 @@ describe('computeCVNormalized (CJS)', () => {
       { date: '04/02/2026', result: -50, status: 'CLOSED' },
       { date: '05/02/2026', result: 75, status: 'CLOSED' },
     ];
-    const result = computeCVNormalized(trades, { targetRR: 3 }, '2026-02-01', '2026-02-28');
+    const result = computeCVNormalized(trades, { rrTarget: 3 }, '2026-02-01', '2026-02-28');
     expect(result.value).toBeNull();
     expect(result.daysWithTrade).toBe(4);
     expect(result.insufficientReason).toBe('min_days');
   });
 
-  it('C3 — plan sem targetRR retorna null no_target_rr com label apropriado', () => {
+  it('C3 — plan sem rrTarget retorna null no_target_rr com label apropriado', () => {
     const result = computeCVNormalized(CALIB_TRADES, {}, '2026-02-01', '2026-02-28');
     expect(result.value).toBeNull();
     expect(result.daysWithTrade).toBe(10);
@@ -69,7 +69,7 @@ describe('computeCVNormalized (CJS)', () => {
   it('C4 — calibração spec issue body (7L+3G@3R, 10 dias) → cv_normalized ≈ 1.05 ± 0.05', () => {
     const result = computeCVNormalized(
       CALIB_TRADES,
-      { targetRR: 3 },
+      { rrTarget: 3 },
       '2026-02-01',
       '2026-02-28'
     );
@@ -92,7 +92,7 @@ describe('computeCVNormalized (CJS)', () => {
       { date: '05/02/2026', result: -50, status: 'CLOSED' },
       { date: '06/02/2026', result: -50, status: 'CLOSED' },
     ];
-    const result = computeCVNormalized(trades, { targetRR: 3 }, '2026-02-01', '2026-02-28');
+    const result = computeCVNormalized(trades, { rrTarget: 3 }, '2026-02-01', '2026-02-28');
     expect(result.value).toBeNull();
     expect(result.daysWithTrade).toBe(5);
     expect(result.insufficientReason).toBe('breakeven_plan');
@@ -108,7 +108,7 @@ describe('computeCVNormalized (CJS)', () => {
       { date: '06/02/2026', result: +1000, status: 'CLOSED' },
       { date: '09/02/2026', result: -1000, status: 'CLOSED' },
     ];
-    const result = computeCVNormalized(trades, { targetRR: 2 }, '2026-02-01', '2026-02-28');
+    const result = computeCVNormalized(trades, { rrTarget: 2 }, '2026-02-01', '2026-02-28');
     expect(result.value).toBeNull();
     expect(result.daysWithTrade).toBe(6);
     expect(result.insufficientReason).toBe('zero_obs_mean');
@@ -116,10 +116,10 @@ describe('computeCVNormalized (CJS)', () => {
     expect(result.label).toBe('P&L médio diário próximo de zero — CV indefinido');
   });
 
-  it('C7 — happy path: WR efetiva difere de plan.expectedWinRate, helper usa a efetiva', () => {
+  it('C7 — happy path: helper usa WR efetiva quando trades suficientes (ignora fallback breakeven)', () => {
     const result = computeCVNormalized(
       CALIB_TRADES,
-      { targetRR: 3, expectedWinRate: 0.50 },
+      { rrTarget: 3 },
       '2026-02-01',
       '2026-02-28'
     );
@@ -129,10 +129,12 @@ describe('computeCVNormalized (CJS)', () => {
     expect(result.value).toBeLessThan(1.10);
   });
 
-  it('C8 — fallback plan.expectedWinRate quando WR efetiva indefinida (resolveWinRate)', () => {
-    expect(resolveWinRate([], { expectedWinRate: 0.42 })).toBe(0.42);
-    expect(resolveWinRate([], {})).toBeNull();
+  it('C8 — fallback breakeven 1/(1+RR) quando WR efetiva indefinida (resolveWinRate)', () => {
+    expect(resolveWinRate([], 2)).toBeCloseTo(1 / 3, 10);
+    expect(resolveWinRate([], 1)).toBeCloseTo(0.5, 10);
+    expect(resolveWinRate([], 0)).toBeNull();
     expect(resolveWinRate([], null)).toBeNull();
+    expect(resolveWinRate([], undefined)).toBeNull();
 
     const trades = [
       { date: '02/02/2026', result: 100, status: 'CLOSED' },
@@ -140,7 +142,7 @@ describe('computeCVNormalized (CJS)', () => {
       { date: '02/02/2026', result: -50, status: 'CLOSED' },
       { date: '02/02/2026', result: -50, status: 'CLOSED' },
     ];
-    expect(resolveWinRate(trades, { expectedWinRate: 0.99 })).toBe(0.5);
+    expect(resolveWinRate(trades, 99)).toBe(0.5);
   });
 
   it('C9 — effectiveWinRate puro: 7L+3G → 0.3', () => {

@@ -402,13 +402,15 @@ const MetricsCards = ({
         </div>
 
         {/* CONSISTÊNCIA OPERACIONAL — issue #235: Sharpe per-ciclo + CV normalizado + MEP/MEN médio.
-            ΔT W/L e tempo médio geral foram removidos (DEC-AUTO-235-T09-B). */}
+            Sub-linha "Tempo medio geral" preservada do card antigo (info universal sem substituto
+            no momento — DEC-AUTO-235-T09-B revisada). */}
         <CycleConsistencyCard
           trades={trades}
           plan={plan}
           cycleStart={cycleStart}
           cycleEnd={cycleEnd}
           cycleLabel={cycleLabel}
+          avgTradeDuration={avgTradeDuration}
         />
       </div>
 

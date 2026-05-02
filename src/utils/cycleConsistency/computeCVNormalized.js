@@ -12,8 +12,8 @@
  *   cv_obs   = std_obs / |mean_obs|                          (null se mean_obs ≈ 0)
  *
  *   ── CV esperado pelo plano (analítico) ──
- *   p        = WR efetiva no ciclo (fallback plan.expectedWinRate)
- *   RR       = plan.targetRR
+ *   p        = WR efetiva no ciclo (fallback breakeven 1/(1+RR) quando insuficiente)
+ *   RR       = plan.rrTarget
  *   mean_exp = p × RR − (1 − p)                              [unidades de R]
  *   var_exp  = p × (RR − mean_exp)² + (1 − p) × (−1 − mean_exp)²
  *   std_exp  = sqrt(var_exp)
@@ -140,18 +140,21 @@ export function computeCvExpected(p, RR) {
 }
 
 /**
- * Resolve `p` (WR) a partir de trades efetivos, com fallback para
- * `plan.expectedWinRate` quando trades não permitem cálculo.
+ * Resolve `p` (WR) a partir de trades efetivos, com fallback para a
+ * **WR de breakeven** dado o RR alvo (`p_be = 1/(1+RR)`). Não há campo
+ * de WR esperada no modelo do plano — fallback breakeven é a hipótese
+ * neutra para o RR escolhido.
  *
  * @param {Array<{result:number,status:string}>} trades
- * @param {{expectedWinRate?:number}} plan
+ * @param {number} rrTarget
  * @returns {number|null}
  */
-export function resolveWinRate(trades, plan) {
+export function resolveWinRate(trades, rrTarget) {
   const fromTrades = effectiveWinRate(trades);
   if (fromTrades !== null) return fromTrades;
-  const fallback = plan && plan.expectedWinRate;
-  if (typeof fallback === 'number' && Number.isFinite(fallback)) return fallback;
+  if (typeof rrTarget === 'number' && Number.isFinite(rrTarget) && rrTarget > 0) {
+    return 1 / (1 + rrTarget);
+  }
   return null;
 }
 
@@ -159,7 +162,7 @@ export function resolveWinRate(trades, plan) {
  * CV normalizado per-ciclo. Pure function — zero Firestore.
  *
  * @param {Array<{date:string,result:number,status:string}>} trades
- * @param {{targetRR:number, expectedWinRate?:number}} plan
+ * @param {{rrTarget:number}} plan — campo canônico é `rrTarget` (ver PlanManagementModal)
  * @param {string} cycleStart — ISO `YYYY-MM-DD` (inclusive)
  * @param {string} cycleEnd   — ISO `YYYY-MM-DD` (inclusive)
  * @param {Object} [opts]
@@ -190,8 +193,8 @@ export function computeCVNormalized(trades, plan, cycleStart, cycleEnd, opts = {
     };
   }
 
-  const targetRR = plan && plan.targetRR;
-  if (typeof targetRR !== 'number' || !Number.isFinite(targetRR) || targetRR <= 0) {
+  const rrTarget = plan && plan.rrTarget;
+  if (typeof rrTarget !== 'number' || !Number.isFinite(rrTarget) || rrTarget <= 0) {
     return {
       value: null,
       cvObs: null,
@@ -213,7 +216,7 @@ export function computeCVNormalized(trades, plan, cycleStart, cycleEnd, opts = {
     inWindowTrades.push(t);
   }
 
-  const p = resolveWinRate(inWindowTrades, plan);
+  const p = resolveWinRate(inWindowTrades, rrTarget);
   if (p === null) {
     return {
       value: null,
@@ -225,7 +228,7 @@ export function computeCVNormalized(trades, plan, cycleStart, cycleEnd, opts = {
     };
   }
 
-  const exp = computeCvExpected(p, targetRR);
+  const exp = computeCvExpected(p, rrTarget);
   if (exp.cv === null) {
     return {
       value: null,

@@ -4,7 +4,7 @@
  * Cobertura:
  *  C1 — sem trades / inputs ausentes → metrics null, loading=false
  *  C2 — happy path: trades + plan + cycle válidos com Selic mockada
- *  C3 — plan sem targetRR → cvNormalized.insufficientReason='no_target_rr'
+ *  C3 — plan sem rrTarget → cvNormalized.insufficientReason='no_target_rr'
  *  C4 — plan sem pl inicial → sharpe.insufficientReason='no_pl_start'
  *  C5 — getSelicForDateFn rejeita → error capturado, loading=false
  *  C6 — re-render com trades atualizados → recomputa
@@ -43,14 +43,13 @@ const happyTrades = [
 
 const happyPlan = {
   pl: 10000,
-  targetRR: 2,
-  expectedWinRate: 0.5,
+  rrTarget: 2,
 };
 
 // Refs estáveis para evitar loop em useEffect (deps por referência)
 const EMPTY_TRADES = [];
 const PLAN_NO_RR = { pl: 10000 };
-const PLAN_NO_PL = { targetRR: 2, expectedWinRate: 0.5 };
+const PLAN_NO_PL = { rrTarget: 2 };
 
 const mockSelicFn = vi.fn(async () => ({
   rateDaily: 0.0006,
@@ -162,7 +161,7 @@ describe('useCycleConsistency', () => {
   });
 
   // C3 ------------------------------------------------------------------------
-  it('C3 — plan sem targetRR: cvNormalized=no_target_rr, sharpe e avgExcursion ok', async () => {
+  it('C3 — plan sem rrTarget: cvNormalized=no_target_rr, sharpe e avgExcursion ok', async () => {
     const opts = { getSelicForDateFn: mockSelicFn };
     const { result } = renderHook(() =>
       useCycleConsistency({
