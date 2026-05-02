@@ -243,8 +243,55 @@ if [ -n "$LOCK_LINES" ]; then
   fi
 fi
 
-# 3f. decisions.md — append de DECs (opcional via .deccs-NNN.md)
+# 3f. decisions.md — append de DECs com cross-check anti-órfão.
+#
+# Bug histórico (issue #225, sessão #221): comportamento opt-in com skip
+# silencioso permitiu DEC-AUTO-221-01..03 ficarem órfãs em CHANGELOG/PR body
+# sem propagar para docs/decisions.md (SSoT canônico). Fix: extrai menções
+# `DEC-AUTO-${ISSUE}-NN` do PR body, issue body (via snapshot 3.) e CHANGELOG.md;
+# compara com decisions.md + .deccs-${ISSUE}.md; aborta se houver órfã.
+#
+# Justificativa para abort em vez de auto-stub: placeholder em decisions.md
+# tem discoverability zero meses depois — falha alta força preenchimento com
+# contexto fresco (custo 1 minuto vs drift silencioso permanente).
 DECCS_FILE="$REPO/.deccs-${ISSUE}.md"
+
+MENTIONED_IDS=$(
+  {
+    cat "$SNAPSHOT_DIR/issue-${ISSUE}.json" 2>/dev/null || true
+    cat "$REPO/CHANGELOG.md" 2>/dev/null || true
+  } | grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" | sort -u || true
+)
+
+if [ -n "$MENTIONED_IDS" ]; then
+  PRESENT_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$REPO/docs/decisions.md" 2>/dev/null | sort -u || true)
+  COVERED_IDS=""
+  if [ -f "$DECCS_FILE" ]; then
+    COVERED_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$DECCS_FILE" 2>/dev/null | sort -u || true)
+  fi
+
+  ORPHANS=""
+  for id in $MENTIONED_IDS; do
+    if ! printf '%s\n%s\n' "$PRESENT_IDS" "$COVERED_IDS" | grep -qx "$id"; then
+      ORPHANS="${ORPHANS}${id}
+"
+    fi
+  done
+  ORPHANS=$(printf '%s' "$ORPHANS" | sed '/^$/d' | sort -u)
+
+  if [ -n "$ORPHANS" ]; then
+    echo >&2
+    echo "❌ DECs órfãs — mencionadas em PR/issue body ou CHANGELOG mas ausentes de docs/decisions.md:" >&2
+    echo "$ORPHANS" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Crie $DECCS_FILE com 1 linha por DEC no formato esperado por docs/decisions.md:" >&2
+    echo "    - **DEC-AUTO-${ISSUE}-XX** (${TODAY}): <texto da decisão>." >&2
+    echo >&2
+    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
+    abort "DEC órfã — abortando para preservar SSoT canônico de decisões (R3)"
+  fi
+fi
+
 if [ -f "$DECCS_FILE" ]; then
   if $DRY_RUN; then
     echo "  [dry-run] decisions.md ← append de $(wc -l < "$DECCS_FILE") linha(s) de $DECCS_FILE"

@@ -189,6 +189,7 @@ Seção `§3.2 Decisões Autônomas` no control file do issue também é univers
 | 43 | CC-Interface | Atualiza control file §5; propõe deltas de PROJECT.md (CHANGELOG, DEC, DT) e `version.js` no control file |
 | 44 | CC-Interface | Email "pronto para PR" |
 | 45 | Marcio | Aprova → CC-Interface cria PR (com `Closes #NNN`) → Marcio merga manualmente |
+| 45a | CC-Interface | **Se `§3.2` do control file tem qualquer `DEC-AUTO-NNN-XX`** → cria `.deccs-NNN.md` no main com 1 linha por DEC no formato `- **DEC-AUTO-NNN-XX** (DD/MM/YYYY): <texto>.` antes de rodar `cc-close-issue.sh`. Sem isso o script aborta no passo 3f (anti-DEC-órfã, issue #225) |
 | 46 | CC-Interface | §4.3: aplica deltas no main, fecha issue, deleta branch, libera locks §6.3, `git worktree remove`, `rm -rf`, mata tmux |
 
 ### 13.9 CLAIMS + Validator (INV-27 operacional)
