@@ -223,7 +223,12 @@ fi
 # Detecta stall em sessões autônomas §13: Classe 1 resume da Coord com API
 # error, Classe 2 worker travado, Classe 3 tmux/listener morto.
 # Opt-out: CC_WATCHDOG_DISABLE=1
-WATCHDOG_SCRIPT="$HOME/cc-mailbox/bin/cc-watchdog.sh"
+#
+# Issue #231: aponta para o repo (versionado) — autonomous.md:265 declara
+# scripts/cc-watchdog.sh canônico. ~/cc-mailbox/bin/cc-watchdog.sh é a
+# versão histórica do #178 ANTES da extensão para 7 tipos WATCHDOG_CLASS_*
+# + TTL configurável + retry pós-quota; deprecated, pode ser deletada localmente.
+WATCHDOG_SCRIPT="$REPO/scripts/cc-watchdog.sh"
 WATCHDOG_PIDFILE="$MAILBOX/.watchdog-pid"
 if [ "${CC_WATCHDOG_DISABLE:-}" = "1" ]; then
   echo "[start] Watchdog desabilitado via CC_WATCHDOG_DISABLE=1"
