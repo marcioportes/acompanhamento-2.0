@@ -25,7 +25,7 @@ import { useCycleConsistency } from '../../../hooks/useCycleConsistency';
 
 const baseProps = {
   trades: [],
-  plan: { pl: 10000, targetRR: 2, expectedWinRate: 0.5 },
+  plan: { pl: 10000, rrTarget: 2 },
   cycleStart: '2026-02-01',
   cycleEnd: '2026-02-28',
 };

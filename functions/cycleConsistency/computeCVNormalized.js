@@ -17,7 +17,7 @@
 //
 //   ── CV esperado pelo plano (analítico) ──
 //   p        = WR efetiva no ciclo (fallback breakeven 1/(1+RR) quando insuficiente)
-//   RR       = plan.targetRR
+//   RR       = plan.rrTarget
 //   mean_exp = p × RR − (1 − p)                              [unidades de R]
 //   var_exp  = p × (RR − mean_exp)² + (1 − p) × (−1 − mean_exp)²
 //   std_exp  = sqrt(var_exp)
