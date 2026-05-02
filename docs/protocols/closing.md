@@ -21,11 +21,12 @@
 O script orquestra 9 etapas (`[0/8]` a `[8/8]`, com gate `[0a/8]` adicional) e aborta no primeiro erro. Numeração casa com os prints do terminal:
 
 - **`[0/8]` Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
-- **`[0a/8]` Gate de Cloud Functions deploy** (issue #225) — se o squash do PR tocou `functions/`, exige marker file `.cf-deployed-${PR}` no repo root confirmando deploy. Aborta com comando de retomada caso ausente:
-   ```
-   firebase deploy --only functions && touch .cf-deployed-${PR}
-   ```
-   Marker é deletado após verificação (não vai para git). Substitui o alerta não-bloqueante histórico (#216) que permitia esquecer o deploy e quebrar paridade prod↔main.
+- **`[0a/8]` Gate de Cloud Functions deploy** (issues #225/#233) — se o squash do PR tocou `functions/`, script roda `firebase deploy --only functions` automaticamente (#233). Falha do deploy aborta o encerramento (paridade prod↔main preservada). Pré-check da `firebase` CLI aborta com mensagem clara se não instalada.
+   - **Override manual:** marker `.cf-deployed-${PR}` no repo root mantém suporte a operadores que preferem deploy ANTES do script (revert PR sem mudança real em CF, hotfix com fluxo especial). Marker presente → skip auto-deploy + delete marker. Cria com:
+     ```
+     firebase deploy --only functions && touch .cf-deployed-${PR}
+     ```
+   - **Histórico:** #216 introduziu alerta não-bloqueante (esquecível); #225 endureceu para marker explícito (fricção de autorização per-deploy); #233 internalizou o deploy no script (eliminou autorização, manteve marker como escape hatch).
 - **`[1/8]` Sync main** — `git pull --rebase origin main`.
 - **`[2/8]` Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
 - **`[3/8]` Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):

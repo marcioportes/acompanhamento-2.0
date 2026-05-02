@@ -13,9 +13,11 @@
 
 ## Sequência (não pular passos)
 
-### 0a. Gate de Cloud Functions deploy (issue #225)
+### 0a. Gate de Cloud Functions deploy (issues #225/#233)
 
 Se o squash do PR tocou `functions/`, rodar `firebase deploy --only functions` antes de prosseguir. Recovery manual não usa o marker `.cf-deployed-${PR}` — o operador é o próprio juiz da paridade prod↔main. Esquecer este passo = casos #211/#210/#221 (CF mergeada fora de prod).
+
+> **Diferença do flow normal (`cc-close-issue.sh`):** desde #233 o script auto-deploya. Recovery manual é por definição operador-dirigido, então o deploy fica explícito aqui.
 
 ### 1. Atualizar `docs/dev/issues/issue-NNN-*.md`
 Resumo do que foi feito, decisões DEC-xxx, arquivos tocados, comandos git executados, testes rodados, pendências.
