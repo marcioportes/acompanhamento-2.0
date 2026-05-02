@@ -88,6 +88,37 @@ fi
 echo "  PR #${PR} (sha ${PR_SHA:0:8}) tipo=${PR_TYPE} ver=${VER:-none}"
 echo "  resumo: ${PR_SUMMARY}"
 
+# ---------- 0a. Gate bloqueante de Cloud Functions deploy ----------
+# Bug histórico: o alerta original no fim do script (#216) era não-bloqueante
+# — Marcio podia esquecer e deixar CF mergeada fora de prod (paridade
+# prod↔main quebrada). Casos #211/#210 e #221 mergearam mudança em
+# `functions/` sem deploy imediato. Fix (issue #225 v2): se o squash tocou
+# `functions/`, exige marker file `.cf-deployed-${PR}` confirmando deploy
+# antes de prosseguir. Operador roda no main após o merge:
+#   firebase deploy --only functions && touch .cf-deployed-${PR}
+# Marker é deletado após verificação (não vai pro git).
+echo "[0a/8] Gate de Cloud Functions deploy…"
+CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
+CF_DEPLOY_MARKER="$REPO/.cf-deployed-${PR}"
+if [ -n "$CF_FILES" ]; then
+  if [ -f "$CF_DEPLOY_MARKER" ]; then
+    echo "  [ok] PR #${PR} tocou functions/ — marker presente, deploy confirmado pelo operador"
+    $DRY_RUN || rm -f "$CF_DEPLOY_MARKER"
+  else
+    echo >&2
+    echo "❌ PR #${PR} tocou Cloud Functions mas deploy não foi confirmado:" >&2
+    echo "$CF_FILES" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Rode no main após o merge:" >&2
+    echo "    firebase deploy --only functions && touch ${CF_DEPLOY_MARKER}" >&2
+    echo >&2
+    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
+    abort "CF deploy pendente — abortando para preservar paridade prod↔main"
+  fi
+else
+  echo "  [skip] PR não tocou functions/"
+fi
+
 # ---------- 1. Sync main ----------
 echo "[1/8] Sync main…"
 run "git pull --rebase origin main"
@@ -243,8 +274,55 @@ if [ -n "$LOCK_LINES" ]; then
   fi
 fi
 
-# 3f. decisions.md — append de DECs (opcional via .deccs-NNN.md)
+# 3f. decisions.md — append de DECs com cross-check anti-órfão.
+#
+# Bug histórico (issue #225, sessão #221): comportamento opt-in com skip
+# silencioso permitiu DEC-AUTO-221-01..03 ficarem órfãs em CHANGELOG/PR body
+# sem propagar para docs/decisions.md (SSoT canônico). Fix: extrai menções
+# `DEC-AUTO-${ISSUE}-NN` do PR body, issue body (via snapshot 3.) e CHANGELOG.md;
+# compara com decisions.md + .deccs-${ISSUE}.md; aborta se houver órfã.
+#
+# Justificativa para abort em vez de auto-stub: placeholder em decisions.md
+# tem discoverability zero meses depois — falha alta força preenchimento com
+# contexto fresco (custo 1 minuto vs drift silencioso permanente).
 DECCS_FILE="$REPO/.deccs-${ISSUE}.md"
+
+MENTIONED_IDS=$(
+  {
+    cat "$SNAPSHOT_DIR/issue-${ISSUE}.json" 2>/dev/null || true
+    cat "$REPO/CHANGELOG.md" 2>/dev/null || true
+  } | grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" | sort -u || true
+)
+
+if [ -n "$MENTIONED_IDS" ]; then
+  PRESENT_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$REPO/docs/decisions.md" 2>/dev/null | sort -u || true)
+  COVERED_IDS=""
+  if [ -f "$DECCS_FILE" ]; then
+    COVERED_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$DECCS_FILE" 2>/dev/null | sort -u || true)
+  fi
+
+  ORPHANS=""
+  for id in $MENTIONED_IDS; do
+    if ! printf '%s\n%s\n' "$PRESENT_IDS" "$COVERED_IDS" | grep -qx "$id"; then
+      ORPHANS="${ORPHANS}${id}
+"
+    fi
+  done
+  ORPHANS=$(printf '%s' "$ORPHANS" | sed '/^$/d' | sort -u)
+
+  if [ -n "$ORPHANS" ]; then
+    echo >&2
+    echo "❌ DECs órfãs — mencionadas em PR/issue body ou CHANGELOG mas ausentes de docs/decisions.md:" >&2
+    echo "$ORPHANS" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Crie $DECCS_FILE com 1 linha por DEC no formato esperado por docs/decisions.md:" >&2
+    echo "    - **DEC-AUTO-${ISSUE}-XX** (${TODAY}): <texto da decisão>." >&2
+    echo >&2
+    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
+    abort "DEC órfã — abortando para preservar SSoT canônico de decisões (R3)"
+  fi
+fi
+
 if [ -f "$DECCS_FILE" ]; then
   if $DRY_RUN; then
     echo "  [dry-run] decisions.md ← append de $(wc -l < "$DECCS_FILE") linha(s) de $DECCS_FILE"
@@ -312,23 +390,6 @@ if [ -n "$LOCAL_BRANCHES" ]; then
   done
 else
   echo "  [skip] nenhuma branch local issue-${ISSUE}-*"
-fi
-
-# ---------- 9. Alerta CF deploy ----------
-# Cloud Functions deploya manualmente (`firebase deploy --only functions`).
-# Se o squash commit do PR tocou `functions/`, imprime alerta no fim do output
-# pra evitar que CF mergeada fique fora de prod por esquecimento. Não bloqueia
-# (deploy é fora do flow). Issue histórico: #211/#210 mergeou mudança em
-# `functions/reviews/createWeeklyReview.js` sem deploy — por sorte benigna.
-if [ -n "$PR_SHA" ]; then
-  CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
-  if [ -n "$CF_FILES" ]; then
-    echo
-    echo "⚠️  [ALERTA] PR #${PR} tocou Cloud Functions — deploy manual necessário:"
-    echo "$CF_FILES" | sed 's/^/    /'
-    echo
-    echo "    Comando:  firebase deploy --only functions"
-  fi
 fi
 
 echo

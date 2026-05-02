@@ -21,6 +21,11 @@
 O script orquestra 8 etapas e aborta no primeiro erro:
 
 1. **Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
+1a. **Gate de Cloud Functions deploy** (issue #225) — se o squash do PR tocou `functions/`, exige marker file `.cf-deployed-${PR}` no repo root confirmando deploy. Aborta com comando de retomada caso ausente:
+   ```
+   firebase deploy --only functions && touch .cf-deployed-${PR}
+   ```
+   Marker é deletado após verificação (não vai para git). Substitui o alerta não-bloqueante histórico (#216) que permitia esquecer o deploy e quebrar paridade prod↔main.
 2. **Sync main** — `git pull --rebase origin main`.
 3. **Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
 4. **Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):
@@ -29,7 +34,10 @@ O script orquestra 8 etapas e aborta no primeiro erro:
    - `src/version.js`: linha CHANGELOG inline + bump constante. Pulado se `PR_TYPE ∈ {refactor, docs}` (não toca código de produto).
    - `docs/registry/versions.md`: marca versão consumida com sha do squash.
    - `docs/registry/chunks.md`: remove linhas dos locks da sessão.
-   - `docs/decisions.md`: append do `.deccs-NNN.md` opcional (DECs aprovadas durante a sessão).
+   - `docs/decisions.md`: append do `.deccs-NNN.md`. **Obrigatório** se a sessão produziu qualquer `DEC-AUTO-NNN-XX` mencionado em PR body, issue body ou CHANGELOG — script aborta com lista de IDs órfãs caso contrário (issue #225). Formato esperado (bullet, 1 linha por DEC, padrão recente em `docs/decisions.md`):
+     ```
+     - **DEC-AUTO-NNN-01** (DD/MM/YYYY): <texto da decisão>.
+     ```
 5. **Delete control doc** — `git rm docs/dev/issues/issue-NNN-*.md` (não arquiva — Fase 2.4 do refactor #199).
 6. **Confirmação humana** — script mostra `git status --short` e pergunta antes de commit + push para main.
 7. **Encerrar infra** — `pkill -9 -f vite` + `cc-worktree-stop.sh NNN` + `rm -rf ~/projects/issue-NNN`.
