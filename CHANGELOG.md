@@ -12,6 +12,13 @@ Version source of truth: `src/version.js`.
 
 **feat:** detectar stop em breakeven prematuro + hesitação no stop
 
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
+## [1.53.0] - 01/05/2026 · #229 · PR #230
+
+**feat:** detectar stop em breakeven prematuro + hesitação no stop
+
 - 2 detectores novos no `executionBehaviorEngine` + paridade `executionBehaviorMirror` (CF): `STOP_BREAKEVEN_TOO_EARLY` (Δt < 5min entre entry e reissue do stop em breakeven) e `STOP_HESITATION` (sinal de indecisão, fora de `TILT_EXEC_TYPES`).
 - Tolerance por prefixo de ticker (`getInstrumentTolerance`): WIN=5, WDO=0.5, IND=5, MNQ/NQ/MES/ES=0.25, fallback `max(0.01, 0.05%·entry)`.
 - Decisões: DEC-AUTO-229-01 (tolerance + fallback), DEC-AUTO-229-02 (Δt-only na v1, runUp fica como fast-follow), DEC-AUTO-229-03 (STOP_HESITATION não entra em `TILT_EXEC_TYPES`, mas rebate via `EVENT_PENALTIES`).

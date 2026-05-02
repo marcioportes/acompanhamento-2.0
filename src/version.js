@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.53.0: #229 feat detectar stop em breakeven prematuro + hesitação no stop (PR #230, 01/05/2026)
  * - 1.53.0: feat: detectar stop em breakeven prematuro + hesitação em stop pós-entrada
  *   (issue #229) — sensores comportamentais. Hoje `executionBehaviorEngine.detectStopTampering`
  *   só dispara em WIDENED (linha 137: `isStopWidened`); TIGHTENED até breakeven é silencioso.
