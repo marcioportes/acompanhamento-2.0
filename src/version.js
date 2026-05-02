@@ -4,7 +4,7 @@
  *
  * CHANGELOG:
  * - 1.54.0: feat: redesign card "Consistência Operacional" — Sharpe per-ciclo (com Selic
- *   histórica diária descontada via BCB SGS-11), CV normalizado (`cv_obs / cv_exp(plan.targetRR, WR)`
+ *   histórica diária descontada via BCB SGS-11), CV normalizado (`cv_obs / cv_exp(plan.rrTarget, WR)`
  *   substitui CV puro), MEP/MEN médio visível ao aluno (#187 já coleta). Infra nova: CF agendada
  *   `fetchSelicDaily` cron 09h BRT + script bootstrap retroativo + helper `getSelicForDate` com
  *   carry-forward + fallback hardcoded (issue #235). 2 collections novas Firestore aprovadas
