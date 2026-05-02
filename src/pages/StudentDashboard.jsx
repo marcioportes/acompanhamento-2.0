@@ -550,6 +550,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           const day = String(d.getDate()).padStart(2, '0');
           return `${y}-${m}-${day}`;
         })()}
+        avgTradeDuration={avgTradeDuration}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}
       />
 

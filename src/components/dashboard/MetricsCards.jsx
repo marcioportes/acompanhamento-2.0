@@ -122,6 +122,7 @@ const MetricsCards = ({
   cycleStart,
   cycleEnd,
   cycleLabel,
+  avgTradeDuration,
   mentorClassificationStats = null,
 }) => {
   const [openTooltip, setOpenTooltip] = useState(null);
