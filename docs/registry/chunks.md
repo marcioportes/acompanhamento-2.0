@@ -5,3 +5,6 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-09 | #235 | `feat/issue-235-cycle-consistency-redesign` | 02/05/2026 | issue-235 (autônomo) |
+| CHUNK-04 | #235 | `feat/issue-235-cycle-consistency-redesign` | 02/05/2026 | issue-235 (leitura) |
+| CHUNK-08 | #235 | `feat/issue-235-cycle-consistency-redesign` | 02/05/2026 | issue-235 (leitura) |

@@ -3,6 +3,16 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.54.0: feat: redesign card "Consistência Operacional" — Sharpe per-ciclo (com Selic
+ *   histórica diária descontada via BCB SGS-11), CV normalizado (`cv_obs / cv_exp(plan.targetRR, WR)`
+ *   substitui CV puro), MEP/MEN médio visível ao aluno (#187 já coleta). Infra nova: CF agendada
+ *   `fetchSelicDaily` cron 09h BRT + script bootstrap retroativo + helper `getSelicForDate` com
+ *   carry-forward + fallback hardcoded (issue #235). 2 collections novas Firestore aprovadas
+ *   INV-15: `systemConfig/selic` (metadata) + `systemConfig/selic/history/{YYYY-MM-DD}`
+ *   (subcollection diária, ~252 docs/ano). Alinhamento com Revisão Semanal: novos snapshots
+ *   gravam `cvNormalized`; reviews antigas mantêm `cv` puro sem mitigação técnica (DEC-AUTO-235-16
+ *   — risco UX absorvido por mentor humano dado proximidade Marcio↔alunos). Mirror ESM↔CJS
+ *   obrigatório. Modo autônomo §13.8. [RESERVADA — entrada definitiva no encerramento.]
  * - 1.53.0: #229 feat detectar stop em breakeven prematuro + hesitação no stop (PR #230, 01/05/2026)
  * - 1.53.0: feat: detectar stop em breakeven prematuro + hesitação em stop pós-entrada
  *   (issue #229) — sensores comportamentais. Hoje `executionBehaviorEngine.detectStopTampering`
