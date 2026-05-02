@@ -293,5 +293,20 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (isOwner(studentId) || isMentor());
       allow write: if false;
     }
+
+    // ========== Selic Cache — Risk-free rate diária BCB SGS-11 (CHUNK-09, issue #235) ==========
+    // INV-15 aprovada — comment #issuecomment-4364111738.
+    // Doc raiz + subcollection history/<YYYY-MM-DD>. Apenas CF/Admin SDK escreve
+    // (fetchSelicDaily diária + bootstrap run-once). Qualquer usuário autenticado lê
+    // (consumido pelo helper getSelicForDate em UI e CFs).
+    match /systemConfig/selic {
+      allow read: if isAuthenticated();
+      allow write: if false;
+
+      match /history/{dateId} {
+        allow read: if isAuthenticated();
+        allow write: if false;
+      }
+    }
   }
 }
