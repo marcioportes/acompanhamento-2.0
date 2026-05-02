@@ -31,11 +31,12 @@ function deriveCycleLabel(cycleStart) {
 }
 
 function sharpeTheme(value) {
-  if (value == null || !Number.isFinite(value)) return { text: 'text-slate-500', dot: 'bg-slate-500' };
-  if (value >= 1.5) return { text: 'text-emerald-400', dot: 'bg-emerald-400' };
-  if (value >= 1.2) return { text: 'text-amber-400', dot: 'bg-amber-400' };
-  if (value >= 0) return { text: 'text-orange-400', dot: 'bg-orange-400' };
-  return { text: 'text-red-400', dot: 'bg-red-400' };
+  if (value == null || !Number.isFinite(value)) return { text: 'text-slate-500', dot: 'bg-slate-500', bandLabel: '' };
+  if (value >= 2.0) return { text: 'text-emerald-400', dot: 'bg-emerald-400', bandLabel: 'Excepcional' };
+  if (value >= 1.5) return { text: 'text-emerald-400', dot: 'bg-emerald-400', bandLabel: 'Bom' };
+  if (value >= 1.0) return { text: 'text-amber-400', dot: 'bg-amber-400', bandLabel: 'OK' };
+  if (value >= 0) return { text: 'text-orange-400', dot: 'bg-orange-400', bandLabel: 'Fraco' };
+  return { text: 'text-red-400', dot: 'bg-red-400', bandLabel: 'Negativo' };
 }
 
 function cvTheme(value) {
@@ -64,23 +65,24 @@ function menTheme(value) {
 }
 
 const SELIC_BADGE_TOOLTIP_BCB =
-  'Selic histórica diária via BCB SGS-11 sendo descontada no Sharpe (taxa livre de risco real do dia).';
+  'Estamos descontando do seu retorno a Selic real de cada dia operado, conforme publicada pelo Banco Central. ' +
+  'Isso responde: "o ganho que tive valeu a pena vs deixar parado rendendo Selic?".';
 const SELIC_BADGE_TOOLTIP_FALLBACK =
-  'Selic do BCB indisponível no período — Sharpe calculado com taxa anual constante hardcoded (~14.75% a.a.). ' +
-  'Após CF agendada `fetchSelicDaily` rodar (próximo 09h BRT) e bootstrap histórico ser executado, ' +
-  'o badge fica verde com a Selic real do dia.';
+  'A integração com a Selic histórica do Banco Central ainda está sendo configurada. ' +
+  'Por enquanto estamos usando a estimativa atual (~14,75% ao ano) como referência de "deixar parado". ' +
+  'Quando o histórico estiver pronto, o número usa a Selic real do dia — pode mudar levemente.';
 const SELIC_BADGE_TOOLTIP_MIXED =
-  'Parte do período usa Selic do BCB e parte usa fallback hardcoded (gap em dias específicos). ' +
-  'Sharpe ainda é confiável; badge alerta para a mistura.';
+  'Parte do período usou Selic real do Banco Central e parte usou estimativa atual (gap em dias específicos). ' +
+  'O cálculo continua válido — esse aviso só te informa da mistura.';
 
 function selicBadge(source) {
   if (source === 'BCB') {
     return (
       <span
         title={SELIC_BADGE_TOOLTIP_BCB}
-        className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5"
+        className="text-[10px] text-emerald-400/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5"
       >
-        📊 BCB
+        Selic atual
       </span>
     );
   }
@@ -88,9 +90,9 @@ function selicBadge(source) {
     return (
       <span
         title={SELIC_BADGE_TOOLTIP_FALLBACK}
-        className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
+        className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
       >
-        ⚠ fallback
+        Selic estimada
       </span>
     );
   }
@@ -98,21 +100,22 @@ function selicBadge(source) {
     return (
       <span
         title={SELIC_BADGE_TOOLTIP_MIXED}
-        className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
+        className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5"
       >
-        ⚠ misto
+        Selic mista
       </span>
     );
   }
   return null;
 }
 
-function MetricRow({ label, value, theme, badge, tooltip, valueClassName }) {
+function MetricRow({ label, value, extra, theme, badge, tooltip, valueClassName }) {
   return (
     <div className="flex items-center justify-between py-2.5" title={tooltip}>
       <span className="text-xs text-slate-500">{label}</span>
       <div className="flex items-center gap-2">
         <span className={`text-sm font-bold font-mono ${valueClassName ?? theme.text}`}>{value}</span>
+        {extra && <span className={`text-[10px] font-bold ${theme.text}`}>{extra}</span>}
         {badge}
         <span className={`w-2 h-2 rounded-full ${theme.dot}`} aria-hidden="true" />
       </div>
@@ -191,9 +194,11 @@ function sharpeContent(sharpe, opts) {
     }
     return { value: '-', theme: sharpeTheme(null), badge: null };
   }
+  const theme = sharpeTheme(sharpe.value);
   return {
     value: sharpe.value.toFixed(2),
-    theme: sharpeTheme(sharpe.value),
+    theme,
+    bandLabel: theme.bandLabel,
     badge: selicBadge(sharpe.source),
   };
 }
@@ -252,11 +257,27 @@ function menContent(avg) {
 
 function buildSharpeTooltip(sharpe, cycleLabel) {
   const days = sharpe?.daysWithTrade ?? 0;
+  const v = sharpe?.value;
+  const periodo = cycleLabel ? `${cycleLabel} (${days} ${days === 1 ? 'dia operado' : 'dias operados'})` : `${days} ${days === 1 ? 'dia operado' : 'dias operados'}`;
+  let banda;
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    banda = '';
+  } else if (v >= 2.0) {
+    banda = 'Acima de 2 é excepcional — verifica se a amostra é grande o suficiente pra confiar.';
+  } else if (v >= 1.5) {
+    banda = 'Entre 1,5 e 2 é bom: o risco que você correu foi bem recompensado.';
+  } else if (v >= 1.0) {
+    banda = 'Entre 1 e 1,5 é razoável: você ganhou, mas o ganho não foi muito acima do que renderia parado na Selic.';
+  } else if (v >= 0) {
+    banda = 'Entre 0 e 1 é fraco: você ganhou alguma coisa, mas o risco que tomou rendeu menos do que ficar parado na Selic.';
+  } else {
+    banda = 'Negativo significa que você perdeu — pior do que se tivesse deixado o dinheiro parado.';
+  }
   return (
-    'Sharpe = (retorno médio diário − Selic do dia) ÷ desvio padrão dos retornos × √252. ' +
-    'Mede o quanto seu retorno compensa o risco descontando a oportunidade de ganhar Selic ' +
-    `sem risco. Anualizado √252. Selic descontada apenas em dias com trade. Janela: ${cycleLabel ?? '—'} ` +
-    `(${days} dias operados).`
+    'Resposta a uma pergunta simples: "operar valeu mais a pena do que deixar o dinheiro parado rendendo Selic?". ' +
+    'Quanto maior, melhor. ' +
+    (banda ? `${banda} ` : '') +
+    `Janela: ${periodo}.`
   );
 }
 
@@ -352,6 +373,7 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
           <MetricRow
             label={`Sharpe${label ? ` (${label})` : ''}`}
             value={sharpeView.value}
+            extra={sharpeView.bandLabel}
             theme={sharpeView.theme}
             badge={sharpeView.badge}
             tooltip={buildSharpeTooltip(sharpe, label)}

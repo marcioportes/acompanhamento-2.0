@@ -69,8 +69,8 @@ describe('CycleConsistencyCard', () => {
     // Sharpe row label inclui o ciclo
     expect(screen.getByText(/Sharpe \(FEV\/2026\)/)).toBeTruthy();
 
-    // Badge BCB presente, sem coverage warning
-    expect(screen.getByText(/BCB/)).toBeTruthy();
+    // Badge Selic atual presente (BCB), sem coverage warning
+    expect(screen.getByText(/Selic atual/)).toBeTruthy();
     expect(screen.queryByText(/MEP\/MEN em/)).toBeNull();
   });
 
@@ -120,7 +120,7 @@ describe('CycleConsistencyCard', () => {
     render(<CycleConsistencyCard {...baseProps} opts={{ minDays: 5 }} />);
 
     expect(screen.getByText(/Insuficiente · ≥5 dias/)).toBeTruthy();
-    expect(screen.queryByText(/BCB/)).toBeNull();
+    expect(screen.queryByText(/Selic atual/)).toBeNull();
   });
 
   it('C5 — CV insufficientReason=no_target_rr mostra label de plano sem RR', () => {
