@@ -41,6 +41,8 @@ export const EVENT_TYPES = Object.freeze({
   RAPID_REENTRY_POST_STOP: 'RAPID_REENTRY_POST_STOP',
   HESITATION_PRE_ENTRY: 'HESITATION_PRE_ENTRY',
   CHASE_REENTRY: 'CHASE_REENTRY',
+  STOP_BREAKEVEN_TOO_EARLY: 'STOP_BREAKEVEN_TOO_EARLY',
+  STOP_HESITATION: 'STOP_HESITATION',
 });
 
 export const EVENT_SEVERITY = Object.freeze({
@@ -53,7 +55,34 @@ const DEFAULT_CONFIG = Object.freeze({
   hesitationWindowMs: 30 * 60 * 1000,        // 30 min
   rapidReentryWindowMs: 10 * 60 * 1000,      // 10 min
   partialSizingTolerance: 0,                  // stop qty < trade qty (estrito)
+  breakevenWindowMs: 5 * 60 * 1000,          // 5 min — janela "cedo demais" (#229)
+  hesitationMinReissues: 2,                  // ≥2 stop reissues no-op para HESITATION (#229)
+  breakevenTolerancePctFallback: 0.0005,     // 0.05% do entry quando ticker desconhecido (#229)
 });
+
+// Tolerâncias por prefixo de ticker (DEC-AUTO-229-01).
+// 1 tick típico do instrumento. Match por prefixo, longest-first.
+const INSTRUMENT_TOLERANCE = Object.freeze({
+  WIN: 5,
+  WDO: 0.5,
+  IND: 5,
+  MNQ: 0.25,
+  MES: 0.25,
+  NQ: 0.25,
+  ES: 0.25,
+});
+
+const getInstrumentTolerance = (ticker, entryPrice, fallbackPct) => {
+  if (typeof ticker === 'string' && ticker.length > 0) {
+    const upper = ticker.toUpperCase();
+    const sortedKeys = Object.keys(INSTRUMENT_TOLERANCE).sort((a, b) => b.length - a.length);
+    for (const key of sortedKeys) {
+      if (upper.startsWith(key)) return INSTRUMENT_TOLERANCE[key];
+    }
+  }
+  const pct = fallbackPct ?? 0.0005;
+  return Math.max(0.01, (entryPrice || 0) * pct);
+};
 
 // ============================================
 // HELPERS
@@ -326,6 +355,118 @@ const detectChaseReentry = (trade, orders) => {
   return events;
 };
 
+/**
+ * STOP_BREAKEVEN_TOO_EARLY — stop reissue movido para ≤ tolerância da entry,
+ * dentro de janela curta após o entry. Loss aversion + regret aversion: medo
+ * de perder o que ainda nem virou lucro.
+ * Fonte: Kahneman & Tversky 1979; Heisler 1994.
+ */
+const detectStopBreakevenTooEarly = (trade, orders, config) => {
+  const entryPrice = trade?.entry ?? trade?.entryPrice ?? null;
+  const entryTs = toMs(trade?.entryTime);
+  if (!entryPrice || !entryTs) return [];
+
+  const stops = ordersForTrade(orders, trade.id)
+    .filter(o => o.isStopOrder === true)
+    .map(o => ({
+      ...o,
+      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _price: o.stopPrice ?? o.price ?? null,
+    }))
+    .filter(o => o._ts != null && o._price != null)
+    .sort((a, b) => a._ts - b._ts);
+
+  if (stops.length < 2) return [];
+
+  const tolerance = getInstrumentTolerance(trade.ticker, entryPrice, config.breakevenTolerancePctFallback);
+  const events = [];
+
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const curr = stops[i];
+    if (prev._price === curr._price) continue;
+    if (Math.abs(curr._price - entryPrice) > tolerance) continue;
+    const dt = curr._ts - entryTs;
+    if (dt < 0 || dt >= config.breakevenWindowMs) continue;
+
+    events.push({
+      type: EVENT_TYPES.STOP_BREAKEVEN_TOO_EARLY,
+      severity: EVENT_SEVERITY.HIGH,
+      tradeId: trade.id,
+      orderIds: [prev.externalOrderId, curr.externalOrderId].filter(Boolean),
+      timestamp: curr.submittedAt ?? null,
+      evidence: {
+        from: prev._price,
+        to: curr._price,
+        entry: entryPrice,
+        deltaToEntry: Math.round((curr._price - entryPrice) * 10000) / 10000,
+        msSinceEntry: dt,
+        minutesSinceEntry: Math.round((dt / 60000) * 10) / 10,
+        side: trade.side,
+        ticker: trade.ticker,
+        tolerance,
+      },
+      source: 'literature',
+      citation: 'Kahneman & Tversky (1979); Heisler (1994)',
+    });
+  }
+  return events;
+};
+
+/**
+ * STOP_HESITATION — ≥N reissues de stop com preço idêntico (≤ tolerância).
+ * Cancelar e re-emitir o stop sem mudar nada = trader "mexendo" sem decidir.
+ * Hoje detectStopTampering ignora reissues no-op (linha 136); este detector
+ * caça exatamente esse sinal.
+ * Fonte: heurística operacional (Heisler 1994; Locke & Mann 2005 como suporte).
+ */
+const detectStopHesitation = (trade, orders, config) => {
+  const entryPrice = trade?.entry ?? trade?.entryPrice ?? null;
+  const stops = ordersForTrade(orders, trade.id)
+    .filter(o => o.isStopOrder === true)
+    .map(o => ({
+      ...o,
+      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _price: o.stopPrice ?? o.price ?? null,
+    }))
+    .filter(o => o._ts != null && o._price != null)
+    .sort((a, b) => a._ts - b._ts);
+
+  if (stops.length < 1 + config.hesitationMinReissues) return [];
+
+  const tolerance = getInstrumentTolerance(trade.ticker, entryPrice, config.breakevenTolerancePctFallback);
+  let noOpReissues = 0;
+  const involvedOrderIds = new Set();
+
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const curr = stops[i];
+    if (Math.abs(prev._price - curr._price) > tolerance) continue;
+    noOpReissues += 1;
+    if (prev.externalOrderId) involvedOrderIds.add(prev.externalOrderId);
+    if (curr.externalOrderId) involvedOrderIds.add(curr.externalOrderId);
+  }
+
+  if (noOpReissues < config.hesitationMinReissues) return [];
+
+  return [{
+    type: EVENT_TYPES.STOP_HESITATION,
+    severity: EVENT_SEVERITY.LOW,
+    tradeId: trade.id,
+    orderIds: [...involvedOrderIds],
+    timestamp: stops[stops.length - 1].submittedAt ?? null,
+    evidence: {
+      stopCount: stops.length,
+      noOpReissues,
+      stopPrice: stops[0]._price,
+      ticker: trade.ticker,
+      tolerance,
+    },
+    source: 'heuristic',
+    citation: 'Heisler (1994); Locke & Mann (2005)',
+  }];
+};
+
 // ============================================
 // PUBLIC API
 // ============================================
@@ -348,6 +489,8 @@ export const detectExecutionEvents = ({ trades = [], orders = [], config = {} } 
     events.push(...detectPartialSizing(trade, orders));
     events.push(...detectHesitation(trade, orders, cfg));
     events.push(...detectChaseReentry(trade, orders));
+    events.push(...detectStopBreakevenTooEarly(trade, orders, cfg));
+    events.push(...detectStopHesitation(trade, orders, cfg));
   }
 
   events.push(...detectRapidReentry(trades, orders, cfg));

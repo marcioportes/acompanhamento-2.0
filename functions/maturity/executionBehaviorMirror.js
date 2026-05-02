@@ -12,7 +12,8 @@
 //
 // Detectores espelhados:
 //   STOP_TAMPERING, STOP_PARTIAL_SIZING, RAPID_REENTRY_POST_STOP,
-//   HESITATION_PRE_ENTRY, CHASE_REENTRY
+//   HESITATION_PRE_ENTRY, CHASE_REENTRY,
+//   STOP_BREAKEVEN_TOO_EARLY, STOP_HESITATION (issue #229)
 
 const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
@@ -20,6 +21,8 @@ const EVENT_TYPES = Object.freeze({
   RAPID_REENTRY_POST_STOP: 'RAPID_REENTRY_POST_STOP',
   HESITATION_PRE_ENTRY: 'HESITATION_PRE_ENTRY',
   CHASE_REENTRY: 'CHASE_REENTRY',
+  STOP_BREAKEVEN_TOO_EARLY: 'STOP_BREAKEVEN_TOO_EARLY',
+  STOP_HESITATION: 'STOP_HESITATION',
 });
 
 const EVENT_SEVERITY = Object.freeze({
@@ -32,7 +35,33 @@ const DEFAULT_CONFIG = Object.freeze({
   hesitationWindowMs: 30 * 60 * 1000,
   rapidReentryWindowMs: 10 * 60 * 1000,
   partialSizingTolerance: 0,
+  breakevenWindowMs: 5 * 60 * 1000,
+  hesitationMinReissues: 2,
+  breakevenTolerancePctFallback: 0.0005,
 });
+
+// Tolerâncias por prefixo de ticker (DEC-AUTO-229-01) — paridade ESM↔CJS.
+const INSTRUMENT_TOLERANCE = Object.freeze({
+  WIN: 5,
+  WDO: 0.5,
+  IND: 5,
+  MNQ: 0.25,
+  MES: 0.25,
+  NQ: 0.25,
+  ES: 0.25,
+});
+
+function getInstrumentTolerance(ticker, entryPrice, fallbackPct) {
+  if (typeof ticker === 'string' && ticker.length > 0) {
+    var upper = ticker.toUpperCase();
+    var sortedKeys = Object.keys(INSTRUMENT_TOLERANCE).sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < sortedKeys.length; i++) {
+      if (upper.indexOf(sortedKeys[i]) === 0) return INSTRUMENT_TOLERANCE[sortedKeys[i]];
+    }
+  }
+  var pct = fallbackPct != null ? fallbackPct : 0.0005;
+  return Math.max(0.01, (entryPrice || 0) * pct);
+}
 
 function toMs(value) {
   if (!value) return null;
@@ -283,6 +312,109 @@ function detectChaseReentry(trade, orders) {
   return events;
 }
 
+function detectStopBreakevenTooEarly(trade, orders, config) {
+  const entryPrice = (trade && (trade.entry != null ? trade.entry : trade.entryPrice)) != null
+    ? (trade.entry != null ? trade.entry : trade.entryPrice) : null;
+  const entryTs = trade ? toMs(trade.entryTime) : null;
+  if (!entryPrice || !entryTs) return [];
+
+  const stops = ordersForTrade(orders, trade.id)
+    .filter(function (o) { return o.isStopOrder === true; })
+    .map(function (o) {
+      return Object.assign({}, o, {
+        _ts: toMs(o.submittedAt) || toMs(o.cancelledAt) || toMs(o.filledAt),
+        _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
+      });
+    })
+    .filter(function (o) { return o._ts != null && o._price != null; })
+    .sort(function (a, b) { return a._ts - b._ts; });
+
+  if (stops.length < 2) return [];
+
+  const tolerance = getInstrumentTolerance(trade.ticker, entryPrice, config.breakevenTolerancePctFallback);
+  const events = [];
+
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const curr = stops[i];
+    if (prev._price === curr._price) continue;
+    if (Math.abs(curr._price - entryPrice) > tolerance) continue;
+    const dt = curr._ts - entryTs;
+    if (dt < 0 || dt >= config.breakevenWindowMs) continue;
+
+    events.push({
+      type: EVENT_TYPES.STOP_BREAKEVEN_TOO_EARLY,
+      severity: EVENT_SEVERITY.HIGH,
+      tradeId: trade.id,
+      orderIds: [prev.externalOrderId, curr.externalOrderId].filter(Boolean),
+      timestamp: curr.submittedAt || null,
+      evidence: {
+        from: prev._price,
+        to: curr._price,
+        entry: entryPrice,
+        deltaToEntry: Math.round((curr._price - entryPrice) * 10000) / 10000,
+        msSinceEntry: dt,
+        minutesSinceEntry: Math.round((dt / 60000) * 10) / 10,
+        side: trade.side,
+        ticker: trade.ticker,
+        tolerance: tolerance,
+      },
+      source: 'literature',
+      citation: 'Kahneman & Tversky (1979); Heisler (1994)',
+    });
+  }
+  return events;
+}
+
+function detectStopHesitation(trade, orders, config) {
+  const entryPrice = (trade && (trade.entry != null ? trade.entry : trade.entryPrice)) != null
+    ? (trade.entry != null ? trade.entry : trade.entryPrice) : null;
+  const stops = ordersForTrade(orders, trade.id)
+    .filter(function (o) { return o.isStopOrder === true; })
+    .map(function (o) {
+      return Object.assign({}, o, {
+        _ts: toMs(o.submittedAt) || toMs(o.cancelledAt) || toMs(o.filledAt),
+        _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
+      });
+    })
+    .filter(function (o) { return o._ts != null && o._price != null; })
+    .sort(function (a, b) { return a._ts - b._ts; });
+
+  if (stops.length < 1 + config.hesitationMinReissues) return [];
+
+  const tolerance = getInstrumentTolerance(trade.ticker, entryPrice, config.breakevenTolerancePctFallback);
+  let noOpReissues = 0;
+  const involvedOrderIds = new Set();
+
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const curr = stops[i];
+    if (Math.abs(prev._price - curr._price) > tolerance) continue;
+    noOpReissues += 1;
+    if (prev.externalOrderId) involvedOrderIds.add(prev.externalOrderId);
+    if (curr.externalOrderId) involvedOrderIds.add(curr.externalOrderId);
+  }
+
+  if (noOpReissues < config.hesitationMinReissues) return [];
+
+  return [{
+    type: EVENT_TYPES.STOP_HESITATION,
+    severity: EVENT_SEVERITY.LOW,
+    tradeId: trade.id,
+    orderIds: Array.from(involvedOrderIds),
+    timestamp: stops[stops.length - 1].submittedAt || null,
+    evidence: {
+      stopCount: stops.length,
+      noOpReissues: noOpReissues,
+      stopPrice: stops[0]._price,
+      ticker: trade.ticker,
+      tolerance: tolerance,
+    },
+    source: 'heuristic',
+    citation: 'Heisler (1994); Locke & Mann (2005)',
+  }];
+}
+
 function detectExecutionEvents(input) {
   const _input = input || {};
   const trades = _input.trades || [];
@@ -300,6 +432,8 @@ function detectExecutionEvents(input) {
     events.push.apply(events, detectPartialSizing(trade, orders));
     events.push.apply(events, detectHesitation(trade, orders, cfg));
     events.push.apply(events, detectChaseReentry(trade, orders));
+    events.push.apply(events, detectStopBreakevenTooEarly(trade, orders, cfg));
+    events.push.apply(events, detectStopHesitation(trade, orders, cfg));
   }
 
   events.push.apply(events, detectRapidReentry(trades, orders, cfg));

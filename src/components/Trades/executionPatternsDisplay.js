@@ -23,6 +23,8 @@ export const EVENT_LABELS = {
   RAPID_REENTRY_POST_STOP: 'Reentrada rápida após stop',
   HESITATION_PRE_ENTRY: 'Hesitação pré-entrada',
   CHASE_REENTRY: 'Reentrada com preço pior (chase)',
+  STOP_BREAKEVEN_TOO_EARLY: 'Stop levado pra zero cedo demais',
+  STOP_HESITATION: 'Hesitação no stop (reissue sem mudar preço)',
 };
 
 export const EVENT_DESCRIPTIONS = {
@@ -36,6 +38,10 @@ export const EVENT_DESCRIPTIONS = {
     'Limite cancelado e re-entrada efetiva pouco depois — heurística operacional, indica indecisão pré-trade.',
   CHASE_REENTRY:
     'Limite cancelado e re-submetido em preço pior antes do fill. Comportamento de overtrading/perseguição de preço.',
+  STOP_BREAKEVEN_TOO_EARLY:
+    'Stop movido para a entrada antes do trade respirar. Loss aversion + regret aversion: medo de perder o que ainda nem virou lucro. Padrão típico antes de chasing pós-stop.',
+  STOP_HESITATION:
+    'Stop cancelado e reemitido no mesmo preço múltiplas vezes — trader "mexendo" sem decidir. Sinal sutil de indecisão visível em audit-trail.',
 };
 
 export const EVENT_SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
@@ -53,6 +59,10 @@ export function formatEvidence(event) {
       return `Cancelamento ${e.gapMinutes}min antes da entrada efetiva`;
     case 'CHASE_REENTRY':
       return `Re-submetida com preço pior em ${e.worseBy} (${e.side} ${e.prevPrice} → ${e.currPrice})`;
+    case 'STOP_BREAKEVEN_TOO_EARLY':
+      return `Stop movido para entrada (${e.from} → ${e.to}, entry ${e.entry}) em ${e.minutesSinceEntry}min — ${e.side} ${e.ticker || ''}`.trim();
+    case 'STOP_HESITATION':
+      return `${e.noOpReissues} reissue${e.noOpReissues === 1 ? '' : 's'} de stop sem mudar preço (${e.stopPrice})`;
     default:
       return null;
   }

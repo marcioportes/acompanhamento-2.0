@@ -34,7 +34,7 @@ describe('ExecutionPatternsPanel', () => {
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
     expect(screen.getByText(/nenhum detectado/i)).toBeInTheDocument();
-    expect(screen.getByText(/Nenhum dos 5 padrões/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nenhum dos 7 padrões/i)).toBeInTheDocument();
   });
 
   it('renderiza badge HIGH para STOP_PARTIAL_SIZING com fonte literária', () => {
