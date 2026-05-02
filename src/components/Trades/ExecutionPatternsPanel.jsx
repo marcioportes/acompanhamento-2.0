@@ -59,9 +59,9 @@ const ExecutionPatternsPanel = ({ trade, orders, allTrades, embedded = false }) 
 
       {events.length === 0 && (
         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300">
-          Nenhum dos 5 padrões comportamentais foi detectado neste trade
+          Nenhum dos 7 padrões comportamentais foi detectado neste trade
           <span className="text-emerald-400/70 ml-1">
-            (stop tampering, sub-sizing de stop, reentrada rápida, hesitação, chase)
+            (stop tampering, sub-sizing, reentrada rápida, hesitação pré-entrada, chase, breakeven prematuro, hesitação no stop)
           </span>.
         </div>
       )}

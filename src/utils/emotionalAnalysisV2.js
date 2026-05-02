@@ -85,6 +85,9 @@ const EVENT_PENALTIES = {
   RAPID_REENTRY_POST_STOP: 15,
   HESITATION_PRE_ENTRY: 5,
   CHASE_REENTRY: 10,
+  // Issue #229 — sensores de medo + indecisão
+  STOP_BREAKEVEN_TOO_EARLY: 12,
+  STOP_HESITATION: 5,
 };
 
 // ============================================
@@ -258,7 +261,7 @@ export const detectTiltV2 = (trades, getEmotionConfig, config = DEFAULT_DETECTIO
   // (loss aversion + disposition effect indicam descontrole emocional sobre
   // proteção). Sumarizados aqui mas devolvidos no shape original para não
   // quebrar consumidores; campo `executionTiltCount` adicionado.
-  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING']);
+  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING', 'STOP_BREAKEVEN_TOO_EARLY']);
   const executionTiltCount = (executionEvents || [])
     .filter(e => e && TILT_EXEC_TYPES.has(e.type)).length;
 

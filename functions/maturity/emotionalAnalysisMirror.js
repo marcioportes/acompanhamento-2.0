@@ -61,6 +61,9 @@ const EVENT_PENALTIES = {
   RAPID_REENTRY_POST_STOP: 15,
   HESITATION_PRE_ENTRY: 5,
   CHASE_REENTRY: 10,
+  // Issue #229 — sensores de medo + indecisão
+  STOP_BREAKEVEN_TOO_EARLY: 12,
+  STOP_HESITATION: 5,
 };
 
 const UNKNOWN_EMOTION_CONFIG = {
@@ -217,7 +220,7 @@ function calculatePeriodScore(trades, getEmotionConfig, complianceEvents = []) {
 
 function detectTiltV2(trades, getEmotionConfig, config = DEFAULT_DETECTION_CONFIG.tilt, executionEvents = []) {
   // Issue #208 — STOP_TAMPERING + STOP_PARTIAL_SIZING contam como tilt.
-  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING']);
+  const TILT_EXEC_TYPES = new Set(['STOP_TAMPERING', 'STOP_PARTIAL_SIZING', 'STOP_BREAKEVEN_TOO_EARLY']);
   const executionTiltCount = (executionEvents || [])
     .filter((e) => e && TILT_EXEC_TYPES.has(e.type)).length;
 
