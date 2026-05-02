@@ -11,6 +11,7 @@
 
 import { calculateTradeCompliance } from './compliance';
 import { buildWeeklyReviewSnapshot, pickPeriodTrades } from './weeklyReviewSnapshot';
+import { computeCVNormalized } from './cycleConsistency/computeCVNormalized';
 
 const round1 = (n) => Math.round(Number(n) * 10) / 10;
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
@@ -184,6 +185,10 @@ const freezeMaturity = (maturity) => {
  * @param {Array}   [params.extraTrades] — trades incluídos manualmente (`review.includedTradeIds`),
  *                  pode estar fora do período. Mesclado e deduplicado por id com `trades`.
  * @param {string}  [params.cycleKey]   — chave do ciclo ativo (ex: '2026-04')
+ * @param {string}  [params.cycleStart] — ISO `YYYY-MM-DD` (inclusive). Quando presente
+ *                  com `cycleEnd`, popula `kpis.cvNormalized` via computeCVNormalized
+ *                  (issue #235 F3.1 — alinha snapshot ao card do dashboard).
+ * @param {string}  [params.cycleEnd]   — ISO `YYYY-MM-DD` (inclusive). Ver `cycleStart`.
  * @param {Object}  [params.emotionalMetrics] — metrics de useEmotionalProfile
  * @param {Object}  [params.maturity]   — doc students/{uid}/maturity/current ou null.
  *                  Quando presente, congela como `maturitySnapshot` (Fase E — issue #119 task 15).
@@ -194,6 +199,8 @@ export const buildClientSnapshot = ({
   trades,
   extraTrades = [],
   cycleKey = null,
+  cycleStart = null,
+  cycleEnd = null,
   emotionalMetrics = null,
   maturity = null,
 }) => {
@@ -226,6 +233,21 @@ export const buildClientSnapshot = ({
   const coefVariation = computeCoefVariation(safeTrades);
   const holdTimes = computeHoldTimes(safeTrades);
 
+  // CV normalizado per-ciclo (issue #235 F3.1). Coexiste com `coefVariation`
+  // (compat reversa, DEC-AUTO-235-T10): UIs novas leem `cvNormalized.value`,
+  // antigas seguem em `coefVariation`. Só popula com janela do ciclo presente.
+  let cvNormalized = null;
+  if (cycleStart && cycleEnd) {
+    const result = computeCVNormalized(safeTrades, plan, cycleStart, cycleEnd);
+    cvNormalized = {
+      value: result.value,
+      cvObs: result.cvObs,
+      cvExp: result.cvExp,
+      daysWithTrade: result.daysWithTrade,
+      insufficientReason: result.insufficientReason ?? null,
+    };
+  }
+
   const kpis = {
     pl: round2(pl),
     trades: safeTrades.length,
@@ -236,6 +258,7 @@ export const buildClientSnapshot = ({
     profitFactor,
     evPerTrade,
     coefVariation,
+    cvNormalized,
     avgHoldTimeMin: holdTimes.avgHoldTimeMin,
     avgHoldTimeWinMin: holdTimes.avgHoldTimeWinMin,
     avgHoldTimeLossMin: holdTimes.avgHoldTimeLossMin,
