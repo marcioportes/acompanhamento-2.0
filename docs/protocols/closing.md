@@ -21,6 +21,11 @@
 O script orquestra 8 etapas e aborta no primeiro erro:
 
 1. **Pré-checks** — `gh pr list` confirma PR mergeado com `Closes #NNN`; `gh issue view` confirma state=CLOSED.
+1a. **Gate de Cloud Functions deploy** (issue #225) — se o squash do PR tocou `functions/`, exige marker file `.cf-deployed-${PR}` no repo root confirmando deploy. Aborta com comando de retomada caso ausente:
+   ```
+   firebase deploy --only functions && touch .cf-deployed-${PR}
+   ```
+   Marker é deletado após verificação (não vai para git). Substitui o alerta não-bloqueante histórico (#216) que permitia esquecer o deploy e quebrar paridade prod↔main.
 2. **Sync main** — `git pull --rebase origin main`.
 3. **Snapshot defensivo** — `gh issue view + gh pr view --json` para `.archive-snapshots/issue-NNN.json` (resiliência a edição/perda de issue body).
 4. **Deltas curtos** (formato Fase 2 — GitHub é SSoT do detalhe):

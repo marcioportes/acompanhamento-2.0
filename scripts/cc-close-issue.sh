@@ -88,6 +88,37 @@ fi
 echo "  PR #${PR} (sha ${PR_SHA:0:8}) tipo=${PR_TYPE} ver=${VER:-none}"
 echo "  resumo: ${PR_SUMMARY}"
 
+# ---------- 0a. Gate bloqueante de Cloud Functions deploy ----------
+# Bug histórico: o alerta original no fim do script (#216) era não-bloqueante
+# — Marcio podia esquecer e deixar CF mergeada fora de prod (paridade
+# prod↔main quebrada). Casos #211/#210 e #221 mergearam mudança em
+# `functions/` sem deploy imediato. Fix (issue #225 v2): se o squash tocou
+# `functions/`, exige marker file `.cf-deployed-${PR}` confirmando deploy
+# antes de prosseguir. Operador roda no main após o merge:
+#   firebase deploy --only functions && touch .cf-deployed-${PR}
+# Marker é deletado após verificação (não vai pro git).
+echo "[0a/8] Gate de Cloud Functions deploy…"
+CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
+CF_DEPLOY_MARKER="$REPO/.cf-deployed-${PR}"
+if [ -n "$CF_FILES" ]; then
+  if [ -f "$CF_DEPLOY_MARKER" ]; then
+    echo "  [ok] PR #${PR} tocou functions/ — marker presente, deploy confirmado pelo operador"
+    $DRY_RUN || rm -f "$CF_DEPLOY_MARKER"
+  else
+    echo >&2
+    echo "❌ PR #${PR} tocou Cloud Functions mas deploy não foi confirmado:" >&2
+    echo "$CF_FILES" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Rode no main após o merge:" >&2
+    echo "    firebase deploy --only functions && touch ${CF_DEPLOY_MARKER}" >&2
+    echo >&2
+    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
+    abort "CF deploy pendente — abortando para preservar paridade prod↔main"
+  fi
+else
+  echo "  [skip] PR não tocou functions/"
+fi
+
 # ---------- 1. Sync main ----------
 echo "[1/8] Sync main…"
 run "git pull --rebase origin main"
@@ -359,23 +390,6 @@ if [ -n "$LOCAL_BRANCHES" ]; then
   done
 else
   echo "  [skip] nenhuma branch local issue-${ISSUE}-*"
-fi
-
-# ---------- 9. Alerta CF deploy ----------
-# Cloud Functions deploya manualmente (`firebase deploy --only functions`).
-# Se o squash commit do PR tocou `functions/`, imprime alerta no fim do output
-# pra evitar que CF mergeada fique fora de prod por esquecimento. Não bloqueia
-# (deploy é fora do flow). Issue histórico: #211/#210 mergeou mudança em
-# `functions/reviews/createWeeklyReview.js` sem deploy — por sorte benigna.
-if [ -n "$PR_SHA" ]; then
-  CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
-  if [ -n "$CF_FILES" ]; then
-    echo
-    echo "⚠️  [ALERTA] PR #${PR} tocou Cloud Functions — deploy manual necessário:"
-    echo "$CF_FILES" | sed 's/^/    /'
-    echo
-    echo "    Comando:  firebase deploy --only functions"
-  fi
 fi
 
 echo
