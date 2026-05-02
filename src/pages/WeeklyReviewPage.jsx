@@ -35,6 +35,7 @@ import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
 import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import TakeawaysSection from '../components/reviews/TakeawaysSection';
 import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
+import { resolveCycle } from '../utils/cycleResolver';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateNotesText, validateReviewUrl, MAX_NOTES_LENGTH } from '../utils/reviewUrlValidator';
@@ -452,11 +453,21 @@ const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) =
     console.warn('[rebuildSnapshotFromFirestore] maturity fetch failed:', err?.message || err);
   }
 
+  // CV normalizado per-ciclo (issue #235 F3.1) usa janela do CICLO, não da semana —
+  // mantém alinhamento com CycleConsistencyCard do dashboard.
+  const cycleRange = resolveCycle(review.cycleKey, plan);
+  const toIso = (d) =>
+    d instanceof Date && !Number.isNaN(d.getTime())
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : null;
+
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
     extraTrades,
     cycleKey: review.cycleKey || null,
+    cycleStart: cycleRange ? toIso(cycleRange.start) : null,
+    cycleEnd: cycleRange ? toIso(cycleRange.end) : null,
     emotionalMetrics: null,
     maturity,
   });

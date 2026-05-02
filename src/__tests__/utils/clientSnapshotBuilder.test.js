@@ -326,4 +326,74 @@ describe('buildClientSnapshot', () => {
       expect(buildClientSnapshot({ plan, trades: [], maturity: [] }).maturitySnapshot).toBeNull();
     });
   });
+
+  // === Issue #235 F3.1 — kpis.cvNormalized (CV normalizado per-ciclo) ===
+
+  describe('kpis.cvNormalized — CV normalizado per-ciclo (issue #235)', () => {
+    // Plano com rrTarget (campo canônico) para ativar fórmula analítica de cv_exp.
+    const planCycle = { id: 'plan1', adjustmentCycle: 'Mensal', pl: 10000, rrTarget: 3 };
+
+    it('C1 — sem cycleStart/cycleEnd → cvNormalized é null (campo presente, valor null)', () => {
+      const snap = buildClientSnapshot({ plan: planCycle, trades: [mkTrade({ id: 't1', result: 50 })] });
+      expect(snap.kpis).toHaveProperty('cvNormalized');
+      expect(snap.kpis.cvNormalized).toBeNull();
+    });
+
+    it('C2 — com cycleStart/cycleEnd válidos + trades em ≥5 dias + rrTarget → value populado', () => {
+      // 5 dias com trade (mínimo do helper) com magnitudes variando para ter std/mean computáveis.
+      const trades = [
+        mkTrade({ id: 'd1', result: 100, date: '2026-04-01', status: 'CLOSED' }),
+        mkTrade({ id: 'd2', result: -50, date: '2026-04-02', status: 'CLOSED' }),
+        mkTrade({ id: 'd3', result: 200, date: '2026-04-03', status: 'CLOSED' }),
+        mkTrade({ id: 'd4', result: -80, date: '2026-04-04', status: 'CLOSED' }),
+        mkTrade({ id: 'd5', result: 300, date: '2026-04-05', status: 'CLOSED' }),
+      ];
+      const snap = buildClientSnapshot({
+        plan: planCycle,
+        trades,
+        cycleStart: '2026-04-01',
+        cycleEnd: '2026-04-30',
+      });
+      expect(snap.kpis.cvNormalized).not.toBeNull();
+      expect(typeof snap.kpis.cvNormalized.value).toBe('number');
+      expect(Number.isFinite(snap.kpis.cvNormalized.value)).toBe(true);
+      expect(snap.kpis.cvNormalized.daysWithTrade).toBe(5);
+      expect(snap.kpis.cvNormalized.insufficientReason).toBeNull();
+      expect(typeof snap.kpis.cvNormalized.cvObs).toBe('number');
+      expect(typeof snap.kpis.cvNormalized.cvExp).toBe('number');
+    });
+
+    it('C3 — com cycleStart/cycleEnd, plan sem rrTarget → value null + insufficientReason="no_target_rr"', () => {
+      const trades = [
+        mkTrade({ id: 'd1', result: 100, date: '2026-04-01', status: 'CLOSED' }),
+        mkTrade({ id: 'd2', result: -50, date: '2026-04-02', status: 'CLOSED' }),
+        mkTrade({ id: 'd3', result: 200, date: '2026-04-03', status: 'CLOSED' }),
+        mkTrade({ id: 'd4', result: -80, date: '2026-04-04', status: 'CLOSED' }),
+        mkTrade({ id: 'd5', result: 300, date: '2026-04-05', status: 'CLOSED' }),
+      ];
+      // Plan sem rrTarget definido (campo ausente).
+      const planNoRR = { id: 'plan1', adjustmentCycle: 'Mensal', pl: 10000 };
+      const snap = buildClientSnapshot({
+        plan: planNoRR,
+        trades,
+        cycleStart: '2026-04-01',
+        cycleEnd: '2026-04-30',
+      });
+      expect(snap.kpis.cvNormalized).not.toBeNull();
+      expect(snap.kpis.cvNormalized.value).toBeNull();
+      expect(snap.kpis.cvNormalized.insufficientReason).toBe('no_target_rr');
+    });
+
+    it('coefVariation (CV puro) permanece presente — compat reversa', () => {
+      const trades = [100, 102, 98].map((r, i) => mkTrade({ id: `h${i}`, result: r }));
+      const snap = buildClientSnapshot({
+        plan: planCycle,
+        trades,
+        cycleStart: '2026-04-01',
+        cycleEnd: '2026-04-30',
+      });
+      expect(snap.kpis).toHaveProperty('coefVariation');
+      expect(typeof snap.kpis.coefVariation).toBe('number');
+    });
+  });
 });

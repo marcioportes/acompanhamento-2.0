@@ -24,6 +24,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { validateReviewUrl } from '../../utils/reviewUrlValidator';
 import TakeawaysSection from './TakeawaysSection';
 import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
+import { resolveCycle } from '../../utils/cycleResolver';
 import {
   recomputeAndReadMaturity,
   maybeDispatchMaturityAI,
@@ -68,10 +69,20 @@ const rebuildSnapshot = async (review, studentId, preloadedMaturity) => {
     }
   }
 
+  // CV normalizado per-ciclo (issue #235 F3.1) usa janela do CICLO, não da semana —
+  // mantém alinhamento com CycleConsistencyCard do dashboard.
+  const cycleRange = resolveCycle(review.cycleKey, plan);
+  const toIso = (d) =>
+    d instanceof Date && !Number.isNaN(d.getTime())
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : null;
+
   return buildClientSnapshot({
     plan,
     trades: weekTrades,
     cycleKey: review.cycleKey ?? null,
+    cycleStart: cycleRange ? toIso(cycleRange.start) : null,
+    cycleEnd: cycleRange ? toIso(cycleRange.end) : null,
     emotionalMetrics: null,
     maturity,
   });

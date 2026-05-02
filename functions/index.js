@@ -1499,3 +1499,8 @@ exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
 // ============================================
 exports.enrichTradeWithExcursions = require("./marketData/enrichTradeWithExcursions");
 exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnrich");
+
+// ============================================
+// MARKET DATA — Selic diária BCB SGS-11 (issue #235 F0.1)
+// ============================================
+exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");

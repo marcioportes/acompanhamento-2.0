@@ -11,12 +11,13 @@
  *   v1.0.0: Extraido do StudentDashboard.
  */
 
-import { DollarSign, Target, BarChart3, Info, AlertTriangle, Clock, Activity } from 'lucide-react';
+import { DollarSign, Target, BarChart3, Info, AlertTriangle } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { getFinancialInsights, getPerformanceInsights, getPlanVsResultInsights } from '../../utils/metricsInsights';
 import DebugBadge from '../DebugBadge';
+import CycleConsistencyCard from './CycleConsistencyCard';
 
 const safe = (v, d = 0) => (v != null && !isNaN(v) && isFinite(v)) ? v.toFixed(d) : '-';
 
@@ -66,42 +67,6 @@ const getRoBgColor = (efficiency) => {
   return 'bg-red-400';
 };
 
-/** CV — DEC-050: <0.5 verde, 0.5-1.0 amarelo, >1.0 vermelho */
-const getCVTheme = (level) => {
-  if (level === 'consistent') return { color: 'text-emerald-400', bar: 'bg-emerald-400', label: 'Consistente' };
-  if (level === 'moderate') return { color: 'text-amber-400', bar: 'bg-amber-400', label: 'Moderado' };
-  if (level === 'erratic') return { color: 'text-red-400', bar: 'bg-red-400', label: 'Erratico' };
-  return { color: 'text-slate-500', bar: 'bg-slate-500', label: '-' };
-};
-
-const getCVTooltip = (level) => {
-  if (level === 'consistent') return 'Resultado por trade previsivel — variancia baixa em torno da expectancia.';
-  if (level === 'moderate') return 'Resultado por trade tem dispersao moderada — fica vulneravel a sequencias adversas.';
-  if (level === 'erratic') return 'Resultado por trade muito disperso — alguns trades dominam o PL, dificil prever.';
-  return '';
-};
-
-/** ΔT — issue #164: >+20% verde (winners run), -10% a +20% amarelo, <-10% vermelho */
-const getDeltaTTheme = (level) => {
-  if (level === 'winners-run') return { color: 'text-emerald-400', bar: 'bg-emerald-400', label: 'Winners run' };
-  if (level === 'neutral') return { color: 'text-amber-400', bar: 'bg-amber-400', label: 'Equilibrado' };
-  if (level === 'holding-losses') return { color: 'text-red-400', bar: 'bg-red-400', label: 'Segura loss' };
-  return { color: 'text-slate-500', bar: 'bg-slate-500', label: '-' };
-};
-
-const getDeltaTTooltip = (level, deltaPercent) => {
-  if (level === 'winners-run') {
-    return `Voce segura ganhos e corta perdas (W ${deltaPercent.toFixed(0)}% mais longos que L) — comportamento saudavel.`;
-  }
-  if (level === 'neutral') {
-    return `Tempos de W e L similares (delta ${deltaPercent.toFixed(0)}%). Sem padrao claro de gestao em posicao.`;
-  }
-  if (level === 'holding-losses') {
-    return `Voce segura losses (W ${Math.abs(deltaPercent).toFixed(0)}% mais curtos que L) — corta ganho cedo, espera loss virar. Padrao classico de aversao a perda.`;
-  }
-  return '';
-};
-
 const getLeakageLevel = (leakage) => {
   if (leakage == null || isNaN(leakage)) return { label: '-', color: 'text-slate-400' };
   if (leakage < 0) return { label: 'Superando', color: 'text-emerald-400' };
@@ -138,24 +103,6 @@ const InfoBtn = ({ name, openTooltip, toggle }) => (
   </button>
 );
 
-/** Classifica duração média em minutos */
-const classifyDuration = (avgMinutes) => {
-  if (avgMinutes == null || isNaN(avgMinutes)) return { label: '-', color: 'text-slate-400' };
-  if (avgMinutes < 5) return { label: 'Scalping', color: 'text-purple-400' };
-  if (avgMinutes <= 60) return { label: 'Day Trade', color: 'text-blue-400' };
-  return { label: 'Swing', color: 'text-emerald-400' };
-};
-
-/** Formata minutos para texto legível */
-const formatDuration = (minutes) => {
-  if (minutes == null || isNaN(minutes)) return '-';
-  if (minutes < 1) return `${Math.round(minutes * 60)}s`;
-  if (minutes < 60) return `${Math.round(minutes)}min`;
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
-};
-
 const MetricsCards = ({
   stats,
   aggregatedCurrentBalance,
@@ -170,8 +117,12 @@ const MetricsCards = ({
   payoff,
   asymmetryDiagnostic,
   plContext,
+  trades,
+  plan,
+  cycleStart,
+  cycleEnd,
+  cycleLabel,
   avgTradeDuration,
-  consistencyCV,
   durationDelta,
   mentorClassificationStats = null,
 }) => {
@@ -452,92 +403,18 @@ const MetricsCards = ({
           )}
         </div>
 
-        {/* CONSISTÊNCIA OPERACIONAL (E2 — issue #164) */}
-        {/* Combina CV de P&L (DEC-050) + ΔT W/L. Substitui o card isolado de Tempo Médio
-            (que voltou como sub-linha do card novo, integrado ao ΔT). */}
-        {(consistencyCV || durationDelta || (avgTradeDuration && avgTradeDuration.all > 0)) && (() => {
-          const cvTheme = consistencyCV ? getCVTheme(consistencyCV.level) : null;
-          const dtTheme = durationDelta ? getDeltaTTheme(durationDelta.level) : null;
-          const allClass = avgTradeDuration?.all ? classifyDuration(avgTradeDuration.all) : null;
-
-          return (
-            <div className="glass-card p-5 relative h-full flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">Consistencia Operacional</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                {/* CV de P&L */}
-                <div title={consistencyCV ? getCVTooltip(consistencyCV.level) : 'Precisa de >=2 trades com expectancia diferente de zero'}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-slate-600">CV do P&L por trade</span>
-                    {consistencyCV && cvTheme && (
-                      <span className={`text-[10px] font-bold ${cvTheme.color}`}>{cvTheme.label}</span>
-                    )}
-                  </div>
-                  {consistencyCV ? (
-                    <>
-                      <p className={`text-2xl font-bold ${cvTheme.color}`}>{consistencyCV.cv.toFixed(2)}</p>
-                      {/* Barra: posiciona o valor numa escala 0..1.5 (acima de 1.5 estoura para o final) */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
-                          <div
-                            className={`h-full ${cvTheme.bar}`}
-                            style={{ width: `${Math.min(100, (consistencyCV.cv / 1.5) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-slate-600 mt-1">
-                        Faixas DEC-050: <span className="text-emerald-400/70">&lt;0.5</span> · <span className="text-amber-400/70">0.5-1.0</span> · <span className="text-red-400/70">&gt;1.0</span>
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-2xl font-bold text-slate-600">-</p>
-                  )}
-                </div>
-
-                {/* ΔT W vs L */}
-                <div title={durationDelta ? getDeltaTTooltip(durationDelta.level, durationDelta.deltaPercent) : 'Precisa de wins e losses com duracao registrada'}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-slate-600">Tempo W vs L</span>
-                    {durationDelta && dtTheme && (
-                      <span className={`text-[10px] font-bold ${dtTheme.color}`}>{dtTheme.label}</span>
-                    )}
-                  </div>
-                  {durationDelta ? (
-                    <>
-                      <p className={`text-2xl font-bold ${dtTheme.color}`}>
-                        {durationDelta.deltaPercent >= 0 ? '+' : ''}{durationDelta.deltaPercent.toFixed(0)}%
-                      </p>
-                      <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500">
-                        <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(durationDelta.durationWin)}</span></span>
-                        <span>L: <span className="font-mono text-red-400/80">{formatDuration(durationDelta.durationLoss)}</span></span>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-2xl font-bold text-slate-600">-</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Sub-linha: tempo medio geral (info universal preservada do card antigo) */}
-              {allClass && (
-                <div className="border-t border-slate-700/50 mt-4 pt-3">
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="text-slate-500">Tempo medio geral:</span>
-                    <span className={`font-bold ${allClass.color}`}>{formatDuration(avgTradeDuration.all)}</span>
-                    <span className={`px-1.5 py-0.5 rounded ${allClass.color} bg-slate-800/50`}>{allClass.label}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {/* CONSISTÊNCIA OPERACIONAL — issue #235: Sharpe per-ciclo + CV normalizado + MEP/MEN médio.
+            Sub-linha "Tempo medio geral" preservada do card antigo (info universal sem substituto
+            no momento — DEC-AUTO-235-T09-B revisada). */}
+        <CycleConsistencyCard
+          trades={trades}
+          plan={plan}
+          cycleStart={cycleStart}
+          cycleEnd={cycleEnd}
+          cycleLabel={cycleLabel}
+          avgTradeDuration={avgTradeDuration}
+          durationDelta={durationDelta}
+        />
       </div>
 
       <DebugBadge component="MetricsCards" embedded />

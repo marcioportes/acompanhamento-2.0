@@ -224,7 +224,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     asymmetryDiagnostic,
     plContext,
     avgTradeDuration,
-    consistencyCV,
     durationDelta,
   } = metrics;
 
@@ -534,8 +533,25 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         payoff={payoff}
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
+        trades={filteredTrades}
+        plan={studentCtx.selectedPlan}
+        cycleStart={(() => {
+          const d = studentCtx.selectedCycle?.start;
+          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })()}
+        cycleEnd={(() => {
+          const d = studentCtx.selectedCycle?.end;
+          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })()}
         avgTradeDuration={avgTradeDuration}
-        consistencyCV={consistencyCV}
         durationDelta={durationDelta}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}
       />
