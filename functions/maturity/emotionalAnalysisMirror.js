@@ -3,6 +3,10 @@
 // ============================================
 //
 // Mirror determinístico de `src/utils/emotionalAnalysisV2.js` (ESM) — issue #189.
+// Issue #221: respeita `mentorClearedViolations` no calculatePeriodScore via
+// effectiveEmotionalEventsForPeriod do violationFilter mirror.
+
+const { effectiveEmotionalEventsForPeriod } = require('./violationFilter');
 // Substitui o stub `{ periodScore: 50, tiltCount: 0, revengeCount: 0 }` em
 // `preComputeShapes.js:129` (DEC-AUTO-119-task07-02 declarado como TODO).
 //
@@ -188,7 +192,10 @@ function calculatePeriodScore(trades, getEmotionConfig, complianceEvents = []) {
   // Normaliza de [-4, +3.5] para [0, 100] (paridade com ESM linha 206)
   const normalized = Math.round(((rawAverage + 4) / 7.5) * 100);
 
-  const penalties = (Array.isArray(complianceEvents) ? complianceEvents : []).reduce(
+  // Issue #221: filtra eventos cleared pelo mentor (mentorClearedViolations).
+  const safeEvents = Array.isArray(complianceEvents) ? complianceEvents : [];
+  const effectiveEvents = effectiveEmotionalEventsForPeriod(trades, safeEvents);
+  const penalties = effectiveEvents.reduce(
     (sum, event) => sum + (EVENT_PENALTIES[event.type] || 0),
     0,
   );

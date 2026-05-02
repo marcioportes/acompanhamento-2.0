@@ -25,6 +25,7 @@ import {
   calculateConsistencyCV,
   calculateDurationDelta,
 } from '../utils/dashboardMetrics';
+import { hasEffectiveRedFlags } from '../utils/violationFilter';
 
 /** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
 const PERIOD_KIND_LABELS = {
@@ -190,9 +191,8 @@ const useDashboardMetrics = ({
 
   const complianceRate = useMemo(() => {
     if (filteredTrades.length === 0) return null;
-    const withFlags = filteredTrades.filter(t => 
-      t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0)
-    ).length;
+    // Issue #221 — respeita mentorClearedViolations via hasEffectiveRedFlags.
+    const withFlags = filteredTrades.filter(t => hasEffectiveRedFlags(t)).length;
     const compliant = filteredTrades.length - withFlags;
     return {
       rate: (compliant / filteredTrades.length) * 100,

@@ -1048,9 +1048,17 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       const av = after[f] ?? null;
       return bv !== av;
     });
-    
+
+    // Issue #221 — detectar mudança em `mentorClearedViolations` (toggle do mentor).
+    // Quando muda, dispara recompute do aluno (paralelo a mudança de plano).
+    const fpClearedBefore = JSON.stringify((Array.isArray(before.mentorClearedViolations)
+      ? before.mentorClearedViolations : []).slice().sort());
+    const fpClearedAfter = JSON.stringify((Array.isArray(after.mentorClearedViolations)
+      ? after.mentorClearedViolations : []).slice().sort());
+    const clearedChanged = fpClearedBefore !== fpClearedAfter;
+
     // Guard: se apenas riskPercent/rrRatio/compliance/redFlags mudaram, é loop da própria CF
-    if (!resultChanged && !planChanged && !complianceChanged) {
+    if (!resultChanged && !planChanged && !complianceChanged && !clearedChanged) {
       return null;
     }
     
@@ -1142,6 +1150,21 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         console.log(`[onTradeUpdated] Lock destravado por import (batch=${after.importBatchId})`);
       } catch (unlockErr) {
         console.error('[onTradeUpdated] Erro destrava por import:', unlockErr);
+      }
+    }
+
+    // === ISSUE #221 — RECOMPUTE MATURITY POR TOGGLE DE LIMPEZA ===
+    // Mentor adicionou/removeu chave em mentorClearedViolations → dispara
+    // recompute do aluno (paralelo a mudança de plano). Pipeline igual a de
+    // plan-change: agregadores filtram via mentorClearedViolations, snapshot
+    // student/{uid}/maturity/current refletirá novo estado quando concluir.
+    if (clearedChanged && after.studentId) {
+      try {
+        const { recomputeForStudent } = require('./maturity/recomputeMaturity');
+        await recomputeForStudent(db, after.studentId, { admin });
+        console.log(`[onTradeUpdated] Maturity recomputado por toggle de cleared (student=${after.studentId}, before=${fpClearedBefore}, after=${fpClearedAfter})`);
+      } catch (recomputeErr) {
+        console.error('[onTradeUpdated] Erro recompute maturity (cleared toggle):', recomputeErr);
       }
     }
 

@@ -8,7 +8,12 @@
  * os planos. Mínimo 20 trades CLOSED; fallback retroativo simultâneo até atingir
  * o mínimo ou esgotar histórico. Estado insuficiente → null (METRIC_UNAVAILABLE
  * no evaluateGates: gate pendente, não promove e não rebaixa).
+ *
+ * Issue #221: respeita `mentorClearedViolations` — trade com TODAS as red flags
+ * limpas pelo mentor é tratado como compliant.
  */
+
+import { hasEffectiveRedFlags } from '../violationFilter';
 
 const MAX_LOOKBACK_CYCLES = 36;
 const DEFAULT_MIN_TRADES = 20;
@@ -90,9 +95,7 @@ function rangesContain(ranges, date) {
 
 function complianceFromTrades(trades) {
   if (trades.length === 0) return null;
-  const withFlags = trades.filter(
-    (t) => t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0),
-  ).length;
+  const withFlags = trades.filter((t) => hasEffectiveRedFlags(t)).length;
   const compliant = trades.length - withFlags;
   return (compliant / trades.length) * 100;
 }

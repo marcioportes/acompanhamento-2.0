@@ -1,6 +1,12 @@
 // ============================================
-// MATURITY ENGINE — computeCycleBasedComplianceRate (issue #191)
+// MATURITY ENGINE — computeCycleBasedComplianceRate (issue #191; #221: cleared)
 // ============================================
+//
+// Issue #221: respeita `mentorClearedViolations` — trade com TODAS as red flags
+// limpas pelo mentor é tratado como compliant. Mirror ESM em
+// src/utils/maturityEngine/computeCycleBasedComplianceRate.js.
+
+const { hasEffectiveRedFlags } = require('./violationFilter');
 //
 // Aderência (compliance) avaliada sobre a janela de ciclos ativos do trader,
 // união de todos os planos. Substitui o alias antigo `complianceRate100 =
@@ -98,9 +104,7 @@ function rangesContain(ranges, date) {
 
 function complianceFromTrades(trades) {
   if (trades.length === 0) return null;
-  const withFlags = trades.filter(
-    (t) => t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0),
-  ).length;
+  const withFlags = trades.filter((t) => hasEffectiveRedFlags(t)).length;
   const compliant = trades.length - withFlags;
   return (compliant / trades.length) * 100;
 }
