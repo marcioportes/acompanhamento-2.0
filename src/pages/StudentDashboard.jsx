@@ -224,8 +224,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     asymmetryDiagnostic,
     plContext,
     avgTradeDuration,
-    consistencyCV,
-    durationDelta,
   } = metrics;
 
   // === Narrativa IA: dispara callable quando trigger muda (issue #119 task 14) ===
@@ -534,9 +532,24 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         payoff={payoff}
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
-        avgTradeDuration={avgTradeDuration}
-        consistencyCV={consistencyCV}
-        durationDelta={durationDelta}
+        trades={filteredTrades}
+        plan={studentCtx.selectedPlan}
+        cycleStart={(() => {
+          const d = studentCtx.selectedCycle?.start;
+          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })()}
+        cycleEnd={(() => {
+          const d = studentCtx.selectedCycle?.end;
+          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        })()}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}
       />
 
