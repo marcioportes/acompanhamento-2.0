@@ -40,12 +40,12 @@ function sharpeTheme(value) {
 }
 
 function cvTheme(value) {
-  if (value == null || !Number.isFinite(value)) return { text: 'text-slate-500', dot: 'bg-slate-500' };
-  if (value < 0.5) return { text: 'text-amber-400', dot: 'bg-amber-400' };
-  if (value <= 1.2) return { text: 'text-emerald-400', dot: 'bg-emerald-400' };
-  if (value <= 1.5) return { text: 'text-amber-400', dot: 'bg-amber-400' };
-  if (value <= 2.0) return { text: 'text-orange-400', dot: 'bg-orange-400' };
-  return { text: 'text-red-400', dot: 'bg-red-400' };
+  if (value == null || !Number.isFinite(value)) return { text: 'text-slate-500', dot: 'bg-slate-500', bandLabel: '' };
+  if (value < 0.5) return { text: 'text-amber-400', dot: 'bg-amber-400', bandLabel: 'Suspeito' };
+  if (value <= 1.2) return { text: 'text-emerald-400', dot: 'bg-emerald-400', bandLabel: 'No plano' };
+  if (value <= 1.5) return { text: 'text-amber-400', dot: 'bg-amber-400', bandLabel: 'Levemente errático' };
+  if (value <= 2.0) return { text: 'text-orange-400', dot: 'bg-orange-400', bandLabel: 'Errático' };
+  return { text: 'text-red-400', dot: 'bg-red-400', bandLabel: 'Muito errático' };
 }
 
 function mepTheme(value) {
@@ -109,57 +109,25 @@ function selicBadge(source) {
   return null;
 }
 
-function MetricRow({ label, value, extra, theme, badge, tooltip, valueClassName }) {
+function MetricTile({ label, value, theme, bandLabel, badge, caption, tooltip, isInsufficient }) {
   return (
-    <div className="flex items-center justify-between py-2.5" title={tooltip}>
-      <span className="text-xs text-slate-500">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className={`text-sm font-bold font-mono ${valueClassName ?? theme.text}`}>{value}</span>
-        {extra && <span className={`text-[10px] font-bold ${theme.text}`}>{extra}</span>}
-        {badge}
-        <span className={`w-2 h-2 rounded-full ${theme.dot}`} aria-hidden="true" />
-      </div>
-    </div>
-  );
-}
-
-function DualMetricRow({ label, left, right }) {
-  // Quando ambos lados estão em estado "insuficiente" (mesma mensagem), colapsa
-  // para uma linha só com a mensagem — evita duplicação visual.
-  const sameInsufficient =
-    left.view.valueClassName && right.view.valueClassName && left.view.value === right.view.value;
-  if (sameInsufficient) {
-    return (
-      <div className="flex items-center justify-between py-2.5">
-        <span className="text-xs text-slate-500">{label}</span>
-        <span className={`text-xs font-medium ${left.view.valueClassName}`}>{left.view.value}</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center justify-between py-2.5">
-      <span className="text-xs text-slate-500">{label}</span>
-      <div className="flex items-center gap-3">
-        <span className="flex items-center gap-1.5" title={left.tooltip}>
-          <span className="text-[10px] text-slate-600 font-mono">{left.caption}</span>
-          <span
-            className={`text-sm font-bold font-mono ${left.view.valueClassName ?? left.view.theme.text}`}
-          >
-            {left.view.value}
-          </span>
-          <span className={`w-2 h-2 rounded-full ${left.view.theme.dot}`} aria-hidden="true" />
-        </span>
-        <span className="text-slate-700">·</span>
-        <span className="flex items-center gap-1.5" title={right.tooltip}>
-          <span className="text-[10px] text-slate-600 font-mono">{right.caption}</span>
-          <span
-            className={`text-sm font-bold font-mono ${right.view.valueClassName ?? right.view.theme.text}`}
-          >
-            {right.view.value}
-          </span>
-          <span className={`w-2 h-2 rounded-full ${right.view.theme.dot}`} aria-hidden="true" />
-        </span>
-      </div>
+    <div className="flex flex-col gap-1.5" title={tooltip}>
+      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">{label}</p>
+      {isInsufficient ? (
+        <p className="text-xs text-slate-500 leading-snug min-h-[2.5rem]">{value}</p>
+      ) : (
+        <div className="flex items-baseline gap-2">
+          <span className={`text-2xl font-bold font-mono leading-none ${theme.text}`}>{value}</span>
+          <span className={`w-2 h-2 rounded-full ${theme.dot} self-center`} aria-hidden="true" />
+        </div>
+      )}
+      {!isInsufficient && bandLabel && (
+        <p className={`text-[10px] font-bold ${theme.text}`}>{bandLabel}</p>
+      )}
+      {!isInsufficient && caption && (
+        <p className="text-[10px] text-slate-600">{caption}</p>
+      )}
+      {badge && <div className="flex">{badge}</div>}
     </div>
   );
 }
@@ -204,18 +172,21 @@ function sharpeContent(sharpe, opts) {
 }
 
 function cvContent(cv) {
-  if (!cv) return { value: '-', theme: cvTheme(null) };
+  if (!cv) return { value: '-', theme: cvTheme(null), bandLabel: '' };
   if (cv.value == null) {
     const label = cv.label ?? '-';
     return {
       value: label,
       theme: cvTheme(null),
+      bandLabel: '',
       valueClassName: 'text-xs font-medium text-slate-500',
     };
   }
+  const theme = cvTheme(cv.value);
   return {
     value: cv.value.toFixed(2),
-    theme: cvTheme(cv.value),
+    theme,
+    bandLabel: theme.bandLabel,
   };
 }
 
@@ -348,14 +319,14 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
 
   return (
     <div className="glass-card p-5 relative h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-cyan-400" />
           <span className="text-xs text-slate-500 uppercase tracking-wider font-medium">
             Consistencia Operacional
           </span>
           {label && (
-            <span className="text-[11px] text-slate-500 normal-case">({label})</span>
+            <span className="text-[11px] text-slate-600 normal-case">· {label}</span>
           )}
         </div>
       </div>
@@ -363,51 +334,70 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
       {error ? (
         <p className="text-sm text-amber-400/80">Não foi possível carregar métricas do ciclo</p>
       ) : loading ? (
-        <div className="flex-1 space-y-3" data-testid="cycle-consistency-skeleton">
+        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="cycle-consistency-skeleton">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-6 bg-slate-700/30 rounded animate-pulse" />
+            <div key={i} className="space-y-2">
+              <div className="h-3 bg-slate-700/30 rounded animate-pulse" />
+              <div className="h-7 bg-slate-700/30 rounded animate-pulse" />
+              <div className="h-3 bg-slate-700/30 rounded animate-pulse w-2/3" />
+            </div>
           ))}
         </div>
       ) : (
-        <div className="flex-1 flex flex-col divide-y divide-slate-700/30">
-          <MetricRow
-            label={`Sharpe${label ? ` (${label})` : ''}`}
-            value={sharpeView.value}
-            extra={sharpeView.bandLabel}
-            theme={sharpeView.theme}
-            badge={sharpeView.badge}
-            tooltip={buildSharpeTooltip(sharpe, label)}
-            valueClassName={sharpeView.valueClassName}
-          />
-          <MetricRow
-            label="CV normalizado"
-            value={cvView.value}
-            theme={cvView.theme}
-            tooltip={buildCvTooltip(cvNormalized, plan)}
-            valueClassName={cvView.valueClassName}
-          />
-          <DualMetricRow
-            label="MEP / MEN médio (% / entry)"
-            left={{ caption: 'MEP', view: mepView, tooltip: MEP_TOOLTIP }}
-            right={{ caption: 'MEN', view: menView, tooltip: MEN_TOOLTIP }}
-          />
-          {(() => {
-            if (!durationDelta) return null;
+        <div className="flex-1 flex flex-col">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricTile
+              label="Sharpe"
+              value={sharpeView.value}
+              theme={sharpeView.theme}
+              bandLabel={sharpeView.bandLabel}
+              badge={sharpeView.badge}
+              tooltip={buildSharpeTooltip(sharpe, label)}
+              isInsufficient={!!sharpeView.valueClassName}
+            />
+            <MetricTile
+              label="CV norm."
+              value={cvView.value}
+              theme={cvView.theme}
+              bandLabel={cvView.bandLabel}
+              tooltip={buildCvTooltip(cvNormalized, plan)}
+              isInsufficient={!!cvView.valueClassName}
+            />
+            <MetricTile
+              label="MEP médio"
+              value={mepView.value}
+              theme={mepView.theme}
+              caption="por entry"
+              tooltip={MEP_TOOLTIP}
+              isInsufficient={!!mepView.valueClassName}
+            />
+            <MetricTile
+              label="MEN médio"
+              value={menView.value}
+              theme={menView.theme}
+              caption="por entry"
+              tooltip={MEN_TOOLTIP}
+              isInsufficient={!!menView.valueClassName}
+            />
+          </div>
+
+          {durationDelta && (() => {
             const t = deltaTTheme(durationDelta.level);
             const dPct = durationDelta.deltaPercent;
             const sign = dPct >= 0 ? '+' : '';
             return (
-              <div className="py-2.5" title={deltaTTooltip(durationDelta.level, dPct)}>
+              <div className="border-t border-slate-700/30 mt-4 pt-3" title={deltaTTooltip(durationDelta.level, dPct)}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">Tempo W vs L</span>
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Tempo W vs L</span>
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold font-mono ${t.text}`}>{sign}{dPct.toFixed(0)}%</span>
+                    <span className={`text-base font-bold font-mono ${t.text}`}>{sign}{dPct.toFixed(0)}%</span>
                     <span className={`text-[10px] font-bold ${t.text}`}>{t.label}</span>
                     <span className={`w-2 h-2 rounded-full ${t.dot}`} aria-hidden="true" />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
                   <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(durationDelta.durationWin)}</span></span>
+                  <span className="text-slate-700">·</span>
                   <span>L: <span className="font-mono text-red-400/80">{formatDuration(durationDelta.durationLoss)}</span></span>
                 </div>
               </div>
@@ -415,7 +405,7 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
           })()}
 
           {avgExcursion?.coverageBelowThreshold && avgExcursion.coverageLabel && (
-            <p className="text-[10px] text-amber-400/80 mt-2 pt-2 border-0">
+            <p className="text-[10px] text-amber-400/80 mt-3">
               {avgExcursion.coverageLabel}
             </p>
           )}

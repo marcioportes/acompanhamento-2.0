@@ -57,17 +57,18 @@ describe('CycleConsistencyCard', () => {
 
     // Header
     expect(screen.getByText(/Consistencia Operacional/i)).toBeTruthy();
-    expect(screen.getByText('(FEV/2026)')).toBeTruthy();
+    expect(screen.getByText(/FEV\/2026/)).toBeTruthy();
 
     // 4 valores
     expect(screen.getByText('1.42')).toBeTruthy();
     expect(screen.getByText('1.05')).toBeTruthy();
     expect(screen.getByText('+1.8%')).toBeTruthy();
     expect(screen.getByText('-0.6%')).toBeTruthy();
-    expect(screen.getByText(/MEP \/ MEN médio/)).toBeTruthy();
+    expect(screen.getByText(/MEP médio/)).toBeTruthy();
+    expect(screen.getByText(/MEN médio/)).toBeTruthy();
 
     // Sharpe row label inclui o ciclo
-    expect(screen.getByText(/Sharpe \(FEV\/2026\)/)).toBeTruthy();
+    // Tile label é só "Sharpe" agora; cycleLabel ficou no header (já checado acima)
 
     // Badge Selic atual presente (BCB), sem coverage warning
     expect(screen.getByText(/Selic atual/)).toBeTruthy();
