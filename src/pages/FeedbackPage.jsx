@@ -103,7 +103,7 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const TradeInfoCard = ({ trade, onImageClick }) => {
+const TradeInfoCard = ({ trade, onImageClick, userIsMentor = false, onToggleViolation }) => {
   const isWin = trade.result >= 0;
   const notes = trade.notes || trade.observation || trade.comment || trade.observacao || '';
 
@@ -268,7 +268,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
                         {userIsMentor && flag.type && (
                           <button
                             type="button"
-                            onClick={() => handleToggleViolation(flag.type)}
+                            onClick={() => onToggleViolation && onToggleViolation(flag.type)}
                             title="Limpar esta violação (toggle)"
                             className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 transition-colors"
                           >
@@ -292,7 +292,7 @@ const TradeInfoCard = ({ trade, onImageClick }) => {
                         {userIsMentor && flag.type && (
                           <button
                             type="button"
-                            onClick={() => handleToggleViolation(flag.type)}
+                            onClick={() => onToggleViolation && onToggleViolation(flag.type)}
                             title="Restaurar — volta a contar como violação"
                             className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200 transition-colors"
                           >
@@ -693,7 +693,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
           {/* Coluna Esquerda - Info do Trade */}
           <div className="lg:sticky lg:top-0 lg:self-start">
-            <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+            <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
             {trade?.planId && (
               <div className="mt-3">
                 <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
@@ -917,7 +917,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Coluna Esquerda - Info do Trade */}
         <div className="lg:sticky lg:top-6 lg:self-start">
-          <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} />
+          <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
           {trade?.planId && (
             <div className="mt-4">
               <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
