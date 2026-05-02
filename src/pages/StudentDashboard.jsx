@@ -224,6 +224,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     asymmetryDiagnostic,
     plContext,
     avgTradeDuration,
+    durationDelta,
   } = metrics;
 
   // === Narrativa IA: dispara callable quando trigger muda (issue #119 task 14) ===
@@ -551,6 +552,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           return `${y}-${m}-${day}`;
         })()}
         avgTradeDuration={avgTradeDuration}
+        durationDelta={durationDelta}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}
       />
 

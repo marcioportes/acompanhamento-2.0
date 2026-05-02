@@ -294,7 +294,27 @@ function classifyDuration(minutes) {
   return { label: 'Swing', color: 'text-emerald-400' };
 }
 
-const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, opts, avgTradeDuration }) => {
+function deltaTTheme(level) {
+  if (level === 'winners-run') return { text: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Winners run' };
+  if (level === 'neutral') return { text: 'text-amber-400', dot: 'bg-amber-400', label: 'Equilibrado' };
+  if (level === 'holding-losses') return { text: 'text-red-400', dot: 'bg-red-400', label: 'Segura loss' };
+  return { text: 'text-slate-500', dot: 'bg-slate-500', label: '-' };
+}
+
+function deltaTTooltip(level, deltaPercent) {
+  if (level === 'winners-run') {
+    return `Você segura ganhos e corta perdas (W ${Math.abs(deltaPercent).toFixed(0)}% mais longos que L) — comportamento saudável.`;
+  }
+  if (level === 'neutral') {
+    return `Tempos de W e L similares (delta ${deltaPercent.toFixed(0)}%). Sem padrão claro de gestão em posição.`;
+  }
+  if (level === 'holding-losses') {
+    return `Você segura losses (W ${Math.abs(deltaPercent).toFixed(0)}% mais curtos que L) — corta ganho cedo, espera loss virar. Padrão clássico de aversão à perda.`;
+  }
+  return 'Precisa de wins e losses com duração registrada.';
+}
+
+const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, opts, avgTradeDuration, durationDelta }) => {
   const state = useCycleConsistency({ trades, plan, cycleStart, cycleEnd, opts });
   const { sharpe, cvNormalized, avgExcursion, loading, error } = state;
 
@@ -349,6 +369,28 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
             left={{ caption: 'MEP', view: mepView, tooltip: MEP_TOOLTIP }}
             right={{ caption: 'MEN', view: menView, tooltip: MEN_TOOLTIP }}
           />
+          {(() => {
+            if (!durationDelta) return null;
+            const t = deltaTTheme(durationDelta.level);
+            const dPct = durationDelta.deltaPercent;
+            const sign = dPct >= 0 ? '+' : '';
+            return (
+              <div className="py-2.5" title={deltaTTooltip(durationDelta.level, dPct)}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Tempo W vs L</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold font-mono ${t.text}`}>{sign}{dPct.toFixed(0)}%</span>
+                    <span className={`text-[10px] font-bold ${t.text}`}>{t.label}</span>
+                    <span className={`w-2 h-2 rounded-full ${t.dot}`} aria-hidden="true" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
+                  <span>W: <span className="font-mono text-emerald-400/80">{formatDuration(durationDelta.durationWin)}</span></span>
+                  <span>L: <span className="font-mono text-red-400/80">{formatDuration(durationDelta.durationLoss)}</span></span>
+                </div>
+              </div>
+            );
+          })()}
 
           {avgExcursion?.coverageBelowThreshold && avgExcursion.coverageLabel && (
             <p className="text-[10px] text-amber-400/80 mt-2 pt-2 border-0">

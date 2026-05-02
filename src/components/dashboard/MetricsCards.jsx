@@ -123,6 +123,7 @@ const MetricsCards = ({
   cycleEnd,
   cycleLabel,
   avgTradeDuration,
+  durationDelta,
   mentorClassificationStats = null,
 }) => {
   const [openTooltip, setOpenTooltip] = useState(null);
@@ -412,6 +413,7 @@ const MetricsCards = ({
           cycleEnd={cycleEnd}
           cycleLabel={cycleLabel}
           avgTradeDuration={avgTradeDuration}
+          durationDelta={durationDelta}
         />
       </div>
 
