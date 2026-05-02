@@ -3,6 +3,19 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.53.0: feat: detectar stop em breakeven prematuro + hesitação em stop pós-entrada
+ *   (issue #229) — sensores comportamentais. Hoje `executionBehaviorEngine.detectStopTampering`
+ *   só dispara em WIDENED (linha 137: `isStopWidened`); TIGHTENED até breakeven é silencioso.
+ *   E reissue com mesmo preço é explicitamente ignorado (linha 136). Adiciona 2 detectores:
+ *   `STOP_BREAKEVEN_TOO_EARLY` (stop reissue pra ≤ tolerância da entry, dentro de 5min OU antes
+ *   de 50% do target — disjunção; loss aversion + regret aversion, Kahneman&Tversky 1979 +
+ *   Heisler 1994; severity HIGH; entra em TILT_EXEC_TYPES) e `STOP_HESITATION` (≥2 reissues de
+ *   stop com preço idêntico — heurística operacional; severity LOW; só rebate em periodScore,
+ *   não entra em TILT). Tolerance por prefix B3/CME + fallback max(0.01, 0.05%·entry).
+ *   Penalties: BREAKEVEN=12, HESITATION=5. Mirror ESM↔CJS obrigatório. Schema: zero campo
+ *   Firestore novo (compute on-the-fly, padrão Opção C de #208). [RESERVADA — entrada
+ *   definitiva no encerramento.]
+ *
  * - 1.52.0: feat: mentor limpa violações com toggle (compliance + emocional) (issue #221,
  *   parte 3/3 de #218). Compliance e detecções emocionais hoje são determinísticas — STOP
  *   de R$1.005 num RO de R$1.000 (0,5% acima) é flagrado; mentor entende contexto, sistema
