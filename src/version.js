@@ -12,7 +12,7 @@
  *   (subcollection diária, ~252 docs/ano). Alinhamento com Revisão Semanal: novos snapshots
  *   gravam `cvNormalized`; reviews antigas mantêm `cv` puro sem mitigação técnica (DEC-AUTO-235-16
  *   — risco UX absorvido por mentor humano dado proximidade Marcio↔alunos). Mirror ESM↔CJS
- *   obrigatório. Modo autônomo §13.8. [RESERVADA — entrada definitiva no encerramento.]
+ *   obrigatório. Modo autônomo §13.8.
  * - 1.53.0: #229 feat detectar stop em breakeven prematuro + hesitação no stop (PR #230, 01/05/2026)
  * - 1.53.0: feat: detectar stop em breakeven prematuro + hesitação em stop pós-entrada
  *   (issue #229) — sensores comportamentais. Hoje `executionBehaviorEngine.detectStopTampering`
@@ -319,10 +319,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.53.0',
-  build: '20260501',
-  display: 'v1.53.0',
-  full: '1.53.0+20260501',
+  version: '1.54.0',
+  build: '20260502',
+  display: 'v1.54.0',
+  full: '1.54.0+20260502',
 };
 export default VERSION;
 export { VERSION };

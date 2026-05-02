@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.54.0] - 02/05/2026 · #235 · PR #236
+
+**feat:** redesign card Consistência Operacional — Sharpe+CV norm+MEP/MEN+Selic (#235)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.53.0] - 01/05/2026 · #229 · PR #230
 
 **feat:** detectar stop em breakeven prematuro + hesitação no stop
