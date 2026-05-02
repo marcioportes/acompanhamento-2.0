@@ -89,31 +89,45 @@ echo "  PR #${PR} (sha ${PR_SHA:0:8}) tipo=${PR_TYPE} ver=${VER:-none}"
 echo "  resumo: ${PR_SUMMARY}"
 
 # ---------- 0a. Gate bloqueante de Cloud Functions deploy ----------
-# Bug histórico: o alerta original no fim do script (#216) era não-bloqueante
-# — Marcio podia esquecer e deixar CF mergeada fora de prod (paridade
-# prod↔main quebrada). Casos #211/#210 e #221 mergearam mudança em
-# `functions/` sem deploy imediato. Fix (issue #225 — Parte D): se o squash
-# tocou `functions/`, exige marker file `.cf-deployed-${PR}` confirmando
-# deploy antes de prosseguir. Operador roda no main após o merge:
-#   firebase deploy --only functions && touch .cf-deployed-${PR}
-# Marker é deletado após verificação (não vai pro git).
+# Histórico:
+#   #216 — alerta não-bloqueante no fim do script; #211/#210/#221 mergearam
+#          functions/ sem deploy (paridade prod↔main quebrada na surdina).
+#   #225 — gate bloqueante exigindo marker explícito `.cf-deployed-${PR}`;
+#          eliminava o esquecimento mas adicionava fricção (operador rodava
+#          firebase deploy + touch antes do script).
+#   #233 — auto-deploy: se squash tocou functions/, script roda
+#          `firebase deploy --only functions` automaticamente. Falha aborta
+#          o encerramento (paridade preservada). Marker mantido como
+#          override para operadores que prefiram deploy manual ANTES do
+#          script (revert PR sem mudança real em CF, hotfix com fluxo
+#          especial). Backcompat: marker presente → skip auto-deploy.
 echo "[0a/8] Gate de Cloud Functions deploy…"
 CF_FILES=$(git show --name-only --format= "$PR_SHA" 2>/dev/null | grep -E "^functions/" || true)
 CF_DEPLOY_MARKER="$REPO/.cf-deployed-${PR}"
 if [ -n "$CF_FILES" ]; then
   if [ -f "$CF_DEPLOY_MARKER" ]; then
-    echo "  [ok] PR #${PR} tocou functions/ — marker presente, deploy confirmado pelo operador"
+    echo "  [ok] PR #${PR} tocou functions/ — marker presente, deploy já feito pelo operador (skip auto-deploy)"
     $DRY_RUN || rm -f "$CF_DEPLOY_MARKER"
   else
-    echo >&2
-    echo "❌ PR #${PR} tocou Cloud Functions mas deploy não foi confirmado:" >&2
-    echo "$CF_FILES" | sed 's/^/    /' >&2
-    echo >&2
-    echo "Rode no main após o merge:" >&2
-    echo "    firebase deploy --only functions && touch ${CF_DEPLOY_MARKER}" >&2
-    echo >&2
-    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
-    abort "CF deploy pendente — abortando para preservar paridade prod↔main"
+    echo "  PR #${PR} tocou functions/:"
+    echo "$CF_FILES" | sed 's/^/    /'
+    if ! command -v firebase >/dev/null 2>&1; then
+      echo >&2
+      echo "❌ firebase CLI não instalada — não é possível auto-deploy" >&2
+      echo "Instale: npm install -g firebase-tools" >&2
+      echo "Ou deploy manual: firebase deploy --only functions && touch ${CF_DEPLOY_MARKER}" >&2
+      abort "firebase CLI ausente — abortando para preservar paridade prod↔main"
+    fi
+    if $DRY_RUN; then
+      echo "  [dry-run] firebase deploy --only functions"
+    else
+      echo "  Auto-deploy via firebase (#233)…"
+      if firebase deploy --only functions; then
+        echo "  [ok] CF deploy concluído"
+      else
+        abort "firebase deploy --only functions falhou — abortando para preservar paridade prod↔main"
+      fi
+    fi
   fi
 else
   echo "  [skip] PR não tocou functions/"
