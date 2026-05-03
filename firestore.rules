@@ -80,6 +80,15 @@ service cloud.firestore {
       }
     }
 
+    // CONTACTS — issue #237
+    // SSoT de pessoas em órbita do mentor (lead/espelho/alpha/ex). Mentor-only CRUD.
+    // Aluno só lê o próprio doc quando vinculado via studentUid.
+    match /contacts/{contactId} {
+      allow read: if isMentor() ||
+        (isAuthenticated() && resource.data.studentUid == request.auth.uid);
+      allow create, update, delete: if isMentor();
+    }
+
     // MENTOR CONFIG (compliance rules) — Fase 1.3.2
     match /mentorConfig/{mentorId} {
       allow read: if isAuthenticated();
