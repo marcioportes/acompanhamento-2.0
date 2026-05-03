@@ -19,6 +19,7 @@ import {
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import DebugBadge from '../components/DebugBadge';
 import RenewalForecast from '../components/RenewalForecast';
+import ContactsSection from '../components/contacts/ContactsSection';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -389,6 +390,9 @@ const SubscriptionsPage = () => {
           <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"><Plus className="w-4 h-4" />Nova Assinatura</button>
         </div>
       </div>
+
+      {/* Contacts (issue #237 F4) — cadastro mestre acima da tabela de assinaturas */}
+      <ContactsSection />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
