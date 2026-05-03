@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.55.0] - 03/05/2026 · #237 · PR #238
+
+**feat:** cadastro de alunos / assinaturas — consolidação em students/subscriptions
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.54.0] - 02/05/2026 · #235 · PR #236
 
 **feat:** redesign card Consistência Operacional — Sharpe+CV norm+MEP/MEN+Selic (#235)

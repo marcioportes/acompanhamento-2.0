@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.55.0: #237 feat cadastro de alunos / assinaturas — consolidação em students/subscriptions (PR #238, 03/05/2026)
  * - 1.55.0: feat: cadastro de alunos / assinaturas (#237) — consolidação em
  *   `students/{uid}/subscriptions/` (sem collection nova). Decisão pivotada durante a issue:
  *   `contacts/` foi descartado em favor da subcollection existente. Entregas: criação inline
@@ -334,9 +335,9 @@
  */
 const VERSION = {
   version: '1.55.0',
-  build: '20260502',
+  build: '20260503',
   display: 'v1.55.0',
-  full: '1.55.0+20260502',
+  full: '1.55.0+20260503',
 };
 export default VERSION;
 export { VERSION };

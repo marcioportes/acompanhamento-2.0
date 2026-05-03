@@ -19,4 +19,4 @@
 | 1.52.0 | #221 | `feat/issue-221-mentor-clear-violations` | 01/05/2026 | consumida (PR #224 squash `af1aa289`) |
 | 1.53.0 | #229 | `feat/issue-229-stop-breakeven-hesitation-detectors` | 01/05/2026 | consumida (PR #230 squash `fa23e496`) |
 | 1.54.0 | #235 | `feat/issue-235-cycle-consistency-redesign` | 02/05/2026 | consumida (PR #236 squash `ea8e7bff`) |
-| 1.55.0 | #237 | `feat/issue-237-contacts-assinaturas` | 02/05/2026 | reservada |
+| 1.55.0 | #237 | `feat/issue-237-contacts-assinaturas` | 02/05/2026 | consumida (PR #238 squash `1ad8198a`) |
