@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-02 (escrita) | #237 | `feat/issue-237-contacts-assinaturas` | 02/05/2026 | Marcio (interativo) |
