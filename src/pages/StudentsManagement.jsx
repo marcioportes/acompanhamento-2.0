@@ -8,18 +8,20 @@
  * - 2.0.0: View As Student, indicador de erro de email
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, Trash2, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain, Phone, Check, X } from 'lucide-react';
+import { UserPlus, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain, Phone, Check, X } from 'lucide-react';
 import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsappValidation';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { normalizeName, normalizeEmail } from '../utils/contactsNormalizer';
 
 /**
  * @param {Function} onViewAsStudent - Callback para View As Student
@@ -30,6 +32,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
+  const [newCelular, setNewCelular] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [adding, setAdding] = useState(false);
@@ -42,6 +45,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
   const functions = getFunctions();
   const { detectionConfig, statusThresholds } = useComplianceRules();
+  const { subscriptions } = useSubscriptions();
+  const alphaStudentIds = new Set(
+    (subscriptions ?? []).filter(s => s.plan === 'alpha' && s.status !== 'cancelled').map(s => s.studentId)
+  );
 
   useEffect(() => {
     const q = query(collection(db, 'students'));
@@ -70,20 +77,75 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return () => unsubscribes.forEach(u => u());
   }, [students]);
 
+  // Busca de proximidade — match por nome (exato/contém), email ou últimos 8 dígitos do celular
+  // Sugestões live — busca apenas entre alunos Alpha (esta tela só lista Alpha).
+  // Match: nome exato/contém substring, email exato, ou últimos 8 dígitos do celular.
+  const suggestions = useMemo(() => {
+    const tName = normalizeName(newName);
+    const tEmail = normalizeEmail(newEmail);
+    const tPhoneTail = String(newCelular ?? '').replace(/\D/g, '').slice(-8);
+    if (!tName && !tEmail && !tPhoneTail) return [];
+    const universe = students.filter(s => alphaStudentIds.has(s.id));
+    const matches = [];
+    for (const s of universe) {
+      const sName = normalizeName(s.name ?? '');
+      const sEmail = normalizeEmail(s.email ?? '');
+      const sPhoneTail = String(s.whatsappNumber ?? '').replace(/\D/g, '').slice(-8);
+      const reasons = [];
+      if (tName && sName) {
+        if (sName === tName) reasons.push('nome exato');
+        else if (sName.includes(tName) || tName.includes(sName)) reasons.push('nome similar');
+      }
+      if (tEmail && sEmail && sEmail === tEmail) reasons.push('email');
+      if (tPhoneTail && sPhoneTail && tPhoneTail === sPhoneTail) reasons.push('celular');
+      if (reasons.length) matches.push({ student: s, reasons });
+    }
+    return matches.slice(0, 8);
+  }, [newName, newEmail, newCelular, students, alphaStudentIds]);
+
+  const emailDuplicate = suggestions.some(({ reasons }) => reasons.includes('email'));
+
+  // Não toca nome, plano, pagamento, status. Só preenche email (se vazio) e celular (se diferente).
+  const useExistingStudent = async (existing) => {
+    setError(''); setSuccess('');
+    const email = newEmail.trim().toLowerCase();
+    const celular = newCelular.trim();
+    setAdding(true);
+    try {
+      const updates = { updatedAt: new Date() };
+      if (email && !existing.email) updates.email = email;
+      if (celular && (existing.whatsappNumber ?? '') !== celular) updates.whatsappNumber = celular;
+      if (Object.keys(updates).length > 1) {
+        await updateDoc(doc(db, 'students', existing.id), updates);
+        setSuccess(`${existing.name ?? 'Aluno'}: dados completados.`);
+      } else {
+        setSuccess(`${existing.name ?? 'Aluno'} já tem esses dados — nada a alterar.`);
+      }
+      setNewEmail(''); setNewName(''); setNewCelular('');
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar');
+    } finally { setAdding(false); }
+  };
+
   const handleAddStudent = async (e) => {
     e.preventDefault();
     setError(''); setSuccess('');
     const email = newEmail.trim().toLowerCase();
     const name = newName.trim();
+    const celular = newCelular.trim();
     if (!email) { setError('Email obrigatório'); return; }
     if (!email.includes('@')) { setError('Email inválido'); return; }
-    if (students.some(s => s.email === email)) { setError('Email já cadastrado'); return; }
-    
+    if (emailDuplicate) { setError('Email já existe — selecione um aluno na lista acima para atualizar/migrar plano'); return; }
+
     setAdding(true);
     try {
       const createStudent = httpsCallable(functions, 'createStudent');
-      await createStudent({ email, name });
-      setNewEmail(''); setNewName('');
+      const { data: result } = await createStudent({ email, name });
+      if (celular && result?.uid) {
+        await updateDoc(doc(db, 'students', result.uid), { whatsappNumber: celular });
+      }
+      setNewEmail(''); setNewName(''); setNewCelular('');
       setSuccess('Aluno criado! Email de configuração enviado.');
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
@@ -101,14 +163,6 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     } catch (err) {
       setError('Erro ao reenviar: ' + err.message);
     } finally { setResending(null); }
-  };
-
-  const handleRemove = async (student) => {
-    if (!confirm('Remover ' + student.email + '?\n\nIsso também remove o acesso ao sistema.')) return;
-    try {
-      const deleteStudent = httpsCallable(functions, 'deleteStudent');
-      await deleteStudent({ uid: student.uid || student.id, email: student.email });
-    } catch (err) { setError('Erro: ' + err.message); }
   };
 
   const handleWhatsappEdit = (student) => {
@@ -155,9 +209,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     }
   };
 
-  const activeCount = students.filter(s => s.status === 'active').length;
-  const pendingCount = students.filter(s => s.status === 'pending').length;
-  const errorCount = students.filter(s => s.emailError).length;
+  const alphaStudents = students.filter(s => alphaStudentIds.has(s.id));
+  const activeCount = alphaStudents.filter(s => s.status === 'active').length;
+  const pendingCount = alphaStudents.filter(s => s.status === 'pending').length;
+  const errorCount = alphaStudents.filter(s => s.emailError).length;
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
 
@@ -171,7 +226,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{students.length}</p><p className="text-xs text-slate-400">Total</p></div>
+        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{alphaStudents.length}</p><p className="text-xs text-slate-400">Total Alpha</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-emerald-400">{activeCount}</p><p className="text-xs text-slate-400">Ativos</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-yellow-400">{pendingCount}</p><p className="text-xs text-slate-400">Pendentes</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-red-400">{errorCount}</p><p className="text-xs text-slate-400">Erro Email</p></div>
@@ -181,12 +236,43 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
       <form onSubmit={handleAddStudent} className="glass-card p-4 mb-6">
         <div className="flex flex-col sm:flex-row gap-3">
-          <input type="email" placeholder="Email do aluno *" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
           <input type="text" placeholder="Nome" value={newName} onChange={(e) => setNewName(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
+          <input type="email" placeholder="Email do aluno *" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
+          <input type="text" placeholder="Celular (+5521...)" value={newCelular} onChange={(e) => setNewCelular(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
           <button type="submit" disabled={adding} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium disabled:opacity-50">
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}Adicionar
           </button>
         </div>
+        {suggestions.length > 0 && (
+          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+            <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
+              <AlertTriangle className="w-4 h-4" />
+              {suggestions.length} aluno{suggestions.length > 1 ? 's' : ''} semelhante{suggestions.length > 1 ? 's' : ''}:
+            </div>
+            <div className="space-y-2">
+              {suggestions.map(({ student, reasons }) => (
+                <div key={student.id} className="flex items-center justify-between gap-2 p-2 bg-slate-800/50 rounded">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{student.name ?? '(sem nome)'}</p>
+                    <p className="text-xs text-slate-400 truncate">
+                      {student.email ?? '(sem email)'}
+                      {student.whatsappNumber && ` · ${formatWhatsappDisplay(student.whatsappNumber)}`}
+                    </p>
+                    <p className="text-[10px] text-amber-400 mt-0.5">match: {reasons.join(', ')}</p>
+                  </div>
+                  <button type="button" onClick={() => useExistingStudent(student)} disabled={adding} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg disabled:opacity-50 flex-shrink-0">
+                    Usar este
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              {emailDuplicate
+                ? 'Email já existe — selecione um aluno acima para atualizar/migrar plano.'
+                : 'Se não for nenhum, clique em Adicionar para criar novo.'}
+            </p>
+          </div>
+        )}
         {error && <div className="mt-3 flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="w-4 h-4" />{error}</div>}
       </form>
 
@@ -196,7 +282,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
           <div className="p-8 text-center text-slate-500"><Mail className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Nenhum aluno cadastrado</p></div>
         ) : (
           <div className="divide-y divide-slate-800/50">
-            {students.map(s => (
+            {students.filter(s => alphaStudentIds.has(s.id)).map(s => (
               <div key={s.id} className="p-4 hover:bg-slate-800/30">
                 <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -289,10 +375,6 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                     </button>
                   )}
                   
-                  {/* Botão Remover */}
-                  <button onClick={() => handleRemove(s)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg" title="Remover">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
                 </div>
                 </div>
                 {/* Card Emocional — só alunos ativos com trades */}

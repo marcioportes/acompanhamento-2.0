@@ -3,16 +3,20 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.55.0: feat: cadastro de alunos / assinaturas (#237) — collection canônica `contacts/`
- *   como SSoT de pessoas em órbita do Marcio (leads, alunos Espelho, alunos Alpha, ex). 6 fases:
- *   F1 schema + INV-15; F2 bootstrap one-time da planilha Mentoria_Ativa_2404.xlsx (xlsx lib,
- *   58 linhas → ~56 docs após skip de Cancelados, padrão dry-run + execute do bootstrap-selic);
- *   F3 callables `assignAlphaSubscription`/`removeSubscription`/`assignEspelhoSubscription`
- *   (Alpha materializa `students/{uid}` quando email definido); F4 página `/assinaturas`
- *   (top-level mentor-only, layout stacked: Contacts em cima + Assinaturas ativas embaixo);
- *   F5 createStudent passa por `contacts/` (rejeita criação direta); F6 backfill students
- *   existentes → contacts. Triplo match (nome OR celular OR email) bloqueia duplicatas.
- *   `students/{uid}` ganha campo `status: 'active'|'inactive'` — nunca deleta. Modo interativo §4.0.
+ * - 1.55.0: feat: cadastro de alunos / assinaturas (#237) — consolidação em
+ *   `students/{uid}/subscriptions/` (sem collection nova). Decisão pivotada durante a issue:
+ *   `contacts/` foi descartado em favor da subcollection existente. Entregas: criação inline
+ *   de aluno no modal "Nova Assinatura" do `/assinaturas` (nome+celular+email opcional, sem
+ *   Auth — pré-Alpha); CRUD de aluno por linha de assinatura; backfill da planilha
+ *   Mentoria_Ativa_2404.xlsx (42 paid trimestrais R$1200 com payment inicial + 13 VIPs sem
+ *   cobrança, vencimento literal preservado); plano `vip` adicionado (`PLAN_LABELS.vip='VIP'`)
+ *   com badge fuchsia + script `fix-vip-plan` migrando 13 docs antigos `self_service` → `vip`;
+ *   `StudentsManagement` filtra Alpha não-cancelled (via subscriptions hook), com busca live
+ *   de proximidade (nome/email/celular) sobre alunos Alpha existentes — "Usar este" preenche
+ *   email se vazio + celular se diferente, sem mexer em nome/plano/pagamento. Botão excluir
+ *   removido (pra sair de Alpha, mudar plano da subscription preservando histórico).
+ *   `SubscriptionsPage`: sort de colunas, paginação 20/30/50, filtro por 6 status, "Ativas"
+ *   passou a contar `status !== 'cancelled'` (inadimplentes incluídos). Modo interativo §4.0.
  * - 1.54.0: feat: redesign card "Consistência Operacional" — Sharpe per-ciclo (com Selic
  *   histórica diária descontada via BCB SGS-11), CV normalizado (`cv_obs / cv_exp(plan.rrTarget, WR)`
  *   substitui CV puro), MEP/MEN médio visível ao aluno (#187 já coleta). Infra nova: CF agendada
