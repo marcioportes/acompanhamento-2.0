@@ -12,7 +12,11 @@ Version source of truth: `src/version.js`.
 
 **feat:** cadastro de alunos / assinaturas — consolidação em students/subscriptions
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- Pivot: `contacts/` collection descartada; tudo em `students/{uid}/subscriptions/` (DEC-237-01).
+- `SubscriptionsPage`: criação inline de aluno no modal Nova Assinatura (nome+celular+email opcional, pré-Alpha sem Auth), CRUD por linha, sort/filtro por 6 status/paginação 20-30-50, cards de sumário em `status !== 'cancelled'`. Plano `vip` primeiro-classe (`PLAN_LABELS.vip='VIP'`, badge fuchsia); modais Nova/Edit forçam `plan='vip'` quando `type='vip'`.
+- `StudentsManagement`: filtra Alpha não-cancelled (via `useSubscriptions`), busca live de proximidade (nome/email/celular) sobre Alpha existentes, "Usar este" só completa email (se vazio) + celular (se diferente) sem mexer em nome/plano/pagamento. Botão excluir removido — saída de Alpha = troca de plano da subscription preservando histórico.
+- Backfill executado em prod: 42 paid trimestrais R$1200 (`startDate=endsAt-3m`, `renewalDate=endsAt` literal) + payment inicial; 12 VIPs órfãos (Daniel já existia, skip idempotente); fix-vip-plan migrou 13 subs `self_service`→`vip`.
+- DECs: DEC-237-01 (consolidação em students/subscriptions), DEC-237-02 (aluno pré-Alpha sem Auth), DEC-237-03 (plano `vip` first-class), DEC-237-04 (saída Alpha por mudança de plano), DEC-237-05 (busca proximidade restrita a Alpha).
 
 
 ## [1.54.0] - 02/05/2026 · #235 · PR #236
