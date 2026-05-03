@@ -1,93 +1,62 @@
 # Issue #237 — feat: cadastro de alunos / assinaturas
 
-> Template enxuto (R4). Spec completa no body do issue: https://github.com/marcioportes/acompanhamento-2.0/issues/237
+> Template enxuto (R4). Spec original no body do issue: https://github.com/marcioportes/acompanhamento-2.0/issues/237
 
-## Autorização
+## Pivot durante a issue
 
-**Construído com Marcio em modo interativo (02/05/2026)**:
-- Issue body sucessivamente refinado (3 rounds): proposta inicial → INV-15 schema → planilha real lida.
-- Mockup HTML em `/home/mportes/Temp/issue-237-mockup.html` (Contacts acima, Assinaturas abaixo) — Marcio visualizou e confirmou layout.
-- Memória de cálculo: tabela de transições de estado em `## Memória de cálculo — transições de estado` no body.
-- 10 open questions resolvidas em sequência: nome canônico (`contacts/`), triplo match, formato Excel, lead/oportunidade unificado, Cancelado SKIP no bootstrap, VIP não paga, nome livre (sem regex de qualidade), email não existe (mentor adiciona um-a-um), Vencimento null = alpha sem prazo, rota top-level `/assinaturas`.
+Plano original: collection nova `contacts/` como SSoT de pessoas (lead/Espelho/Alpha/ex) com 6 fases (F1-F6). Após F4, Marcio reviu e descartou `contacts/` em favor da subcollection existente `students/{uid}/subscriptions/`. **Arquitetura final**: tudo em `students/` + `students/{uid}/subscriptions/` (com `payments/`). Collection `contacts/` foi populada (56 docs via F2) e depois deletada inteira em prod.
 
-**Status**:
-- [x] Mockup apresentado
-- [x] Memória de cálculo apresentada
-- [x] Marcio autorizou ("boa, sim", confirmando rota top-level e fechando todas as questions)
-- [ ] Gate Pré-Código liberado (próximo passo)
+Razão: subscription já é sistema de fluxo de caixa completo (DEC-055/056). `contacts.subscription` como mero "campinho" duplicava o sistema canônico. UI consolidada em `/assinaturas` com criação inline de aluno (modal "Nova Assinatura").
 
 ## Context
 
-`students/{uid}` hoje é a única forma de "aluno" no Espelho — assume Alpha (email + dashboard + onboarding). Não há SSoT pra leads/Espelho/ex-alunos; vivem em planilha externa. Esta issue cria `contacts/` como SSoT canônica, com página `/assinaturas` (top-level mentor-only) que dirige todas as transições de estado.
+`students/{uid}` continua sendo a única forma de "aluno" no Espelho. Assinaturas vivem como subcollection. Alunos podem existir sem Auth (criação inline com nome+celular sem email = pré-Alpha) — só viram Alpha-com-acesso quando email é adicionado. `StudentsManagement` filtra Alpha não-cancelled; busca live de proximidade dirige completar dados de alunos órfãos.
 
-## Spec
+## Entregas
 
-Body do issue: #237 (link autoritativo).
+### UI
+- `SubscriptionsPage`: modal "Nova Assinatura" suporta criar aluno inline (3 campos: nome/celular/email) ou usar existente. Edit aluno por linha (botão UserCog). Sort de colunas, paginação 20/30/50, filtro por 6 status. "Ativas" baseado em `status !== 'cancelled'` (inclui inadimplentes/pausados/expirados). Cards de sumário e badge "VIP" coerentes com plano `vip`.
+- `StudentsManagement`: lista filtrada por `subscription.plan === 'alpha' && status !== 'cancelled'`. Busca live (nome/email/celular) sobre Alpha existentes — "Usar este" preenche email (se vazio) + celular (se diferente), preserva nome/plano/pagamento. Botão excluir removido (saída de Alpha = mudança de plano da subscription).
 
-## Mockup
+### Plano `vip`
+- `PLAN_LABELS.vip='VIP'`, badge fuchsia. Modais Nova/Edit forçam `plan='vip'` quando `type='vip'` e ocultam select.
+- Script `scripts/issue-237-fix-vip-plan.mjs` migrou 13 VIPs antigos `self_service` → `vip` em prod.
 
-`/home/mportes/Temp/issue-237-mockup.html` — layout stacked numa página só:
-- Header: breadcrumb + título "Contacts & Assinaturas" + botões "Importar .xlsx" / "+ Novo contato"
-- Seção 1 (Contacts): tabela com 56 contatos, busca, filtros por status (Todos/Alpha/Espelho/Lead/Ex/VIP), linha JL em destaque (⚠ sem email)
-- Seção 2 (Assinaturas ativas): 4 stat cards (Alpha 43 / Espelho 0 / VIP 13 / Vence ≤7d 3) + tabela com vencimento relativo + link pra `student/`
+### Backfill da planilha (one-time, executado em prod)
+- `scripts/issue-237-backfill-subscriptions.mjs` — 42 paid trimestrais R$1200 (`startDate = endsAt - 3m`, `renewalDate = endsAt` literal preservando planilha) + payment inicial.
+- `scripts/issue-237-backfill-vip.mjs` — 12 VIPs órfãos (Daniel já existia, skipado por idempotência) sem cobrança.
 
-## Memória de Cálculo
+### Helpers
+- `src/utils/contactsNormalizer.js` (`normalizeName`/`normalizePhone`/`normalizeEmail`) — usado na busca live de proximidade no `StudentsManagement`. Único artefato sobrevivente do fluxo `contacts/`.
 
-Ver tabela no body do issue (`## Memória de cálculo — transições de estado`). Pontos críticos:
-- Bootstrap NÃO cria student (planilha sem email); só popula `contacts/` com `subscription.type='alpha'` e `studentUid=null`.
-- Mentor adiciona email pela UI → callable `assignAlphaSubscription` cria student.
-- Cancelado na planilha → SKIP no bootstrap (só log, não vai pra `contacts/`).
-- Triplo match (nome OR celular OR email) bloqueia duplicatas em insert.
+## Descartado / revertido
 
-## Phases
-
-- F1 — Schema `contacts/` + INV-15 + rules (campo `nameNormalized` derivado pra suportar query de dedup)
-- F2 — Bootstrap one-time `scripts/issue-237-bootstrap-contacts.mjs` (xlsx lib + dry-run/execute, padrão `bootstrap-selic-history.mjs`)
-- F3 — Adapter callables: `assignAlphaSubscription`, `removeSubscription`, `assignEspelhoSubscription`
-- F4 — Página `/assinaturas` top-level mentor-only (Contacts em cima, Assinaturas embaixo)
-- F5 — `createStudent` CF passa por `contacts/` (rejeita criação direta)
-- F6 — Backfill students existentes → contacts (`status='alpha'`)
-
-## Sessions
-
-_(log linear, 1 linha por task — preencher conforme avança)_
+- `contacts/` collection (criada em F1, populada em F2, deletada em prod)
+- `src/components/contacts/ContactsSection.jsx`
+- `src/hooks/useContacts.js`
+- `functions/contacts/{assignAlphaSubscription,assignEspelhoSubscription,removeSubscription}.js`
+- `scripts/issue-237-bootstrap-contacts.mjs` + tests
+- Bloco `match /contacts/` em `firestore.rules`
+- Schema `contacts/` em `docs/firestore-schema.md`
 
 ## Shared Deltas
 
-Para o integrador aplicar no main após o merge:
-- `src/version.js` — bump v1.55.0 (já feito na abertura)
+- `src/version.js` — bump v1.55.0 (CHANGELOG reescrito refletindo arquitetura final)
 - `docs/registry/versions.md` — marcar v1.55.0 consumida (encerramento)
 - `docs/registry/chunks.md` — liberar lock CHUNK-02 (encerramento)
-- `CHANGELOG.md` — nova entrada `[1.55.0] - 02/05/2026` (encerramento)
-- `docs/firestore-schema.md` — novo schema `contacts/` (durante F1)
-- `docs/decisions.md` — DEC-237-NN entries (durante implementação)
-- `firestore.rules` — allowlist mentor-only para `contacts/` (durante F1)
-- `functions/index.js` — exports dos 3 callables novos (durante F3)
-- `package.json` — nova dep `xlsx` (durante F2; verificar se já existe via outras issues)
-- `src/App.jsx` — rota `/assinaturas` mentor-only (durante F4)
-
-### Proposta — adicionar CHUNK-18 (Contacts) a `docs/chunks.md`
-
-Atualmente `contacts/` cai sob CHUNK-02 (Student Management) por proximidade semântica. Proposta de split em chunk próprio:
-
-```
-| CHUNK-18 | Contacts & Subscriptions | Cadastro mestre de pessoas (leads/Espelho/Alpha/ex), página `/assinaturas`, callables de adapter Alpha | `contacts` collection, `assignAlphaSubscription`, `Assinaturas/*` | AVAILABLE |
-```
-
-**Decisão**: deixar como expansão de CHUNK-02 nesta v1; adicionar CHUNK-18 depois se a área crescer (ex: billing, segmentação, automação). Não bloqueia esta issue.
+- `CHANGELOG.md` — nova entrada `[1.55.0]` (encerramento)
+- `docs/firestore-schema.md` — schema `contacts/` removido
+- `firestore.rules` — bloco `contacts/` removido
+- `functions/index.js` — exports dos callables `contacts/*` removidos
 
 ## Decisions
 
-_(IDs only — texto em `docs/decisions.md`)_
-- DEC-237-01 — collection canônica `contacts/` (vs `subscribers/`/`members/`/`people/`)
-- DEC-237-02 — triplo match (nome/celular/email) pra dedup
-- DEC-237-03 — bootstrap NÃO cria student (planilha sem email); Alpha materializa via callable depois
-- DEC-237-04 — Cancelado na planilha = SKIP no bootstrap, só reporta no log
-- DEC-237-05 — VIP não paga (case-insensitive); `isVIP=true` é flag de billing-skip
-- DEC-237-06 — `students/{uid}` ganha `status: 'active'|'inactive'`; nunca deleta (preserva histórico de trades)
-- DEC-237-07 — página `/assinaturas` top-level mentor-only com layout stacked (Contacts + Assinaturas) numa página
+- DEC-237-01 — `contacts/` descartado; consolidação em `students/{uid}/subscriptions/` (subcollection canônica DEC-055)
+- DEC-237-02 — Aluno pode existir sem Auth (pré-Alpha): nome+celular sem email; só vira Alpha-com-acesso quando email é adicionado
+- DEC-237-03 — Plano `vip` é primeiro-classe (`PLAN_LABELS.vip`), distinto de Alpha/Espelho. Type='vip' força plan='vip'
+- DEC-237-04 — Saída de Alpha não deleta student; muda plano da subscription preservando histórico (limitação de acesso por plano = issue futura)
+- DEC-237-05 — `StudentsManagement` busca de proximidade restrita a Alpha não-cancelled; "Usar este" só completa dados, nunca sobrescreve nome/plano
 
 ## Chunks
 
-- CHUNK-02 (escrita) — `students/` ganha campo `status`, `createStudent` CF passa a exigir `contacts/{id}` upstream
-- CHUNK-01 (leitura) — reuso do fluxo Auth no `assignAlphaSubscription`
+- CHUNK-02 (escrita) — `students/` permanece SSoT; `subscriptions/` reusada

@@ -38,35 +38,6 @@
 - Evento persistido (DEC-045) com `maturitySnapshot` congelado no fechamento (v1.43.0)
 - Campos `meetingLink`/`videoLink` são **metadata operacional** (DEC-AUTO-197-01, v1.46.1) — editáveis por mentor em DRAFT e CLOSED via `useWeeklyReviews.updateMeetingLinks`. Não fazem parte do `frozenSnapshot`. ARCHIVED bloqueia.
 
-### `contacts` (issue #237, v1.55.0)
-SSoT de pessoas em órbita do mentor — leads, alunos Espelho (WhatsApp-only), alunos Alpha (com `students/{uid}` projetado), ex-alunos. Aprovada via INV-15 em #237.
-
-**Hierarquia**: `contacts/{id}` é a fonte; `students/{uid}` vira projeção materializada (criada via callable `assignAlphaSubscription` quando `subscription.type='alpha'` E `email` está definido). `students/{uid}` ganha campo `status: 'active'|'inactive'` — nunca deletado, preserva trades/maturity.
-
-**Schema**:
-- `nome: string` (mandatório, trim apenas — aceita iniciais, primeiro nome, anotações inline)
-- `nameNormalized: string` (derivado: lower + remove diacríticos + colapsa espaços; índice de dedup)
-- `celular: string` (mandatório, E.164 — `+55XXXXXXXXXXX`)
-- `countryCode: string` (`'BR'`/`'US'`/`'UNKNOWN'`...)
-- `email: string|null` (lower+trim quando presente)
-- `cpf: string|null`
-- `status: 'lead'|'espelho'|'alpha'|'ex'`
-- `subscription: { type:'espelho'|'alpha'|null, since:Timestamp|null, endsAt:Timestamp|null, isVIP:boolean, notes:string|null }`
-- `studentUid: string|null` (FK → `students/{uid}` quando Alpha materializou)
-- `source: 'planilha-bootstrap'|'crud-mentor'`
-- `sourceMeta: { sheetFile, rawNumeros, rawVencimento, importedAt }|null` (audit do bootstrap)
-- `createdAt`/`createdBy`/`updatedAt`/`updatedBy` (audit)
-
-**Dedup (triplo match)**: insert/update bloqueado se houver colisão em `nameNormalized` OR `celular` OR `email` (email não match quando null). Bootstrap acumula colisões em log; UI mostra toast com link.
-
-**Helpers**: normalização em `src/utils/contactsNormalizer.js` (`normalizeName`/`normalizePhone`/`normalizeEmail`/`normalizeContactInput`).
-
-**Rules** (`firestore.rules` linha ~83):
-- mentor full CRUD
-- aluno read-only via `studentUid == request.auth.uid` (quando Alpha)
-
-**Convive com `students/{uid}/subscriptions/`** (subcollection legada): aquela é histórico transacional (com `payments` subcoleção); `contacts.subscription` é estado atual canônico. Reconciliação adiada para v2 se billing virar in-app.
-
 ## Subcollections
 
 ### `students/{uid}/assessment/`

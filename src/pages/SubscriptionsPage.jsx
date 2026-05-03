@@ -14,12 +14,13 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
-  DollarSign, Loader2, UserPlus, FlaskConical, Trash2, Edit2, Crown, RotateCcw
+  DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw
 } from 'lucide-react';
+import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import DebugBadge from '../components/DebugBadge';
 import RenewalForecast from '../components/RenewalForecast';
-import ContactsSection from '../components/contacts/ContactsSection';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -151,7 +152,7 @@ const STATUS_CONFIG = {
   expired:   { label: 'Expirado',     color: 'slate',   icon: XCircle },
 };
 
-const PLAN_LABELS = { alpha: 'Mentoria Alpha', self_service: 'Espelho' };
+const PLAN_LABELS = { alpha: 'Mentoria Alpha', self_service: 'Espelho', vip: 'VIP' };
 
 const BILLING_LABELS = { 1: 'Mensal', 2: 'Bimestral', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 const BILLING_SHORT = { 1: '/mês', 2: '/bim', 3: '/tri', 6: '/sem', 12: '/ano' };
@@ -215,6 +216,10 @@ const SubscriptionsPage = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('studentName');
+  const [sortDir, setSortDir] = useState('asc');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [selectedSub, setSelectedSub] = useState(null);
   const [modal, setModal] = useState(null); // 'payment' | 'renew' | 'history' | 'new' | 'edit'
   const [paymentHistory, setPaymentHistory] = useState([]);
@@ -226,35 +231,112 @@ const SubscriptionsPage = () => {
   const [newForm, setNewForm] = useState({});
   const [editForm, setEditForm] = useState({});
   const [editError, setEditError] = useState('');
+  const [studentForm, setStudentForm] = useState({});
+  const [studentError, setStudentError] = useState('');
 
-  const closeModal = () => { setModal(null); setSelectedSub(null); setReceiptFile(null); setEditError(''); };
+  const closeModal = () => { setModal(null); setSelectedSub(null); setReceiptFile(null); setEditError(''); setStudentError(''); };
+
+  // ── Student CRUD inline (issue #237 F4) ──
+  const openEditStudent = (sub) => {
+    setSelectedSub(sub);
+    setStudentForm({
+      studentId: sub.studentId,
+      name: sub.studentName ?? '',
+      email: sub.studentEmail ?? '',
+      whatsappNumber: sub.studentWhatsapp ?? '',
+    });
+    setStudentError('');
+    setModal('student');
+  };
+
+  const handleSaveStudent = async () => {
+    if (!studentForm.studentId) return;
+    if (!studentForm.name?.trim()) { setStudentError('Nome obrigatório'); return; }
+    setActionLoading(true);
+    try {
+      await updateDoc(doc(db, 'students', studentForm.studentId), {
+        name: studentForm.name.trim(),
+        email: studentForm.email?.trim() || null,
+        whatsappNumber: studentForm.whatsappNumber?.trim() || null,
+        updatedAt: serverTimestamp(),
+      });
+      closeModal();
+    } catch (err) {
+      setStudentError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ── Novo aluno inline no modal "Nova Assinatura" ──
+  const createInlineStudent = async ({ name, email, whatsappNumber }) => {
+    if (!name?.trim()) throw new Error('Nome obrigatório');
+    const id = `student_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await setDoc(doc(db, 'students', id), {
+      uid: id,
+      name: name.trim(),
+      email: email?.trim() || null,
+      whatsappNumber: whatsappNumber?.trim() || null,
+      status: 'active',
+      createdAt: serverTimestamp(),
+      firstLoginAt: null,
+    });
+    return id;
+  };
 
   // ── Filtered data ──
 
   const filtered = useMemo(() => {
     let result = [...subscriptions];
-    // "Todos" mostra tudo inclusive cancelled. "active" exclui cancelled.
-    if (statusFilter === 'active') result = result.filter(s => s.status !== 'cancelled');
-    else if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
+    if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
     if (typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(s => s.studentName?.toLowerCase().includes(term) || s.studentEmail?.toLowerCase().includes(term));
     }
-    // Sort: overdue first, then alphabetical
+
+    const sortKeys = {
+      studentName: (s) => (s.studentName ?? '').toLowerCase(),
+      plan: (s) => `${s.plan ?? ''}_${s.type ?? ''}`,
+      status: (s) => s.status ?? '',
+      startDate: (s) => s.startDate?.getTime?.() ?? 0,
+      renewal: (s) => (s.type === 'trial' ? s.trialEndsAt : s.renewalDate)?.getTime?.() ?? Number.MAX_SAFE_INTEGER,
+      amount: (s) => s.amount ?? 0,
+    };
+    const get = sortKeys[sortBy] ?? sortKeys.studentName;
+    const dir = sortDir === 'asc' ? 1 : -1;
     result.sort((a, b) => {
-      if (a.status === 'overdue' && b.status !== 'overdue') return -1;
-      if (b.status === 'overdue' && a.status !== 'overdue') return 1;
+      const va = get(a);
+      const vb = get(b);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
       return (a.studentName ?? '').localeCompare(b.studentName ?? '');
     });
     return result;
-  }, [subscriptions, statusFilter, typeFilter, searchTerm]);
+  }, [subscriptions, statusFilter, typeFilter, searchTerm, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const paginated = useMemo(
+    () => filtered.slice(safePage * pageSize, (safePage + 1) * pageSize),
+    [filtered, safePage, pageSize]
+  );
+
+  const toggleSort = (key) => {
+    if (sortBy === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortDir('asc');
+    }
+    setPage(0);
+  };
 
   // ── Handlers ──
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
   const openEdit = (sub) => { setSelectedSub(sub); setEditError(''); setEditForm({ type: sub.type ?? 'paid', plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), trialDays: '30', notes: sub.notes ?? '' }); setModal('edit'); };
-  const openNew = () => { setNewForm({ studentId: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
+  const openNew = () => { setNewForm({ studentId: '', alunoMode: 'existing', newAlunoName: '', newAlunoEmail: '', newAlunoWhatsapp: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
   const openHistory = useCallback(async (sub) => {
     setSelectedSub(sub); setModal('history'); setLoadingPayments(true);
@@ -339,19 +421,36 @@ const SubscriptionsPage = () => {
   }, [selectedSub, editForm, updateSubscription, actionLoading]);
 
   const handleCreateSubscription = useCallback(async () => {
-    if (!newForm.studentId || actionLoading) return;
+    if (actionLoading) return;
     setActionLoading(true);
     try {
-      const data = { studentId: newForm.studentId, type: newForm.type, plan: newForm.plan, startDate: newForm.startDate, notes: newForm.notes, receiptFile: receiptFile?.file ?? null };
+      let studentId = newForm.studentId;
+      if (newForm.alunoMode === 'new') {
+        if (!newForm.newAlunoName?.trim()) {
+          alert('Nome do aluno obrigatório');
+          setActionLoading(false);
+          return;
+        }
+        studentId = await createInlineStudent({
+          name: newForm.newAlunoName,
+          email: newForm.newAlunoEmail,
+          whatsappNumber: newForm.newAlunoWhatsapp,
+        });
+      }
+      if (!studentId) {
+        alert('Selecione um aluno existente ou cadastre um novo');
+        setActionLoading(false);
+        return;
+      }
+      const data = { studentId, type: newForm.type, plan: newForm.plan, startDate: newForm.startDate, notes: newForm.notes, receiptFile: receiptFile?.file ?? null };
       if (newForm.type === 'trial') {
         data.trialDays = newForm.trialDays;
       } else if (newForm.type === 'paid') {
         data.amount = newForm.amount; data.currency = newForm.currency;
         data.gracePeriodDays = newForm.gracePeriodDays; data.billingPeriodMonths = newForm.billingPeriodMonths;
       }
-      // VIP: só plan, startDate e notes — sem amount/trial
       await addSubscription(data); closeModal();
-    } catch (err) { console.error(err); } finally { setActionLoading(false); }
+    } catch (err) { console.error(err); alert(err.message); } finally { setActionLoading(false); }
   }, [newForm, addSubscription, receiptFile, actionLoading]);
 
   // ── Sub-components ──
@@ -391,17 +490,17 @@ const SubscriptionsPage = () => {
         </div>
       </div>
 
-      {/* Contacts (issue #237 F4) — cadastro mestre acima da tabela de assinaturas */}
-      <ContactsSection />
-
-      {/* Summary */}
+      {/* Summary — exclui apenas cancelled (inadimplentes/pausados/expirados continuam vivos) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {[
-          { value: summary.active, label: 'Ativas', icon: CheckCircle, color: 'emerald' },
-          { value: summary.expiringSoon, label: 'Vencendo em 7 dias', icon: Clock, color: 'amber' },
-          { value: summary.overdue, label: 'Inadimplentes', icon: AlertTriangle, color: 'red' },
-          { value: `${subscriptions.filter(s => s.type === 'paid' && s.status === 'active').length} / ${subscriptions.filter(s => s.type === 'trial' && s.status === 'active').length} / ${subscriptions.filter(s => s.type === 'vip' && s.status === 'active').length}`, label: 'Pagantes / Trial / VIP', icon: DollarSign, color: 'blue', isText: true },
-        ].map((card, i) => (
+        {(() => {
+          const live = subscriptions.filter(s => s.status !== 'cancelled');
+          return [
+            { value: live.length, label: 'Ativas', icon: CheckCircle, color: 'emerald' },
+            { value: summary.expiringSoon, label: 'Vencendo em 7 dias', icon: Clock, color: 'amber' },
+            { value: summary.overdue, label: 'Inadimplentes', icon: AlertTriangle, color: 'red' },
+            { value: `${live.filter(s => s.type === 'paid').length} / ${live.filter(s => s.type === 'trial').length} / ${live.filter(s => s.type === 'vip').length}`, label: 'Pagantes / Trial / VIP', icon: DollarSign, color: 'blue', isText: true },
+          ];
+        })().map((card, i) => (
           <div key={i} className="glass-card p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl bg-${card.color}-500/15 flex items-center justify-center`}><card.icon className={`w-5 h-5 text-${card.color}-400`} /></div><div><p className="text-2xl font-bold text-white">{card.isText ? card.value : card.value}</p><p className="text-xs text-slate-400">{card.label}</p></div></div></div>
         ))}
       </div>
@@ -413,17 +512,25 @@ const SubscriptionsPage = () => {
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input type="text" placeholder="Buscar por nome ou email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+          <input type="text" placeholder="Buscar por nome ou email..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }} className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {[{ value: 'all', label: 'Todos', count: subscriptions.length }, { value: 'active', label: 'Ativos', count: subscriptions.filter(s => s.status !== 'cancelled').length }, { value: 'overdue', label: 'Atrasados', count: summary.overdue }, { value: 'cancelled', label: 'Cancelados', count: subscriptions.filter(s => s.status === 'cancelled').length }].map(f => (
-            <button key={f.value} onClick={() => setStatusFilter(f.value)} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
+          {[
+            { value: 'all', label: 'Todos', count: subscriptions.length },
+            { value: 'active', label: 'Ativos', count: subscriptions.filter(s => s.status === 'active').length },
+            { value: 'pending', label: 'Pendentes', count: subscriptions.filter(s => s.status === 'pending').length },
+            { value: 'overdue', label: 'Inadimplentes', count: subscriptions.filter(s => s.status === 'overdue').length },
+            { value: 'paused', label: 'Pausados', count: subscriptions.filter(s => s.status === 'paused').length },
+            { value: 'cancelled', label: 'Cancelados', count: subscriptions.filter(s => s.status === 'cancelled').length },
+            { value: 'expired', label: 'Expirados', count: subscriptions.filter(s => s.status === 'expired').length },
+          ].map(f => (
+            <button key={f.value} onClick={() => { setStatusFilter(f.value); setPage(0); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
               {f.label}{f.count !== undefined && <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>}
             </button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
           {[{ value: 'all', label: 'Todos tipos' }, { value: 'paid', label: 'Pagos' }, { value: 'trial', label: 'Trial' }, { value: 'vip', label: 'VIP' }].map(f => (
-            <button key={`t-${f.value}`} onClick={() => setTypeFilter(f.value)} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
+            <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
           ))}
         </div>
       </div>
@@ -437,24 +544,40 @@ const SubscriptionsPage = () => {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead><tr className="border-b border-slate-800/50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Aluno</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Plano / Tipo</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Status</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Inicio</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Vencimento</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase">Situacao</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Valor</th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-slate-400 uppercase">Acoes</th>
+              {[
+                { key: 'studentName', label: 'Aluno', align: 'left' },
+                { key: 'plan', label: 'Plano / Tipo', align: 'left' },
+                { key: 'status', label: 'Status', align: 'left' },
+                { key: 'startDate', label: 'Inicio', align: 'left' },
+                { key: 'renewal', label: 'Vencimento', align: 'left' },
+                { key: null, label: 'Situacao', align: 'left' },
+                { key: 'amount', label: 'Valor', align: 'right' },
+                { key: null, label: 'Acoes', align: 'right' },
+              ].map((col, i) => {
+                const sortable = col.key !== null;
+                const active = sortable && sortBy === col.key;
+                const arrow = active ? (sortDir === 'asc' ? '▲' : '▼') : '';
+                return (
+                  <th
+                    key={i}
+                    onClick={sortable ? () => toggleSort(col.key) : undefined}
+                    className={`text-${col.align} px-4 py-3 text-xs font-medium uppercase ${sortable ? 'text-slate-400 cursor-pointer hover:text-white select-none' : 'text-slate-400'} ${active ? 'text-blue-400' : ''}`}
+                  >
+                    {col.label}
+                    {arrow && <span className="ml-1 text-[10px]">{arrow}</span>}
+                  </th>
+                );
+              })}
             </tr></thead>
             <tbody className="divide-y divide-slate-800/30">
-              {filtered.map(sub => {
+              {paginated.map(sub => {
                 const billing = sub.billingPeriodMonths ?? 1;
                 return (
                   <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
                     <td className="px-4 py-3"><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p>{sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        <span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span>
+                        <span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : sub.plan === 'vip' ? 'bg-fuchsia-500/15 text-fuchsia-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span>
                         <span className="text-[10px] text-slate-500">{sub.type === 'trial' ? 'Trial' : sub.type === 'vip' ? 'VIP' : BILLING_LABELS[billing] ?? `${billing}m`}</span>
                       </div>
                     </td>
@@ -465,14 +588,15 @@ const SubscriptionsPage = () => {
                     <td className="px-4 py-3 text-right">
                       {sub.type === 'paid' ? (
                         <><span className="text-sm font-medium text-white">{formatCurrency(sub.amount, sub.currency)}</span><p className="text-xs text-slate-500">{BILLING_SHORT[billing] ?? `/${billing}m`}</p></>
-                      ) : <span className="text-xs text-violet-400">Trial</span>}
+                      ) : sub.type === 'vip' ? <span className="text-xs text-purple-400">VIP</span> : <span className="text-xs text-violet-400">Trial</span>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         {sub.type === 'paid' && <button onClick={() => openHistory(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
 
-                        <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar</span></button>
+                        <button onClick={() => openEditStudent(sub)} className="group/btn relative p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"><UserCog className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar aluno</span></button>
+                        <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar assinatura</span></button>
                         {sub.status === 'cancelled' && <button onClick={() => handleReactivate(sub)} className="group/btn relative p-2 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Reativar</span></button>}
                         <button onClick={() => handleDelete(sub)} className="group/btn relative p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Excluir</span></button>
                       </div>
@@ -483,6 +607,45 @@ const SubscriptionsPage = () => {
               {filtered.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-500">Nenhuma assinatura encontrada</td></tr>}
             </tbody>
           </table>
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-800/50 text-xs">
+              <div className="flex items-center gap-2 text-slate-500">
+                <span>{safePage * pageSize + 1}-{Math.min((safePage + 1) * pageSize, filtered.length)} de {filtered.length}</span>
+                <span className="border-l border-slate-700 mx-1 h-4" />
+                <label className="text-slate-500">por página</label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+                  className="bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-blue-500/50"
+                >
+                  <option value="20">20</option>
+                  <option value="30">30</option>
+                  <option value="50">50</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={safePage === 0}
+                  className="px-3 py-1 rounded-lg text-slate-300 hover:bg-slate-800/50 border border-slate-700/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Anterior
+                </button>
+                <span className="px-3 text-slate-400">
+                  página {safePage + 1} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={safePage >= totalPages - 1}
+                  className="px-3 py-1 rounded-lg text-slate-300 hover:bg-slate-800/50 border border-slate-700/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Próxima →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -542,7 +705,20 @@ const SubscriptionsPage = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">Aluno</label>
-              {studentsWithoutSubscription.length === 0 ? <div className="px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-500 text-sm">Todos os alunos ja possuem assinatura</div> : (
+              <div className="flex gap-2 mb-2">
+                <button type="button" onClick={() => setNewForm(f => ({ ...f, alunoMode: 'existing' }))} className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${newForm.alunoMode === 'existing' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'text-slate-400 border-slate-700/50 hover:bg-slate-800/50'}`}>Existente</button>
+                <button type="button" onClick={() => setNewForm(f => ({ ...f, alunoMode: 'new' }))} className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${newForm.alunoMode === 'new' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'text-slate-400 border-slate-700/50 hover:bg-slate-800/50'}`}>+ Novo aluno</button>
+              </div>
+              {newForm.alunoMode === 'new' ? (
+                <div className="space-y-2">
+                  <input type="text" placeholder="Nome *" value={newForm.newAlunoName} onChange={(e) => setNewForm(f => ({ ...f, newAlunoName: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+                  <input type="text" placeholder="Celular (+5521...)" value={newForm.newAlunoWhatsapp} onChange={(e) => setNewForm(f => ({ ...f, newAlunoWhatsapp: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+                  <input type="email" placeholder="Email (opcional)" value={newForm.newAlunoEmail} onChange={(e) => setNewForm(f => ({ ...f, newAlunoEmail: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+                  <p className="text-[10px] text-slate-500">Aluno pré-Alpha (sem Auth/dashboard até virar Alpha)</p>
+                </div>
+              ) : studentsWithoutSubscription.length === 0 ? (
+                <div className="px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-500 text-sm">Todos os alunos ja possuem assinatura</div>
+              ) : (
                 <select value={newForm.studentId} onChange={(e) => setNewForm(f => ({ ...f, studentId: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">
                   <option value="">Selecione um aluno...</option>
                   {studentsWithoutSubscription.map(s => <option key={s.id} value={s.id}>{s.name ?? s.email}</option>)}
@@ -553,11 +729,11 @@ const SubscriptionsPage = () => {
               <label className="block text-sm text-slate-400 mb-1">Tipo</label>
               <div className="flex gap-2">
                 {[{ value: 'paid', label: 'Pago', icon: DollarSign, activeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' }, { value: 'trial', label: 'Trial', icon: FlaskConical, activeClass: 'bg-violet-500/20 text-violet-400 border-violet-500/30' }, { value: 'vip', label: 'VIP', icon: Crown, activeClass: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }].map(t => (
-                  <button key={t.value} onClick={() => setNewForm(f => ({ ...f, type: t.value }))} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border ${newForm.type === t.value ? t.activeClass : 'text-slate-400 border-slate-700/50 hover:text-white hover:bg-slate-800/50'}`}><t.icon className="w-4 h-4" />{t.label}</button>
+                  <button key={t.value} onClick={() => setNewForm(f => ({ ...f, type: t.value, plan: t.value === 'vip' ? 'vip' : (f.plan === 'vip' ? 'alpha' : f.plan) }))} className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors border ${newForm.type === t.value ? t.activeClass : 'text-slate-400 border-slate-700/50 hover:text-white hover:bg-slate-800/50'}`}><t.icon className="w-4 h-4" />{t.label}</button>
                 ))}
               </div>
             </div>
-            <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+            {newForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
             <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR id="new-start-date" value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
             {newForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
@@ -574,7 +750,21 @@ const SubscriptionsPage = () => {
             {newForm.type === 'trial' && <div><label className="block text-sm text-slate-400 mb-1">Duracao do trial (dias)</label><input type="number" value={newForm.trialDays} onChange={(e) => setNewForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /><p className="text-xs text-slate-600 mt-1">Expira em {(() => { const d = new Date(newForm.startDate); d.setDate(d.getDate() + (parseInt(newForm.trialDays) || 30)); return formatBrDate(d); })()}</p></div>}
             <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={newForm.notes} onChange={(e) => setNewForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="Opcional" /></div>
           </div>
-          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleCreateSubscription} disabled={actionLoading || !newForm.studentId || !newForm.plan} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Criar Assinatura</button></div>
+          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleCreateSubscription} disabled={actionLoading || (newForm.alunoMode === 'existing' && !newForm.studentId) || (newForm.alunoMode === 'new' && !newForm.newAlunoName?.trim()) || !newForm.plan} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Criar Assinatura</button></div>
+        </div></div>
+      )}
+
+      {/* ── Modal: Editar Aluno (issue #237) ── */}
+      {modal === 'student' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+          <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white flex items-center gap-2"><UserCog className="w-5 h-5 text-blue-400" />Editar Aluno</h3><button onClick={closeModal} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
+          <div className="space-y-4">
+            <div><label className="block text-sm text-slate-400 mb-1">Nome *</label><input type="text" value={studentForm.name} onChange={(e) => setStudentForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Celular</label><input type="text" placeholder="+5521997118900" value={studentForm.whatsappNumber} onChange={(e) => setStudentForm(f => ({ ...f, whatsappNumber: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Email</label><input type="email" value={studentForm.email} onChange={(e) => setStudentForm(f => ({ ...f, email: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            {studentError && <div className="text-sm text-red-400">{studentError}</div>}
+          </div>
+          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveStudent} disabled={actionLoading || !studentForm.name?.trim()} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
         </div></div>
       )}
 
@@ -586,8 +776,8 @@ const SubscriptionsPage = () => {
           <div className="space-y-4">
             {/* Tipo — trial pode converter para paid */}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Tipo</label><select value={editForm.type} onChange={(e) => setEditForm(f => ({ ...f, type: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="trial">Trial</option><option value="paid">Pago</option><option value="vip">VIP</option></select></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Tipo</label><select value={editForm.type} onChange={(e) => setEditForm(f => ({ ...f, type: e.target.value, plan: e.target.value === 'vip' ? 'vip' : (f.plan === 'vip' ? 'alpha' : f.plan) }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="trial">Trial</option><option value="paid">Pago</option><option value="vip">VIP</option></select></div>
+              {editForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
             </div>
             {/* Banner de conversão */}
             {selectedSub.type === 'trial' && editForm.type === 'paid' && (

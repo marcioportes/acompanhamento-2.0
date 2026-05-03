@@ -1504,10 +1504,3 @@ exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnric
 // MARKET DATA — Selic diária BCB SGS-11 (issue #235 F0.1)
 // ============================================
 exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");
-
-// ============================================
-// CONTACTS — Adapter callables Alpha/Espelho/remove (issue #237 F3)
-// ============================================
-exports.assignAlphaSubscription = require("./contacts/assignAlphaSubscription");
-exports.assignEspelhoSubscription = require("./contacts/assignEspelhoSubscription");
-exports.removeSubscription = require("./contacts/removeSubscription");
