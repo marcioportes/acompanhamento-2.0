@@ -14,7 +14,8 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
-  DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw
+  DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw,
+  MessageCircle
 } from 'lucide-react';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -215,6 +216,7 @@ const SubscriptionsPage = () => {
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [followUpOnly, setFollowUpOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('studentName');
   const [sortDir, setSortDir] = useState('asc');
@@ -290,6 +292,7 @@ const SubscriptionsPage = () => {
     let result = [...subscriptions];
     if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
     if (typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
+    if (followUpOnly) result = result.filter(s => s.inFollowUp === true);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(s => s.studentName?.toLowerCase().includes(term) || s.studentEmail?.toLowerCase().includes(term));
@@ -313,7 +316,7 @@ const SubscriptionsPage = () => {
       return (a.studentName ?? '').localeCompare(b.studentName ?? '');
     });
     return result;
-  }, [subscriptions, statusFilter, typeFilter, searchTerm, sortBy, sortDir]);
+  }, [subscriptions, statusFilter, typeFilter, followUpOnly, searchTerm, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
@@ -348,6 +351,12 @@ const SubscriptionsPage = () => {
     if (!confirm(`Reativar assinatura de ${sub.studentName}?`)) return;
     setActionLoading(true);
     try { await updateSubscription(sub, { status: 'active' }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
+  }, [updateSubscription, actionLoading]);
+
+  const handleToggleFollowUp = useCallback(async (sub) => {
+    if (actionLoading) return;
+    setActionLoading(true);
+    try { await updateSubscription(sub, { inFollowUp: !sub.inFollowUp }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [updateSubscription, actionLoading]);
 
   const handleDelete = useCallback(async (sub) => {
@@ -532,6 +541,16 @@ const SubscriptionsPage = () => {
           {[{ value: 'all', label: 'Todos tipos' }, { value: 'paid', label: 'Pagos' }, { value: 'trial', label: 'Trial' }, { value: 'vip', label: 'VIP' }].map(f => (
             <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
           ))}
+          <span className="border-l border-slate-700 mx-1" />
+          <button
+            onClick={() => { setFollowUpOnly(v => !v); setPage(0); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${followUpOnly ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
+            title="Mostrar só assinaturas em follow-up"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            Em follow-up
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${followUpOnly ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subscriptions.filter(s => s.inFollowUp === true).length}</span>
+          </button>
         </div>
       </div>
 
@@ -595,6 +614,7 @@ const SubscriptionsPage = () => {
                         {sub.type === 'paid' && <button onClick={() => openHistory(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
 
+                        <button onClick={() => handleToggleFollowUp(sub)} disabled={actionLoading} className={`group/btn relative p-2 rounded-lg transition-colors disabled:opacity-50 ${sub.inFollowUp === true ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10'}`}><MessageCircle className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{sub.inFollowUp === true ? 'Em follow-up' : 'Marcar follow-up'}</span></button>
                         <button onClick={() => openEditStudent(sub)} className="group/btn relative p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"><UserCog className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar aluno</span></button>
                         <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar assinatura</span></button>
                         {sub.status === 'cancelled' && <button onClick={() => handleReactivate(sub)} className="group/btn relative p-2 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Reativar</span></button>}
