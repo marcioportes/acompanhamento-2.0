@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.55.4] - 04/05/2026 · #246 · PR #247
+
+**feat:** 3 chips de filtro de follow-up (Todos / Em / Sem)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.55.3] - 04/05/2026 · #243 · PR #245
 
 **feat:** campo follow-up em assinatura + filtro
