@@ -1,0 +1,31 @@
+c9d05c237d9fd3e2949f73d8369b0c8b,04/05/2026,04/05/2026
+Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criação;Última Atualização;Preço;Preço Stop;Qtd;Preço Médio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estratégia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504121716499223;WINM26;C;Cancelada;04/05/2026 12:17:16;04/05/2026 12:21:23;189.960,00;189.810,00;2;-;-;-;75.984,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Estratégia
+;;;;;;Cancel;04/05/2026 12:21:23;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504121716499224;WINM26;C;Executada;04/05/2026 12:17:16;04/05/2026 12:21:23;189.180,00;-;2;189.180,00;2;-;75.672,00;75.672,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;04/05/2026 12:21:23;;;;;189.180,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504121716499221;WINM26;V;Executada;04/05/2026 12:17:16;04/05/2026 12:17:16;189.645,00;-;2;189.830,00;2;-;75.858,00;75.932,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;04/05/2026 12:17:16;;;;;189.830,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113920430970;WINM26;V;Cancelada;04/05/2026 11:39:20;04/05/2026 11:46:32;190.870,00;-;2;-;-;-;76.348,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Cancel;04/05/2026 11:46:32;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113920430969;WINM26;V;Executada;04/05/2026 11:39:20;04/05/2026 11:46:32;189.970,00;190.120,00;2;190.120,00;2;-;75.988,00;76.048,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;04/05/2026 11:46:32;;;;;190.120,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113920430958;WINM26;C;Executada;04/05/2026 11:39:20;04/05/2026 11:39:20;190.370,00;-;2;190.370,00;2;-;76.148,00;76.148,00;Hoje;-;Normal;;-;Limite;-;BMF;Gráfico
+;;;;;;Trade;04/05/2026 11:39:20;;;;;190.370,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113203416256;WINM26;V;Cancelada;04/05/2026 11:32:03;04/05/2026 11:35:21;190.865,00;-;1;-;-;-;38.173,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Cancel;04/05/2026 11:35:21;;;;;0,00;1
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113203416255;WINM26;V;Executada;04/05/2026 11:32:03;04/05/2026 11:35:20;189.980,00;190.130,00;2;190.130,00;2;-;75.992,00;76.052,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;04/05/2026 11:35:20;;;;;190.130,00;1
+;;;;;;Trade;04/05/2026 11:35:20;;;;;190.130,00;1
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504113203416250;WINM26;C;Executada;04/05/2026 11:32:03;04/05/2026 11:32:03;190.565,00;-;2;190.365,00;2;-;76.226,00;76.146,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;04/05/2026 11:32:03;;;;;190.365,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504112240396436;WINM26;C;Cancelada;04/05/2026 11:22:40;04/05/2026 11:23:15;190.280,00;-;2;-;-;-;76.112,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Gráfico
+;;;;;;Cancel;04/05/2026 11:23:15;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504104452295442;WINM26;V;Cancelada;04/05/2026 10:44:52;04/05/2026 10:49:52;191.000,00;-;2;-;-;-;76.400,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Cancel;04/05/2026 10:49:52;;;;;0,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504104452295441;WINM26;V;Executada;04/05/2026 10:44:52;04/05/2026 10:49:52;190.365,00;190.515,00;2;190.515,00;2;-;76.146,00;76.206,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;04/05/2026 10:49:52;;;;;190.515,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504104438294784;WINM26;C;Executada;04/05/2026 10:44:38;04/05/2026 10:44:46;190.500,00;-;2;190.500,00;2;-;76.200,00;76.200,00;Hoje;-;Normal;;-;Limite;-;BMF;SuperDOM
+;;;;;;Trade;04/05/2026 10:44:46;;;;;190.500,00;2
+Clear - DayTrade;17375163;Marcio R. Portes;NLGC.9320260504104343292573;WINM26;C;Cancelada;04/05/2026 10:43:43;04/05/2026 10:43:54;190.995,00;190.845,00;2;-;-;-;76.398,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Gráfico
+;;;;;;Cancel;04/05/2026 10:43:54;;;;;0,00;2

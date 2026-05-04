@@ -21,5 +21,5 @@
 | 1.54.0 | #235 | `feat/issue-235-cycle-consistency-redesign` | 02/05/2026 | consumida (PR #236 squash `ea8e7bff`) |
 | 1.55.0 | #237 | `feat/issue-237-contacts-assinaturas` | 02/05/2026 | consumida (PR #238 squash `1ad8198a`) |
 | 1.55.1 | #240 | `fix/issue-240-plan-coverage-and-perf-dedup` | 04/05/2026 | consumida (PR #241 squash `ff43c1d1`) |
-| 1.55.2 | #242 | `fix/issue-242-parser-stop-semantic` | 04/05/2026 | reservada |
+| 1.55.2 | #242 | `fix/issue-242-parser-stop-semantic` | 04/05/2026 | consumida (PR #244 squash `34642608`) |
 | 1.55.3 | #243 | `feat/issue-243-subscription-followup` | 04/05/2026 | reservada |
