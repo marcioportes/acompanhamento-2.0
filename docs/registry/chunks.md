@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-16 | #248 | `feat/issue-248-followup-checkbox-redesign` | 04/05/2026 | escrita |

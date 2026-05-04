@@ -543,21 +543,30 @@ const SubscriptionsPage = () => {
             <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
-          {[
-            { value: 'all', label: 'Todos FU', count: subscriptions.length },
-            { value: 'on', label: 'Em follow-up', count: subscriptions.filter(s => s.inFollowUp === true).length },
-            { value: 'off', label: 'Sem follow-up', count: subscriptions.filter(s => s.inFollowUp !== true).length },
-          ].map(f => (
+          <label className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm cursor-pointer hover:bg-slate-800/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={followUpFilter !== 'all'}
+              onChange={(e) => { setFollowUpFilter(e.target.checked ? 'on' : 'all'); setPage(0); }}
+              className="w-4 h-4 rounded accent-emerald-500"
+            />
+            <MessageCircle className={`w-3.5 h-3.5 ${followUpFilter !== 'all' ? 'text-emerald-400' : 'text-slate-500'}`} />
+            <span className={followUpFilter !== 'all' ? 'text-emerald-400' : 'text-slate-400'}>Follow up</span>
+          </label>
+          <div className="flex rounded-xl overflow-hidden border border-slate-700/50">
             <button
-              key={`fu-${f.value}`}
-              onClick={() => { setFollowUpFilter(f.value); setPage(0); }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${followUpFilter === f.value ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
-            >
-              {f.value !== 'all' && <MessageCircle className="w-3.5 h-3.5" />}
-              {f.label}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${followUpFilter === f.value ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
-            </button>
-          ))}
+              type="button"
+              disabled={followUpFilter === 'all'}
+              onClick={() => { setFollowUpFilter('on'); setPage(0); }}
+              className={`px-3 py-2 text-xs transition-colors ${followUpFilter === 'on' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
+            >on</button>
+            <button
+              type="button"
+              disabled={followUpFilter === 'all'}
+              onClick={() => { setFollowUpFilter('off'); setPage(0); }}
+              className={`px-3 py-2 text-xs transition-colors border-l border-slate-700/50 ${followUpFilter === 'off' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
+            >off</button>
+          </div>
         </div>
       </div>
 
