@@ -278,15 +278,25 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         onActivateTrade={async (t) => {
           try {
             const planTrades = trades.filter(x => x.planId === t.planId);
-            const result = await activateStagingTrade(t, addTrade, planTrades);
-            if (result && typeof result === 'object' && result.skipped) {
-              alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
+            const result = await activateStagingTrade(t, addTrade, {
+              existingTrades: planTrades,
+              updateTradeFn: updateTrade,
+            });
+            if (result && typeof result === 'object') {
+              if (result.enriched) {
+                alert(`Trade duplicado — enriquecido com ${result.fields.join(', ')} do CSV. Staging removido.`);
+              } else if (result.skipped) {
+                alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
+              }
             }
           } catch (err) {
             alert('Erro: ' + err.message);
           }
         }}
-        onActivateBatch={async (ids, onProgress) => activateStagingBatch(ids, addTrade, onProgress, trades)}
+        onActivateBatch={async (ids, onProgress) => activateStagingBatch(ids, addTrade, onProgress, {
+          existingTrades: trades,
+          updateTradeFn: updateTrade,
+        })}
         getBatches={getBatches}
       />
 

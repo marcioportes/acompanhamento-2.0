@@ -154,8 +154,10 @@ const CsvImportManager = ({
     try {
       const result = await onActivateBatch(readyIds);
       const skipped = result.skipped || [];
-      if (result.failed.length > 0 || skipped.length > 0) {
+      const enriched = result.enriched || [];
+      if (result.failed.length > 0 || skipped.length > 0 || enriched.length > 0) {
         const parts = [`${result.success.length} ativados`];
+        if (enriched.length > 0) parts.push(`${enriched.length} enriquecido${enriched.length > 1 ? 's' : ''} (MEP/MEN)`);
         if (skipped.length > 0) parts.push(`${skipped.length} duplicata${skipped.length > 1 ? 's' : ''} ignorada${skipped.length > 1 ? 's' : ''}`);
         if (result.failed.length > 0) parts.push(`${result.failed.length} falha${result.failed.length > 1 ? 's' : ''}`);
         const detail = result.failed.length > 0

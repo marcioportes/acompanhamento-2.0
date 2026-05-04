@@ -6,10 +6,13 @@
  *   são passados para addTrade (useTrades) e deletados do staging.
  *
  * CHANGELOG:
- * - 1.2.0: issue #240 — activateTrade/activateBatch aceitam `existingTrades` e
- *   aplicam `checkDuplication` (mesmo critério do Order Import). Duplicatas são
- *   removidas do staging e reportadas em `skipped[]` no retorno de activateBatch.
- *   Fecha gap onde `csv_import` criava trades duplicados sobre `order_import` ou manual.
+ * - 1.2.0: issue #240 — activateTrade/activateBatch aceitam options com
+ *   `existingTrades` + `updateTradeFn`. (a) Duplicatas detectadas via
+ *   `checkDuplication` (critério do Order Import); (b) quando duplicado e o CSV
+ *   traz mepPrice/menPrice/excursionSource ausentes no trade existente, faz
+ *   **auto-enrich silencioso** (nunca sobrescreve) reportado em `enriched[]`;
+ *   senão, `skipped[]` puro. Fecha gap onde `csv_import` criava trades duplicados
+ *   sobre `order_import` ou manual e onde MEP/MEN do CSV se perdiam.
  * - 1.1.0: C2 (v1.19.1) — activateTrade busca tickerRule do master data (tickers collection)
  *   quando staging não possui tickerRule, usando exchange+symbol lookup.
  *
@@ -38,6 +41,8 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { checkDuplication } from '../utils/orderTradeCreation';
+import { validateExcursionPrices } from '../utils/tradeGateway';
+import { computeExcursionEnrichmentPatch } from '../utils/csvEnrichmentPatch';
 
 const COLLECTION = 'csvStagingTrades';
 
@@ -279,20 +284,38 @@ const useCsvStaging = (overrideStudentId = null) => {
    *
    * Issue #240 — quando `existingTrades` é fornecido, aplica o mesmo
    * `checkDuplication` usado pelo Order Import (ticker + side + entryTime ±5min
-   * + qty). Se duplicado, **não cria** o trade, mas remove o doc de staging
-   * e retorna `{ skipped: true, matchedTradeId, reason }`. Caller deve
-   * contabilizar o skip pra reportar ao usuário ("X duplicatas ignoradas").
+   * + qty). Se duplicado:
+   *
+   *   - Se `updateTradeFn` foi injetada e o CSV traz mepPrice/menPrice que o
+   *     trade existente NÃO tem, **enriquece** o trade existente (auto-enrich
+   *     silencioso, conservador — nunca sobrescreve). Retorna
+   *     `{ enriched: true, matchedTradeId, fields }`.
+   *   - Caso contrário, apenas pula e retorna `{ skipped: true, matchedTradeId, reason }`.
+   *
+   *   Em ambos os casos o doc de staging é removido. Caller contabiliza ambos
+   *   os status no resumo final.
    *
    * @param {Object} stagingTrade - Documento completo de csvStagingTrades (com id)
    * @param {Function} addTradeFn - Referência a addTrade de useTrades
-   * @param {Object[]} [existingTrades=[]] - Trades existentes do plano para dedup
-   * @returns {Promise<string | { skipped: true, matchedTradeId: string, reason: string }>}
-   *   String ID do trade criado, ou objeto skipped quando duplicata.
+   * @param {Object} [options]
+   * @param {Object[]} [options.existingTrades=[]] - Trades existentes do plano para dedup
+   * @param {Function} [options.updateTradeFn] - Referência a updateTrade de useTrades.
+   *   Quando fornecida, habilita auto-enrich de MEP/MEN em duplicatas.
+   * @returns {Promise<
+   *   string |
+   *   { skipped: true, matchedTradeId: string, reason: string } |
+   *   { enriched: true, matchedTradeId: string, fields: string[] }
+   * >}
    */
-  const activateTrade = useCallback(async (stagingTrade, addTradeFn, existingTrades = []) => {
+  const activateTrade = useCallback(async (stagingTrade, addTradeFn, options = {}) => {
     if (!user) throw new Error('Autenticação necessária');
     if (!stagingTrade?.planId) throw new Error('Trade sem plano associado');
     if (!addTradeFn) throw new Error('addTrade function não fornecida');
+
+    // Compat: 3º arg como Array continua funcionando (callers antigos).
+    const { existingTrades = [], updateTradeFn = null } = Array.isArray(options)
+      ? { existingTrades: options }
+      : options;
 
     // C2 (v1.19.1): Buscar tickerRule do master data se não presente no staging
     let tickerRule = stagingTrade.tickerRule ?? null;
@@ -362,6 +385,33 @@ const useCsvStaging = (overrideStudentId = null) => {
     if (existingTrades?.length) {
       const dup = checkDuplication(tradeData, existingTrades);
       if (dup.isDuplicate) {
+        const matchedTrade = existingTrades.find(t => t.id === dup.matchedTradeId);
+
+        // Tentativa de auto-enrich silencioso (apenas campos vazios — nunca sobrescreve).
+        // Hoje carrega só mepPrice/menPrice/excursionSource (issue #187 + #240).
+        if (matchedTrade && updateTradeFn) {
+          const enrich = computeExcursionEnrichmentPatch(tradeData, matchedTrade);
+          if (enrich) {
+            // Validar antes de gravar — entry/exit do trade existente são fonte da verdade.
+            try {
+              validateExcursionPrices({
+                side: matchedTrade.side,
+                entry: parseFloat(matchedTrade.entry),
+                exit: parseFloat(matchedTrade.exit),
+                mepPrice: enrich.patch.mepPrice ?? matchedTrade.mepPrice ?? null,
+                menPrice: enrich.patch.menPrice ?? matchedTrade.menPrice ?? null,
+              });
+              await updateTradeFn(matchedTrade.id, enrich.patch);
+              await deleteDoc(doc(db, COLLECTION, stagingTrade.id));
+              console.log(`[useCsvStaging] Trade ${stagingTrade.id} duplicata de ${matchedTrade.id} — enriquecido (${enrich.fields.join(', ')}) e removido do staging`);
+              return { enriched: true, matchedTradeId: matchedTrade.id, fields: enrich.fields };
+            } catch (enrichErr) {
+              console.warn(`[useCsvStaging] Enrichment falhou para ${matchedTrade.id} (${enrichErr.message}) — caindo em skipped`);
+              // Não falha o batch — degrada para skipped puro.
+            }
+          }
+        }
+
         await deleteDoc(doc(db, COLLECTION, stagingTrade.id));
         console.log(`[useCsvStaging] Trade ${stagingTrade.id} duplicata de ${dup.matchedTradeId} — pulado e removido do staging`);
         return { skipped: true, matchedTradeId: dup.matchedTradeId, reason: dup.reason };
@@ -386,20 +436,27 @@ const useCsvStaging = (overrideStudentId = null) => {
    * @param {string[]} tradeIds - IDs dos trades em staging para ativar
    * @param {Function} addTradeFn - Referência a addTrade de useTrades
    * @param {Function} [onProgress] - Callback (current, total, lastResult)
-   * @param {Object[]} [existingTrades=[]] - Trades existentes do plano (issue #240 — dedup)
+   * @param {Object | Object[]} [optionsOrTrades] - Object com `{ existingTrades, updateTradeFn }`,
+   *   ou Array (legacy) que será interpretado como `existingTrades`.
    * @returns {Promise<{
    *   success: string[],
    *   failed: { id: string, error: string }[],
    *   skipped: { id: string, matchedTradeId: string, reason: string }[],
+   *   enriched: { id: string, matchedTradeId: string, fields: string[] }[],
    * }>}
    */
-  const activateBatch = useCallback(async (tradeIds, addTradeFn, onProgress, existingTrades = []) => {
+  const activateBatch = useCallback(async (tradeIds, addTradeFn, onProgress, optionsOrTrades = {}) => {
     if (!user) throw new Error('Autenticação necessária');
     if (!addTradeFn) throw new Error('addTrade function não fornecida');
+
+    const options = Array.isArray(optionsOrTrades)
+      ? { existingTrades: optionsOrTrades }
+      : optionsOrTrades;
 
     const success = [];
     const failed = [];
     const skipped = [];
+    const enriched = [];
 
     for (let i = 0; i < tradeIds.length; i++) {
       const stagingId = tradeIds[i];
@@ -416,9 +473,15 @@ const useCsvStaging = (overrideStudentId = null) => {
       }
 
       try {
-        const result = await activateTrade(stagingTrade, addTradeFn, existingTrades);
-        if (result && typeof result === 'object' && result.skipped) {
-          skipped.push({ id: stagingId, matchedTradeId: result.matchedTradeId, reason: result.reason });
+        const result = await activateTrade(stagingTrade, addTradeFn, options);
+        if (result && typeof result === 'object') {
+          if (result.enriched) {
+            enriched.push({ id: stagingId, matchedTradeId: result.matchedTradeId, fields: result.fields });
+          } else if (result.skipped) {
+            skipped.push({ id: stagingId, matchedTradeId: result.matchedTradeId, reason: result.reason });
+          } else {
+            success.push(result);
+          }
         } else {
           success.push(result);
         }
@@ -432,12 +495,13 @@ const useCsvStaging = (overrideStudentId = null) => {
           success: success.length,
           failed: failed.length,
           skipped: skipped.length,
+          enriched: enriched.length,
         });
       }
     }
 
-    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${skipped.length} duplicatas ignoradas, ${failed.length} falhas`);
-    return { success, failed, skipped };
+    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${enriched.length} enriquecidos, ${skipped.length} duplicatas ignoradas, ${failed.length} falhas`);
+    return { success, failed, skipped, enriched };
   }, [user, stagingTrades, activateTrade]);
 
   // ============================================

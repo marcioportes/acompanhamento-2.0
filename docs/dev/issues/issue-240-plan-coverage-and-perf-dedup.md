@@ -73,10 +73,11 @@ cobre = (createdMs == null || opDay >= createdDay)
 
 ## Sessions
 
-- task A1+A2 [planCoverage day-of-year] commit pending — `planCoversDate` compara `YYYY-MM-DD` UTC; 4 testes novos + 16 baseline preservados (20/20 ok)
-- task B1..B3 [csv-staging dedup] commit pending — `useCsvStaging.activateTrade/Batch` aceitam `existingTrades`, reusam `checkDuplication` exportado de `orderTradeCreation`, retornam `skipped[]`; wrappers em `StudentDashboard`+`TradesJournal`+`CsvImportManager` propagam trades do plano
-- task B4 [test cross-source] commit pending — 1 teste novo em `orderTradeCreation.test.js` documenta cobertura cross-source (manual + order_import + csv)
-- task C1 [suite full] — 184 arquivos / 2938 testes passando; vite build limpo
+- task A1+A2 [planCoverage day-of-year] commit `1cd32a16` — `planCoversDate` compara `YYYY-MM-DD` UTC; 4 testes novos + 16 baseline preservados (20/20 ok)
+- task B1..B3 [csv-staging dedup] commit `1cd32a16` — `useCsvStaging.activateTrade/Batch` aceitam `existingTrades`, reusam `checkDuplication` exportado de `orderTradeCreation`, retornam `skipped[]`; wrappers em `StudentDashboard`+`TradesJournal`+`CsvImportManager` propagam trades do plano
+- task B4 [test cross-source] commit `1cd32a16` — 1 teste novo em `orderTradeCreation.test.js` documenta cobertura cross-source (manual + order_import + csv)
+- task D1+D2 [csv perf MEP/MEN auto-enrich] commit pending — opt (A) auto-enrich silencioso. Novo helper puro `src/utils/csvEnrichmentPatch.js` (preenche só campos vazios, nunca sobrescreve, default `excursionSource: 'profitpro'`). `useCsvStaging` aceita `options.updateTradeFn`; quando duplicata + CSV traz mep/men que faltam → chama `updateTradeFn(matchedId, patch)` validado por `validateExcursionPrices`; retorna `enriched[]`. 13 testes novos (`csvEnrichmentPatch.test.js`).
+- task C1 [suite full] — 185 arquivos / 2952 testes passando; vite build limpo
 
 ## Shared Deltas
 
@@ -89,6 +90,7 @@ cobre = (createdMs == null || opDay >= createdDay)
 
 - DEC-AUTO-240-01 — `planCoversDate` compara dia local (UTC normalizado) ao invés de timestamp ms; tradeoff de borda noturna documentado em memória de cálculo.
 - DEC-AUTO-240-02 — `useCsvStaging` reusa `checkDuplication` exportado de `orderTradeCreation.js` (DRY); ambos pipelines passam a aplicar o mesmo critério.
+- DEC-AUTO-240-03 — Auto-enrich silencioso de MEP/MEN/`excursionSource` quando duplicata é detectada e o trade existente NÃO tem o campo. Conservador: nunca sobrescreve, sempre via `updateTrade` (gateway oficial), validado por `validateExcursionPrices` antes do write. Default `excursionSource: 'profitpro'` quando CSV não vem com origem explícita.
 
 ## Chunks
 

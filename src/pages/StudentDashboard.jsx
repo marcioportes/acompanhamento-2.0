@@ -337,13 +337,20 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
   };
 
-  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup #240) */
+  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240) */
   const handleActivateStagingTrade = async (stagingTrade) => {
     try {
       const planTrades = trades.filter(t => t.planId === stagingTrade.planId);
-      const result = await activateStagingTrade(stagingTrade, addTrade, planTrades);
-      if (result && typeof result === 'object' && result.skipped) {
-        alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
+      const result = await activateStagingTrade(stagingTrade, addTrade, {
+        existingTrades: planTrades,
+        updateTradeFn: updateTrade,
+      });
+      if (result && typeof result === 'object') {
+        if (result.enriched) {
+          alert(`Trade duplicado — enriquecido com ${result.fields.join(', ')} do CSV. Staging removido.`);
+        } else if (result.skipped) {
+          alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
+        }
       }
     } catch (err) {
       alert('Erro ao ativar trade: ' + err.message);
@@ -354,9 +361,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const handleActivateStagingBatch = async (tradeIds, onProgress) => {
     setSuspendListener(true);
     try {
-      // Issue #240 — dedup contra trades existentes do plano. Como um batch pode misturar
-      // planos, passamos a base completa de trades; o dedup interno filtra por compatibilidade.
-      return await activateStagingBatch(tradeIds, addTrade, onProgress, trades);
+      // Issue #240 — dedup contra trades existentes + auto-enrich de MEP/MEN. Como um batch
+      // pode misturar planos, passamos a base completa de trades; o dedup interno filtra.
+      return await activateStagingBatch(tradeIds, addTrade, onProgress, {
+        existingTrades: trades,
+        updateTradeFn: updateTrade,
+      });
     } finally {
       setSuspendListener(false);
     }
