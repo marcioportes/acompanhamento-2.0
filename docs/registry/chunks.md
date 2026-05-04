@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-16 | #250 | `feat/issue-250-monthly-payments-summary` | 04/05/2026 | escrita |

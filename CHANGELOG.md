@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.56.0] - 04/05/2026 · #250 · PR #251
+
+**feat:** resumo de pagamentos do mês no Fluxo de Caixa
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.55.5] - 04/05/2026 · #248 · PR #249
 
 **feat:** redesign filtro follow-up — checkbox + on/off (compacto)
