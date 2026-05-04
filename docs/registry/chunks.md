@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-10 | #242 | `fix/issue-242-parser-stop-semantic` | 04/05/2026 | escrita |

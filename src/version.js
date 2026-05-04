@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.55.2: #242 fix parser ProfitChart-Pro — bracket OCO LIMIT + distinção stop loss vs stop de ganho [RESERVADA — entrada definitiva no encerramento]
  * - 1.55.1: #240 fix plano retroativo (compara hora vs data) + dedup ausente em performance import
  * - 1.55.0: #237 feat cadastro de alunos / assinaturas — consolidação em students/subscriptions (PR #238, 03/05/2026)
  * - 1.55.0: feat: cadastro de alunos / assinaturas (#237) — consolidação em
@@ -335,10 +336,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.55.1',
-  build: '20260504',
-  display: 'v1.55.1',
-  full: '1.55.1+20260504',
+  version: '1.55.2',
+  build: '20260504b',
+  display: 'v1.55.2',
+  full: '1.55.2+20260504b',
 };
 export default VERSION;
 export { VERSION };
