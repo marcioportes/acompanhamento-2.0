@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-16 | #246 | `feat/issue-246-followup-segment-filters` | 04/05/2026 | escrita |
