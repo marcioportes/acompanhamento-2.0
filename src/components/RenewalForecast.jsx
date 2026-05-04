@@ -5,9 +5,15 @@
  */
 
 import { useMemo, useState } from 'react';
-import { TrendingUp, User } from 'lucide-react';
+import { TrendingUp, User, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { groupRenewalsByMonth, formatBRL, formatDateBR } from '../utils/renewalForecast';
+import { useCurrentMonthPayments } from '../hooks/useCurrentMonthPayments';
 import DebugBadge from './DebugBadge';
+
+const MONTH_NAME_BR_FULL = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+];
 
 const MONTHS_COUNT = 12;
 
@@ -75,6 +81,18 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
 
   const expanded = expandedMonth ? forecastMap[expandedMonth] : null;
 
+  // ── Recebido no mês corrente (issue #250) ──
+  const studentsMap = useMemo(() => {
+    const m = new Map();
+    for (const s of subscriptions ?? []) {
+      if (s.studentId && s.studentName) m.set(s.studentId, s.studentName);
+    }
+    return m;
+  }, [subscriptions]);
+  const monthlyPayments = useCurrentMonthPayments(studentsMap);
+  const [paymentsExpanded, setPaymentsExpanded] = useState(false);
+  const currentMonthLabel = MONTH_NAME_BR_FULL[now.getMonth()];
+
   // Anos para o dropdown: atual -1 até +5 (janela de 7 anos, cobre qualquer cenário razoável)
   const baseYear = now.getFullYear();
   const yearOptions = Array.from({ length: 7 }, (_, i) => baseYear - 1 + i);
@@ -96,6 +114,18 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
               <span className="text-slate-700">·</span>
               <span>Total visível: <span className="text-violet-300 font-medium">{formatBRL(totalVisible)}</span></span>
             </div>
+            <button
+              type="button"
+              onClick={() => monthlyPayments.count > 0 && setPaymentsExpanded(v => !v)}
+              disabled={monthlyPayments.count === 0}
+              className={`mt-1.5 flex items-center gap-1.5 text-xs ${monthlyPayments.count > 0 ? 'text-emerald-400 hover:text-emerald-300 cursor-pointer' : 'text-slate-600 cursor-default'}`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>
+                Recebido em {currentMonthLabel}: <span className="font-medium">{formatBRL(monthlyPayments.total)}</span> <span className="text-slate-500">({monthlyPayments.count} pagamento{monthlyPayments.count === 1 ? '' : 's'})</span>
+              </span>
+              {monthlyPayments.count > 0 && (paymentsExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+            </button>
           </div>
         </div>
 
@@ -204,6 +234,20 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
           </div>
         );
       })()}
+
+      {/* Detalhe pagamentos do mês corrente (issue #250) */}
+      {paymentsExpanded && monthlyPayments.count > 0 && (
+        <div className="mt-3 pt-3 border-t border-emerald-500/20 max-w-md">
+          <p className="text-[10px] uppercase tracking-wide text-emerald-500/70 mb-1.5">Pagamentos de {currentMonthLabel}</p>
+          {monthlyPayments.list.map((p) => (
+            <div key={p.id} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
+              <span className="text-slate-300 truncate">{p.studentName}</span>
+              <span className="text-slate-500 text-[11px]">{formatDateBR(p.dateObj)}</span>
+              <span className="text-emerald-400 font-medium text-right">{formatBRL(p.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!embedded && <DebugBadge component="RenewalForecast" />}
     </div>
