@@ -12,10 +12,10 @@
  * `docs/dev/AUDIT-parser-comparison-20260504.md`.
  *
  * Esta função roda APÓS `reconstructOperations` + `associateNonFilledOrders`,
- * quando o `side` da operação e o `entryOrders[0].price` (limite original da
- * primeira entrada) já estão disponíveis. Marca `stopSemantic` em cada ordem
- * da operação que tenha `stopPrice != null` e adiciona `hasRealStopLoss` na
- * operação.
+ * quando o `side` da operação e o `entryOrders[0].limitPrice` (limite original
+ * da primeira entrada, preservado por `normalizeOrder`) já estão disponíveis.
+ * Marca `stopSemantic` em cada ordem da operação que tenha `stopPrice != null`
+ * e adiciona `hasRealStopLoss` na operação.
  *
  * Critério (DEC-AUTO-242-01 — referência = LIMITE original, não avgFillPrice):
  *
@@ -72,8 +72,10 @@ const protectionOrderSide = (opSide) => {
  * @param {number|null} input.orderStopPrice — `Preço Stop` da ordem
  * @param {string} input.opSide        — 'LONG' | 'SHORT'
  * @param {number|null} input.entryLimitPrice — limite da primeira entrada
- *   (`op.entryOrders[0].price`). NÃO usar avgFillPrice — slippage não muda
- *   intenção de proteção (DEC-AUTO-242-01).
+ *   (`op.entryOrders[0].limitPrice`). NÃO usar `price`/`filledPrice`/
+ *   `avgFillPrice` — slippage não muda intenção de proteção (DEC-AUTO-242-01).
+ *   `normalizeOrder` move o `Preço` original (Limite) para `limitPrice` e
+ *   sobrescreve `price` com a fill price.
  * @returns {'STOP_LOSS' | 'STOP_GAIN' | null}
  */
 export function classifyStopSemantic({ orderSide, orderStopPrice, opSide, entryLimitPrice } = {}) {
@@ -133,7 +135,14 @@ export function enrichOperationsWithStopSemantic(operations) {
     op.hasRealStopLoss = false;
     if (!op.entryOrders?.length) continue;
 
-    const entryRef = parseFloat(op.entryOrders[0].price);
+    // DEC-AUTO-242-01: referência é o LIMITE da entrada, não a fill price
+    // (slippage não muda intenção de proteção). `normalizeOrder` move o
+    // `Preço` original para `limitPrice` e sobrescreve `price` com fill —
+    // por isso preferimos `limitPrice` quando disponível. Fallback para
+    // `price` cobre shapes de teste e ordens sem normalização prévia.
+    const firstEntry = op.entryOrders[0];
+    const entryRefRaw = firstEntry.limitPrice != null ? firstEntry.limitPrice : firstEntry.price;
+    const entryRef = parseFloat(entryRefRaw);
     if (!Number.isFinite(entryRef)) continue;
 
     const all = collectAllOperationOrders(op);
