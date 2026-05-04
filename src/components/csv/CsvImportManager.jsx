@@ -50,6 +50,7 @@ const CsvImportManager = ({
   onDeleteStagingBatch,
   onActivateTrade,
   onActivateBatch,
+  onActivationComplete,
   getBatches,
 }) => {
   const [expandedBatch, setExpandedBatch] = useState(null);
@@ -153,11 +154,14 @@ const CsvImportManager = ({
 
     try {
       const result = await onActivateBatch(readyIds);
-      if (result.failed.length > 0) {
-        setTimeout(() => alert(`${result.success.length} ativados, ${result.failed.length} falhas:\n${result.failed.map(f => f.error).join('\n')}`), 300);
-      }
+      // Resultado vai pro modal glass do parent (issue #240) — sem alert browser default.
+      if (onActivationComplete) onActivationComplete(result);
     } catch (err) {
-      setTimeout(() => alert('Erro ao ativar: ' + err.message), 300);
+      if (onActivationComplete) {
+        onActivationComplete({ success: [], enriched: [], skipped: [], failed: [{ id: 'batch', error: err.message }] });
+      } else {
+        console.error('[CsvImportManager] activate batch error:', err);
+      }
     }
   };
 
@@ -166,9 +170,21 @@ const CsvImportManager = ({
     if (!confirm(`Ativar trade ${trade.ticker} ${trade.side}? O painel será fechado durante o processamento.`)) return;
     onClose();
     try {
-      await onActivateTrade(trade);
+      // onActivateTrade pode retornar string (id criado) ou objeto { enriched | skipped }.
+      const r = await onActivateTrade(trade);
+      if (onActivationComplete) {
+        if (r && typeof r === 'object' && r.enriched) {
+          onActivationComplete({ success: [], enriched: [{ id: trade.id, matchedTradeId: r.matchedTradeId, fields: r.fields }], skipped: [], failed: [] });
+        } else if (r && typeof r === 'object' && r.skipped) {
+          onActivationComplete({ success: [], enriched: [], skipped: [{ id: trade.id, matchedTradeId: r.matchedTradeId, reason: r.reason }], failed: [] });
+        } else if (typeof r === 'string') {
+          onActivationComplete({ success: [r], enriched: [], skipped: [], failed: [] });
+        }
+      }
     } catch (err) {
-      setTimeout(() => alert('Erro ao ativar: ' + err.message), 300);
+      if (onActivationComplete) {
+        onActivationComplete({ success: [], enriched: [], skipped: [], failed: [{ id: trade.id, error: err.message }] });
+      }
     }
   };
 

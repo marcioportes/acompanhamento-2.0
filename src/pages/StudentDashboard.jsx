@@ -50,6 +50,7 @@ import DebugBadge from '../components/DebugBadge';
 import CsvImportWizard from '../components/csv/CsvImportWizard';
 import CsvImportCard from '../components/csv/CsvImportCard';
 import CsvImportManager from '../components/csv/CsvImportManager';
+import CsvActivationResultModal from '../components/csv/CsvActivationResultModal';
 
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
@@ -163,6 +164,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [wizardComplete, setWizardComplete] = useState(false);
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
+  const [activationResult, setActivationResult] = useState(null);
   const [showOrderImport, setShowOrderImport] = useState(false);
 
   // Sincronização bidirecional com StudentContext (issue #118 — DEC-047)
@@ -337,20 +339,26 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
   };
 
-  /** Wrapper para activateTrade que injeta addTrade */
+  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240).
+   *  Retorna o resultado bruto do hook — UI de feedback fica com o CsvImportManager/Modal. */
   const handleActivateStagingTrade = async (stagingTrade) => {
-    try {
-      await activateStagingTrade(stagingTrade, addTrade);
-    } catch (err) {
-      alert('Erro ao ativar trade: ' + err.message);
-    }
+    const planTrades = trades.filter(t => t.planId === stagingTrade.planId);
+    return activateStagingTrade(stagingTrade, addTrade, {
+      existingTrades: planTrades,
+      updateTradeFn: updateTrade,
+    });
   };
 
-  /** Wrapper para activateBatch que injeta addTrade e suspende listener durante batch */
+  /** Wrapper para activateBatch que injeta addTrade + trades do plano e suspende listener durante batch */
   const handleActivateStagingBatch = async (tradeIds, onProgress) => {
     setSuspendListener(true);
     try {
-      return await activateStagingBatch(tradeIds, addTrade, onProgress);
+      // Issue #240 — dedup contra trades existentes + auto-enrich de MEP/MEN. Como um batch
+      // pode misturar planos, passamos a base completa de trades; o dedup interno filtra.
+      return await activateStagingBatch(tradeIds, addTrade, onProgress, {
+        existingTrades: trades,
+        updateTradeFn: updateTrade,
+      });
     } finally {
       setSuspendListener(false);
     }
@@ -711,7 +719,14 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onDeleteStagingBatch={deleteStagingBatch}
         onActivateTrade={handleActivateStagingTrade}
         onActivateBatch={handleActivateStagingBatch}
+        onActivationComplete={(result) => setActivationResult(result)}
         getBatches={getBatches}
+      />
+
+      <CsvActivationResultModal
+        isOpen={!!activationResult}
+        onClose={() => setActivationResult(null)}
+        result={activationResult}
       />
 
       {/* Order Import Modal (CHUNK-10) */}

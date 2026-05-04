@@ -647,5 +647,20 @@ describe('checkDuplication', () => {
     const result = checkDuplication(tradeData, null);
     expect(result.isDuplicate).toBe(false);
   });
+
+  // Issue #240 — cenário cross-source. Função agnóstica a `source`/`importSource`,
+  // mas registramos que o uso pretendido cobre os 3 origens (manual, csv, order_import).
+  it('detecta duplicata independente do `source` do trade existente (manual / order_import / csv)', () => {
+    const tradeData = {
+      ticker: 'WINJ26',
+      side: 'LONG',
+      qty: '2',
+      entryTime: '2026-04-04T10:00:30', // 30s do existente
+    };
+
+    expect(checkDuplication(tradeData, [makeTrade({ source: 'manual' })]).isDuplicate).toBe(true);
+    expect(checkDuplication(tradeData, [makeTrade({ source: 'order_import', importBatchId: 'batch-A' })]).isDuplicate).toBe(true);
+    expect(checkDuplication(tradeData, [makeTrade({ source: 'csv', importBatchId: 'batch-B' })]).isDuplicate).toBe(true);
+  });
 });
 

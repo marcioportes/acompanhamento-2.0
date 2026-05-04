@@ -88,6 +88,39 @@ describe('planCoverage — planCoversDate', () => {
     const opMs = Date.parse('2026-01-01T00:00:00Z');
     expect(planCoversDate(p, opMs)).toBe(true);
   });
+
+  // Issue #240 — comparação por DIA, não por hora
+  it('cobre quando plano foi criado MAIS TARDE no MESMO DIA da operação', () => {
+    // Cenário real: aluno cria plano às 14h e tenta importar ordens das 11h do mesmo dia.
+    const p = plan({ createdAt: '2026-05-04T14:00:00Z' });
+    const opMs = Date.parse('2026-05-04T11:39:20Z');
+    expect(planCoversDate(p, opMs)).toBe(true);
+  });
+
+  it('NÃO cobre quando plano foi criado no DIA SEGUINTE à operação', () => {
+    const p = plan({ createdAt: '2026-05-05T00:01:00Z' });
+    const opMs = Date.parse('2026-05-04T23:59:00Z');
+    expect(planCoversDate(p, opMs)).toBe(false);
+  });
+
+  it('cobre quando op é no MESMO DIA que closedAt (mesmo se hora > closedAt)', () => {
+    // Plano fechado às 10h cobre ordens posteriores do mesmo dia.
+    const p = plan({
+      createdAt: '2026-01-01T00:00:00Z',
+      closedAt: '2026-02-10T10:00:00Z',
+    });
+    const opMs = Date.parse('2026-02-10T16:30:00Z');
+    expect(planCoversDate(p, opMs)).toBe(true);
+  });
+
+  it('NÃO cobre quando op é no DIA SEGUINTE a closedAt', () => {
+    const p = plan({
+      createdAt: '2026-01-01T00:00:00Z',
+      closedAt: '2026-02-10T23:59:00Z',
+    });
+    const opMs = Date.parse('2026-02-11T00:01:00Z');
+    expect(planCoversDate(p, opMs)).toBe(false);
+  });
 });
 
 describe('planCoverage — detectCoverageGap', () => {
