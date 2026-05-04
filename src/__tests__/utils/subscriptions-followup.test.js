@@ -1,14 +1,21 @@
 /**
- * Tests: Follow-up filter logic — issue #243
+ * Tests: Follow-up filter logic — issue #243 + #246
  *
- * Filtro: subs.filter(s => s.inFollowUp === true)
- * Toggle: { inFollowUp: !sub.inFollowUp } — undefined → true → false → true
- * Default: undefined em docs antigos = não está em follow-up
+ * Filtro 3 estados (#246): 'all' | 'on' | 'off'
+ *   on  = inFollowUp === true
+ *   off = inFollowUp !== true (inclui false e undefined legacy)
+ * Toggle (#243): { inFollowUp: !sub.inFollowUp } — undefined → true → false → true
  */
 
 import { describe, it, expect } from 'vitest';
 
 const filterFollowUp = (subs) => subs.filter((s) => s.inFollowUp === true);
+
+const filterByFollowUp = (subs, mode) => {
+  if (mode === 'on') return subs.filter((s) => s.inFollowUp === true);
+  if (mode === 'off') return subs.filter((s) => s.inFollowUp !== true);
+  return subs;
+};
 
 const toggleFollowUp = (sub) => ({ inFollowUp: !sub.inFollowUp });
 
@@ -59,5 +66,33 @@ describe('Follow-up counter', () => {
       { inFollowUp: true },
     ];
     expect(subs.filter((s) => s.inFollowUp === true).length).toBe(3);
+  });
+});
+
+describe('Follow-up segment filter (#246)', () => {
+  const subs = [
+    { id: 'a', inFollowUp: true },
+    { id: 'b', inFollowUp: false },
+    { id: 'c' }, // legacy
+    { id: 'd', inFollowUp: true },
+    { id: 'e', inFollowUp: false },
+  ];
+
+  it("'all' não filtra (mostra todos)", () => {
+    expect(filterByFollowUp(subs, 'all').map((s) => s.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it("'on' mostra só inFollowUp === true", () => {
+    expect(filterByFollowUp(subs, 'on').map((s) => s.id)).toEqual(['a', 'd']);
+  });
+
+  it("'off' mostra inFollowUp !== true (inclui false E legacy undefined)", () => {
+    expect(filterByFollowUp(subs, 'off').map((s) => s.id)).toEqual(['b', 'c', 'e']);
+  });
+
+  it('on + off === all (sem leak)', () => {
+    const onCount = filterByFollowUp(subs, 'on').length;
+    const offCount = filterByFollowUp(subs, 'off').length;
+    expect(onCount + offCount).toBe(subs.length);
   });
 });

@@ -23,3 +23,4 @@
 | 1.55.1 | #240 | `fix/issue-240-plan-coverage-and-perf-dedup` | 04/05/2026 | consumida (PR #241 squash `ff43c1d1`) |
 | 1.55.2 | #242 | `fix/issue-242-parser-stop-semantic` | 04/05/2026 | consumida (PR #244 squash `34642608`) |
 | 1.55.3 | #243 | `feat/issue-243-subscription-followup` | 04/05/2026 | consumida (PR #245 squash `fcef6a87`) |
+| 1.55.4 | #246 | `feat/issue-246-followup-segment-filters` | 04/05/2026 | reservada |

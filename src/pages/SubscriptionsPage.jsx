@@ -216,7 +216,7 @@ const SubscriptionsPage = () => {
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [followUpOnly, setFollowUpOnly] = useState(false);
+  const [followUpFilter, setFollowUpFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('studentName');
   const [sortDir, setSortDir] = useState('asc');
@@ -292,7 +292,8 @@ const SubscriptionsPage = () => {
     let result = [...subscriptions];
     if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
     if (typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
-    if (followUpOnly) result = result.filter(s => s.inFollowUp === true);
+    if (followUpFilter === 'on') result = result.filter(s => s.inFollowUp === true);
+    else if (followUpFilter === 'off') result = result.filter(s => s.inFollowUp !== true);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(s => s.studentName?.toLowerCase().includes(term) || s.studentEmail?.toLowerCase().includes(term));
@@ -316,7 +317,7 @@ const SubscriptionsPage = () => {
       return (a.studentName ?? '').localeCompare(b.studentName ?? '');
     });
     return result;
-  }, [subscriptions, statusFilter, typeFilter, followUpOnly, searchTerm, sortBy, sortDir]);
+  }, [subscriptions, statusFilter, typeFilter, followUpFilter, searchTerm, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
@@ -542,15 +543,21 @@ const SubscriptionsPage = () => {
             <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
-          <button
-            onClick={() => { setFollowUpOnly(v => !v); setPage(0); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${followUpOnly ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
-            title="Mostrar só assinaturas em follow-up"
-          >
-            <MessageCircle className="w-3.5 h-3.5" />
-            Em follow-up
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${followUpOnly ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subscriptions.filter(s => s.inFollowUp === true).length}</span>
-          </button>
+          {[
+            { value: 'all', label: 'Todos FU', count: subscriptions.length },
+            { value: 'on', label: 'Em follow-up', count: subscriptions.filter(s => s.inFollowUp === true).length },
+            { value: 'off', label: 'Sem follow-up', count: subscriptions.filter(s => s.inFollowUp !== true).length },
+          ].map(f => (
+            <button
+              key={`fu-${f.value}`}
+              onClick={() => { setFollowUpFilter(f.value); setPage(0); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${followUpFilter === f.value ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
+            >
+              {f.value !== 'all' && <MessageCircle className="w-3.5 h-3.5" />}
+              {f.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${followUpFilter === f.value ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+            </button>
+          ))}
         </div>
       </div>
 
