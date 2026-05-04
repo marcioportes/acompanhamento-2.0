@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.55.1] - 04/05/2026 · #240 · PR #241
+
+**fix:** gate plano retroativo (dia, não hora) + dedup performance import
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.55.0] - 03/05/2026 · #237 · PR #238
 
 **feat:** cadastro de alunos / assinaturas — consolidação em students/subscriptions
