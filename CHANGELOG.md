@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.55.3] - 04/05/2026 · #243 · PR #245
+
+**feat:** campo follow-up em assinatura + filtro
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.55.2] - 04/05/2026 · #242 · PR #244
 
 **fix:** parser distingue stop loss vs stop de ganho em bracket OCO LIMIT

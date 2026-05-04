@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-16 | #243 | `feat/issue-243-subscription-followup` | 04/05/2026 | escrita |
