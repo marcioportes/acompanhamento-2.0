@@ -1,11 +1,15 @@
 /**
  * useCsvStaging
- * @version 1.1.0 (v1.19.1)
+ * @version 1.2.0 (v1.55.1 — issue #240)
  * @description Hook para gerenciar trades em staging (collection csvStagingTrades).
  *   Trades importados via CSV ficam aqui até serem "ativados" — momento em que
  *   são passados para addTrade (useTrades) e deletados do staging.
  *
  * CHANGELOG:
+ * - 1.2.0: issue #240 — activateTrade/activateBatch aceitam `existingTrades` e
+ *   aplicam `checkDuplication` (mesmo critério do Order Import). Duplicatas são
+ *   removidas do staging e reportadas em `skipped[]` no retorno de activateBatch.
+ *   Fecha gap onde `csv_import` criava trades duplicados sobre `order_import` ou manual.
  * - 1.1.0: C2 (v1.19.1) — activateTrade busca tickerRule do master data (tickers collection)
  *   quando staging não possui tickerRule, usando exchange+symbol lookup.
  *
@@ -33,6 +37,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { checkDuplication } from '../utils/orderTradeCreation';
 
 const COLLECTION = 'csvStagingTrades';
 
@@ -272,11 +277,19 @@ const useCsvStaging = (overrideStudentId = null) => {
    * Ativa um trade: chama addTrade (de useTrades) com os dados do staging,
    * depois deleta o documento de staging.
    *
+   * Issue #240 — quando `existingTrades` é fornecido, aplica o mesmo
+   * `checkDuplication` usado pelo Order Import (ticker + side + entryTime ±5min
+   * + qty). Se duplicado, **não cria** o trade, mas remove o doc de staging
+   * e retorna `{ skipped: true, matchedTradeId, reason }`. Caller deve
+   * contabilizar o skip pra reportar ao usuário ("X duplicatas ignoradas").
+   *
    * @param {Object} stagingTrade - Documento completo de csvStagingTrades (com id)
    * @param {Function} addTradeFn - Referência a addTrade de useTrades
-   * @returns {Promise<string>} ID do trade criado na collection trades
+   * @param {Object[]} [existingTrades=[]] - Trades existentes do plano para dedup
+   * @returns {Promise<string | { skipped: true, matchedTradeId: string, reason: string }>}
+   *   String ID do trade criado, ou objeto skipped quando duplicata.
    */
-  const activateTrade = useCallback(async (stagingTrade, addTradeFn) => {
+  const activateTrade = useCallback(async (stagingTrade, addTradeFn, existingTrades = []) => {
     if (!user) throw new Error('Autenticação necessária');
     if (!stagingTrade?.planId) throw new Error('Trade sem plano associado');
     if (!addTradeFn) throw new Error('addTrade function não fornecida');
@@ -344,6 +357,17 @@ const useCsvStaging = (overrideStudentId = null) => {
       _partials,
     };
 
+    // Issue #240 — dedup contra trades existentes do plano (manual + order_import + csv).
+    // Critério reusado de orderTradeCreation.checkDuplication (ticker+side+entryTime±5min+qty).
+    if (existingTrades?.length) {
+      const dup = checkDuplication(tradeData, existingTrades);
+      if (dup.isDuplicate) {
+        await deleteDoc(doc(db, COLLECTION, stagingTrade.id));
+        console.log(`[useCsvStaging] Trade ${stagingTrade.id} duplicata de ${dup.matchedTradeId} — pulado e removido do staging`);
+        return { skipped: true, matchedTradeId: dup.matchedTradeId, reason: dup.reason };
+      }
+    }
+
     // Chamar addTrade legado — ele resolve planId→accountId, calcula result,
     // cria movement, aciona CFs (compliance, PL update)
     const newTrade = await addTradeFn(tradeData, null, null);
@@ -362,14 +386,20 @@ const useCsvStaging = (overrideStudentId = null) => {
    * @param {string[]} tradeIds - IDs dos trades em staging para ativar
    * @param {Function} addTradeFn - Referência a addTrade de useTrades
    * @param {Function} [onProgress] - Callback (current, total, lastResult)
-   * @returns {Promise<{ success: string[], failed: { id: string, error: string }[] }>}
+   * @param {Object[]} [existingTrades=[]] - Trades existentes do plano (issue #240 — dedup)
+   * @returns {Promise<{
+   *   success: string[],
+   *   failed: { id: string, error: string }[],
+   *   skipped: { id: string, matchedTradeId: string, reason: string }[],
+   * }>}
    */
-  const activateBatch = useCallback(async (tradeIds, addTradeFn, onProgress) => {
+  const activateBatch = useCallback(async (tradeIds, addTradeFn, onProgress, existingTrades = []) => {
     if (!user) throw new Error('Autenticação necessária');
     if (!addTradeFn) throw new Error('addTrade function não fornecida');
 
     const success = [];
     const failed = [];
+    const skipped = [];
 
     for (let i = 0; i < tradeIds.length; i++) {
       const stagingId = tradeIds[i];
@@ -386,20 +416,28 @@ const useCsvStaging = (overrideStudentId = null) => {
       }
 
       try {
-        const newTradeId = await activateTrade(stagingTrade, addTradeFn);
-        success.push(newTradeId);
+        const result = await activateTrade(stagingTrade, addTradeFn, existingTrades);
+        if (result && typeof result === 'object' && result.skipped) {
+          skipped.push({ id: stagingId, matchedTradeId: result.matchedTradeId, reason: result.reason });
+        } else {
+          success.push(result);
+        }
       } catch (err) {
         console.error(`[useCsvStaging] Falha ao ativar ${stagingId}:`, err);
         failed.push({ id: stagingId, error: err.message });
       }
 
       if (onProgress) {
-        onProgress(i + 1, tradeIds.length, { success: success.length, failed: failed.length });
+        onProgress(i + 1, tradeIds.length, {
+          success: success.length,
+          failed: failed.length,
+          skipped: skipped.length,
+        });
       }
     }
 
-    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${failed.length} falhas`);
-    return { success, failed };
+    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${skipped.length} duplicatas ignoradas, ${failed.length} falhas`);
+    return { success, failed, skipped };
   }, [user, stagingTrades, activateTrade]);
 
   // ============================================

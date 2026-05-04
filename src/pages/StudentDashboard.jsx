@@ -337,20 +337,26 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
   };
 
-  /** Wrapper para activateTrade que injeta addTrade */
+  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup #240) */
   const handleActivateStagingTrade = async (stagingTrade) => {
     try {
-      await activateStagingTrade(stagingTrade, addTrade);
+      const planTrades = trades.filter(t => t.planId === stagingTrade.planId);
+      const result = await activateStagingTrade(stagingTrade, addTrade, planTrades);
+      if (result && typeof result === 'object' && result.skipped) {
+        alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
+      }
     } catch (err) {
       alert('Erro ao ativar trade: ' + err.message);
     }
   };
 
-  /** Wrapper para activateBatch que injeta addTrade e suspende listener durante batch */
+  /** Wrapper para activateBatch que injeta addTrade + trades do plano e suspende listener durante batch */
   const handleActivateStagingBatch = async (tradeIds, onProgress) => {
     setSuspendListener(true);
     try {
-      return await activateStagingBatch(tradeIds, addTrade, onProgress);
+      // Issue #240 — dedup contra trades existentes do plano. Como um batch pode misturar
+      // planos, passamos a base completa de trades; o dedup interno filtra por compatibilidade.
+      return await activateStagingBatch(tradeIds, addTrade, onProgress, trades);
     } finally {
       setSuspendListener(false);
     }

@@ -153,8 +153,15 @@ const CsvImportManager = ({
 
     try {
       const result = await onActivateBatch(readyIds);
-      if (result.failed.length > 0) {
-        setTimeout(() => alert(`${result.success.length} ativados, ${result.failed.length} falhas:\n${result.failed.map(f => f.error).join('\n')}`), 300);
+      const skipped = result.skipped || [];
+      if (result.failed.length > 0 || skipped.length > 0) {
+        const parts = [`${result.success.length} ativados`];
+        if (skipped.length > 0) parts.push(`${skipped.length} duplicata${skipped.length > 1 ? 's' : ''} ignorada${skipped.length > 1 ? 's' : ''}`);
+        if (result.failed.length > 0) parts.push(`${result.failed.length} falha${result.failed.length > 1 ? 's' : ''}`);
+        const detail = result.failed.length > 0
+          ? `\n\nFalhas:\n${result.failed.map(f => f.error).join('\n')}`
+          : '';
+        setTimeout(() => alert(`${parts.join(' · ')}${detail}`), 300);
       }
     } catch (err) {
       setTimeout(() => alert('Erro ao ativar: ' + err.message), 300);

@@ -1,18 +1,23 @@
 /**
  * planCoverage.js
- * @version 1.0.0 (v1.37.0 — issue #156 Fase C)
+ * @version 1.1.0 (v1.55.1 — issue #240)
  * @description Detecção de gap de cobertura de plano para operações importadas.
  *   Uma operação está em "gap" quando não existe plano ativo na mesma conta
- *   cuja janela temporal cubra a data da operação.
+ *   cuja janela de DIAS cubra a data da operação.
  *
- * Critério de cobertura (conservador):
+ * Critério de cobertura (conservador, **comparação por DIA, não por hora**):
  *   - plan.accountId === accountId (mesma conta)
  *   - plan.active !== false (plano não arquivado)
- *   - plan.createdAt <= opDate (plano existia no momento da operação)
+ *   - dia(opDate) >= dia(plan.createdAt) (plano nasceu no mesmo dia ou antes)
+ *   - dia(opDate) <= dia(plan.closedAt) (se fechado)
+ *
+ * Issue #240 — bug histórico: comparação anterior usava timestamp ms cheio.
+ * Plano criado às 14h não cobria ordem das 11h do mesmo dia (createdAt > opDate
+ * em milissegundos). Corrigido para comparar `YYYY-MM-DD` (UTC) — granularidade
+ * adequada para o conceito de "plano vigente naquela data".
  *
  * Sem `createdAt`, o plano é considerado cobrindo qualquer data (fail-open, para
- * não gerar falso-positivo em dados legados). `plan.closedAt` também é respeitado:
- * se existir e opDate > closedAt → não cobre.
+ * não gerar falso-positivo em dados legados).
  *
  * Uso:
  *   const { hasCoverageGap, gapOperations } = detectCoverageGap({
@@ -77,7 +82,22 @@ export function getOperationDateMs(op) {
 }
 
 /**
+ * Converte ms epoch para 'YYYY-MM-DD' em UTC. UTC é a forma canônica que o
+ * Firestore serializa Timestamp e que `Date.toISOString()` produz — comparação
+ * entre `plan.createdAt` (Firestore) e `op.entryTime` (string ISO do CSV) só é
+ * consistente se ambos passarem pela mesma normalização.
+ */
+function toDayUTC(ms) {
+  if (ms == null) return null;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Verifica se um plano cobre uma data específica.
+ *
+ * Comparação por DIA (`YYYY-MM-DD` em UTC), não por timestamp em ms — issue #240.
  *
  * @param {Object} plan
  * @param {number} opMs — timestamp ms da operação
@@ -89,11 +109,20 @@ export function planCoversDate(plan, opMs, accountId = null) {
   if (plan.active === false) return false;
   if (accountId && plan.accountId && plan.accountId !== accountId) return false;
 
+  const opDay = toDayUTC(opMs);
+  if (!opDay) return false;
+
   const createdMs = toMs(plan.createdAt);
-  if (createdMs != null && opMs < createdMs) return false;
+  if (createdMs != null) {
+    const createdDay = toDayUTC(createdMs);
+    if (createdDay && opDay < createdDay) return false;
+  }
 
   const closedMs = toMs(plan.closedAt);
-  if (closedMs != null && opMs > closedMs) return false;
+  if (closedMs != null) {
+    const closedDay = toDayUTC(closedMs);
+    if (closedDay && opDay > closedDay) return false;
+  }
 
   return true;
 }
