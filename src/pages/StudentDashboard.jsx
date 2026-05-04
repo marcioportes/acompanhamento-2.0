@@ -50,6 +50,7 @@ import DebugBadge from '../components/DebugBadge';
 import CsvImportWizard from '../components/csv/CsvImportWizard';
 import CsvImportCard from '../components/csv/CsvImportCard';
 import CsvImportManager from '../components/csv/CsvImportManager';
+import CsvActivationResultModal from '../components/csv/CsvActivationResultModal';
 
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
@@ -163,6 +164,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [wizardComplete, setWizardComplete] = useState(false);
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
+  const [activationResult, setActivationResult] = useState(null);
   const [showOrderImport, setShowOrderImport] = useState(false);
 
   // Sincronização bidirecional com StudentContext (issue #118 — DEC-047)
@@ -337,24 +339,14 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
   };
 
-  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240) */
+  /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240).
+   *  Retorna o resultado bruto do hook — UI de feedback fica com o CsvImportManager/Modal. */
   const handleActivateStagingTrade = async (stagingTrade) => {
-    try {
-      const planTrades = trades.filter(t => t.planId === stagingTrade.planId);
-      const result = await activateStagingTrade(stagingTrade, addTrade, {
-        existingTrades: planTrades,
-        updateTradeFn: updateTrade,
-      });
-      if (result && typeof result === 'object') {
-        if (result.enriched) {
-          alert(`Trade duplicado — enriquecido com ${result.fields.join(', ')} do CSV. Staging removido.`);
-        } else if (result.skipped) {
-          alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
-        }
-      }
-    } catch (err) {
-      alert('Erro ao ativar trade: ' + err.message);
-    }
+    const planTrades = trades.filter(t => t.planId === stagingTrade.planId);
+    return activateStagingTrade(stagingTrade, addTrade, {
+      existingTrades: planTrades,
+      updateTradeFn: updateTrade,
+    });
   };
 
   /** Wrapper para activateBatch que injeta addTrade + trades do plano e suspende listener durante batch */
@@ -727,7 +719,14 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onDeleteStagingBatch={deleteStagingBatch}
         onActivateTrade={handleActivateStagingTrade}
         onActivateBatch={handleActivateStagingBatch}
+        onActivationComplete={(result) => setActivationResult(result)}
         getBatches={getBatches}
+      />
+
+      <CsvActivationResultModal
+        isOpen={!!activationResult}
+        onClose={() => setActivationResult(null)}
+        result={activationResult}
       />
 
       {/* Order Import Modal (CHUNK-10) */}

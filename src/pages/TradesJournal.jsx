@@ -21,6 +21,7 @@ import DebugBadge from '../components/DebugBadge';
 import CsvImportWizard from '../components/csv/CsvImportWizard';
 import CsvImportCard from '../components/csv/CsvImportCard';
 import CsvImportManager from '../components/csv/CsvImportManager';
+import CsvActivationResultModal from '../components/csv/CsvActivationResultModal';
 import { useTrades } from '../hooks/useTrades';
 import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
@@ -63,6 +64,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const [showFilters, setShowFilters] = useState(true);
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
+  const [activationResult, setActivationResult] = useState(null);
   
   // Filtro de contas — mesmo padrão do StudentDashboard via AccountFilterBar
   const [accountTypeFilter, setAccountTypeFilter] = useState('real');
@@ -276,28 +278,24 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         onDeleteStagingTrade={deleteStagingTrade}
         onDeleteStagingBatch={deleteStagingBatch}
         onActivateTrade={async (t) => {
-          try {
-            const planTrades = trades.filter(x => x.planId === t.planId);
-            const result = await activateStagingTrade(t, addTrade, {
-              existingTrades: planTrades,
-              updateTradeFn: updateTrade,
-            });
-            if (result && typeof result === 'object') {
-              if (result.enriched) {
-                alert(`Trade duplicado — enriquecido com ${result.fields.join(', ')} do CSV. Staging removido.`);
-              } else if (result.skipped) {
-                alert(`Trade duplicado — já existia (${result.reason}). Removido do staging.`);
-              }
-            }
-          } catch (err) {
-            alert('Erro: ' + err.message);
-          }
+          const planTrades = trades.filter(x => x.planId === t.planId);
+          return activateStagingTrade(t, addTrade, {
+            existingTrades: planTrades,
+            updateTradeFn: updateTrade,
+          });
         }}
         onActivateBatch={async (ids, onProgress) => activateStagingBatch(ids, addTrade, onProgress, {
           existingTrades: trades,
           updateTradeFn: updateTrade,
         })}
+        onActivationComplete={(result) => setActivationResult(result)}
         getBatches={getBatches}
+      />
+
+      <CsvActivationResultModal
+        isOpen={!!activationResult}
+        onClose={() => setActivationResult(null)}
+        result={activationResult}
       />
 
       <DebugBadge component="TradesJournal" />
