@@ -36,6 +36,7 @@ import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
 import { reconstructOperations, associateNonFilledOrders } from '../utils/orderReconstruction';
 import { enrichOperationsWithStopAnalysis } from '../utils/stopMovementAnalysis';
+import { enrichOperationsWithStopSemantic } from '../utils/stopSemantic';
 import { correlateOrders, correlateCancelledOrders } from '../utils/orderCorrelation';
 import { categorizeConfirmedOps, CLASSIFICATION } from '../utils/orderTradeCreation';
 import { createTradesBatch } from '../utils/orderTradeBatch';
@@ -290,6 +291,7 @@ const OrderImportPage = ({
       setProgress('Reconstruindo operações...');
       const ops = reconstructOperations(parsedOrders);
       associateNonFilledOrders(ops, parsedOrders);
+      enrichOperationsWithStopSemantic(ops);
       enrichOperationsWithStopAnalysis(ops);
 
       setReconstructedOps(ops);
