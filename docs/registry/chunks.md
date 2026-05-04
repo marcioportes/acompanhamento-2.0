@@ -5,5 +5,5 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-
-_(sem locks ativos)_
+| CHUNK-10 | #240 | `fix/issue-240-plan-coverage-and-perf-dedup` | 04/05/2026 | escrita |
+| CHUNK-07 | #240 | `fix/issue-240-plan-coverage-and-perf-dedup` | 04/05/2026 | escrita |
