@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.55.5: #248 feat redesign filtro follow-up — checkbox + on/off (compacto) (PR #249, 04/05/2026)
  * - 1.55.4: #246 feat 3 chips de filtro de follow-up (Todos / Em / Sem) (PR #247, 04/05/2026)
  * - 1.55.3: #243 feat campo follow-up em assinatura + filtro (PR #245, 04/05/2026)
  * - 1.55.2: #242 fix parser ProfitChart-Pro — bracket OCO LIMIT + distinção stop loss vs stop de ganho
@@ -339,9 +340,9 @@
  */
 const VERSION = {
   version: '1.55.5',
-  build: '20260504e',
+  build: '20260504',
   display: 'v1.55.5',
-  full: '1.55.5+20260504e',
+  full: '1.55.5+20260504',
 };
 export default VERSION;
 export { VERSION };

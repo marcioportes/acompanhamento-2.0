@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.55.5] - 04/05/2026 · #248 · PR #249
+
+**feat:** redesign filtro follow-up — checkbox + on/off (compacto)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.55.4] - 04/05/2026 · #246 · PR #247
 
 **feat:** 3 chips de filtro de follow-up (Todos / Em / Sem)
