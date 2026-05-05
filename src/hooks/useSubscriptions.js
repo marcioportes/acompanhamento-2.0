@@ -36,6 +36,22 @@ const daysUntil = (date) => {
   return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
 };
 
+/** Status derivado on-the-fly a partir das datas — sem CF, sem grace.
+ *  Past renewalDate (paid) → 'overdue' imediato. Past trialEndsAt → 'expired'.
+ *  Estados controlados pelo usuário (cancelled, paused) e VIP preservam o status do doc. */
+const deriveStatus = (sub) => {
+  if (sub.status === 'cancelled' || sub.status === 'paused') return sub.status;
+  if (sub.type === 'vip') return sub.status ?? 'active';
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  if (sub.type === 'trial') {
+    if (sub.trialEndsAt && sub.trialEndsAt < startOfToday) return 'expired';
+    return 'active';
+  }
+  if (sub.renewalDate && sub.renewalDate < startOfToday) return 'overdue';
+  return 'active';
+};
+
 /**
  * Extrai studentId do path do documento de subscription.
  * Path: students/{studentId}/subscriptions/{subId}
@@ -128,6 +144,7 @@ export const useSubscriptions = () => {
       const student = studentMap.get(sub.studentId);
       return {
         ...sub,
+        status: deriveStatus(sub),
         studentName: student?.name ?? sub.studentId,
         studentEmail: student?.email ?? '',
         studentWhatsapp: student?.whatsappNumber ?? '',
