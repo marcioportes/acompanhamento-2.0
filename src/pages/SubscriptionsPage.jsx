@@ -288,16 +288,28 @@ const SubscriptionsPage = () => {
 
   // ── Filtered data ──
 
-  const filtered = useMemo(() => {
-    let result = [...subscriptions];
-    if (statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
-    if (typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
-    if (followUpFilter === 'on') result = result.filter(s => s.inFollowUp === true);
-    else if (followUpFilter === 'off') result = result.filter(s => s.inFollowUp !== true);
-    if (searchTerm.trim()) {
+  // Aplica todos os filtros exceto o `exclude` (issue #256 — contadores intersect)
+  const applyFilters = useCallback((subs, exclude = null) => {
+    let result = subs;
+    if (exclude !== 'status' && statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
+    if (exclude !== 'type' && typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
+    if (exclude !== 'followUp') {
+      if (followUpFilter === 'on') result = result.filter(s => s.inFollowUp === true);
+      else if (followUpFilter === 'off') result = result.filter(s => s.inFollowUp !== true);
+    }
+    if (exclude !== 'search' && searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(s => s.studentName?.toLowerCase().includes(term) || s.studentEmail?.toLowerCase().includes(term));
     }
+    return result;
+  }, [statusFilter, typeFilter, followUpFilter, searchTerm]);
+
+  const subsForStatusCount = useMemo(() => applyFilters(subscriptions, 'status'), [applyFilters, subscriptions]);
+  const subsForTypeCount = useMemo(() => applyFilters(subscriptions, 'type'), [applyFilters, subscriptions]);
+  const subsForFollowUpCount = useMemo(() => applyFilters(subscriptions, 'followUp'), [applyFilters, subscriptions]);
+
+  const filtered = useMemo(() => {
+    let result = applyFilters([...subscriptions]);
 
     const sortKeys = {
       studentName: (s) => (s.studentName ?? '').toLowerCase(),
@@ -317,7 +329,7 @@ const SubscriptionsPage = () => {
       return (a.studentName ?? '').localeCompare(b.studentName ?? '');
     });
     return result;
-  }, [subscriptions, statusFilter, typeFilter, followUpFilter, searchTerm, sortBy, sortDir]);
+  }, [subscriptions, applyFilters, sortBy, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages - 1);
@@ -526,21 +538,27 @@ const SubscriptionsPage = () => {
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {[
-            { value: 'all', label: 'Todos', count: subscriptions.length },
-            { value: 'active', label: 'Ativos', count: subscriptions.filter(s => s.status === 'active').length },
-            { value: 'pending', label: 'Pendentes', count: subscriptions.filter(s => s.status === 'pending').length },
-            { value: 'overdue', label: 'Inadimplentes', count: subscriptions.filter(s => s.status === 'overdue').length },
-            { value: 'paused', label: 'Pausados', count: subscriptions.filter(s => s.status === 'paused').length },
-            { value: 'cancelled', label: 'Cancelados', count: subscriptions.filter(s => s.status === 'cancelled').length },
-            { value: 'expired', label: 'Expirados', count: subscriptions.filter(s => s.status === 'expired').length },
+            { value: 'all', label: 'Todos', count: subsForStatusCount.length },
+            { value: 'active', label: 'Ativos', count: subsForStatusCount.filter(s => s.status === 'active').length },
+            { value: 'overdue', label: 'Inadimplentes', count: subsForStatusCount.filter(s => s.status === 'overdue').length },
+            { value: 'paused', label: 'Pausados', count: subsForStatusCount.filter(s => s.status === 'paused').length },
+            { value: 'cancelled', label: 'Cancelados', count: subsForStatusCount.filter(s => s.status === 'cancelled').length },
+            { value: 'expired', label: 'Expirados', count: subsForStatusCount.filter(s => s.status === 'expired').length },
           ].map(f => (
             <button key={f.value} onClick={() => { setStatusFilter(f.value); setPage(0); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
               {f.label}{f.count !== undefined && <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>}
             </button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
-          {[{ value: 'all', label: 'Todos tipos' }, { value: 'paid', label: 'Pagos' }, { value: 'trial', label: 'Trial' }, { value: 'vip', label: 'VIP' }].map(f => (
-            <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>{f.label}</button>
+          {[
+            { value: 'all', label: 'Todos tipos', count: subsForTypeCount.length },
+            { value: 'paid', label: 'Pagos', count: subsForTypeCount.filter(s => s.type === 'paid').length },
+            { value: 'trial', label: 'Trial', count: subsForTypeCount.filter(s => s.type === 'trial').length },
+            { value: 'vip', label: 'VIP', count: subsForTypeCount.filter(s => s.type === 'vip').length },
+          ].map(f => (
+            <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
+              {f.label}<span className={`text-xs px-1.5 py-0.5 rounded-full ${typeFilter === f.value ? 'bg-violet-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+            </button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
           <label className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm cursor-pointer hover:bg-slate-800/50 transition-colors">
@@ -558,14 +576,14 @@ const SubscriptionsPage = () => {
               type="button"
               disabled={followUpFilter === 'all'}
               onClick={() => { setFollowUpFilter('on'); setPage(0); }}
-              className={`px-3 py-2 text-xs transition-colors ${followUpFilter === 'on' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
-            >on</button>
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${followUpFilter === 'on' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
+            >on<span className={`text-[10px] px-1 rounded-full ${followUpFilter === 'on' ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subsForFollowUpCount.filter(s => s.inFollowUp === true).length}</span></button>
             <button
               type="button"
               disabled={followUpFilter === 'all'}
               onClick={() => { setFollowUpFilter('off'); setPage(0); }}
-              className={`px-3 py-2 text-xs transition-colors border-l border-slate-700/50 ${followUpFilter === 'off' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
-            >off</button>
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors border-l border-slate-700/50 ${followUpFilter === 'off' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
+            >off<span className={`text-[10px] px-1 rounded-full ${followUpFilter === 'off' ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subsForFollowUpCount.filter(s => s.inFollowUp !== true).length}</span></button>
           </div>
         </div>
       </div>
