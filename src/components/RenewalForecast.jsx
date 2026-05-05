@@ -23,7 +23,9 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-/** Gera array de 12 meses a partir de startMonth/startYear */
+/** Gera array de 12 meses a partir de startMonth/startYear.
+ *  `label` inclui sufixo /YY quando o ano do slot difere do `startYear` (evita
+ *  ambiguidade quando a janela atravessa virada de ano). */
 const buildMonthSlots = (startMonth, startYear) => {
   const slots = [];
   for (let i = 0; i < MONTHS_COUNT; i++) {
@@ -31,7 +33,8 @@ const buildMonthSlots = (startMonth, startYear) => {
     const year = d.getFullYear();
     const month = d.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+    const monthShort = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
+    const label = year !== startYear ? `${monthShort}/${String(year).slice(-2)}` : monthShort;
     slots.push({ monthKey, label, year, month });
   }
   return slots;
@@ -103,7 +106,7 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
     [allPayments, studentsMap]
   );
   const [paymentsExpanded, setPaymentsExpanded] = useState(false);
-  const currentMonthLabel = MONTH_NAME_BR_FULL[now.getMonth()];
+  const currentMonthLabel = `${MONTH_NAME_BR_FULL[now.getMonth()]} de ${now.getFullYear()}`;
   const expandedPayments = expandedMonth ? paymentsByMonth[expandedMonth] : null;
 
   // Anos para o dropdown: atual -1 até +5 (janela de 7 anos, cobre qualquer cenário razoável)
@@ -244,7 +247,9 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
         const scheduled = expanded?.students.filter(s => !s.overdue) ?? [];
         const received = expandedPayments?.list ?? [];
         const expandedSlot = slots.find(s => s.monthKey === expandedMonth);
-        const expandedMonthLabel = expandedSlot ? MONTH_NAME_BR_FULL[expandedSlot.month] : '';
+        const expandedMonthLabel = expandedSlot
+          ? `${MONTH_NAME_BR_FULL[expandedSlot.month]} de ${expandedSlot.year}`
+          : '';
 
         return (
           <div className="mt-3 pt-3 border-t border-slate-800/50 max-w-md space-y-2">
