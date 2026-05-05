@@ -7,7 +7,8 @@
 import { useMemo, useState } from 'react';
 import { TrendingUp, User, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { groupRenewalsByMonth, formatBRL, formatDateBR } from '../utils/renewalForecast';
-import { useCurrentMonthPayments } from '../hooks/useCurrentMonthPayments';
+import { aggregatePaymentsForMonth } from '../utils/monthlyPayments';
+import { usePayments } from '../hooks/usePayments';
 import DebugBadge from './DebugBadge';
 
 const MONTH_NAME_BR_FULL = [
@@ -31,7 +32,7 @@ const buildMonthSlots = (startMonth, startYear) => {
     const month = d.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
     const label = d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '');
-    slots.push({ monthKey, label, year });
+    slots.push({ monthKey, label, year, month });
   }
   return slots;
 };
@@ -81,7 +82,7 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
 
   const expanded = expandedMonth ? forecastMap[expandedMonth] : null;
 
-  // ── Recebido no mês corrente (issue #250) ──
+  // ── Pagamentos recebidos (issue #250 + #252) ──
   const studentsMap = useMemo(() => {
     const m = new Map();
     for (const s of subscriptions ?? []) {
@@ -89,9 +90,21 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
     }
     return m;
   }, [subscriptions]);
-  const monthlyPayments = useCurrentMonthPayments(studentsMap);
+  const allPayments = usePayments();
+  const paymentsByMonth = useMemo(() => {
+    const map = {};
+    for (const slot of slots) {
+      map[slot.monthKey] = aggregatePaymentsForMonth(allPayments, slot.year, slot.month, studentsMap);
+    }
+    return map;
+  }, [allPayments, slots, studentsMap]);
+  const monthlyPayments = useMemo(
+    () => aggregatePaymentsForMonth(allPayments, now.getFullYear(), now.getMonth(), studentsMap),
+    [allPayments, studentsMap]
+  );
   const [paymentsExpanded, setPaymentsExpanded] = useState(false);
   const currentMonthLabel = MONTH_NAME_BR_FULL[now.getMonth()];
+  const expandedPayments = expandedMonth ? paymentsByMonth[expandedMonth] : null;
 
   // Anos para o dropdown: atual -1 até +5 (janela de 7 anos, cobre qualquer cenário razoável)
   const baseYear = now.getFullYear();
@@ -158,6 +171,9 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
         {slots.map((slot) => {
           const data = forecastMap[slot.monthKey];
           const hasData = !!data;
+          const slotPayments = paymentsByMonth[slot.monthKey];
+          const hasPayments = (slotPayments?.count ?? 0) > 0;
+          const isExpandable = hasData || hasPayments;
           const isActive = expandedMonth === slot.monthKey;
           const overdueStudents = data?.students.filter(s => s.overdue) ?? [];
           const scheduledStudents = data?.students.filter(s => !s.overdue) ?? [];
@@ -169,17 +185,17 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
           return (
             <button
               key={slot.monthKey}
-              onClick={() => hasData && setExpandedMonth(isActive ? null : slot.monthKey)}
+              onClick={() => isExpandable && setExpandedMonth(isActive ? null : slot.monthKey)}
               className={`flex flex-col items-center py-2 px-1 rounded-lg border transition-colors ${
                 isActive
                   ? hasOverdue && !hasScheduled ? 'bg-red-500/10 border-red-500/40' : 'bg-violet-500/15 border-violet-500/40'
                   : hasOverdue && !hasScheduled
                     ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/30 cursor-pointer'
-                    : hasData
+                    : isExpandable
                       ? 'bg-slate-800/30 border-slate-700/30 hover:bg-slate-800/50 hover:border-slate-600/40 cursor-pointer'
                       : 'bg-slate-800/10 border-slate-800/20 cursor-default opacity-50'
               }`}
-              disabled={!hasData}
+              disabled={!isExpandable}
             >
               <span className={`text-[10px] uppercase tracking-wide ${isActive ? 'text-violet-300' : 'text-slate-500'}`}>
                 {slot.label}
@@ -196,8 +212,22 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
                       {formatBRL(overdueAmount)}
                     </span>
                   )}
+                  {hasPayments && (
+                    <span className="text-[10px] font-bold text-emerald-400 mt-0.5">
+                      ✓ {formatBRL(slotPayments.total)}
+                    </span>
+                  )}
                   <span className="text-[9px] text-slate-500 flex items-center gap-0.5 mt-0.5">
                     <User className="w-2 h-2" />{data.students.length}
+                  </span>
+                </>
+              ) : hasPayments ? (
+                <>
+                  <span className="text-[10px] font-bold text-emerald-400 mt-0.5">
+                    ✓ {formatBRL(slotPayments.total)}
+                  </span>
+                  <span className="text-[9px] text-slate-500 flex items-center gap-0.5 mt-0.5">
+                    <User className="w-2 h-2" />{slotPayments.count}
                   </span>
                 </>
               ) : (
@@ -208,29 +238,58 @@ const RenewalForecast = ({ subscriptions, embedded = false }) => {
         })}
       </div>
 
-      {/* Detalhe expandido embaixo */}
-      {expanded && (() => {
-        const overdue = expanded.students.filter(s => s.overdue);
-        const scheduled = expanded.students.filter(s => !s.overdue);
-        const overdueTotal = overdue.reduce((sum, s) => sum + s.amount, 0);
-        const scheduledTotal = scheduled.reduce((sum, s) => sum + s.amount, 0);
+      {/* Detalhe expandido — Recebidos + Inadimplentes + Vencimentos (issue #252) */}
+      {expandedMonth && (expanded || (expandedPayments?.count ?? 0) > 0) && (() => {
+        const overdue = expanded?.students.filter(s => s.overdue) ?? [];
+        const scheduled = expanded?.students.filter(s => !s.overdue) ?? [];
+        const received = expandedPayments?.list ?? [];
+        const expandedSlot = slots.find(s => s.monthKey === expandedMonth);
+        const expandedMonthLabel = expandedSlot ? MONTH_NAME_BR_FULL[expandedSlot.month] : '';
 
         return (
-          <div className="mt-3 pt-3 border-t border-slate-800/50 max-w-md">
-            {overdue.map((s, i) => (
-              <div key={`o-${i}`} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
-                <span className="text-red-400 truncate">{s.name}</span>
-                <span className="text-red-400/50 text-[11px]">venceu {formatDateBR(s.endDate)}</span>
-                <span className="text-red-400 font-medium text-right">{formatBRL(s.amount)}</span>
+          <div className="mt-3 pt-3 border-t border-slate-800/50 max-w-md space-y-2">
+            {received.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-emerald-500/70 mb-1">
+                  Recebidos em {expandedMonthLabel} ({received.length} · {formatBRL(expandedPayments.total)})
+                </p>
+                {received.map((p) => (
+                  <div key={p.id} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
+                    <span className="text-slate-300 truncate">{p.studentName}</span>
+                    <span className="text-slate-500 text-[11px]">{formatDateBR(p.dateObj)}</span>
+                    <span className="text-emerald-400 font-medium text-right">{formatBRL(p.amount)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            {scheduled.map((s, i) => (
-              <div key={`s-${i}`} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
-                <span className="text-slate-300 truncate">{s.name}</span>
-                <span className="text-slate-500 text-[11px]">{formatDateBR(s.endDate)}</span>
-                <span className="text-white font-medium text-right">{formatBRL(s.amount)}</span>
+            )}
+            {overdue.length > 0 && (
+              <div>
+                {received.length > 0 && (
+                  <p className="text-[10px] uppercase tracking-wide text-red-500/70 mb-1">Inadimplentes</p>
+                )}
+                {overdue.map((s, i) => (
+                  <div key={`o-${i}`} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
+                    <span className="text-red-400 truncate">{s.name}</span>
+                    <span className="text-red-400/50 text-[11px]">venceu {formatDateBR(s.endDate)}</span>
+                    <span className="text-red-400 font-medium text-right">{formatBRL(s.amount)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {scheduled.length > 0 && (
+              <div>
+                {(received.length > 0 || overdue.length > 0) && (
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500/70 mb-1">Vencimentos</p>
+                )}
+                {scheduled.map((s, i) => (
+                  <div key={`s-${i}`} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs py-0.5 items-center">
+                    <span className="text-slate-300 truncate">{s.name}</span>
+                    <span className="text-slate-500 text-[11px]">{formatDateBR(s.endDate)}</span>
+                    <span className="text-white font-medium text-right">{formatBRL(s.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       })()}
