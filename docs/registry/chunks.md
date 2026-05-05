@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-16 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | escrita |

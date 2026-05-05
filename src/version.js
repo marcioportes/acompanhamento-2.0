@@ -341,10 +341,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.56.1',
-  build: '20260504',
-  display: 'v1.56.1',
-  full: '1.56.1+20260504',
+  version: '1.56.2',
+  build: '20260504h',
+  display: 'v1.56.2',
+  full: '1.56.2+20260504h',
 };
 export default VERSION;
 export { VERSION };
