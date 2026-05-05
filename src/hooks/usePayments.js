@@ -1,18 +1,18 @@
 /**
- * useCurrentMonthPayments — issue #250
- * @description Listener real-time do collection group `payments`, agrega o mês corrente.
+ * usePayments — issue #252 (sucessor de useCurrentMonthPayments do #250)
+ * @description Listener real-time do collection group `payments`. Retorna a
+ *   lista bruta enriched com `studentId` (derivado do path); a agregação por
+ *   mês é responsabilidade do caller via `aggregatePaymentsForMonth`.
  *
  * Source: students/{uid}/subscriptions/{subId}/payments/{pid}
- * Mês corrente = `new Date()` na timezone do browser (assume mentor em BR).
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { collectionGroup, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { aggregatePaymentsForMonth } from '../utils/monthlyPayments';
 
-export const useCurrentMonthPayments = (studentsMap) => {
+export const usePayments = () => {
   const { user, isMentor } = useAuth();
   const [payments, setPayments] = useState([]);
 
@@ -32,10 +32,5 @@ export const useCurrentMonthPayments = (studentsMap) => {
     return () => unsubscribe();
   }, [user, isMentor]);
 
-  const summary = useMemo(() => {
-    const now = new Date();
-    return aggregatePaymentsForMonth(payments, now.getFullYear(), now.getMonth(), studentsMap);
-  }, [payments, studentsMap]);
-
-  return summary;
+  return payments;
 };

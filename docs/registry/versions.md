@@ -26,3 +26,4 @@
 | 1.55.4 | #246 | `feat/issue-246-followup-segment-filters` | 04/05/2026 | consumida (PR #247 squash `fa573da1`) |
 | 1.55.5 | #248 | `feat/issue-248-followup-checkbox-redesign` | 04/05/2026 | consumida (PR #249 squash `d1507a8b`) |
 | 1.56.0 | #250 | `feat/issue-250-monthly-payments-summary` | 04/05/2026 | consumida (PR #251 squash `2f263a91`) |
+| 1.56.1 | #252 | `feat/issue-252-payments-in-month-expand` | 04/05/2026 | reservada |
