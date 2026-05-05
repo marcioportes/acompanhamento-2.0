@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.56.1] - 04/05/2026 · #252 · PR #253
+
+**fix:** expand de mês mostra Recebidos + Inadimplentes + Vencimentos
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.56.0] - 04/05/2026 · #250 · PR #251
 
 **feat:** resumo de pagamentos do mês no Fluxo de Caixa

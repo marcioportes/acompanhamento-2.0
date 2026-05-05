@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-16 | #252 | `feat/issue-252-payments-in-month-expand` | 04/05/2026 | escrita |
