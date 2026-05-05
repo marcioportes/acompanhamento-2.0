@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.56.3] - 05/05/2026 · #256 · PR #257
+
+**fix:** contadores intersect com filtros + remove chip Pendentes
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.56.2] - 04/05/2026 · #254 · PR #255
 
 **fix:** regra de leitura para collectionGroup('payments')

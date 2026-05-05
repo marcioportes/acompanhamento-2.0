@@ -28,4 +28,4 @@
 | 1.56.0 | #250 | `feat/issue-250-monthly-payments-summary` | 04/05/2026 | consumida (PR #251 squash `2f263a91`) |
 | 1.56.1 | #252 | `feat/issue-252-payments-in-month-expand` | 04/05/2026 | consumida (PR #253 squash `4e2a57fa`) |
 | 1.56.2 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | consumida (PR #255 squash `47e07e21`) |
-| 1.56.3 | #256 | `fix/issue-256-filter-counters-intersect` | 05/05/2026 | reservada |
+| 1.56.3 | #256 | `fix/issue-256-filter-counters-intersect` | 05/05/2026 | consumida (PR #257 squash `2f1bfe48`) |

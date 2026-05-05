@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.56.3: #256 fix contadores intersect com filtros + remove chip Pendentes (PR #257, 05/05/2026)
  * - 1.56.2: #254 fix regra de leitura para collectionGroup('payments') (PR #255, 04/05/2026)
  * - 1.56.1: #252 fix expand de mês mostra Recebidos + Inadimplentes + Vencimentos (PR #253, 04/05/2026)
  * - 1.56.0: #250 feat resumo de pagamentos do mês no Fluxo de Caixa (PR #251, 04/05/2026)
@@ -343,9 +344,9 @@
  */
 const VERSION = {
   version: '1.56.3',
-  build: '20260505a',
+  build: '20260505',
   display: 'v1.56.3',
-  full: '1.56.3+20260505a',
+  full: '1.56.3+20260505',
 };
 export default VERSION;
 export { VERSION };
