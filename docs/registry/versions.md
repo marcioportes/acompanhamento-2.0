@@ -27,4 +27,4 @@
 | 1.55.5 | #248 | `feat/issue-248-followup-checkbox-redesign` | 04/05/2026 | consumida (PR #249 squash `d1507a8b`) |
 | 1.56.0 | #250 | `feat/issue-250-monthly-payments-summary` | 04/05/2026 | consumida (PR #251 squash `2f263a91`) |
 | 1.56.1 | #252 | `feat/issue-252-payments-in-month-expand` | 04/05/2026 | consumida (PR #253 squash `4e2a57fa`) |
-| 1.56.2 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | reservada |
+| 1.56.2 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | consumida (PR #255 squash `47e07e21`) |

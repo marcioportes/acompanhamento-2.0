@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.56.2] - 04/05/2026 · #254 · PR #255
+
+**fix:** regra de leitura para collectionGroup('payments')
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.56.1] - 04/05/2026 · #252 · PR #253
 
 **fix:** expand de mês mostra Recebidos + Inadimplentes + Vencimentos

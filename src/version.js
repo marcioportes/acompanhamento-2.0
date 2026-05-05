@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.56.2: #254 fix regra de leitura para collectionGroup('payments') (PR #255, 04/05/2026)
  * - 1.56.1: #252 fix expand de mês mostra Recebidos + Inadimplentes + Vencimentos (PR #253, 04/05/2026)
  * - 1.56.0: #250 feat resumo de pagamentos do mês no Fluxo de Caixa (PR #251, 04/05/2026)
  * - 1.55.5: #248 feat redesign filtro follow-up — checkbox + on/off (compacto) (PR #249, 04/05/2026)
@@ -342,9 +343,9 @@
  */
 const VERSION = {
   version: '1.56.2',
-  build: '20260504h',
+  build: '20260504',
   display: 'v1.56.2',
-  full: '1.56.2+20260504h',
+  full: '1.56.2+20260504',
 };
 export default VERSION;
 export { VERSION };
