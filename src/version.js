@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.56.4: relabel "Inadimplente" → "Vencido" em SubscriptionsPage + remove campo Grace period dos forms + busca em linha cheia (05/05/2026, hot-patch direto em main)
  * - 1.56.3: #256 fix contadores intersect com filtros + remove chip Pendentes (PR #257, 05/05/2026)
  * - 1.56.2: #254 fix regra de leitura para collectionGroup('payments') (PR #255, 04/05/2026)
  * - 1.56.1: #252 fix expand de mês mostra Recebidos + Inadimplentes + Vencimentos (PR #253, 04/05/2026)
@@ -343,10 +344,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.56.3',
+  version: '1.56.4',
   build: '20260505',
-  display: 'v1.56.3',
-  full: '1.56.3+20260505',
+  display: 'v1.56.4',
+  full: '1.56.4+20260505',
 };
 export default VERSION;
 export { VERSION };

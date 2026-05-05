@@ -147,7 +147,7 @@ const DateInputBR = ({ value, onChange, className, ...props }) => {
 const STATUS_CONFIG = {
   active:    { label: 'Ativo',        color: 'emerald', icon: CheckCircle },
   pending:   { label: 'Pendente',     color: 'amber',   icon: Clock },
-  overdue:   { label: 'Inadimplente', color: 'red',     icon: AlertTriangle },
+  overdue:   { label: 'Vencido',      color: 'red',     icon: AlertTriangle },
   paused:    { label: 'Pausado',      color: 'slate',   icon: Pause },
   cancelled: { label: 'Cancelado',    color: 'red',     icon: XCircle },
   expired:   { label: 'Expirado',     color: 'slate',   icon: XCircle },
@@ -351,8 +351,8 @@ const SubscriptionsPage = () => {
   // ── Handlers ──
 
   const openPayment = (sub) => { setSelectedSub(sub); setPaymentForm({ amount: String(sub.amount ?? ''), date: todayStr(), method: 'pix', reference: '', plan: sub.plan ?? 'alpha', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1) }); setReceiptFile(null); setModal('payment'); };
-  const openEdit = (sub) => { setSelectedSub(sub); setEditError(''); setEditForm({ type: sub.type ?? 'paid', plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), gracePeriodDays: String(sub.gracePeriodDays ?? 5), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), trialDays: '30', notes: sub.notes ?? '' }); setModal('edit'); };
-  const openNew = () => { setNewForm({ studentId: '', alunoMode: 'existing', newAlunoName: '', newAlunoEmail: '', newAlunoWhatsapp: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), gracePeriodDays: '5', billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
+  const openEdit = (sub) => { setSelectedSub(sub); setEditError(''); setEditForm({ type: sub.type ?? 'paid', plan: sub.plan ?? 'alpha', amount: String(sub.amount ?? ''), currency: sub.currency ?? 'BRL', billingPeriodMonths: String(sub.billingPeriodMonths ?? 1), startDate: dateToIso(sub.startDate), renewalDate: dateToIso(sub.renewalDate), trialDays: '30', notes: sub.notes ?? '' }); setModal('edit'); };
+  const openNew = () => { setNewForm({ studentId: '', alunoMode: 'existing', newAlunoName: '', newAlunoEmail: '', newAlunoWhatsapp: '', type: 'paid', plan: 'alpha', amount: '', currency: 'BRL', startDate: todayStr(), billingPeriodMonths: '1', trialDays: '30', notes: '' }); setReceiptFile(null); setModal('new'); };
 
   const openHistory = useCallback(async (sub) => {
     setSelectedSub(sub); setModal('history'); setLoadingPayments(true);
@@ -421,7 +421,6 @@ const SubscriptionsPage = () => {
         updates.amount = parseFloat(editForm.amount) || 0;
         updates.currency = editForm.currency;
         updates.billingPeriodMonths = parseInt(editForm.billingPeriodMonths) || 1;
-        updates.gracePeriodDays = parseInt(editForm.gracePeriodDays) || 5;
         // Se não tem renewalDate (ex: conversão trial→paid), calcular a partir de startDate
         if (!editForm.renewalDate && editForm.startDate) {
           const start = new Date(editForm.startDate + 'T12:00:00Z');
@@ -469,7 +468,7 @@ const SubscriptionsPage = () => {
         data.trialDays = newForm.trialDays;
       } else if (newForm.type === 'paid') {
         data.amount = newForm.amount; data.currency = newForm.currency;
-        data.gracePeriodDays = newForm.gracePeriodDays; data.billingPeriodMonths = newForm.billingPeriodMonths;
+        data.billingPeriodMonths = newForm.billingPeriodMonths;
       }
       await addSubscription(data); closeModal();
     } catch (err) { console.error(err); alert(err.message); } finally { setActionLoading(false); }
@@ -488,8 +487,7 @@ const SubscriptionsPage = () => {
     if (!target) return <span className="text-xs text-slate-600">—</span>;
     const days = daysUntil(target);
     if (days === null) return <span className="text-xs text-slate-600">—</span>;
-    if (status === 'overdue') return <span className="text-xs text-red-400 font-medium">{Math.abs(days)} dias em atraso</span>;
-    if (days < 0) return <span className="text-xs text-red-400 font-medium">Vencido há {Math.abs(days)} {Math.abs(days) === 1 ? 'dia' : 'dias'}</span>;
+    if (status === 'overdue' || days < 0) return <span className="text-xs text-red-400 font-medium">Vencido há {Math.abs(days)} {Math.abs(days) === 1 ? 'dia' : 'dias'}</span>;
     if (days === 0) return <span className="text-xs text-red-400 font-medium">{type === 'trial' ? 'Trial expira hoje' : 'Vence hoje'}</span>;
     if (days <= 7) return <span className="text-xs text-amber-400 font-medium">{days} dias restantes</span>;
     return <span className="text-xs text-emerald-500">{days} dias restantes</span>;
@@ -512,14 +510,14 @@ const SubscriptionsPage = () => {
         </div>
       </div>
 
-      {/* Summary — exclui apenas cancelled (inadimplentes/pausados/expirados continuam vivos) */}
+      {/* Summary — exclui apenas cancelled (vencidos/pausados/expirados continuam vivos) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {(() => {
           const live = subscriptions.filter(s => s.status !== 'cancelled');
           return [
             { value: live.length, label: 'Ativas', icon: CheckCircle, color: 'emerald' },
             { value: summary.expiringSoon, label: 'Vencendo em 7 dias', icon: Clock, color: 'amber' },
-            { value: summary.overdue, label: 'Inadimplentes', icon: AlertTriangle, color: 'red' },
+            { value: summary.overdue, label: 'Vencidos', icon: AlertTriangle, color: 'red' },
             { value: `${live.filter(s => s.type === 'paid').length} / ${live.filter(s => s.type === 'trial').length} / ${live.filter(s => s.type === 'vip').length}`, label: 'Pagantes / Trial / VIP', icon: DollarSign, color: 'blue', isText: true },
           ];
         })().map((card, i) => (
@@ -531,16 +529,16 @@ const SubscriptionsPage = () => {
       <RenewalForecast subscriptions={subscriptions} embedded />
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input type="text" placeholder="Buscar por nome ou email..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }} className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap gap-2 pb-1">
           {[
             { value: 'all', label: 'Todos', count: subsForStatusCount.length },
             { value: 'active', label: 'Ativos', count: subsForStatusCount.filter(s => s.status === 'active').length },
-            { value: 'overdue', label: 'Inadimplentes', count: subsForStatusCount.filter(s => s.status === 'overdue').length },
+            { value: 'overdue', label: 'Vencidos', count: subsForStatusCount.filter(s => s.status === 'overdue').length },
             { value: 'paused', label: 'Pausados', count: subsForStatusCount.filter(s => s.status === 'paused').length },
             { value: 'cancelled', label: 'Cancelados', count: subsForStatusCount.filter(s => s.status === 'cancelled').length },
             { value: 'expired', label: 'Expirados', count: subsForStatusCount.filter(s => s.status === 'expired').length },
@@ -591,7 +589,7 @@ const SubscriptionsPage = () => {
       {/* Table */}
       <div className="glass-card overflow-hidden">
         <div className="px-4 py-2 border-b border-slate-800/30 flex items-center justify-between">
-          <p className="text-xs text-slate-500">Inadimplentes primeiro, depois alfabetico</p>
+          <p className="text-xs text-slate-500">Vencidos primeiro, depois alfabetico</p>
           <p className="text-xs text-slate-600">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="overflow-x-auto">
@@ -794,10 +792,7 @@ const SubscriptionsPage = () => {
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" placeholder="0,00" /></div>
                 <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={newForm.currency} onChange={(e) => setNewForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={newForm.billingPeriodMonths} onChange={(e) => setNewForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
-                <div><label className="block text-sm text-slate-400 mb-1">Grace period (dias)</label><input type="number" value={newForm.gracePeriodDays} onChange={(e) => setNewForm(f => ({ ...f, gracePeriodDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              </div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={newForm.billingPeriodMonths} onChange={(e) => setNewForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
               <ReceiptUpload receiptFile={receiptFile} setReceiptFile={setReceiptFile} />
             </>}
             {newForm.type === 'vip' && <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-400">VIP — sem cobrança, sem acesso ao sistema</div>}
@@ -863,10 +858,7 @@ const SubscriptionsPage = () => {
                 <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
                 <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={editForm.currency} onChange={(e) => setEditForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={editForm.billingPeriodMonths} onChange={(e) => setEditForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
-                <div><label className="block text-sm text-slate-400 mb-1">Grace (dias)</label><input type="number" value={editForm.gracePeriodDays} onChange={(e) => setEditForm(f => ({ ...f, gracePeriodDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              </div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={editForm.billingPeriodMonths} onChange={(e) => setEditForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
             </>}
             <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={editForm.notes} onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" /></div>
           </div>
