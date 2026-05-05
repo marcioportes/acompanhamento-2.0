@@ -286,6 +286,11 @@ service cloud.firestore {
       allow read: if isMentor();
     }
 
+    // collectionGroup('payments') — read-only do mentor (escrita só via path direto, issue #254)
+    match /{path=**}/payments/{paymentId} {
+      allow read: if isMentor();
+    }
+
     // ========== Maturity Engine — Progressão 4D × 5 stages (CHUNK-09, issue #119) ==========
     // INV-15 aprovada. Subcollection /maturity/{current|history/{YYYY-MM-DD}}.
     // Aluno lê próprio, mentor lê alunos dele. Apenas CF (admin SDK) escreve.
