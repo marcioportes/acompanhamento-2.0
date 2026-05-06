@@ -15,7 +15,6 @@ import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
   DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw,
-  MessageCircle
 } from 'lucide-react';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -216,7 +215,7 @@ const SubscriptionsPage = () => {
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [followUpFilter, setFollowUpFilter] = useState('all');
+  const [whatsappFilter, setWhatsappFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('studentName');
   const [sortDir, setSortDir] = useState('asc');
@@ -293,20 +292,19 @@ const SubscriptionsPage = () => {
     let result = subs;
     if (exclude !== 'status' && statusFilter !== 'all') result = result.filter(s => s.status === statusFilter);
     if (exclude !== 'type' && typeFilter !== 'all') result = result.filter(s => s.type === typeFilter);
-    if (exclude !== 'followUp') {
-      if (followUpFilter === 'on') result = result.filter(s => s.inFollowUp === true);
-      else if (followUpFilter === 'off') result = result.filter(s => s.inFollowUp !== true);
+    if (exclude !== 'whatsapp' && whatsappFilter !== 'all') {
+      result = result.filter(s => (s.whatsappState ?? 'none') === whatsappFilter);
     }
     if (exclude !== 'search' && searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(s => s.studentName?.toLowerCase().includes(term) || s.studentEmail?.toLowerCase().includes(term));
     }
     return result;
-  }, [statusFilter, typeFilter, followUpFilter, searchTerm]);
+  }, [statusFilter, typeFilter, whatsappFilter, searchTerm]);
 
   const subsForStatusCount = useMemo(() => applyFilters(subscriptions, 'status'), [applyFilters, subscriptions]);
   const subsForTypeCount = useMemo(() => applyFilters(subscriptions, 'type'), [applyFilters, subscriptions]);
-  const subsForFollowUpCount = useMemo(() => applyFilters(subscriptions, 'followUp'), [applyFilters, subscriptions]);
+  const subsForWhatsappCount = useMemo(() => applyFilters(subscriptions, 'whatsapp'), [applyFilters, subscriptions]);
 
   const filtered = useMemo(() => {
     let result = applyFilters([...subscriptions]);
@@ -366,10 +364,12 @@ const SubscriptionsPage = () => {
     try { await updateSubscription(sub, { status: 'active' }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [updateSubscription, actionLoading]);
 
-  const handleToggleFollowUp = useCallback(async (sub) => {
+  const handleCycleWhatsapp = useCallback(async (sub) => {
     if (actionLoading) return;
+    const current = sub.whatsappState ?? 'none';
+    const next = current === 'none' ? 'talking' : current === 'talking' ? 'waiting' : 'none';
     setActionLoading(true);
-    try { await updateSubscription(sub, { inFollowUp: !sub.inFollowUp }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
+    try { await updateSubscription(sub, { whatsappState: next }); } catch (err) { console.error(err); } finally { setActionLoading(false); }
   }, [updateSubscription, actionLoading]);
 
   const handleDelete = useCallback(async (sub) => {
@@ -559,30 +559,26 @@ const SubscriptionsPage = () => {
             </button>
           ))}
           <span className="border-l border-slate-700 mx-1" />
-          <label className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm cursor-pointer hover:bg-slate-800/50 transition-colors">
-            <input
-              type="checkbox"
-              checked={followUpFilter !== 'all'}
-              onChange={(e) => { setFollowUpFilter(e.target.checked ? 'on' : 'all'); setPage(0); }}
-              className="w-4 h-4 rounded accent-emerald-500"
-            />
-            <MessageCircle className={`w-3.5 h-3.5 ${followUpFilter !== 'all' ? 'text-emerald-400' : 'text-slate-500'}`} />
-            <span className={followUpFilter !== 'all' ? 'text-emerald-400' : 'text-slate-400'}>Follow up</span>
-          </label>
-          <div className="flex rounded-xl overflow-hidden border border-slate-700/50">
-            <button
-              type="button"
-              disabled={followUpFilter === 'all'}
-              onClick={() => { setFollowUpFilter('on'); setPage(0); }}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors ${followUpFilter === 'on' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
-            >on<span className={`text-[10px] px-1 rounded-full ${followUpFilter === 'on' ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subsForFollowUpCount.filter(s => s.inFollowUp === true).length}</span></button>
-            <button
-              type="button"
-              disabled={followUpFilter === 'all'}
-              onClick={() => { setFollowUpFilter('off'); setPage(0); }}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs transition-colors border-l border-slate-700/50 ${followUpFilter === 'off' ? 'bg-emerald-500/30 text-emerald-300' : followUpFilter === 'all' ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:bg-slate-800/50'}`}
-            >off<span className={`text-[10px] px-1 rounded-full ${followUpFilter === 'off' ? 'bg-emerald-500/30' : 'bg-slate-700/50'}`}>{subsForFollowUpCount.filter(s => s.inFollowUp !== true).length}</span></button>
-          </div>
+          {[
+            { value: 'none',    label: 'Sem follow up', dotClass: 'border border-slate-500',    activeClass: 'bg-slate-500/20 text-slate-300 border border-slate-500/40' },
+            { value: 'talking', label: 'Conversa',      dotClass: 'bg-emerald-500',             activeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
+            { value: 'waiting', label: 'Aguardando',    dotClass: 'bg-amber-500',               activeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
+          ].map(f => {
+            const count = subsForWhatsappCount.filter(s => (s.whatsappState ?? 'none') === f.value).length;
+            const isActive = whatsappFilter === f.value;
+            return (
+              <button
+                key={`w-${f.value}`}
+                type="button"
+                onClick={() => { setWhatsappFilter(isActive ? 'all' : f.value); setPage(0); }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${isActive ? f.activeClass : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${f.dotClass}`} />
+                {f.label}
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/10' : 'bg-slate-700/50'}`}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -625,7 +621,29 @@ const SubscriptionsPage = () => {
                 const billing = sub.billingPeriodMonths ?? 1;
                 return (
                   <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-4 py-3"><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p>{sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        {(() => {
+                          const ws = sub.whatsappState ?? 'none';
+                          const dotClass = ws === 'talking' ? 'bg-emerald-500 hover:bg-emerald-400' : ws === 'waiting' ? 'bg-amber-500 hover:bg-amber-400' : 'border border-slate-500 hover:border-slate-300';
+                          const tip = ws === 'talking' ? 'Conversa em andamento — clique para marcar como aguardando' : ws === 'waiting' ? 'Aguardando resposta — clique para liberar' : 'Sem follow up — clique para marcar conversa';
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleCycleWhatsapp(sub)}
+                              disabled={actionLoading}
+                              title={tip}
+                              className={`mt-1 w-3 h-3 rounded-full transition-colors disabled:opacity-50 flex-shrink-0 ${dotClass}`}
+                            />
+                          );
+                        })()}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white">{sub.studentName}</p>
+                          <p className="text-xs text-slate-500">{sub.studentEmail}</p>
+                          {sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}
+                        </div>
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : sub.plan === 'vip' ? 'bg-fuchsia-500/15 text-fuchsia-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span>
@@ -646,7 +664,6 @@ const SubscriptionsPage = () => {
                         {sub.type === 'paid' && <button onClick={() => openHistory(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
 
-                        <button onClick={() => handleToggleFollowUp(sub)} disabled={actionLoading} className={`group/btn relative p-2 rounded-lg transition-colors disabled:opacity-50 ${sub.inFollowUp === true ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : 'text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10'}`}><MessageCircle className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{sub.inFollowUp === true ? 'Em follow-up' : 'Marcar follow-up'}</span></button>
                         <button onClick={() => openEditStudent(sub)} className="group/btn relative p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"><UserCog className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar aluno</span></button>
                         <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar assinatura</span></button>
                         {sub.status === 'cancelled' && <button onClick={() => handleReactivate(sub)} className="group/btn relative p-2 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Reativar</span></button>}

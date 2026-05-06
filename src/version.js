@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.57.0: #258 feat substitui inFollowUp (boolean) por whatsappState (none/talking/waiting) — dot clicável na 1ª coluna cicla 3 estados (branco/verde/âmbar), 3 chips de filtro exclusivos. Remove botão MessageCircle das ações. Sem timer/dias (05/05/2026, hot-patch direto em main)
  * - 1.56.6: status "Vencido" derivado on-the-fly em useSubscriptions (paid + renewalDate<hoje → overdue imediato; trial + trialEndsAt<hoje → expired) — não depende mais de CF. Cancelled/paused/vip preservam status do doc (05/05/2026, hot-patch direto em main)
  * - 1.56.5: RenewalForecast — chip mostra sufixo /YY quando ano difere do startYear; expandido + "Recebido em" mostram mês + ano completo (resolve ambiguidade de "setembro" sem ano) (05/05/2026, hot-patch direto em main)
  * - 1.56.4: relabel "Inadimplente" → "Vencido" em SubscriptionsPage + remove campo Grace period dos forms + busca em linha cheia (05/05/2026, hot-patch direto em main)
@@ -346,10 +347,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.56.6',
+  version: '1.57.0',
   build: '20260505',
-  display: 'v1.56.6',
-  full: '1.56.6+20260505',
+  display: 'v1.57.0',
+  full: '1.57.0+20260505',
 };
 export default VERSION;
 export { VERSION };
