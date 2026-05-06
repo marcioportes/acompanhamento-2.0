@@ -667,31 +667,7 @@ const SubscriptionsPage = () => {
                 const billing = sub.billingPeriodMonths ?? 1;
                 return (
                   <tr key={sub.id} className="hover:bg-slate-800/20 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        {(() => {
-                          const ws = sub.whatsappState ?? 'none';
-                          const colorClass = ws === 'talking' ? 'text-emerald-400 hover:text-emerald-300' : ws === 'waiting' ? 'text-amber-400 hover:text-amber-300' : 'text-slate-500 hover:text-slate-300';
-                          const tip = ws === 'talking' ? 'Conversa em andamento — clique para marcar como aguardando' : ws === 'waiting' ? 'Aguardando resposta — clique para liberar' : 'Sem follow up — clique para marcar conversa';
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => handleCycleWhatsapp(sub)}
-                              disabled={actionLoading}
-                              title={tip}
-                              className={`mt-0.5 transition-colors disabled:opacity-50 flex-shrink-0 ${colorClass}`}
-                            >
-                              <MessageCircle className={`w-4 h-4 ${ws === 'talking' || ws === 'waiting' ? 'fill-current' : ''}`} />
-                            </button>
-                          );
-                        })()}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-white">{sub.studentName}</p>
-                          <p className="text-xs text-slate-500">{sub.studentEmail}</p>
-                          {sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}
-                        </div>
-                      </div>
-                    </td>
+                    <td className="px-4 py-3"><p className="text-sm font-medium text-white">{sub.studentName}</p><p className="text-xs text-slate-500">{sub.studentEmail}</p>{sub.studentWhatsapp && <p className="text-xs text-emerald-500/70">{formatWhatsappDisplay(sub.studentWhatsapp)}</p>}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className={`text-xs font-medium px-2 py-1 rounded-lg w-fit ${sub.plan === 'alpha' ? 'bg-purple-500/15 text-purple-400' : sub.plan === 'vip' ? 'bg-fuchsia-500/15 text-fuchsia-400' : 'bg-cyan-500/15 text-cyan-400'}`}>{PLAN_LABELS[sub.plan] ?? sub.plan}</span>
@@ -712,6 +688,22 @@ const SubscriptionsPage = () => {
                         {sub.type === 'paid' && <button onClick={() => openHistory(sub)} className="group/btn relative p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"><Receipt className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Historico</span></button>}
                         {sub.type === 'paid' && ['active','overdue','pending'].includes(sub.status) && <button onClick={() => openPayment(sub)} className="group/btn relative p-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-colors"><DollarSign className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Pagamento</span></button>}
 
+                        {(() => {
+                          const ws = sub.whatsappState ?? 'none';
+                          const colorClass = ws === 'talking' ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10' : ws === 'waiting' ? 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700/50';
+                          const tip = ws === 'talking' ? 'Conversa em andamento — clique para Aguardando' : ws === 'waiting' ? 'Aguardando resposta — clique para liberar' : 'Sem follow up — clique para Conversa';
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleCycleWhatsapp(sub)}
+                              disabled={actionLoading}
+                              className={`group/btn relative p-2 rounded-lg transition-colors disabled:opacity-50 ${colorClass}`}
+                            >
+                              <MessageCircle className={`w-4 h-4 ${ws === 'talking' || ws === 'waiting' ? 'fill-current' : ''}`} />
+                              <span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{tip}</span>
+                            </button>
+                          );
+                        })()}
                         <button onClick={() => openEditStudent(sub)} className="group/btn relative p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"><UserCog className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar aluno</span></button>
                         <button onClick={() => openEdit(sub)} className="group/btn relative p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Editar assinatura</span></button>
                         {sub.status === 'cancelled' && <button onClick={() => handleReactivate(sub)} className="group/btn relative p-2 text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"><RotateCcw className="w-4 h-4" /><span className="absolute bottom-full right-0 mb-1 px-2 py-1 text-[10px] text-white bg-slate-800 border border-slate-700 rounded-lg opacity-0 group-hover/btn:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Reativar</span></button>}
