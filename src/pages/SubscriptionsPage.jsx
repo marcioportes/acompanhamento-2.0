@@ -15,6 +15,7 @@ import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
   DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw,
+  MessageCircle
 } from 'lucide-react';
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -530,55 +531,100 @@ const SubscriptionsPage = () => {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 mb-6">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-          <input type="text" placeholder="Buscar por nome ou email..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }} className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+        {/* Busca — largura razoável + botão de limpar */}
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar por nome ou email..."
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
+            className="w-full pl-10 pr-9 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => { setSearchTerm(''); setPage(0); }}
+              title="Limpar busca"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-white hover:bg-slate-700/50 rounded-md transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2 pb-1">
-          {[
-            { value: 'all', label: 'Todos', count: subsForStatusCount.length },
-            { value: 'active', label: 'Ativos', count: subsForStatusCount.filter(s => s.status === 'active').length },
-            { value: 'overdue', label: 'Vencidos', count: subsForStatusCount.filter(s => s.status === 'overdue').length },
-            { value: 'paused', label: 'Pausados', count: subsForStatusCount.filter(s => s.status === 'paused').length },
-            { value: 'cancelled', label: 'Cancelados', count: subsForStatusCount.filter(s => s.status === 'cancelled').length },
-            { value: 'expired', label: 'Expirados', count: subsForStatusCount.filter(s => s.status === 'expired').length },
-          ].map(f => (
-            <button key={f.value} onClick={() => { setStatusFilter(f.value); setPage(0); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
-              {f.label}{f.count !== undefined && <span className={`text-xs px-1.5 py-0.5 rounded-full ${statusFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>}
-            </button>
-          ))}
-          <span className="border-l border-slate-700 mx-1" />
-          {[
-            { value: 'all', label: 'Todos tipos', count: subsForTypeCount.length },
-            { value: 'paid', label: 'Pagos', count: subsForTypeCount.filter(s => s.type === 'paid').length },
-            { value: 'trial', label: 'Trial', count: subsForTypeCount.filter(s => s.type === 'trial').length },
-            { value: 'vip', label: 'VIP', count: subsForTypeCount.filter(s => s.type === 'vip').length },
-          ].map(f => (
-            <button key={`t-${f.value}`} onClick={() => { setTypeFilter(f.value); setPage(0); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}>
-              {f.label}<span className={`text-xs px-1.5 py-0.5 rounded-full ${typeFilter === f.value ? 'bg-violet-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
-            </button>
-          ))}
-          <span className="border-l border-slate-700 mx-1" />
-          {[
-            { value: 'none',    label: 'Sem follow up', dotClass: 'border border-slate-500',    activeClass: 'bg-slate-500/20 text-slate-300 border border-slate-500/40' },
-            { value: 'talking', label: 'Conversa',      dotClass: 'bg-emerald-500',             activeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
-            { value: 'waiting', label: 'Aguardando',    dotClass: 'bg-amber-500',               activeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
-          ].map(f => {
-            const count = subsForWhatsappCount.filter(s => (s.whatsappState ?? 'none') === f.value).length;
-            const isActive = whatsappFilter === f.value;
-            return (
+
+        {/* Filtros agrupados — 3 facetas com label */}
+        <div className="space-y-2">
+          {/* Status */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-slate-500 w-20 flex-shrink-0">Status</span>
+            {[
+              { value: 'all',       label: 'Todos',      count: subsForStatusCount.length },
+              { value: 'active',    label: 'Ativos',     count: subsForStatusCount.filter(s => s.status === 'active').length },
+              { value: 'overdue',   label: 'Vencidos',   count: subsForStatusCount.filter(s => s.status === 'overdue').length },
+              { value: 'paused',    label: 'Pausados',   count: subsForStatusCount.filter(s => s.status === 'paused').length },
+              { value: 'cancelled', label: 'Cancelados', count: subsForStatusCount.filter(s => s.status === 'cancelled').length },
+              { value: 'expired',   label: 'Expirados',  count: subsForStatusCount.filter(s => s.status === 'expired').length },
+            ].map(f => (
               <button
-                key={`w-${f.value}`}
-                type="button"
-                onClick={() => { setWhatsappFilter(isActive ? 'all' : f.value); setPage(0); }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${isActive ? f.activeClass : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-transparent'}`}
+                key={f.value}
+                onClick={() => { setStatusFilter(f.value); setPage(0); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${statusFilter === f.value ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
               >
-                <span className={`w-2.5 h-2.5 rounded-full ${f.dotClass}`} />
                 {f.label}
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/10' : 'bg-slate-700/50'}`}>{count}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          {/* Tipo */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-slate-500 w-20 flex-shrink-0">Tipo</span>
+            {[
+              { value: 'all',   label: 'Todos', count: subsForTypeCount.length },
+              { value: 'paid',  label: 'Pagos', count: subsForTypeCount.filter(s => s.type === 'paid').length },
+              { value: 'trial', label: 'Trial', count: subsForTypeCount.filter(s => s.type === 'trial').length },
+              { value: 'vip',   label: 'VIP',   count: subsForTypeCount.filter(s => s.type === 'vip').length },
+            ].map(f => (
+              <button
+                key={`t-${f.value}`}
+                onClick={() => { setTypeFilter(f.value); setPage(0); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${typeFilter === f.value ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
+              >
+                {f.label}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${typeFilter === f.value ? 'bg-violet-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* WhatsApp */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-slate-500 w-20 flex-shrink-0">WhatsApp</span>
+            {[
+              { value: 'all',     label: 'Todos',         iconClass: 'text-slate-500',                        activeClass: 'bg-slate-500/20 text-slate-200 border border-slate-500/40' },
+              { value: 'none',    label: 'Sem follow up', iconClass: 'text-slate-500',                        activeClass: 'bg-slate-500/20 text-slate-200 border border-slate-500/40' },
+              { value: 'talking', label: 'Conversa',      iconClass: 'text-emerald-400 fill-current',         activeClass: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' },
+              { value: 'waiting', label: 'Aguardando',    iconClass: 'text-amber-400 fill-current',           activeClass: 'bg-amber-500/20 text-amber-300 border border-amber-500/40' },
+            ].map(f => {
+              const count = f.value === 'all'
+                ? subsForWhatsappCount.length
+                : subsForWhatsappCount.filter(s => (s.whatsappState ?? 'none') === f.value).length;
+              const isActive = whatsappFilter === f.value;
+              return (
+                <button
+                  key={`w-${f.value}`}
+                  type="button"
+                  onClick={() => { setWhatsappFilter(f.value); setPage(0); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${isActive ? f.activeClass : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
+                >
+                  {f.value !== 'all' && f.value !== 'none' && <MessageCircle className={`w-3 h-3 ${f.iconClass}`} />}
+                  {f.value === 'none' && <MessageCircle className="w-3 h-3 text-slate-500" />}
+                  {f.label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/10' : 'bg-slate-700/50'}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -625,7 +671,7 @@ const SubscriptionsPage = () => {
                       <div className="flex items-start gap-3">
                         {(() => {
                           const ws = sub.whatsappState ?? 'none';
-                          const dotClass = ws === 'talking' ? 'bg-emerald-500 hover:bg-emerald-400' : ws === 'waiting' ? 'bg-amber-500 hover:bg-amber-400' : 'border border-slate-500 hover:border-slate-300';
+                          const colorClass = ws === 'talking' ? 'text-emerald-400 hover:text-emerald-300' : ws === 'waiting' ? 'text-amber-400 hover:text-amber-300' : 'text-slate-500 hover:text-slate-300';
                           const tip = ws === 'talking' ? 'Conversa em andamento — clique para marcar como aguardando' : ws === 'waiting' ? 'Aguardando resposta — clique para liberar' : 'Sem follow up — clique para marcar conversa';
                           return (
                             <button
@@ -633,8 +679,10 @@ const SubscriptionsPage = () => {
                               onClick={() => handleCycleWhatsapp(sub)}
                               disabled={actionLoading}
                               title={tip}
-                              className={`mt-1 w-3 h-3 rounded-full transition-colors disabled:opacity-50 flex-shrink-0 ${dotClass}`}
-                            />
+                              className={`mt-0.5 transition-colors disabled:opacity-50 flex-shrink-0 ${colorClass}`}
+                            >
+                              <MessageCircle className={`w-4 h-4 ${ws === 'talking' || ws === 'waiting' ? 'fill-current' : ''}`} />
+                            </button>
                           );
                         })()}
                         <div className="min-w-0">
