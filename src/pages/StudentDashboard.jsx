@@ -45,6 +45,8 @@ import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
 import PlanAuditModal from '../components/dashboard/PlanAuditModal';
 import DebugBadge from '../components/DebugBadge';
+import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
+import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 
 // CSV Import v2 (staging)
 import CsvImportWizard from '../components/csv/CsvImportWizard';
@@ -152,6 +154,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [filters, setFilters] = useState({ ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  // Closure modal — issue #259 (1A)
+  const [closureContext, setClosureContext] = useState(null);    // {planId, cycleKey, cycleNumber, cycleStart, cycleEnd, accountId, planName} | null
   const [editingTrade, setEditingTrade] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -485,6 +489,14 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           neutro abaixo, e não sobre o título/botões. */}
       <ContextBar accounts={accounts} plans={plans} trades={trades} />
 
+      {/* Issue #259 (1A) — Banner de ciclos vencidos pendentes de fechamento */}
+      <CycleExpiredGuard
+        studentId={overrideStudentId || user?.uid}
+        role={viewAs ? 'mentor' : 'student'}
+        studentName={viewAs?.name}
+        onStartClosure={(item) => setClosureContext(item)}
+      />
+
       {/* CSV Import — Card de staging */}
       {stagingTrades.length > 0 && (
         <div className="flex items-center">
@@ -744,6 +756,23 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           } : undefined}
         />
       )}
+
+      {/* Issue #259 (1A) — Modal full-screen do wizard de Fechamento */}
+      <CycleClosureModal
+        open={closureContext !== null}
+        onClose={() => setClosureContext(null)}
+        onSealed={() => setClosureContext(null)}
+        studentId={overrideStudentId || user?.uid}
+        planId={closureContext?.planId}
+        cycleKey={closureContext?.cycleKey}
+        cycleNumber={closureContext?.cycleNumber}
+        cycleStart={closureContext?.cycleStart}
+        cycleEnd={closureContext?.cycleEnd}
+        accountId={closureContext?.accountId}
+        role={viewAs ? 'mentor' : 'student'}
+        studentName={viewAs?.name}
+        planName={closureContext?.planName}
+      />
 
       <DebugBadge component="StudentDashboard" />
     </div>
