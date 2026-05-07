@@ -1,33 +1,40 @@
 /**
  * StudentsManagement
- * @version 2.1.0
- * @description Gerenciamento de alunos com View As, indicador erro email, perfil emocional
- * 
+ * @version 3.0.0
+ * @description Lista de alunos Alpha + Espelho com chips de filtro de plano
+ *              e row clicável → dashboard via View As.
+ *
  * CHANGELOG:
+ * - 3.0.0: Filtro Alpha/Espelho + click→dashboard. Limpeza N+1 trades + perfil emocional inline.
  * - 2.1.0: StudentEmotionalCard por aluno ativo (Fase 1.4.0)
  * - 2.0.0: View As Student, indicador de erro de email
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw, Eye, AlertTriangle, Brain, Phone, Check, X } from 'lucide-react';
+import {
+  UserPlus, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw,
+  AlertTriangle, Phone, Check, X, ChevronRight,
+} from 'lucide-react';
 import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsappValidation';
-import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
-import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
-import { useComplianceRules } from '../hooks/useComplianceRules';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { normalizeName, normalizeEmail } from '../utils/contactsNormalizer';
+
+const RELEVANT_PLANS = ['alpha', 'self_service'];
+const PLAN_LABELS = { alpha: 'Mentoria Alpha', self_service: 'Espelho' };
+const PLAN_BADGE_CLASS = {
+  alpha: 'bg-purple-500/15 text-purple-400',
+  self_service: 'bg-cyan-500/15 text-cyan-400',
+};
 
 /**
  * @param {Function} onViewAsStudent - Callback para View As Student
  */
 const StudentsManagement = ({ onViewAsStudent }) => {
-  const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
@@ -37,23 +44,37 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [success, setSuccess] = useState('');
   const [adding, setAdding] = useState(false);
   const [resending, setResending] = useState(null);
-  const [studentTrades, setStudentTrades] = useState({}); // { email: trades[] }
-  const [editingWhatsapp, setEditingWhatsapp] = useState(null); // studentId being edited
+  const [editingWhatsapp, setEditingWhatsapp] = useState(null);
   const [whatsappInput, setWhatsappInput] = useState('');
   const [whatsappError, setWhatsappError] = useState('');
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+  const [planFilter, setPlanFilter] = useState('all');
 
   const functions = getFunctions();
-  const { detectionConfig, statusThresholds } = useComplianceRules();
-  const { subscriptions } = useSubscriptions();
-  const alphaStudentIds = new Set(
-    (subscriptions ?? []).filter(s => s.plan === 'alpha' && s.status !== 'cancelled').map(s => s.studentId)
-  );
+  const { subscriptions, loading: subsLoading } = useSubscriptions();
+
+  // Map<studentId, plan> com tie-break por renewalDate desc (sub mais recente vence).
+  const planByStudentId = useMemo(() => {
+    const map = new Map();
+    const ordered = [...(subscriptions ?? [])].sort((a, b) => {
+      const ta = a?.renewalDate?.getTime?.() ?? 0;
+      const tb = b?.renewalDate?.getTime?.() ?? 0;
+      return tb - ta;
+    });
+    for (const sub of ordered) {
+      if (!RELEVANT_PLANS.includes(sub.plan)) continue;
+      if (sub.status === 'cancelled') continue;
+      if (!map.has(sub.studentId)) {
+        map.set(sub.studentId, sub.plan);
+      }
+    }
+    return map;
+  }, [subscriptions]);
 
   useEffect(() => {
     const q = query(collection(db, 'students'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setStudents(data);
       setLoading(false);
@@ -61,33 +82,25 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return () => unsubscribe();
   }, []);
 
-  // Carregar trades dos alunos ativos para perfil emocional
-  useEffect(() => {
-    const activeStudents = students.filter(s => s.status === 'active');
-    if (activeStudents.length === 0) return;
+  // Universo da página: alunos com sub ativa em algum dos RELEVANT_PLANS.
+  const managedStudents = useMemo(
+    () => students.filter((s) => planByStudentId.has(s.id)),
+    [students, planByStudentId]
+  );
 
-    const unsubscribes = activeStudents.map(s => {
-      const q = query(collection(db, 'trades'), where('studentEmail', '==', s.email));
-      return onSnapshot(q, (snap) => {
-        const trades = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setStudentTrades(prev => ({ ...prev, [s.email]: trades }));
-      });
-    });
+  const filteredStudents = useMemo(() => {
+    if (planFilter === 'all') return managedStudents;
+    return managedStudents.filter((s) => planByStudentId.get(s.id) === planFilter);
+  }, [managedStudents, planByStudentId, planFilter]);
 
-    return () => unsubscribes.forEach(u => u());
-  }, [students]);
-
-  // Busca de proximidade — match por nome (exato/contém), email ou últimos 8 dígitos do celular
-  // Sugestões live — busca apenas entre alunos Alpha (esta tela só lista Alpha).
-  // Match: nome exato/contém substring, email exato, ou últimos 8 dígitos do celular.
+  // Sugestões de duplicado — busca em todo o universo gerenciado (Alpha + Espelho).
   const suggestions = useMemo(() => {
     const tName = normalizeName(newName);
     const tEmail = normalizeEmail(newEmail);
     const tPhoneTail = String(newCelular ?? '').replace(/\D/g, '').slice(-8);
     if (!tName && !tEmail && !tPhoneTail) return [];
-    const universe = students.filter(s => alphaStudentIds.has(s.id));
     const matches = [];
-    for (const s of universe) {
+    for (const s of managedStudents) {
       const sName = normalizeName(s.name ?? '');
       const sEmail = normalizeEmail(s.email ?? '');
       const sPhoneTail = String(s.whatsappNumber ?? '').replace(/\D/g, '').slice(-8);
@@ -101,11 +114,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       if (reasons.length) matches.push({ student: s, reasons });
     }
     return matches.slice(0, 8);
-  }, [newName, newEmail, newCelular, students, alphaStudentIds]);
+  }, [newName, newEmail, newCelular, managedStudents]);
 
   const emailDuplicate = suggestions.some(({ reasons }) => reasons.includes('email'));
 
-  // Não toca nome, plano, pagamento, status. Só preenche email (se vazio) e celular (se diferente).
   const useExistingStudent = async (existing) => {
     setError(''); setSuccess('');
     const email = newEmail.trim().toLowerCase();
@@ -198,38 +210,62 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     setWhatsappError('');
   };
 
-  const handleViewAs = (student, focusTab = null) => {
+  const handleViewAs = (student) => {
     if (onViewAsStudent) {
       onViewAsStudent({
         uid: student.uid || student.id,
         email: student.email,
         name: student.name,
-        focusTab, // B3: 'emotional' para abrir perfil emocional diretamente
       });
     }
   };
 
-  const alphaStudents = students.filter(s => alphaStudentIds.has(s.id));
-  const activeCount = alphaStudents.filter(s => s.status === 'active').length;
-  const pendingCount = alphaStudents.filter(s => s.status === 'pending').length;
-  const errorCount = alphaStudents.filter(s => s.emailError).length;
+  const totalCount = managedStudents.length;
+  const alphaCount = managedStudents.filter((s) => planByStudentId.get(s.id) === 'alpha').length;
+  const espelhoCount = managedStudents.filter((s) => planByStudentId.get(s.id) === 'self_service').length;
+  const pendingCount = managedStudents.filter((s) => s.status === 'pending').length;
 
-  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
+  if (loading || subsLoading) {
+    return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
+  }
+
+  const planChips = [
+    { value: 'all', label: 'Todos', count: totalCount },
+    { value: 'alpha', label: 'Mentoria Alpha', count: alphaCount },
+    { value: 'self_service', label: 'Espelho', count: espelhoCount },
+  ];
 
   return (
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
+    <div className="p-6 lg:p-8 max-w-4xl mx-auto pb-20">
       <div className="mb-8">
         <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
-          <Users className="w-7 h-7 text-blue-400" />Gerenciar Alunos
+          <Users className="w-7 h-7 text-blue-400" />Alunos
         </h1>
-        <p className="text-slate-400 mt-1">Cadastre alunos - eles receberão email para configurar senha</p>
+        <p className="text-slate-400 mt-1">Lista de alunos Alpha e Espelho · clique para entrar no dashboard</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{alphaStudents.length}</p><p className="text-xs text-slate-400">Total Alpha</p></div>
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-emerald-400">{activeCount}</p><p className="text-xs text-slate-400">Ativos</p></div>
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{totalCount}</p><p className="text-xs text-slate-400">Total</p></div>
+        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-purple-400">{alphaCount}</p><p className="text-xs text-slate-400">Alpha</p></div>
+        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-cyan-400">{espelhoCount}</p><p className="text-xs text-slate-400">Espelho</p></div>
         <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-yellow-400">{pendingCount}</p><p className="text-xs text-slate-400">Pendentes</p></div>
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-red-400">{errorCount}</p><p className="text-xs text-slate-400">Erro Email</p></div>
+      </div>
+
+      <div className="glass-card p-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Plano</span>
+          {planChips.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setPlanFilter(f.value)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${planFilter === f.value ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
+            >
+              {f.label}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${planFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {success && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4" />{success}</div>}
@@ -277,117 +313,108 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       </form>
 
       <div className="glass-card overflow-hidden">
-        <div className="p-4 border-b border-slate-800/50"><h3 className="font-semibold text-white">Alunos Cadastrados</h3></div>
-        {students.length === 0 ? (
-          <div className="p-8 text-center text-slate-500"><Mail className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>Nenhum aluno cadastrado</p></div>
+        <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+          <h3 className="font-semibold text-white">Alunos Cadastrados</h3>
+          <p className="text-xs text-slate-500">{filteredStudents.length} resultado{filteredStudents.length !== 1 ? 's' : ''}</p>
+        </div>
+        {filteredStudents.length === 0 ? (
+          <div className="p-8 text-center text-slate-500">
+            <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>{managedStudents.length === 0 ? 'Nenhum aluno cadastrado' : 'Nenhum aluno neste filtro'}</p>
+          </div>
         ) : (
           <div className="divide-y divide-slate-800/50">
-            {students.filter(s => alphaStudentIds.has(s.id)).map(s => (
-              <div key={s.id} className="p-4 hover:bg-slate-800/30">
-                <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${s.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
-                    {(s.name || s.email).charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-medium text-white">{s.name || '-'}</p>
-                    <p className="text-sm text-slate-500">{s.email}</p>
-                    {/* WhatsApp inline — issue #123 */}
-                    {editingWhatsapp === s.id ? (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <Phone className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                        <input
-                          type="text"
-                          value={whatsappInput}
-                          onChange={(e) => { setWhatsappInput(e.target.value); setWhatsappError(''); }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleWhatsappSave(s.id); if (e.key === 'Escape') handleWhatsappCancel(); }}
-                          placeholder="+55 11 99999-9999"
-                          className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none w-40"
-                          autoFocus
-                          disabled={savingWhatsapp}
-                        />
-                        <button onClick={() => handleWhatsappSave(s.id)} disabled={savingWhatsapp} className="p-0.5 text-emerald-400 hover:text-emerald-300" title="Salvar">
-                          {savingWhatsapp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                        </button>
-                        <button onClick={handleWhatsappCancel} className="p-0.5 text-slate-500 hover:text-red-400" title="Cancelar">
-                          <X className="w-3 h-3" />
-                        </button>
-                        {whatsappError && <span className="text-xs text-red-400">{whatsappError}</span>}
+            {filteredStudents.map((s) => {
+              const plan = planByStudentId.get(s.id);
+              return (
+                <div
+                  key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleViewAs(s)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewAs(s); } }}
+                  className="p-4 hover:bg-slate-800/30 cursor-pointer focus:outline-none focus:bg-slate-800/30 transition-colors"
+                  title="Clique para entrar no dashboard deste aluno"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${s.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
+                        {(s.name || s.email).charAt(0).toUpperCase()}
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => handleWhatsappEdit(s)}
-                        className="flex items-center gap-1 mt-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors"
-                        title="Editar WhatsApp"
-                      >
-                        <Phone className="w-3 h-3" />
-                        {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : 'Adicionar WhatsApp'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {/* Status Badge */}
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                    {s.status === 'active' ? <><CheckCircle className="w-3 h-3" />Ativo</> : <><Clock className="w-3 h-3" />Pendente</>}
-                  </div>
-                  
-                  {/* Erro de Email Badge */}
-                  {s.emailError && (
-                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400" title={s.emailError}>
-                      <AlertTriangle className="w-3 h-3" />Erro Email
+                      <div>
+                        <p className="font-medium text-white">{s.name || '-'}</p>
+                        <p className="text-sm text-slate-500">{s.email}</p>
+                        <div onClick={(e) => e.stopPropagation()}>
+                          {editingWhatsapp === s.id ? (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Phone className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                              <input
+                                type="text"
+                                value={whatsappInput}
+                                onChange={(e) => { setWhatsappInput(e.target.value); setWhatsappError(''); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') handleWhatsappSave(s.id); if (e.key === 'Escape') handleWhatsappCancel(); }}
+                                placeholder="+55 11 99999-9999"
+                                className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none w-40"
+                                autoFocus
+                                disabled={savingWhatsapp}
+                              />
+                              <button onClick={() => handleWhatsappSave(s.id)} disabled={savingWhatsapp} className="p-0.5 text-emerald-400 hover:text-emerald-300" title="Salvar">
+                                {savingWhatsapp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                              </button>
+                              <button onClick={handleWhatsappCancel} className="p-0.5 text-slate-500 hover:text-red-400" title="Cancelar">
+                                <X className="w-3 h-3" />
+                              </button>
+                              {whatsappError && <span className="text-xs text-red-400">{whatsappError}</span>}
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleWhatsappEdit(s)}
+                              className="flex items-center gap-1 mt-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors"
+                              title="Editar WhatsApp"
+                            >
+                              <Phone className="w-3 h-3" />
+                              {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : 'Adicionar WhatsApp'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  
-                  {/* Assessment Toggle (CHUNK-09) */}
-                  <AssessmentToggle
-                    studentId={s.id}
-                    currentValue={s.requiresAssessment}
-                    onboardingStatus={s.onboardingStatus}
-                  />
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {plan && (
+                        <span className={`px-2 py-1 rounded-lg text-[11px] font-medium ${PLAN_BADGE_CLASS[plan]}`}>
+                          {PLAN_LABELS[plan]}
+                        </span>
+                      )}
 
-                  {/* Botão View As Student (só para ativos) */}
-                  {s.status === 'active' && onViewAsStudent && (
-                    <button 
-                      onClick={() => handleViewAs(s)} 
-                      className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" 
-                      title="Visualizar como este aluno"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                  )}
+                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                        {s.status === 'active' ? <><CheckCircle className="w-3 h-3" />Ativo</> : <><Clock className="w-3 h-3" />Pendente</>}
+                      </div>
 
-                  {/* B3: Botão Perfil Emocional (só para ativos com trades) */}
-                  {s.status === 'active' && studentTrades[s.email]?.length > 0 && onViewAsStudent && (
-                    <button 
-                      onClick={() => handleViewAs(s, 'emotional')} 
-                      className="p-2 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg" 
-                      title="Ver perfil emocional do aluno"
-                    >
-                      <Brain className="w-4 h-4" />
-                    </button>
-                  )}
-                  
-                  {/* Botão Reenviar (só para pendentes) */}
-                  {s.status === 'pending' && (
-                    <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
-                      {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    </button>
-                  )}
-                  
+                      {s.emailError && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400" title={s.emailError}>
+                          <AlertTriangle className="w-3 h-3" />Erro Email
+                        </div>
+                      )}
+
+                      <AssessmentToggle
+                        studentId={s.id}
+                        currentValue={s.requiresAssessment}
+                        onboardingStatus={s.onboardingStatus}
+                      />
+
+                      {s.status === 'pending' && (
+                        <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
+                          {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        </button>
+                      )}
+
+                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                    </div>
+                  </div>
                 </div>
-                </div>
-                {/* Card Emocional — só alunos ativos com trades */}
-                {s.status === 'active' && studentTrades[s.email]?.length > 0 && (
-                  <StudentEmotionalCardInline
-                    trades={studentTrades[s.email]}
-                    studentName={s.name}
-                    detectionConfig={detectionConfig}
-                    statusThresholds={statusThresholds}
-                  />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -398,19 +425,6 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         <div className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-red-400" /><span>Erro no envio de email</span></div>
       </div>
       <DebugBadge component="StudentsManagement" />
-    </div>
-  );
-};
-
-/** Wrapper isolado para hook useEmotionalProfile por aluno */
-const StudentEmotionalCardInline = ({ trades, studentName, detectionConfig, statusThresholds }) => {
-  const { metrics, status, alerts, isReady } = useEmotionalProfile({
-    trades, detectionConfig, statusThresholds
-  });
-  if (!isReady) return null;
-  return (
-    <div className="mt-2 ml-14">
-      <StudentEmotionalCard metrics={metrics} status={status} alerts={alerts} studentName={studentName} />
     </div>
   );
 };
