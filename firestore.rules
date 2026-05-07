@@ -172,6 +172,18 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated();
     }
 
+    // CYCLE CLOSURES — Issue #259 (1A — Ritual completo de Fechamento de Ciclo)
+    // Documento imutável escrito pela CF closeCycle (admin SDK bypassa rules).
+    // Read: aluno dono (resource.data.studentId == auth.uid) OU mentor.
+    // Write: false — toda mutação é via CF (closeCycle, reopenCycle).
+    match /cycleClosures/{closureId} {
+      allow read: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId)
+      );
+      allow write: if false;
+    }
+
     // ==================================================
     // CSV IMPORT — STAGING + TEMPLATES (v1.18.0, Issue #23)
     // ==================================================
