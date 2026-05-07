@@ -1510,3 +1510,4 @@ exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");
 // ============================================
 exports.closeCycle = require("./cycleClosure/closeCycle");
 exports.reopenCycle = require("./cycleClosure/reopenCycle");
+exports.setMentorClosureComment = require("./cycleClosure/setMentorClosureComment");

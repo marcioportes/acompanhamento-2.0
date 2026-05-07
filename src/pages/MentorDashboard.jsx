@@ -35,6 +35,12 @@ import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
+import MentorClosureView from '../components/cycleClosure/MentorClosureView';
+import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Inbox } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -63,6 +69,9 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
+  // Issue #259 — view do closure (lateral panel + comment)
+  const [viewingClosure, setViewingClosure] = useState(null);
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
@@ -81,7 +90,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking' };
+  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
@@ -297,6 +306,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
           { id: 'ranking', sidebarId: 'ranking', label: 'Ranking', icon: Trophy },
+          { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
         ].map(tab => (
           <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
             className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
@@ -627,6 +637,23 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             })}
           </div>
         </div>
+      )}
+
+      {activeView === 'closures' && (
+        <MentorClosuresInbox
+          students={students}
+          plansById={plans.reduce((acc, p) => { acc[p.id] = p; return acc; }, {})}
+          onOpen={(item) => setViewingClosure(item)}
+        />
+      )}
+
+      {viewingClosure && (
+        <MentorClosureView
+          closure={viewingClosure._raw || viewingClosure}
+          studentName={students.find((s) => s.studentId === viewingClosure.studentId)?.name}
+          onClose={() => setViewingClosure(null)}
+          onSaved={() => setViewingClosure(null)}
+        />
       )}
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
