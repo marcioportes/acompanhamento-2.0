@@ -15,28 +15,19 @@
  *   - onCancel(): callback ao desistir
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import DebugBadge from '../DebugBadge';
 import useCycleClosureDraft from '../../hooks/useCycleClosureDraft';
 import WizardHeader from './WizardHeader';
 import WizardFooter from './WizardFooter';
 import Step1Read from './steps/Step1Read';
 import Step2Notice from './steps/Step2Notice';
+import Step3Reflect from './steps/Step3Reflect';
+import Step4Map from './steps/Step4Map';
 import Step5Check from './steps/Step5Check';
-
-// Placeholders pra etapas ainda não implementadas (A5.6+)
-function StepPlaceholder({ stepNumber, label }) {
-  return (
-    <div className="glass-card p-8 text-center">
-      <p className="text-slate-300 font-semibold mb-2">
-        Etapa {stepNumber} — {label}
-      </p>
-      <p className="text-sm text-slate-500">
-        Em construção (A5.6+). Skeleton funcional permite navegação completa do wizard.
-      </p>
-    </div>
-  );
-}
+import Step6Adjust from './steps/Step6Adjust';
+import Step7Commit from './steps/Step7Commit';
+import Step8Seal from './steps/Step8Seal';
 
 export default function CycleClosureWizard({
   studentId,
@@ -64,8 +55,14 @@ export default function CycleClosureWizard({
   } = closure;
 
   const [error, setError] = useState(null);
+  const [sealConfirmed, setSealConfirmed] = useState(false);
 
   const handleSeal = async () => {
+    if (!sealConfirmed) {
+      setError('Marque o checkbox de confirmação antes de selar.');
+      return;
+    }
+    setError(null);
     try {
       const result = await submit();
       if (result?.closureId && onSealed) onSealed(result.closureId);
@@ -76,6 +73,10 @@ export default function CycleClosureWizard({
 
   const goNext = () => setStep(Math.min(8, step + 1));
   const goBack = () => setStep(Math.max(1, step - 1));
+
+  const markSwotVisited = useCallback(() => {
+    if (!draft._visitedSwot) replaceSection('_visitedSwot', true);
+  }, [draft._visitedSwot, replaceSection]);
 
   // Result badge dinâmico baseado em snapshot
   const resultBadge = draft.snapshot
@@ -133,8 +134,29 @@ export default function CycleClosureWizard({
           onPatterns={(p) => replaceSection('patterns', p)}
         />
       )}
-      {step === 3 && <StepPlaceholder stepNumber={3} label="Reflect (AAR)" />}
-      {step === 4 && <StepPlaceholder stepNumber={4} label="Map (SWOT)" />}
+      {step === 3 && (
+        <Step3Reflect
+          snapshot={draft.snapshot}
+          metrics={draft.metrics}
+          patterns={draft.patterns}
+          aar={draft.aar}
+          onChange={(aar) => replaceSection('aar', aar)}
+        />
+      )}
+      {step === 4 && (
+        <Step4Map
+          studentId={studentId}
+          planId={planId}
+          cycleStart={cycleStart}
+          cycleEnd={cycleEnd}
+          snapshot={draft.snapshot}
+          metrics={draft.metrics}
+          patterns={draft.patterns}
+          swot={draft.swot}
+          onChange={(swot) => replaceSection('swot', swot)}
+          onVisited={markSwotVisited}
+        />
+      )}
       {step === 5 && (
         <Step5Check
           studentId={studentId}
@@ -142,9 +164,39 @@ export default function CycleClosureWizard({
           onMaturity={(m) => replaceSection('maturity', m)}
         />
       )}
-      {step === 6 && <StepPlaceholder stepNumber={6} label="Adjust (Plano)" />}
-      {step === 7 && <StepPlaceholder stepNumber={7} label="Commit (Forward)" />}
-      {step === 8 && <StepPlaceholder stepNumber={8} label="Seal (Confirmar)" />}
+      {step === 6 && (
+        <Step6Adjust
+          studentId={studentId}
+          planId={planId}
+          cycleStart={cycleStart}
+          cycleEnd={cycleEnd}
+          metrics={draft.metrics}
+          snapshot={draft.snapshot}
+          forward={draft.forward}
+          maturityRegression={draft.maturity?.regression}
+          onChange={(forward) => replaceSection('forward', forward)}
+        />
+      )}
+      {step === 7 && (
+        <Step7Commit
+          cycleEnd={cycleEnd}
+          metrics={draft.metrics}
+          patterns={draft.patterns}
+          forward={draft.forward}
+          notes={draft.notes}
+          onChange={(forward) => replaceSection('forward', forward)}
+          onChangeNotes={(notes) => replaceSection('notes', notes)}
+        />
+      )}
+      {step === 8 && (
+        <Step8Seal
+          draft={draft}
+          cycleStart={cycleStart}
+          cycleEnd={cycleEnd}
+          confirmed={sealConfirmed}
+          onConfirm={setSealConfirmed}
+        />
+      )}
 
       <WizardFooter
         currentStep={step}
@@ -153,7 +205,7 @@ export default function CycleClosureWizard({
         onNext={goNext}
         onCancel={onCancel}
         onSeal={handleSeal}
-        canSeal={canSeal}
+        canSeal={canSeal && sealConfirmed}
         submitting={submitting}
       />
     </div>
