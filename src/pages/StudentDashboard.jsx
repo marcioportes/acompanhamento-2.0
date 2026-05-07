@@ -47,6 +47,7 @@ import PlanAuditModal from '../components/dashboard/PlanAuditModal';
 import DebugBadge from '../components/DebugBadge';
 import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
 import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
+import ClosureTimeline from '../components/cycleClosure/ClosureTimeline';
 
 // CSV Import v2 (staging)
 import CsvImportWizard from '../components/csv/CsvImportWizard';
@@ -681,6 +682,16 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           refreshThrottled={recomputeThrottled}
           refreshNextAllowedAt={recomputeNextAllowedAt}
           refreshError={recomputeError}
+        />
+      </div>
+
+      {/* Issue #259 (1A) — Timeline de capítulos fechados (currículo do trader) */}
+      <div className="mb-6">
+        <ClosureTimeline
+          studentId={overrideStudentId || user?.uid}
+          studentName={viewAs?.name}
+          role={viewAs ? 'mentor' : 'student'}
+          collapsedDefault={false}
         />
       </div>
 
