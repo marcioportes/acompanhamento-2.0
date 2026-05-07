@@ -15,14 +15,14 @@ import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestor
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import {
-  UserPlus, Mail, CheckCircle, Clock, Users, AlertCircle, Loader2, RefreshCw,
+  UserPlus, Mail, CheckCircle, Clock, Users, Loader2, RefreshCw,
   AlertTriangle, Phone, Check, X, ChevronRight,
 } from 'lucide-react';
 import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsappValidation';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
+import AddStudentModal from '../components/Students/AddStudentModal';
 import { useSubscriptions } from '../hooks/useSubscriptions';
-import { normalizeName, normalizeEmail } from '../utils/contactsNormalizer';
 
 const RELEVANT_PLANS = ['alpha', 'self_service'];
 const PLAN_LABELS = { alpha: 'Mentoria Alpha', self_service: 'Espelho' };
@@ -37,18 +37,15 @@ const PLAN_BADGE_CLASS = {
 const StudentsManagement = ({ onViewAsStudent }) => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [newEmail, setNewEmail] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newCelular, setNewCelular] = useState('');
-  const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
   const [resending, setResending] = useState(null);
   const [editingWhatsapp, setEditingWhatsapp] = useState(null);
   const [whatsappInput, setWhatsappInput] = useState('');
   const [whatsappError, setWhatsappError] = useState('');
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [planFilter, setPlanFilter] = useState('all');
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const functions = getFunctions();
   const { subscriptions, loading: subsLoading } = useSubscriptions();
@@ -93,76 +90,41 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return managedStudents.filter((s) => planByStudentId.get(s.id) === planFilter);
   }, [managedStudents, planByStudentId, planFilter]);
 
-  // Sugestões de duplicado — busca em todo o universo gerenciado (Alpha + Espelho).
-  const suggestions = useMemo(() => {
-    const tName = normalizeName(newName);
-    const tEmail = normalizeEmail(newEmail);
-    const tPhoneTail = String(newCelular ?? '').replace(/\D/g, '').slice(-8);
-    if (!tName && !tEmail && !tPhoneTail) return [];
-    const matches = [];
-    for (const s of managedStudents) {
-      const sName = normalizeName(s.name ?? '');
-      const sEmail = normalizeEmail(s.email ?? '');
-      const sPhoneTail = String(s.whatsappNumber ?? '').replace(/\D/g, '').slice(-8);
-      const reasons = [];
-      if (tName && sName) {
-        if (sName === tName) reasons.push('nome exato');
-        else if (sName.includes(tName) || tName.includes(sName)) reasons.push('nome similar');
-      }
-      if (tEmail && sEmail && sEmail === tEmail) reasons.push('email');
-      if (tPhoneTail && sPhoneTail && tPhoneTail === sPhoneTail) reasons.push('celular');
-      if (reasons.length) matches.push({ student: s, reasons });
-    }
-    return matches.slice(0, 8);
-  }, [newName, newEmail, newCelular, managedStudents]);
-
-  const emailDuplicate = suggestions.some(({ reasons }) => reasons.includes('email'));
-
-  const useExistingStudent = async (existing) => {
-    setError(''); setSuccess('');
-    const email = newEmail.trim().toLowerCase();
-    const celular = newCelular.trim();
-    setAdding(true);
-    try {
-      const updates = { updatedAt: new Date() };
-      if (email && !existing.email) updates.email = email;
-      if (celular && (existing.whatsappNumber ?? '') !== celular) updates.whatsappNumber = celular;
-      if (Object.keys(updates).length > 1) {
-        await updateDoc(doc(db, 'students', existing.id), updates);
-        setSuccess(`${existing.name ?? 'Aluno'}: dados completados.`);
-      } else {
-        setSuccess(`${existing.name ?? 'Aluno'} já tem esses dados — nada a alterar.`);
-      }
-      setNewEmail(''); setNewName(''); setNewCelular('');
-      setTimeout(() => setSuccess(''), 5000);
-    } catch (err) {
-      setError(err.message || 'Erro ao atualizar');
-    } finally { setAdding(false); }
+  const flashSuccess = (msg) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(''), 5000);
   };
 
-  const handleAddStudent = async (e) => {
-    e.preventDefault();
-    setError(''); setSuccess('');
-    const email = newEmail.trim().toLowerCase();
-    const name = newName.trim();
-    const celular = newCelular.trim();
-    if (!email) { setError('Email obrigatório'); return; }
-    if (!email.includes('@')) { setError('Email inválido'); return; }
-    if (emailDuplicate) { setError('Email já existe — selecione um aluno na lista acima para atualizar/migrar plano'); return; }
-
-    setAdding(true);
+  // Callbacks consumidos por AddStudentModal — retornam {ok, message}.
+  const createStudentFromModal = async ({ name, email, celular }) => {
     try {
       const createStudent = httpsCallable(functions, 'createStudent');
       const { data: result } = await createStudent({ email, name });
       if (celular && result?.uid) {
         await updateDoc(doc(db, 'students', result.uid), { whatsappNumber: celular });
       }
-      setNewEmail(''); setNewName(''); setNewCelular('');
-      setSuccess('Aluno criado! Email de configuração enviado.');
-      setTimeout(() => setSuccess(''), 5000);
+      flashSuccess('Aluno criado! Email de configuração enviado.');
+      return { ok: true };
     } catch (err) {
-      setError(err.message || 'Erro ao criar aluno');
-    } finally { setAdding(false); }
+      return { ok: false, message: err.message || 'Erro ao criar aluno' };
+    }
+  };
+
+  const useExistingFromModal = async (existing, { email, celular }) => {
+    try {
+      const updates = { updatedAt: new Date() };
+      if (email && !existing.email) updates.email = email;
+      if (celular && (existing.whatsappNumber ?? '') !== celular) updates.whatsappNumber = celular;
+      if (Object.keys(updates).length > 1) {
+        await updateDoc(doc(db, 'students', existing.id), updates);
+        flashSuccess(`${existing.name ?? 'Aluno'}: dados completados.`);
+      } else {
+        flashSuccess(`${existing.name ?? 'Aluno'} já tem esses dados — nada a alterar.`);
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err.message || 'Erro ao atualizar' };
+    }
   };
 
   const handleResendInvite = async (email) => {
@@ -237,11 +199,20 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto pb-20">
-      <div className="mb-8">
-        <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
-          <Users className="w-7 h-7 text-blue-400" />Alunos
-        </h1>
-        <p className="text-slate-400 mt-1">Lista de alunos Alpha e Espelho · clique para entrar no dashboard</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
+            <Users className="w-7 h-7 text-blue-400" />Alunos
+          </h1>
+          <p className="text-slate-400 mt-1">Lista de alunos Alpha e Espelho · clique para entrar no dashboard</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex-shrink-0"
+        >
+          <UserPlus className="w-4 h-4" /> Novo aluno
+        </button>
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
@@ -269,48 +240,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       </div>
 
       {success && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4" />{success}</div>}
-
-      <form onSubmit={handleAddStudent} className="glass-card p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <input type="text" placeholder="Nome" value={newName} onChange={(e) => setNewName(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
-          <input type="email" placeholder="Email do aluno *" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
-          <input type="text" placeholder="Celular (+5521...)" value={newCelular} onChange={(e) => setNewCelular(e.target.value)} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" />
-          <button type="submit" disabled={adding} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium disabled:opacity-50">
-            {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}Adicionar
-          </button>
-        </div>
-        {suggestions.length > 0 && (
-          <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-            <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
-              <AlertTriangle className="w-4 h-4" />
-              {suggestions.length} aluno{suggestions.length > 1 ? 's' : ''} semelhante{suggestions.length > 1 ? 's' : ''}:
-            </div>
-            <div className="space-y-2">
-              {suggestions.map(({ student, reasons }) => (
-                <div key={student.id} className="flex items-center justify-between gap-2 p-2 bg-slate-800/50 rounded">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white truncate">{student.name ?? '(sem nome)'}</p>
-                    <p className="text-xs text-slate-400 truncate">
-                      {student.email ?? '(sem email)'}
-                      {student.whatsappNumber && ` · ${formatWhatsappDisplay(student.whatsappNumber)}`}
-                    </p>
-                    <p className="text-[10px] text-amber-400 mt-0.5">match: {reasons.join(', ')}</p>
-                  </div>
-                  <button type="button" onClick={() => useExistingStudent(student)} disabled={adding} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-lg disabled:opacity-50 flex-shrink-0">
-                    Usar este
-                  </button>
-                </div>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-2">
-              {emailDuplicate
-                ? 'Email já existe — selecione um aluno acima para atualizar/migrar plano.'
-                : 'Se não for nenhum, clique em Adicionar para criar novo.'}
-            </p>
-          </div>
-        )}
-        {error && <div className="mt-3 flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="w-4 h-4" />{error}</div>}
-      </form>
+      {error && <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">{error}</div>}
 
       <div className="glass-card overflow-hidden">
         <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
@@ -424,6 +354,15 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         <div className="flex items-center gap-2"><Clock className="w-3 h-3 text-yellow-400" /><span>Aguardando configurar senha</span></div>
         <div className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-red-400" /><span>Erro no envio de email</span></div>
       </div>
+      {showAddModal && (
+        <AddStudentModal
+          students={managedStudents}
+          onCreate={createStudentFromModal}
+          onUseExisting={useExistingFromModal}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+
       <DebugBadge component="StudentsManagement" />
     </div>
   );
