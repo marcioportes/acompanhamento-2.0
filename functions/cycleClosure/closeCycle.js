@@ -135,9 +135,17 @@ module.exports = onCall(
 
         tx.set(closureRef, closureDoc);
 
-        // Plan update — hard seal cache + cycle bookkeeping + plan adjustment (se houver)
+        // Plan update — hard seal range + cycle bookkeeping + plan adjustment (se houver)
+        // sealedCycleRanges é fonte canônica de verdade pro hard seal (suporta reopen seletivo).
+        // lastClosedCycleEnd é cache simples pra rules.firestore (defesa em profundidade).
+        const sealedRange = {
+          closureId,
+          cycleStart: payload.cycleStart,
+          cycleEnd: payload.cycleEnd,
+        };
         const planUpdate = {
-          lastClosedCycleEnd: payload.cycleEnd,
+          sealedCycleRanges: admin.firestore.FieldValue.arrayUnion(sealedRange),
+          lastClosedCycleEnd: payload.cycleEnd,    // cache otimista pra rules
           lastCycleClosureId: closureId,
           currentCycleNumber: payload.cycleNumber + 1,
           updatedAt: now,

@@ -72,13 +72,21 @@ module.exports = onCall(
           );
         }
 
+        // Plan deve existir (sanidade — closure aponta planId)
+        const planRef = db.collection('plans').doc(closure.planId);
+        const planSnap = await tx.get(planRef);
+        if (!planSnap.exists) {
+          throw new HttpsError('not-found', `Plano ${closure.planId} não encontrado`);
+        }
+        const plan = planSnap.data();
+
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         // Snapshot do estado atual em originalSnapshot (preserva versão fechada)
         // Strip campos de controle pra evitar recursão (originalSnapshot dentro de originalSnapshot)
         const { originalSnapshot, ...closureSnapshot } = closure;
 
-        const updateDoc = {
+        const updateClosure = {
           status: 'REOPENED',
           originalSnapshot: originalSnapshot || closureSnapshot,
           reopenedAt: now,
@@ -86,12 +94,32 @@ module.exports = onCall(
           reopenReason,
         };
 
-        tx.update(closureRef, updateDoc);
+        tx.update(closureRef, updateClosure);
 
-        // Recua plan.lastClosedCycleEnd se este era o último ciclo fechado.
-        // Pra simplicidade do A1: NÃO mexe no plan no reopen — gate de hard seal
-        // (A2) vai consultar o status do closure correspondente, não só lastClosedCycleEnd.
-        // Decisão registrada: hard seal usa duas chaves (closure.status='CLOSED' + range).
+        // Plan: remove range do hard seal (libera writes naquela janela)
+        // arrayRemove exige objeto idêntico — usamos os campos originais do closure.
+        const sealedRange = {
+          closureId,
+          cycleStart: closure.cycleStart,
+          cycleEnd: closure.cycleEnd,
+        };
+        const planUpdate = {
+          sealedCycleRanges: admin.firestore.FieldValue.arrayRemove(sealedRange),
+          updatedAt: now,
+        };
+
+        // Cache lastClosedCycleEnd: só recua se este era o último ciclo fechado.
+        // Senão o ciclo seguinte (CLOSED) ainda guarda o cache.
+        if (plan.lastClosedCycleEnd === closure.cycleEnd) {
+          // Calcular maior cycleEnd dos ranges restantes (excluindo este)
+          const remaining = (plan.sealedCycleRanges || [])
+            .filter((r) => r && r.closureId !== closureId)
+            .map((r) => r.cycleEnd)
+            .sort();
+          planUpdate.lastClosedCycleEnd = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+        }
+
+        tx.update(planRef, planUpdate);
       });
 
       return { closureId, success: true };
