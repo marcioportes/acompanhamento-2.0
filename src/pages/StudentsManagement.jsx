@@ -1,16 +1,19 @@
 /**
  * StudentsManagement
- * @version 3.0.0
- * @description Lista de alunos Alpha + Espelho com chips de filtro de plano
- *              e row clicável → dashboard via View As.
+ * @version 3.1.0
+ * @description Lista de alunos com chips Alpha/Espelho derivados de student.accessTier.
+ *              Row clicável → dashboard via View As (só se aluno tem email).
  *
  * CHANGELOG:
+ * - 3.1.0: Hipótese 3 — universo = todos students; Alpha = accessTier==='alpha';
+ *          Espelho = todo o resto (leads, ex, self_service, sem accessTier).
+ *          Sem cruzar com subscriptions. Click bloqueado se email==null.
  * - 3.0.0: Filtro Alpha/Espelho + click→dashboard. Limpeza N+1 trades + perfil emocional inline.
  * - 2.1.0: StudentEmotionalCard por aluno ativo (Fase 1.4.0)
  * - 2.0.0: View As Student, indicador de erro de email
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -22,13 +25,15 @@ import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsapp
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import AddStudentModal from '../components/Students/AddStudentModal';
-import { useSubscriptions } from '../hooks/useSubscriptions';
 
-const RELEVANT_PLANS = ['alpha', 'self_service'];
-const PLAN_LABELS = { alpha: 'Mentoria Alpha', self_service: 'Espelho' };
-const PLAN_BADGE_CLASS = {
+// Bucket binário derivado do accessTier do student (mantido por checkSubscriptions CF).
+// Alpha = tem dashboard. Espelho = todo o resto (lead, ex, self_service ativo, sem sub, etc).
+const tierOf = (s) => (s?.accessTier === 'alpha' ? 'alpha' : 'espelho');
+
+const TIER_LABELS = { alpha: 'Mentoria Alpha', espelho: 'Espelho' };
+const TIER_BADGE_CLASS = {
   alpha: 'bg-purple-500/15 text-purple-400',
-  self_service: 'bg-cyan-500/15 text-cyan-400',
+  espelho: 'bg-cyan-500/15 text-cyan-400',
 };
 
 /**
@@ -44,29 +49,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [whatsappInput, setWhatsappInput] = useState('');
   const [whatsappError, setWhatsappError] = useState('');
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
-  const [planFilter, setPlanFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
 
   const functions = getFunctions();
-  const { subscriptions, loading: subsLoading } = useSubscriptions();
-
-  // Map<studentId, plan> com tie-break por renewalDate desc (sub mais recente vence).
-  const planByStudentId = useMemo(() => {
-    const map = new Map();
-    const ordered = [...(subscriptions ?? [])].sort((a, b) => {
-      const ta = a?.renewalDate?.getTime?.() ?? 0;
-      const tb = b?.renewalDate?.getTime?.() ?? 0;
-      return tb - ta;
-    });
-    for (const sub of ordered) {
-      if (!RELEVANT_PLANS.includes(sub.plan)) continue;
-      if (sub.status === 'cancelled') continue;
-      if (!map.has(sub.studentId)) {
-        map.set(sub.studentId, sub.plan);
-      }
-    }
-    return map;
-  }, [subscriptions]);
 
   useEffect(() => {
     const q = query(collection(db, 'students'));
@@ -79,16 +65,8 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return () => unsubscribe();
   }, []);
 
-  // Universo da página: alunos com sub ativa em algum dos RELEVANT_PLANS.
-  const managedStudents = useMemo(
-    () => students.filter((s) => planByStudentId.has(s.id)),
-    [students, planByStudentId]
-  );
-
-  const filteredStudents = useMemo(() => {
-    if (planFilter === 'all') return managedStudents;
-    return managedStudents.filter((s) => planByStudentId.get(s.id) === planFilter);
-  }, [managedStudents, planByStudentId, planFilter]);
+  const filteredStudents =
+    tierFilter === 'all' ? students : students.filter((s) => tierOf(s) === tierFilter);
 
   const flashSuccess = (msg) => {
     setSuccess(msg);
@@ -172,29 +150,31 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     setWhatsappError('');
   };
 
+  // Sem email no doc do student não há Auth user — não tem dashboard pra entrar.
+  const canViewAs = (student) => Boolean(student?.email);
+
   const handleViewAs = (student) => {
-    if (onViewAsStudent) {
-      onViewAsStudent({
-        uid: student.uid || student.id,
-        email: student.email,
-        name: student.name,
-      });
-    }
+    if (!canViewAs(student) || !onViewAsStudent) return;
+    onViewAsStudent({
+      uid: student.uid || student.id,
+      email: student.email,
+      name: student.name,
+    });
   };
 
-  const totalCount = managedStudents.length;
-  const alphaCount = managedStudents.filter((s) => planByStudentId.get(s.id) === 'alpha').length;
-  const espelhoCount = managedStudents.filter((s) => planByStudentId.get(s.id) === 'self_service').length;
-  const pendingCount = managedStudents.filter((s) => s.status === 'pending').length;
+  const totalCount = students.length;
+  const alphaCount = students.filter((s) => tierOf(s) === 'alpha').length;
+  const espelhoCount = totalCount - alphaCount;
+  const pendingCount = students.filter((s) => s.status === 'pending').length;
 
-  if (loading || subsLoading) {
+  if (loading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
   }
 
-  const planChips = [
-    { value: 'all', label: 'Todos', count: totalCount },
-    { value: 'alpha', label: 'Mentoria Alpha', count: alphaCount },
-    { value: 'self_service', label: 'Espelho', count: espelhoCount },
+  const tierChips = [
+    { value: 'all',     label: 'Todos',          count: totalCount },
+    { value: 'alpha',   label: 'Mentoria Alpha', count: alphaCount },
+    { value: 'espelho', label: 'Espelho',        count: espelhoCount },
   ];
 
   return (
@@ -225,15 +205,15 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       <div className="glass-card p-3 mb-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Plano</span>
-          {planChips.map((f) => (
+          {tierChips.map((f) => (
             <button
               key={f.value}
               type="button"
-              onClick={() => setPlanFilter(f.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${planFilter === f.value ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
+              onClick={() => setTierFilter(f.value)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${tierFilter === f.value ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
             >
               {f.label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${planFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tierFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
             </button>
           ))}
         </div>
@@ -250,21 +230,22 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         {filteredStudents.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>{managedStudents.length === 0 ? 'Nenhum aluno cadastrado' : 'Nenhum aluno neste filtro'}</p>
+            <p>{students.length === 0 ? 'Nenhum aluno cadastrado' : 'Nenhum aluno neste filtro'}</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-800/50">
             {filteredStudents.map((s) => {
-              const plan = planByStudentId.get(s.id);
+              const tier = tierOf(s);
+              const clickable = canViewAs(s);
               return (
                 <div
                   key={s.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleViewAs(s)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewAs(s); } }}
-                  className="p-4 hover:bg-slate-800/30 cursor-pointer focus:outline-none focus:bg-slate-800/30 transition-colors"
-                  title="Clique para entrar no dashboard deste aluno"
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onClick={clickable ? () => handleViewAs(s) : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewAs(s); } } : undefined}
+                  className={`p-4 transition-colors ${clickable ? 'hover:bg-slate-800/30 cursor-pointer focus:outline-none focus:bg-slate-800/30' : 'opacity-80'}`}
+                  title={clickable ? 'Clique para entrar no dashboard deste aluno' : 'Sem email — não tem dashboard'}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -273,7 +254,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       </div>
                       <div>
                         <p className="font-medium text-white">{s.name || '-'}</p>
-                        <p className="text-sm text-slate-500">{s.email}</p>
+                        <p className="text-sm text-slate-500">{s.email || <span className="italic text-slate-600">sem email</span>}</p>
                         <div onClick={(e) => e.stopPropagation()}>
                           {editingWhatsapp === s.id ? (
                             <div className="flex items-center gap-1.5 mt-1">
@@ -311,11 +292,9 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {plan && (
-                        <span className={`px-2 py-1 rounded-lg text-[11px] font-medium ${PLAN_BADGE_CLASS[plan]}`}>
-                          {PLAN_LABELS[plan]}
-                        </span>
-                      )}
+                      <span className={`px-2 py-1 rounded-lg text-[11px] font-medium ${TIER_BADGE_CLASS[tier]}`}>
+                        {TIER_LABELS[tier]}
+                      </span>
 
                       <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
                         {s.status === 'active' ? <><CheckCircle className="w-3 h-3" />Ativo</> : <><Clock className="w-3 h-3" />Pendente</>}
@@ -333,13 +312,13 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                         onboardingStatus={s.onboardingStatus}
                       />
 
-                      {s.status === 'pending' && (
+                      {s.status === 'pending' && s.email && (
                         <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
                           {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                         </button>
                       )}
 
-                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                      {clickable && <ChevronRight className="w-4 h-4 text-slate-600" />}
                     </div>
                   </div>
                 </div>
@@ -356,7 +335,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       </div>
       {showAddModal && (
         <AddStudentModal
-          students={managedStudents}
+          students={students}
           onCreate={createStudentFromModal}
           onUseExisting={useExistingFromModal}
           onClose={() => setShowAddModal(false)}
