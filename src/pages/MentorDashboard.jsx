@@ -263,6 +263,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           role="mentor"
           studentName={selectedStudent.name}
           onStartClosure={(item) => setMentorClosureContext(item)}
+          plans={plans.filter((p) => p.studentId === selectedStudent.studentId)}
+          trades={selectedStudentTrades}
         />
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

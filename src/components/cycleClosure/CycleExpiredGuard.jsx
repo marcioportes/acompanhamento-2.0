@@ -95,8 +95,8 @@ function QueueCard({ item, isMentor, onStart }) {
   );
 }
 
-export default function CycleExpiredGuard({ studentId, role = 'student', studentName = null, onStartClosure }) {
-  const { queue, loading } = useCycleExpiredQueue(studentId);
+export default function CycleExpiredGuard({ studentId, role = 'student', studentName = null, onStartClosure, plans, trades }) {
+  const { queue, loading } = useCycleExpiredQueue(studentId, { plans, trades });
 
   if (loading) return null;
   if (!queue || queue.length === 0) return null;

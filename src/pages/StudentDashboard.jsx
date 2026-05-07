@@ -496,6 +496,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         role={viewAs ? 'mentor' : 'student'}
         studentName={viewAs?.name}
         onStartClosure={(item) => setClosureContext(item)}
+        plans={plans}
+        trades={trades}
       />
 
       {/* CSV Import — Card de staging */}

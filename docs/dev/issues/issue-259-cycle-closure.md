@@ -9,7 +9,7 @@
 - [x] **Mockup apresentado** — `Temp/cycle-closure-mockup.html` (9 telas: dashboard + wizard etapas 1/3/6 + override + 4 mentor) revisado por Marcio em 06-07/05/2026
 - [x] **Memória de cálculo apresentada** — TPS, Kelly, Monte Carlo, IA stub heurístico documentados no draft §4 e replicados no body do issue #259
 - [x] **Marcio autorizou** — 07/05/2026 ("vamos para programação", após autorizar bump v1.58.0)
-- [ ] **Gate Pré-Código liberado** — pendente (próximo passo)
+- [x] **Gate Pré-Código liberado** — 07/05/2026 (locks CHUNK-03/04/16 ESCRITA + 05/06/08/09 leitura registrados, worktree criado, versão 1.58.0 reservada)
 
 ## Context
 
@@ -115,7 +115,17 @@ Ver `Temp/ritual-fechamento-ciclo-draft.md` §11. Resumo:
 ## Sessions
 _(log linear; 1 linha por task. Format: `task NN [slug] commit <sha> ok|fail`)_
 
-- _(pendente — próximo passo: Gate Pré-Código + decompor Phases em tasks)_
+- A1 [schema-cfs] commit `3d80497d` ok — collection `cycleClosures` + closeCycle/reopenCycle/setMentorClosureComment CFs + sealCheck + rules
+- A2 [hard-seal] commit `0cb138fb` ok — gate em createTrade/editTradeAsMentor + sealCheck CJS mirror + 33 testes CJS + 97 tradeGateway sem regressão
+- A3 [metricas] commit `c975c1bc` ok — cycleMetrics/kellyCalculator/monteCarlo/tradingPerformanceScore + 61 testes ESM
+- A4 [ia-stub] commit `9e23d968` ok — closurePlanAdvisor/swotHeuristics/forwardActionsHeuristics + 45 testes ESM
+- A5.1-5 [wizard-base] commit `8231dc45` ok — useCycleClosureDraft + WizardHeader/Footer + Step1Read/Step2Notice/Step3Reflect (parcial)
+- A5.6 [wizard-completo] commit `dc0711e2` ok — Step3Reflect/Step4Map/Step5Check/Step6Adjust/Step7Commit/Step8Seal + ChipPicker
+- A6 [guard-modal] commit `565b00cc` ok — CycleExpiredGuard + CycleClosureModal + wire StudentDashboard
+- A7 [mentor-camada] commit `cbae79f7` ok — MentorClosuresInbox + MentorClosureView + ClosurePendingBadge + tab Closures + setMentorClosureComment integrado
+- A8 [flow-c] commit `ee0dffb8` ok — CycleExpiredGuard + Modal no MentorDashboard `selectedStudent` (mentor fecha pelo aluno)
+- A9 [timeline] commit `e8a66142` ok — useStudentClosures + ClosureChapterCard + ClosureTimeline (perfil aluno + view mentor)
+- A10 [polish-smoke] em curso — A10.1 skip (CycleConsistencyCard shipped/estável), A10.2 update issue doc, A10.3 smoke + checklist
 
 ## Shared Deltas
 _(diffs propostos para o integrador aplicar no MAIN após o merge)_
@@ -133,7 +143,11 @@ _(diffs propostos para o integrador aplicar no MAIN após o merge)_
 ## Decisions
 _(apenas IDs — texto detalhado mora em `docs/decisions.md`; rationales longos em `docs/decisions/DEC-AUTO-259-NN.md` se >200 tokens)_
 
-- _(emergem durante execução; pre-acordadas: 12 open questions já fechadas no draft §8)_
+- DEC-AUTO-259-01 — Symlink `~/projects/issue-259/node_modules → ~/projects/acompanhamento-2.0/node_modules` (root) pra Vitest rodar no worktree; `functions/` reusa via `../node_modules/.bin/vitest`. Evita reinstalação 800MB. Decisão técnica autônoma.
+- DEC-AUTO-259-02 — Email digest pra mentor cortado (over-engineering); badge intra-app `<ClosurePendingBadge>` cobre o sinal sem canal externo.
+- DEC-AUTO-259-03 — Customização de SWOT por mentor adiada pra issue #262 (fast-follow). 1A entrega heurísticas universais hardcoded.
+- DEC-AUTO-259-04 — A10.1 (polish CycleConsistencyCard labels) skipped: card shipped em v1.54.0, labels já claras, mexer arrisca regressão sem ganho real. Foco no fechamento de #259.
+- _(12 open questions originais já resolvidas no draft §8 — Q3 cap 5%, Q7 Quarter-Kelly default, Q8 ≥30 trades pra ciclo anterior, Q9 Claude API, Q12 weights TPS rebalanced)_
 
 ## Chunks
 - **CHUNK-03 (Plans) — ESCRITA** — mutação `plan.pl/currentPl/cycleNumber/lastClosedCycleEnd`

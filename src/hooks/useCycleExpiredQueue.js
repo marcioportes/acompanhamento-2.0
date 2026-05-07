@@ -92,6 +92,10 @@ function enumerateExpiredCycles(adjustmentCycle, startDate, now) {
 
 /**
  * @param {string} studentId
+ * @param {{ plans?: Array, trades?: Array }} [injected]
+ *   Opcional. Quando StudentDashboard/MentorDashboard já carregou plans/trades
+ *   via seu próprio caminho de leitura (studentEmail no aluno, studentId no
+ *   override do mentor), passar aqui evita refetch divergente.
  * @returns {{queue, loading}}
  *   queue: Array<{
  *     planId, planName, accountId, adjustmentCycle,
@@ -101,9 +105,17 @@ function enumerateExpiredCycles(adjustmentCycle, startDate, now) {
  *     actionable: bool,                    // só o primeiro=true
  *   }>
  */
-export function useCycleExpiredQueue(studentId) {
-  const { plans = [], loading: plansLoading } = usePlans(studentId);
-  const { trades = [], loading: tradesLoading } = useTrades(studentId);
+export function useCycleExpiredQueue(studentId, injected = {}) {
+  // Hooks rodam sempre (regra dos hooks); quando injected, descartamos o resultado.
+  // Fallback é raro (testes/uso isolado); caminho real do app injeta plans/trades
+  // já carregados pelo Student/MentorDashboard via studentEmail (aluno) ou
+  // studentId override (mentor visualizando aluno).
+  const fetchedPlans = usePlans(studentId);
+  const fetchedTrades = useTrades(studentId);
+  const plans = injected.plans ?? fetchedPlans.plans ?? [];
+  const trades = injected.trades ?? fetchedTrades.trades ?? [];
+  const plansLoading = injected.plans ? false : fetchedPlans.loading;
+  const tradesLoading = injected.trades ? false : fetchedTrades.loading;
 
   const [closures, setClosures] = useState([]);
   const [closuresLoading, setClosuresLoading] = useState(false);
@@ -163,11 +175,14 @@ export function useCycleExpiredQueue(studentId) {
         const cycleTrades = planTrades.filter(
           (t) => t.date >= c.cycleStart && t.date <= c.cycleEnd,
         );
-        if (cycleTrades.length === 0) continue;     // ciclo vazio — não há ritual a fechar
+        const daysOverdue = Math.floor((now - new Date(c.cycleEnd + 'T23:59:59')) / 86400000);
+
+        // Ciclo vazio: pula apenas se atraso < 7d. Acima disso, força reflexão
+        // ("por que não operei?" → TILT, pausa, abandono são sinais valiosos).
+        if (cycleTrades.length === 0 && daysOverdue < 7) continue;
 
         const result = cycleTrades.reduce((s, t) => s + (typeof t.result === 'number' ? t.result : 0), 0);
         const resultPercent = plan.pl > 0 ? (result / plan.pl) * 100 : null;
-        const daysOverdue = Math.floor((now - new Date(c.cycleEnd + 'T23:59:59')) / 86400000);
 
         out.push({
           planId: plan.id,
