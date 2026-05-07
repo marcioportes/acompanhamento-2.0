@@ -37,6 +37,8 @@ import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
+import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
+import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -71,6 +73,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [viewingTrade, setViewingTrade] = useState(null);
   // Issue #259 — view do closure (lateral panel + comment)
   const [viewingClosure, setViewingClosure] = useState(null);
+  // Flow C — mentor inicia closure pelo aluno em sessão 1:1 (issue #259 A8)
+  const [mentorClosureContext, setMentorClosureContext] = useState(null);
   const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [rankingSort, setRankingSort] = useState('totalPL');
@@ -253,6 +257,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
           </div>
         </div>
+        {/* Issue #259 A8 — Flow C: mentor inicia closure pelo aluno (sessão 1:1) */}
+        <CycleExpiredGuard
+          studentId={selectedStudent.studentId}
+          role="mentor"
+          studentName={selectedStudent.name}
+          onStartClosure={(item) => setMentorClosureContext(item)}
+        />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             title="P&L Total"
@@ -288,6 +300,23 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
         <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+
+        {/* Flow C — modal do wizard em modo mentor */}
+        <CycleClosureModal
+          open={mentorClosureContext !== null}
+          onClose={() => setMentorClosureContext(null)}
+          onSealed={() => setMentorClosureContext(null)}
+          studentId={selectedStudent.studentId}
+          studentName={selectedStudent.name}
+          planId={mentorClosureContext?.planId}
+          cycleKey={mentorClosureContext?.cycleKey}
+          cycleNumber={mentorClosureContext?.cycleNumber}
+          cycleStart={mentorClosureContext?.cycleStart}
+          cycleEnd={mentorClosureContext?.cycleEnd}
+          accountId={mentorClosureContext?.accountId}
+          role="mentor"
+          planName={mentorClosureContext?.planName}
+        />
       </div>
     );
   }
