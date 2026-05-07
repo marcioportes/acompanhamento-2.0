@@ -115,7 +115,7 @@ Botões filhos: `e.stopPropagation()` para não disparar View As.
 
 ## Sessions
 
-_(linear, 1 linha por task — preencher conforme evolui)_
+- task A1-A7 [filtro+row+limpeza+testes] commit c50fabc7 ok — 2998/2998 testes, build verde
 
 ## Shared Deltas
 
