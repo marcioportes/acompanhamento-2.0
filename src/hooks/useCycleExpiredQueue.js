@@ -163,7 +163,13 @@ export function useCycleExpiredQueue(studentId, injected = {}) {
       const firstTradeDate = planTrades.length > 0
         ? new Date(planTrades.map((t) => t.date).sort()[0] + 'T12:00:00')
         : null;
-      const startDate = planCreatedAt || firstTradeDate || now;
+      // Origem = data mais antiga entre createdAt do plano e primeiro trade.
+      // Cobre o caso comum: aluno importa CSV histórico depois de criar plano,
+      // trades datados antes do createdAt precisam aparecer em ciclos passados.
+      const candidates = [planCreatedAt, firstTradeDate].filter(Boolean);
+      const startDate = candidates.length > 0
+        ? new Date(Math.min(...candidates.map((d) => d.getTime())))
+        : now;
       if (startDate >= now) continue;
 
       const cycles = enumerateExpiredCycles(adjustmentCycle, startDate, now);
