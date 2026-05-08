@@ -1,17 +1,16 @@
 /**
  * StudentsManagement
- * @version 4.0.0
- * @description Gestão de alunos (Alpha + Espelho + VIP + Lead + Ex). Layout em
- *              tabela seguindo o mockup #237; classificação derivada de
- *              `student.accessTier` + subscriptions reais (issue #263).
+ * @version 4.1.0
+ * @description Gestão de alunos com 3 buckets: Alpha, Espelho, Trial (subdividido
+ *              em Trial·Alpha e Trial·Espelho). Quem não tem sub ativa OU é VIP
+ *              não aparece nesta tela.
  *
  * CHANGELOG:
- * - 4.0.0: Tabela (vs cards). 6 chips: Todos/Alpha/Espelho/Lead/Ex/VIP. Stats
- *          Alpha ativos / Espelho ativos / VIP / Vencendo ≤7d. Status pill
- *          com dot colorido. classifyStudent() em util testável.
- * - 3.1.0: Hipótese 3 — Alpha/Espelho via accessTier; row clicável → View As.
+ * - 4.1.0: Buckets reduzidos para alpha/espelho/trial. Classificação pela sub
+ *          ativa mais recente (não pelo accessTier). Lead/Ex/VIP saíram.
+ * - 4.0.0: Tabela (vs cards). 6 chips. Stats Alpha/Espelho/VIP/Vencendo ≤7d.
+ * - 3.1.0: Alpha/Espelho via accessTier; row clicável → View As.
  * - 3.0.0: Filtro Alpha/Espelho + click→dashboard. Limpeza N+1 trades.
- * - 2.x : View As Student, perfil emocional inline (removido).
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -26,7 +25,7 @@ import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import AddStudentModal from '../components/Students/AddStudentModal';
 import { useSubscriptions } from '../hooks/useSubscriptions';
-import { classifyStudent, isExpiringSoon, TIER_CONFIG } from '../utils/studentClassify';
+import { classifyStudent, isExpiringSoon, tierGroup, TIER_CONFIG } from '../utils/studentClassify';
 
 const StudentsManagement = ({ onViewAsStudent }) => {
   const [students, setStudents] = useState([]);
@@ -62,7 +61,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return map;
   }, [subscriptions]);
 
-  // Bucket por aluno.
+  // Bucket por aluno (alpha | espelho | trial-alpha | trial-espelho | null).
   const studentBucket = useMemo(() => {
     const map = new Map();
     for (const s of students) {
@@ -71,24 +70,29 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return map;
   }, [students, subsByStudent]);
 
-  // Stats.
+  // Universo da tela: só quem cabe na gestão (bucket !== null).
+  const managedStudents = useMemo(
+    () => students.filter((s) => studentBucket.get(s.id) !== null),
+    [students, studentBucket]
+  );
+
   const counts = useMemo(() => {
-    const c = { all: students.length, alpha: 0, espelho: 0, vip: 0, lead: 0, ex: 0 };
-    for (const s of students) {
-      const b = studentBucket.get(s.id);
-      if (b) c[b] += 1;
+    const c = { all: managedStudents.length, alpha: 0, espelho: 0, trial: 0 };
+    for (const s of managedStudents) {
+      const g = tierGroup(studentBucket.get(s.id));
+      if (g && c[g] !== undefined) c[g] += 1;
     }
     let expiringSoon = 0;
     for (const sub of subscriptions ?? []) {
       if (isExpiringSoon(sub)) expiringSoon += 1;
     }
     return { ...c, expiringSoon };
-  }, [students, studentBucket, subscriptions]);
+  }, [managedStudents, studentBucket, subscriptions]);
 
   const filteredStudents = useMemo(() => {
-    if (tierFilter === 'all') return students;
-    return students.filter((s) => studentBucket.get(s.id) === tierFilter);
-  }, [students, studentBucket, tierFilter]);
+    if (tierFilter === 'all') return managedStudents;
+    return managedStudents.filter((s) => tierGroup(studentBucket.get(s.id)) === tierFilter);
+  }, [managedStudents, studentBucket, tierFilter]);
 
   const flashSuccess = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 5000); };
 
@@ -161,9 +165,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     { value: 'all',     label: 'Todos',          count: counts.all },
     { value: 'alpha',   label: 'Mentoria Alpha', count: counts.alpha },
     { value: 'espelho', label: 'Espelho',        count: counts.espelho },
-    { value: 'lead',    label: 'Lead',           count: counts.lead },
-    { value: 'ex',      label: 'Ex',             count: counts.ex },
-    { value: 'vip',     label: 'VIP',            count: counts.vip },
+    { value: 'trial',   label: 'Trial',          count: counts.trial },
   ];
 
   return (
@@ -187,30 +189,30 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         </button>
       </div>
 
-      {/* Stats — espelha mockup #237 */}
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="glass-card p-4">
           <p className="text-2xl font-bold text-purple-400 font-mono">{counts.alpha}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Alpha ativos</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Alpha</p>
         </div>
         <div className="glass-card p-4">
           <p className="text-2xl font-bold text-cyan-400 font-mono">{counts.espelho}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Espelho ativos</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Espelho</p>
         </div>
         <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-fuchsia-400 font-mono">{counts.vip}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">VIP (não paga)</p>
+          <p className="text-2xl font-bold text-amber-400 font-mono">{counts.trial}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Trial</p>
         </div>
         <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-amber-400 font-mono">{counts.expiringSoon}</p>
+          <p className="text-2xl font-bold text-yellow-400 font-mono">{counts.expiringSoon}</p>
           <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Vencendo ≤7d</p>
         </div>
       </div>
 
-      {/* Chips de filtro — 6 buckets mutuamente exclusivos */}
+      {/* Chips de filtro — 3 buckets visíveis (Trial agrega trial-alpha + trial-espelho) */}
       <div className="glass-card p-3 mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Tier</span>
+          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Plano</span>
           {tierChips.map((f) => {
             const active = tierFilter === f.value;
             return (
@@ -242,7 +244,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         {filteredStudents.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>{students.length === 0 ? 'Nenhum aluno cadastrado' : 'Nenhum aluno neste filtro'}</p>
+            <p>{managedStudents.length === 0 ? 'Nenhum aluno na gestão' : 'Nenhum aluno neste filtro'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -259,7 +261,9 @@ const StudentsManagement = ({ onViewAsStudent }) => {
               <tbody className="divide-y divide-slate-800/30">
                 {filteredStudents.map((s) => {
                   const bucket = studentBucket.get(s.id);
-                  const tier = TIER_CONFIG[bucket] ?? TIER_CONFIG.lead;
+                  const tier = TIER_CONFIG[bucket];
+                  if (!tier) return null;
+                  const isAlphaBucket = bucket === 'alpha' || bucket === 'trial-alpha';
                   const clickable = canViewAs(s);
                   const isPending = s.status === 'pending';
                   return (
@@ -299,7 +303,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                          {(bucket === 'alpha' || isPending) && (
+                          {(isAlphaBucket || isPending) && (
                             <AssessmentToggle
                               studentId={s.id}
                               currentValue={s.requiresAssessment}

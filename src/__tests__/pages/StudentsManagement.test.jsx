@@ -1,12 +1,12 @@
 /**
  * StudentsManagement.test.jsx
- * @description Cobre a renderização da tabela com 6 buckets, stats (Alpha
- *              ativos / Espelho ativos / VIP / Vencendo ≤7d) e click→View As.
+ * @description Tabela com 3 buckets visíveis (Alpha/Espelho/Trial). VIP e
+ *              alunos sem sub ativa não aparecem. Issue #263.
  * @see src/pages/StudentsManagement.jsx
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../../components/DebugBadge', () => ({
   __esModule: true,
@@ -49,10 +49,10 @@ vi.mock('../../hooks/useSubscriptions', () => ({
 import StudentsManagement from '../../pages/StudentsManagement';
 
 const stu = (over = {}) => ({
-  id: 's1', name: 'Default', email: 'd@x.com', status: 'active', accessTier: 'alpha', ...over,
+  id: 's1', name: 'Default', email: 'd@x.com', status: 'active', ...over,
 });
 const sub = (over = {}) => ({
-  id: 'su1', studentId: 's1', plan: 'alpha', type: 'paid', status: 'active', ...over,
+  id: 'su1', studentId: 's1', plan: 'alpha', type: 'paid', status: 'active', renewalDate: new Date(Date.now() + 60 * 86_400_000), ...over,
 });
 
 const getStatCardByLabel = (label) => {
@@ -60,102 +60,120 @@ const getStatCardByLabel = (label) => {
   return labelEl.closest('div');
 };
 
-describe('StudentsManagement — tabela + 6 buckets (mockup #237 sobre modelo real)', () => {
+describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
   beforeEach(() => {
     mockStudents = [];
     mockSubscriptions = [];
     vi.clearAllMocks();
   });
 
-  it('renderiza stats Alpha/Espelho/VIP/Vencendo ≤7d com classify+isExpiringSoon', () => {
+  it('stats Alpha/Espelho/Trial/Vencendo ≤7d', () => {
     const inSeven = new Date(Date.now() + 3 * 86_400_000);
     mockStudents = [
-      stu({ id: 'a1', name: 'João Alpha',     accessTier: 'alpha' }),
-      stu({ id: 'a2', name: 'Maria Alpha',    accessTier: 'alpha' }),
-      stu({ id: 'es', name: 'Mat Espelho',    accessTier: 'self_service', email: null }),
-      stu({ id: 'vp', name: 'Cristian VIP',   accessTier: 'none' }),
-      stu({ id: 'lf', name: 'Lead Fulano',    accessTier: 'none', email: null }),
-      stu({ id: 'ex', name: 'Renato Ex',      accessTier: 'none', email: null }),
+      stu({ id: 'a1', name: 'João Alpha' }),
+      stu({ id: 'a2', name: 'Maria Alpha' }),
+      stu({ id: 'es', name: 'Mat Espelho', email: null }),
+      stu({ id: 't1', name: 'Pedro Trial Alpha' }),
+      stu({ id: 't2', name: 'Ana Trial Espelho', email: null }),
     ];
     mockSubscriptions = [
       sub({ id: 'sa1', studentId: 'a1', plan: 'alpha', type: 'paid', renewalDate: inSeven }),
-      sub({ id: 'sa2', studentId: 'a2', plan: 'alpha', type: 'paid', renewalDate: new Date(Date.now() + 60 * 86_400_000) }),
-      sub({ id: 'svp', studentId: 'vp', type: 'vip',                  status: 'active' }),
-      sub({ id: 'sex', studentId: 'ex', plan: 'self_service', type: 'paid', status: 'cancelled' }),
+      sub({ id: 'sa2', studentId: 'a2', plan: 'alpha', type: 'paid' }),
+      sub({ id: 'ses', studentId: 'es', plan: 'self_service', type: 'paid' }),
+      sub({ id: 'st1', studentId: 't1', plan: 'alpha',        type: 'trial', trialEndsAt: new Date(Date.now() + 30 * 86_400_000) }),
+      sub({ id: 'st2', studentId: 't2', plan: 'self_service', type: 'trial', trialEndsAt: new Date(Date.now() + 30 * 86_400_000) }),
     ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
-    expect(getStatCardByLabel('Alpha ativos')).toHaveTextContent('2');
-    expect(getStatCardByLabel('Espelho ativos')).toHaveTextContent('1');
-    expect(getStatCardByLabel('VIP (não paga)')).toHaveTextContent('1');
-    expect(getStatCardByLabel('Vencendo ≤7d')).toHaveTextContent('1'); // só sa1 cabe
+    expect(getStatCardByLabel('Alpha')).toHaveTextContent('2');
+    expect(getStatCardByLabel('Espelho')).toHaveTextContent('1');
+    expect(getStatCardByLabel('Trial')).toHaveTextContent('2');
+    expect(getStatCardByLabel('Vencendo ≤7d')).toHaveTextContent('1');
   });
 
-  it('chips contam os 6 buckets corretamente', () => {
+  it('chips contam Todos/Alpha/Espelho/Trial; Trial agrega trial-alpha + trial-espelho', () => {
     mockStudents = [
-      stu({ id: 'a',  name: 'A',  accessTier: 'alpha' }),
-      stu({ id: 'es', name: 'E',  accessTier: 'self_service' }),
-      stu({ id: 'vp', name: 'V',  accessTier: 'none' }),
-      stu({ id: 'lf', name: 'L',  accessTier: 'none' }),
-      stu({ id: 'ex', name: 'X',  accessTier: 'none' }),
+      stu({ id: 'a',  name: 'A' }),
+      stu({ id: 'es', name: 'E' }),
+      stu({ id: 't1', name: 'T1' }),
+      stu({ id: 't2', name: 'T2' }),
     ];
     mockSubscriptions = [
-      sub({ id: 'svp', studentId: 'vp', type: 'vip', status: 'active' }),
-      sub({ id: 'sex', studentId: 'ex', type: 'paid', status: 'cancelled' }),
+      sub({ studentId: 'a',  plan: 'alpha',        type: 'paid' }),
+      sub({ studentId: 'es', plan: 'self_service', type: 'paid' }),
+      sub({ studentId: 't1', plan: 'alpha',        type: 'trial', trialEndsAt: new Date(Date.now() + 86_400_000 * 30) }),
+      sub({ studentId: 't2', plan: 'self_service', type: 'trial', trialEndsAt: new Date(Date.now() + 86_400_000 * 30) }),
     ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: /Todos\s*5/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Todos\s*4/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Mentoria Alpha\s*1/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Espelho\s*1/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Lead\s*1/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Ex\s*1/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /VIP\s*1/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Trial\s*2/i })).toBeInTheDocument();
   });
 
-  it('chip "Lead" filtra para alunos sem sub e accessTier vazio', () => {
+  it('VIP e sem sub ativa NÃO aparecem na tela', () => {
     mockStudents = [
-      stu({ id: 'a',  name: 'João Alpha', accessTier: 'alpha' }),
-      stu({ id: 'lf', name: 'Lead Maria', accessTier: 'none' }),
+      stu({ id: 'a',  name: 'João Alpha' }),
+      stu({ id: 'vp', name: 'Cristian VIP' }),
+      stu({ id: 'ex', name: 'Renato Cancelado' }),
+      stu({ id: 'lf', name: 'Sem Sub' }),
     ];
-    mockSubscriptions = [];
+    mockSubscriptions = [
+      sub({ studentId: 'a',  plan: 'alpha', type: 'paid', status: 'active' }),
+      sub({ studentId: 'vp', type: 'vip',                 status: 'active' }),
+      sub({ studentId: 'ex', plan: 'self_service', type: 'paid', status: 'cancelled' }),
+    ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
     expect(screen.getByText('João Alpha')).toBeInTheDocument();
-    expect(screen.getByText('Lead Maria')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Lead\s*1/i }));
-
-    expect(screen.queryByText('João Alpha')).not.toBeInTheDocument();
-    expect(screen.getByText('Lead Maria')).toBeInTheDocument();
+    expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument();
+    expect(screen.queryByText('Renato Cancelado')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sem Sub')).not.toBeInTheDocument();
   });
 
-  it('linha clicável (com email) dispara View As', () => {
-    mockStudents = [stu({ id: 'a', uid: 'uid-a', name: 'João', email: 'j@x.com', accessTier: 'alpha' })];
+  it('chip Trial filtra para trial-alpha + trial-espelho', () => {
+    mockStudents = [
+      stu({ id: 'a',  name: 'João Alpha' }),
+      stu({ id: 't1', name: 'Pedro Trial' }),
+    ];
+    mockSubscriptions = [
+      sub({ studentId: 'a',  plan: 'alpha', type: 'paid' }),
+      sub({ studentId: 't1', plan: 'alpha', type: 'trial', trialEndsAt: new Date(Date.now() + 30 * 86_400_000) }),
+    ];
+
+    render(<StudentsManagement onViewAsStudent={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Trial\s*1/i }));
+
+    expect(screen.queryByText('João Alpha')).not.toBeInTheDocument();
+    expect(screen.getByText('Pedro Trial')).toBeInTheDocument();
+  });
+
+  it('linha clicável dispara View As; sem email não vira role=button', () => {
+    mockStudents = [
+      stu({ id: 'a', uid: 'uid-a', name: 'João', email: 'j@x.com' }),
+      stu({ id: 'x', name: 'Sem Email', email: null }),
+    ];
+    mockSubscriptions = [
+      sub({ studentId: 'a', plan: 'alpha',        type: 'paid' }),
+      sub({ studentId: 'x', plan: 'self_service', type: 'paid' }),
+    ];
     const onViewAs = vi.fn();
     render(<StudentsManagement onViewAsStudent={onViewAs} />);
 
     const row = screen.getByText('João').closest('[role="button"]');
     fireEvent.click(row);
-
     expect(onViewAs).toHaveBeenCalledWith({ uid: 'uid-a', email: 'j@x.com', name: 'João' });
-  });
 
-  it('linha sem email não tem role=button e não navega', () => {
-    mockStudents = [stu({ id: 'a', name: 'Sem Email', email: null, accessTier: 'none' })];
-    const onViewAs = vi.fn();
-    render(<StudentsManagement onViewAsStudent={onViewAs} />);
-
-    expect(screen.getByText('Sem Email')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Sem Email/i })).not.toBeInTheDocument();
-    expect(onViewAs).not.toHaveBeenCalled();
   });
 
   it('click em AssessmentToggle não dispara View As', () => {
-    mockStudents = [stu({ id: 'a', name: 'João', email: 'j@x.com', accessTier: 'alpha' })];
+    mockStudents = [stu({ id: 'a', name: 'João', email: 'j@x.com' })];
+    mockSubscriptions = [sub({ studentId: 'a', plan: 'alpha', type: 'paid' })];
     const onViewAs = vi.fn();
     render(<StudentsManagement onViewAsStudent={onViewAs} />);
 
