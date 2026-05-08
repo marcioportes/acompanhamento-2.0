@@ -1,58 +1,44 @@
 /**
  * StudentsManagement
- * @version 3.1.0
- * @description Lista de alunos com chips Alpha/Espelho derivados de student.accessTier.
- *              Row clicável → dashboard via View As (só se aluno tem email).
+ * @version 4.0.0
+ * @description Gestão de alunos (Alpha + Espelho + VIP + Lead + Ex). Layout em
+ *              tabela seguindo o mockup #237; classificação derivada de
+ *              `student.accessTier` + subscriptions reais (issue #263).
  *
  * CHANGELOG:
- * - 3.1.0: Hipótese 3 — universo = todos students; Alpha = accessTier==='alpha';
- *          Espelho = todo o resto (leads, ex, self_service, sem accessTier).
- *          Sem cruzar com subscriptions. Click bloqueado se email==null.
- * - 3.0.0: Filtro Alpha/Espelho + click→dashboard. Limpeza N+1 trades + perfil emocional inline.
- * - 2.1.0: StudentEmotionalCard por aluno ativo (Fase 1.4.0)
- * - 2.0.0: View As Student, indicador de erro de email
+ * - 4.0.0: Tabela (vs cards). 6 chips: Todos/Alpha/Espelho/Lead/Ex/VIP. Stats
+ *          Alpha ativos / Espelho ativos / VIP / Vencendo ≤7d. Status pill
+ *          com dot colorido. classifyStudent() em util testável.
+ * - 3.1.0: Hipótese 3 — Alpha/Espelho via accessTier; row clicável → View As.
+ * - 3.0.0: Filtro Alpha/Espelho + click→dashboard. Limpeza N+1 trades.
+ * - 2.x : View As Student, perfil emocional inline (removido).
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import {
-  UserPlus, Mail, CheckCircle, Clock, Users, Loader2, RefreshCw,
-  AlertTriangle, Phone, Check, X, ChevronRight,
+  UserPlus, Mail, Users, Loader2, RefreshCw, AlertTriangle, ChevronRight,
 } from 'lucide-react';
-import { validateWhatsappNumber, formatWhatsappDisplay } from '../utils/whatsappValidation';
+import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import AddStudentModal from '../components/Students/AddStudentModal';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { classifyStudent, isExpiringSoon, TIER_CONFIG } from '../utils/studentClassify';
 
-// Bucket binário derivado do accessTier do student (mantido por checkSubscriptions CF).
-// Alpha = tem dashboard. Espelho = todo o resto (lead, ex, self_service ativo, sem sub, etc).
-const tierOf = (s) => (s?.accessTier === 'alpha' ? 'alpha' : 'espelho');
-
-const TIER_LABELS = { alpha: 'Mentoria Alpha', espelho: 'Espelho' };
-const TIER_BADGE_CLASS = {
-  alpha: 'bg-purple-500/15 text-purple-400',
-  espelho: 'bg-cyan-500/15 text-cyan-400',
-};
-
-/**
- * @param {Function} onViewAsStudent - Callback para View As Student
- */
 const StudentsManagement = ({ onViewAsStudent }) => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [resending, setResending] = useState(null);
-  const [editingWhatsapp, setEditingWhatsapp] = useState(null);
-  const [whatsappInput, setWhatsappInput] = useState('');
-  const [whatsappError, setWhatsappError] = useState('');
-  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [tierFilter, setTierFilter] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
 
   const functions = getFunctions();
+  const { subscriptions, loading: subsLoading } = useSubscriptions();
 
   useEffect(() => {
     const q = query(collection(db, 'students'));
@@ -65,15 +51,47 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     return () => unsubscribe();
   }, []);
 
-  const filteredStudents =
-    tierFilter === 'all' ? students : students.filter((s) => tierOf(s) === tierFilter);
+  // Subs por studentId.
+  const subsByStudent = useMemo(() => {
+    const map = new Map();
+    for (const sub of subscriptions ?? []) {
+      const arr = map.get(sub.studentId) ?? [];
+      arr.push(sub);
+      map.set(sub.studentId, arr);
+    }
+    return map;
+  }, [subscriptions]);
 
-  const flashSuccess = (msg) => {
-    setSuccess(msg);
-    setTimeout(() => setSuccess(''), 5000);
-  };
+  // Bucket por aluno.
+  const studentBucket = useMemo(() => {
+    const map = new Map();
+    for (const s of students) {
+      map.set(s.id, classifyStudent(s, subsByStudent.get(s.id) ?? []));
+    }
+    return map;
+  }, [students, subsByStudent]);
 
-  // Callbacks consumidos por AddStudentModal — retornam {ok, message}.
+  // Stats.
+  const counts = useMemo(() => {
+    const c = { all: students.length, alpha: 0, espelho: 0, vip: 0, lead: 0, ex: 0 };
+    for (const s of students) {
+      const b = studentBucket.get(s.id);
+      if (b) c[b] += 1;
+    }
+    let expiringSoon = 0;
+    for (const sub of subscriptions ?? []) {
+      if (isExpiringSoon(sub)) expiringSoon += 1;
+    }
+    return { ...c, expiringSoon };
+  }, [students, studentBucket, subscriptions]);
+
+  const filteredStudents = useMemo(() => {
+    if (tierFilter === 'all') return students;
+    return students.filter((s) => studentBucket.get(s.id) === tierFilter);
+  }, [students, studentBucket, tierFilter]);
+
+  const flashSuccess = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 5000); };
+
   const createStudentFromModal = async ({ name, email, celular }) => {
     try {
       const createStudent = httpsCallable(functions, 'createStudent');
@@ -105,52 +123,21 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     }
   };
 
-  const handleResendInvite = async (email) => {
+  const handleResendInvite = async (email, ev) => {
+    ev?.stopPropagation();
+    if (!email) return;
     setResending(email);
     try {
       const resendInvite = httpsCallable(functions, 'resendStudentInvite');
       await resendInvite({ email });
-      setSuccess('Email reenviado!');
-      setTimeout(() => setSuccess(''), 3000);
+      flashSuccess('Email reenviado!');
     } catch (err) {
       setError('Erro ao reenviar: ' + err.message);
-    } finally { setResending(null); }
-  };
-
-  const handleWhatsappEdit = (student) => {
-    setEditingWhatsapp(student.id);
-    setWhatsappInput(student.whatsappNumber ?? '');
-    setWhatsappError('');
-  };
-
-  const handleWhatsappSave = async (studentId) => {
-    const result = validateWhatsappNumber(whatsappInput);
-    if (!result.valid) {
-      setWhatsappError(result.error);
-      return;
-    }
-    setSavingWhatsapp(true);
-    try {
-      await updateDoc(doc(db, 'students', studentId), {
-        whatsappNumber: result.sanitized,
-      });
-      setEditingWhatsapp(null);
-      setWhatsappInput('');
-      setWhatsappError('');
-    } catch (err) {
-      setWhatsappError('Erro ao salvar: ' + err.message);
     } finally {
-      setSavingWhatsapp(false);
+      setResending(null);
     }
   };
 
-  const handleWhatsappCancel = () => {
-    setEditingWhatsapp(null);
-    setWhatsappInput('');
-    setWhatsappError('');
-  };
-
-  // Sem email no doc do student não há Auth user — não tem dashboard pra entrar.
   const canViewAs = (student) => Boolean(student?.email);
 
   const handleViewAs = (student) => {
@@ -162,29 +149,34 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     });
   };
 
-  const totalCount = students.length;
-  const alphaCount = students.filter((s) => tierOf(s) === 'alpha').length;
-  const espelhoCount = totalCount - alphaCount;
-  const pendingCount = students.filter((s) => s.status === 'pending').length;
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
+  if (loading || subsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      </div>
+    );
   }
 
   const tierChips = [
-    { value: 'all',     label: 'Todos',          count: totalCount },
-    { value: 'alpha',   label: 'Mentoria Alpha', count: alphaCount },
-    { value: 'espelho', label: 'Espelho',        count: espelhoCount },
+    { value: 'all',     label: 'Todos',          count: counts.all },
+    { value: 'alpha',   label: 'Mentoria Alpha', count: counts.alpha },
+    { value: 'espelho', label: 'Espelho',        count: counts.espelho },
+    { value: 'lead',    label: 'Lead',           count: counts.lead },
+    { value: 'ex',      label: 'Ex',             count: counts.ex },
+    { value: 'vip',     label: 'VIP',            count: counts.vip },
   ];
 
   return (
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto pb-20">
-      <div className="mb-8 flex items-start justify-between gap-4">
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-20">
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
             <Users className="w-7 h-7 text-blue-400" />Alunos
           </h1>
-          <p className="text-slate-400 mt-1">Lista de alunos Alpha e Espelho · clique para entrar no dashboard</p>
+          <p className="text-slate-400 mt-1 text-sm">
+            Cadastro mestre · Alpha (com dashboard), Espelho, VIP, leads e ex-alunos.
+          </p>
         </div>
         <button
           type="button"
@@ -195,144 +187,147 @@ const StudentsManagement = ({ onViewAsStudent }) => {
         </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-white">{totalCount}</p><p className="text-xs text-slate-400">Total</p></div>
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-purple-400">{alphaCount}</p><p className="text-xs text-slate-400">Alpha</p></div>
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-cyan-400">{espelhoCount}</p><p className="text-xs text-slate-400">Espelho</p></div>
-        <div className="glass-card p-4 text-center"><p className="text-2xl font-bold text-yellow-400">{pendingCount}</p><p className="text-xs text-slate-400">Pendentes</p></div>
+      {/* Stats — espelha mockup #237 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="glass-card p-4">
+          <p className="text-2xl font-bold text-purple-400 font-mono">{counts.alpha}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Alpha ativos</p>
+        </div>
+        <div className="glass-card p-4">
+          <p className="text-2xl font-bold text-cyan-400 font-mono">{counts.espelho}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Espelho ativos</p>
+        </div>
+        <div className="glass-card p-4">
+          <p className="text-2xl font-bold text-fuchsia-400 font-mono">{counts.vip}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">VIP (não paga)</p>
+        </div>
+        <div className="glass-card p-4">
+          <p className="text-2xl font-bold text-amber-400 font-mono">{counts.expiringSoon}</p>
+          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Vencendo ≤7d</p>
+        </div>
       </div>
 
+      {/* Chips de filtro — 6 buckets mutuamente exclusivos */}
       <div className="glass-card p-3 mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Plano</span>
-          {tierChips.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setTierFilter(f.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors ${tierFilter === f.value ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border border-slate-700/30'}`}
-            >
-              {f.label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tierFilter === f.value ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
-            </button>
-          ))}
+          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Tier</span>
+          {tierChips.map((f) => {
+            const active = tierFilter === f.value;
+            return (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setTierFilter(f.value)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors border ${active ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border-slate-700/30'}`}
+              >
+                {f.label}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {success && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4" />{success}</div>}
+      {/* Toasts */}
+      {success && <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm">{success}</div>}
       {error && <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">{error}</div>}
 
+      {/* Tabela */}
       <div className="glass-card overflow-hidden">
-        <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
-          <h3 className="font-semibold text-white">Alunos Cadastrados</h3>
+        <div className="px-4 py-2 border-b border-slate-800/50 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">Alunos cadastrados</h3>
           <p className="text-xs text-slate-500">{filteredStudents.length} resultado{filteredStudents.length !== 1 ? 's' : ''}</p>
         </div>
+
         {filteredStudents.length === 0 ? (
           <div className="p-8 text-center text-slate-500">
             <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>{students.length === 0 ? 'Nenhum aluno cadastrado' : 'Nenhum aluno neste filtro'}</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-800/50">
-            {filteredStudents.map((s) => {
-              const tier = tierOf(s);
-              const clickable = canViewAs(s);
-              return (
-                <div
-                  key={s.id}
-                  role={clickable ? 'button' : undefined}
-                  tabIndex={clickable ? 0 : undefined}
-                  onClick={clickable ? () => handleViewAs(s) : undefined}
-                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewAs(s); } } : undefined}
-                  className={`p-4 transition-colors ${clickable ? 'hover:bg-slate-800/30 cursor-pointer focus:outline-none focus:bg-slate-800/30' : 'opacity-80'}`}
-                  title={clickable ? 'Clique para entrar no dashboard deste aluno' : 'Sem email — não tem dashboard'}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${s.status === 'active' ? 'bg-gradient-to-br from-emerald-500 to-green-600' : 'bg-gradient-to-br from-slate-600 to-slate-700'}`}>
-                        {(s.name || s.email).charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium text-white">{s.name || '-'}</p>
-                        <p className="text-sm text-slate-500">{s.email || <span className="italic text-slate-600">sem email</span>}</p>
-                        <div onClick={(e) => e.stopPropagation()}>
-                          {editingWhatsapp === s.id ? (
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <Phone className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                              <input
-                                type="text"
-                                value={whatsappInput}
-                                onChange={(e) => { setWhatsappInput(e.target.value); setWhatsappError(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleWhatsappSave(s.id); if (e.key === 'Escape') handleWhatsappCancel(); }}
-                                placeholder="+55 11 99999-9999"
-                                className="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-xs text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none w-40"
-                                autoFocus
-                                disabled={savingWhatsapp}
-                              />
-                              <button onClick={() => handleWhatsappSave(s.id)} disabled={savingWhatsapp} className="p-0.5 text-emerald-400 hover:text-emerald-300" title="Salvar">
-                                {savingWhatsapp ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                              </button>
-                              <button onClick={handleWhatsappCancel} className="p-0.5 text-slate-500 hover:text-red-400" title="Cancelar">
-                                <X className="w-3 h-3" />
-                              </button>
-                              {whatsappError && <span className="text-xs text-red-400">{whatsappError}</span>}
-                            </div>
-                          ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-800/50 text-[11px] uppercase tracking-wider text-slate-500">
+                  <th className="text-left font-semibold px-4 py-3">Nome</th>
+                  <th className="text-left font-semibold px-4 py-3">Celular</th>
+                  <th className="text-left font-semibold px-4 py-3">Email</th>
+                  <th className="text-left font-semibold px-4 py-3">Status</th>
+                  <th className="text-right font-semibold px-4 py-3 w-1">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/30">
+                {filteredStudents.map((s) => {
+                  const bucket = studentBucket.get(s.id);
+                  const tier = TIER_CONFIG[bucket] ?? TIER_CONFIG.lead;
+                  const clickable = canViewAs(s);
+                  const isPending = s.status === 'pending';
+                  return (
+                    <tr
+                      key={s.id}
+                      role={clickable ? 'button' : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      onClick={clickable ? () => handleViewAs(s) : undefined}
+                      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewAs(s); } } : undefined}
+                      className={`transition-colors ${clickable ? 'hover:bg-slate-800/30 cursor-pointer focus:outline-none focus:bg-slate-800/30' : 'opacity-80'}`}
+                      title={clickable ? 'Clique para entrar no dashboard deste aluno' : 'Sem email — não tem dashboard'}
+                    >
+                      <td className="px-4 py-3 font-medium text-white">
+                        {s.name || <span className="italic text-slate-500">(sem nome)</span>}
+                        {s.emailError && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-[10px] text-red-400" title={s.emailError}>
+                            <AlertTriangle className="w-3 h-3" /> erro email
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 font-mono text-xs">
+                        {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : <span className="italic text-slate-600">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-400">
+                        {s.email || <span className="italic text-slate-600">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${tier.pill}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
+                          {tier.label}
+                        </span>
+                        {isPending && (
+                          <span className="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">
+                            pendente
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          {(bucket === 'alpha' || isPending) && (
+                            <AssessmentToggle
+                              studentId={s.id}
+                              currentValue={s.requiresAssessment}
+                              onboardingStatus={s.onboardingStatus}
+                            />
+                          )}
+                          {isPending && s.email && (
                             <button
-                              type="button"
-                              onClick={() => handleWhatsappEdit(s)}
-                              className="flex items-center gap-1 mt-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors"
-                              title="Editar WhatsApp"
+                              onClick={(e) => handleResendInvite(s.email, e)}
+                              disabled={resending === s.email}
+                              className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded"
+                              title="Reenviar email"
                             >
-                              <Phone className="w-3 h-3" />
-                              {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : 'Adicionar WhatsApp'}
+                              {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                             </button>
                           )}
+                          {clickable && <ChevronRight className="w-4 h-4 text-slate-600" />}
                         </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <span className={`px-2 py-1 rounded-lg text-[11px] font-medium ${TIER_BADGE_CLASS[tier]}`}>
-                        {TIER_LABELS[tier]}
-                      </span>
-
-                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                        {s.status === 'active' ? <><CheckCircle className="w-3 h-3" />Ativo</> : <><Clock className="w-3 h-3" />Pendente</>}
-                      </div>
-
-                      {s.emailError && (
-                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400" title={s.emailError}>
-                          <AlertTriangle className="w-3 h-3" />Erro Email
-                        </div>
-                      )}
-
-                      <AssessmentToggle
-                        studentId={s.id}
-                        currentValue={s.requiresAssessment}
-                        onboardingStatus={s.onboardingStatus}
-                      />
-
-                      {s.status === 'pending' && s.email && (
-                        <button onClick={() => handleResendInvite(s.email)} disabled={resending === s.email} className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" title="Reenviar email">
-                          {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                        </button>
-                      )}
-
-                      {clickable && <ChevronRight className="w-4 h-4 text-slate-600" />}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-6 text-xs text-slate-500">
-        <div className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-emerald-400" /><span>Já configurou senha</span></div>
-        <div className="flex items-center gap-2"><Clock className="w-3 h-3 text-yellow-400" /><span>Aguardando configurar senha</span></div>
-        <div className="flex items-center gap-2"><AlertTriangle className="w-3 h-3 text-red-400" /><span>Erro no envio de email</span></div>
-      </div>
       {showAddModal && (
         <AddStudentModal
           students={students}
