@@ -1504,3 +1504,10 @@ exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnric
 // MARKET DATA — Selic diária BCB SGS-11 (issue #235 F0.1)
 // ============================================
 exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");
+
+// ============================================
+// CYCLE CLOSURE — Ritual completo de Fechamento de Ciclo (CHUNK-03/04/16, issue #259)
+// ============================================
+exports.closeCycle = require("./cycleClosure/closeCycle");
+exports.reopenCycle = require("./cycleClosure/reopenCycle");
+exports.setMentorClosureComment = require("./cycleClosure/setMentorClosureComment");
