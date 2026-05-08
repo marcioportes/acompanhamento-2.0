@@ -116,6 +116,12 @@ Botões filhos: `e.stopPropagation()` para não disparar View As.
 ## Sessions
 
 - task A1-A7 [filtro+row+limpeza+testes] commit c50fabc7 ok — 2998/2998 testes, build verde
+- task modal [form inline → AddStudentModal] commit 33d7dab5 ok — alinhar mockup #263
+- task accessTier [hipótese 3: Alpha/Espelho via accessTier] commit 465d16bd ok — 3014/3014
+- task tabela [visual mockup #237: tabela + 5 buckets] commit 5545114f ok — 3014/3014
+- task 3-buckets [reduz pra alpha/espelho/trial; remove Lead/Ex/VIP] commit ca1018c3 ok — 3014/3014
+- task sem-plano [bucket condicional p/ órfãos de sub] commit a8eadbb2 ok — 23/23 nos arquivos
+- pausa 08/05/2026 — Marcio identificou ambiguidade SSoT (esta tela vs SubscriptionsPage). Código no worktree em standby; sem PR enquanto direção arquitetural não fechar. Memo: `project_issue_263_paused`.
 
 ## Shared Deltas
 
