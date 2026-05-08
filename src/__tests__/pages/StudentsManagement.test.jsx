@@ -114,25 +114,43 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
     expect(screen.getByRole('button', { name: /Trial\s*2/i })).toBeInTheDocument();
   });
 
-  it('VIP e sem sub ativa NÃO aparecem na tela', () => {
+  it('VIP ativo some; sem sub ativa OU cancelada vão pro bucket "Sem plano"', () => {
     mockStudents = [
       stu({ id: 'a',  name: 'João Alpha' }),
       stu({ id: 'vp', name: 'Cristian VIP' }),
       stu({ id: 'ex', name: 'Renato Cancelado' }),
-      stu({ id: 'lf', name: 'Sem Sub' }),
+      stu({ id: 'lf', name: 'Aluno Recém-Criado', status: 'pending' }),
     ];
     mockSubscriptions = [
       sub({ studentId: 'a',  plan: 'alpha', type: 'paid', status: 'active' }),
       sub({ studentId: 'vp', type: 'vip',                 status: 'active' }),
       sub({ studentId: 'ex', plan: 'self_service', type: 'paid', status: 'cancelled' }),
+      // 'lf' sem sub atribuída.
     ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
     expect(screen.getByText('João Alpha')).toBeInTheDocument();
-    expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument();
-    expect(screen.queryByText('Renato Cancelado')).not.toBeInTheDocument();
-    expect(screen.queryByText('Sem Sub')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument(); // VIP ativo some
+    expect(screen.getByText('Renato Cancelado')).toBeInTheDocument();    // sem sub ativa → Sem plano
+    expect(screen.getByText('Aluno Recém-Criado')).toBeInTheDocument();  // sem sub → Sem plano
+  });
+
+  it('chip "Sem plano" só aparece quando há alguém nesse estado', () => {
+    mockStudents = [stu({ id: 'a', name: 'João' })];
+    mockSubscriptions = [sub({ studentId: 'a', plan: 'alpha', type: 'paid' })];
+
+    const { rerender, unmount } = render(<StudentsManagement onViewAsStudent={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Sem plano/i })).not.toBeInTheDocument();
+
+    // Acrescenta aluno órfão; chip aparece.
+    unmount();
+    mockStudents = [
+      stu({ id: 'a', name: 'João' }),
+      stu({ id: 'b', name: 'Recém-Criado', status: 'pending' }),
+    ];
+    render(<StudentsManagement onViewAsStudent={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Sem plano\s*1/i })).toBeInTheDocument();
   });
 
   it('chip Trial filtra para trial-alpha + trial-espelho', () => {

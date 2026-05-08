@@ -31,19 +31,28 @@ describe('classifyStudent', () => {
     expect(classifyStudent({}, [sub({ plan: 'self_service', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-espelho');
   });
 
-  it('null — sem sub ativa (todas cancelled)', () => {
-    expect(classifyStudent({}, [sub({ status: 'cancelled' })])).toBe(null);
-    expect(classifyStudent({}, [sub({ status: 'expired' })])).toBe(null);
+  it('sem-plano — sub única cancelled', () => {
+    expect(classifyStudent({}, [sub({ status: 'cancelled' })])).toBe('sem-plano');
+    expect(classifyStudent({}, [sub({ status: 'expired' })])).toBe('sem-plano');
   });
 
-  it('null — sem nenhuma sub', () => {
-    expect(classifyStudent({}, [])).toBe(null);
-    expect(classifyStudent({}, null)).toBe(null);
-    expect(classifyStudent(null, null)).toBe(null);
+  it('sem-plano — student criado sem sub atribuída', () => {
+    expect(classifyStudent({}, [])).toBe('sem-plano');
+    expect(classifyStudent({}, null)).toBe('sem-plano');
+    expect(classifyStudent(null, null)).toBe('sem-plano');
   });
 
-  it('null — VIP fica fora da gestão', () => {
+  it('null — VIP ativo fica fora da gestão (mesmo se também tiver outra sub)', () => {
     expect(classifyStudent({}, [sub({ type: 'vip', status: 'active' })])).toBe(null);
+    // VIP ativo + Alpha ativo: VIP precede (especial), some.
+    expect(classifyStudent({}, [
+      sub({ type: 'vip',  status: 'active' }),
+      sub({ type: 'paid', status: 'active', plan: 'alpha' }),
+    ])).toBe(null);
+  });
+
+  it('VIP cancelado vira sem-plano (perdeu a vitaliciedade)', () => {
+    expect(classifyStudent({}, [sub({ type: 'vip', status: 'cancelled' })])).toBe('sem-plano');
   });
 
   it('múltiplas subs ativas: pega a de renewalDate mais futura', () => {

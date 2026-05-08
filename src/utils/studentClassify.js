@@ -40,17 +40,25 @@ export const findActiveSub = (subs) => {
 /**
  * @param {Object} student
  * @param {Array}  subs
- * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|null}
+ * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|'sem-plano'|null}
+ *   null  = VIP ativo (fora desta tela)
+ *   'sem-plano' = student existe mas não tem sub ativa não-VIP
  */
 export const classifyStudent = (student, subs) => {
-  const main = findActiveSub(subs);
-  if (!main) return null;
-  if (main.type === 'vip') return null;     // VIP fora da gestão por ora.
+  const list = Array.isArray(subs) ? subs : [];
+
+  // VIP ativo bloqueia a tela (some).
+  const hasActiveVip = list.some(
+    (s) => s?.type === 'vip' && !ENDED_STATUSES.has(s?.status),
+  );
+  if (hasActiveVip) return null;
+
+  const main = findActiveSub(list);
+  if (!main) return 'sem-plano';
 
   if (main.type === 'trial') {
     return main.plan === 'self_service' ? 'trial-espelho' : 'trial-alpha';
   }
-  // type='paid' (ou ausente — default trata como paid)
   return main.plan === 'self_service' ? 'espelho' : 'alpha';
 };
 
@@ -77,4 +85,5 @@ export const TIER_CONFIG = {
   espelho:         { label: 'Espelho',         pill: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',       dot: 'bg-cyan-400' },
   'trial-alpha':   { label: 'Trial · Alpha',   pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
   'trial-espelho': { label: 'Trial · Espelho', pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
+  'sem-plano':     { label: 'Sem plano',       pill: 'bg-slate-500/15 text-slate-300 border border-slate-500/30',    dot: 'bg-slate-400' },
 };

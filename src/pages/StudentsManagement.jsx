@@ -77,7 +77,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   );
 
   const counts = useMemo(() => {
-    const c = { all: managedStudents.length, alpha: 0, espelho: 0, trial: 0 };
+    const c = { all: managedStudents.length, alpha: 0, espelho: 0, trial: 0, 'sem-plano': 0 };
     for (const s of managedStudents) {
       const g = tierGroup(studentBucket.get(s.id));
       if (g && c[g] !== undefined) c[g] += 1;
@@ -162,10 +162,15 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   }
 
   const tierChips = [
-    { value: 'all',     label: 'Todos',          count: counts.all },
-    { value: 'alpha',   label: 'Mentoria Alpha', count: counts.alpha },
-    { value: 'espelho', label: 'Espelho',        count: counts.espelho },
-    { value: 'trial',   label: 'Trial',          count: counts.trial },
+    { value: 'all',       label: 'Todos',          count: counts.all },
+    { value: 'alpha',     label: 'Mentoria Alpha', count: counts.alpha },
+    { value: 'espelho',   label: 'Espelho',        count: counts.espelho },
+    { value: 'trial',     label: 'Trial',          count: counts.trial },
+    // Aparece só quando há alguém órfão de plano (criado mas sem sub atribuída,
+    // ou todas as subs canceladas). Permite o mentor agir.
+    ...(counts['sem-plano'] > 0
+      ? [{ value: 'sem-plano', label: 'Sem plano', count: counts['sem-plano'] }]
+      : []),
   ];
 
   return (
