@@ -125,7 +125,8 @@ _(log linear; 1 linha por task. Format: `task NN [slug] commit <sha> ok|fail`)_
 - A7 [mentor-camada] commit `cbae79f7` ok — MentorClosuresInbox + MentorClosureView + ClosurePendingBadge + tab Closures + setMentorClosureComment integrado
 - A8 [flow-c] commit `ee0dffb8` ok — CycleExpiredGuard + Modal no MentorDashboard `selectedStudent` (mentor fecha pelo aluno)
 - A9 [timeline] commit `e8a66142` ok — useStudentClosures + ClosureChapterCard + ClosureTimeline (perfil aluno + view mentor)
-- A10 [polish-smoke] em curso — A10.1 skip (CycleConsistencyCard shipped/estável), A10.2 update issue doc, A10.3 smoke + checklist
+- A10 [polish-smoke] commits `9e9b1daa` + `518ab28a` ok — 2 bugs do guard descobertos em validação browser via Tailscale: (1) hook forçava override `useTrades(studentId)` divergente do `useTrades(null)` que dashboards usam; corrigido aceitando `{plans, trades}` injetados; (2) `startDate` ignorava trades antigos com import retroativo, fix usa `min(planCreatedAt, firstTradeDate)`. Plus: ciclo vazio com >7d entra na fila pra forçar reflexão.
+- A11 [massa-teste] sem commit — gerador Python `Temp/gen-massa-teste-259.py` produz 6 CSVs (PERF + ORDER × MAR/ABR/MAI 2026) em `/mnt/c/000-Marcio/Temp/massa-teste-259/`. Cenários: MAR trágico (TILT+REVENGE+OVERTRADING+HESITATION), ABR equilibrado (BREAKEVEN+STOP_TAMPERING+RAPID_REENTRY), MAI atual sem fechar. Encoding ISO-8859-1 CRLF; tickers WINH/J/K26.
 
 ## Shared Deltas
 _(diffs propostos para o integrador aplicar no MAIN após o merge)_
@@ -147,6 +148,10 @@ _(apenas IDs — texto detalhado mora em `docs/decisions.md`; rationales longos 
 - DEC-AUTO-259-02 — Email digest pra mentor cortado (over-engineering); badge intra-app `<ClosurePendingBadge>` cobre o sinal sem canal externo.
 - DEC-AUTO-259-03 — Customização de SWOT por mentor adiada pra issue #262 (fast-follow). 1A entrega heurísticas universais hardcoded.
 - DEC-AUTO-259-04 — A10.1 (polish CycleConsistencyCard labels) skipped: card shipped em v1.54.0, labels já claras, mexer arrisca regressão sem ganho real. Foco no fechamento de #259.
+- DEC-AUTO-259-05 — `useCycleExpiredQueue` aceita `{plans, trades}` injetados; dashboards passam os arrays já carregados (mesma fonte que renderiza ledger). Hook continua chamando `usePlans/useTrades` por simetria de hooks rules, mas resultado é descartado quando inject vier. Resolve divergência studentEmail vs studentId.
+- DEC-AUTO-259-06 — `startDate` da fila = `min(planCreatedAt, firstTradeDate)`. Cobre import CSV histórico depois de criar plano. Trade datado antes do `createdAt` é ground truth.
+- DEC-AUTO-259-07 — Ciclo vazio entra na fila apenas se atraso ≥7d. Sub-7d skip preserva UX limpa em ciclos no início; ≥7d força reflexão (TILT/pausa/abandono são sinais valiosos, não buracos).
+- DEC-AUTO-259-08 — Fast-follow mobile-responsive ritual proposto como issue separada (#264 sugerido, não criada ainda). Wizard atual desktop-first; mentor camera (inbox grid-12 + sticky comment panel) inviável em mobile vertical.
 - _(12 open questions originais já resolvidas no draft §8 — Q3 cap 5%, Q7 Quarter-Kelly default, Q8 ≥30 trades pra ciclo anterior, Q9 Claude API, Q12 weights TPS rebalanced)_
 
 ## Chunks
