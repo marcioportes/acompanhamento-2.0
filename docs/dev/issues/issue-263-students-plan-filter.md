@@ -113,6 +113,15 @@ Botões filhos: `e.stopPropagation()` para não disparar View As.
 - A6 — Limpeza: remover `useEffect` linhas 65-78 (N+1 trades), `StudentEmotionalCardInline` (linhas 406-416), botão Brain (linhas 361-369), state `studentTrades`.
 - A7 — Testes (vitest): cálculo de `planByStudentId` com tie-break + filtros + counts dos chips.
 
+### Retomada (B)
+
+- B1 — Renomear "Alunos" → "Acompanhamento": item da sidebar (`Sidebar.jsx`) + título e subtítulo da página (`StudentsManagement.jsx`).
+- B2 — Remover botão "+ Novo aluno", componente `AddStudentModal.jsx`, import, handlers `createStudentFromModal` e `onUseExisting`, e qualquer estado relacionado (`showAddModal`, etc).
+- B3 — Copy do badge pendente: "pendente" → "aguardando 1º login" (linha ~304).
+- B4 — Chip "Pendentes (N)" no header de filtros, transversal aos buckets. Estado `pendingFilter` boolean; quando ativo, intersecta com `tierFilter`. Counter = `students.filter(s => s.status === 'pending').length`.
+- B5 — `AssessmentToggle` ganha guard universal: toda mudança de estado (ativar / desativar / resetar) entra em modo "confirmar inline" (reusa estilo `confirmingReset` já existente). Refatorar `handleToggle` pra sempre setar `setConfirmingReset(true)` e generalizar copy do prompt.
+- B6 — Testes: chip "Pendentes" filtra correto; counter; AssessmentToggle exige confirmação em todos os 3 fluxos. Smoke manual em `npm run dev`.
+
 ## Sessions
 
 - task A1-A7 [filtro+row+limpeza+testes] commit c50fabc7 ok — 2998/2998 testes, build verde
@@ -122,6 +131,45 @@ Botões filhos: `e.stopPropagation()` para não disparar View As.
 - task 3-buckets [reduz pra alpha/espelho/trial; remove Lead/Ex/VIP] commit ca1018c3 ok — 3014/3014
 - task sem-plano [bucket condicional p/ órfãos de sub] commit a8eadbb2 ok — 23/23 nos arquivos
 - pausa 08/05/2026 — Marcio identificou ambiguidade SSoT (esta tela vs SubscriptionsPage). Código no worktree em standby; sem PR enquanto direção arquitetural não fechar. Memo: `project_issue_263_paused`.
+- retomada 08/05/2026 — direção arquitetural fechada (ver §Retomada abaixo). Escopo cirúrgico: rename "Acompanhamento", remover botão "+ Novo aluno", melhorar copy pendente, chip filtro Pendentes, guard universal AssessmentToggle. Schema/callable/classifier intactos.
+
+## Retomada (08/05/2026)
+
+### Direção arquitetural
+
+**Domínio (3 segmentos de aluno):**
+1. **WhatsApp-only** — paga sub, nunca toca plataforma. Vive em `/students` via `createInlineStudent` (uid `student_*`, status `active` artificial, `firstLoginAt=null` permanente). Visível em Assinaturas, **invisível em Acompanhamento**.
+2. **Plataforma pendente** — convidado pelo callable `createStudent` (uid = Auth UID, `status='pending'`, email enviado). Aguardando 1º login.
+3. **Plataforma ativo** — `firstLoginAt != null`. Logou pelo menos uma vez.
+
+**SSoT longo prazo:** cadastro de pessoa nasce em **Assinaturas** (todo aluno, inclusive WhatsApp-only). Acompanhamento é o workspace operacional do mentor sobre Alpha + Espelho — apenas (2) e (3). Self-service Espelho ainda não existe no produto.
+
+**Nome:** "Alunos" → **Acompanhamento** na sidebar e no título da página (DEC-AUTO-263-03).
+
+### Escopo desta issue (cirúrgico)
+
+Sem flag novo no schema, sem migração, sem mexer em callable/classifier/createInlineStudent/bucket "Sem plano". Apenas UI:
+
+| Item | Ação |
+|---|---|
+| Sidebar/título "Alunos" → "Acompanhamento" | renomear (`Sidebar.jsx` + título da página) |
+| Botão "+ Novo aluno" + `AddStudentModal.jsx` | remover (deletar componente + import) |
+| Handlers órfãos da página (`createStudentFromModal`, `onUseExisting`) | remover |
+| Edição inline de WhatsApp | manter |
+| Badge "pendente" (linha 304-306) | melhorar copy → "aguardando 1º login" |
+| Chip "Pendentes (N)" no header com filtro | adicionar (transversal aos buckets) |
+| `AssessmentToggle` — guard universal | estender padrão de confirmação inline (já existe pra reset DEC-026) para ativar/desativar — DEC-AUTO-263-05 |
+| `classifyStudent`, callable `createStudent`, `createInlineStudent`, schema, bucket "Sem plano" | intactos |
+
+### Por que cirúrgico
+
+Tudo o que afeta `/students` schema (`platformAccess` flag, criar sub no callable, mudar `createInlineStudent`) ficou fora — Marcio explicitamente decidiu manter modelo atual. Migração SSoT pra Assinaturas vira issue futura: callable `createStudent` permanece vivo pra ser invocado por Assinaturas quando aluno-de-plataforma for criado lá.
+
+### Pendências de outra issue (não tocar aqui)
+
+- Mover entrada de aluno-de-plataforma pra Assinaturas (Assinaturas chama callable `createStudent` quando sub Alpha/Espelho é criada).
+- Aluno WhatsApp-only segue criado pelo `createInlineStudent` (sem Auth) — ok.
+- Bucket "Sem plano" hoje é inalcançável pelo fluxo "+ Novo aluno" depois desta issue (botão sai); permanece como rabicho diagnóstico pra alunos legados.
 
 ## Shared Deltas
 
@@ -142,6 +190,9 @@ _(IDs apenas — texto em `docs/decisions.md`)_
 
 - DEC-AUTO-263-01 — universo da página: `plan ∈ {alpha, self_service}` e `status !== 'cancelled'`. VIP e self_service no escopo separado (subs sem plano não entram).
 - DEC-AUTO-263-02 — múltiplas subs ativas: precedência por `renewalDate desc` (sub mais recente vence).
+- DEC-AUTO-263-03 — sidebar/página renomeadas "Alunos" → "Acompanhamento". Reflete o papel real (workspace operacional do mentor sobre Alpha+Espelho), separa do conceito de cadastro (que é Assinaturas). "Alunos Alpha" rejeitado porque Espelho mora junto.
+- DEC-AUTO-263-04 — escopo cirúrgico: zero mudança em schema/callable/classifier. SSoT em Assinaturas é direção arquitetural acordada mas implementação fica em issue futura. Nesta issue só UI.
+- DEC-AUTO-263-05 — `AssessmentToggle` ganha confirmação inline em **toda** mudança de estado (ativar / desativar / resetar), não só reset. Generaliza o padrão de DEC-026 pra evitar acionamento acidental na lista densa.
 
 ## Chunks
 

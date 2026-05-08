@@ -179,10 +179,10 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
-            <Users className="w-7 h-7 text-blue-400" />Alunos
+            <Users className="w-7 h-7 text-blue-400" />Acompanhamento
           </h1>
           <p className="text-slate-400 mt-1 text-sm">
-            Cadastro mestre · Alpha (com dashboard), Espelho, VIP, leads e ex-alunos.
+            Workspace do mentor · Alpha e Espelho com dashboard ativo.
           </p>
         </div>
         <button
