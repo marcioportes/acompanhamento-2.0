@@ -225,6 +225,61 @@ describe('Subscription Business Logic (DEC-055/DEC-056)', () => {
     });
   });
 
+  describe('defensive auto-reset em updateSubscription (issue #266)', () => {
+    // Espelha a lógica em useSubscriptions.js: se renewalDate é updated para
+    // futuro/dentro-do-grace e status atual é 'overdue', reset para 'active'.
+    // Issue #266 — previne email diário caso mentor renove via UI sem registrar
+    // payment (que é o único path que setava status=active explicitamente).
+    //
+    // Testes usam Date com constructor local-time (Y,M-1,D) para isolar da TZ
+    // do shell que roda vitest (em BRT, ISO 'YYYY-MM-DD' é UTC e shifta o dia).
+    const shouldAutoReset = (sub, updates) => {
+      if (!('renewalDate' in updates) || !updates.renewalDate) return false;
+      if (sub.status !== 'overdue') return false;
+      if ('status' in updates) return false;
+      const renewalDate = updates.renewalDate instanceof Date
+        ? updates.renewalDate
+        : new Date(updates.renewalDate);
+      const now = new Date(2026, 4, 11); // 11/05/2026 local
+      const grace = sub.gracePeriodDays ?? 5;
+      const daysToRenewal = Math.ceil((renewalDate - now) / (1000 * 60 * 60 * 24));
+      return daysToRenewal >= -grace;
+    };
+
+    it('reseta para active quando overdue + renewalDate futuro', () => {
+      const sub = makePaidSub({ status: 'overdue' });
+      expect(shouldAutoReset(sub, { renewalDate: new Date(2026, 4, 21) })).toBe(true);
+    });
+
+    it('reseta para active quando overdue + renewalDate dentro do grace', () => {
+      const sub = makePaidSub({ status: 'overdue', gracePeriodDays: 5 });
+      // 08/05 = -3 dias está dentro do grace
+      expect(shouldAutoReset(sub, { renewalDate: new Date(2026, 4, 8) })).toBe(true);
+    });
+
+    it('NÃO reseta quando overdue + renewalDate ainda além do grace', () => {
+      const sub = makePaidSub({ status: 'overdue', gracePeriodDays: 5 });
+      // 05/05 = -6 dias além do grace
+      expect(shouldAutoReset(sub, { renewalDate: new Date(2026, 4, 5) })).toBe(false);
+    });
+
+    it('NÃO reseta se status atual não é overdue (sub já active)', () => {
+      const sub = makePaidSub({ status: 'active' });
+      expect(shouldAutoReset(sub, { renewalDate: new Date(2026, 4, 21) })).toBe(false);
+    });
+
+    it('NÃO reseta se renewalDate não está em updates', () => {
+      const sub = makePaidSub({ status: 'overdue' });
+      expect(shouldAutoReset(sub, { amount: 1500 })).toBe(false);
+    });
+
+    it('NÃO sobrescreve status explicitamente passado em updates', () => {
+      const sub = makePaidSub({ status: 'overdue' });
+      // Mentor explicitamente quer status='paused' — não pode virar 'active'
+      expect(shouldAutoReset(sub, { renewalDate: new Date(2026, 4, 21), status: 'paused' })).toBe(false);
+    });
+  });
+
   describe('calculateSummary', () => {
     it('calcula summary com mix trial/paid', () => {
       const now = new Date('2026-04-04');
