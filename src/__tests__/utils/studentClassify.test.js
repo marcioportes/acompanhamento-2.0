@@ -42,20 +42,20 @@ describe('classifyStudent', () => {
     expect(classifyStudent({ email: 'a@b.com' }, null)).toBe(null);
   });
 
-  it('aguardando-plano — passou pelo ritual mas ainda sem sub (DEC-AUTO-263-10)', () => {
-    // accessStatus explícito
-    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'pending' }, [])).toBe('aguardando-plano');
-    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'active' }, [])).toBe('aguardando-plano');
-    // Sub cancelada mas aluno já no ritual: continua visível.
+  it('sem sub atribuída — null (bucket "aguardando-plano" removido, DEC-AUTO-263-22)', () => {
+    // Mesmo passando pelo ritual, sem sub Alpha/Espelho/Trial atribuída,
+    // aluno NÃO aparece em Acompanhamento. Mentor precisa criar a sub
+    // primeiro via aba Assinaturas.
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'pending' }, [])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'active' }, [])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com', status: 'pending' }, [])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com', firstLoginAt: new Date() }, [])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'none' }, [])).toBe(null);
+    // Sub cancelada não conta — aluno some.
     expect(classifyStudent(
       { email: 'a@b.com', accessStatus: 'pending' },
       [sub({ status: 'cancelled' })]
-    )).toBe('aguardando-plano');
-    // Fallback derivado dos campos legados (antes do backfill).
-    expect(classifyStudent({ email: 'a@b.com', status: 'pending' }, [])).toBe('aguardando-plano');
-    expect(classifyStudent({ email: 'a@b.com', firstLoginAt: new Date() }, [])).toBe('aguardando-plano');
-    // accessStatus='none' não tira da invisibilidade.
-    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'none' }, [])).toBe(null);
+    )).toBe(null);
   });
 
   it('aluno sem email com sub Alpha/Espelho aparece como Candidato (DEC-AUTO-263-06 revogada)', () => {

@@ -124,7 +124,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   }, [students, subsByStudent, authStatusByEmail]);
 
   const counts = useMemo(() => {
-    const c = { all: managedStudents.length, alpha: 0, espelho: 0, trial: 0, 'aguardando-plano': 0 };
+    const c = { all: managedStudents.length, alpha: 0, espelho: 0, trial: 0 };
     for (const s of managedStudents) {
       const g = tierGroup(studentBucket.get(s.id));
       if (g && c[g] !== undefined) c[g] += 1;
@@ -182,11 +182,6 @@ const StudentsManagement = ({ onViewAsStudent }) => {
     { value: 'alpha',     label: 'Mentoria Alpha', count: counts.alpha },
     { value: 'espelho',   label: 'Espelho',        count: counts.espelho },
     { value: 'trial',     label: 'Trial',          count: counts.trial },
-    // Aluno passou pelo ritual mas ainda não tem sub criada em Assinaturas.
-    // Aparece só quando há alguém nesse estado.
-    ...(counts['aguardando-plano'] > 0
-      ? [{ value: 'aguardando-plano', label: 'Aguardando plano', count: counts['aguardando-plano'] }]
-      : []),
   ];
 
   return (

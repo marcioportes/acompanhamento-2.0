@@ -10,7 +10,9 @@
  *                null              → não cabe na gestão (filtrar fora)
  *
  *              Quem não tem sub ativa (todas cancelled/expired ou nenhuma)
- *              NÃO aparece na tela. VIP também sai (gestão é Alpha/Espelho/Trial).
+ *              NÃO aparece na tela — Acompanhamento é Alpha/Espelho/Trial.
+ *              VIP também sai. Aluno em ritual sem sub Alpha/Espelho atribuída
+ *              fica fora; mentor deve criar a sub na aba Assinaturas primeiro.
  *
  *              Critério de "sub principal": status NÃO ∈ {cancelled, expired}.
  *              Em caso de múltiplas, ganha a de `renewalDate` mais futura.
@@ -38,20 +40,23 @@ export const findActiveSub = (subs) => {
 };
 
 /**
- * @param {Object} student
+ * @param {Object} _student  (mantido por compatibilidade; bucket "aguardando-plano" removido)
  * @param {Array}  subs
- * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|'aguardando-plano'|null}
- *   null = fora desta tela — VIP ativo OU sem sub ativa E sem ritual feito.
- *   'aguardando-plano' = passou pelo ritual (accessStatus='pending'/'active')
- *          mas ainda não tem sub Alpha/Espelho/Trial atribuída — DEC-AUTO-263-10.
+ * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|null}
+ *   null = fora desta tela — VIP ativo OU sem sub Alpha/Espelho/Trial atribuída.
  *
  * DEC-AUTO-263-06 REVOGADA (2026-05-09): aluno sem email NÃO é mais
  * filtrado aqui. Domínio fechou "WhatsApp-only não existe", então aluno
  * sem email com sub Alpha/Espelho ativa/trial é Candidato a registro —
  * Acompanhamento é o lugar primário do registro (mentor cadastra email
  * no ritual via drawer).
+ *
+ * DEC-AUTO-263-22 (2026-05-11): bucket "aguardando-plano" REMOVIDO. Domínio
+ * fechou que aluno só aparece em Acompanhamento se tem sub Alpha/Espelho/Trial.
+ * Cadastro de sub inicial é responsabilidade da aba Assinaturas — não dá pra
+ * forçar a tela a aceitar aluno sem sub atribuída.
  */
-export const classifyStudent = (student, subs) => {
+export const classifyStudent = (_student, subs) => {
   const list = Array.isArray(subs) ? subs : [];
 
   // VIP ativo bloqueia a tela (some).
@@ -61,17 +66,7 @@ export const classifyStudent = (student, subs) => {
   if (hasActiveVip) return null;
 
   const main = findActiveSub(list);
-  if (!main) {
-    // Sem sub. Se passou pelo ritual (accessStatus pending/active) o aluno
-    // PRECISA estar visível pra mentor monitorar 1º login e criar sub depois.
-    // Sem ritual feito (none/undefined) → invisível.
-    const explicit = student?.accessStatus;
-    const wentThroughRitual = (
-      explicit === 'pending' || explicit === 'active'
-      || (!explicit && (student?.firstLoginAt || student?.status === 'pending'))
-    );
-    return wentThroughRitual ? 'aguardando-plano' : null;
-  }
+  if (!main) return null;
 
   if (main.type === 'trial') {
     return main.plan === 'self_service' ? 'trial-espelho' : 'trial-alpha';
@@ -154,5 +149,4 @@ export const TIER_CONFIG = {
   espelho:            { label: 'Espelho',           pill: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',       dot: 'bg-cyan-400' },
   'trial-alpha':      { label: 'Trial · Alpha',     pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
   'trial-espelho':    { label: 'Trial · Espelho',   pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
-  'aguardando-plano': { label: 'Aguardando plano',  pill: 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30', dot: 'bg-yellow-400' },
 };

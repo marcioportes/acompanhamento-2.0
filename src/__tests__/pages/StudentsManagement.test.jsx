@@ -114,7 +114,7 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
     expect(screen.getByRole('button', { name: /Trial\s*2/i })).toBeInTheDocument();
   });
 
-  it('VIP ativo some; sem sub + sem ritual sai; sem sub mas em ritual entra (DEC-AUTO-263-10)', () => {
+  it('VIP ativo some; sub cancelada/sem sub não aparece (DEC-AUTO-263-22)', () => {
     mockStudents = [
       stu({ id: 'a',  name: 'João Alpha' }),
       stu({ id: 'vp', name: 'Cristian VIP' }),
@@ -125,32 +125,16 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
       sub({ studentId: 'a',  plan: 'alpha', type: 'paid', status: 'active' }),
       sub({ studentId: 'vp', type: 'vip',                 status: 'active' }),
       sub({ studentId: 'ex', plan: 'self_service', type: 'paid', status: 'cancelled' }),
-      // 'lf' sem sub atribuída — passou pelo callable createStudent (status=pending),
-      // entra no bucket "Aguardando plano".
+      // 'lf' sem sub atribuída — bucket "aguardando-plano" removido (DEC-AUTO-263-22),
+      // não aparece em Acompanhamento. Mentor cadastra sub na aba Assinaturas primeiro.
     ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
     expect(screen.getByText('João Alpha')).toBeInTheDocument();
     expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument();      // VIP ativo
-    expect(screen.queryByText('Renato Cancelado')).not.toBeInTheDocument();  // sub cancelada + sem ritual
-    expect(screen.getByText('Aluno No Ritual')).toBeInTheDocument();         // ritual em curso
-  });
-
-  it('chip "Aguardando plano" só aparece quando há alguém nesse estado', () => {
-    mockStudents = [stu({ id: 'a', name: 'João' })];
-    mockSubscriptions = [sub({ studentId: 'a', plan: 'alpha', type: 'paid' })];
-
-    const { unmount } = render(<StudentsManagement onViewAsStudent={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /Aguardando plano/i })).not.toBeInTheDocument();
-    unmount();
-
-    mockStudents = [
-      stu({ id: 'a', name: 'João' }),
-      stu({ id: 'b', name: 'Pendente sem plano', status: 'pending' }),
-    ];
-    render(<StudentsManagement onViewAsStudent={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /Aguardando plano\s*1/i })).toBeInTheDocument();
+    expect(screen.queryByText('Renato Cancelado')).not.toBeInTheDocument();  // sub cancelada
+    expect(screen.queryByText('Aluno No Ritual')).not.toBeInTheDocument();   // sem sub atribuída
   });
 
   it('chip Trial filtra para trial-alpha + trial-espelho', () => {
