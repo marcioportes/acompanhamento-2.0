@@ -72,9 +72,9 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
     mockStudents = [
       stu({ id: 'a1', name: 'João Alpha' }),
       stu({ id: 'a2', name: 'Maria Alpha' }),
-      stu({ id: 'es', name: 'Mat Espelho', email: null }),
+      stu({ id: 'es', name: 'Mat Espelho', email: 'mat@x.com' }),
       stu({ id: 't1', name: 'Pedro Trial Alpha' }),
-      stu({ id: 't2', name: 'Ana Trial Espelho', email: null }),
+      stu({ id: 't2', name: 'Ana Trial Espelho', email: 'ana@x.com' }),
     ];
     mockSubscriptions = [
       sub({ id: 'sa1', studentId: 'a1', plan: 'alpha', type: 'paid', renewalDate: inSeven }),
@@ -114,43 +114,43 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
     expect(screen.getByRole('button', { name: /Trial\s*2/i })).toBeInTheDocument();
   });
 
-  it('VIP ativo some; sem sub ativa OU cancelada vão pro bucket "Sem plano"', () => {
+  it('VIP ativo some; sem sub + sem ritual sai; sem sub mas em ritual entra (DEC-AUTO-263-10)', () => {
     mockStudents = [
       stu({ id: 'a',  name: 'João Alpha' }),
       stu({ id: 'vp', name: 'Cristian VIP' }),
       stu({ id: 'ex', name: 'Renato Cancelado' }),
-      stu({ id: 'lf', name: 'Aluno Recém-Criado', status: 'pending' }),
+      stu({ id: 'lf', name: 'Aluno No Ritual', status: 'pending' }),
     ];
     mockSubscriptions = [
       sub({ studentId: 'a',  plan: 'alpha', type: 'paid', status: 'active' }),
       sub({ studentId: 'vp', type: 'vip',                 status: 'active' }),
       sub({ studentId: 'ex', plan: 'self_service', type: 'paid', status: 'cancelled' }),
-      // 'lf' sem sub atribuída.
+      // 'lf' sem sub atribuída — passou pelo callable createStudent (status=pending),
+      // entra no bucket "Aguardando plano".
     ];
 
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
 
     expect(screen.getByText('João Alpha')).toBeInTheDocument();
-    expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument(); // VIP ativo some
-    expect(screen.getByText('Renato Cancelado')).toBeInTheDocument();    // sem sub ativa → Sem plano
-    expect(screen.getByText('Aluno Recém-Criado')).toBeInTheDocument();  // sem sub → Sem plano
+    expect(screen.queryByText('Cristian VIP')).not.toBeInTheDocument();      // VIP ativo
+    expect(screen.queryByText('Renato Cancelado')).not.toBeInTheDocument();  // sub cancelada + sem ritual
+    expect(screen.getByText('Aluno No Ritual')).toBeInTheDocument();         // ritual em curso
   });
 
-  it('chip "Sem plano" só aparece quando há alguém nesse estado', () => {
+  it('chip "Aguardando plano" só aparece quando há alguém nesse estado', () => {
     mockStudents = [stu({ id: 'a', name: 'João' })];
     mockSubscriptions = [sub({ studentId: 'a', plan: 'alpha', type: 'paid' })];
 
-    const { rerender, unmount } = render(<StudentsManagement onViewAsStudent={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /Sem plano/i })).not.toBeInTheDocument();
-
-    // Acrescenta aluno órfão; chip aparece.
+    const { unmount } = render(<StudentsManagement onViewAsStudent={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Aguardando plano/i })).not.toBeInTheDocument();
     unmount();
+
     mockStudents = [
       stu({ id: 'a', name: 'João' }),
-      stu({ id: 'b', name: 'Recém-Criado', status: 'pending' }),
+      stu({ id: 'b', name: 'Pendente sem plano', status: 'pending' }),
     ];
     render(<StudentsManagement onViewAsStudent={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /Sem plano\s*1/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aguardando plano\s*1/i })).toBeInTheDocument();
   });
 
   it('chip Trial filtra para trial-alpha + trial-espelho', () => {
@@ -170,23 +170,27 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
     expect(screen.getByText('Pedro Trial')).toBeInTheDocument();
   });
 
-  it('linha clicável dispara View As; sem email não vira role=button', () => {
+  it('botão Eye dispara View As; aluno sem email aparece como Candidato (DEC-AUTO-263-06 revogada)', () => {
     mockStudents = [
       stu({ id: 'a', uid: 'uid-a', name: 'João', email: 'j@x.com' }),
-      stu({ id: 'x', name: 'Sem Email', email: null }),
+      stu({ id: 'student_xyz', name: 'Sem Email', email: null }),
     ];
     mockSubscriptions = [
       sub({ studentId: 'a', plan: 'alpha',        type: 'paid' }),
-      sub({ studentId: 'x', plan: 'self_service', type: 'paid' }),
+      sub({ studentId: 'student_xyz', plan: 'self_service', type: 'paid' }),
     ];
     const onViewAs = vi.fn();
     render(<StudentsManagement onViewAsStudent={onViewAs} />);
 
-    const row = screen.getByText('João').closest('[role="button"]');
-    fireEvent.click(row);
+    // B8 (DEC-AUTO-263-08): View As vira ícone próprio, linha não-clickable.
+    const eyeBtn = screen.getByLabelText(/Entrar no dashboard de João/);
+    fireEvent.click(eyeBtn);
     expect(onViewAs).toHaveBeenCalledWith({ uid: 'uid-a', email: 'j@x.com', name: 'João' });
 
-    expect(screen.queryByRole('button', { name: /Sem Email/i })).not.toBeInTheDocument();
+    // Candidato sem email APARECE em Acompanhamento — Marcio: "Acompanhamento
+    // é o lugar do registro" (2026-05-09). Mentor cadastra email no drawer
+    // durante o ritual.
+    expect(screen.getByText('Sem Email')).toBeInTheDocument();
   });
 
   it('click em AssessmentToggle não dispara View As', () => {

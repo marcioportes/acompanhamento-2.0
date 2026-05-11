@@ -55,11 +55,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Atualizar status do aluno para ativo
+  // Atualizar status do aluno para ativo (1º login na plataforma)
+  // DEC-AUTO-263-07: marca accessStatus='active' — esse é o sinal canônico
+  // de que passou pelo ritual completo (convite + 1º login).
   const activateStudent = async (studentId) => {
     try {
       await updateDoc(doc(db, 'students', studentId), {
         status: 'active',
+        accessStatus: 'active',
         firstLoginAt: serverTimestamp()
       });
       console.log('[AuthContext] Aluno ativado:', studentId);

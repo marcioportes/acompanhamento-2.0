@@ -286,8 +286,22 @@ export const useSubscriptions = () => {
     }
 
     await updateDoc(ref, cleanUpdates);
+
+    // Sincroniza accessTier se plan/status/type mudaram. Caso típico: upgrade
+    // espelho → alpha (issue #263). Sem isso o doc do student fica defasado.
+    if ('plan' in updates || 'status' in updates || 'type' in updates) {
+      const updatedSub = { ...sub, ...updates };
+      const otherSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
+      const activeSub = [updatedSub, ...otherSubs]
+        .find(s => s.status === 'active' && s.type !== 'vip');
+      await updateDoc(doc(db, 'students', sub.studentId), {
+        accessTier: activeSub ? (activeSub.plan ?? 'none') : 'none',
+        updatedAt: serverTimestamp(),
+      });
+    }
+
     console.log('[useSubscriptions] Assinatura atualizada:', sub.id);
-  }, [user]);
+  }, [user, subscriptions]);
 
   // ── Registrar pagamento ──
 

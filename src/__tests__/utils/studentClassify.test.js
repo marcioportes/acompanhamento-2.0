@@ -16,43 +16,73 @@ const sub = (over = {}) => ({
 
 describe('classifyStudent', () => {
   it('alpha — paid + plan=alpha', () => {
-    expect(classifyStudent({}, [sub({ plan: 'alpha', type: 'paid' })])).toBe('alpha');
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ plan: 'alpha', type: 'paid' })])).toBe('alpha');
   });
 
   it('espelho — paid + plan=self_service', () => {
-    expect(classifyStudent({}, [sub({ plan: 'self_service', type: 'paid' })])).toBe('espelho');
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ plan: 'self_service', type: 'paid' })])).toBe('espelho');
   });
 
   it('trial-alpha — type=trial + plan=alpha', () => {
-    expect(classifyStudent({}, [sub({ plan: 'alpha', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-alpha');
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ plan: 'alpha', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-alpha');
   });
 
   it('trial-espelho — type=trial + plan=self_service', () => {
-    expect(classifyStudent({}, [sub({ plan: 'self_service', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-espelho');
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ plan: 'self_service', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-espelho');
   });
 
-  it('sem-plano — sub única cancelled', () => {
-    expect(classifyStudent({}, [sub({ status: 'cancelled' })])).toBe('sem-plano');
-    expect(classifyStudent({}, [sub({ status: 'expired' })])).toBe('sem-plano');
+  it('null — sub única cancelled E aluno NÃO passou pelo ritual', () => {
+    // DEC-AUTO-263-10: aluno sem sub só aparece se accessStatus pending/active.
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ status: 'cancelled' })])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ status: 'expired' })])).toBe(null);
   });
 
-  it('sem-plano — student criado sem sub atribuída', () => {
-    expect(classifyStudent({}, [])).toBe('sem-plano');
-    expect(classifyStudent({}, null)).toBe('sem-plano');
-    expect(classifyStudent(null, null)).toBe('sem-plano');
+  it('null — student criado sem sub e sem ritual', () => {
+    expect(classifyStudent({ email: 'a@b.com' }, [])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com' }, null)).toBe(null);
+  });
+
+  it('aguardando-plano — passou pelo ritual mas ainda sem sub (DEC-AUTO-263-10)', () => {
+    // accessStatus explícito
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'pending' }, [])).toBe('aguardando-plano');
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'active' }, [])).toBe('aguardando-plano');
+    // Sub cancelada mas aluno já no ritual: continua visível.
+    expect(classifyStudent(
+      { email: 'a@b.com', accessStatus: 'pending' },
+      [sub({ status: 'cancelled' })]
+    )).toBe('aguardando-plano');
+    // Fallback derivado dos campos legados (antes do backfill).
+    expect(classifyStudent({ email: 'a@b.com', status: 'pending' }, [])).toBe('aguardando-plano');
+    expect(classifyStudent({ email: 'a@b.com', firstLoginAt: new Date() }, [])).toBe('aguardando-plano');
+    // accessStatus='none' não tira da invisibilidade.
+    expect(classifyStudent({ email: 'a@b.com', accessStatus: 'none' }, [])).toBe(null);
+  });
+
+  it('aluno sem email com sub Alpha/Espelho aparece como Candidato (DEC-AUTO-263-06 revogada)', () => {
+    // Acompanhamento é o lugar do registro. Aluno sem email + sub
+    // Alpha/Espelho ativa/trial é Candidato — mentor cadastra email no
+    // ritual via drawer. Antes (DEC-AUTO-263-06) retornava null; revogado
+    // após domínio fechar "WhatsApp-only não existe" (2026-05-09).
+    expect(classifyStudent({}, [sub({ plan: 'alpha', type: 'paid' })])).toBe('alpha');
+    expect(classifyStudent({ email: null }, [sub({ plan: 'alpha' })])).toBe('alpha');
+    expect(classifyStudent({ email: '' }, [sub({ plan: 'self_service' })])).toBe('espelho');
+    expect(classifyStudent({ email: '   ' }, [sub({ plan: 'alpha', type: 'trial', trialEndsAt: new Date('2026-06-01') })])).toBe('trial-alpha');
+    // student null ainda retorna null (defesa contra input inválido)
+    expect(classifyStudent(null, null)).toBe(null);
   });
 
   it('null — VIP ativo fica fora da gestão (mesmo se também tiver outra sub)', () => {
-    expect(classifyStudent({}, [sub({ type: 'vip', status: 'active' })])).toBe(null);
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ type: 'vip', status: 'active' })])).toBe(null);
     // VIP ativo + Alpha ativo: VIP precede (especial), some.
-    expect(classifyStudent({}, [
+    expect(classifyStudent({ email: 'a@b.com' }, [
       sub({ type: 'vip',  status: 'active' }),
       sub({ type: 'paid', status: 'active', plan: 'alpha' }),
     ])).toBe(null);
   });
 
-  it('VIP cancelado vira sem-plano (perdeu a vitaliciedade)', () => {
-    expect(classifyStudent({}, [sub({ type: 'vip', status: 'cancelled' })])).toBe('sem-plano');
+  it('VIP cancelado vira null (perdeu a vitaliciedade, sem outras subs)', () => {
+    // DEC-AUTO-263-09: sem sub ativa = fora da tela.
+    expect(classifyStudent({ email: 'a@b.com' }, [sub({ type: 'vip', status: 'cancelled' })])).toBe(null);
   });
 
   it('múltiplas subs ativas: pega a de renewalDate mais futura', () => {
@@ -60,7 +90,7 @@ describe('classifyStudent', () => {
       sub({ id: 'old', plan: 'self_service', type: 'paid', renewalDate: new Date('2026-01-01') }),
       sub({ id: 'new', plan: 'alpha',        type: 'paid', renewalDate: new Date('2026-09-01') }),
     ];
-    expect(classifyStudent({}, subs)).toBe('alpha');
+    expect(classifyStudent({ email: 'a@b.com' }, subs)).toBe('alpha');
   });
 
   it('cancelada + ativa: ignora a cancelada', () => {
@@ -68,7 +98,7 @@ describe('classifyStudent', () => {
       sub({ id: 'old', plan: 'self_service', type: 'paid', status: 'cancelled' }),
       sub({ id: 'new', plan: 'alpha',        type: 'paid', status: 'active' }),
     ];
-    expect(classifyStudent({}, subs)).toBe('alpha');
+    expect(classifyStudent({ email: 'a@b.com' }, subs)).toBe('alpha');
   });
 });
 

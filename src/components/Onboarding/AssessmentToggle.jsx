@@ -1,7 +1,7 @@
 /**
  * AssessmentToggle.jsx
  *
- * Toggle que o mentor usa na tela de alunos para marcar que um aluno
+ * Toggle que o mentor usa na tela de Acompanhamento para marcar que um aluno
  * precisa fazer o assessment. Grava requiresAssessment no doc do student.
  *
  * DEC-023: Assessment acionado pelo mentor, não automático.
@@ -9,10 +9,13 @@
  * (onboardingStatus = active). Reset requer confirmação explícita e volta
  * o aluno para lead + requiresAssessment: false. Histórico (initial_assessment,
  * questionnaire, probing) é preservado no Firestore — não é deletado.
+ * DEC-AUTO-263-05 (08/05/2026): Confirmação inline em TODA mudança de estado
+ * (ativar / desativar / resetar) — não só reset. Evita acionamento acidental
+ * em lista densa.
  *
  * Uso: <AssessmentToggle studentId={id} currentValue={bool} onboardingStatus={status} />
  *
- * @version 1.1.0 — mentor reset habilitado (DEC-026)
+ * @version 1.2.0 — guard universal (DEC-AUTO-263-05)
  */
 
 import React, { useState, useCallback } from 'react';
@@ -21,14 +24,20 @@ import { db } from '../../firebase';
 
 export default function AssessmentToggle({ studentId, currentValue = false, onboardingStatus }) {
   const [loading, setLoading] = useState(false);
-  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const isActive = onboardingStatus === 'active' || onboardingStatus === 'mentor_validated';
   const isInProgress = onboardingStatus &&
     !['lead', 'active', 'mentor_validated'].includes(onboardingStatus) &&
     onboardingStatus !== undefined;
 
-  // Status label
+  // Ação que será aplicada se confirmar.
+  // - reset:      assessment completo → volta o aluno para lead + desativa
+  // - deactivate: flag ligado, sem progresso → apenas desliga
+  // - activate:   flag desligado → liga e (se necessário) seta lead
+  const action = isActive ? 'reset' : (currentValue ? 'deactivate' : 'activate');
+
+  // Status label (leitura, sem confirmação)
   let statusLabel = '';
   let statusColor = '';
   if (isActive) {
@@ -42,76 +51,76 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
     statusColor = 'text-blue-400';
   }
 
-  const handleToggle = useCallback(async () => {
+  const handleToggle = useCallback(() => {
     if (loading || isInProgress) return;
+    setConfirming(true);
+  }, [loading, isInProgress]);
 
-    // Se assessment está completo (active), exige confirmação de reset
-    if (isActive) {
-      setConfirmingReset(true);
-      return;
-    }
-
-    // Fluxo normal: ativar/desativar
+  const handleConfirm = useCallback(async () => {
+    setConfirming(false);
     setLoading(true);
     try {
       const studentRef = doc(db, 'students', studentId);
-      const newValue = !currentValue;
-      const updates = { requiresAssessment: newValue };
 
-      // Se ativando e ainda não tem onboardingStatus, setar como lead
-      if (newValue && (!onboardingStatus || onboardingStatus === undefined)) {
-        updates.onboardingStatus = 'lead';
+      if (action === 'reset') {
+        // Histórico (initial_assessment, questionnaire, probing) é preservado.
+        await updateDoc(studentRef, {
+          onboardingStatus: 'lead',
+          requiresAssessment: false,
+        });
+      } else if (action === 'deactivate') {
+        await updateDoc(studentRef, { requiresAssessment: false });
+      } else {
+        // activate
+        const updates = { requiresAssessment: true };
+        if (!onboardingStatus) updates.onboardingStatus = 'lead';
+        await updateDoc(studentRef, updates);
       }
-
-      await updateDoc(studentRef, updates);
     } catch (err) {
-      console.error('Erro ao atualizar assessment flag:', err);
+      console.error('Erro ao atualizar assessment:', err);
     } finally {
       setLoading(false);
     }
-  }, [studentId, currentValue, onboardingStatus, loading, isInProgress, isActive]);
+  }, [studentId, action, onboardingStatus]);
 
-  const handleConfirmReset = useCallback(async () => {
-    setConfirmingReset(false);
-    setLoading(true);
-    try {
-      const studentRef = doc(db, 'students', studentId);
-      // Reset: volta para lead, desativa assessment
-      // Histórico (initial_assessment, questionnaire, probing) é preservado
-      await updateDoc(studentRef, {
-        onboardingStatus: 'lead',
-        requiresAssessment: false,
-      });
-    } catch (err) {
-      console.error('Erro ao resetar assessment:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [studentId]);
-
-  const handleCancelReset = useCallback(() => {
-    setConfirmingReset(false);
+  const handleCancel = useCallback(() => {
+    setConfirming(false);
   }, []);
 
-  // Modal de confirmação de reset
-  if (confirmingReset) {
+  // Painel inline de confirmação
+  if (confirming) {
+    const promptByAction = {
+      reset: 'Resetar assessment? O aluno precisará refazer o processo. Histórico preservado.',
+      deactivate: 'Desativar assessment deste aluno?',
+      activate: 'Ativar assessment para este aluno?',
+    };
+    const labelByAction = {
+      reset: 'Confirmar reset',
+      deactivate: 'Confirmar desativar',
+      activate: 'Confirmar ativar',
+    };
+    const buttonClassByAction = {
+      reset: 'bg-red-500/20 text-red-400 hover:bg-red-500/30',
+      deactivate: 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30',
+      activate: 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30',
+    };
     return (
       <div className="flex flex-col items-end gap-1.5">
-        <p className="text-[10px] text-amber-400 text-right max-w-[160px]">
-          Resetar assessment? O aluno precisará refazer o processo. Histórico preservado.
+        <p className="text-[10px] text-slate-300 text-right max-w-[200px]">
+          {promptByAction[action]}
         </p>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleCancelReset}
+            onClick={handleCancel}
             className="px-2 py-0.5 text-[10px] rounded bg-white/5 text-gray-400 hover:bg-white/10 transition-colors"
           >
             Cancelar
           </button>
           <button
-            onClick={handleConfirmReset}
-            className="px-2 py-0.5 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+            onClick={handleConfirm}
+            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${buttonClassByAction[action]}`}
           >
-            Confirmar reset
+            {labelByAction[action]}
           </button>
         </div>
       </div>
@@ -120,6 +129,7 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
 
   return (
     <div className="flex items-center gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-slate-500">Assessment</span>
       <button
         onClick={handleToggle}
         disabled={loading || isInProgress}
@@ -129,8 +139,8 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
             : isActive
               ? 'Clique para resetar o assessment'
               : currentValue
-                ? 'Desativar assessment'
-                : 'Ativar assessment para este aluno'
+                ? 'Clique para desativar o assessment'
+                : 'Clique para ativar o assessment deste aluno'
         }
         className={`
           relative w-9 h-5 rounded-full transition-all duration-200

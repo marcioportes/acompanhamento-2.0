@@ -20,8 +20,10 @@ import {
 import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useSubscriptions } from '../hooks/useSubscriptions';
+import { useStudents } from '../hooks/useStudents';
 import DebugBadge from '../components/DebugBadge';
 import RenewalForecast from '../components/RenewalForecast';
+import StudentsListTab from '../components/Students/StudentsListTab';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -213,7 +215,9 @@ const SubscriptionsPage = () => {
     subscriptions, studentsWithoutSubscription, loading, summary,
     addSubscription, updateSubscription, deleteSubscription, registerPayment, getPayments, deletePayment,
   } = useSubscriptions();
+  const { students: allStudents, loading: studentsLoading } = useStudents();
 
+  const [activeTab, setActiveTab] = useState('subs'); // 'subs' | 'students'
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [whatsappFilter, setWhatsappFilter] = useState('all');
@@ -274,12 +278,16 @@ const SubscriptionsPage = () => {
   const createInlineStudent = async ({ name, email, whatsappNumber }) => {
     if (!name?.trim()) throw new Error('Nome obrigatório');
     const id = `student_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // DEC-AUTO-263-07: accessStatus='none' marca aluno que existe pra
+    // fluxo de caixa mas ainda não passou pelo ritual da plataforma.
+    // Acompanhamento promove pra 'pending' quando mentor convida.
     await setDoc(doc(db, 'students', id), {
       uid: id,
       name: name.trim(),
       email: email?.trim() || null,
       whatsappNumber: whatsappNumber?.trim() || null,
       status: 'active',
+      accessStatus: 'none',
       createdAt: serverTimestamp(),
       firstLoginAt: null,
     });
@@ -501,16 +509,46 @@ const SubscriptionsPage = () => {
   return (
     <div className="min-h-screen p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl lg:text-3xl font-display font-bold text-white flex items-center gap-3"><CreditCard className="w-8 h-8 text-blue-400" />Assinaturas</h1>
             <p className="text-slate-400 mt-1">Gestao de assinaturas da mentoria</p>
           </div>
-          <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"><Plus className="w-4 h-4" />Nova Assinatura</button>
+          {activeTab === 'subs' && (
+            <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"><Plus className="w-4 h-4" />Nova Assinatura</button>
+          )}
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-800/50">
+        {[
+          { value: 'subs',     label: 'Assinaturas' },
+          { value: 'students', label: 'Alunos' },
+        ].map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setActiveTab(t.value)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === t.value
+                ? 'text-white border-blue-500'
+                : 'text-slate-400 hover:text-white border-transparent'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'students' ? (
+        <StudentsListTab
+          students={allStudents}
+          subscriptions={subscriptions}
+          loading={studentsLoading}
+        />
+      ) : (
+      <>
       {/* Summary — exclui apenas cancelled (vencidos/pausados/expirados continuam vivos) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {(() => {
@@ -922,6 +960,9 @@ const SubscriptionsPage = () => {
           {editError && <div className="mt-4 p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">{editError}</div>}
           <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveEdit} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
         </div></div>
+      )}
+
+      </>
       )}
 
       <DebugBadge component="SubscriptionsPage" />

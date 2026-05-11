@@ -40,9 +40,16 @@ export const findActiveSub = (subs) => {
 /**
  * @param {Object} student
  * @param {Array}  subs
- * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|'sem-plano'|null}
- *   null  = VIP ativo (fora desta tela)
- *   'sem-plano' = student existe mas não tem sub ativa não-VIP
+ * @returns {'alpha'|'espelho'|'trial-alpha'|'trial-espelho'|'aguardando-plano'|null}
+ *   null = fora desta tela — VIP ativo OU sem sub ativa E sem ritual feito.
+ *   'aguardando-plano' = passou pelo ritual (accessStatus='pending'/'active')
+ *          mas ainda não tem sub Alpha/Espelho/Trial atribuída — DEC-AUTO-263-10.
+ *
+ * DEC-AUTO-263-06 REVOGADA (2026-05-09): aluno sem email NÃO é mais
+ * filtrado aqui. Domínio fechou "WhatsApp-only não existe", então aluno
+ * sem email com sub Alpha/Espelho ativa/trial é Candidato a registro —
+ * Acompanhamento é o lugar primário do registro (mentor cadastra email
+ * no ritual via drawer).
  */
 export const classifyStudent = (student, subs) => {
   const list = Array.isArray(subs) ? subs : [];
@@ -54,7 +61,17 @@ export const classifyStudent = (student, subs) => {
   if (hasActiveVip) return null;
 
   const main = findActiveSub(list);
-  if (!main) return 'sem-plano';
+  if (!main) {
+    // Sem sub. Se passou pelo ritual (accessStatus pending/active) o aluno
+    // PRECISA estar visível pra mentor monitorar 1º login e criar sub depois.
+    // Sem ritual feito (none/undefined) → invisível.
+    const explicit = student?.accessStatus;
+    const wentThroughRitual = (
+      explicit === 'pending' || explicit === 'active'
+      || (!explicit && (student?.firstLoginAt || student?.status === 'pending'))
+    );
+    return wentThroughRitual ? 'aguardando-plano' : null;
+  }
 
   if (main.type === 'trial') {
     return main.plan === 'self_service' ? 'trial-espelho' : 'trial-alpha';
@@ -70,6 +87,58 @@ export const tierGroup = (bucket) => {
   return bucket;
 };
 
+/**
+ * Estado de acesso à plataforma — DEC-AUTO-263-07.
+ * Ortogonal ao bucket (Alpha/Espelho/Trial vem da sub; accessStatus vem do
+ * ritual de convite + 1º login).
+ *
+ * Lê o campo `student.accessStatus` quando presente. Faz fallback derivado
+ * dos campos legados pra cobrir docs ainda não tocados pelo backfill.
+ *
+ * @param {Object} student
+ * @returns {'none'|'pending'|'active'}
+ */
+export const getAccessStatus = (student) => {
+  const explicit = student?.accessStatus;
+  if (explicit === 'none' || explicit === 'pending' || explicit === 'active') return explicit;
+  if (student?.firstLoginAt) return 'active';
+  if (student?.status === 'pending') return 'pending';
+  return 'none';
+};
+
+/**
+ * Heurística pra detectar se aluno NÃO tem Auth user vinculado — DEC-AUTO-263-14
+ * (refinado 2026-05-11).
+ *
+ * Doc id segue 3 padrões em prod:
+ *  - Pseudo-id `student_${ts}_${rand}` — gerado por `createInlineStudent` da
+ *    SubscriptionsPage. Aluno SEM Auth.
+ *  - Auto-id Firestore (20 chars alfanuméricos) — doc legado criado antes do
+ *    callable `createStudent` existir, ou doc criado por flow antigo sem Auth.
+ *    Aluno SEM Auth (confirmado por inspeção em prod com `getUserByEmail`).
+ *  - Firebase Auth UID (28 chars). Aluno JÁ tem Auth, passou pelo callable.
+ *
+ * Auth UID Firebase: tipicamente 28 chars alfanuméricos. Auto-id Firestore: 20.
+ * Heurística do tamanho é determinística pra docs criados pelos 2 fluxos.
+ *
+ * @param {Object} student
+ * @returns {boolean}
+ */
+export const lacksAuthUser = (student) => {
+  const id = String(student?.id ?? student?.uid ?? '');
+  if (id.startsWith('student_')) return true;
+  // Auth UID Firebase tem 28 chars; auto-id Firestore tem 20.
+  // Tudo abaixo de 28 = doc legado sem Auth.
+  if (id.length < 28) return true;
+  return false;
+};
+
+export const ACCESS_STATUS_CONFIG = {
+  none:    { label: 'sem acesso',          pill: 'bg-slate-500/15 text-slate-400 border border-slate-500/30' },
+  pending: { label: 'aguardando 1º login', pill: 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30' },
+  active:  { label: 'ativo',               pill: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' },
+};
+
 export const isExpiringSoon = (sub, now = new Date()) => {
   if (!sub) return false;
   if (sub.type === 'vip') return false;
@@ -81,9 +150,9 @@ export const isExpiringSoon = (sub, now = new Date()) => {
 };
 
 export const TIER_CONFIG = {
-  alpha:           { label: 'Alpha',           pill: 'bg-purple-500/15 text-purple-300 border border-purple-500/30', dot: 'bg-purple-400' },
-  espelho:         { label: 'Espelho',         pill: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',       dot: 'bg-cyan-400' },
-  'trial-alpha':   { label: 'Trial · Alpha',   pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
-  'trial-espelho': { label: 'Trial · Espelho', pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
-  'sem-plano':     { label: 'Sem plano',       pill: 'bg-slate-500/15 text-slate-300 border border-slate-500/30',    dot: 'bg-slate-400' },
+  alpha:              { label: 'Alpha',             pill: 'bg-purple-500/15 text-purple-300 border border-purple-500/30', dot: 'bg-purple-400' },
+  espelho:            { label: 'Espelho',           pill: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',       dot: 'bg-cyan-400' },
+  'trial-alpha':      { label: 'Trial · Alpha',     pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
+  'trial-espelho':    { label: 'Trial · Espelho',   pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
+  'aguardando-plano': { label: 'Aguardando plano',  pill: 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30', dot: 'bg-yellow-400' },
 };
