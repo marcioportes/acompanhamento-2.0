@@ -12,7 +12,14 @@ Version source of truth: `src/version.js`.
 
 **fix:** relatório diário Assinaturas — auto-recovery + label + BRT today
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Backend:** `checkSubscriptions` ganha auto-recovery — sub com `status='overdue'` e `renewalDate >= today − graceDays` volta para `'active'` no batch. Reconcilia divergência entre UI (computa on-the-fly via `useSubscriptions.deriveStatus`) e CF (lia literal de Firestore). Mirror do autobloqueio G1 #263: desbloqueia Auth user se `student.loginBlockedReason === 'auto'` (bloqueios manuais preservados). Subject + comparações trocadas para `getBrazilToday()` BRT-midnight estável via `Intl.DateTimeFormat` + `Date.UTC` — antes `new Date(); setHours(0)` no servidor UTC mostrava data D-1.
+- **Backend:** label condicional `formatDateLabel` substitui `Math.abs(daysBetween)` enganoso — `vence em N dias` / `vence hoje` / `vence amanhã` / `venceu ontem` / `venceu há N dias` com plural correto.
+- **Hook:** `updateSubscription` defensive — se `renewalDate` é updated para futuro/dentro-do-grace e status atual é `'overdue'`, reset `'active'` no mesmo update (status explícito em `updates` tem precedência).
+- **Refactor:** helpers extraídos para `functions/subscriptions/helpers.js` (puros, testáveis CJS via `createRequire`).
+- **Script:** `scripts/issue-266-diag-overdue.mjs` readonly — agrupa subs `overdue` por recuperáveis/legítimos/anomalias. Run em prod confirmou 4 recuperáveis (Wilson, Yoaquim, Rodrigo, Gizele) + 5 legítimos.
+- **Decisões:** DEC-AUTO-266-01 (auto-recovery safe-by-default), DEC-AUTO-266-02 (desbloqueio condicional a `reason='auto'`).
+- **Validação prod:** deploy + trigger manual via `gcloud scheduler jobs run` — `Batch: 4 operacoes`, `overdue: 9 → 5`. Email com layout correto recebido.
+- **Testes:** 3023/3023 verde · functions 108/108 verde (24 novos em `__tests__/subscriptions/helpers.test.js`, 6 novos em `subscriptions.test.js`) · `npm run lint` zero erros · CI verde no PR #268.
 
 
 ## [1.61.0] - 11/05/2026 · #263 · PR #265
