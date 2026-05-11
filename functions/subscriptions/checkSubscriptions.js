@@ -129,6 +129,11 @@ module.exports = functions.pubsub
       let totalOverdue = 0;
       let monthlyRevenue = 0;
 
+      // G1 #263 (DEC-AUTO-263-21): IDs de students que viraram inadimplentes
+      // nesta execução e precisam ter o Auth user desabilitado. Coletados durante
+      // o loop, processados após o batch.commit (admin.auth não é batcheável).
+      const authDisableQueue = [];
+
       // Itera por cada student
       for (const studentDoc of studentsSnap.docs) {
         const student = studentDoc.data();
@@ -188,6 +193,22 @@ module.exports = functions.pubsub
                 batchCount++;
                 sections.newOverdue.push(subWithMeta);
                 totalOverdue++;
+
+                // G1 #263 (DEC-AUTO-263-21): autobloqueio no mesmo batch.
+                // Idempotente: se já está blocked com reason='manual', NÃO
+                // sobrescreve (mentor controla esse caso). Se já é 'auto',
+                // refresh o timestamp é inofensivo.
+                const reason = student.loginBlockedReason;
+                if (reason !== 'manual') {
+                  batch.update(studentDoc.ref, {
+                    loginBlocked: true,
+                    loginBlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    loginBlockedBy: 'system:checkSubscriptions',
+                    loginBlockedReason: 'auto',
+                  });
+                  batchCount++;
+                  authDisableQueue.push(studentDoc.id);
+                }
               } else if (daysToRenewal === 0) {
                 sections.expiringToday.push(subWithMeta);
                 totalActive++;
@@ -235,6 +256,22 @@ module.exports = functions.pubsub
       if (batchCount > 0) {
         await batch.commit();
         console.log(`[checkSubscriptions] Batch: ${batchCount} operacoes`);
+      }
+
+      // G1 #263: desabilita Auth users após o batch commit.
+      // admin.auth().updateUser não é batcheável e falha quando o student
+      // não tem Auth user (legacy auto-id docs) — try/catch silencia esse caso.
+      for (const uid of authDisableQueue) {
+        try {
+          await admin.auth().updateUser(uid, { disabled: true });
+          console.log(`[checkSubscriptions] Auth disabled: ${uid}`);
+        } catch (e) {
+          if (e.code === 'auth/user-not-found') {
+            console.log(`[checkSubscriptions] Auth user ${uid} não existe — student doc bloqueado mesmo assim`);
+          } else {
+            console.error(`[checkSubscriptions] Falha ao desabilitar Auth ${uid}:`, e);
+          }
+        }
       }
 
       // Envia email se houver ocorrências

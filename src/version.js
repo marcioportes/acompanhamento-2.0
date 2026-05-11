@@ -3,6 +3,8 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.61.0: [RESERVADA — issue #263] feat filtro Alpha/Espelho na tela de Alunos + click → dashboard (View As). StudentsManagement passa a abranger plan ∈ {alpha, self_service}; chips de filtro de plano; row clicável; limpeza N+1 de trades + perfil emocional inline removido (vai pro dashboard). Pula 1.59.0/1.60.0 (implícitas para #260/#261). Entrada definitiva no encerramento.
+ * - 1.58.0: [RESERVADA — issue #259] feat ritual completo de fechamento de ciclo (wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor: inbox, comment panel, modo demonstração). Entrada definitiva no encerramento.
  * - 1.57.2: balão whatsappState volta para a coluna Ações (não fica mais junto do nome) — coerente com os outros botões de ação por linha (05/05/2026, hot-patch direto em main)
  * - 1.57.1: polish UX SubscriptionsPage — balão MessageCircle (em vez de dot) colorido por estado na 1ª coluna; busca volta a max-w-md + botão X de limpar; filtros agrupados em 3 facetas com label (Status / Tipo / WhatsApp) (05/05/2026, hot-patch direto em main)
  * - 1.57.0: #258 feat substitui inFollowUp (boolean) por whatsappState (none/talking/waiting) — dot clicável na 1ª coluna cicla 3 estados (branco/verde/âmbar), 3 chips de filtro exclusivos. Remove botão MessageCircle das ações. Sem timer/dias (05/05/2026, hot-patch direto em main)

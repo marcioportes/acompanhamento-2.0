@@ -524,6 +524,75 @@ const isMentorEmail = (email) => {
 // STUDENT MANAGEMENT
 // ============================================
 
+// Helper — apaga uma collection inteira em batches (Firestore não cascateia
+// subcollections automaticamente). Compartilhado entre createStudent (modo
+// promote) e deleteStudent.
+const deleteCollection = async (collRef, batchSize = 100) => {
+  let snapshot = await collRef.limit(batchSize).get();
+  while (!snapshot.empty) {
+    const batch = db.batch();
+    snapshot.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    snapshot = await collRef.limit(batchSize).get();
+  }
+};
+
+// Helper — apaga recursivamente uma collection e TODAS suas subcollections
+// (em profundidade arbitrária). Usado pelo deleteStudent no modo deep
+// cleanup pra garantir que nenhuma sub-sub-coleção do aluno sobreviva.
+const deleteCollectionRecursive = async (collRef, batchSize = 100) => {
+  let snapshot = await collRef.limit(batchSize).get();
+  let count = 0;
+  while (!snapshot.empty) {
+    for (const d of snapshot.docs) {
+      const subColls = await d.ref.listCollections();
+      for (const sc of subColls) {
+        count += await deleteCollectionRecursive(sc, batchSize);
+      }
+    }
+    const batch = db.batch();
+    snapshot.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    count += snapshot.size;
+    snapshot = await collRef.limit(batchSize).get();
+  }
+  return count;
+};
+
+// Helper — apaga em batch todos os docs de uma coleção top-level que tenham
+// `studentId == sid`. Retorna count pra log. DEC-AUTO-263-08 (refinado
+// 2026-05-10): deleteStudent cascateia também trades/orders/notifications/
+// plans/csvStaging/csvStagingTrades/accounts/crossCheck (opção A — limpeza
+// total, LGPD-like).
+const deleteByStudentIdQuery = async (collName, sid, batchSize = 100) => {
+  let count = 0;
+  while (true) {
+    const snap = await db.collection(collName).where('studentId', '==', sid).limit(batchSize).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    count += snap.size;
+    if (snap.size < batchSize) break;
+  }
+  return count;
+};
+
+// Helper — copia recursivamente uma collection (e suas subcollections) entre
+// caminhos. Usado pelo "modo promote" do createStudent pra mover
+// /students/{old}/subscriptions/* + payments aninhados pra /students/{new}/...
+const copyCollectionRecursive = async (srcCollRef, destCollRef) => {
+  const snap = await srcCollRef.get();
+  for (const docSnap of snap.docs) {
+    const destDocRef = destCollRef.doc(docSnap.id);
+    await destDocRef.set(docSnap.data());
+    const subColls = await docSnap.ref.listCollections();
+    for (const subColl of subColls) {
+      await copyCollectionRecursive(subColl, destDocRef.collection(subColl.id));
+    }
+  }
+};
+
 exports.createStudent = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
@@ -533,7 +602,12 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('permission-denied', 'Apenas mentores podem criar alunos');
   }
 
-  const { email, name } = data;
+  // DEC-AUTO-263-11 — callable em modo upsert.
+  // - sem `studentId`: cria do zero (caso legado, raro).
+  // - com `studentId`: PROMOVE doc existente — cria Auth, copia /students/{studentId}
+  //   inteiro pra /students/{authUid} (incluindo subscriptions + payments
+  //   aninhados), apaga o original. Restaura invariante "doc.id == authUid".
+  const { email, name, studentId } = data;
 
   if (!email || !email.includes('@')) {
     throw new functions.https.HttpsError('invalid-argument', 'Email inválido');
@@ -543,59 +617,116 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
   const studentName = name || emailLower.split('@')[0];
 
   try {
-    // 1. Criar usuário no Firebase Auth
+    // 1. Cria Auth user
     const userRecord = await admin.auth().createUser({
       email: emailLower,
       displayName: studentName,
       disabled: false
     });
+    console.log(`[createStudent] Auth criado: ${userRecord.uid}`);
 
-    console.log(`[createStudent] Usuário criado no Auth: ${userRecord.uid}`);
+    let mode;
+    if (studentId && studentId !== userRecord.uid) {
+      // ---------- Modo PROMOTE ----------
+      mode = 'promote';
+      const srcRef = db.collection('students').doc(studentId);
+      const srcSnap = await srcRef.get();
 
-    // 2. Criar documento em /students
-    await db.collection('students').doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email: emailLower,
-      name: studentName,
-      status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdBy: context.auth.token.email,
-      firstLoginAt: null
-    });
+      if (!srcSnap.exists) {
+        // studentId passado mas doc sumiu — cai no fluxo "create" pra não bloquear
+        mode = 'create';
+      } else {
+        const srcData = srcSnap.data();
+        const destRef = db.collection('students').doc(userRecord.uid);
 
-    console.log(`[createStudent] Doc /students/${userRecord.uid} criado`);
+        // 2a. Copia o doc principal pra novo path
+        await destRef.set({
+          ...srcData,
+          uid: userRecord.uid,
+          email: emailLower,
+          name: studentName,
+          status: 'pending',
+          accessStatus: 'pending',
+          createdBy: srcData.createdBy ?? context.auth.token.email,
+          firstLoginAt: null,
+          promotedFrom: studentId,
+          promotedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
 
-    // 3. Gerar link de reset de senha
+        // 2b. Copia todas as subcollections (subscriptions + payments aninhados)
+        const subColls = await srcRef.listCollections();
+        for (const subColl of subColls) {
+          await copyCollectionRecursive(subColl, destRef.collection(subColl.id));
+        }
+
+        // 2c. Apaga o doc antigo + subcollections (em ordem reversa)
+        for (const subColl of subColls) {
+          // Apaga 2 níveis: docs da subcoll e suas sub-sub
+          const subSnap = await subColl.get();
+          for (const subDoc of subSnap.docs) {
+            const grandColls = await subDoc.ref.listCollections();
+            for (const gc of grandColls) {
+              await deleteCollection(gc);
+            }
+            await subDoc.ref.delete();
+          }
+        }
+        await srcRef.delete();
+        console.log(`[createStudent] PROMOTE: ${studentId} → ${userRecord.uid}`);
+      }
+    }
+
+    if (!mode || mode === 'create') {
+      // ---------- Modo CREATE (legado) ----------
+      mode = mode || 'create';
+      await db.collection('students').doc(userRecord.uid).set({
+        uid: userRecord.uid,
+        email: emailLower,
+        name: studentName,
+        status: 'pending',
+        accessStatus: 'pending',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: context.auth.token.email,
+        firstLoginAt: null,
+      });
+      console.log(`[createStudent] CREATE: /students/${userRecord.uid}`);
+    }
+
+    // 3. Reset link + email
     const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
-
-    console.log(`[createStudent] Reset link gerado para: ${emailLower}`);
-
-    // 4. Escrever na coleção /mail → Trigger Email Extension envia automaticamente
     await sendEmail(
       emailLower,
       `Bem-vindo ao ${APP_NAME} - Configure sua senha`,
       getWelcomeEmailHtml(studentName, resetLink)
     );
+    // Registra auditoria do envio no doc do student (DEC-AUTO-263-XX 2026-05-11).
+    await db.collection('students').doc(userRecord.uid).update({
+      emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+      emailSentBy: context.auth.token.email,
+      emailSentCount: admin.firestore.FieldValue.increment(1),
+    });
+    console.log(`[createStudent] Email enfileirado: ${emailLower}`);
 
-    console.log(`[createStudent] Email enfileirado via /mail para: ${emailLower}`);
-
-    return { 
-      success: true, 
+    return {
+      success: true,
       uid: userRecord.uid,
-      resetLink: resetLink,
-      message: 'Aluno criado e email de configuração enviado!'
+      mode,
+      resetLink,
+      message: mode === 'promote'
+        ? 'Aluno promovido pra plataforma e email de configuração enviado!'
+        : 'Aluno criado e email de configuração enviado!',
     };
 
   } catch (error) {
     console.error('[createStudent] Erro:', error);
-    
+
     if (error.code === 'auth/email-already-exists') {
       throw new functions.https.HttpsError('already-exists', 'Este email já está cadastrado no sistema');
     }
     if (error.code === 'auth/invalid-email') {
       throw new functions.https.HttpsError('invalid-argument', 'Email inválido');
     }
-    
+
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
@@ -612,20 +743,68 @@ exports.deleteStudent = functions.https.onCall(async (data, context) => {
   const { uid, email } = data;
 
   try {
+    // Resolver studentId(s) alvo
+    let studentIds = [];
     if (uid) {
-      try { await admin.auth().deleteUser(uid); } catch (e) { console.log('Usuário não encontrado:', uid); }
+      studentIds = [uid];
     } else if (email) {
+      const snap = await db.collection('students').where('email', '==', email.toLowerCase()).get();
+      studentIds = snap.docs.map((d) => d.id);
+    }
+
+    // Hard delete cascateado deep (DEC-AUTO-263-08 refinado 2026-05-10
+    // — opção A, limpeza total LGPD-like):
+    //   1. Todas subcollections de /students/{sid}/ (subscriptions+payments,
+    //      assessment, maturity+_historyBucket, reviews, etc.) via listCollections
+    //      recursivo — qualquer subcoll futura entra automaticamente.
+    //   2. Coleções top-level com studentId: trades, orders, notifications,
+    //      plans, csvStaging, csvStagingTrades, accounts, crossCheck.
+    //   3. Doc /students/{sid}.
+    //   4. Auth user.
+    const TOP_LEVEL_COLLECTIONS = [
+      'trades',
+      'orders',
+      'notifications',
+      'plans',
+      'csvStaging',
+      'csvStagingTrades',
+      'accounts',
+      'crossCheck',
+    ];
+    for (const sid of studentIds) {
+      const studentRef = db.collection('students').doc(sid);
+      const counts = {};
+      // 1. Subcollections recursivas
+      const subColls = await studentRef.listCollections();
+      for (const sc of subColls) {
+        counts[`sub:${sc.id}`] = await deleteCollectionRecursive(sc);
+      }
+      // 2. Top-level por studentId
+      for (const coll of TOP_LEVEL_COLLECTIONS) {
+        const n = await deleteByStudentIdQuery(coll, sid);
+        if (n > 0) counts[`top:${coll}`] = n;
+      }
+      // 3. Doc principal
+      await studentRef.delete();
+      counts['students'] = 1;
+      console.log(`[deleteStudent] Deep cleanup /students/${sid}:`, counts);
+
+      // 4. Auth user (uid pode ser pseudo-id de createInlineStudent — nesse caso
+      // não existe Auth e o catch absorve.)
+      try { await admin.auth().deleteUser(sid); } catch (e) {
+        if (e.code !== 'auth/user-not-found') console.warn('[deleteStudent] Auth delete:', e.message);
+      }
+    }
+
+    // Fallback caso só email tenha sido passado e nenhum doc encontrado mas
+    // exista Auth user órfão.
+    if (!studentIds.length && email) {
       try {
         const user = await admin.auth().getUserByEmail(email);
         await admin.auth().deleteUser(user.uid);
-      } catch (e) { console.log('Usuário não encontrado:', email); }
-    }
-
-    if (uid) {
-      await db.collection('students').doc(uid).delete();
-    } else if (email) {
-      const snapshot = await db.collection('students').where('email', '==', email.toLowerCase()).get();
-      snapshot.forEach(doc => doc.ref.delete());
+      } catch (e) {
+        if (e.code !== 'auth/user-not-found') console.warn('[deleteStudent] Auth-by-email:', e.message);
+      }
     }
 
     return { success: true, message: 'Aluno removido' };
@@ -633,6 +812,200 @@ exports.deleteStudent = functions.https.onCall(async (data, context) => {
     console.error('Erro ao deletar aluno:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
+});
+
+// DEC-AUTO-263-12 — bloqueio/desbloqueio de login da plataforma.
+// Caso de uso: aluno em inadimplência precisa ser impedido de logar
+// enquanto não regulariza pagamento.
+exports.setStudentLoginBlocked = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores');
+  }
+
+  const { uid, blocked } = data ?? {};
+  if (!uid) {
+    throw new functions.https.HttpsError('invalid-argument', 'uid obrigatório');
+  }
+  const isBlocked = Boolean(blocked);
+
+  try {
+    await admin.auth().updateUser(uid, { disabled: isBlocked });
+    await db.collection('students').doc(uid).update({
+      loginBlocked: isBlocked,
+      loginBlockedAt: isBlocked ? admin.firestore.FieldValue.serverTimestamp() : null,
+      loginBlockedBy: isBlocked ? context.auth.token.email : null,
+      // G2 (#263, DEC-AUTO-263-20): rastreia origem do bloqueio. 'manual' = mentor
+      // operou via UI; 'auto' = checkSubscriptions virou sub overdue. Permite que
+      // o desbloqueio automático (auto→ativo) não sobrescreva bloqueio manual.
+      loginBlockedReason: isBlocked ? 'manual' : null,
+    });
+    console.log(`[setStudentLoginBlocked] ${uid} → blocked=${isBlocked}`);
+    return { success: true, uid, blocked: isBlocked };
+  } catch (error) {
+    console.error('[setStudentLoginBlocked] Erro:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+// Patch — sincroniza student.accessTier com a sub ativa principal de cada
+// aluno. Útil pra corrigir defasagem causada por updateSubscription antes
+// do fix de DEC-AUTO-263-15 (espelho ↔ alpha não atualizava o doc do
+// student). dryRun: true mostra contagens sem escrever.
+exports.syncAccessTier = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores');
+  }
+
+  const dryRun = Boolean(data?.dryRun);
+  const counts = { updated: 0, alreadyOk: 0, total: 0, byTier: {} };
+  const changes = []; // todas as mudanças (sem cap) — Marcio precisa auditar nomes
+
+  const studentsSnap = await db.collection('students').get();
+
+  let batch = db.batch();
+  let opsInBatch = 0;
+  for (const docSnap of studentsSnap.docs) {
+    counts.total += 1;
+    const student = docSnap.data();
+
+    // Busca subs vivas não-VIP — overdue/pending/paused mantêm acesso (grace),
+    // só cancelled/expired zeram. Critério alinhado com resolveTier do
+    // checkSubscriptions.js. DEC-AUTO-263-15.
+    const subsSnap = await docSnap.ref.collection('subscriptions').get();
+    const activeSubs = subsSnap.docs
+      .map((d) => d.data())
+      .filter((s) =>
+        s.type !== 'vip' &&
+        s.status !== 'cancelled' &&
+        s.status !== 'expired'
+      );
+
+    const mainSub = activeSubs.sort((a, b) => {
+      const da = (a.renewalDate?.toDate?.() ?? a.trialEndsAt?.toDate?.() ?? new Date(0)).getTime();
+      const dbb = (b.renewalDate?.toDate?.() ?? b.trialEndsAt?.toDate?.() ?? new Date(0)).getTime();
+      return dbb - da;
+    })[0];
+
+    const expected = mainSub ? (mainSub.plan ?? 'none') : 'none';
+    const current = student.accessTier ?? null;
+    counts.byTier[expected] = (counts.byTier[expected] ?? 0) + 1;
+
+    if (current === expected) {
+      counts.alreadyOk += 1;
+      continue;
+    }
+
+    counts.updated += 1;
+    changes.push({
+      id: docSnap.id,
+      name: student.name ?? '(sem nome)',
+      email: student.email ?? null,
+      from: current ?? '(sem accessTier)',
+      to: expected,
+    });
+
+    if (!dryRun) {
+      batch.update(docSnap.ref, {
+        accessTier: expected,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      opsInBatch += 1;
+      if (opsInBatch >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
+    }
+  }
+  if (!dryRun && opsInBatch > 0) await batch.commit();
+
+  console.log(`[syncAccessTier] dryRun=${dryRun} total=${counts.total} updated=${counts.updated}`);
+  // Ordena alfabeticamente pra facilitar auditoria visual.
+  changes.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  return { success: true, dryRun, counts, changes };
+});
+
+// DEC-AUTO-263-07 — backfill de accessStatus. Roda 1x manualmente.
+// Regras: firstLoginAt != null → 'active'; status='pending' → 'pending';
+// resto → 'none'.
+exports.backfillAccessStatus = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores');
+  }
+
+  const dryRun = Boolean(data?.dryRun);
+  const counts = { active: 0, pending: 0, none: 0, skipped: 0 };
+  const snap = await db.collection('students').get();
+
+  let batch = db.batch();
+  let opsInBatch = 0;
+  for (const docSnap of snap.docs) {
+    const s = docSnap.data();
+    if (s.accessStatus) { counts.skipped += 1; continue; }
+    let newStatus = 'none';
+    if (s.firstLoginAt) newStatus = 'active';
+    else if (s.status === 'pending') newStatus = 'pending';
+    counts[newStatus] += 1;
+    if (!dryRun) {
+      batch.update(docSnap.ref, { accessStatus: newStatus });
+      opsInBatch += 1;
+      if (opsInBatch >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        opsInBatch = 0;
+      }
+    }
+  }
+  if (!dryRun && opsInBatch > 0) await batch.commit();
+
+  return { success: true, dryRun, counts };
+});
+
+// DEC-AUTO-263-XX (2026-05-11) — fonte da verdade pro frontend decidir
+// "Registrar" vs "Reenviar convite" em CandidatosRitualModal. Substitui
+// heurística `lacksAuthUser` (id.length === 20 vs 28) por consulta direta
+// ao Firebase Auth. Usa `getUsers` que aceita até 100 identifiers/chamada.
+exports.getInviteStatusBatch = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
+  }
+  if (!isMentorEmail(context.auth.token.email)) {
+    throw new functions.https.HttpsError('permission-denied', 'Apenas mentores');
+  }
+  const { emails } = data ?? {};
+  if (!Array.isArray(emails) || emails.length === 0) {
+    return { result: {} };
+  }
+  // Normaliza + dedupe
+  const normalized = Array.from(new Set(
+    emails.map((e) => String(e ?? '').toLowerCase().trim()).filter(Boolean)
+  ));
+  const result = {};
+  // getUsers aceita até 100 identifiers por chamada — paginar se preciso.
+  for (let i = 0; i < normalized.length; i += 100) {
+    const slice = normalized.slice(i, i + 100);
+    const { users, notFound } = await admin.auth().getUsers(
+      slice.map((email) => ({ email }))
+    );
+    for (const u of users) {
+      result[u.email] = { authExists: true, authUid: u.uid, disabled: Boolean(u.disabled) };
+    }
+    for (const nf of notFound) {
+      // nf é o identifier original passado
+      const email = nf.email ?? '';
+      if (email) result[email] = { authExists: false };
+    }
+  }
+  return { result };
 });
 
 exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
@@ -658,12 +1031,15 @@ exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
       .where('email', '==', emailLower)
       .limit(1)
       .get();
-    
-    const studentName = snapshot.empty 
-      ? emailLower.split('@')[0] 
-      : snapshot.docs[0].data().name || emailLower.split('@')[0];
 
-    // Gerar novo link de reset
+    const studentName = snapshot.empty
+      ? emailLower.split('@')[0]
+      : (snapshot.docs[0].data().name || emailLower.split('@')[0]);
+
+    // resendStudentInvite é SÓ pra reenvio: requer Auth user já existente.
+    // Pra alunos sem Auth (doc legado, ex: Elza com id auto-id de 20 chars),
+    // o frontend deve oferecer "Registrar" (callable createStudent em modo
+    // PROMOTE). Heurística `lacksAuthUser` em studentClassify.js cobre isso.
     const resetLink = await admin.auth().generatePasswordResetLink(emailLower);
 
     // Escrever na coleção /mail → Extension envia
@@ -673,11 +1049,21 @@ exports.resendStudentInvite = functions.https.onCall(async (data, context) => {
       getWelcomeEmailHtml(studentName, resetLink)
     );
 
-    console.log(`[resendStudentInvite] Email reenviado para: ${emailLower}`);
+    // Registra auditoria do envio no doc do student (DEC-AUTO-263-XX 2026-05-11).
+    if (!snapshot.empty) {
+      await snapshot.docs[0].ref.update({
+        emailSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        emailSentBy: context.auth.token.email,
+        emailSentCount: admin.firestore.FieldValue.increment(1),
+      });
+    }
+
+    console.log(`[resendStudentInvite] Email enfileirado para: ${emailLower}`);
 
     return { success: true, resetLink, message: 'Convite reenviado com sucesso!' };
   } catch (error) {
     console.error('[resendStudentInvite] Erro:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
@@ -1477,6 +1863,7 @@ exports.recomputeStudentMaturity = require("./maturity/recomputeStudentMaturity"
 // SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)
 // ============================================
 exports.checkSubscriptions = require("./subscriptions/checkSubscriptions");
+exports.onSubscriptionStatusChange = require("./subscriptions/onSubscriptionStatusChange");
 
 // ============================================
 // SHADOW BEHAVIOR — Padrões comportamentais (CHUNK-04, issue #129)
