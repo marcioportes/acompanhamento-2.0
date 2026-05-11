@@ -31,4 +31,4 @@
 | 1.56.3 | #256 | `fix/issue-256-filter-counters-intersect` | 05/05/2026 | consumida (PR #257 squash `2f1bfe48`) |
 | 1.58.0 | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | reservada — pula 1.57.x consumida em hot-patches (#258, polish, fix balão) sem registro no registry |
 | 1.61.0 | #263 | `feat/issue-263-students-plan-filter` | 07/05/2026 | consumida (PR #265 squash `c00681c2`) |
-| 1.61.1 | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | reservada — fix relatório diário Assinaturas (overdue recovery + label) |
+| 1.61.1 | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | consumida (PR #268 squash `5a1e5953`) |

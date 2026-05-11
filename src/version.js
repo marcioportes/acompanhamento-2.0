@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.61.1: [RESERVADA — issue #266] fix relatório diário de Assinaturas: auto-recovery no CF checkSubscriptions (sub overdue com renewalDate futuro/dentro do grace volta para active + desbloqueio quando autobloqueio era 'auto') + label cosmético do email (vence em N dias / venceu há N dias) + defensive em updateSubscription (renewalDate futuro com status=overdue reseta para active). Entrada definitiva no encerramento.
+ * - 1.61.1: fix relatório diário de Assinaturas: auto-recovery no CF checkSubscriptions (sub overdue com renewalDate futuro/dentro do grace volta para active + desbloqueio quando autobloqueio era 'auto') + label cosmético do email (vence em N dias / venceu há N dias) + defensive em updateSubscription (renewalDate futuro com status=overdue reseta para active). Entrada definitiva no encerramento.
  * - 1.61.0: feat filtro Alpha/Espelho na tela de Alunos + click → dashboard (View As). StudentsManagement passa a abranger plan ∈ {alpha, self_service}; chips de filtro de plano; row clicável; limpeza N+1 de trades + perfil emocional inline removido (vai pro dashboard). Pula 1.59.0/1.60.0 (implícitas para #260/#261). Entrada definitiva no encerramento.
  * - 1.58.0: [RESERVADA — issue #259] feat ritual completo de fechamento de ciclo (wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor: inbox, comment panel, modo demonstração). Entrada definitiva no encerramento.
  * - 1.57.2: balão whatsappState volta para a coluna Ações (não fica mais junto do nome) — coerente com os outros botões de ação por linha (05/05/2026, hot-patch direto em main)
@@ -352,10 +352,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.61.0',
+  version: '1.61.1',
   build: '20260511',
-  display: 'v1.61.0',
-  full: '1.61.0+20260511',
+  display: 'v1.61.1',
+  full: '1.61.1+20260511',
 };
 export default VERSION;
 export { VERSION };

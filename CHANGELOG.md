@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.61.1] - 11/05/2026 · #266 · PR #268
+
+**fix:** relatório diário Assinaturas — auto-recovery + label + BRT today
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.61.0] - 11/05/2026 · #263 · PR #265
 
 **feat:** Acompanhamento — drawer master/detail + autobloqueio + lugar do registro
