@@ -30,4 +30,4 @@
 | 1.56.2 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | consumida (PR #255 squash `47e07e21`) |
 | 1.56.3 | #256 | `fix/issue-256-filter-counters-intersect` | 05/05/2026 | consumida (PR #257 squash `2f1bfe48`) |
 | 1.58.0 | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | reservada — pula 1.57.x consumida em hot-patches (#258, polish, fix balão) sem registro no registry |
-| 1.61.0 | #263 | `feat/issue-263-students-plan-filter` | 07/05/2026 | reservada — pula 1.59.0/1.60.0 (implícitas para #260/#261, sem registro formal). Filtro Alpha/Espelho em StudentsManagement + click→dashboard. |
+| 1.61.0 | #263 | `feat/issue-263-students-plan-filter` | 07/05/2026 | consumida (PR #265 squash `c00681c2`) |

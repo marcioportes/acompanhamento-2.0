@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.61.0] - 11/05/2026 · #263 · PR #265
+
+**feat:** Acompanhamento — drawer master/detail + autobloqueio + lugar do registro
+
+- **UI:** drawer `StudentDetailDrawer` promovido pra `src/components/Students/`, compartilhado entre Acompanhamento e Assinaturas. Email read-only quando `accessStatus='active'`. Histórico híbrido (sub atual em destaque + flat por data). Botão "Registrar na plataforma" pra candidatos. Drawer reativo via `state=id` derivado de `students[]` real-time.
+- **UI:** aba "Alunos" em SubscriptionsPage lista 100% dos `/students` (inclui órfãos) com filtros Todos/Com Auth/Sem Auth/Bloqueados/Sem sub.
+- **UI:** modal "Candidatos a Registro" filtra por Auth real (não heurística) via `getInviteStatusBatch`.
+- **Backend:** `getInviteStatusBatch` (novo callable) — ground truth via `admin.auth().getUsers()` em batch. `deleteStudent` (refatorado) — cascade LGPD-like (trades/orders/notifications/plans/csvStaging\*/accounts/crossCheck + subcollections + Auth user). `setStudentLoginBlocked` grava `loginBlockedReason='manual'`. `createStudent`/`resendStudentInvite` registram audit `emailSentAt`/`emailSentBy`/`emailSentCount`.
+- **Backend:** `checkSubscriptions` (G1 autobloqueio) — sub vira overdue → `auth.disabled=true` + `loginBlocked=true` + `reason='auto'`. Idempotente (não sobrescreve `'manual'`). `onSubscriptionStatusChange` (G3, novo trigger) — sub volta de overdue → `active`/`pending` → auto-unblock se `reason='auto'`.
+- **Cleanup:** `AddStudentModal` removido (substituído pelo drawer). Bucket `'aguardando-plano'` removido de `classifyStudent`.
+- **Decisões:** DEC-AUTO-263-06 (revogada), DEC-AUTO-263-20 (loginBlockedReason), DEC-AUTO-263-21 (autobloqueio + auto-unblock), DEC-AUTO-263-22 (remove aguardando-plano).
+- **Testes:** 3017/3017 verde · `npm run build` verde · CI verde no PR #265.
+
+
 ## [1.56.3] - 05/05/2026 · #256 · PR #257
 
 **fix:** contadores intersect com filtros + remove chip Pendentes
