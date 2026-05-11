@@ -285,12 +285,34 @@ export const useSubscriptions = () => {
       }
     }
 
+    // Issue #266 — defensive: se renewalDate está sendo atualizado para
+    // futuro/dentro-do-grace e o status atual é 'overdue', reseta para 'active'
+    // no mesmo update. Evita reincidência: até hoje o CF reads literal status e
+    // mostrava no email diário como inadimplente mesmo após renovação manual.
+    // (status explicitamente passado em updates tem precedência — não sobrescreve.)
+    if (
+      'renewalDate' in cleanUpdates &&
+      cleanUpdates.renewalDate &&
+      sub.status === 'overdue' &&
+      !('status' in updates)
+    ) {
+      const renewalDate = cleanUpdates.renewalDate.toDate
+        ? cleanUpdates.renewalDate.toDate()
+        : new Date(cleanUpdates.renewalDate);
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const grace = sub.gracePeriodDays ?? 5;
+      const daysToRenewal = Math.ceil((renewalDate - now) / (1000 * 60 * 60 * 24));
+      if (daysToRenewal >= -grace) {
+        cleanUpdates.status = 'active';
+      }
+    }
+
     await updateDoc(ref, cleanUpdates);
 
-    // Sincroniza accessTier se plan/status/type mudaram. Caso típico: upgrade
-    // espelho → alpha (issue #263). Sem isso o doc do student fica defasado.
-    if ('plan' in updates || 'status' in updates || 'type' in updates) {
-      const updatedSub = { ...sub, ...updates };
+    // Sincroniza accessTier se plan/status/type mudaram (inclui o auto-reset
+    // de status acima — usa cleanUpdates, não updates).
+    if ('plan' in cleanUpdates || 'status' in cleanUpdates || 'type' in cleanUpdates) {
+      const updatedSub = { ...sub, ...updates, ...(cleanUpdates.status ? { status: cleanUpdates.status } : {}) };
       const otherSubs = subscriptions.filter(s => s.studentId === sub.studentId && s.id !== sub.id);
       const activeSub = [updatedSub, ...otherSubs]
         .find(s => s.status === 'active' && s.type !== 'vip');

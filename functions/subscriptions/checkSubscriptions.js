@@ -3,20 +3,28 @@
  * @description Verifica assinaturas diariamente às 8h BRT.
  *   1. Detecta assinaturas vencendo em 7 dias (paid) e trials expirando
  *   2. Detecta e marca inadimplentes (renewalDate + gracePeriod ultrapassados)
- *   3. Expira trials automaticamente quando trialEndsAt < hoje
- *   4. Sincroniza accessTier no documento do student
- *   5. Envia email consolidado ao mentor se houver ocorrências
+ *   3. Recupera subs overdue cujo renewalDate voltou pro futuro (issue #266)
+ *   4. Expira trials automaticamente quando trialEndsAt < hoje
+ *   5. Sincroniza accessTier no documento do student
+ *   6. Envia email consolidado ao mentor se houver ocorrências
  *
  * DEC-055: Subscriptions como subcollection de students
  * DEC-056: type trial/paid + trialEndsAt + accessTier
  *
- * Issue: #094
+ * Issue: #094 + #266 (auto-recovery + label cosmético + today em BRT)
  * Path: students/{studentId}/subscriptions/{subId}
  * Email: via collection `mail` (firebase/firestore-send-email extension)
  */
 
 const functions = require('firebase-functions/v1');
 const admin = require('firebase-admin');
+const {
+  getBrazilToday,
+  daysBetweenSigned,
+  formatBrDate,
+  formatDateLabel,
+  classifyOverdueSub,
+} = require('./helpers');
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -24,24 +32,11 @@ const db = admin.firestore();
 const MENTOR_EMAIL = 'marcio.portes@me.com';
 const FROM_EMAIL = 'Tchio-Alpha <marcio.portes@me.com>';
 
-// ── Helpers ──────────────────────────────────────────────
-
-const formatBrDate = (date) => {
-  if (!date) return '-';
-  const d = date instanceof Date ? date : date.toDate ? date.toDate() : new Date(date);
-  return d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-};
+// ── Helpers locais (não puros) ───────────────────────────
 
 const formatCurrency = (value, currency = 'BRL') => {
   if (value === undefined || value === null || isNaN(value)) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency }).format(value);
-};
-
-const daysBetween = (from, to) => {
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const f = new Date(from); f.setHours(0, 0, 0, 0);
-  const t = new Date(to); t.setHours(0, 0, 0, 0);
-  return Math.ceil((t - f) / msPerDay);
 };
 
 const toDate = (val) => {
@@ -69,14 +64,13 @@ const buildReportHtml = (today, sections, summaryData) => {
   const renderSection = (title, items, color, isOverdue = false) => {
     if (items.length === 0) return '';
     const rows = items.map(s => {
-      const date = isOverdue
-        ? toDate(s.type === 'trial' ? s.trialEndsAt : s.renewalDate)
-        : toDate(s.type === 'trial' ? s.trialEndsAt : s.renewalDate);
-      const days = Math.abs(daysBetween(today, date));
+      const date = toDate(s.type === 'trial' ? s.trialEndsAt : s.renewalDate);
       const typeLabel = s.type === 'trial' ? ' [Trial]' : '';
-      const dateLabel = isOverdue
-        ? `venceu ${formatBrDate(date)} (${days} dias)`
-        : `vence ${formatBrDate(date)}`;
+      // Issue #266: label condicional por sinal de daysBetween — antes usava
+      // Math.abs e dizia "venceu" para data futura quando isOverdue=true.
+      const dateLabel = date
+        ? formatDateLabel(today, date)
+        : (isOverdue ? 'data de vencimento indefinida' : 'vence em data indefinida');
       const valueLabel = s.type === 'paid' ? ` — ${formatCurrency(s.amount, s.currency)}` : '';
       return `<p style="color:#e2e8f0;font-size:14px;margin:4px 0;">&bull; <strong>${s._studentName}${typeLabel}</strong> — ${dateLabel}${valueLabel}</p>`;
     }).join('');
@@ -108,8 +102,9 @@ module.exports = functions.pubsub
   .schedule('0 11 * * *') // 11:00 UTC = 08:00 BRT
   .timeZone('America/Sao_Paulo')
   .onRun(async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Issue #266: usa calendar day BRT em vez de UTC midnight (que produzia
+    // subject com data D-1 e comparações com TZ inconsistente).
+    const today = getBrazilToday();
 
     try {
       // Busca todos os students
@@ -134,6 +129,10 @@ module.exports = functions.pubsub
       // o loop, processados após o batch.commit (admin.auth não é batcheável).
       const authDisableQueue = [];
 
+      // Issue #266: students cuja sub recuperou-se de overdue → reenable Auth
+      // se loginBlockedReason==='auto'.
+      const authEnableQueue = [];
+
       // Itera por cada student
       for (const studentDoc of studentsSnap.docs) {
         const student = studentDoc.data();
@@ -152,7 +151,7 @@ module.exports = functions.pubsub
           if (sub.type === 'trial' && sub.status === 'active') {
             const trialEnd = toDate(sub.trialEndsAt);
             if (trialEnd) {
-              const daysLeft = daysBetween(today, trialEnd);
+              const daysLeft = daysBetweenSigned(today, trialEnd);
               if (daysLeft < 0) {
                 // Trial expirou → marcar expired
                 batch.update(subDoc.ref, {
@@ -181,7 +180,7 @@ module.exports = functions.pubsub
           if (sub.type !== 'trial' && sub.status === 'active') {
             const renewalDate = toDate(sub.renewalDate);
             if (renewalDate) {
-              const daysToRenewal = daysBetween(today, renewalDate);
+              const daysToRenewal = daysBetweenSigned(today, renewalDate);
               const graceDays = sub.gracePeriodDays ?? 5;
 
               if (daysToRenewal < -graceDays) {
@@ -227,8 +226,50 @@ module.exports = functions.pubsub
             continue;
           }
 
-          // ── Paid: overdue (já existente) ──
+          // ── Paid: overdue (com auto-recovery — issue #266) ──
           if (sub.status === 'overdue') {
+            const renewalDate = toDate(sub.renewalDate);
+            const decision = classifyOverdueSub(
+              { renewalDate, gracePeriodDays: sub.gracePeriodDays },
+              today,
+            );
+
+            if (decision.action === 'recover') {
+              // renewalDate voltou pro futuro (ou está dentro do grace) — restaura.
+              batch.update(subDoc.ref, {
+                status: 'active',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+              batchCount++;
+
+              // Mirror do autobloqueio: se foi auto-bloqueado, libera.
+              if (student.loginBlocked === true && student.loginBlockedReason === 'auto') {
+                batch.update(studentDoc.ref, {
+                  loginBlocked: false,
+                  loginBlockedAt: admin.firestore.FieldValue.delete(),
+                  loginBlockedBy: admin.firestore.FieldValue.delete(),
+                  loginBlockedReason: admin.firestore.FieldValue.delete(),
+                });
+                batchCount++;
+                authEnableQueue.push(studentDoc.id);
+              }
+
+              // Roteia no email pela urgência da renovação atual.
+              const recoveredSub = { ...subWithMeta, status: 'active' };
+              if (decision.urgency === 'today') {
+                sections.expiringToday.push(recoveredSub);
+              } else if (decision.urgency === 'soon') {
+                sections.expiringSoon.push(recoveredSub);
+              }
+              // urgency='silent' → não aparece em seção (só conta no resumo).
+              totalActive++;
+              monthlyRevenue += sub.amount ?? 0;
+              const tier = resolveAccessTier({ ...sub, status: 'active' });
+              if (tier !== 'none') bestTier = tier;
+              continue;
+            }
+
+            // keep_overdue → comportamento original.
             sections.existingOverdue.push(subWithMeta);
             totalOverdue++;
             const tier = resolveAccessTier(sub);
@@ -274,6 +315,20 @@ module.exports = functions.pubsub
         }
       }
 
+      // Issue #266: re-habilita Auth para students recuperados de overdue.
+      for (const uid of authEnableQueue) {
+        try {
+          await admin.auth().updateUser(uid, { disabled: false });
+          console.log(`[checkSubscriptions] Auth re-enabled (recovery): ${uid}`);
+        } catch (e) {
+          if (e.code === 'auth/user-not-found') {
+            console.log(`[checkSubscriptions] Auth user ${uid} não existe — student doc desbloqueado mesmo assim`);
+          } else {
+            console.error(`[checkSubscriptions] Falha ao re-habilitar Auth ${uid}:`, e);
+          }
+        }
+      }
+
       // Envia email se houver ocorrências
       const hasOccurrences = Object.values(sections).some(arr => arr.length > 0);
 
@@ -291,7 +346,7 @@ module.exports = functions.pubsub
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        console.log(`[checkSubscriptions] Email enviado. Hoje: ${sections.expiringToday.length}, 7d: ${sections.expiringSoon.length}, trials: ${sections.trialsExpiring.length}, novos overdue: ${sections.newOverdue.length}, overdue: ${sections.existingOverdue.length}`);
+        console.log(`[checkSubscriptions] Email enviado. Hoje: ${sections.expiringToday.length}, 7d: ${sections.expiringSoon.length}, trials: ${sections.trialsExpiring.length}, novos overdue: ${sections.newOverdue.length}, overdue: ${sections.existingOverdue.length}, recuperados: ${authEnableQueue.length}`);
       } else {
         console.log('[checkSubscriptions] Sem ocorrencias — email nao enviado');
       }
