@@ -4,8 +4,12 @@
  *   Toda lógica é pura (sem side-effects, sem Firestore).
  *   Dados derivados de drawdownHistory + template + account.propFirm.
  *
- * Ref: issue #134 Fase D, epic #52
+ * Ref: issue #134 Fase D, epic #52. Ampliado em #273 para Zero7:
+ *   payout.scheduleType FIXED_DAYS, maxWithdrawalsByPhase, ineligibleTradeFilter.
  */
+
+import { isPayoutWindowOpen, checkWithdrawalLimit, filterIneligibleTrades } from './propFirmConsistency';
+import { getCurrencySymbol } from './currency';
 
 // ============================================
 // Qualifying Days — dias com profit no range da mesa
@@ -93,12 +97,18 @@ export function calculatePayoutEligibility({
   currentBalance,
   accountSize,
   qualifyingResult,
+  // novos params opcionais — preservam call sites legados
+  today = null,
+  movements = null,
+  accountId = null,
+  currency = 'USD',
 }) {
   const payout = template?.payout;
   if (!payout) {
     return { eligible: false, checks: [{ rule: 'Template sem regras de payout', met: false }] };
   }
 
+  const sym = getCurrencySymbol(currency);
   const phase = propFirm?.phase ?? 'EVALUATION';
   const tradingDays = propFirm?.tradingDays ?? 0;
   const drawdownMax = template?.drawdown?.maxAmount ?? 0;
@@ -117,17 +127,30 @@ export function calculatePayoutEligibility({
     detail: phaseMet ? phase : `Fase atual: ${phase} (requer Funded/Live)`,
   });
 
-  // C2: Min trading days
-  const minDays = payout.minTradingDays ?? 0;
-  const daysMet = tradingDays >= minDays;
-  checks.push({
-    rule: `Min ${minDays} dias operados`,
-    met: daysMet,
-    detail: `${tradingDays}/${minDays} dias`,
-  });
+  // C2: Calendário/dias mínimos — branch por scheduleType.
+  // Zero7 usa FIXED_DAYS (calendário 10/20/30); mesas US usam ELIGIBILITY_BASED (minTradingDays).
+  if (payout.scheduleType === 'FIXED_DAYS') {
+    const todayDate = today instanceof Date ? today : (today ? new Date(today) : new Date());
+    const windowResult = isPayoutWindowOpen(todayDate, payout.fixedDays ?? []);
+    checks.push({
+      rule: `Janela de saque (dias ${(payout.fixedDays ?? []).join(', ')})`,
+      met: windowResult.open,
+      detail: windowResult.open
+        ? `Hoje (dia ${windowResult.dayOfMonth}) — janela aberta`
+        : `Próxima janela: ${windowResult.nextDay}`,
+    });
+  } else {
+    const minDays = payout.minTradingDays ?? 0;
+    const daysMet = tradingDays >= minDays;
+    checks.push({
+      rule: `Min ${minDays} dias operados`,
+      met: daysMet,
+      detail: `${tradingDays}/${minDays} dias`,
+    });
+  }
 
-  // C3: Qualifying days
-  if (qualifyingResult.requiredDays !== null) {
+  // C3: Qualifying days (mesas US — Apex/Ylos)
+  if (qualifyingResult?.requiredDays != null) {
     checks.push({
       rule: `Min ${qualifyingResult.requiredDays} qualifying days`,
       met: qualifyingResult.met,
@@ -135,14 +158,29 @@ export function calculatePayoutEligibility({
     });
   }
 
+  // C3a: Limite de saques por fase (Zero7 — máx 4 na Incubadora).
+  // Após o limite, lucros migram para margem da conta (semântica Zero7).
+  if (payout.maxWithdrawalsByPhase && Array.isArray(movements)) {
+    const limitResult = checkWithdrawalLimit({
+      movements, accountId, phase, template
+    });
+    if (limitResult.max !== null) {
+      checks.push({
+        rule: `Máx ${limitResult.max} saques na fase ${phase}`,
+        met: !limitResult.limitReached,
+        detail: `${limitResult.used}/${limitResult.max} usados`,
+      });
+    }
+  }
+
   // C4: Min amount
   const minAmount = payout.minAmount ?? 0;
   const availableForWithdrawal = Math.max(0, currentBalance - minBalance);
   const amountMet = availableForWithdrawal >= minAmount;
   checks.push({
-    rule: `Min saque ${minAmount > 0 ? `$${minAmount}` : 'sem mínimo'}`,
+    rule: `Min saque ${minAmount > 0 ? `${sym}${minAmount}` : 'sem mínimo'}`,
     met: amountMet,
-    detail: `Disponível: $${availableForWithdrawal.toFixed(2)} (saldo - DD - $100)`,
+    detail: `Disponível: ${sym}${availableForWithdrawal.toFixed(2)} (saldo - DD - ${sym}100)`,
   });
 
   // C5: Profit positivo
@@ -150,7 +188,7 @@ export function calculatePayoutEligibility({
   checks.push({
     rule: 'Profit positivo',
     met: profitMet,
-    detail: `Profit: $${currentProfit.toFixed(2)}`,
+    detail: `Profit: ${sym}${currentProfit.toFixed(2)}`,
   });
 
   const eligible = checks.every(c => c.met);

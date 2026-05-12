@@ -26,6 +26,7 @@ import { DD_NEAR_THRESHOLD } from './propFirmDrawdownEngine';
  * @param {number|null} params.bestDayProfit - maior profit num único dia
  * @param {number|null} params.consistencyRule - regra de consistency (ex: 0.50)
  * @param {number|null} params.consistencyThreshold - profitTarget * consistencyRule
+ * @param {Object|null} params.consistencyViolationDay - dia que disparou maxDayPercentOfTarget (Zero7) — { date, pl }
  * @param {number|null} params.lockLevel - nível do lock (null se inativo)
  * @param {boolean} params.trailFrozen - trail congelado (TRAILING_TO_STATIC)
  * @param {string} params.currency - moeda da conta
@@ -46,6 +47,7 @@ export function derivePropAlerts({
   bestDayProfit = 0,
   consistencyRule = null,
   consistencyThreshold = null,
+  consistencyViolationDay = null,
   lockLevel = null,
   trailFrozen = false,
   currency = 'USD',
@@ -65,6 +67,18 @@ export function derivePropAlerts({
   }
   if (isDayPaused) {
     alerts.push({ level: 'danger', text: `Daily loss atingido (${fmt(dailyPnL, currency)}) — dia pausado` });
+  }
+
+  // CONSISTENCY_VIOLATION — regra Zero7: dia > rule% da meta desclassifica na avaliação
+  if (flags.includes('CONSISTENCY_VIOLATION') || consistencyViolationDay) {
+    const rulePct = consistencyRule != null ? (consistencyRule * 100).toFixed(0) : '50';
+    const detail = consistencyViolationDay
+      ? ` em ${consistencyViolationDay.date} (${fmt(consistencyViolationDay.pl, currency)})`
+      : '';
+    alerts.push({
+      level: 'danger',
+      text: `Regra de consistência violada${detail} — dia ultrapassou ${rulePct}% da meta`
+    });
   }
 
   // ============================================
