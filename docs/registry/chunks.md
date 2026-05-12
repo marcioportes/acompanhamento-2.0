@@ -12,4 +12,5 @@
 | CHUNK-06 (Emotional) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra eventos comportamentais e curva emocional |
 | CHUNK-08 (Mentor Feedback) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra mentor.threadsHighlighted |
 | CHUNK-09 (Onboarding/4D) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra maturity scores |
-| CHUNK-02 (Student) — ESCRITA | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | fix relatório diário Assinaturas: auto-recovery CF + label cosmético + defensive updateSubscription |
+| CHUNK-01 (Auth) — ESCRITA | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | fix regra Firestore bloqueava activateStudent — accessStatus fora da allowlist |
+| CHUNK-02 (Student) — ESCRITA | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | fix regra Firestore + backfill via script (sync-access-from-auth) |
