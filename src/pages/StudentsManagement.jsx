@@ -344,17 +344,19 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       <td className="px-4 py-3 text-slate-400">
                         {s.email || <span className="italic text-slate-600">—</span>}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${tier.pill}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
-                          {tier.label}
-                        </span>
-                        <span
-                          className={`ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] ${accessCfg.pill}`}
-                          title="Acesso à plataforma"
-                        >
-                          {accessCfg.label}
-                        </span>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${tier.pill}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
+                            {tier.label}
+                          </span>
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] ${accessCfg.pill}`}
+                            title="Acesso à plataforma"
+                          >
+                            {accessCfg.label}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
