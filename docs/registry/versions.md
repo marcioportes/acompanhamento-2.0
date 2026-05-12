@@ -34,3 +34,4 @@
 | 1.61.1 | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | consumida (PR #268 squash `5a1e5953`) |
 | 1.61.2 | #270 | (sem branch — hotfix direto main) | 12/05/2026 | consumida (commit `63e1ddaf`) — reordem getAccessStatus priorizando firstLoginAt |
 | 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | consumida (PR #272 squash `4b170a1c`) |
+| 1.62.0 | #273 | `feat/issue-273-zero7-prop-firm` | 12/05/2026 | reservada — Zero7 Tesouraria (primeira mesa BR/BRL, CHUNK-17 ESCRITA) |
