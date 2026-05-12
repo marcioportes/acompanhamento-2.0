@@ -39,10 +39,14 @@ service cloud.firestore {
       allow create, delete: if isMentor();
       // Mentor pode tudo; aluno pode atualizar campos do seu próprio doc
       // DEC-024: onboardingStatus é do aluno (progressão no assessment)
+      // DEC-AUTO-271-01 (#271): accessStatus incluído — AuthContext.activateStudent
+      // escreve {status, accessStatus, firstLoginAt} no 1º login do aluno.
+      // Antes disto, regra rejeitava o update inteiro (allowlist hasOnly), nada era
+      // gravado e badge "aguardando 1º login" persistia. Regressão de DEC-AUTO-263-07.
       allow update: if isMentor() || (
         isOwner(studentId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-          ['status', 'firstLoginAt', 'onboardingStatus']
+          ['status', 'firstLoginAt', 'onboardingStatus', 'accessStatus']
         )
       );
 
