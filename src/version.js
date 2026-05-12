@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.61.3: #271 fix causa raiz do badge "aguardando 1º login" — regra Firestore bloqueava activateStudent. firestore.rules:45 allowlist do isOwner não incluía 'accessStatus' (regressão silenciosa do DEC-AUTO-263-07 que adicionou esse campo ao update no cliente sem propagar para a regra); update inteiro era rejeitado, catch engolia o erro e nada era escrito — firstLoginAt ficava null mesmo após login. Fix em 4 frentes: (A1) firestore.rules adiciona 'accessStatus' na allowlist; (A2) AuthContext.activateStudent extraída para src/utils/studentActivation.js (shouldActivateStudent + buildActivatePayload puros) com guard idempotente `accessStatus !== 'active'` (substitui status === 'pending', cobre docs com status='active' inconsistente); (A3) 8 testes novos protegendo invariante allowlist↔payload; (B1) functions/scripts/sync-access-from-auth.js backfilla docs em prod com lastSignInTime do Firebase Auth (idempotente; dry-run default; --apply para escrever). Auto-recovery sem backfill: sessão Firebase Auth válida + reabrir app → onAuthStateChanged dispara activateStudent → regra agora passa → doc fica certo. Suite 3037/3037. Entrada definitiva no encerramento.
  * - 1.61.2: #270 fix badge "aguardando 1º login" persistia após login real. getAccessStatus em studentClassify.js priorizava o campo declarativo accessStatus antes da evidência firstLoginAt — reordem coloca firstLoginAt como sinal de maior precedência. Alunos com doc inconsistente (accessStatus='pending' + firstLoginAt populado, comum em legados pré-DEC-AUTO-263-07 e em alunos onde AuthContext.activateStudent não disparou por status !== 'pending') voltam a aparecer como "ativo". Mudança puramente derivada (sem deploy de CF, sem migração de dados). 6 testes novos no describe getAccessStatus cobrindo regressão + precedências. Suite 3029/3029. Hotfix direto em main (12/05/2026).
  * - 1.61.1: fix relatório diário de Assinaturas: auto-recovery no CF checkSubscriptions (sub overdue com renewalDate futuro/dentro do grace volta para active + desbloqueio quando autobloqueio era 'auto') + label cosmético do email (vence em N dias / venceu há N dias) + defensive em updateSubscription (renewalDate futuro com status=overdue reseta para active). Entrada definitiva no encerramento.
  * - 1.61.0: feat filtro Alpha/Espelho na tela de Alunos + click → dashboard (View As). StudentsManagement passa a abranger plan ∈ {alpha, self_service}; chips de filtro de plano; row clicável; limpeza N+1 de trades + perfil emocional inline removido (vai pro dashboard). Pula 1.59.0/1.60.0 (implícitas para #260/#261). Entrada definitiva no encerramento.
@@ -353,10 +354,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.61.2',
+  version: '1.61.3',
   build: '20260512',
-  display: 'v1.61.2',
-  full: '1.61.2+20260512',
+  display: 'v1.61.3',
+  full: '1.61.3+20260512',
 };
 export default VERSION;
 export { VERSION };
