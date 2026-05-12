@@ -77,7 +77,18 @@ const APPLY = process.argv.includes('--apply');
       continue;
     }
 
-    const firstLoginAt = admin.firestore.Timestamp.fromDate(new Date(lastSignInISO));
+    // Preserva firstLoginAt quando já set (não sobrescreve timestamp histórico).
+    // Para legados pré-DEC-AUTO-263-07 com firstLoginAt populado, atualiza
+    // apenas status + accessStatus. Para os realmente quebrados pelo bug do
+    // #271 (firstLoginAt:null porque escrita do AuthContext falhava), escreve
+    // firstLoginAt = lastSignInTime do Firebase Auth.
+    const update = {
+      status: 'active',
+      accessStatus: 'active',
+    };
+    if (!data.firstLoginAt) {
+      update.firstLoginAt = admin.firestore.Timestamp.fromDate(new Date(lastSignInISO));
+    }
 
     counts.candidate += 1;
     candidates.push({
@@ -87,16 +98,14 @@ const APPLY = process.argv.includes('--apply');
       curStatus: data.status ?? '(undef)',
       curAccess: data.accessStatus ?? '(undef)',
       curFirstLogin: data.firstLoginAt ? 'set' : 'null',
-      lastSignIn: lastSignInISO,
+      action: data.firstLoginAt
+        ? 'accessStatus=active (preserva firstLoginAt)'
+        : `accessStatus=active + firstLoginAt=${lastSignInISO}`,
     });
 
     if (APPLY) {
       try {
-        await docSnap.ref.update({
-          status: 'active',
-          accessStatus: 'active',
-          firstLoginAt,
-        });
+        await docSnap.ref.update(update);
         counts.applied += 1;
       } catch (e) {
         console.error(`[${docSnap.id}] erro update:`, e.message);
@@ -109,8 +118,8 @@ const APPLY = process.argv.includes('--apply');
   candidates.forEach((c) => {
     console.log(
       `  ${c.id.slice(0, 8)}… | ${c.name ?? '(sem nome)'} | ${c.email}\n` +
-      `    status=${c.curStatus} accessStatus=${c.curAccess} firstLoginAt=${c.curFirstLogin}\n` +
-      `    lastSignIn (Auth) = ${c.lastSignIn}`,
+      `    estado: status=${c.curStatus} accessStatus=${c.curAccess} firstLoginAt=${c.curFirstLogin}\n` +
+      `    ação:   ${c.action}`,
     );
   });
 
