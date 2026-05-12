@@ -10,7 +10,7 @@
 
 import { useState, useMemo } from 'react';
 import { DollarSign, CheckCircle, XCircle, Calculator, History, ChevronDown, ChevronUp } from 'lucide-react';
-import { formatCurrencyDynamic } from '../../utils/currency';
+import { formatCurrencyDynamic, getCurrencySymbol } from '../../utils/currency';
 import {
   calculateQualifyingDays,
   calculatePayoutEligibility,
@@ -73,7 +73,7 @@ const WithdrawalSimulator = ({ account, template, eligibility, totalWithdrawn, c
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{getCurrencySymbol(currency)}</span>
           <input
             type="number"
             value={amount}

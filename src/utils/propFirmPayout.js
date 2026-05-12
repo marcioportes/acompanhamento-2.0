@@ -102,7 +102,9 @@ export function calculatePayoutEligibility({
   const phase = propFirm?.phase ?? 'EVALUATION';
   const tradingDays = propFirm?.tradingDays ?? 0;
   const drawdownMax = template?.drawdown?.maxAmount ?? 0;
-  const minBalance = accountSize - drawdownMax + 100; // DD + $100 (padrão da maioria das mesas)
+  // accountSize=0 (Zero7) → minBalance ficaria negativo; piso defensivo em 100 mantém
+  // semântica "saldo precisa ter folga acima do floor" para mesas STATIC sobre zero.
+  const minBalance = Math.max(100, accountSize - drawdownMax + 100);
   const currentProfit = currentBalance - accountSize;
 
   const checks = [];

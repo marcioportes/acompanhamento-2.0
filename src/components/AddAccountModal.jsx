@@ -117,12 +117,13 @@ const AddAccountModal = ({
     }
   }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
-  // Auto-fill currency (USD), balance (accountSize) e nome quando template selecionado
+  // Auto-fill currency (do template), balance (accountSize) e nome quando template selecionado.
+  // Zero7 → BRL; US firms → USD. Fallback USD se template legado não tiver currency.
   useEffect(() => {
     if (selectedTemplate && formData.type === 'PROP') {
       setFormData(prev => ({
         ...prev,
-        currency: 'USD',
+        currency: selectedTemplate.currency ?? 'USD',
         initialBalance: selectedTemplate.accountSize?.toString() ?? prev.initialBalance,
         name: prev.name || selectedTemplate.name
       }));
