@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.61.2] - 12/05/2026 · #270 · hotfix main
+
+**fix:** badge "aguardando 1º login" persiste após aluno logar
+
+- **Bug:** `getAccessStatus` em `src/utils/studentClassify.js` priorizava o campo declarativo `student.accessStatus` antes da evidência factual `student.firstLoginAt`. Aluno com doc inconsistente (`accessStatus='pending'` + `firstLoginAt` populado) ficava preso no chip amarelo "aguardando 1º login" em Acompanhamento, mesmo após login real. Cenários afetados: (1) docs legados que ganharam `accessStatus='pending'` no backfill DEC-AUTO-263-07 mas tinham `status='active'`; (2) alunos onde `AuthContext.activateStudent` não disparou porque guard usa `status === 'pending'`, não `accessStatus`; (3) qualquer caminho que escreva `firstLoginAt` sem mexer em `accessStatus`.
+- **Fix:** reordem em `getAccessStatus` — `firstLoginAt` vira sinal de maior precedência; `accessStatus` explícito vence apenas quando não há evidência de login. Mudança puramente derivada (read-only no cliente), sem deploy de CF, sem migração de dados Firestore.
+- **Testes:** `describe('getAccessStatus')` novo em `studentClassify.test.js` com 6 casos cobrindo regressão (`accessStatus='pending'` + `firstLoginAt` → `'active'`), precedência do campo explícito quando sem `firstLoginAt`, fallback `status='pending'`, input vazio/null. Suite full verde.
+- **Modo:** hotfix direto em `main` (aprovado por Marcio em 12/05/2026, exceção a INV-16) — escopo de 1 linha funcional, alto custo de UX em produção (mentor vê alunos como inválidos), sem risco de regressão lateral.
+- **Fast-follow:** Frente B (refatorar `AuthContext.activateStudent` para usar `accessStatus !== 'active'` em vez de `status === 'pending'`, eventual re-run de `backfillAccessStatus` sem guard) sai em issue separado.
+
+
 ## [1.61.1] - 11/05/2026 · #266 · PR #268
 
 **fix:** relatório diário Assinaturas — auto-recovery + label + BRT today

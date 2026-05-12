@@ -87,16 +87,19 @@ export const tierGroup = (bucket) => {
  * Ortogonal ao bucket (Alpha/Espelho/Trial vem da sub; accessStatus vem do
  * ritual de convite + 1º login).
  *
- * Lê o campo `student.accessStatus` quando presente. Faz fallback derivado
- * dos campos legados pra cobrir docs ainda não tocados pelo backfill.
+ * Precedência (issue #270, 2026-05-12): `firstLoginAt` é evidência factual
+ * e vence o campo declarativo `accessStatus`. Sem isso, aluno com doc
+ * `accessStatus='pending'` que já logou (firstLoginAt populado por
+ * AuthContext.activateStudent, mas activate não disparou porque
+ * `status !== 'pending'`) fica eternamente "aguardando 1º login" na tela.
  *
  * @param {Object} student
  * @returns {'none'|'pending'|'active'}
  */
 export const getAccessStatus = (student) => {
+  if (student?.firstLoginAt) return 'active';
   const explicit = student?.accessStatus;
   if (explicit === 'none' || explicit === 'pending' || explicit === 'active') return explicit;
-  if (student?.firstLoginAt) return 'active';
   if (student?.status === 'pending') return 'pending';
   return 'none';
 };

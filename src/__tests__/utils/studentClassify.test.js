@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  classifyStudent, isExpiringSoon, tierGroup, findActiveSub,
+  classifyStudent, isExpiringSoon, tierGroup, findActiveSub, getAccessStatus,
 } from '../../utils/studentClassify';
 
 const sub = (over = {}) => ({
@@ -125,6 +125,43 @@ describe('findActiveSub', () => {
       sub({ id: 'b', renewalDate: new Date('2026-12-01') }),
     ];
     expect(findActiveSub(subs).id).toBe('b');
+  });
+});
+
+describe('getAccessStatus', () => {
+  it('firstLoginAt populado → active (mesmo sem accessStatus)', () => {
+    expect(getAccessStatus({ firstLoginAt: new Date() })).toBe('active');
+  });
+
+  it('issue #270 — firstLoginAt vence accessStatus="pending" stale', () => {
+    // Regressão: aluno com doc legado/inconsistente tem accessStatus='pending'
+    // mas já logou (firstLoginAt populado por AuthContext.activateStudent).
+    // Evidência factual deve ganhar do campo declarativo.
+    expect(getAccessStatus({
+      accessStatus: 'pending',
+      firstLoginAt: new Date('2026-05-01'),
+    })).toBe('active');
+  });
+
+  it('accessStatus explícito vence quando firstLoginAt ausente', () => {
+    expect(getAccessStatus({ accessStatus: 'active' })).toBe('active');
+    expect(getAccessStatus({ accessStatus: 'pending' })).toBe('pending');
+    expect(getAccessStatus({ accessStatus: 'none' })).toBe('none');
+  });
+
+  it('fallback status=pending → pending', () => {
+    expect(getAccessStatus({ status: 'pending' })).toBe('pending');
+  });
+
+  it('sem sinal → none', () => {
+    expect(getAccessStatus({})).toBe('none');
+    expect(getAccessStatus(null)).toBe('none');
+    expect(getAccessStatus(undefined)).toBe('none');
+  });
+
+  it('accessStatus inválido → cai no fallback (não no short-circuit)', () => {
+    expect(getAccessStatus({ accessStatus: 'foo', status: 'pending' })).toBe('pending');
+    expect(getAccessStatus({ accessStatus: 'foo' })).toBe('none');
   });
 });
 
