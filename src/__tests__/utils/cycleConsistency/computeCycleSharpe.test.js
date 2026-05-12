@@ -190,4 +190,38 @@ describe('computeCycleSharpe (ESM)', () => {
       { dateIso: '2026-02-05', dailyReturn: 0.002 },
     ]);
   });
+
+  // ============================================
+  // Issue #273 — currency awareness (fecha bug Selic vs USD)
+  // ============================================
+  it('C9 — currency BRL preserva comportamento histórico (Selic desconta)', async () => {
+    const result = await computeCycleSharpe(FEV_2026_TRADES, '2026-02-01', '2026-02-28', 100000, {
+      currency: 'BRL',
+      getSelicForDateFn: fakeSelic(SELIC_FEV_2026),
+    });
+    expect(result.source).toBe('BCB');
+    expect(result.value).toBeCloseTo(5.749, 1);
+  });
+
+  it('C10 — currency USD usa PLACEHOLDER (Selic não é aplicada — DT-Zero7-03)', async () => {
+    // Com PLACEHOLDER (rateDaily=0), Sharpe deve bater o cenário sem rfr (C4 ~6.7).
+    const result = await computeCycleSharpe(FEV_2026_TRADES, '2026-02-01', '2026-02-28', 100000, {
+      currency: 'USD',
+      // sem getSelicForDateFn — o caminho USD não deve consultar Selic
+    });
+    expect(result.source).toBe('PLACEHOLDER');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.value).toBeCloseTo(6.699, 1);
+  });
+
+  it('C11 — opts.getRiskFreeRateFn override genérico (qualquer moeda)', async () => {
+    const customRfr = async () => ({ rateDaily: 0.001, source: 'CUSTOM', isFallback: false });
+    const result = await computeCycleSharpe(FEV_2026_TRADES, '2026-02-01', '2026-02-28', 100000, {
+      currency: 'EUR',
+      getRiskFreeRateFn: customRfr,
+    });
+    // não usa Selic nem placeholder; usa rfr 0.001 → ligeiramente menor que C4
+    expect(result.value).toBeLessThan(6.699);
+    expect(result.value).toBeGreaterThan(5);
+  });
 });

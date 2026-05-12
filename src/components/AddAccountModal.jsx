@@ -18,6 +18,7 @@ import {
   PROP_FIRM_LABELS,
   PROP_FIRM_PHASES,
   PROP_FIRM_PHASE_LABELS,
+  getPhaseLabelByFirm,
   ATTACK_PROFILES,
   DEFAULT_ATTACK_PROFILE,
   STYLE_LABELS,
@@ -452,8 +453,10 @@ const AddAccountModal = ({
                     value={propFirmData.phase}
                     onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}
                   >
-                    {Object.entries(PROP_FIRM_PHASE_LABELS).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
+                    {Object.keys(PROP_FIRM_PHASE_LABELS).map((key) => (
+                      <option key={key} value={key}>
+                        {getPhaseLabelByFirm(key, selectedTemplate?.firm)}
+                      </option>
                     ))}
                   </select>
                 </div>

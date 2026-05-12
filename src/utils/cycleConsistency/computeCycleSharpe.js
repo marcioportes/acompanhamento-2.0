@@ -107,14 +107,20 @@ export function meanStdSample(arr) {
 }
 
 function aggregateSource(daySources) {
-  // daySources: Array<{isFallback:boolean}>
+  // daySources: Array<{isFallback:boolean, source?:string}>
   let bcbCount = 0;
   let fallbackCount = 0;
+  let placeholderCount = 0;
   for (const s of daySources) {
-    if (s.isFallback) fallbackCount += 1;
+    if (s.source === 'PLACEHOLDER') placeholderCount += 1;
+    else if (s.isFallback) fallbackCount += 1;
     else bcbCount += 1;
   }
   const fallbackUsed = fallbackCount > 0;
+  // PLACEHOLDER puro (todos os dias) — trades USD com SOFR não-integrado (DT-Zero7-03).
+  if (placeholderCount === daySources.length && daySources.length > 0) {
+    return { source: 'PLACEHOLDER', fallbackUsed: false };
+  }
   let source;
   if (fallbackCount === 0) source = 'BCB';
   else if (bcbCount === 0) source = 'FALLBACK';
@@ -134,6 +140,33 @@ async function resolveGetSelicFn(opts) {
 }
 
 /**
+ * Resolve a função de risk-free rate por moeda. Issue #273 — fecha bug latente
+ * onde Selic (BRL) era aplicada a trades USD.
+ *
+ * - BRL → Selic (helper existente). Comportamento histórico preservado.
+ * - USD → placeholder zero (DT-Zero7-03: integrar SOFR real depois).
+ * - outros → placeholder zero.
+ *
+ * Caller pode passar `opts.getRiskFreeRateFn` para override total.
+ *
+ * @param {('BRL'|'USD'|string)} currency
+ * @param {Object} opts
+ * @returns {Function} (dateIso) => Promise<{rateDaily, isFallback, source}>
+ */
+async function resolveRiskFreeRateFn(currency, opts) {
+  if (typeof opts.getRiskFreeRateFn === 'function') return opts.getRiskFreeRateFn;
+
+  if (currency === 'BRL' || currency === undefined || currency === null) {
+    return resolveGetSelicFn(opts);
+  }
+
+  // DT-Zero7-03: SOFR placeholder. Sem fetch real até integração com
+  // Fed/Treasury API; rateDaily=0 = "sem desconto" — Sharpe fica
+  // comparável ao retorno bruto.
+  return () => ({ rateDaily: 0, source: 'PLACEHOLDER', isFallback: false });
+}
+
+/**
  * Sharpe per-ciclo anualizado, com Selic histórica descontada por dia operado.
  *
  * @param {Array<{date:string,result:number,status:string}>} trades
@@ -143,13 +176,16 @@ async function resolveGetSelicFn(opts) {
  * @param {Object} [opts]
  * @param {number} [opts.minDays=5]               — mínimo de dias distintos com trade
  * @param {('annual'|'monthly')} [opts.periodicity='annual']
- * @param {Function} [opts.getSelicForDateFn]     — override (testabilidade)
- * @returns {Promise<{value:(number|null), daysWithTrade:number, source:('BCB'|'FALLBACK'|'MIXED'), insufficientReason?:string, fallbackUsed:boolean}>}
+ * @param {('BRL'|'USD'|string)} [opts.currency='BRL'] — moeda dos trades para escolher rfr (#273)
+ * @param {Function} [opts.getSelicForDateFn]     — override Selic (testabilidade)
+ * @param {Function} [opts.getRiskFreeRateFn]     — override rfr genérico por moeda (#273)
+ * @returns {Promise<{value:(number|null), daysWithTrade:number, source:('BCB'|'FALLBACK'|'MIXED'|'PLACEHOLDER'), insufficientReason?:string, fallbackUsed:boolean}>}
  */
 export async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, opts = {}) {
   const minDays = typeof opts.minDays === 'number' ? opts.minDays : 5;
   const periodicity = opts.periodicity ?? 'annual';
   const multiplier = periodicity === 'monthly' ? SQRT_21 : SQRT_252;
+  const currency = opts.currency ?? 'BRL';
 
   const groups = groupTradesByDay(trades, cycleStart, cycleEnd);
   const daysWithTrade = groups.size;
@@ -165,10 +201,10 @@ export async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, 
   }
 
   const dailyReturns = dailyReturnsFromGroups(groups, plStart);
-  const getSelicFn = await resolveGetSelicFn(opts);
+  const getRfrFn = await resolveRiskFreeRateFn(currency, opts);
 
   const lookups = await Promise.all(
-    dailyReturns.map((d) => Promise.resolve(getSelicFn(d.dateIso)))
+    dailyReturns.map((d) => Promise.resolve(getRfrFn(d.dateIso)))
   );
 
   const excess = [];
@@ -177,7 +213,7 @@ export async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, 
     const r = lookups[i] ?? {};
     const rateDaily = typeof r.rateDaily === 'number' && Number.isFinite(r.rateDaily) ? r.rateDaily : 0;
     const isFallback = r.isFallback === true || r.source === 'FALLBACK';
-    daySources.push({ isFallback });
+    daySources.push({ isFallback, source: r.source });
     excess.push(dailyReturns[i].dailyReturn - rateDaily);
   }
 
