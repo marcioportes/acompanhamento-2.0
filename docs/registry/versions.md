@@ -33,4 +33,4 @@
 | 1.61.0 | #263 | `feat/issue-263-students-plan-filter` | 07/05/2026 | consumida (PR #265 squash `c00681c2`) |
 | 1.61.1 | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | consumida (PR #268 squash `5a1e5953`) |
 | 1.61.2 | #270 | (sem branch — hotfix direto main) | 12/05/2026 | consumida (commit `63e1ddaf`) — reordem getAccessStatus priorizando firstLoginAt |
-| 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | reservada — fix regra Firestore bloqueia activateStudent + backfill |
+| 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | consumida (PR #272 squash `4b170a1c`) |

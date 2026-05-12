@@ -8,6 +8,21 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.61.3] - 12/05/2026 · #271 · PR #272
+
+**fix:** causa raiz do badge "aguardando 1º login" — regra Firestore bloqueava `activateStudent`
+
+- **Bug:** `firestore.rules:45` permitia ao aluno (`isOwner`) atualizar apenas `['status', 'firstLoginAt', 'onboardingStatus']`. `AuthContext.activateStudent` tentava escrever 3 campos incluindo `accessStatus: 'active'` — fora da allowlist. Regra rejeitava o update inteiro (não campo-por-campo); o `catch` em `activateStudent` fazia `console.error` e engolia. Nada era gravado — nem `firstLoginAt`, nem `accessStatus`, nem `status`. Regressão silenciosa do DEC-AUTO-263-07: campo `accessStatus` adicionado no cliente sem propagar para a regra. v1.61.2 (#270) corrigiu o lado de leitura (`getAccessStatus`) mas não tinha como ajudar enquanto a escrita falhava.
+- **A1 (`firestore.rules`):** adiciona `'accessStatus'` na allowlist do `hasOnly` (DEC-AUTO-271-01). Deploy `firebase deploy --only firestore:rules`.
+- **A2 (`AuthContext.activateStudent`):** política extraída para `src/utils/studentActivation.js` (`shouldActivateStudent` + `buildActivatePayload`, puros e testáveis). Guard mudou de `status === 'pending'` para `accessStatus !== 'active'` (DEC-AUTO-271-02) — cobre alunos com `status='active'` mas `accessStatus='pending'` (legado, ou `createInlineStudent` → PROMOTE → escrita falhou). Idempotente: chamada extra não escreve.
+- **A3 (testes):** `studentActivation.test.js` com 8 casos. Inclui invariante crítica `payload ⊆ allowlist` — qualquer adição de campo no `buildActivatePayload` sem propagar para `firestore.rules` quebra o teste antes de virar bug.
+- **B1 (backfill — `functions/scripts/sync-access-from-auth.js`):** script Admin SDK que para cada doc com `accessStatus !== 'active'` faz `auth.getUserByEmail(email)`; se Auth user existe e tem `metadata.lastSignInTime`, escreve `{status: 'active', accessStatus: 'active', firstLoginAt: lastSignInTime}`. Dry-run default; `--apply` para escrever. Idempotente.
+- **Auto-recovery sem backfill:** alunos com sessão Firebase Auth ainda válida se autorrecuperam ao reabrir a app — `onAuthStateChanged` dispara `activateStudent`, regra agora passa, doc fica certo.
+- **Decisões:** DEC-AUTO-271-01 (allowlist inclui accessStatus), DEC-AUTO-271-02 (guard por accessStatus, política em util puro).
+- **Testes:** suite 3037/3037 verde (3029 + 8 novos). Build verde.
+- **Deploy:** rules deployadas no script de encerramento; backfill `sync-access-from-auth.js` rodado após validação.
+
+
 ## [1.61.2] - 12/05/2026 · #270 · hotfix main
 
 **fix:** badge "aguardando 1º login" persiste após aluno logar
