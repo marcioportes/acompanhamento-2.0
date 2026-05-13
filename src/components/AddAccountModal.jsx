@@ -12,6 +12,7 @@ import {
   Info
 } from 'lucide-react';
 import { ACCOUNT_TYPES } from '../firebase';
+import { formatCurrencyDynamic } from '../utils/currency';
 import { useMasterData } from '../hooks/useMasterData';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import {
@@ -543,13 +544,13 @@ const AddAccountModal = ({
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <div className="text-slate-500">DD total:</div>
-                      <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.drawdownMax != null ? formatCurrencyDynamic(attackPlan.drawdownMax, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Daily loss:</div>
-                      <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.dailyLossLimit != null ? formatCurrencyDynamic(attackPlan.dailyLossLimit, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Profit target:</div>
-                      <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.profitTarget != null ? formatCurrencyDynamic(attackPlan.profitTarget, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Meta diária:</div>
-                      <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.dailyTarget != null ? formatCurrencyDynamic(attackPlan.dailyTarget, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">RR mínimo:</div>
                       <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
                       <div className="text-slate-500">Sizing:</div>
@@ -567,11 +568,11 @@ const AddAccountModal = ({
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <div className="text-slate-500">Stop:</div>
-                      <div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts (${attackPlan.stopPerTrade}/contrato)</div>
+                      <div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts ({formatCurrencyDynamic(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}/contrato)</div>
                       <div className="text-slate-500">Contratos:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.contracts}</div>
                       <div className="text-slate-500">RO efetivo:</div>
-                      <div className="text-slate-200 font-mono">${(attackPlan.stopPerTrade * attackPlan.contracts).toLocaleString()}</div>
+                      <div className="text-slate-200 font-mono">{formatCurrencyDynamic(attackPlan.stopPerTrade * attackPlan.contracts, selectedTemplate?.currency ?? 'USD')}</div>
                       <div className="text-slate-500">Target:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts ({attackPlan.rrMinimum}:1)</div>
                       <div className="text-slate-500">Trades/dia:</div>
@@ -603,10 +604,10 @@ const AddAccountModal = ({
                 {/* Template info */}
                 {selectedTemplate && (
                   <div className="text-xs text-slate-500 space-y-0.5">
-                    <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
-                    <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>
+                    <div>DD máx: {formatCurrencyDynamic(selectedTemplate.drawdown?.maxAmount, selectedTemplate.currency ?? 'USD')} ({selectedTemplate.drawdown?.type})</div>
+                    <div>Target: {formatCurrencyDynamic(selectedTemplate.profitTarget, selectedTemplate.currency ?? 'USD')}</div>
                     {selectedTemplate.evalTimeLimit && <div>Prazo eval: {selectedTemplate.evalTimeLimit} dias corridos</div>}
-                    {selectedTemplate.dailyLossLimit && <div>Daily loss: ${selectedTemplate.dailyLossLimit?.toLocaleString()}</div>}
+                    {selectedTemplate.dailyLossLimit && <div>Daily loss: {formatCurrencyDynamic(selectedTemplate.dailyLossLimit, selectedTemplate.currency ?? 'USD')}</div>}
                     {selectedTemplate.restrictedInstruments?.length > 0 && (
                       <div className="text-amber-400/80">⚠ Instrumentos restritos: {selectedTemplate.restrictedInstruments.join(', ')}</div>
                     )}

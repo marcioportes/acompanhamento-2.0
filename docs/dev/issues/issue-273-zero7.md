@@ -206,6 +206,8 @@ rfr_for_trade = currencyRiskFreeRate[trade.currency] ?? Selic
 
 ## Phases
 
+- **D1** — Catálogo Lucid completo (12 templates: Pro/Flex/Direct × 25K/50K/100K/150K) + correção `lucid-pro-50k` DLL $500→$1200, `dailyLossType` PERCENT_PROFIT→FIXED, `dailyLossAction` FAIL_ACCOUNT→PAUSE_DAY (soft breach por regulamento Lucid), `profitTarget` $2500→$3000, `fundedRule` 0.35→0.40, `contracts.max` 10→4. Idem proporcional Pro 100K (DLL $750→$1800, target $5K→$6K) e Flex 50K (target $2500→$3000, evalRule null→0.50). LucidDirect com `phases: ['SIM_FUNDED','LIVE']` (instant funded sem evaluation). LucidMaxx invite-only não catalogado (DT-Lucid-01). *Adicionado fora do escopo original de #273 a pedido durante sessão de revisão.*
+
 - **A1** — Schema base: campos novos em `propFirmDefaults.js` (currency, consistency.maxDayPercentOfTarget, payout.scheduleType/fixedDays/maxWithdrawalsByPhase/ineligibleTradeFilter)
 - **A2** — 8 templates Zero7 em `propFirmDefaults.js`
 - **A3** — Instrumentos B3 (WIN/WDO/BIT) em `instrumentsTable.js`
