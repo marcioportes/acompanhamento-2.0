@@ -30,6 +30,7 @@ import {
   STYLE_ATR_FRACTIONS,
   DEFAULT_ATTACK_STYLE,
   formatProfileMcTip,
+  formatTemplateMcTip,
   normalizeAttackProfile,
   ATTACK_PLAN_PROFILE_LABELS,
   DEFAULT_TEMPLATES_ENRICHED,
@@ -727,12 +728,15 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           {Object.values(ATTACK_PROFILES).map((p) => {
                             const selected = propFirmData.attackProfile === p.code;
                             const isCons = p.family === 'conservative';
+                            const isRecommended = selectedTemplate?.recommendedProfile === p.code;
+                            const mcLine = selectedTemplate ? formatTemplateMcTip(selectedTemplate, p.code) : formatProfileMcTip(p);
+                            const mcLabel = selectedTemplate?.name ?? 'Apex 50K';
                             return (
                               <button
                                 key={p.code}
                                 type="button"
                                 onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
-                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}\n\nMonte Carlo (Apex 50K · stop-on-win · 100k iter)\n${formatProfileMcTip(p)}\nFormato: PASS / BUST / dias médios`}
+                                title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}\n\nMonte Carlo (${mcLabel} · stop-on-win · 100k iter)\n${mcLine}\nFormato: PASS / BUST / dias médios`}
                                 className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                                   selected
                                     ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
@@ -741,7 +745,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                               >
                                 <div>{(p.roPct * 100).toFixed(0)}%</div>
                                 <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
-                                {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                                {isRecommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
                               </button>
                             );
                           })}
@@ -750,10 +754,10 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                           {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
                           {' · '}{ATTACK_PROFILES[propFirmData.attackProfile]?.maxTradesPerDay ?? '—'} trade(s)/dia · RR 1:2
                         </p>
-                        {ATTACK_PROFILES[propFirmData.attackProfile]?.mcStats && (
+                        {(selectedTemplate ? formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile) : formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])) && (
                           <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                            {formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
-                            <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC Apex 50K stop-on-win</span>
+                            {selectedTemplate ? formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile) : formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
+                            <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC {selectedTemplate?.name ?? 'Apex 50K'} stop-on-win</span>
                           </p>
                         )}
                       </div>
@@ -773,11 +777,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div>
                               <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">Constraints da mesa</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
-                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.drawdownMax, selectedTemplate?.currency ?? 'USD')}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.profitTarget, selectedTemplate?.currency ?? 'USD')}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Prazo eval</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays} dias</div></div>
                                 {attackPlan.dailyLossLimit > 0 && (
-                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
+                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.dailyLossLimit, selectedTemplate?.currency ?? 'USD')} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
                                 )}
                               </div>
                             </div>
@@ -785,11 +789,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO por trade</div><div className="text-slate-200 font-mono">${ro.toLocaleString()}</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">RO por trade</div><div className="text-red-400 font-mono">-{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR por trade</div><div className="text-slate-200 font-mono">{rr}:1</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
-                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
-                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop diário</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta diária</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
                               </div>
                               <p className="text-[10px] text-slate-500 italic mt-1">Stops em pontos a definir conforme instrumento.</p>
                             </div>
@@ -798,7 +802,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                               <div className="pt-2 border-t border-slate-700/50">
                                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">Ritmo de acumulação (contexto, não meta)</div>
                                 <div className="text-[11px] text-slate-400">
-                                  EV esperado: <span className="font-mono">${attackPlan.dailyTarget.toLocaleString()}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. <span className="text-slate-500">Não é o alvo do dia.</span>
+                                  EV esperado: <span className="font-mono">{formatCurrency(attackPlan.dailyTarget, selectedTemplate?.currency ?? 'USD')}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. <span className="text-slate-500">Não é o alvo do dia.</span>
                                 </div>
                               </div>
                             )}
@@ -833,11 +837,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div>
                               <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1.5">Constraints da mesa</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">${attackPlan.drawdownMax.toLocaleString()}</div></div>
-                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">${attackPlan.profitTarget.toLocaleString()}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">DD total</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.drawdownMax, selectedTemplate?.currency ?? 'USD')}</div></div>
+                                <div><div className="text-slate-500 text-[10px]">Profit target</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.profitTarget, selectedTemplate?.currency ?? 'USD')}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Prazo eval</div><div className="text-slate-200 font-mono">{attackPlan.evalBusinessDays} dias</div></div>
                                 {attackPlan.dailyLossLimit > 0 && (
-                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">${attackPlan.dailyLossLimit.toLocaleString()} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
+                                  <div className="col-span-3"><div className="text-slate-500 text-[10px]">Daily loss</div><div className="text-slate-200 font-mono">{formatCurrency(attackPlan.dailyLossLimit, selectedTemplate?.currency ?? 'USD')} <span className="text-slate-600 text-[10px]">(hard limit da mesa)</span></div></div>
                                 )}
                               </div>
                             </div>
@@ -846,14 +850,14 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">${ro.toFixed(2)} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = $${(attackPlan.drawdownMax * attackPlan.roPct).toFixed(0)}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
-                                <div><div className="text-slate-500 text-[10px]">Stop/trade</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.stopPerTrade.toFixed(0)}</span></div></div>
-                                <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">${attackPlan.targetPerTrade.toFixed(0)}</span></div></div>
+                                <div><div className="text-red-400/70 text-[10px]">RO/trade</div><div className="text-red-400 font-mono">-{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = ${formatCurrency(attackPlan.drawdownMax * attackPlan.roPct, selectedTemplate?.currency ?? 'USD')}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop/trade</div><div className="text-red-400 font-mono">-{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">-{formatCurrency(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}</span></div></div>
+                                <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">{formatCurrency(attackPlan.targetPerTrade, selectedTemplate?.currency ?? 'USD')}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR/trade</div><div className="text-slate-200 font-mono">1:{rr}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{sizing} contrato{sizing > 1 ? 's' : ''}</div></div>
-                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-${dailyStop.toLocaleString()}/dia</div></div>
-                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">${dailyGoal.toLocaleString()}/dia</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop diário</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta diária</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
                               </div>
@@ -869,7 +873,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                               <div className="pt-2 border-t border-slate-700/50">
                                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1.5">Ritmo de acumulação (contexto, não meta)</div>
                                 <div className="text-[11px] text-slate-400">
-                                  EV diário: <span className="font-mono">${attackPlan.dailyTarget.toFixed(0)}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%: <span className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>${attackPlan.evPerTrade.toFixed(2)}</span>. <span className="text-slate-500">Não é o alvo do dia.</span>
+                                  EV diário: <span className="font-mono">{formatCurrency(attackPlan.dailyTarget, selectedTemplate?.currency ?? 'USD')}/dia</span> — média estatística para acumular o profit target em {attackPlan.evalBusinessDays} dias úteis. EV/trade @ WR {(attackPlan.assumedWR * 100).toFixed(0)}%: <span className={`font-mono ${attackPlan.evPerTrade >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrency(attackPlan.evPerTrade, selectedTemplate?.currency ?? 'USD')}</span>. <span className="text-slate-500">Não é o alvo do dia.</span>
                                 </div>
                               </div>
                             )}
@@ -896,7 +900,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <span className="text-xs font-semibold text-red-300">Instrumento incompatível com este perfil/conta</span>
                           </div>
                           <p className="text-[11px] text-red-200/80">
-                            <strong>{attackPlan.instrument.symbol}</strong>: RO ${attackPlan.roPerTrade.toFixed(0)} resulta em stop {attackPlan.stopPoints} pts.
+                            <strong>{attackPlan.instrument.symbol}</strong>: RO {formatCurrency(attackPlan.roPerTrade, selectedTemplate?.currency ?? 'USD')} resulta em stop {attackPlan.stopPoints} pts.
                             {' '}{attackPlan.inviabilityReason}.
                           </p>
                           {attackPlan.microSuggestion && (
@@ -912,10 +916,10 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                       )}
 
                       <div className="text-[10px] text-slate-500 space-y-0.5">
-                        <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
-                        <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>
+                        <div>DD máx: {formatCurrency(selectedTemplate.drawdown?.maxAmount, selectedTemplate.currency ?? 'USD')} ({selectedTemplate.drawdown?.type})</div>
+                        <div>Target: {formatCurrency(selectedTemplate.profitTarget, selectedTemplate.currency ?? 'USD')}</div>
                         {selectedTemplate.evalTimeLimit && <div>Prazo eval: {selectedTemplate.evalTimeLimit} dias corridos</div>}
-                        {selectedTemplate.dailyLossLimit && <div>Daily loss: ${selectedTemplate.dailyLossLimit?.toLocaleString()}</div>}
+                        {selectedTemplate.dailyLossLimit && <div>Daily loss: {formatCurrency(selectedTemplate.dailyLossLimit, selectedTemplate.currency ?? 'USD')}</div>}
                         {selectedTemplate.restrictedInstruments?.length > 0 && (
                           <div className="text-amber-400/80">⚠ Instrumentos restritos: {selectedTemplate.restrictedInstruments.join(', ')}</div>
                         )}

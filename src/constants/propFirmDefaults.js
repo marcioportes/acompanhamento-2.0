@@ -5,6 +5,8 @@
 // Collection raiz `propFirmTemplates` (INV-15 aprovado).
 // Ref: issue #52, DEC-053
 
+import { PROP_FIRM_MC_STATS } from './propFirmMcStats';
+
 // --- Fases da conta prop ---
 export const PROP_FIRM_PHASES = {
   EVALUATION: 'EVALUATION',
@@ -44,6 +46,7 @@ export const PROP_FIRMS = {
   LUCID: 'LUCID',
   TRADEIFY: 'TRADEIFY',
   YLOS: 'YLOS',
+  ZERO7: 'ZERO7',
   CUSTOM: 'CUSTOM'
 };
 
@@ -53,8 +56,24 @@ export const PROP_FIRM_LABELS = {
   LUCID: 'Lucid Markets',
   TRADEIFY: 'Tradeify',
   YLOS: 'Ylos Trading',
+  ZERO7: 'Zero7 Tesouraria',
   CUSTOM: 'Personalizada'
 };
+
+// Phase labels por firma — fallback usa PROP_FIRM_PHASE_LABELS global.
+// Zero7 chama Avaliação/Incubadora/Conta Real (regulamento zero7.com.br).
+const FIRM_PHASE_LABEL_OVERRIDES = {
+  ZERO7: {
+    EVALUATION: 'Avaliação',
+    SIM_FUNDED: 'Incubadora',
+    LIVE: 'Conta Real',
+    EXPIRED: 'Expirada'
+  }
+};
+
+export function getPhaseLabelByFirm(phase, firmName) {
+  return FIRM_PHASE_LABEL_OVERRIDES[firmName]?.[phase] ?? PROP_FIRM_PHASE_LABELS[phase];
+}
 
 // --- Fee model ---
 export const FEE_MODELS = {
@@ -184,15 +203,29 @@ export const ATTACK_PROFILES = {
 };
 
 /**
- * Formata `mcStats` de um profile em string compacta para tooltip/UI.
+ * Formata `mcStats` em string compacta para tooltip/UI.
  * Ex: "WR45 78%/8.0%/10d · WR50 90%/3.3%/9d · WR55 97%/1.2%/8d"
  *     (PASS / BUST / DIAS médios para aprovar)
+ *
+ * Aceita ou um profile (legado, Apex 50K baseline) ou um objeto mcStats direto.
  */
-export function formatProfileMcTip(profile) {
-  if (!profile?.mcStats) return '';
-  const fmt = (s) => `${s.pass}%/${s.bust}%/${Math.round(s.days)}d`;
-  const s = profile.mcStats;
+export function formatProfileMcTip(profileOrStats) {
+  const s = profileOrStats?.mcStats ?? profileOrStats;
+  if (!s?.wr45 || !s?.wr50 || !s?.wr55) return '';
+  const fmt = (x) => `${x.pass}%/${x.bust}%/${Math.round(x.days)}d`;
   return `WR45 ${fmt(s.wr45)} · WR50 ${fmt(s.wr50)} · WR55 ${fmt(s.wr55)}`;
+}
+
+/**
+ * Formata mcStats template-aware: `template.mcStats[profileCode]` em vez de
+ * `ATTACK_PROFILES[code].mcStats` (que é fixo no baseline Apex 50K).
+ *
+ * Fallback: retorna stats globais do perfil se template não tem mcStats.
+ */
+export function formatTemplateMcTip(template, profileCode) {
+  const s = template?.mcStats?.[profileCode];
+  if (s) return formatProfileMcTip(s);
+  return formatProfileMcTip(ATTACK_PROFILES[profileCode]);
 }
 
 export const DEFAULT_ATTACK_PROFILE = 'CONS_B';
@@ -311,6 +344,7 @@ import { getRestrictedInstrumentsForFirm } from './instrumentsTable';
 
 const APEX_BASE = {
   firm: PROP_FIRMS.APEX,
+  currency: 'USD',
   feeModel: FEE_MODELS.ONE_TIME,
   bracketOrderRequired: true,
   newsTrading: true,
@@ -331,6 +365,7 @@ const APEX_BASE = {
 
 const MFF_BASE = {
   firm: PROP_FIRMS.MFF,
+  currency: 'USD',
   feeModel: FEE_MODELS.RECURRING,
   bracketOrderRequired: false,
   newsTrading: false,
@@ -350,6 +385,7 @@ const MFF_BASE = {
 
 const LUCID_BASE = {
   firm: PROP_FIRMS.LUCID,
+  currency: 'USD',
   feeModel: FEE_MODELS.RECURRING,
   bracketOrderRequired: false,
   newsTrading: true,
@@ -369,6 +405,7 @@ const LUCID_BASE = {
 
 const TRADEIFY_BASE = {
   firm: PROP_FIRMS.TRADEIFY,
+  currency: 'USD',
   feeModel: FEE_MODELS.RECURRING,
   bracketOrderRequired: false,
   newsTrading: true,
@@ -395,6 +432,7 @@ const TRADEIFY_BASE = {
 // Ref: issue #136 Fase C, dados confirmados 11/04/2026
 const YLOS_BASE = {
   firm: PROP_FIRMS.YLOS,
+  currency: 'USD',
   feeModel: FEE_MODELS.ONE_TIME,
   bracketOrderRequired: false,
   newsTrading: false, // Standard/No Fee: não pode segurar posição em notícias
@@ -410,6 +448,40 @@ const YLOS_BASE = {
     split: 0.90,
     firstTierAmount: 15000,
     firstTierSplit: 1.00
+  }
+};
+
+// Zero7 Tesouraria base — primeira mesa BR (B3) em BRL.
+// Drawdown STATIC sobre saldo zero (accountSize=0): floor = -drawdown.maxAmount.
+// Lucro acumulado afasta naturalmente do floor — equivalente semântico ao modelo
+// Zero7 "saldo positivo soma ao limite de perda total".
+// Payout: calendário fixo dias 10/20/30. Máx 4 saques na Incubadora.
+// Consistência: dia >50% da meta desclassifica na avaliação; descarta dia >=50%
+// do P&L do ciclo no cálculo de prêmio da Incubadora.
+// Saldos inaptos (Incubadora): WIN<10pt, WDO<0,5pt, BIT<1000pt → descartados.
+// Ref: zero7.com.br/regulamento, issue #273.
+const ZERO7_BASE = {
+  firm: PROP_FIRMS.ZERO7,
+  currency: 'BRL',
+  feeModel: FEE_MODELS.ONE_TIME,
+  bracketOrderRequired: null, // não documentado publicamente
+  newsTrading: null,
+  dcaAllowed: null,
+  restrictedInstruments: [],
+  tradingHours: { close: '17:30', timezone: 'America/Sao_Paulo' },
+  phases: ['EVALUATION', 'SIM_FUNDED', 'LIVE'],
+  consistency: { evalRule: null, fundedRule: null, maxDayPercentOfTarget: 0.50 },
+  payout: {
+    scheduleType: 'FIXED_DAYS',
+    fixedDays: [10, 20, 30],
+    maxWithdrawalsByPhase: { SIM_FUNDED: 4 },
+    ineligibleTradeFilter: { WIN: 10, WDO: 0.5, BIT: 1000 },
+    minAmount: 0,
+    minTradingDays: 0,
+    qualifyingDays: { count: null, minProfit: null, maxProfit: null },
+    firstTierAmount: null,
+    firstTierSplit: null
+    // split definido por template (90% até SÊNIOR, 80% EXPERT/MASTER)
   }
 };
 
@@ -731,65 +803,197 @@ export const DEFAULT_TEMPLATES = [
   },
 
   // ==================== LUCID ====================
+  // Fonte: lucidtrading.com (regras públicas Mai/2026). Cobertura: Pro + Flex + Direct.
+  // LucidMaxx (invite-only) ainda não catalogado.
+  //
+  // Pro — DLL fixo (PAUSE_DAY, soft breach), funded consistency 40% (sem eval rule)
+  {
+    id: 'lucid-pro-25k',
+    name: 'Lucid Pro 25K',
+    ...LUCID_BASE,
+    accountSize: 25000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 1000, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 1250,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.40 },
+    contracts: { max: 2, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
   {
     id: 'lucid-pro-50k',
     name: 'Lucid Pro 50K',
     ...LUCID_BASE,
     accountSize: 50000,
-    drawdown: {
-      type: DRAWDOWN_TYPES.TRAILING_EOD,
-      maxAmount: 2000,
-      lockAt: null,
-      lockFormula: null
-    },
-    dailyLossLimit: 500,
-    dailyLossType: 'PERCENT_PROFIT',
-    dailyLossAction: DAILY_LOSS_ACTIONS.FAIL_ACCOUNT,
-    profitTarget: 2500,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 2000, lockAt: null, lockFormula: null },
+    dailyLossLimit: 1200,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 3000,
     evalTimeLimit: null,
     evalMinTradingDays: 5,
-    consistency: { evalRule: 0.50, fundedRule: 0.35 },
-    contracts: { max: 10, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
-  },
-  {
-    id: 'lucid-flex-50k',
-    name: 'Lucid Flex 50K',
-    ...LUCID_BASE,
-    accountSize: 50000,
-    drawdown: {
-      type: DRAWDOWN_TYPES.TRAILING_EOD,
-      maxAmount: 2000,
-      lockAt: null,
-      lockFormula: null
-    },
-    dailyLossLimit: null,
-    dailyLossType: null,
-    dailyLossAction: null,
-    profitTarget: 2500,
-    evalTimeLimit: null,
-    evalMinTradingDays: 8,
-    consistency: { evalRule: null, fundedRule: null },
-    contracts: { max: 10, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+    consistency: { evalRule: null, fundedRule: 0.40 },
+    contracts: { max: 4, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
   },
   {
     id: 'lucid-pro-100k',
     name: 'Lucid Pro 100K',
     ...LUCID_BASE,
     accountSize: 100000,
-    drawdown: {
-      type: DRAWDOWN_TYPES.TRAILING_EOD,
-      maxAmount: 3000,
-      lockAt: null,
-      lockFormula: null
-    },
-    dailyLossLimit: 750,
-    dailyLossType: 'PERCENT_PROFIT',
-    dailyLossAction: DAILY_LOSS_ACTIONS.FAIL_ACCOUNT,
-    profitTarget: 5000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 3000, lockAt: null, lockFormula: null },
+    dailyLossLimit: 1800,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 6000,
     evalTimeLimit: null,
     evalMinTradingDays: 5,
-    consistency: { evalRule: 0.50, fundedRule: 0.35 },
-    contracts: { max: 14, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+    consistency: { evalRule: null, fundedRule: 0.40 },
+    contracts: { max: 6, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-pro-150k',
+    name: 'Lucid Pro 150K',
+    ...LUCID_BASE,
+    accountSize: 150000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 4500, lockAt: null, lockFormula: null },
+    dailyLossLimit: 2700,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 9000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.40 },
+    contracts: { max: 10, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+
+  // Flex — sem DLL, eval consistency 50%, sem funded rule
+  {
+    id: 'lucid-flex-25k',
+    name: 'Lucid Flex 25K',
+    ...LUCID_BASE,
+    accountSize: 25000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 1000, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 1250,
+    evalTimeLimit: null,
+    evalMinTradingDays: 8,
+    consistency: { evalRule: 0.50, fundedRule: null },
+    contracts: { max: 2, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-flex-50k',
+    name: 'Lucid Flex 50K',
+    ...LUCID_BASE,
+    accountSize: 50000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 2000, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 3000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 8,
+    consistency: { evalRule: 0.50, fundedRule: null },
+    contracts: { max: 4, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-flex-100k',
+    name: 'Lucid Flex 100K',
+    ...LUCID_BASE,
+    accountSize: 100000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 3000, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 6000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 8,
+    consistency: { evalRule: 0.50, fundedRule: null },
+    contracts: { max: 6, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-flex-150k',
+    name: 'Lucid Flex 150K',
+    ...LUCID_BASE,
+    accountSize: 150000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 4500, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 9000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 8,
+    consistency: { evalRule: 0.50, fundedRule: null },
+    contracts: { max: 10, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+
+  // Direct — instant funded (sem fase EVALUATION), consistência 20% no funded
+  {
+    id: 'lucid-direct-25k',
+    name: 'Lucid Direct 25K',
+    ...LUCID_BASE,
+    phases: ['SIM_FUNDED', 'LIVE'],
+    accountSize: 25000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 1000, lockAt: null, lockFormula: null },
+    dailyLossLimit: null,
+    dailyLossType: null,
+    dailyLossAction: null,
+    profitTarget: 1500,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.20 },
+    contracts: { max: 2, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-direct-50k',
+    name: 'Lucid Direct 50K',
+    ...LUCID_BASE,
+    phases: ['SIM_FUNDED', 'LIVE'],
+    accountSize: 50000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 2000, lockAt: null, lockFormula: null },
+    dailyLossLimit: 1200,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 3000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.20 },
+    contracts: { max: 4, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-direct-100k',
+    name: 'Lucid Direct 100K',
+    ...LUCID_BASE,
+    phases: ['SIM_FUNDED', 'LIVE'],
+    accountSize: 100000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 3500, lockAt: null, lockFormula: null },
+    dailyLossLimit: 2100,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 6000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.20 },
+    contracts: { max: 6, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
+  },
+  {
+    id: 'lucid-direct-150k',
+    name: 'Lucid Direct 150K',
+    ...LUCID_BASE,
+    phases: ['SIM_FUNDED', 'LIVE'],
+    accountSize: 150000,
+    drawdown: { type: DRAWDOWN_TYPES.TRAILING_EOD, maxAmount: 5000, lockAt: null, lockFormula: null },
+    dailyLossLimit: 3000,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 9000,
+    evalTimeLimit: null,
+    evalMinTradingDays: 5,
+    consistency: { evalRule: null, fundedRule: 0.20 },
+    contracts: { max: 10, scalingRule: 'DYNAMIC_BY_PROFIT', scalingThreshold: null }
   },
 
   // ==================== TRADEIFY SELECT ====================
@@ -1060,6 +1264,134 @@ export const DEFAULT_TEMPLATES = [
     evalTimeLimit: 30,
     evalMinTradingDays: 0,
     contracts: { max: 4, scalingRule: null, scalingThreshold: null }
+  },
+
+  // ==================== ZERO7 TESOURARIA (B3 / BRL) ====================
+  // Issue #273 — primeira mesa BR. accountSize=0; drawdown STATIC = limite de perda total.
+  // Profit target == DD total (modelo Zero7: meta de aprovação = buffer de perda).
+  {
+    id: 'zero7-trainee',
+    name: 'Zero7 TRAINEE',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 247,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 8, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
+  },
+  {
+    id: 'zero7-junior',
+    name: 'Zero7 JÚNIOR',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 1997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 497,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 1997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 16, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
+  },
+  {
+    id: 'zero7-pleno',
+    name: 'Zero7 PLENO',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 4997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 1247,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 4997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 40, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
+  },
+  {
+    id: 'zero7-senior',
+    name: 'Zero7 SÊNIOR',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 9997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 2497,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 9997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 80, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
+  },
+  {
+    id: 'zero7-expert',
+    name: 'Zero7 EXPERT',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 14997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 3747,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 14997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 120, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.80 }
+  },
+  {
+    id: 'zero7-master',
+    name: 'Zero7 MASTER',
+    ...ZERO7_BASE,
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 19997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 4997,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 19997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 160, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.80 }
+  },
+  // BIT 8 / BIT 16 — produtos Bitcoin Futures (BIT-only). Mesma estrutura financeira
+  // que TRAINEE/JÚNIOR mas restritos a contratos BIT (restrictedInstruments WIN+WDO).
+  {
+    id: 'zero7-bit-8',
+    name: 'Zero7 BIT 8',
+    ...ZERO7_BASE,
+    restrictedInstruments: ['WIN', 'WDO'],
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 247,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 8, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
+  },
+  {
+    id: 'zero7-bit-16',
+    name: 'Zero7 BIT 16',
+    ...ZERO7_BASE,
+    restrictedInstruments: ['WIN', 'WDO'],
+    accountSize: 0,
+    drawdown: { type: DRAWDOWN_TYPES.STATIC, maxAmount: 1997, lockAt: null, lockFormula: null },
+    dailyLossLimit: 497,
+    dailyLossType: 'FIXED',
+    dailyLossAction: DAILY_LOSS_ACTIONS.PAUSE_DAY,
+    profitTarget: 1997,
+    evalTimeLimit: 60,
+    evalMinTradingDays: 0,
+    contracts: { max: 16, scalingRule: null, scalingThreshold: null },
+    payout: { ...ZERO7_BASE.payout, split: 0.90 }
   }
 ];
 
@@ -1079,11 +1411,18 @@ export const DEFAULT_TEMPLATES = [
  */
 export const enrichTemplate = (template) => {
   if (!template) return template;
-  if (Array.isArray(template.restrictedInstruments)) return template;
   const firmKey = (template.firm ?? '').toLowerCase();
+  const mcEntry = PROP_FIRM_MC_STATS[template.id];
+  const restrictedInstruments = Array.isArray(template.restrictedInstruments)
+    ? template.restrictedInstruments
+    : getRestrictedInstrumentsForFirm(firmKey);
   return {
     ...template,
-    restrictedInstruments: getRestrictedInstrumentsForFirm(firmKey)
+    restrictedInstruments,
+    // Per-template MC stats (issue #273). Fallback: template legado sem mcStats
+    // continua usando ATTACK_PROFILES[code].mcStats via formatTemplateMcTip().
+    mcStats: template.mcStats ?? mcEntry?.mcStats ?? null,
+    recommendedProfile: template.recommendedProfile ?? mcEntry?.recommendedProfile ?? DEFAULT_ATTACK_PROFILE
   };
 };
 
@@ -1117,6 +1456,7 @@ export const getTemplatesByFirm = (templates) => {
 export const EMPTY_TEMPLATE = {
   name: '',
   firm: PROP_FIRMS.CUSTOM,
+  currency: 'USD',
   accountSize: 0,
   drawdown: {
     type: DRAWDOWN_TYPES.TRAILING_EOD,

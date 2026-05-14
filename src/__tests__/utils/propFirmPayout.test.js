@@ -202,6 +202,97 @@ describe('calculatePayoutEligibility', () => {
 
     expect(result.eligible).toBe(false);
   });
+
+  // ============================================
+  // Zero7 — FIXED_DAYS + maxWithdrawalsByPhase + BRL (issue #273)
+  // ============================================
+  describe('Zero7 — payout fixed-days + limites de saques', () => {
+    const tplZero7 = {
+      accountSize: 0,
+      drawdown: { maxAmount: 997, type: 'STATIC' },
+      currency: 'BRL',
+      payout: {
+        scheduleType: 'FIXED_DAYS',
+        fixedDays: [10, 20, 30],
+        maxWithdrawalsByPhase: { SIM_FUNDED: 4 },
+        split: 0.90,
+        firstTierAmount: null,
+        firstTierSplit: null,
+        minAmount: 0,
+        minTradingDays: 0,
+        qualifyingDays: { count: null }
+      }
+    };
+
+    it('FIXED_DAYS: janela aberta no dia 20 → check passa', () => {
+      const result = calculatePayoutEligibility({
+        template: tplZero7,
+        propFirm: { phase: 'SIM_FUNDED' },
+        currentBalance: 1200,
+        accountSize: 0,
+        qualifyingResult: { requiredDays: null, met: true },
+        today: new Date('2026-05-20T12:00:00Z'),
+        currency: 'BRL',
+      });
+      const windowCheck = result.checks.find(c => c.rule.includes('Janela'));
+      expect(windowCheck.met).toBe(true);
+      expect(windowCheck.detail).toContain('janela aberta');
+    });
+
+    it('FIXED_DAYS: dia 15 → check falha + mostra próxima janela', () => {
+      const result = calculatePayoutEligibility({
+        template: tplZero7,
+        propFirm: { phase: 'SIM_FUNDED' },
+        currentBalance: 1200,
+        accountSize: 0,
+        qualifyingResult: { requiredDays: null, met: true },
+        today: new Date('2026-05-15T12:00:00Z'),
+        currency: 'BRL',
+      });
+      const windowCheck = result.checks.find(c => c.rule.includes('Janela'));
+      expect(windowCheck.met).toBe(false);
+      expect(windowCheck.detail).toContain('2026-05-20');
+    });
+
+    it('maxWithdrawalsByPhase: limite atingido (4/4 na Incubadora)', () => {
+      const movements = [
+        { type: 'WITHDRAWAL', phase: 'SIM_FUNDED', accountId: 'A1' },
+        { type: 'WITHDRAWAL', phase: 'SIM_FUNDED', accountId: 'A1' },
+        { type: 'WITHDRAWAL', phase: 'SIM_FUNDED', accountId: 'A1' },
+        { type: 'WITHDRAWAL', phase: 'SIM_FUNDED', accountId: 'A1' }
+      ];
+      const result = calculatePayoutEligibility({
+        template: tplZero7,
+        propFirm: { phase: 'SIM_FUNDED' },
+        currentBalance: 1200,
+        accountSize: 0,
+        qualifyingResult: { requiredDays: null, met: true },
+        today: new Date('2026-05-20'),
+        movements,
+        accountId: 'A1',
+        currency: 'BRL',
+      });
+      const limitCheck = result.checks.find(c => c.rule.includes('saques'));
+      expect(limitCheck).toBeDefined();
+      expect(limitCheck.met).toBe(false);
+      expect(limitCheck.detail).toContain('4/4');
+    });
+
+    it('símbolo R$ aparece em vez de $ quando currency=BRL', () => {
+      const result = calculatePayoutEligibility({
+        template: { ...tplZero7, payout: { ...tplZero7.payout, minAmount: 500 } },
+        propFirm: { phase: 'SIM_FUNDED' },
+        currentBalance: 1200,
+        accountSize: 0,
+        qualifyingResult: { requiredDays: null, met: true },
+        today: new Date('2026-05-20'),
+        currency: 'BRL',
+      });
+      const minCheck = result.checks.find(c => c.rule.includes('Min saque'));
+      expect(minCheck.rule).toContain('R$');
+      expect(minCheck.detail).toContain('R$');
+    });
+  });
 });
 
 // ============================================

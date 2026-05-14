@@ -12,12 +12,14 @@ import {
   Info
 } from 'lucide-react';
 import { ACCOUNT_TYPES } from '../firebase';
+import { formatCurrencyDynamic } from '../utils/currency';
 import { useMasterData } from '../hooks/useMasterData';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import {
   PROP_FIRM_LABELS,
   PROP_FIRM_PHASES,
   PROP_FIRM_PHASE_LABELS,
+  getPhaseLabelByFirm,
   ATTACK_PROFILES,
   DEFAULT_ATTACK_PROFILE,
   STYLE_LABELS,
@@ -25,6 +27,7 @@ import {
   STYLE_ATR_FRACTIONS,
   DEFAULT_ATTACK_STYLE,
   formatProfileMcTip,
+  formatTemplateMcTip,
   normalizeAttackProfile,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
@@ -76,6 +79,13 @@ const AddAccountModal = ({
     () => firmGroups[propFirmData.selectedFirm] ?? [],
     [firmGroups, propFirmData.selectedFirm]
   );
+  // Currency da firma (deduzido do 1º template — todos da mesma firma compartilham).
+  // Lock antecipado: assim que firma é selecionada, currency da conta é determinada
+  // (não espera o usuário escolher o produto/template específico).
+  const firmCurrency = useMemo(() => {
+    const list = firmGroups[propFirmData.selectedFirm] ?? [];
+    return list[0]?.currency ?? null;
+  }, [firmGroups, propFirmData.selectedFirm]);
   const selectedTemplate = useMemo(
     () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
     [allTemplates, propFirmData.selectedTemplateId]
@@ -117,12 +127,20 @@ const AddAccountModal = ({
     }
   }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
-  // Auto-fill currency (USD), balance (accountSize) e nome quando template selecionado
+  // Auto-fill currency (assim que firma é selecionada) — Zero7 → BRL, US firms → USD.
+  // Roda antes de o usuário escolher o produto/template específico.
+  useEffect(() => {
+    if (firmCurrency && formData.type === 'PROP') {
+      setFormData(prev => ({ ...prev, currency: firmCurrency }));
+    }
+  }, [firmCurrency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fill balance (accountSize) e nome quando template específico é selecionado.
   useEffect(() => {
     if (selectedTemplate && formData.type === 'PROP') {
       setFormData(prev => ({
         ...prev,
-        currency: 'USD',
+        currency: selectedTemplate.currency ?? prev.currency,
         initialBalance: selectedTemplate.accountSize?.toString() ?? prev.initialBalance,
         name: prev.name || selectedTemplate.name
       }));
@@ -451,8 +469,10 @@ const AddAccountModal = ({
                     value={propFirmData.phase}
                     onChange={(e) => setPropFirmData(prev => ({ ...prev, phase: e.target.value }))}
                   >
-                    {Object.entries(PROP_FIRM_PHASE_LABELS).map(([key, label]) => (
-                      <option key={key} value={key}>{label}</option>
+                    {Object.keys(PROP_FIRM_PHASE_LABELS).map((key) => (
+                      <option key={key} value={key}>
+                        {getPhaseLabelByFirm(key, selectedTemplate?.firm)}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -491,7 +511,7 @@ const AddAccountModal = ({
                   </div>
                 )}
 
-                {/* Perfil do plano de ataque (5 perfis) */}
+                {/* Perfil do plano de ataque (5 perfis) — recomendação e mcStats per-template (#273) */}
                 {selectedTemplate && (
                   <div className="input-group">
                     <label className="input-label text-xs">Perfil do Plano de Ataque</label>
@@ -499,12 +519,14 @@ const AddAccountModal = ({
                       {Object.values(ATTACK_PROFILES).map((p) => {
                         const selected = propFirmData.attackProfile === p.code;
                         const isCons = p.family === 'conservative';
+                        const isRecommended = selectedTemplate.recommendedProfile === p.code;
+                        const mcLine = formatTemplateMcTip(selectedTemplate, p.code);
                         return (
                           <button
                             key={p.code}
                             type="button"
                             onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
-                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}\n\nMonte Carlo (Apex 50K · stop-on-win · 100k iter)\n${formatProfileMcTip(p)}\nFormato: PASS / BUST / dias médios`}
+                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}\n\nMonte Carlo (${selectedTemplate.name} · stop-on-win · 100k iter)\n${mcLine}\nFormato: PASS / BUST / dias médios`}
                             className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                               selected
                                 ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
@@ -513,7 +535,7 @@ const AddAccountModal = ({
                           >
                             <div>{(p.roPct * 100).toFixed(0)}%</div>
                             <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
-                            {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                            {isRecommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
                           </button>
                         );
                       })}
@@ -521,10 +543,10 @@ const AddAccountModal = ({
                     <p className="text-[10px] text-slate-500 mt-1">
                       {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
                     </p>
-                    {ATTACK_PROFILES[propFirmData.attackProfile]?.mcStats && (
+                    {formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile) && (
                       <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                        {formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
-                        <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC Apex 50K stop-on-win</span>
+                        {formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile)}
+                        <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC {selectedTemplate.name} stop-on-win</span>
                       </p>
                     )}
                   </div>
@@ -539,13 +561,13 @@ const AddAccountModal = ({
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                       <div className="text-slate-500">DD total:</div>
-                      <div className="text-slate-300">${attackPlan.drawdownMax?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.drawdownMax != null ? formatCurrencyDynamic(attackPlan.drawdownMax, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Daily loss:</div>
-                      <div className="text-slate-300">${attackPlan.dailyLossLimit?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.dailyLossLimit != null ? formatCurrencyDynamic(attackPlan.dailyLossLimit, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Profit target:</div>
-                      <div className="text-slate-300">${attackPlan.profitTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.profitTarget != null ? formatCurrencyDynamic(attackPlan.profitTarget, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">Meta diária:</div>
-                      <div className="text-slate-300">${attackPlan.dailyTarget?.toLocaleString() ?? '—'}</div>
+                      <div className="text-slate-300">{attackPlan.dailyTarget != null ? formatCurrencyDynamic(attackPlan.dailyTarget, selectedTemplate?.currency ?? 'USD') : '—'}</div>
                       <div className="text-slate-500">RR mínimo:</div>
                       <div className="text-slate-300">{attackPlan.rrMinimum}:1</div>
                       <div className="text-slate-500">Sizing:</div>
@@ -562,12 +584,12 @@ const AddAccountModal = ({
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <div className="text-slate-500">Stop:</div>
-                      <div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts (${attackPlan.stopPerTrade}/contrato)</div>
+                      <div className="text-red-400/70">Stop:</div>
+                      <div className="text-red-400 font-mono">-{attackPlan.stopPoints} pts (-{formatCurrencyDynamic(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}/contrato)</div>
                       <div className="text-slate-500">Contratos:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.contracts}</div>
-                      <div className="text-slate-500">RO efetivo:</div>
-                      <div className="text-slate-200 font-mono">${(attackPlan.stopPerTrade * attackPlan.contracts).toLocaleString()}</div>
+                      <div className="text-red-400/70">RO efetivo:</div>
+                      <div className="text-red-400 font-mono">-{formatCurrencyDynamic(attackPlan.stopPerTrade * attackPlan.contracts, selectedTemplate?.currency ?? 'USD')}</div>
                       <div className="text-slate-500">Target:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts ({attackPlan.rrMinimum}:1)</div>
                       <div className="text-slate-500">Trades/dia:</div>
@@ -599,10 +621,10 @@ const AddAccountModal = ({
                 {/* Template info */}
                 {selectedTemplate && (
                   <div className="text-xs text-slate-500 space-y-0.5">
-                    <div>DD máx: ${selectedTemplate.drawdown?.maxAmount?.toLocaleString()} ({selectedTemplate.drawdown?.type})</div>
-                    <div>Target: ${selectedTemplate.profitTarget?.toLocaleString()}</div>
+                    <div>DD máx: {formatCurrencyDynamic(selectedTemplate.drawdown?.maxAmount, selectedTemplate.currency ?? 'USD')} ({selectedTemplate.drawdown?.type})</div>
+                    <div>Target: {formatCurrencyDynamic(selectedTemplate.profitTarget, selectedTemplate.currency ?? 'USD')}</div>
                     {selectedTemplate.evalTimeLimit && <div>Prazo eval: {selectedTemplate.evalTimeLimit} dias corridos</div>}
-                    {selectedTemplate.dailyLossLimit && <div>Daily loss: ${selectedTemplate.dailyLossLimit?.toLocaleString()}</div>}
+                    {selectedTemplate.dailyLossLimit && <div>Daily loss: {formatCurrencyDynamic(selectedTemplate.dailyLossLimit, selectedTemplate.currency ?? 'USD')}</div>}
                     {selectedTemplate.restrictedInstruments?.length > 0 && (
                       <div className="text-amber-400/80">⚠ Instrumentos restritos: {selectedTemplate.restrictedInstruments.join(', ')}</div>
                     )}
@@ -659,21 +681,37 @@ const AddAccountModal = ({
                 {errors.initialBalance && <span className="text-xs text-red-400">{errors.initialBalance}</span>}
               </div>
 
-              {/* Moeda */}
-              <div className="input-group">
-                <label className="input-label">Moeda *</label>
-                <select
-                  name="currency"
-                  value={formData.currency}
-                  onChange={handleChange}
-                >
-                  {availableCurrencies.map(currency => (
-                    <option key={currency.code} value={currency.code}>
-                      {currency.symbol} - {currency.code}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Moeda — em conta PROP, sempre lockada (determinada pela mesa) */}
+              {(() => {
+                const isProp = formData.type === 'PROP';
+                const lockLabel = selectedTemplate?.name
+                  ?? (propFirmData.selectedFirm || null);
+                return (
+                  <div className="input-group">
+                    <label className="input-label">Moeda *</label>
+                    <select
+                      name="currency"
+                      value={formData.currency}
+                      onChange={handleChange}
+                      disabled={isProp}
+                      className={isProp ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}
+                    >
+                      {availableCurrencies.map(currency => (
+                        <option key={currency.code} value={currency.code}>
+                          {currency.symbol} - {currency.code}
+                        </option>
+                      ))}
+                    </select>
+                    {isProp && (
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        {lockLabel
+                          ? `Definida pela mesa (${lockLabel}).`
+                          : 'Selecione a firma para definir a moeda da conta.'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Info sobre edição */}

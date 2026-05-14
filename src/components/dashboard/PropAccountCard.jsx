@@ -17,7 +17,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } from '../../utils/propFirmDrawdownEngine';
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
-import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS } from '../../constants/propFirmDefaults';
+import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS, getPhaseLabelByFirm } from '../../constants/propFirmDefaults';
 import DebugBadge from '../DebugBadge';
 
 // ============================================
@@ -243,7 +243,7 @@ const PHASE_TRANSITIONS = {
   EXPIRED: [],
 };
 
-const PhaseSelector = ({ currentPhase, onChangePhase }) => {
+const PhaseSelector = ({ currentPhase, onChangePhase, firmName }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -270,7 +270,7 @@ const PhaseSelector = ({ currentPhase, onChangePhase }) => {
         onClick={canTransition ? () => setOpen(!open) : undefined}
         className={`px-2 py-0.5 rounded text-[11px] font-medium border flex items-center gap-1 transition-all ${PHASE_COLORS[currentPhase] ?? PHASE_COLORS.EVALUATION} ${canTransition ? 'cursor-pointer hover:brightness-125' : 'cursor-default'}`}
       >
-        {PROP_FIRM_PHASE_LABELS[currentPhase] ?? currentPhase}
+        {getPhaseLabelByFirm(currentPhase, firmName) ?? currentPhase}
         {canTransition && <ChevronDown className="w-3 h-3" />}
       </button>
       {open && (
@@ -412,7 +412,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
               </span>
             )}
             {/* Phase badge / selector */}
-            <PhaseSelector currentPhase={phase} onChangePhase={onUpdatePhase} />
+            <PhaseSelector currentPhase={phase} onChangePhase={onUpdatePhase} firmName={template?.firm} />
           </div>
         </div>
       </div>
@@ -483,7 +483,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
               </>
             ) : (
               <p className="text-base font-bold text-slate-400">
-                {PROP_FIRM_PHASE_LABELS[phase] ?? phase}
+                {getPhaseLabelByFirm(phase, template?.firm) ?? phase}
               </p>
             )}
           </div>
