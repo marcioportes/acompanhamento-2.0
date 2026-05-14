@@ -10,9 +10,21 @@ Version source of truth: `src/version.js`.
 
 ## [1.62.0] - 14/05/2026 · #273 · PR #274
 
-**feat:** mesa Zero7 Tesouraria no portfólio CHUNK-17 (primeira mesa BR/BRL)
+**feat:** mesa Zero7 Tesouraria + catálogo Lucid completo + plano de ataque per-template
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Zero7 Tesouraria** (6ª firma do portfólio CHUNK-17, primeira BR/BRL): 8 templates (TRAINEE/JÚNIOR/PLENO/SÊNIOR/EXPERT/MASTER + BIT 8/16). Schema com 5 campos novos no template: `currency`, `consistency.maxDayPercentOfTarget`, `payout.scheduleType` (FIXED_DAYS) / `fixedDays` ([10,20,30]) / `maxWithdrawalsByPhase` ({SIM_FUNDED: 4}) / `ineligibleTradeFilter` ({WIN: 10, WDO: 0.5, BIT: 1000}). `accountSize: 0` no engine (modelo Zero7 = "saldo positivo soma ao limite de perda"). 3 instrumentos B3 novos: WIN, WDO, BIT.
+- **Regra de consistência 50%** Zero7 (`src/utils/propFirmConsistency.js`, novo): EVALUATION desclassifica conta em dia > 50% do target; SIM_FUNDED descarta o dia inflado do saldo elegível para payout. Flag `CONSISTENCY_VIOLATION` em `propFirmAlerts`.
+- **Payout fixed-days** (calendário 10/20/30 — Zero7) com branch `FIXED_DAYS` em `propFirmPayout.js`. Contador "X/4 saques na Incubadora" + nota "Limite atingido, próximos lucros migram para margem". Filtro de saldos inaptos por instrumento aplicado na agregação.
+- **Phase labels por firma** via `getPhaseLabelByFirm` — Zero7 mostra "Avaliação/Incubadora/Conta Real" (regulamento Zero7), demais firmas mantêm "Evaluation/Simulado Funded/Live".
+- **Sharpe multi-currency** (`computeCycleSharpe` opts.currency + getRiskFreeRateFn) — BRL→Selic, USD→PLACEHOLDER rate=0 (DT-Zero7-03 — SOFR real fica como DT). Fecha bug latente: Selic era aplicada a trades USD.
+- **Catálogo Lucid completo** *(scope creep autorizado em sessão de revisão)*: 12 templates (Pro/Flex/Direct × 25K/50K/100K/150K). 3 existentes corrigidos com regras reais publicadas pela Lucid: Pro 50K DLL `$500 PERCENT_PROFIT/FAIL` → `$1200 FIXED/PAUSE_DAY`, target `$2500→$3000`, fundedRule `0.35→0.40`, contracts `10→4`; ajustes análogos para Pro 100K (DLL $1800, target $6K) e Flex 50K (target $3K, evalRule 0.50). Direct é instant funded (`phases: ['SIM_FUNDED','LIVE']`, consistência 20%). DT-Lucid-01 registra LucidMaxx (invite-only, não catalogado).
+- **Plano de ataque per-template (Sweet Spot adaptativo)**: bug arquitetural pré-existente — `ATTACK_PROFILES.CONS_B.recommended = true` era hardcoded com mcStats derivados de Apex 50K (issue #201). Agora `scripts/issue-273-monte-carlo/run-per-template.mjs` parametriza `{DD, target, days}` por template e gera `src/constants/propFirmMcStats.js` (47 templates × 5 perfis × 3 WRs × 100k iter). Algoritmo `pickRecommended`: score = pass − 2×bust @WR50, tie-break prefere CONS_B. Resultado: 39 US recomendam CONS_B (sweet spot histórico), 8 Zero7 recomendam CONS_A (janela 42d + DD/target 1:1 dá folga). UI lê `template.mcStats[code]`/`template.recommendedProfile` via `enrichTemplate` + `formatTemplateMcTip`. Tooltip/label trocam "MC Apex 50K" pelo nome do template ativo.
+- **UI fixes (Zero7-driven)**: símbolo `$` hardcoded → `formatCurrencyDynamic` com `selectedTemplate.currency` em `AddAccountModal` (8 lugares) e `AccountsPage` (17 lugares). RO/Stop com sinal negativo e cor vermelha (consistente com Stop diário). "Stop/Meta operacional" → "Stop/Meta diária" (4 lugares — Marcio: "operacional" confundia com Risco Operacional). Dropdown moeda tentativa de lock quando tipo=PROP (não verificada visualmente — DT-273-CurrencyLock).
+- **Mirror CJS** em `functions/cycleConsistency/computeCycleSharpe.js` (Sharpe multi-currency).
+- **Decisões:** DEC-AUTO-273-01 (STATIC drawdown com accountSize=0 = modelo Zero7), DEC-AUTO-273-02 (carreira Zero7 = troca manual de templateId), DEC-AUTO-273-03 (regra 50% em módulo próprio), DEC-AUTO-273-04 (currencyRiskFreeRate resolve bug Selic vs USD).
+- **DTs registradas:** DT-Zero7-01 (promoção automática), DT-Zero7-02 (sensor pós-close 17:30), DT-Zero7-03 (SOFR real), DT-Zero7-04 (migration currency legados — resolvido via seed), DT-Zero7-05 (mirror CJS propFirmConsistency), DT-Lucid-01 (LucidMaxx invite-only), DT-273-CurrencyLock (dropdown moeda).
+- **Testes:** suite 3072/3072 verde (3037 baseline + 35 novos: `propFirmConsistency.test.js` 25, `propFirmPayout.test.js` +4, `propFirmAlerts.test.js` +2, `propFirmDrawdownEngine.test.js` accountSize=0, `computeCycleSharpe.test.js` +3).
+- **Deploy:** Firestore prod com 47 templates seedados (12 APEX + 12 Lucid + 4 MFF + 4 Tradeify + 7 Ylos + 8 Zero7) via botão "Seed Defaults" do mentor. Cloud Functions redeployadas para refletir mirror CJS Sharpe.
 
 
 ## [1.61.3] - 12/05/2026 · #271 · PR #272
