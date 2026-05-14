@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.62.0] - 14/05/2026 · #273 · PR #274
+
+**feat:** mesa Zero7 Tesouraria no portfólio CHUNK-17 (primeira mesa BR/BRL)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.61.3] - 12/05/2026 · #271 · PR #272
 
 **fix:** causa raiz do badge "aguardando 1º login" — regra Firestore bloqueava `activateStudent`
