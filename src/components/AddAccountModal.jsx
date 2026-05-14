@@ -570,12 +570,12 @@ const AddAccountModal = ({
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <div className="text-slate-500">Stop:</div>
-                      <div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts ({formatCurrencyDynamic(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}/contrato)</div>
+                      <div className="text-red-400/70">Stop:</div>
+                      <div className="text-red-400 font-mono">-{attackPlan.stopPoints} pts (-{formatCurrencyDynamic(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}/contrato)</div>
                       <div className="text-slate-500">Contratos:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.contracts}</div>
-                      <div className="text-slate-500">RO efetivo:</div>
-                      <div className="text-slate-200 font-mono">{formatCurrencyDynamic(attackPlan.stopPerTrade * attackPlan.contracts, selectedTemplate?.currency ?? 'USD')}</div>
+                      <div className="text-red-400/70">RO efetivo:</div>
+                      <div className="text-red-400 font-mono">-{formatCurrencyDynamic(attackPlan.stopPerTrade * attackPlan.contracts, selectedTemplate?.currency ?? 'USD')}</div>
                       <div className="text-slate-500">Target:</div>
                       <div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts ({attackPlan.rrMinimum}:1)</div>
                       <div className="text-slate-500">Trades/dia:</div>
@@ -669,7 +669,7 @@ const AddAccountModal = ({
 
               {/* Moeda — em conta PROP com template, lockada pela mesa */}
               {(() => {
-                const lockedByTemplate = formData.type === 'PROP' && selectedTemplate?.currency;
+                const lockedByTemplate = !!(formData.type === 'PROP' && selectedTemplate?.currency);
                 return (
                   <div className="input-group">
                     <label className="input-label">Moeda *</label>
@@ -678,7 +678,7 @@ const AddAccountModal = ({
                       value={formData.currency}
                       onChange={handleChange}
                       disabled={lockedByTemplate}
-                      className={lockedByTemplate ? 'opacity-60 cursor-not-allowed' : ''}
+                      className={lockedByTemplate ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}
                     >
                       {availableCurrencies.map(currency => (
                         <option key={currency.code} value={currency.code}>

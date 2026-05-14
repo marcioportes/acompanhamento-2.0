@@ -789,11 +789,11 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO por trade</div><div className="text-slate-200 font-mono">{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')}</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">RO por trade</div><div className="text-red-400 font-mono">-{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR por trade</div><div className="text-slate-200 font-mono">{rr}:1</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
-                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
-                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop diário</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta diária</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
                               </div>
                               <p className="text-[10px] text-slate-500 italic mt-1">Stops em pontos a definir conforme instrumento.</p>
                             </div>
@@ -850,14 +850,14 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                             <div className="pt-2 border-t border-slate-700/50">
                               <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1.5">Mecânica do plano</div>
                               <div className="grid grid-cols-3 gap-x-4 gap-y-1.5 text-xs">
-                                <div><div className="text-slate-500 text-[10px]">RO/trade</div><div className="text-slate-200 font-mono">{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = ${formatCurrency(attackPlan.drawdownMax * attackPlan.roPct, selectedTemplate?.currency ?? 'USD')}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
-                                <div><div className="text-slate-500 text-[10px]">Stop/trade</div><div className="text-slate-200 font-mono">{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">{formatCurrency(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}</span></div></div>
+                                <div><div className="text-red-400/70 text-[10px]">RO/trade</div><div className="text-red-400 font-mono">-{formatCurrency(ro, selectedTemplate?.currency ?? 'USD')} <span className="text-slate-500 text-[10px]" title={`Orçamento alocado pelo perfil: ${(attackPlan.roPct * 100).toFixed(0)}% DD = ${formatCurrency(attackPlan.drawdownMax * attackPlan.roPct, selectedTemplate?.currency ?? 'USD')}. Realizado é menor por causa do sizing discreto (${sizing} contrato${sizing > 1 ? 's' : ''} inteiros).`}>({roPctEffective.toFixed(1)}% DD)</span></div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop/trade</div><div className="text-red-400 font-mono">-{attackPlan.stopPoints} pts <span className="text-slate-500 text-[10px]">-{formatCurrency(attackPlan.stopPerTrade, selectedTemplate?.currency ?? 'USD')}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">Target/trade</div><div className="text-slate-200 font-mono">{attackPlan.targetPoints} pts <span className="text-slate-500 text-[10px]">{formatCurrency(attackPlan.targetPerTrade, selectedTemplate?.currency ?? 'USD')}</span></div></div>
                                 <div><div className="text-slate-500 text-[10px]">RR/trade</div><div className="text-slate-200 font-mono">1:{rr}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Max trades/dia</div><div className="text-slate-200 font-mono">{maxT}</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Sizing</div><div className="text-slate-200 font-mono">{sizing} contrato{sizing > 1 ? 's' : ''}</div></div>
-                                <div><div className="text-red-400/70 text-[10px]">Stop operacional</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
-                                <div><div className="text-emerald-400/70 text-[10px]">Meta operacional</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-red-400/70 text-[10px]">Stop diário</div><div className="text-red-400 font-mono">-{formatCurrency(dailyStop, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
+                                <div><div className="text-emerald-400/70 text-[10px]">Meta diária</div><div className="text-emerald-400 font-mono">{formatCurrency(dailyGoal, selectedTemplate?.currency ?? 'USD')}/dia</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Stop / range NY</div><div className="text-slate-200 font-mono">{attackPlan.stopNyPct}%</div></div>
                                 <div><div className="text-slate-500 text-[10px]">Losses até bust</div><div className="text-slate-200 font-mono">{attackPlan.lossesToBust}</div></div>
                               </div>
