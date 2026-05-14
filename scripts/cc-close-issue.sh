@@ -374,7 +374,23 @@ fi
 
 # ---------- 6. Encerrar infra ----------
 echo "[6/8] Encerrando infra (vite + tmux + watchdog + worktree)…"
-run "pkill -9 -f vite || true"
+# Mata APENAS processos vite cujo cwd está dentro do worktree desta issue.
+# Antes: `pkill -9 -f vite` derrubava qualquer dev server vite na máquina
+# (sessões paralelas em outras issues, portas 5173/5174/...). Agora cirúrgico.
+if [ -d "$WORKTREE" ]; then
+  KILLED=0
+  for pid in $(pgrep -f vite 2>/dev/null); do
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
+    # Mata se cwd == worktree OU é um subdiretório do worktree
+    if [ -n "$cwd" ] && { [ "$cwd" = "$WORKTREE" ] || [ "${cwd#$WORKTREE/}" != "$cwd" ]; }; then
+      run "kill -9 '$pid' || true"
+      KILLED=$((KILLED + 1))
+    fi
+  done
+  echo "  [stop] $KILLED processo(s) vite vinculado(s) ao worktree"
+else
+  echo "  [skip] sem worktree em $WORKTREE — não tenta matar vite externo"
+fi
 if [ -d "$WORKTREE" ]; then
   run "$REPO/scripts/cc-worktree-stop.sh ${ISSUE}"
   run "rm -rf '$WORKTREE'"
