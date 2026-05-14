@@ -79,6 +79,13 @@ const AddAccountModal = ({
     () => firmGroups[propFirmData.selectedFirm] ?? [],
     [firmGroups, propFirmData.selectedFirm]
   );
+  // Currency da firma (deduzido do 1º template — todos da mesma firma compartilham).
+  // Lock antecipado: assim que firma é selecionada, currency da conta é determinada
+  // (não espera o usuário escolher o produto/template específico).
+  const firmCurrency = useMemo(() => {
+    const list = firmGroups[propFirmData.selectedFirm] ?? [];
+    return list[0]?.currency ?? null;
+  }, [firmGroups, propFirmData.selectedFirm]);
   const selectedTemplate = useMemo(
     () => allTemplates.find(t => t.id === propFirmData.selectedTemplateId) ?? null,
     [allTemplates, propFirmData.selectedTemplateId]
@@ -120,13 +127,20 @@ const AddAccountModal = ({
     }
   }, [selectedTemplate, propFirmData.attackProfile, propFirmData.phase, propFirmData.selectedInstrument, propFirmData.attackStyle]);
 
-  // Auto-fill currency (do template), balance (accountSize) e nome quando template selecionado.
-  // Zero7 → BRL; US firms → USD. Fallback USD se template legado não tiver currency.
+  // Auto-fill currency (assim que firma é selecionada) — Zero7 → BRL, US firms → USD.
+  // Roda antes de o usuário escolher o produto/template específico.
+  useEffect(() => {
+    if (firmCurrency && formData.type === 'PROP') {
+      setFormData(prev => ({ ...prev, currency: firmCurrency }));
+    }
+  }, [firmCurrency]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-fill balance (accountSize) e nome quando template específico é selecionado.
   useEffect(() => {
     if (selectedTemplate && formData.type === 'PROP') {
       setFormData(prev => ({
         ...prev,
-        currency: selectedTemplate.currency ?? 'USD',
+        currency: selectedTemplate.currency ?? prev.currency,
         initialBalance: selectedTemplate.accountSize?.toString() ?? prev.initialBalance,
         name: prev.name || selectedTemplate.name
       }));
@@ -667,9 +681,11 @@ const AddAccountModal = ({
                 {errors.initialBalance && <span className="text-xs text-red-400">{errors.initialBalance}</span>}
               </div>
 
-              {/* Moeda — em conta PROP com template, lockada pela mesa */}
+              {/* Moeda — em conta PROP, sempre lockada (determinada pela mesa) */}
               {(() => {
-                const lockedByTemplate = !!(formData.type === 'PROP' && selectedTemplate?.currency);
+                const isProp = formData.type === 'PROP';
+                const lockLabel = selectedTemplate?.name
+                  ?? (propFirmData.selectedFirm || null);
                 return (
                   <div className="input-group">
                     <label className="input-label">Moeda *</label>
@@ -677,8 +693,8 @@ const AddAccountModal = ({
                       name="currency"
                       value={formData.currency}
                       onChange={handleChange}
-                      disabled={lockedByTemplate}
-                      className={lockedByTemplate ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}
+                      disabled={isProp}
+                      className={isProp ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}
                     >
                       {availableCurrencies.map(currency => (
                         <option key={currency.code} value={currency.code}>
@@ -686,9 +702,11 @@ const AddAccountModal = ({
                         </option>
                       ))}
                     </select>
-                    {lockedByTemplate && (
+                    {isProp && (
                       <span className="text-[10px] text-slate-500 mt-1 block">
-                        Definida pela mesa ({selectedTemplate.name}).
+                        {lockLabel
+                          ? `Definida pela mesa (${lockLabel}).`
+                          : 'Selecione a firma para definir a moeda da conta.'}
                       </span>
                     )}
                   </div>
