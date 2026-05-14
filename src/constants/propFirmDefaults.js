@@ -5,6 +5,8 @@
 // Collection raiz `propFirmTemplates` (INV-15 aprovado).
 // Ref: issue #52, DEC-053
 
+import { PROP_FIRM_MC_STATS } from './propFirmMcStats';
+
 // --- Fases da conta prop ---
 export const PROP_FIRM_PHASES = {
   EVALUATION: 'EVALUATION',
@@ -201,15 +203,29 @@ export const ATTACK_PROFILES = {
 };
 
 /**
- * Formata `mcStats` de um profile em string compacta para tooltip/UI.
+ * Formata `mcStats` em string compacta para tooltip/UI.
  * Ex: "WR45 78%/8.0%/10d · WR50 90%/3.3%/9d · WR55 97%/1.2%/8d"
  *     (PASS / BUST / DIAS médios para aprovar)
+ *
+ * Aceita ou um profile (legado, Apex 50K baseline) ou um objeto mcStats direto.
  */
-export function formatProfileMcTip(profile) {
-  if (!profile?.mcStats) return '';
-  const fmt = (s) => `${s.pass}%/${s.bust}%/${Math.round(s.days)}d`;
-  const s = profile.mcStats;
+export function formatProfileMcTip(profileOrStats) {
+  const s = profileOrStats?.mcStats ?? profileOrStats;
+  if (!s?.wr45 || !s?.wr50 || !s?.wr55) return '';
+  const fmt = (x) => `${x.pass}%/${x.bust}%/${Math.round(x.days)}d`;
   return `WR45 ${fmt(s.wr45)} · WR50 ${fmt(s.wr50)} · WR55 ${fmt(s.wr55)}`;
+}
+
+/**
+ * Formata mcStats template-aware: `template.mcStats[profileCode]` em vez de
+ * `ATTACK_PROFILES[code].mcStats` (que é fixo no baseline Apex 50K).
+ *
+ * Fallback: retorna stats globais do perfil se template não tem mcStats.
+ */
+export function formatTemplateMcTip(template, profileCode) {
+  const s = template?.mcStats?.[profileCode];
+  if (s) return formatProfileMcTip(s);
+  return formatProfileMcTip(ATTACK_PROFILES[profileCode]);
 }
 
 export const DEFAULT_ATTACK_PROFILE = 'CONS_B';
@@ -1395,11 +1411,18 @@ export const DEFAULT_TEMPLATES = [
  */
 export const enrichTemplate = (template) => {
   if (!template) return template;
-  if (Array.isArray(template.restrictedInstruments)) return template;
   const firmKey = (template.firm ?? '').toLowerCase();
+  const mcEntry = PROP_FIRM_MC_STATS[template.id];
+  const restrictedInstruments = Array.isArray(template.restrictedInstruments)
+    ? template.restrictedInstruments
+    : getRestrictedInstrumentsForFirm(firmKey);
   return {
     ...template,
-    restrictedInstruments: getRestrictedInstrumentsForFirm(firmKey)
+    restrictedInstruments,
+    // Per-template MC stats (issue #273). Fallback: template legado sem mcStats
+    // continua usando ATTACK_PROFILES[code].mcStats via formatTemplateMcTip().
+    mcStats: template.mcStats ?? mcEntry?.mcStats ?? null,
+    recommendedProfile: template.recommendedProfile ?? mcEntry?.recommendedProfile ?? DEFAULT_ATTACK_PROFILE
   };
 };
 

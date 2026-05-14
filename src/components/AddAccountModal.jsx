@@ -27,6 +27,7 @@ import {
   STYLE_ATR_FRACTIONS,
   DEFAULT_ATTACK_STYLE,
   formatProfileMcTip,
+  formatTemplateMcTip,
   normalizeAttackProfile,
   DEFAULT_TEMPLATES_ENRICHED,
   getTemplatesByFirm as groupByFirm
@@ -496,7 +497,7 @@ const AddAccountModal = ({
                   </div>
                 )}
 
-                {/* Perfil do plano de ataque (5 perfis) */}
+                {/* Perfil do plano de ataque (5 perfis) — recomendação e mcStats per-template (#273) */}
                 {selectedTemplate && (
                   <div className="input-group">
                     <label className="input-label text-xs">Perfil do Plano de Ataque</label>
@@ -504,12 +505,14 @@ const AddAccountModal = ({
                       {Object.values(ATTACK_PROFILES).map((p) => {
                         const selected = propFirmData.attackProfile === p.code;
                         const isCons = p.family === 'conservative';
+                        const isRecommended = selectedTemplate.recommendedProfile === p.code;
+                        const mcLine = formatTemplateMcTip(selectedTemplate, p.code);
                         return (
                           <button
                             key={p.code}
                             type="button"
                             onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
-                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}\n\nMonte Carlo (Apex 50K · stop-on-win · 100k iter)\n${formatProfileMcTip(p)}\nFormato: PASS / BUST / dias médios`}
+                            title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}\n\nMonte Carlo (${selectedTemplate.name} · stop-on-win · 100k iter)\n${mcLine}\nFormato: PASS / BUST / dias médios`}
                             className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                               selected
                                 ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
@@ -518,7 +521,7 @@ const AddAccountModal = ({
                           >
                             <div>{(p.roPct * 100).toFixed(0)}%</div>
                             <div className="text-[9px] opacity-70 mt-0.5">{p.code}</div>
-                            {p.recommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
+                            {isRecommended && <div className="text-[8px] text-emerald-400 mt-0.5">★</div>}
                           </button>
                         );
                       })}
@@ -526,10 +529,10 @@ const AddAccountModal = ({
                     <p className="text-[10px] text-slate-500 mt-1">
                       {ATTACK_PROFILES[propFirmData.attackProfile]?.description ?? ''}
                     </p>
-                    {ATTACK_PROFILES[propFirmData.attackProfile]?.mcStats && (
+                    {formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile) && (
                       <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                        {formatProfileMcTip(ATTACK_PROFILES[propFirmData.attackProfile])}
-                        <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC Apex 50K stop-on-win</span>
+                        {formatTemplateMcTip(selectedTemplate, propFirmData.attackProfile)}
+                        <span className="text-[9px] text-slate-600 ml-2">PASS/BUST/dias · MC {selectedTemplate.name} stop-on-win</span>
                       </p>
                     )}
                   </div>
@@ -664,21 +667,33 @@ const AddAccountModal = ({
                 {errors.initialBalance && <span className="text-xs text-red-400">{errors.initialBalance}</span>}
               </div>
 
-              {/* Moeda */}
-              <div className="input-group">
-                <label className="input-label">Moeda *</label>
-                <select
-                  name="currency"
-                  value={formData.currency}
-                  onChange={handleChange}
-                >
-                  {availableCurrencies.map(currency => (
-                    <option key={currency.code} value={currency.code}>
-                      {currency.symbol} - {currency.code}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Moeda — em conta PROP com template, lockada pela mesa */}
+              {(() => {
+                const lockedByTemplate = formData.type === 'PROP' && selectedTemplate?.currency;
+                return (
+                  <div className="input-group">
+                    <label className="input-label">Moeda *</label>
+                    <select
+                      name="currency"
+                      value={formData.currency}
+                      onChange={handleChange}
+                      disabled={lockedByTemplate}
+                      className={lockedByTemplate ? 'opacity-60 cursor-not-allowed' : ''}
+                    >
+                      {availableCurrencies.map(currency => (
+                        <option key={currency.code} value={currency.code}>
+                          {currency.symbol} - {currency.code}
+                        </option>
+                      ))}
+                    </select>
+                    {lockedByTemplate && (
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        Definida pela mesa ({selectedTemplate.name}).
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Info sobre edição */}
