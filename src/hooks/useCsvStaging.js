@@ -380,6 +380,28 @@ const useCsvStaging = (overrideStudentId = null) => {
       _partials,
     };
 
+    // Issue #259 — pre-validar MEP/MEN. Se inconsistente (ex.: massa de teste com
+    // valores que não respeitam constraint physical entry/exit ∈ [MEP, MEN]),
+    // descarta os campos pra null. Yahoo enrichment posterior recalcula se possível.
+    let excursionStripped = null;
+    if (tradeData.mepPrice != null || tradeData.menPrice != null) {
+      try {
+        validateExcursionPrices({
+          side: tradeData.side,
+          entry: parseFloat(tradeData.entry),
+          exit: parseFloat(tradeData.exit),
+          mepPrice: tradeData.mepPrice,
+          menPrice: tradeData.menPrice,
+        });
+      } catch (excErr) {
+        excursionStripped = excErr.message;
+        console.warn(`[useCsvStaging] MEP/MEN inconsistente em ${stagingTrade.id}: ${excErr.message} — descartado, Yahoo enrichment vai recalcular`);
+        tradeData.mepPrice = null;
+        tradeData.menPrice = null;
+        tradeData.excursionSource = null;
+      }
+    }
+
     // Issue #240 — dedup contra trades existentes do plano (manual + order_import + csv).
     // Critério reusado de orderTradeCreation.checkDuplication (ticker+side+entryTime±5min+qty).
     if (existingTrades?.length) {
@@ -426,6 +448,9 @@ const useCsvStaging = (overrideStudentId = null) => {
     await deleteDoc(doc(db, COLLECTION, stagingTrade.id));
     console.log(`[useCsvStaging] Trade ativado: staging ${stagingTrade.id} → trades ${newTrade.id}`);
 
+    if (excursionStripped) {
+      return { id: newTrade.id, excursionStripped };
+    }
     return newTrade.id;
   }, [user]);
 
@@ -457,6 +482,7 @@ const useCsvStaging = (overrideStudentId = null) => {
     const failed = [];
     const skipped = [];
     const enriched = [];
+    const excursionStripped = [];
 
     for (let i = 0; i < tradeIds.length; i++) {
       const stagingId = tradeIds[i];
@@ -479,6 +505,10 @@ const useCsvStaging = (overrideStudentId = null) => {
             enriched.push({ id: stagingId, matchedTradeId: result.matchedTradeId, fields: result.fields });
           } else if (result.skipped) {
             skipped.push({ id: stagingId, matchedTradeId: result.matchedTradeId, reason: result.reason });
+          } else if (result.excursionStripped) {
+            // Sucesso com MEP/MEN descartado por inconsistência física
+            success.push(result.id);
+            excursionStripped.push({ id: stagingId, newTradeId: result.id, reason: result.excursionStripped });
           } else {
             success.push(result);
           }
@@ -496,12 +526,13 @@ const useCsvStaging = (overrideStudentId = null) => {
           failed: failed.length,
           skipped: skipped.length,
           enriched: enriched.length,
+          excursionStripped: excursionStripped.length,
         });
       }
     }
 
-    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${enriched.length} enriquecidos, ${skipped.length} duplicatas ignoradas, ${failed.length} falhas`);
-    return { success, failed, skipped, enriched };
+    console.log(`[useCsvStaging] Batch activate: ${success.length} ok, ${enriched.length} enriquecidos, ${skipped.length} duplicatas ignoradas, ${excursionStripped.length} com MEP/MEN descartados, ${failed.length} falhas`);
+    return { success, failed, skipped, enriched, excursionStripped };
   }, [user, stagingTrades, activateTrade]);
 
   // ============================================

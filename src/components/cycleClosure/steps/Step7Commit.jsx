@@ -21,14 +21,15 @@ function defaultNextReview(cycleEnd) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function Step7Commit({ cycleEnd, metrics, patterns, forward, notes, onChange, onChangeNotes }) {
+export default function Step7Commit({ cycleEnd, metrics, patterns, snapshot, forward, notes, onChange, onChangeNotes, onVisited }) {
   const suggestions = useMemo(
     () => suggestForwardCommitments({
       topErrorsList: (metrics?.topErrors || []).map((t) => (typeof t === 'string' ? { type: t } : t)),
       emotional: patterns?.emotional || {},
       eventCounts: patterns?.eventCounts || {},
+      stopBreach: snapshot?.stopBreach || null,
     }),
-    [metrics, patterns],
+    [metrics, patterns, snapshot],
   );
 
   const [val, setVal] = useState('');
@@ -40,6 +41,10 @@ export default function Step7Commit({ cycleEnd, metrics, patterns, forward, note
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cycleEnd]);
+
+  useEffect(() => {
+    onVisited?.();
+  }, [onVisited]);
 
   const commitments = forward.behavioralCommitments || [];
   const remaining = MAX_COMMITMENTS - commitments.length;
@@ -59,6 +64,13 @@ export default function Step7Commit({ cycleEnd, metrics, patterns, forward, note
 
   return (
     <div className="space-y-4">
+      <div className="glass-card p-4 border border-slate-700/40 bg-slate-800/20">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="badge bg-slate-700/40 text-slate-300 border border-slate-600/50 text-[10px] uppercase tracking-wider">opcional</span>
+          <p className="text-slate-400">Compromisso forçado vira ritual vazio. Se não tiver clareza agora, pode selar sem comprometer-se.</p>
+        </div>
+      </div>
+
       <div className="glass-card p-6">
         <div className="flex items-start gap-3 mb-4">
           <div className="bg-blue-500/20 text-blue-400 rounded-xl p-2.5">
@@ -67,7 +79,7 @@ export default function Step7Commit({ cycleEnd, metrics, patterns, forward, note
           <div className="flex-1">
             <h3 className="text-lg font-bold text-slate-100 mb-1">Compromissos para o próximo ciclo</h3>
             <p className="text-xs text-slate-500">
-              Máximo {MAX_COMMITMENTS} — overload mata follow-through (regra retro). Sugestões abaixo derivam dos seus erros e momentos baixos do ciclo.
+              Máximo {MAX_COMMITMENTS} — muitos compromissos diluem o foco. Sugestões abaixo derivam dos seus erros e momentos baixos do ciclo.
             </p>
           </div>
         </div>
@@ -141,15 +153,20 @@ export default function Step7Commit({ cycleEnd, metrics, patterns, forward, note
         </div>
       </div>
 
-      {/* Próxima review */}
+      {/* Compromisso de revisitar */}
       <div className="glass-card p-6">
         <div className="flex items-start gap-3 mb-3">
           <div className="bg-purple-500/20 text-purple-400 rounded-xl p-2.5">
             <Calendar className="w-5 h-5" />
           </div>
           <div className="flex-1">
-            <h4 className="font-semibold text-slate-100 mb-1">Próxima review</h4>
-            <p className="text-xs text-slate-500">Default: 7 dias após o fim do ciclo. Ajuste se quiser.</p>
+            <h4 className="font-semibold text-slate-100 mb-1">Quando você vai revisitar este ciclo</h4>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Compromisso <span className="text-slate-200 font-medium">seu</span> de voltar a este capítulo arquivado e reler decisões, SWOT e compromissos —
+              checar se honrou o que escreveu. Sem isso, fechamento vira ritual vazio.
+              <br />
+              <span className="text-slate-500">Default: 7 dias após o fim do ciclo. Ajuste se quiser.</span>
+            </p>
           </div>
         </div>
         <input

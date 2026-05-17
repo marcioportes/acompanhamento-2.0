@@ -141,6 +141,102 @@ export function computeRuleAdherenceRate(trades) {
 }
 
 /**
+ * computeStopBreach — envelopa analyzePlanCompliance pra wizard do fechamento.
+ *
+ * Detecta se o stop do ciclo foi violado e quantos trades ocorreram DEPOIS
+ * (sinal mais grave que P&L final, porque revela o padrão autodestrutivo
+ * de continuar operando após o cap planejado).
+ *
+ * @param {Array} cycleTrades   trades do ciclo (com .result, .date, .createdAt)
+ * @param {Object} plan          plano com pl, cycleStop (%), cycleGoal (%)
+ *
+ * @returns {Object}
+ *   {
+ *     status: 'NO_TRADES'|'NORMAL'|'STOP_DISCIPLINED'|'STOP_WORSENED'|'STOP_RECOVERED'|...
+ *     stopBreachIndex: -1 | n,    // 1-based no UI seria n+1
+ *     tradesAfterStop: number,
+ *     pnlAfterStop: number,        // R$ acumulados após o breach
+ *     stopValue: number,           // R$ do stop planejado (negativo)
+ *     pnlPctOfStop: number|null,   // |result| / |stopValue| — quão fundo foi
+ *     severity: 'clean' | 'minor' | 'major' | 'critical'
+ *   }
+ */
+export function computeStopBreach(cycleTrades, plan) {
+  const list = Array.isArray(cycleTrades) ? cycleTrades : [];
+  if (list.length === 0 || !plan || typeof plan.pl !== 'number' || plan.pl <= 0) {
+    return {
+      status: 'NO_TRADES', stopBreachIndex: -1, tradesAfterStop: 0, pnlAfterStop: 0,
+      stopValue: 0, pnlPctOfStop: null, severity: 'clean',
+    };
+  }
+  const cycleStopPct = typeof plan.cycleStop === 'number' ? plan.cycleStop : null;
+  const cycleGoalPct = typeof plan.cycleGoal === 'number' ? plan.cycleGoal : null;
+  const stopValue = cycleStopPct != null ? plan.pl * (cycleStopPct / 100) : 0;
+  const goalValue = cycleGoalPct != null ? plan.pl * (cycleGoalPct / 100) : 0;
+
+  // Ordenação cronológica replica analyzePlanCompliance
+  const sorted = [...list].sort((a, b) => {
+    const tA = a.createdAt?.seconds || new Date(a.date).getTime();
+    const tB = b.createdAt?.seconds || new Date(b.date).getTime();
+    return tA - tB;
+  });
+
+  const stopLimit = -Math.abs(stopValue);
+  const goalLimit = Math.abs(goalValue);
+
+  let running = 0;
+  let stopBreachIndex = -1;
+  let goalReachIndex = -1;
+  let pnlAtBreach = 0;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const r = Number(sorted[i].result || 0);
+    running += r;
+    if (stopLimit !== 0 && running <= stopLimit && stopBreachIndex === -1) {
+      stopBreachIndex = i;
+      pnlAtBreach = running;
+    }
+    if (goalLimit !== 0 && running >= goalLimit && goalReachIndex === -1) {
+      goalReachIndex = i;
+    }
+  }
+
+  const totalPnl = running;
+  const tradesAfterStop = stopBreachIndex !== -1 ? (sorted.length - 1 - stopBreachIndex) : 0;
+  const pnlAfterStop = stopBreachIndex !== -1 ? totalPnl - pnlAtBreach : 0;
+
+  let status = 'NORMAL';
+  if (stopBreachIndex !== -1) {
+    if (goalReachIndex !== -1 && goalReachIndex > stopBreachIndex) status = 'LOSS_TO_GOAL';
+    else if (tradesAfterStop > 0) status = (totalPnl <= pnlAtBreach) ? 'STOP_WORSENED' : 'STOP_RECOVERED';
+    else status = 'STOP_DISCIPLINED';
+  } else if (goalReachIndex !== -1) {
+    status = 'GOAL_HIT';
+  }
+
+  const pnlPctOfStop = stopValue !== 0 && totalPnl < 0
+    ? Math.abs(totalPnl) / Math.abs(stopValue)
+    : null;
+
+  // severity:
+  //  clean    — sem breach
+  //  minor    — breach mas parou (STOP_DISCIPLINED) ou recuperou (STOP_RECOVERED com <=2 trades post)
+  //  major    — STOP_WORSENED ou >=3 trades pós-breach
+  //  critical — perda final > 1.5x stop (queimou capital muito além do cap planejado)
+  let severity = 'clean';
+  if (stopBreachIndex !== -1) {
+    if (pnlPctOfStop != null && pnlPctOfStop >= 1.5) severity = 'critical';
+    else if (status === 'STOP_WORSENED' || tradesAfterStop >= 3) severity = 'major';
+    else severity = 'minor';
+  }
+
+  return {
+    status, stopBreachIndex, tradesAfterStop, pnlAfterStop,
+    stopValue, pnlPctOfStop, severity,
+  };
+}
+
+/**
  * Top N erros por contagem em compliance.violations[].type (string)
  * + emocional events em emotionalAnalysisV2 (TILT/REVENGE/etc).
  *

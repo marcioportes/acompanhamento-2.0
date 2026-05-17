@@ -30,6 +30,7 @@ import SubscriptionsPage from './pages/SubscriptionsPage';
 import ReviewQueuePage from './pages/ReviewQueuePage';
 import WeeklyReviewPage from './pages/WeeklyReviewPage';
 import StudentReviewsPage from './pages/StudentReviewsPage';
+import ClosuresPage from './pages/ClosuresPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -443,6 +444,8 @@ const AppContent = () => {
           return <StudentFeedbackPage />;
         case 'student-reviews':
           return <StudentReviewsPage onNavigateToFeedback={handleNavigateToFeedback} />;
+        case 'closures':
+          return <ClosuresPage viewAs={viewingAsStudent} />;
         case 'baseline':
           // Marco Zero — BaselineReport do assessment validado pelo mentor
           return (

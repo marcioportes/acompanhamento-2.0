@@ -28,7 +28,8 @@ import {
   CreditCard,
   ClipboardCheck,
   Shield,
-  FileText
+  FileText,
+  History
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { VERSION } from '../version';
@@ -59,6 +60,7 @@ const Sidebar = ({
       badgeColor: 'green'
     },
     { id: 'student-reviews', label: 'Revisões', icon: ClipboardCheck },
+    { id: 'closures', label: 'Ciclos Fechados', icon: History },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).

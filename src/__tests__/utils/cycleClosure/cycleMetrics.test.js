@@ -13,6 +13,7 @@ import {
   computeTradeRMultiple,
   computeCycleMetrics,
   computeRuleAdherenceRate,
+  computeStopBreach,
   topErrors,
 } from '../../../utils/cycleClosure/cycleMetrics';
 
@@ -177,5 +178,71 @@ describe('topErrors', () => {
       { compliance: { violations: ['A', 'A', 'A', 'B', 'B', 'C'] } },
     ];
     expect(topErrors(trades, 2)).toHaveLength(2);
+  });
+});
+
+describe('computeStopBreach', () => {
+  // pl=20000, cycleStop=5% → stopValue = -1000
+  const PLAN_MAR = { pl: 20000, cycleStop: 5, cycleGoal: 5 };
+
+  it('sem trades → status NO_TRADES, severity clean', () => {
+    const out = computeStopBreach([], PLAN_MAR);
+    expect(out.status).toBe('NO_TRADES');
+    expect(out.severity).toBe('clean');
+    expect(out.stopBreachIndex).toBe(-1);
+  });
+
+  it('ciclo dentro do stop → severity clean, breachIndex -1', () => {
+    const trades = [
+      { date: '2026-03-01', result: 200 },
+      { date: '2026-03-02', result: -150 },
+      { date: '2026-03-03', result: 300 },
+    ];
+    const out = computeStopBreach(trades, PLAN_MAR);
+    expect(out.stopBreachIndex).toBe(-1);
+    expect(out.severity).toBe('clean');
+  });
+
+  it('stop atingido e parou imediatamente → severity minor', () => {
+    const trades = [
+      { date: '2026-03-01', result: -500 },
+      { date: '2026-03-02', result: -600 },   // running -1100 < -1000 → breach em #1
+    ];
+    const out = computeStopBreach(trades, PLAN_MAR);
+    expect(out.stopBreachIndex).toBe(1);
+    expect(out.tradesAfterStop).toBe(0);
+    expect(out.severity).toBe('minor');
+    expect(out.status).toBe('STOP_DISCIPLINED');
+  });
+
+  it('continuou +3 trades após stop → severity major', () => {
+    const trades = [
+      { date: '2026-03-01', result: -500 },
+      { date: '2026-03-02', result: -600 },   // breach em #1, running -1100
+      { date: '2026-03-03', result: -200 },
+      { date: '2026-03-04', result: -100 },
+      { date: '2026-03-05', result: -100 },
+    ];
+    const out = computeStopBreach(trades, PLAN_MAR);
+    expect(out.stopBreachIndex).toBe(1);
+    expect(out.tradesAfterStop).toBe(3);
+    expect(out.pnlAfterStop).toBe(-400);
+    expect(['major', 'critical']).toContain(out.severity);
+    expect(out.status).toBe('STOP_WORSENED');
+  });
+
+  it('cenário CRÍTICO de março — perda final ≥ 1.5× stop', () => {
+    const trades = [
+      { date: '2026-03-01', result: -500 },
+      { date: '2026-03-02', result: -600 },   // breach
+      { date: '2026-03-03', result: -700 },
+      { date: '2026-03-04', result: -400 },
+      { date: '2026-03-05', result: -600 },   // total -2800 = 2.8× cap
+    ];
+    const out = computeStopBreach(trades, PLAN_MAR);
+    expect(out.stopBreachIndex).toBeGreaterThanOrEqual(0);
+    expect(out.tradesAfterStop).toBeGreaterThanOrEqual(3);
+    expect(out.pnlPctOfStop).toBeGreaterThanOrEqual(2.5);
+    expect(out.severity).toBe('critical');
   });
 });

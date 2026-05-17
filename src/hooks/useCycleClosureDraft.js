@@ -17,6 +17,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const STORAGE_PREFIX = 'closure-draft';
 const SCHEMA_VERSION = 1;
+const VALID_CLOSE_MODES = ['self', 'demonstrated', 'co_edited'];
 
 const buildStorageKey = ({ studentId, planId, cycleKey }) =>
   `${STORAGE_PREFIX}:${studentId}:${planId}:${cycleKey}`;
@@ -74,6 +75,12 @@ const loadDraftFromStorage = (key) => {
     if (parsed.schemaVersion !== SCHEMA_VERSION) {
       window.localStorage.removeItem(key);
       return null;
+    }
+    // Sanitize: closeMode pode ter sido salvo de uma sessão com role diferente
+    // (mentor → student no mesmo storageKey) ou um valor lixo. Descartar deixa
+    // o merge cair no defaultMode da sessão atual.
+    if (parsed.closeMode && !VALID_CLOSE_MODES.includes(parsed.closeMode)) {
+      delete parsed.closeMode;
     }
     return parsed;
   } catch (e) {
@@ -142,7 +149,10 @@ export function useCycleClosureDraft({
 
   const [draft, setDraft] = useState(() => {
     const restored = typeof window !== 'undefined' ? loadDraftFromStorage(storageKey) : null;
-    if (restored) return restored;
+    if (restored) {
+      // Merge contra empty pra cobrir campos novos que drafts antigos não têm (ex.: closeMode)
+      return { ...buildEmptyDraft(), ...restored, closeMode: restored.closeMode || defaultMode };
+    }
     return { ...buildEmptyDraft(), closeMode: defaultMode };
   });
 
@@ -189,35 +199,38 @@ export function useCycleClosureDraft({
   /**
    * Status por etapa, baseado em presença de dados/inputs requeridos.
    *  - 1 (Read), 2 (Notice), 5 (Check): auto-populated → 'done' assim que dados chegam
-   *  - 3 (Reflect AAR Q3 + Q4): requer attributions ou improve preenchido
-   *  - 4 (Map SWOT): aceita skip por quadrante → sempre 'done' depois de visitada
-   *  - 6 (Adjust): requer planAdjustment.decisionSource ≠ null
-   *  - 7 (Commit): requer ≥1 commitment ou notes preenchido
+   *  - 3 (Reflect): OPCIONAL — 'done' depois de visitada (aluno pode não querer escrever)
+   *  - 4 (Map SWOT): OPCIONAL — 'done' depois de visitada
+   *  - 6 (Adjust): OBRIGATÓRIA — requer planAdjustment.decisionSource ≠ null (decisão explícita do trader)
+   *  - 7 (Commit): OPCIONAL — 'done' depois de visitada (aluno pode não querer se comprometer)
    *  - 8 (Seal): final — só vira 'done' depois de submit
+   *
+   * Etapas opcionais (3, 4, 7) mostram badge "opcional" no header. Aluno NÃO é obrigado a escrever.
    */
   const stepStatus = useMemo(() => {
     const status = { 1: 'pending', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending', 7: 'pending', 8: 'pending' };
 
     if (draft.snapshot && draft.metrics) status[1] = 'done';
     if (draft.patterns) status[2] = 'done';
-    if (draft.aar?.whyDifference?.attributions?.length > 0 || (draft.aar?.improve?.length ?? 0) > 0) status[3] = 'done';
+    // Etapas opcionais 3 e 7: marcam 'done' por visita OU input (aluno não é obrigado a escrever)
+    if (draft._visitedReflect || draft.aar?.whyDifference?.attributions?.length > 0 || (draft.aar?.improve?.length ?? 0) > 0) status[3] = 'done';
     if (draft._visitedSwot) status[4] = 'done';
     if (draft.maturity) status[5] = 'done';
     if (draft.forward?.planAdjustment?.decisionSource && draft.forward.planAdjustment.decisionSource !== null) status[6] = 'done';
-    if ((draft.forward?.behavioralCommitments?.length ?? 0) > 0 || (draft.notes ?? '').trim().length > 0) status[7] = 'done';
+    if (draft._visitedCommit || (draft.forward?.behavioralCommitments?.length ?? 0) > 0 || (draft.notes ?? '').trim().length > 0) status[7] = 'done';
 
     if (draft.step >= 1 && draft.step <= 8) status[draft.step] = status[draft.step] === 'done' ? 'done' : 'current';
     return status;
   }, [draft]);
 
+  // Mandatário: 1, 2, 5 (auto-derivam de dados) + 6 (decisão explícita do trader)
+  // Opcional: 3 (Refletir), 4 (Mapear), 7 (Comprometer) — aluno não é obrigado a escrever
   const canSeal = useMemo(
     () =>
       stepStatus[1] === 'done' &&
       stepStatus[2] === 'done' &&
-      stepStatus[3] === 'done' &&
       stepStatus[5] === 'done' &&
-      stepStatus[6] === 'done' &&
-      stepStatus[7] === 'done',
+      stepStatus[6] === 'done',
     [stepStatus],
   );
 
@@ -229,6 +242,14 @@ export function useCycleClosureDraft({
       const functions = getFunctions();
       const closeCycle = httpsCallable(functions, 'closeCycle');
 
+      // closeMode é derivado do role no momento do submit pra evitar incompatibilidades:
+      // - student: sempre 'self'
+      // - mentor: usa draft.closeMode se for 'co_edited', senão 'demonstrated'
+      // (drafts antigos de sessão mentor reusados em sessão student não contaminam)
+      const resolvedCloseMode = role === 'student'
+        ? 'self'
+        : (draft.closeMode === 'co_edited' ? 'co_edited' : 'demonstrated');
+
       const payload = {
         planId,
         studentId,
@@ -237,12 +258,12 @@ export function useCycleClosureDraft({
         cycleNumber,
         cycleStart,
         cycleEnd,
-        closeMode: draft.closeMode,
+        closeMode: resolvedCloseMode,
         snapshot: draft.snapshot,
         metrics: draft.metrics,
         patterns: draft.patterns,
         aar: draft.aar,
-        maturity: draft.maturity,
+        maturity: draft.maturity || { unavailable: true, scores: null, currentStage: null, stageGates: {}, promotionEligible: false, regression: [], mentorOverride: null, deltaFromPrior: null },
         swot: draft.swot,
         mentor: draft.mentor || { closingComment: null, pendingFeedbackCount: 0, reviewedCount: 0, threadsHighlighted: [] },
         forward: draft.forward,
@@ -260,7 +281,7 @@ export function useCycleClosureDraft({
     }
   }, [
     submitting, planId, studentId, accountId, cycleKey, cycleNumber,
-    cycleStart, cycleEnd, draft, storageKey,
+    cycleStart, cycleEnd, draft, storageKey, role,
   ]);
 
   return {

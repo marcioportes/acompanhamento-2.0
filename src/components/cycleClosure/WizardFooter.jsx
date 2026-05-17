@@ -5,9 +5,9 @@
  */
 
 import React from 'react';
-import { ChevronLeft, ChevronRight, Lock, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, Loader2, LogOut } from 'lucide-react';
 
-const STEP_LABELS = ['Read', 'Notice', 'Reflect', 'Map', 'Check', 'Adjust', 'Commit', 'Seal'];
+const STEP_LABELS = ['Ler', 'Observar', 'Refletir', 'Mapear', 'Avaliar', 'Ajustar', 'Comprometer', 'Selar'];
 
 export default function WizardFooter({
   currentStep,
@@ -26,16 +26,21 @@ export default function WizardFooter({
   return (
     <div className="flex items-center justify-between mt-4 gap-3">
       <div className="flex items-center gap-2">
-        {currentStep === 1 ? (
-          <button type="button" className="btn-secondary text-sm" onClick={onCancel}>
-            ← Voltar ao dashboard
-          </button>
-        ) : (
+        {currentStep > 1 && (
           <button type="button" className="btn-secondary text-sm flex items-center gap-1" onClick={onBack}>
             <ChevronLeft className="w-4 h-4" />
             {prevLabel}
           </button>
         )}
+        <button
+          type="button"
+          className="text-xs text-slate-500 hover:text-slate-200 flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-800/40 transition"
+          onClick={onCancel}
+          title="Sair do fechamento"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sair
+        </button>
       </div>
 
       <div>

@@ -148,8 +148,11 @@ describe('validateClosurePayload', () => {
     delete p.aar;
     expect(() => validateClosurePayload(p)).toThrow(/aar/);
   });
-  it('rejeita closeMode fora do enum', () => {
-    expect(() => validateClosurePayload({ ...validPayload(), closeMode: 'auto' })).toThrow(/closeMode/);
+  it('aceita payload com closeMode inválido (servidor sobrescreve em closeCycle.js)', () => {
+    // validateClosurePayload deixou de validar closeMode — quem manda é closeCycle.js
+    // que reescreve a partir do role autenticado. Garbage de cliente é ignorado.
+    expect(validateClosurePayload({ ...validPayload(), closeMode: 'auto' })).toBe(true);
+    expect(validateClosurePayload({ ...validPayload(), closeMode: undefined })).toBe(true);
   });
 });
 

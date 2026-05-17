@@ -9,40 +9,161 @@
  */
 
 import React, { useEffect, useMemo } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, AlertOctagon } from 'lucide-react';
 
 const ATTRIBUTIONS = [
-  { value: 'edge', label: 'Edge real do meu sistema', hint: 'matemática consistente, padrão esperado' },
-  { value: 'luck', label: 'Sorte', hint: 'resultado fora do meu controle' },
-  { value: 'error', label: 'Erro próprio', hint: 'violei regras, senti antes de pensar' },
-  { value: 'market', label: 'Mercado / contexto', hint: 'regime atípico, baixa liquidez, evento' },
+  { value: 'edge',   label: 'Minha estratégia funcionou', hint: 'vantagem matemática real, padrão esperado se repete' },
+  { value: 'luck',   label: 'Sorte',                       hint: 'resultado fora do meu controle' },
+  { value: 'error',  label: 'Erro próprio',                hint: 'violei regras, agi por emoção antes de pensar' },
+  { value: 'market', label: 'Mercado / contexto',          hint: 'regime atípico, baixa liquidez, evento de notícia' },
 ];
 
 const MAX_TEXT_CHARS = 280;
 const MAX_ITEMS_PER_GROUP = 2;
 
-function buildSuggestions(metrics, patterns) {
+/**
+ * Evidência derivada por atribuição. Ancorar em FATOS antes de pedir
+ * interpretação evita narrativa coerente-mas-falsa (Kahneman; framework §1).
+ *
+ * Retorna `{ text, tone }` onde tone é:
+ *   - 'strong'  → evidência sustenta marcar essa atribuição (◉)
+ *   - 'weak'    → atribuição contrariada/sem evidência (esmaecer)
+ *   - 'neutral' → sem viés
+ */
+function buildAttributionEvidence(key, { metrics, patterns, snapshot }) {
+  const counts = patterns?.eventCounts || {};
+  const breach = snapshot?.stopBreach || {};
+  const pf = metrics?.profitFactor;
+  const exp = metrics?.expectancy_R;
+  const bestR = metrics?.bestTradeR;
+  const total = typeof snapshot?.result === 'number' ? snapshot.result : null;
+
+  switch (key) {
+    case 'error': {
+      const errors = [];
+      const adherence = metrics?.ruleAdherenceRate;
+      const violations = Array.isArray(patterns?.topErrors) ? patterns.topErrors.length : 0;
+      if (typeof adherence === 'number' && adherence < 0.9) {
+        errors.push(`${Math.round((1 - adherence) * (metrics?.count || 0))} violações de regras`);
+      } else if (violations > 0) {
+        errors.push(`${violations} tipo(s) de violação`);
+      }
+      if ((counts.tiltDaysCount || 0) > 0) errors.push(`${counts.tiltDaysCount} dia(s) com tilt`);
+      if ((counts.revenge || 0) > 0) errors.push(`${counts.revenge} instância(s) de vingança`);
+      if ((counts.stopTampering || 0) > 0) errors.push(`stop deslocado ${counts.stopTampering}×`);
+      if (breach.stopBreachIndex !== -1 && breach.tradesAfterStop > 0) {
+        errors.push(`+${breach.tradesAfterStop} trade(s) após hit do stop`);
+      }
+      if (errors.length === 0) {
+        return { text: 'Sem violações de regras ou eventos comportamentais detectados.', tone: 'weak' };
+      }
+      return { text: `Detectado: ${errors.slice(0, 3).join(', ')}.`, tone: 'strong' };
+    }
+
+    case 'market':
+      // O app não tem leitura de regime macro hoje — sinalizar honestamente.
+      return {
+        text: 'Sem evidência de regime atípico no app — vale verificar macro do período com o mentor.',
+        tone: 'weak',
+      };
+
+    case 'luck': {
+      if (typeof bestR === 'number' && typeof total === 'number' && total !== 0 && typeof metrics?.R === 'number' && metrics.R > 0) {
+        const bestRS = bestR * metrics.R;
+        const pct = total !== 0 ? Math.abs(bestRS / total) * 100 : 0;
+        if (pct > 50) {
+          return {
+            text: `Melhor trade rendeu ${bestR.toFixed(1)}R (${pct.toFixed(0)}% do resultado) — um único trade dominou.`,
+            tone: 'strong',
+          };
+        }
+        return {
+          text: `Melhor trade rendeu ${bestR.toFixed(1)}R (${pct.toFixed(0)}% do resultado) — resultado distribuído, não dominado por sorte.`,
+          tone: 'weak',
+        };
+      }
+      return { text: 'Sem dados suficientes pra avaliar concentração do resultado.', tone: 'neutral' };
+    }
+
+    case 'edge': {
+      const expSign = typeof exp === 'number' && exp >= 0 ? '+' : '';
+      const sample = metrics?.count;
+      if (typeof exp === 'number' && exp > 0 && typeof pf === 'number' && pf >= 1.2) {
+        return {
+          text: `Expectancy ${expSign}${exp.toFixed(2)}R, profit factor ${pf.toFixed(2)} em ${sample || '?'} trades — edge sustenta.`,
+          tone: 'strong',
+        };
+      }
+      if (typeof exp === 'number' && exp <= 0) {
+        return {
+          text: `Expectancy ${expSign}${exp.toFixed(2)}R — edge NÃO confirmado neste ciclo.`,
+          tone: 'weak',
+        };
+      }
+      return { text: 'Edge não tem confirmação clara neste ciclo.', tone: 'neutral' };
+    }
+
+    default:
+      return { text: '', tone: 'neutral' };
+  }
+}
+
+/**
+ * Sugestões de Q4 (sustain + improve).
+ *
+ * R2 (#259): sustain agora exige SINAL POSITIVO MEDIDO — nunca "zero detecção".
+ * Em ciclo com pipeline cego (sem orders, antes do redesign), zero contagem ≠
+ * zero problema. Não dá pra sustentar ausência de sinal.
+ *
+ * Improve prioriza pausa/auto-bloqueio quando há violação de stop ou padrão
+ * crítico — antes de listar erros menores.
+ */
+function buildSuggestions({ metrics, patterns, snapshot }) {
   const sustain = [];
   const improve = [];
+  const counts = patterns?.eventCounts || {};
+  const breach = snapshot?.stopBreach;
+  const hasCriticalSignal =
+    (breach && breach.stopBreachIndex !== -1 && breach.tradesAfterStop > 0) ||
+    (counts.tilt || 0) > 0 || (counts.revenge || 0) > 0 || (counts.stopTampering || 0) > 0;
 
-  if (typeof metrics?.ruleAdherenceRate === 'number' && metrics.ruleAdherenceRate >= 0.85) {
-    sustain.push(`Disciplina nos ${metrics.count - (metrics.violationsCount || 0)} primeiros trades — RR e SL respeitados`);
+  // SUSTAIN — só com positivo medido
+  if (
+    typeof metrics?.ruleAdherenceRate === 'number' && metrics.ruleAdherenceRate >= 0.95 &&
+    !hasCriticalSignal
+  ) {
+    sustain.push(`Aderência ${(metrics.ruleAdherenceRate * 100).toFixed(0)}% — disciplina pré-trade firme`);
   }
   if (metrics?.bestTradeR != null && metrics.bestTradeR >= 1.5) {
-    sustain.push(`Melhor trade do ciclo (${metrics.bestTradeR.toFixed(1)}R) — replicar setup`);
+    sustain.push(`Melhor trade ${metrics.bestTradeR.toFixed(1)}R — replicar a configuração de entrada`);
   }
-  if (typeof patterns?.eventCounts?.tilt === 'number' && patterns.eventCounts.tilt === 0) {
-    sustain.push('Zero detecção comportamental no ciclo');
+  if (typeof metrics?.profitFactor === 'number' && metrics.profitFactor >= 2) {
+    sustain.push(`Profit factor ${metrics.profitFactor.toFixed(2)} — vantagem matemática sustentada`);
+  }
+  const bestClean = patterns?.dayBreakdown?.bestCleanDay;
+  if (bestClean && typeof bestClean.pnl === 'number' && bestClean.pnl > 0) {
+    sustain.push(`Dia ${bestClean.date} sem tilt/vingança: +R$${bestClean.pnl.toFixed(0)} — versão sob controle existe`);
   }
 
+  // IMPROVE — prioriza pausa/bloqueio quando crítico
+  if (breach && breach.stopBreachIndex !== -1 && breach.tradesAfterStop > 0) {
+    improve.push('Auto-bloqueio: após hit do stop do ciclo, app rejeita add-trade até o próximo ciclo');
+  }
+  if ((counts.revenge || 0) >= 2) {
+    improve.push('Hard stop após 3 losses consecutivos no dia (auto-lock)');
+  }
+  if ((counts.stopTampering || 0) >= 1) {
+    improve.push('Stop é commit pré-trade: alterar SL depois da entrada não é permitido');
+  }
+  if ((counts.tiltDaysCount || 0) >= 3) {
+    improve.push('Pausa de 24h após qualquer dia com tilt detectado');
+  }
   if (Array.isArray(patterns?.topErrors)) {
     for (const errorType of patterns.topErrors.slice(0, 2)) {
       improve.push(`Reduzir ocorrências de ${errorType}`);
     }
   }
-  if (typeof patterns?.eventCounts?.revenge === 'number' && patterns.eventCounts.revenge > 0) {
-    improve.push('Hard stop após 3 losses (auto-lock pelo app)');
-  }
+
   return { sustain, improve };
 }
 
@@ -119,24 +240,66 @@ function FreeAddInput({ onAdd, placeholder, disabled }) {
   );
 }
 
-export default function Step3Reflect({ snapshot, metrics, patterns, aar, onChange }) {
+export default function Step3Reflect({ snapshot, metrics, patterns, forward, aar, onChange, onVisited }) {
+  // Ciclo crítico — framework manda calibrar tom + evitar exigir interpretação
+  // de aluno em alta carga emocional. Cobertura ampla (qualquer um basta).
+  const isCritical = useMemo(() => {
+    const breach = snapshot?.stopBreach;
+    if (breach && (breach.severity === 'critical' || breach.severity === 'major')) return true;
+    if (forward?.aiSuggestion?.triggeredRule === 'pause_restructure') return true;
+    if (
+      typeof snapshot?.resultPercent === 'number' &&
+      typeof snapshot?.stopPercent === 'number' &&
+      snapshot.stopPercent > 0 &&
+      Math.abs(snapshot.resultPercent) >= 1.5 * snapshot.stopPercent
+    ) return true;
+    return false;
+  }, [snapshot, forward]);
+
+  const evidence = useMemo(() => ({
+    edge:   buildAttributionEvidence('edge',   { metrics, patterns, snapshot }),
+    luck:   buildAttributionEvidence('luck',   { metrics, patterns, snapshot }),
+    error:  buildAttributionEvidence('error',  { metrics, patterns, snapshot }),
+    market: buildAttributionEvidence('market', { metrics, patterns, snapshot }),
+  }), [metrics, patterns, snapshot]);
   const expectedText = useMemo(() => {
     const cfg = snapshot?.planConfigSnapshot;
     if (!cfg) return 'Aguardando dados do plano.';
-    return `Goal: +${cfg.cycleGoal}% (R$ ${(cfg.pl * cfg.cycleGoal / 100).toLocaleString('pt-BR')}); ` +
+    return `Meta: +${cfg.cycleGoal}% (R$ ${(cfg.pl * cfg.cycleGoal / 100).toLocaleString('pt-BR')}); ` +
            `Stop: −${cfg.cycleStop}% (R$ ${(cfg.pl * cfg.cycleStop / 100).toLocaleString('pt-BR')}); ` +
-           `PL R$${cfg.pl?.toLocaleString('pt-BR')}, RR ${cfg.rrTarget}:1, Risk ${cfg.riskPerOperation}% por trade.`;
+           `Capital R$ ${cfg.pl?.toLocaleString('pt-BR')}, vitória vale ${cfg.rrTarget}× a perda, ${cfg.riskPerOperation}% de risco por trade.`;
   }, [snapshot]);
 
   const actualText = useMemo(() => {
     if (!snapshot || !metrics) return 'Aguardando dados.';
     const sign = snapshot.resultPercent >= 0 ? '+' : '';
     const expSign = metrics.expectancy_R >= 0 ? '+' : '';
-    return `Resultado: ${sign}${snapshot.resultPercent?.toFixed(1)}% em ${snapshot.tradesCount} trades. ` +
-           `${metrics.winners} vit / ${metrics.losers} perd. ` +
-           `Edge ${expSign}${metrics.expectancy_R?.toFixed(2)}R · ` +
-           `Rule adherence ${(metrics.ruleAdherenceRate * 100)?.toFixed(1)}%.`;
-  }, [snapshot, metrics]);
+    const parts = [
+      `Resultado: ${sign}${snapshot.resultPercent?.toFixed(1)}% em ${snapshot.tradesCount} trades. ` +
+      `${metrics.winners} vitórias / ${metrics.losers} perdas. ` +
+      `Ganho médio ${expSign}${metrics.expectancy_R?.toFixed(2)}R por trade · ` +
+      `${(metrics.ruleAdherenceRate * 100)?.toFixed(1)}% de disciplina nas regras.`,
+    ];
+    const breach = snapshot.stopBreach;
+    if (breach && breach.stopBreachIndex !== -1 && breach.tradesAfterStop > 0) {
+      parts.push(
+        `Stop do ciclo atingido no trade #${breach.stopBreachIndex + 1} — ` +
+        `operou +${breach.tradesAfterStop} trade(s) depois${
+          breach.pnlPctOfStop != null && breach.pnlPctOfStop >= 1.2
+            ? `, perda final ${breach.pnlPctOfStop.toFixed(1)}× o cap planejado`
+            : ''
+        }.`,
+      );
+    }
+    const counts = patterns?.eventCounts || {};
+    const behavioral = [];
+    if ((counts.tilt || 0) > 0) behavioral.push(`${counts.tilt} evento(s) de tilt em ${counts.tiltDaysCount || 0} dia(s)`);
+    if ((counts.revenge || 0) > 0) behavioral.push(`${counts.revenge} instância(s) de vingança`);
+    if ((counts.stopTampering || 0) > 0) behavioral.push(`${counts.stopTampering}× stop deslocado`);
+    if ((counts.overtrading || 0) > 0) behavioral.push(`${counts.overtrading} dia(s) com excesso de trades`);
+    if (behavioral.length > 0) parts.push(`Detectado: ${behavioral.join(', ')}.`);
+    return parts.join(' ');
+  }, [snapshot, metrics, patterns]);
 
   // Side effect: cacheia textos auto-fill no aar
   useEffect(() => {
@@ -146,7 +309,14 @@ export default function Step3Reflect({ snapshot, metrics, patterns, aar, onChang
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expectedText, actualText]);
 
-  const suggestions = useMemo(() => buildSuggestions(metrics, patterns), [metrics, patterns]);
+  useEffect(() => {
+    onVisited?.();
+  }, [onVisited]);
+
+  const suggestions = useMemo(
+    () => buildSuggestions({ metrics, patterns, snapshot }),
+    [metrics, patterns, snapshot],
+  );
 
   const toggleAttribution = (val) => {
     const cur = aar.whyDifference?.attributions || [];
@@ -185,6 +355,13 @@ export default function Step3Reflect({ snapshot, metrics, patterns, aar, onChang
 
   return (
     <div className="space-y-4">
+      <div className="glass-card p-4 border border-slate-700/40 bg-slate-800/20">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="badge bg-slate-700/40 text-slate-300 border border-slate-600/50 text-[10px] uppercase tracking-wider">opcional</span>
+          <p className="text-slate-400">Se preferir não comentar, pode pular esta etapa — o ciclo fecha sem isso.</p>
+        </div>
+      </div>
+
       {/* Q1 — auto-fill */}
       <div className="glass-card p-6">
         <div className="flex items-start gap-3">
@@ -209,37 +386,73 @@ export default function Step3Reflect({ snapshot, metrics, patterns, aar, onChang
         </div>
       </div>
 
-      {/* Q3 — multi-attribution + texto */}
+      {/* Q3 — hipóteses ancoradas em evidência (framework: fato → interpretação) */}
       <div className="glass-card p-6">
         <div className="flex items-start gap-3">
           <div className="bg-blue-500/20 text-blue-400 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">Q3</div>
           <div className="flex-1">
-            <h4 className="font-semibold text-slate-200 mb-1">Por que a <em>diferença</em>?</h4>
-            <p className="text-xs text-slate-500 mb-3">Marque uma ou mais. Se múltiplas, indique a principal no texto.</p>
-            <div className="grid grid-cols-2 gap-2 mb-4">
+            <h4 className="font-semibold text-slate-200 mb-1">O que <em>encaixa</em> com o que você viu?</h4>
+            <p className="text-xs text-slate-500 mb-3">
+              Marque o que faz sentido com os dados dos passos anteriores. Pode marcar zero — você vai conversar com o mentor.
+            </p>
+
+            {isCritical && (
+              <div className="mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 flex items-start gap-2">
+                <AlertOctagon className="w-4 h-4 text-amber-300 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-200 leading-relaxed">
+                  <strong className="font-semibold">Esse ciclo foi duro.</strong> Não precisa entender agora.
+                  As hipóteses abaixo são pontos de partida pra conversa com o mentor — sem cobrança de certeza.
+                  Marcar nenhuma é uma resposta válida.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
               {ATTRIBUTIONS.map((a) => {
                 const checked = attrs.includes(a.value);
+                const ev = evidence[a.value] || { text: '', tone: 'neutral' };
+                const dimmed = !checked && ev.tone === 'weak';
+                const showHighlight = isCritical && ev.tone === 'strong';
                 return (
                   <label
                     key={a.value}
                     className={`flex items-start gap-2 p-3 rounded-lg cursor-pointer border transition ${
-                      checked ? 'bg-blue-500/10 border-blue-500/40' : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/50'
+                      checked
+                        ? 'bg-blue-500/10 border-blue-500/40'
+                        : dimmed
+                          ? 'bg-slate-800/15 border-slate-700/30 opacity-60 hover:opacity-100'
+                          : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/50'
                     }`}
                   >
                     <input type="checkbox" checked={checked} onChange={() => toggleAttribution(a.value)} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-slate-100">{a.label}</p>
-                      <p className="text-[11px] text-slate-500">{a.hint}</p>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-100 flex items-center gap-1.5">
+                        {showHighlight && <span className="text-amber-300" title="evidência sustenta esta hipótese">◉</span>}
+                        {a.label}
+                      </p>
+                      <p className="text-[11px] text-slate-500 italic">{a.hint}</p>
+                      {ev.text && (
+                        <p className={`text-[11px] mt-1.5 leading-relaxed ${
+                          ev.tone === 'strong' ? 'text-amber-200/90' :
+                          ev.tone === 'weak'   ? 'text-slate-500' :
+                          'text-slate-400'
+                        }`}>
+                          {ev.text}
+                        </p>
+                      )}
                     </div>
                   </label>
                 );
               })}
             </div>
+            <label className="block text-xs text-slate-400 mb-1.5">
+              Quer deixar uma nota pro mentor? <span className="text-slate-600">(opcional)</span>
+            </label>
             <textarea
-              rows={3}
+              rows={2}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Explique em 1-3 frases (opcional)"
+              placeholder="Pode ficar vazio. Pode ser uma frase, uma palavra, ou nada."
               maxLength={MAX_TEXT_CHARS}
               className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />

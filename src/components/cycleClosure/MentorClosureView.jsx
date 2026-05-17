@@ -13,15 +13,44 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, MessageSquare, Save, Lock, Loader2, ShieldAlert, X } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Save, Lock, Loader2, ShieldAlert, Unlock } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { KpiCard } from '../reviews/ReviewKpiGrid';
+import { deltaText } from '../../utils/reviewFormatters';
 
 const STAGE_LABEL_MAP = ['Caos', 'Reativo', 'Metódico', 'Profissional', 'Maestria'];
 const MAX_COMMENT_CHARS = 2000;
 
+const MONTH_LABELS_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+// Converte cycleKey em label humano:
+//   '2026-04' → 'Abril 2026' (Mensal)
+//   '2026-Q2' → '2º trimestre 2026'
+//   '2026-S1' → '1º semestre 2026'
+//   '2026'    → 'Ano 2026'
+function cycleKeyToLabel(cycleKey) {
+  if (!cycleKey) return '—';
+  const monthly = cycleKey.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (monthly) return `${MONTH_LABELS_PT[parseInt(monthly[2], 10) - 1]} ${monthly[1]}`;
+  const quarter = cycleKey.match(/^(\d{4})-Q([1-4])$/);
+  if (quarter) return `${quarter[2]}º trimestre ${quarter[1]}`;
+  const semester = cycleKey.match(/^(\d{4})-S([12])$/);
+  if (semester) return `${semester[2]}º semestre ${semester[1]}`;
+  if (/^\d{4}$/.test(cycleKey)) return `Ano ${cycleKey}`;
+  return cycleKey;
+}
+
 function fmtPct(v, digits = 1) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+}
+
+function fmtNum(v, digits = 2) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return v.toFixed(digits);
 }
 
 function Section({ title, children, badge }) {
@@ -41,11 +70,22 @@ function Section({ title, children, badge }) {
   );
 }
 
-export default function MentorClosureView({ closure, onClose, onSaved, studentName }) {
+export default function MentorClosureView({
+  closure,
+  previousClosure = null,
+  onClose,
+  onSaved,
+  studentName,
+  viewerRole = 'mentor',
+}) {
+  const isMentorView = viewerRole === 'mentor';
   const [comment, setComment] = useState(closure?.mentor?.closingComment || '');
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(closure?.mentor?.closingCommentAt || null);
   const [error, setError] = useState(null);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenConfirmText, setReopenConfirmText] = useState('');
 
   useEffect(() => {
     setComment(closure?.mentor?.closingComment || '');
@@ -68,6 +108,28 @@ export default function MentorClosureView({ closure, onClose, onSaved, studentNa
       setSaving(false);
     }
   };
+
+  const handleReopen = async () => {
+    if (reopening) return;
+    setError(null);
+    setReopening(true);
+    try {
+      const functions = getFunctions();
+      const cf = httpsCallable(functions, 'reopenCycle');
+      await cf({ closureId: closure.id });
+      setReopenOpen(false);
+      setReopenConfirmText('');
+      // Doc apagado, hard seal saiu, trades editáveis. Volta pra lista.
+      onClose?.();
+    } catch (e) {
+      setError(e?.message || 'Erro ao reabrir ciclo');
+    } finally {
+      setReopening(false);
+    }
+  };
+
+  const expectedConfirmLabel = cycleKeyToLabel(closure?.cycleKey);
+  const confirmMatches = reopenConfirmText.trim() === expectedConfirmLabel;
 
   const markNoComment = async () => {
     if (saving) return;
@@ -98,36 +160,91 @@ export default function MentorClosureView({ closure, onClose, onSaved, studentNa
   const maturity = closure.maturity || {};
   const forward = closure.forward || {};
   const stage = maturity.currentStage;
-  const stageLabel = stage ? `Stage ${stage} — ${STAGE_LABEL_MAP[stage - 1] || '?'}` : '—';
+  const stageLabel = stage ? `Estágio ${stage} — ${STAGE_LABEL_MAP[stage - 1] || '—'}` : '—';
+
+  const prevSnap = previousClosure?.snapshot || {};
+  const prevMetrics = previousClosure?.metrics || {};
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm overflow-y-auto">
-      <div className="max-w-7xl mx-auto p-6 pb-20">
-        <button
-          type="button"
-          onClick={onClose}
-          className="fixed top-4 right-4 z-[60] w-10 h-10 rounded-full bg-slate-800/80 hover:bg-slate-700 border border-slate-700/50 flex items-center justify-center text-slate-400 hover:text-white transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        <div className="flex items-center gap-3 mb-6">
+    <div className="space-y-4">
+        <div className="flex items-center gap-3 mb-2">
           <button type="button" onClick={onClose} className="btn-secondary text-xs flex items-center gap-1">
             <ArrowLeft className="w-3.5 h-3.5" /> Voltar
           </button>
           <h2 className="text-2xl font-bold text-slate-100">
-            🔍 {studentName || closure.studentId.slice(0, 8)} · {closure.cycleKey}
+            {cycleKeyToLabel(closure.cycleKey)}
+            {studentName && <span className="text-slate-400 font-normal"> · {studentName}</span>}
           </h2>
-          {closure.closeMode !== 'self' && (
-            <span className="badge bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px]">
-              closeMode: {closure.closeMode}
+          {previousClosure && (
+            <span className="text-xs text-slate-500">
+              comparado com {cycleKeyToLabel(previousClosure.cycleKey)}
             </span>
           )}
+          {closure.closeMode === 'demonstrated' && (
+            <span className="badge bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px]">
+              demonstrado pelo mentor
+            </span>
+          )}
+          {closure.closeMode === 'co_edited' && (
+            <span className="badge bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px]">
+              co-fechado com mentor
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setReopenOpen((v) => !v)}
+            className="ml-auto btn-secondary text-xs flex items-center gap-1"
+            title="Reabrir apaga este fechamento e libera as datas pra edição"
+          >
+            <Unlock className="w-3.5 h-3.5" /> Reabrir ciclo
+          </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        {reopenOpen && (
+          <div className="glass-card p-3 border border-amber-500/40 bg-amber-500/5 max-w-2xl space-y-2">
+            <p className="text-xs text-slate-400 flex items-start gap-1.5">
+              <Unlock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <span>
+                Apaga este fechamento e libera trades de {closure.cycleStart} → {closure.cycleEnd}.
+                Pra confirmar, digite <strong className="text-amber-300">{expectedConfirmLabel}</strong>:
+              </span>
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={reopenConfirmText}
+                onChange={(e) => setReopenConfirmText(e.target.value)}
+                placeholder={expectedConfirmLabel}
+                disabled={reopening}
+                autoComplete="off"
+                className="flex-1 max-w-[220px] bg-slate-800/50 border border-slate-700/50 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={handleReopen}
+                disabled={reopening || !confirmMatches}
+                className="btn-primary text-xs flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={confirmMatches ? '' : `Digite "${expectedConfirmLabel}" pra liberar`}
+              >
+                {reopening ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlock className="w-3 h-3" />}
+                Confirmar
+              </button>
+              <button
+                type="button"
+                onClick={() => { setReopenOpen(false); setReopenConfirmText(''); setError(null); }}
+                disabled={reopening}
+                className="text-xs text-slate-500 hover:text-slate-300 px-2 disabled:opacity-50"
+              >
+                cancelar
+              </button>
+            </div>
+            {error && <p className="text-xs text-red-400">⚠ {error}</p>}
+          </div>
+        )}
+
+        <div className={isMentorView ? 'grid grid-cols-3 gap-4' : ''}>
           {/* Coluna principal — closure read-only */}
-          <div className="col-span-2 space-y-4">
+          <div className={isMentorView ? 'col-span-2 space-y-4' : 'space-y-4'}>
             {/* Resumo */}
             <div className="glass-card p-5">
               <div className="flex items-center justify-between mb-3">
@@ -140,93 +257,173 @@ export default function MentorClosureView({ closure, onClose, onSaved, studentNa
                   <p className={`font-bold mono ${snap.resultPercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtPct(snap.resultPercent)}</p>
                 </div>
                 <div className="bg-slate-800/30 rounded p-2.5">
-                  <p className="text-[10px] text-slate-500">Status</p>
-                  <p className="font-bold text-amber-400">{snap.cycleStatus || '—'}</p>
+                  <p className="text-[10px] text-slate-500">Como terminou</p>
+                  <p className="font-bold text-amber-400 text-xs">{
+                    snap.cycleStatus === 'GOAL_HIT' ? 'Meta batida' :
+                    snap.cycleStatus === 'STOP_HIT' ? 'Stop atingido' :
+                    snap.cycleStatus === 'NEUTRAL' ? 'No meio' :
+                    '—'
+                  }</p>
                 </div>
                 <div className="bg-slate-800/30 rounded p-2.5">
-                  <p className="text-[10px] text-slate-500">TPS</p>
+                  <p className="text-[10px] text-slate-500">Nota geral</p>
                   <p className="font-bold text-slate-100 mono">{metrics.tradingPerformanceScore != null ? `${Math.round(metrics.tradingPerformanceScore)}/100` : '—'}</p>
                 </div>
                 <div className="bg-slate-800/30 rounded p-2.5">
-                  <p className="text-[10px] text-slate-500">Stage</p>
+                  <p className="text-[10px] text-slate-500">Estágio</p>
                   <p className="font-bold text-slate-100 mono text-xs">{stageLabel}</p>
                 </div>
               </div>
             </div>
 
-            <Section title="① Read · Snapshot" badge={`${snap.tradesCount ?? '—'} trades`}>
+            {/* KPIs com comparação vs ciclo anterior */}
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-slate-100">Indicadores do ciclo</h4>
+                {previousClosure && (
+                  <span className="text-[11px] text-slate-500">
+                    delta vs {cycleKeyToLabel(previousClosure.cycleKey)}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+                <KpiCard
+                  label="Resultado"
+                  value={fmtPct(snap.resultPercent)}
+                  delta={deltaText(snap.resultPercent, prevSnap.resultPercent, (d) => `${d.toFixed(1)}%`)}
+                  prev={Number.isFinite(Number(prevSnap.resultPercent)) ? `anterior: ${fmtPct(prevSnap.resultPercent)}` : null}
+                  tooltip="Variação percentual do capital no ciclo. Compara com o ciclo anterior pra ver se está acelerando ou desacelerando."
+                />
+                <KpiCard
+                  label="Nota geral (TPS)"
+                  value={Number.isFinite(metrics.tradingPerformanceScore) ? `${Math.round(metrics.tradingPerformanceScore)}/100` : '—'}
+                  delta={deltaText(metrics.tradingPerformanceScore, prevMetrics.tradingPerformanceScore, (d) => d.toFixed(0))}
+                  prev={Number.isFinite(Number(prevMetrics.tradingPerformanceScore)) ? `anterior: ${Math.round(prevMetrics.tradingPerformanceScore)}/100` : null}
+                  tooltip="Trading Performance Score: composto 0-100 que pesa profit factor, drawdown, expectativa, consistência semanal e disciplina. Medida única de qualidade do ciclo."
+                />
+                <KpiCard
+                  label="Profit factor"
+                  value={fmtNum(metrics.profitFactor, 2)}
+                  delta={deltaText(metrics.profitFactor, prevMetrics.profitFactor, (d) => d.toFixed(2))}
+                  prev={Number.isFinite(Number(prevMetrics.profitFactor)) ? `anterior: ${fmtNum(prevMetrics.profitFactor, 2)}` : null}
+                  tooltip="Σwins ÷ |Σlosses|. >1 rentável, >2 robusto, >3 excepcional."
+                />
+                <KpiCard
+                  label="Expectativa"
+                  value={Number.isFinite(metrics.expectancy_R) ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'}
+                  delta={deltaText(metrics.expectancy_R, prevMetrics.expectancy_R, (d) => `${d.toFixed(2)}R`)}
+                  prev={Number.isFinite(Number(prevMetrics.expectancy_R)) ? `anterior: ${prevMetrics.expectancy_R >= 0 ? '+' : ''}${prevMetrics.expectancy_R.toFixed(2)}R` : null}
+                  tooltip="Van Tharp expectancy em R-multiples. Quanto você ganha em média por trade, expresso em unidades de risco. >0.3R bom, >0.5R excelente."
+                />
+                <KpiCard
+                  label="Maior queda"
+                  value={Number.isFinite(metrics.maxDrawdown?.percent) ? fmtPct(metrics.maxDrawdown.percent * 100) : '—'}
+                  delta={deltaText(metrics.maxDrawdown?.percent, prevMetrics.maxDrawdown?.percent, (d) => `${(d * 100).toFixed(1)}%`, true)}
+                  prev={Number.isFinite(Number(prevMetrics.maxDrawdown?.percent)) ? `anterior: ${fmtPct(prevMetrics.maxDrawdown.percent * 100)}` : null}
+                  tooltip="Maior drawdown intra-ciclo (pico→vale). Menor é melhor — cores invertidas (verde quando cai, vermelho quando sobe)."
+                />
+                <KpiCard
+                  label="Disciplina"
+                  value={Number.isFinite(metrics.ruleAdherenceRate) ? `${(metrics.ruleAdherenceRate * 100).toFixed(1)}%` : '—'}
+                  delta={deltaText(metrics.ruleAdherenceRate, prevMetrics.ruleAdherenceRate, (d) => `${(d * 100).toFixed(1)}%`)}
+                  prev={Number.isFinite(Number(prevMetrics.ruleAdherenceRate)) ? `anterior: ${(prevMetrics.ruleAdherenceRate * 100).toFixed(1)}%` : null}
+                  tooltip="% de trades que respeitaram stop e RR-alvo. Queda indica flexibilização de regras — sinal de alerta."
+                />
+                <KpiCard
+                  label="Consistência (Sharpe)"
+                  value={fmtNum(metrics.sharpe?.value, 2)}
+                  delta={deltaText(metrics.sharpe?.value, prevMetrics.sharpe?.value, (d) => d.toFixed(2))}
+                  prev={Number.isFinite(Number(prevMetrics.sharpe?.value)) ? `anterior: ${fmtNum(prevMetrics.sharpe.value, 2)}` : null}
+                  tooltip="Retorno médio dividido pelo desvio-padrão dos retornos. Maior = mais consistente."
+                />
+                <KpiCard
+                  label="Coef. variação"
+                  value={fmtNum(metrics.cvNormalized?.value, 2)}
+                  delta={deltaText(metrics.cvNormalized?.value, prevMetrics.cvNormalized?.value, (d) => d.toFixed(2), true)}
+                  prev={Number.isFinite(Number(prevMetrics.cvNormalized?.value)) ? `anterior: ${fmtNum(prevMetrics.cvNormalized.value, 2)}` : null}
+                  tooltip="Desvio-padrão ÷ |média| dos resultados por trade. Menor = melhor (cores invertidas). >2.0 indica que P&L é dominado por 1-2 trades."
+                />
+              </div>
+            </div>
+
+            <Section title="① Os números do ciclo" badge={`${snap.tradesCount ?? '—'} trades`}>
               <p className="text-sm text-slate-400">
-                Resultado {fmtPct(snap.resultPercent)} ({snap.cycleStatus}) — capital R$ {snap.plStart?.toLocaleString('pt-BR')} → R$ {snap.plEnd?.toLocaleString('pt-BR')}.
-                Sharpe {metrics.sharpe?.value?.toFixed(2) ?? '—'} · DD {fmtPct((metrics.maxDrawdown?.percent ?? 0) * 100)} ·
-                Edge {metrics.expectancy_R != null ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'} ·
-                Rule {metrics.ruleAdherenceRate != null ? `${(metrics.ruleAdherenceRate * 100).toFixed(1)}%` : '—'}.
+                Resultado {fmtPct(snap.resultPercent)} ({
+                  snap.cycleStatus === 'GOAL_HIT' ? 'meta batida' :
+                  snap.cycleStatus === 'STOP_HIT' ? 'stop atingido' :
+                  'no meio do caminho'
+                }) — capital R$ {snap.plStart?.toLocaleString('pt-BR')} → R$ {snap.plEnd?.toLocaleString('pt-BR')}.
+                Consistência {metrics.sharpe?.value?.toFixed(2) ?? '—'} · Maior queda {fmtPct((metrics.maxDrawdown?.percent ?? 0) * 100)} ·
+                Ganho médio {metrics.expectancy_R != null ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'} por trade ·
+                Disciplina {metrics.ruleAdherenceRate != null ? `${(metrics.ruleAdherenceRate * 100).toFixed(1)}%` : '—'}.
               </p>
             </Section>
 
-            <Section title="② Notice · Patterns" badge={
+            <Section title="② Padrões observados" badge={
               ((closure.patterns?.eventCounts?.tilt ?? 0) + (closure.patterns?.eventCounts?.revenge ?? 0) > 0)
-                ? `⚠ ${closure.patterns.eventCounts.tilt}T / ${closure.patterns.eventCounts.revenge}R`
-                : 'limpo'
+                ? `⚠ ${closure.patterns.eventCounts.tilt} tilt / ${closure.patterns.eventCounts.revenge} revenge`
+                : 'sem padrões'
             }>
               <p className="text-sm text-slate-400">
-                Top errors: {(closure.patterns?.topErrors || []).join(', ') || 'nenhum'}.
-                Eventos: {Object.entries(closure.patterns?.eventCounts || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}.
+                Principais erros: {(closure.patterns?.topErrors || []).join(', ') || 'nenhum'}.
+                Eventos comportamentais: {Object.entries(closure.patterns?.eventCounts || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}.
               </p>
             </Section>
 
-            <Section title="③ Reflect · AAR" badge={`Q3: ${(aar.whyDifference?.attributions || []).join(' + ') || '—'}`}>
+            <Section title="③ Refletir" badge={`Por quê: ${(aar.whyDifference?.attributions || []).join(' + ') || '—'}`}>
               <div className="text-sm text-slate-300 space-y-2">
-                <p><span className="text-slate-500">Q3 texto:</span> {aar.whyDifference?.text || '—'}</p>
-                <p><span className="text-slate-500">Q4 sustain:</span> {(aar.sustain || []).join(' · ') || '—'}</p>
-                <p><span className="text-slate-500">Q4 improve:</span> {(aar.improve || []).join(' · ') || '—'}</p>
+                <p><span className="text-slate-500">Explicação:</span> {aar.whyDifference?.text || '—'}</p>
+                <p><span className="text-slate-500">A manter:</span> {(aar.sustain || []).join(' · ') || '—'}</p>
+                <p><span className="text-slate-500">A ajustar:</span> {(aar.improve || []).join(' · ') || '—'}</p>
               </div>
             </Section>
 
-            <Section title="④ Map · SWOT" badge={`${(swot.strengths || []).length + (swot.weaknesses || []).length + (swot.opportunities || []).length + (swot.threats || []).length} itens`}>
+            <Section title="④ Pontos fortes, fracos, oportunidades e ameaças" badge={`${(swot.strengths || []).length + (swot.weaknesses || []).length + (swot.opportunities || []).length + (swot.threats || []).length} itens`}>
               <div className="grid grid-cols-2 gap-3 text-xs text-slate-400">
-                <div><strong className="text-emerald-300">S:</strong> {(swot.strengths || []).join(' · ') || '—'}</div>
-                <div><strong className="text-red-300">W:</strong> {(swot.weaknesses || []).join(' · ') || '—'}</div>
-                <div><strong className="text-sky-300">O:</strong> {(swot.opportunities || []).join(' · ') || '—'}</div>
-                <div><strong className="text-amber-300">T:</strong> {(swot.threats || []).join(' · ') || '—'}</div>
+                <div><strong className="text-emerald-300">Fortes:</strong> {(swot.strengths || []).join(' · ') || '—'}</div>
+                <div><strong className="text-red-300">Fracos:</strong> {(swot.weaknesses || []).join(' · ') || '—'}</div>
+                <div><strong className="text-sky-300">Oportunidades:</strong> {(swot.opportunities || []).join(' · ') || '—'}</div>
+                <div><strong className="text-amber-300">Ameaças:</strong> {(swot.threats || []).join(' · ') || '—'}</div>
               </div>
             </Section>
 
-            <Section title="⑤ Check · Maturity" badge={
-              maturity.promotionEligible ? '✨ promotion eligible' :
+            <Section title="⑤ Maturidade do trader" badge={
+              maturity.promotionEligible ? '✨ pronto pra promoção' :
               (maturity.regression && maturity.regression.length > 0)
-                ? <><ShieldAlert className="w-3 h-3 inline" /> regression em {maturity.regression.join(', ')}</>
+                ? <><ShieldAlert className="w-3 h-3 inline" /> regressão em {maturity.regression.join(', ')}</>
                 : `${stageLabel}`
             }>
               <p className="text-sm text-slate-400">
-                Composite {maturity?.scores?.composite?.toFixed(1) ?? '—'} ·
+                Nota geral {maturity?.scores?.composite?.toFixed(1) ?? '—'} ·
                 Emocional {maturity?.scores?.emotional ?? '—'} ·
-                Financial {maturity?.scores?.financial ?? '—'} ·
-                Operational {maturity?.scores?.operational ?? '—'} ·
-                Experience {maturity?.scores?.experience ?? '—'}.
+                Financeira {maturity?.scores?.financial ?? '—'} ·
+                Operacional {maturity?.scores?.operational ?? '—'} ·
+                Experiência {maturity?.scores?.experience ?? '—'}.
               </p>
               {maturity.mentorOverride && (
                 <p className="text-[11px] text-amber-300 mt-2">
-                  Override aplicado: {maturity.mentorOverride.fromStage} → {maturity.mentorOverride.toStage} — {maturity.mentorOverride.rationale}
+                  Mentor aplicou ajuste: {maturity.mentorOverride.fromStage} → {maturity.mentorOverride.toStage} — {maturity.mentorOverride.rationale}
                 </p>
               )}
             </Section>
 
-            <Section title="⑥ Adjust · Plano" badge={
-              forward.planAdjustment?.changed ? `↺ ajustado (${forward.planAdjustment.decisionSource})` : 'mantido'
+            <Section title="⑥ Ajuste do plano" badge={
+              forward.planAdjustment?.changed
+                ? `↺ ajustado (${forward.planAdjustment.decisionSource === 'ai_suggested' ? 'recomendação aceita' : forward.planAdjustment.decisionSource === 'manual_edit' ? 'editado pelo trader' : forward.planAdjustment.decisionSource})`
+                : 'mantido'
             }>
               <p className="text-sm text-slate-400">
-                Kelly safe {forward.kellyRecommendation?.kellySafe != null ? `${(forward.kellyRecommendation.kellySafe * 100).toFixed(1)}%` : '—'} ·
-                MC p10/p50/p90: {forward.mcSimulation ? `${forward.mcSimulation.p10?.toFixed(0) ?? '—'} / ${forward.mcSimulation.p50?.toFixed(0) ?? '—'} / ${forward.mcSimulation.p90?.toFixed(0) ?? '—'}` : '—'}.
-                Decisão: <code className="bg-slate-800 px-1 rounded">{forward.planAdjustment?.decisionSource || '—'}</code>.
+                Risco ótimo (Kelly ¼) {forward.kellyRecommendation?.kellySafe != null ? `${(forward.kellyRecommendation.kellySafe * 100).toFixed(1)}%` : '—'} ·
+                Simulação do próximo ciclo (pior/típico/melhor): {forward.mcSimulation ? `${forward.mcSimulation.p10?.toFixed(0) ?? '—'} / ${forward.mcSimulation.p50?.toFixed(0) ?? '—'} / ${forward.mcSimulation.p90?.toFixed(0) ?? '—'}` : '—'}.
               </p>
               {forward.aiSuggestion?.rationale && (
                 <p className="text-[11px] text-slate-500 mt-2 italic">
-                  IA stub disse: "{forward.aiSuggestion.rationale}"
+                  Recomendação: "{forward.aiSuggestion.rationale}"
                 </p>
               )}
             </Section>
 
-            <Section title="⑦ Commit · Forward" badge={`${(forward.behavioralCommitments || []).length}/2`}>
+            <Section title="⑦ Compromissos para o próximo ciclo" badge={`${(forward.behavioralCommitments || []).length}/2`}>
               <ul className="text-sm text-slate-300 list-disc list-inside space-y-1">
                 {(forward.behavioralCommitments || []).map((c, i) => <li key={i}>{c}</li>)}
               </ul>
@@ -234,7 +431,8 @@ export default function MentorClosureView({ closure, onClose, onSaved, studentNa
             </Section>
           </div>
 
-          {/* Coluna lateral — comment panel */}
+          {/* Coluna lateral — comment panel (mentor-only) */}
+          {isMentorView && (
           <div className="col-span-1">
             <div className="glass-card p-5 sticky top-4 border border-blue-500/30">
               <div className="flex items-center gap-2 mb-3">
@@ -285,8 +483,8 @@ export default function MentorClosureView({ closure, onClose, onSaved, studentNa
               </div>
             </div>
           </div>
+          )}
         </div>
-      </div>
     </div>
   );
 }

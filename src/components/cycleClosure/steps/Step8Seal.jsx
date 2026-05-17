@@ -9,6 +9,7 @@
 
 import React, { useState } from 'react';
 import { Lock, AlertTriangle, CheckCircle, Award, ShieldAlert } from 'lucide-react';
+import { formatDateBR } from '../../../utils/renewalForecast';
 
 function Row({ label, value, status }) {
   const cls =
@@ -52,7 +53,10 @@ export default function Step8Seal({ draft, cycleStart, cycleEnd, onConfirm, conf
           <div>
             <h3 className="text-lg font-bold text-slate-100">Tudo pronto pro selo</h3>
             <p className="text-xs text-slate-500">
-              Confirma o resumo abaixo. Após selar, trades em [{cs} → {ce}] ficam imutáveis (só editáveis via reabertura com justificativa).
+              Confirma o resumo abaixo. Após selar, trades em [{cs} → {ce}] ficam travados (só liberados via reabertura com justificativa).
+            </p>
+            <p className="text-[11px] text-slate-600 mt-1">
+              Itens marcados <span className="text-slate-400">(opcional)</span> podem ficar vazios — você não é obrigado a escrever.
             </p>
           </div>
         </div>
@@ -72,33 +76,39 @@ export default function Step8Seal({ draft, cycleStart, cycleEnd, onConfirm, conf
             value={snap.tradesCount ?? '—'}
           />
           <Row
-            label="Trading Performance Score"
+            label="Nota geral do ciclo"
             value={tps != null ? `${Math.round(tps)} / 100` : '—'}
           />
           <Row
-            label="AAR (Q4)"
-            value={`${sustainCount} sustain · ${improveCount} improve`}
-            status={(sustainCount + improveCount) >= 1 ? 'ok' : 'warn'}
+            label="Lições do ciclo"
+            value={
+              (sustainCount + improveCount) === 0
+                ? 'não preenchido (opcional)'
+                : `${sustainCount} a manter · ${improveCount} a ajustar`
+            }
           />
           <Row
-            label="SWOT"
-            value={`${swotItems} itens`}
+            label="Pontos fortes / fracos / oportunidades / ameaças"
+            value={swotItems === 0 ? 'não preenchido (opcional)' : `${swotItems} itens mapeados`}
           />
           <Row
-            label="Decisão de plano"
+            label="Decisão para o próximo ciclo"
             value={planChanged
-              ? `ajustado (${forward?.planAdjustment?.decisionSource || 'manual_edit'})`
-              : 'manter'}
+              ? `plano ajustado (${
+                  forward?.planAdjustment?.decisionSource === 'ai_suggested' ? 'recomendação aceita' :
+                  forward?.planAdjustment?.decisionSource === 'manual_edit' ? 'editado por você' :
+                  forward?.planAdjustment?.decisionSource || 'manual'
+                })`
+              : 'manter o plano atual'}
             status={planChanged ? 'warn' : 'ok'}
           />
           <Row
             label="Compromissos"
-            value={`${commitments} de 2`}
-            status={commitments >= 1 ? 'ok' : 'error'}
+            value={commitments === 0 ? 'sem compromissos (opcional)' : `${commitments} de 2`}
           />
           <Row
-            label="Próxima review"
-            value={forward.nextReviewDate || '—'}
+            label="Vou revisitar em"
+            value={forward.nextReviewDate ? formatDateBR(forward.nextReviewDate) : '—'}
           />
         </div>
       </div>
@@ -110,13 +120,13 @@ export default function Step8Seal({ draft, cycleStart, cycleEnd, onConfirm, conf
           <div className="flex-1">
             <h4 className="font-semibold text-amber-100 mb-1">Antes de selar</h4>
             <ul className="text-xs text-slate-300 space-y-1 mb-4 list-disc list-inside">
-              <li>Trades dentro do ciclo ficam imutáveis (rejeitados em criar/editar/deletar)</li>
-              <li>Plano será atualizado: cycleNumber+1 + cache de hard seal</li>
+              <li>Os trades deste ciclo ficam travados — não dá mais para criar, editar ou apagar</li>
+              <li>Seu plano avança para o próximo ciclo automaticamente</li>
               {planChanged && (
-                <li>Plan adjustment aplicado: novo PL/risco/RR conforme decisão</li>
+                <li>Os ajustes que você decidiu no plano (capital, risco, RR) passam a valer no próximo ciclo</li>
               )}
-              <li>Closure aparece no perfil como "Capítulo {(snap.cycleNumber ?? '?')}"</li>
-              <li>Reabertura disponível depois — preserva versão original em <code className="bg-slate-800 px-1 rounded">originalSnapshot</code></li>
+              <li>Este ciclo entra no seu Currículo como <strong>Capítulo {snap.cycleNumber ?? '—'}</strong> — você pode revisitar quando quiser</li>
+              <li>Se precisar reabrir depois, dá — o app guarda esta versão original intacta para comparar</li>
             </ul>
 
             <label className="flex items-start gap-2 cursor-pointer">

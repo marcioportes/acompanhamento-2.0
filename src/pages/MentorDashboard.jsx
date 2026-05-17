@@ -670,7 +670,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
-      {activeView === 'closures' && (
+      {activeView === 'closures' && !viewingClosure && (
         <MentorClosuresInbox
           students={students}
           plansById={plans.reduce((acc, p) => { acc[p.id] = p; return acc; }, {})}
@@ -678,10 +678,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         />
       )}
 
-      {viewingClosure && (
+      {activeView === 'closures' && viewingClosure && (
         <MentorClosureView
           closure={viewingClosure._raw || viewingClosure}
           studentName={students.find((s) => s.studentId === viewingClosure.studentId)?.name}
+          viewerRole="mentor"
           onClose={() => setViewingClosure(null)}
           onSaved={() => setViewingClosure(null)}
         />

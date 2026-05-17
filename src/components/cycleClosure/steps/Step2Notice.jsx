@@ -1,8 +1,13 @@
 /**
  * Step2Notice.jsx — Etapa 2: Qualitative Pattern Review
  *
- * Read-only. Top 3 erros, contagem de eventos comportamentais V2,
- * curva emocional (avg/peak/valley), correlação tilt vs clean days.
+ * Read-only. Top 3 erros, contagem de eventos comportamentais V2 + execution,
+ * curva emocional (dias tilt vs limpos), correlação tilt vs clean days.
+ *
+ * Pipeline (issue #259 R2):
+ *   orders + trades → detectExecutionEvents → executionEvents[]
+ *   trades + executionEvents → analyzeEmotionsV2 → tilt/revenge/overtrading
+ *   eventos → counts agregados → patterns exposto ao draft
  *
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
  */
@@ -10,8 +15,10 @@
 import React, { useEffect, useMemo } from 'react';
 import { AlertTriangle, Smile, Frown, BarChart3 } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
+import useOrders from '../../../hooks/useOrders';
 import { topErrors } from '../../../utils/cycleClosure/cycleMetrics';
 import { analyzeEmotionsV2 } from '../../../utils/emotionalAnalysisV2';
+import { detectExecutionEvents, EVENT_TYPES } from '../../../utils/executionBehaviorEngine';
 import useMasterData from '../../../hooks/useMasterData';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
@@ -33,6 +40,7 @@ function StatChip({ label, value, tone = 'slate' }) {
 
 export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, onPatterns }) {
   const { trades = [], loading } = useTrades(studentId);
+  const { orders = [] } = useOrders(studentId);
   const { getEmotionConfig } = useMasterData();
 
   const cycleTrades = useMemo(
@@ -40,78 +48,154 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
     [trades, planId, cycleStart, cycleEnd],
   );
 
+  const cycleOrders = useMemo(
+    () => orders.filter((o) => o.planId === planId),
+    [orders, planId],
+  );
+
+  // Execution events — STOP_TAMPERING, RAPID_REENTRY_POST_STOP, HESITATION, etc.
+  // Sem isso, tilt/revenge ficam só com sinal de losses sequenciais — perde os padrões críticos.
+  const executionEvents = useMemo(() => {
+    if (cycleTrades.length === 0) return [];
+    try {
+      return detectExecutionEvents({ trades: cycleTrades, orders: cycleOrders });
+    } catch (e) {
+      console.warn('[Step2Notice] erro ao detectar execution events:', e);
+      return [];
+    }
+  }, [cycleTrades, cycleOrders]);
+
   const top3 = useMemo(() => topErrors(cycleTrades, 3), [cycleTrades]);
 
   const emotionalAnalysis = useMemo(() => {
     if (cycleTrades.length === 0) return null;
     try {
-      return analyzeEmotionsV2(cycleTrades, getEmotionConfig);
+      return analyzeEmotionsV2(cycleTrades, getEmotionConfig, undefined, { executionEvents });
     } catch (e) {
       console.warn('[Step2Notice] erro ao analisar emoções:', e);
       return null;
     }
-  }, [cycleTrades, getEmotionConfig]);
+  }, [cycleTrades, getEmotionConfig, executionEvents]);
 
-  // Curva emocional simplificada por dia
-  const emotionalByDay = useMemo(() => {
+  // Buckets por dia (resultado financeiro)
+  const tradesByDay = useMemo(() => {
     const buckets = new Map();
     for (const t of cycleTrades) {
       if (!t.date) continue;
-      if (!buckets.has(t.date)) buckets.set(t.date, { date: t.date, results: [], scores: [] });
-      buckets.get(t.date).results.push(typeof t.result === 'number' ? t.result : 0);
+      if (!buckets.has(t.date)) buckets.set(t.date, { date: t.date, trades: [] });
+      buckets.get(t.date).trades.push(t);
     }
-    const days = [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
-    return days;
+    return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
   }, [cycleTrades]);
 
-  // Eventos por tipo (aggregação)
-  const eventCounts = useMemo(() => {
-    if (!emotionalAnalysis) return { tilt: 0, revenge: 0, overtrading: 0, stopTampering: 0 };
-    return {
-      tilt: emotionalAnalysis.tilt?.events?.length ?? 0,
-      revenge: emotionalAnalysis.revenge?.events?.length ?? 0,
-      overtrading: emotionalAnalysis.overtrading?.events?.length ?? 0,
-      stopTampering: 0,    // execution sensors integram em A5+ se necessário
+  // Contadores agregados por tipo de execution event
+  const executionCounts = useMemo(() => {
+    const acc = {
+      stopTampering: 0, partialSizing: 0, rapidReentry: 0,
+      hesitationPreEntry: 0, chaseReentry: 0, breakevenTooEarly: 0, stopHesitation: 0,
     };
+    for (const ev of executionEvents) {
+      switch (ev.type) {
+        case EVENT_TYPES.STOP_TAMPERING:           acc.stopTampering++; break;
+        case EVENT_TYPES.STOP_PARTIAL_SIZING:      acc.partialSizing++; break;
+        case EVENT_TYPES.RAPID_REENTRY_POST_STOP:  acc.rapidReentry++; break;
+        case EVENT_TYPES.HESITATION_PRE_ENTRY:     acc.hesitationPreEntry++; break;
+        case EVENT_TYPES.CHASE_REENTRY:            acc.chaseReentry++; break;
+        case EVENT_TYPES.STOP_BREAKEVEN_TOO_EARLY: acc.breakevenTooEarly++; break;
+        case EVENT_TYPES.STOP_HESITATION:          acc.stopHesitation++; break;
+        default: break;
+      }
+    }
+    return acc;
+  }, [executionEvents]);
+
+  // Datas com tilt/revenge — usado pra cruzar com dias e medir custo emocional
+  const tiltDates = useMemo(() => {
+    const set = new Set();
+    if (emotionalAnalysis?.tilt?.sequences) {
+      for (const seq of emotionalAnalysis.tilt.sequences) {
+        if (Array.isArray(seq.trades)) {
+          for (const t of seq.trades) if (t.date) set.add(t.date);
+        }
+      }
+    }
+    return set;
   }, [emotionalAnalysis]);
 
-  // Correlação simples: result em dias com tilt vs sem
-  const correlation = useMemo(() => {
-    if (!emotionalAnalysis?.tilt?.events?.length) {
-      return {
-        performanceOnTiltDays: 0,
-        performanceOnCleanDays: cycleTrades.reduce((s, t) => s + (typeof t.result === 'number' ? t.result : 0), 0),
-        tiltDaysCount: 0,
-        cleanDaysCount: emotionalByDay.length,
-      };
+  const revengeDates = useMemo(() => {
+    const set = new Set();
+    if (emotionalAnalysis?.revenge?.instances) {
+      for (const inst of emotionalAnalysis.revenge.instances) {
+        const t = inst.trade || inst.triggerTrade;
+        if (t?.date) set.add(t.date);
+      }
     }
-    const tiltDates = new Set(emotionalAnalysis.tilt.events.map((e) => e.date));
-    let onTilt = 0, onClean = 0, tiltDays = 0, cleanDays = 0;
-    for (const day of emotionalByDay) {
-      const dayResult = day.results.reduce((s, v) => s + v, 0);
-      if (tiltDates.has(day.date)) { onTilt += dayResult; tiltDays++; }
-      else { onClean += dayResult; cleanDays++; }
+    return set;
+  }, [emotionalAnalysis]);
+
+  // Cleanest sequence + best day (insumos pra B2 Opportunities)
+  const dayBreakdown = useMemo(() => {
+    const clean = [];
+    const dirty = [];
+    let bestCleanDay = null;
+    let bestCleanPnl = -Infinity;
+    let cleanPnlSum = 0;
+    let dirtyPnlSum = 0;
+    for (const day of tradesByDay) {
+      const pnl = day.trades.reduce((s, t) => s + (typeof t.result === 'number' ? t.result : 0), 0);
+      const isDirty = tiltDates.has(day.date) || revengeDates.has(day.date);
+      if (isDirty) {
+        dirty.push({ date: day.date, pnl, trades: day.trades.length });
+        dirtyPnlSum += pnl;
+      } else {
+        clean.push({ date: day.date, pnl, trades: day.trades.length });
+        cleanPnlSum += pnl;
+        if (pnl > bestCleanPnl) { bestCleanPnl = pnl; bestCleanDay = { date: day.date, pnl, trades: day.trades.length }; }
+      }
     }
-    return {
-      performanceOnTiltDays: onTilt,
-      performanceOnCleanDays: onClean,
-      tiltDaysCount: tiltDays,
-      cleanDaysCount: cleanDays,
-    };
-  }, [emotionalAnalysis, emotionalByDay]);
+    return { cleanDays: clean, dirtyDays: dirty, bestCleanDay, cleanPnl: cleanPnlSum, dirtyPnl: dirtyPnlSum };
+  }, [tradesByDay, tiltDates, revengeDates]);
+
+  // Contagens centrais (consumidas por B2/B3/B4 via patterns no draft)
+  const eventCounts = useMemo(() => ({
+    tilt: emotionalAnalysis?.tilt?.sequences?.length ?? 0,
+    tiltDaysCount: tiltDates.size,
+    revenge: emotionalAnalysis?.revenge?.instances?.length ?? 0,
+    revengeDaysCount: revengeDates.size,
+    overtrading: emotionalAnalysis?.overtrading?.days?.filter((d) => d.isExceeded).length ?? 0,
+    overtradingWarnings: emotionalAnalysis?.overtrading?.days?.filter((d) => d.isWarning && !d.isExceeded).length ?? 0,
+    stopTampering: executionCounts.stopTampering,
+    rapidReentry: executionCounts.rapidReentry,
+    hesitation: executionCounts.hesitationPreEntry + executionCounts.stopHesitation,
+    chaseReentry: executionCounts.chaseReentry,
+    breakevenTooEarly: executionCounts.breakevenTooEarly,
+    partialSizing: executionCounts.partialSizing,
+  }), [emotionalAnalysis, tiltDates, revengeDates, executionCounts]);
+
+  // Correlação dias tilt × dias limpos (custo emocional)
+  const correlation = useMemo(() => ({
+    performanceOnTiltDays: dayBreakdown.dirtyPnl,
+    performanceOnCleanDays: dayBreakdown.cleanPnl,
+    tiltDaysCount: dayBreakdown.dirtyDays.length,
+    cleanDaysCount: dayBreakdown.cleanDays.length,
+  }), [dayBreakdown]);
 
   const patterns = useMemo(() => ({
     topErrors: top3.map((e) => e.type),
     eventCounts,
-    emotional: {
-      avg: null,         // calculado por daily score; deferido pra A5.x quando integrarmos
-      peak: null,
-      valley: null,
-    },
+    executionEvents: executionEvents.map((e) => ({
+      type: e.type, severity: e.severity, tradeId: e.tradeId, timestamp: e.timestamp,
+    })),
+    emotional: { avg: null, peak: null, valley: null },
     correlation,
+    dayBreakdown: {
+      cleanDays: dayBreakdown.cleanDays,
+      dirtyDays: dayBreakdown.dirtyDays,
+      bestCleanDay: dayBreakdown.bestCleanDay,
+    },
     bestTradeId: null,
     worstTradeId: null,
-  }), [top3, eventCounts, correlation]);
+  }), [top3, eventCounts, executionEvents, correlation, dayBreakdown]);
 
   useEffect(() => {
     if (cycleTrades.length > 0) onPatterns?.(patterns);
@@ -133,7 +217,14 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
     <div className="glass-card p-8 space-y-6">
       <div>
         <h3 className="text-xl font-bold mb-1">Padrões observados</h3>
-        <p className="text-sm text-slate-400">Auto-detectado dos motores Compliance V2 + Emotional V2.</p>
+        <p className="text-sm text-slate-400">
+          Auto-detectado dos motores Compliance V2 + Emotional V2 + Execution Behavior.
+          {cycleOrders.length === 0 && (
+            <span className="block text-[11px] text-amber-300/80 mt-1">
+              ⚠ Sem orders ingestadas neste plano — STOP_TAMPERING e RAPID_REENTRY não puderam ser detectados (ingestão por CSV é pré-requisito).
+            </span>
+          )}
+        </p>
       </div>
 
       {/* Top errors */}
@@ -142,7 +233,7 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
           <AlertTriangle className="w-4 h-4" /> Top 3 erros do ciclo
         </h4>
         {top3.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">Nenhuma violação registrada — limpo.</p>
+          <p className="text-sm text-slate-500 italic">Nenhuma violação registrada em compliance.</p>
         ) : (
           <div className="space-y-1.5">
             {top3.map((e, idx) => (
@@ -158,17 +249,25 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
         )}
       </section>
 
-      {/* Event counts */}
+      {/* Event counts — comportamental + execução */}
       <section>
         <h4 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
           <BarChart3 className="w-4 h-4" /> Eventos comportamentais
         </h4>
         <div className="grid grid-cols-4 gap-3">
-          <StatChip label="TILT" value={eventCounts.tilt} tone={eventCounts.tilt > 0 ? 'red' : 'slate'} />
-          <StatChip label="REVENGE" value={eventCounts.revenge} tone={eventCounts.revenge > 0 ? 'red' : 'slate'} />
-          <StatChip label="OVERTRADING" value={eventCounts.overtrading} tone={eventCounts.overtrading > 0 ? 'amber' : 'slate'} />
-          <StatChip label="STOP TAMPER" value={eventCounts.stopTampering} tone={eventCounts.stopTampering > 0 ? 'amber' : 'slate'} />
+          <StatChip label="Tilt"               value={eventCounts.tilt}              tone={eventCounts.tilt > 0 ? 'red' : 'slate'} />
+          <StatChip label="Vingança"           value={eventCounts.revenge}           tone={eventCounts.revenge > 0 ? 'red' : 'slate'} />
+          <StatChip label="Excesso de trades"  value={eventCounts.overtrading}       tone={eventCounts.overtrading > 0 ? 'amber' : 'slate'} />
+          <StatChip label="Stop deslocado"     value={eventCounts.stopTampering}     tone={eventCounts.stopTampering > 0 ? 'red' : 'slate'} />
         </div>
+        {(eventCounts.rapidReentry > 0 || eventCounts.hesitation > 0 || eventCounts.chaseReentry > 0 || eventCounts.breakevenTooEarly > 0) && (
+          <div className="grid grid-cols-4 gap-3 mt-2">
+            <StatChip label="Reentrada pós-stop" value={eventCounts.rapidReentry}    tone={eventCounts.rapidReentry > 0 ? 'red' : 'slate'} />
+            <StatChip label="Perseguição preço"  value={eventCounts.chaseReentry}    tone={eventCounts.chaseReentry > 0 ? 'amber' : 'slate'} />
+            <StatChip label="Hesitação"          value={eventCounts.hesitation}      tone={eventCounts.hesitation > 0 ? 'amber' : 'slate'} />
+            <StatChip label="Breakeven cedo"     value={eventCounts.breakevenTooEarly} tone={eventCounts.breakevenTooEarly > 0 ? 'amber' : 'slate'} />
+          </div>
+        )}
       </section>
 
       {/* Correlação tilt vs clean */}
@@ -179,7 +278,7 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
         </h4>
         {correlation.tiltDaysCount === 0 ? (
           <p className="text-sm text-slate-500 italic">
-            Sem dias detectados em TILT — performance dos {correlation.cleanDaysCount} dias clean: {' '}
+            Sem dias em tilt/vingança — resultado dos {correlation.cleanDaysCount} dias limpos:{' '}
             <span className={`mono font-semibold ${correlation.performanceOnCleanDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {correlation.performanceOnCleanDays >= 0 ? '+' : ''}R$ {correlation.performanceOnCleanDays.toFixed(0)}
             </span>
@@ -187,13 +286,13 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-800/30 rounded-xl p-3 border border-red-500/20">
-              <p className="text-[11px] text-slate-500 mb-1">Em dias com TILT ({correlation.tiltDaysCount})</p>
+              <p className="text-[11px] text-slate-500 mb-1">Em dias com tilt/vingança ({correlation.tiltDaysCount})</p>
               <p className={`text-xl font-bold mono ${correlation.performanceOnTiltDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {correlation.performanceOnTiltDays >= 0 ? '+' : ''}R$ {correlation.performanceOnTiltDays.toFixed(0)}
               </p>
             </div>
             <div className="bg-slate-800/30 rounded-xl p-3 border border-emerald-500/20">
-              <p className="text-[11px] text-slate-500 mb-1">Em dias clean ({correlation.cleanDaysCount})</p>
+              <p className="text-[11px] text-slate-500 mb-1">Em dias limpos ({correlation.cleanDaysCount})</p>
               <p className={`text-xl font-bold mono ${correlation.performanceOnCleanDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {correlation.performanceOnCleanDays >= 0 ? '+' : ''}R$ {correlation.performanceOnCleanDays.toFixed(0)}
               </p>

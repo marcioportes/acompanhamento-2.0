@@ -8,11 +8,59 @@
  */
 
 import React from 'react';
-import { BookOpen, Award, RotateCcw, GraduationCap, Users } from 'lucide-react';
+import { Award, RotateCcw, GraduationCap, Users, CalendarClock } from 'lucide-react';
+import { formatDateBR } from '../../utils/renewalForecast';
+
+const MONTH_LABELS_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+function cycleKeyToLabel(cycleKey) {
+  if (!cycleKey) return '—';
+  const monthly = cycleKey.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (monthly) return `${MONTH_LABELS_PT[parseInt(monthly[2], 10) - 1]} ${monthly[1]}`;
+  const quarter = cycleKey.match(/^(\d{4})-Q([1-4])$/);
+  if (quarter) return `${quarter[2]}º trimestre ${quarter[1]}`;
+  const semester = cycleKey.match(/^(\d{4})-S([12])$/);
+  if (semester) return `${semester[2]}º semestre ${semester[1]}`;
+  if (/^\d{4}$/.test(cycleKey)) return `Ano ${cycleKey}`;
+  return cycleKey;
+}
 
 function fmtPct(v, digits = 1) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+}
+
+function daysUntil(isoDate) {
+  if (!isoDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(isoDate);
+  if (Number.isNaN(target.getTime())) return null;
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function ReviewCommitment({ nextReviewDate, closureStatus }) {
+  if (!nextReviewDate || closureStatus !== 'CLOSED') return null;
+  const days = daysUntil(nextReviewDate);
+  if (days === null) return null;
+  const label =
+    days < 0 ? `atrasado ${-days}d` :
+    days === 0 ? 'é hoje' :
+    days <= 7 ? `em ${days}d` :
+    `em ${days}d`;
+  const tone =
+    days < 0 ? 'text-red-300' :
+    days <= 7 ? 'text-amber-300' :
+    'text-slate-400';
+  return (
+    <div className={`flex items-center gap-1.5 text-[11px] border-t border-slate-700/50 pt-2 mt-2 ${tone}`}>
+      <CalendarClock className="w-3.5 h-3.5" />
+      <span>Vou revisitar em {formatDateBR(nextReviewDate)} · {label}</span>
+    </div>
+  );
 }
 
 function StatusBadge({ status }) {
@@ -63,17 +111,13 @@ export default function ClosureChapterCard({ closure, onClick }) {
       className={`text-left glass-card p-4 border ${accentCls} hover:bg-slate-800/50 transition group w-full`}
     >
       <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-slate-500" />
-          <p className="text-xs uppercase tracking-wider text-slate-500">Capítulo {closure.cycleNumber ?? '?'}</p>
-        </div>
+        <p className="text-lg font-bold text-slate-100">{cycleKeyToLabel(closure.cycleKey)}</p>
         <div className="flex items-center gap-1.5">
           <ModeBadge closeMode={closure.closeMode} />
           <StatusBadge status={closure.status} />
         </div>
       </div>
 
-      <p className="text-lg font-bold text-slate-100">{closure.cycleKey}</p>
       <p className="text-[11px] text-slate-500 mb-3">{closure.cycleStart} → {closure.cycleEnd}</p>
 
       <div className="grid grid-cols-3 gap-2 text-xs mb-3">
@@ -82,9 +126,9 @@ export default function ClosureChapterCard({ closure, onClick }) {
           <p className={`font-semibold mono ${resultCls}`}>{fmtPct(snap.resultPercent)}</p>
         </div>
         <div>
-          <p className="text-slate-500 text-[10px]">TPS</p>
+          <p className="text-slate-500 text-[10px]">Nota geral</p>
           <p className="font-semibold mono text-slate-200">
-            {typeof tps === 'number' ? Math.round(tps) : '—'}
+            {typeof tps === 'number' ? `${Math.round(tps)}/100` : '—'}
           </p>
         </div>
         <div>
@@ -98,9 +142,14 @@ export default function ClosureChapterCard({ closure, onClick }) {
           <Award className="w-3.5 h-3.5" />
           {overrideApplied
             ? `Promoção aplicada (override de mentor)`
-            : `Stage promotion eligível neste ciclo`}
+            : `Pronto para promoção de estágio neste ciclo`}
         </div>
       )}
+
+      <ReviewCommitment
+        nextReviewDate={closure.forward?.nextReviewDate}
+        closureStatus={closure.status}
+      />
     </button>
   );
 }

@@ -101,7 +101,11 @@ function calcMaxDrawdown(trades, initialBalance = 0) {
       maxDDDate = trade.date;
     }
   }
-  const maxDDPercent = initialBalance > 0 ? (maxDD / initialBalance) * 100 : 0;
+  // R2.B11: fallback null em vez de 0. Quando initialBalance é falsy/zero,
+  // não podemos calcular o percentual — devolvemos null pra que evaluateGates
+  // marque como METRIC_UNAVAILABLE (gate cinza "aguardando dados") em vez de
+  // ✓ verde por bug de comparação (0 ≤ 5).
+  const maxDDPercent = initialBalance > 0 ? (maxDD / initialBalance) * 100 : null;
   return { maxDD, maxDDPercent, maxDDDate };
 }
 

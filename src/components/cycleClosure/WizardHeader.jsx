@@ -9,31 +9,41 @@
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
  */
 
-import React, { useMemo } from 'react';
-import { GraduationCap } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { GraduationCap, Trash2 } from 'lucide-react';
 
-const STEP_LABELS = ['Read', 'Notice', 'Reflect', 'Map', 'Check', 'Adjust', 'Commit', 'Seal'];
+const STEP_LABELS = ['Ler', 'Observar', 'Refletir', 'Mapear', 'Avaliar', 'Ajustar', 'Comprometer', 'Selar'];
+
+// Etapas 3, 4, 7 são opcionais — aluno pode pular sem bloquear o selo.
+const OPTIONAL_STEPS = new Set([3, 4, 7]);
 
 function StepDot({ index, status, currentStep, onClick }) {
   const stepNum = index + 1;
+  const isOptional = OPTIONAL_STEPS.has(stepNum);
   const baseCls = 'w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all';
   let cls;
   if (status === 'done') cls = `${baseCls} bg-emerald-500 text-white`;
   else if (stepNum === currentStep) cls = `${baseCls} bg-blue-500 text-white ring-4 ring-blue-500/25`;
-  else cls = `${baseCls} bg-slate-800/60 text-slate-500 border border-slate-700/50`;
+  else cls = `${baseCls} bg-slate-800/60 text-slate-500 border ${isOptional ? 'border-slate-700/50 border-dashed' : 'border-slate-700/50'}`;
 
   const clickable = status === 'done' || stepNum === currentStep;
+  const requirementLabel = isOptional ? 'opcional' : 'obrigatória';
   return (
-    <button
-      type="button"
-      onClick={clickable ? () => onClick(stepNum) : undefined}
-      disabled={!clickable}
-      className={`${cls} ${clickable ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed'}`}
-      aria-label={`Etapa ${stepNum} ${STEP_LABELS[index]} — ${status}`}
-      title={`${stepNum}. ${STEP_LABELS[index]}`}
-    >
-      {status === 'done' ? '✓' : stepNum}
-    </button>
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={clickable ? () => onClick(stepNum) : undefined}
+        disabled={!clickable}
+        className={`${cls} ${clickable ? 'cursor-pointer hover:scale-110' : 'cursor-not-allowed'}`}
+        aria-label={`Etapa ${stepNum} ${STEP_LABELS[index]} (${requirementLabel}) — ${status}`}
+        title={`${stepNum}. ${STEP_LABELS[index]} (${requirementLabel})`}
+      >
+        {status === 'done' ? '✓' : stepNum}
+      </button>
+      <span className={`text-[9px] uppercase tracking-wider ${isOptional ? 'text-slate-600' : 'text-slate-500'}`}>
+        {STEP_LABELS[index]}
+      </span>
+    </div>
   );
 }
 
@@ -59,7 +69,9 @@ export default function WizardHeader({
   closeMode = 'self',
   onCloseModeChange,
   draftUpdatedAt = null,
+  onDiscardDraft,
 }) {
+  const [discardConfirm, setDiscardConfirm] = useState(false);
   const toneClass = useMemo(() => {
     switch (resultBadge?.tone) {
       case 'emerald': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
@@ -118,14 +130,45 @@ export default function WizardHeader({
               className="bg-slate-800/50 border border-slate-700/50 rounded-lg px-2 py-1 text-xs text-slate-200 cursor-pointer"
               aria-label="Modo de fechamento"
             >
-              <option value="demonstrated">demonstrated (mentor sozinho)</option>
-              <option value="co_edited">co_edited (juntos)</option>
+              <option value="demonstrated">demonstrado (mentor sozinho)</option>
+              <option value="co_edited">co-fechado (juntos)</option>
             </select>
           )}
           {draftUpdatedAt && (
             <span className="text-xs text-slate-600">
               💾 salvo às {formatTimestamp(draftUpdatedAt)}
             </span>
+          )}
+          {onDiscardDraft && (
+            discardConfirm ? (
+              <span className="inline-flex items-center gap-1 text-[11px]">
+                <span className="text-slate-400">Apagar rascunho?</span>
+                <button
+                  type="button"
+                  onClick={() => { setDiscardConfirm(false); onDiscardDraft(); }}
+                  className="px-2 py-0.5 rounded border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 transition"
+                >
+                  Sim, apagar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscardConfirm(false)}
+                  className="px-2 py-0.5 rounded border border-slate-700/40 text-slate-400 hover:bg-slate-800/40 transition"
+                >
+                  Cancelar
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDiscardConfirm(true)}
+                className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-300 transition"
+                title="Apaga snapshot/AAR/SWOT/commitments deste rascunho"
+              >
+                <Trash2 className="w-3 h-3" />
+                Descartar rascunho
+              </button>
+            )
           )}
         </div>
       </div>

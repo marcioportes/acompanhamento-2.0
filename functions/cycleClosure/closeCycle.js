@@ -27,7 +27,6 @@ const admin = require('firebase-admin');
 const {
   isMentor,
   validateClosurePayload,
-  validateRoleCloseMode,
   buildClosureId,
 } = require('./validators');
 
@@ -61,8 +60,11 @@ module.exports = onCall(
     // role === 'mentor' não tem restrição adicional hoje (mentor único = Marcio).
     // Quando houver múltiplos mentores, validar `mentor.studentIds INCLUDES studentId`.
 
-    // Validação role ↔ closeMode coerente
-    asHttpsValidator(validateRoleCloseMode)(role, payload.closeMode);
+    // Servidor decide closeMode a partir do role autenticado.
+    // Cliente não precisa mandar; se mentor mandar 'co_edited', respeitamos como hint.
+    payload.closeMode = role === 'student'
+      ? 'self'
+      : (payload.closeMode === 'co_edited' ? 'co_edited' : 'demonstrated');
 
     const closureId = asHttpsValidator(() => buildClosureId(payload.planId, payload.cycleKey))();
     const db = admin.firestore();
@@ -94,6 +96,55 @@ module.exports = onCall(
           );
         }
 
+        // Behavioral summary — derivado de patterns + forward.aiSuggestion.
+        // Persistir aqui evita recálculo no front e dá ao inbox de mentor um campo
+        // queryable pra priorizar items críticos (REGRA 0 do advisor).
+        const counts = payload.patterns?.eventCounts || {};
+        const breach = payload.snapshot?.stopBreach || {};
+        const ai = payload.forward?.aiSuggestion || {};
+        const isCritical = ai.triggeredRule === 'pause_restructure';
+        const severity =
+          isCritical ? 'critical' :
+          (breach.severity && breach.severity !== 'clean') ? breach.severity :
+          ((counts.tilt || 0) + (counts.revenge || 0) + (counts.stopTampering || 0)) > 0 ? 'minor' :
+          'clean';
+
+        // Denial flag (R2.B10) — aluno atribui resultado a sorte/mercado em ciclo
+        // crítico apesar de erros internos detectados. Sinaliza ao mentor que vai
+        // precisar fazer o diálogo de ancoragem em fatos no review.
+        const detectedInternalErrors =
+          (counts.tilt || 0) > 0 ||
+          (counts.revenge || 0) > 0 ||
+          (counts.stopTampering || 0) > 0 ||
+          (breach.tradesAfterStop || 0) > 0;
+        const attrs = Array.isArray(payload.aar?.whyDifference?.attributions)
+          ? payload.aar.whyDifference.attributions
+          : [];
+        const onlyExternalAttribution =
+          attrs.length > 0 &&
+          !attrs.includes('error') &&
+          (attrs.includes('luck') || attrs.includes('market'));
+        const denialFlag = isCritical && detectedInternalErrors && onlyExternalAttribution;
+
+        const behavioralSummary = {
+          tilt: counts.tilt || 0,
+          tiltDaysCount: counts.tiltDaysCount || 0,
+          revenge: counts.revenge || 0,
+          overtrading: counts.overtrading || 0,
+          stopTampering: counts.stopTampering || 0,
+          rapidReentry: counts.rapidReentry || 0,
+          stopBreachIndex: breach.stopBreachIndex ?? -1,
+          tradesAfterStop: breach.tradesAfterStop || 0,
+          pnlAfterStop: breach.pnlAfterStop || 0,
+          pnlPctOfStop: breach.pnlPctOfStop ?? null,
+          cycleStopViolated: (breach.stopBreachIndex ?? -1) !== -1,
+          critical: isCritical,
+          notifyMentor: !!ai.notifyMentor,
+          severity,
+          triggeredRule: ai.triggeredRule || null,
+          denialFlag,
+        };
+
         // Build closure doc
         const now = admin.firestore.FieldValue.serverTimestamp();
         const closureDoc = {
@@ -116,6 +167,7 @@ module.exports = onCall(
           mentor: payload.mentor,
           forward: payload.forward,
           notes: payload.notes ?? null,
+          behavioralSummary,
 
           // Status + reopen
           status: 'CLOSED',

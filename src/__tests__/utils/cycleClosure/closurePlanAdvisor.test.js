@@ -149,4 +149,143 @@ describe('ADVISOR_THRESHOLDS', () => {
     expect(ADVISOR_THRESHOLDS.DD_RATIO_DANGER).toBe(0.70);
     expect(ADVISOR_THRESHOLDS.RULE_ADHERENCE_DANGER).toBe(0.90);
   });
+  it('thresholds R2 — PAUSA (REGRA 0)', () => {
+    expect(ADVISOR_THRESHOLDS.PAUSE_TRADES_AFTER_STOP_MIN).toBe(3);
+    expect(ADVISOR_THRESHOLDS.PAUSE_TILT_DAYS_MIN).toBe(5);
+    expect(ADVISOR_THRESHOLDS.PAUSE_REVENGE_MIN).toBe(3);
+    expect(ADVISOR_THRESHOLDS.PAUSE_STOP_TAMPERING_MIN).toBe(2);
+    expect(ADVISOR_THRESHOLDS.PAUSE_LOSS_RATIO_OF_STOP).toBe(1.5);
+  });
+});
+
+describe('REGRA 0 — pause_restructure (R2)', () => {
+  it('dispara quando trades pós-stop ≥ 3', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 80, kellySafe: 0.06, expectancy_R: 0.4 },
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: {},
+      stopBreach: { stopBreachIndex: 5, tradesAfterStop: 7, pnlPctOfStop: 2.8, severity: 'critical' },
+      snapshotPlEnd: 47213,
+    });
+    expect(out.triggeredRule).toBe('pause_restructure');
+    expect(out.newRiskPerOp).toBe(0);
+    expect(out.newRiskRS).toBe(0);
+    expect(out.notifyMentor).toBe(true);
+    expect(out.rationale).toMatch(/pausar/i);
+    expect(out.rationale).toMatch(/\+7 trade/);
+    expect(out.risks.length).toBeGreaterThan(0);
+  });
+
+  it('dispara quando tilt ≥ 5 dias', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 80, kellySafe: 0.04, expectancy_R: 0.2 },
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { tiltDaysCount: 6 },
+      stopBreach: {},
+    });
+    expect(out.triggeredRule).toBe('pause_restructure');
+    expect(out.notifyMentor).toBe(true);
+    expect(out.rationale).toMatch(/6 dias/);
+  });
+
+  it('dispara quando perda final ≥ 1.5× stop planejado', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 80, kellySafe: 0.04, expectancy_R: 0.2 },
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: {},
+      stopBreach: { stopBreachIndex: 8, tradesAfterStop: 1, pnlPctOfStop: 2.8 },  // 2.8× cap
+    });
+    expect(out.triggeredRule).toBe('pause_restructure');
+  });
+
+  it('cenário CRÍTICO de março (massa de teste) — múltiplos triggers', () => {
+    // 32 trades, WR 37.5%, P&L -13.9%, stop 5%, viol em #7, +7 trades pós-breach,
+    // 11 dias plantados com TILT/REVENGE/STOP_TAMPERING.
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 32, kellySafe: 0.012, expectancy_R: -0.35 },
+      maxDDPercent: 0.14,
+      ruleAdherenceRate: 0.65,
+      currentPlan: { pl: 20000, riskPerOperation: 1, rrTarget: 2, cycleStop: 5 },
+      regression: ['financial'],
+      behavioralCounts: { tilt: 4, tiltDaysCount: 6, revenge: 3, stopTampering: 2, overtrading: 2 },
+      stopBreach: { stopBreachIndex: 6, tradesAfterStop: 7, pnlAfterStop: -1500, pnlPctOfStop: 2.78, severity: 'critical' },
+      snapshotPlEnd: 17213,
+      cycleResultPct: -13.9,
+    });
+    expect(out.triggeredRule).toBe('pause_restructure');
+    expect(out.newRiskPerOp).toBe(0);
+    expect(out.notifyMentor).toBe(true);
+    expect(out.baseCapital).toBe(17213);   // capital base = plEnd, não plan.pl
+  });
+
+  it('NÃO dispara em ciclo equilibrado (zero triggers)', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.025,
+      ruleAdherenceRate: 0.92,
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { tilt: 0, revenge: 0, stopTampering: 0 },
+      stopBreach: { stopBreachIndex: -1, tradesAfterStop: 0 },
+    });
+    expect(out.triggeredRule).not.toBe('pause_restructure');
+  });
+});
+
+describe('Capital base — R2', () => {
+  it('usa snapshotPlEnd quando disponível, não plan.pl', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.025,
+      ruleAdherenceRate: 0.92,
+      currentPlan: PLAN,
+      regression: [],
+      snapshotPlEnd: 45000,    // depois de uma perda de 5k em 50k
+    });
+    expect(out.baseCapital).toBe(45000);
+  });
+
+  it('cai pra plan.pl se snapshotPlEnd null', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.025,
+      ruleAdherenceRate: 0.92,
+      currentPlan: PLAN,
+      regression: [],
+    });
+    expect(out.baseCapital).toBe(PLAN.pl);
+  });
+});
+
+describe('REGRA 3 expandida — scale_down absorve sinais menores (R2)', () => {
+  it('dispara com 2 dias de tilt mesmo sem DD+adherence danger', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.02,
+      ruleAdherenceRate: 0.95,
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { tiltDaysCount: 2 },
+      stopBreach: {},
+    });
+    expect(out.triggeredRule).toBe('scale_down');
+    expect(out.newRiskPerOp).toBe(0.75);
+    expect(out.rationale).toMatch(/2 dia/);
+  });
+
+  it('dispara com 1× stop tampering', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.02,
+      ruleAdherenceRate: 0.95,
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { stopTampering: 1 },
+      stopBreach: {},
+    });
+    expect(out.triggeredRule).toBe('scale_down');
+  });
 });

@@ -1,17 +1,19 @@
 /**
- * useMentorClosureInbox.js — inbox de closures pendentes de comentário pelo mentor.
+ * useMentorClosureInbox.js — inbox de closures do mentor.
  *
- * Subscription a cycleClosures CLOSED nos últimos 7 dias sem mentor.closingComment.
- * "no comment" automático: closures com closedAt < now-7d saem do inbox via filtro
- * client-side (não precisa job/trigger).
+ * Dois modos:
+ *  - 'pending' (default): janela 7d após selo, sem mentor.closingComment.
+ *    "no comment" automático: closures com closedAt < now-7d saem via filtro.
+ *  - 'all': todos closures CLOSED (sem janela, sem filtro de comentário).
  *
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
  *
- * Tone do semáforo (urgência):
+ * Tone do semáforo (urgência, só faz sentido em 'pending'):
  *   ≤2d  → red    (vencendo)
  *   3-5d → amber  (atenção)
  *   6-7d → emerald (folga)
  *
+ * @param {{ mode?: 'pending' | 'all' }} [opts]
  * @returns {{ inbox, pendingCount, loading }}
  */
 
@@ -31,19 +33,27 @@ function urgencyTone(daysRemaining) {
   return 'emerald';
 }
 
-export function useMentorClosureInbox() {
+export function useMentorClosureInbox({ mode = 'pending' } = {}) {
   const [closures, setClosures] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    // Subscription a closures CLOSED dos últimos 7 dias
-    const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - WINDOW_DAYS * MS_PER_DAY));
-    const q = query(
-      collection(db, 'cycleClosures'),
-      where('status', '==', 'CLOSED'),
-      where('closedAt', '>=', sevenDaysAgo),
-    );
+    // 'pending': subscribe à janela 7d; 'all': todos CLOSED
+    let q;
+    if (mode === 'all') {
+      q = query(
+        collection(db, 'cycleClosures'),
+        where('status', '==', 'CLOSED'),
+      );
+    } else {
+      const sevenDaysAgo = Timestamp.fromDate(new Date(Date.now() - WINDOW_DAYS * MS_PER_DAY));
+      q = query(
+        collection(db, 'cycleClosures'),
+        where('status', '==', 'CLOSED'),
+        where('closedAt', '>=', sevenDaysAgo),
+      );
+    }
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -56,7 +66,7 @@ export function useMentorClosureInbox() {
       },
     );
     return () => unsub();
-  }, []);
+  }, [mode]);
 
   const inbox = useMemo(() => {
     const now = Date.now();
@@ -66,13 +76,18 @@ export function useMentorClosureInbox() {
         if (!closedAt) return null;
 
         const closingCommented = !!(c.mentor?.closingComment && c.mentor.closingComment.trim().length > 0);
-        if (closingCommented) return null;
+        // No modo 'pending', esconde closures já comentados; no 'all', mantém tudo.
+        if (mode === 'pending' && closingCommented) return null;
 
         const elapsedMs = now - closedAt.getTime();
         const daysRemaining = Math.max(0, Math.ceil((WINDOW_DAYS * MS_PER_DAY - elapsedMs) / MS_PER_DAY));
-        if (daysRemaining === 0) return null;     // expirou — sai do inbox
+        // No 'pending', closures fora da janela 7d somem (já fora do query, defensivo); 'all' mantém.
+        if (mode === 'pending' && daysRemaining === 0) return null;
 
-        const tone = urgencyTone(daysRemaining);
+        const behavioral = c.behavioralSummary || null;
+        const isCritical = !!behavioral?.critical;
+        // R2: items críticos sobem para tone 'red' independente da janela — sinalizam blow-up risk
+        const tone = isCritical ? 'red' : (mode === 'pending' ? urgencyTone(daysRemaining) : 'slate');
 
         // Resumo das métricas-chave pra UI
         const tps = c.metrics?.tradingPerformanceScore ?? null;
@@ -92,6 +107,7 @@ export function useMentorClosureInbox() {
           closedAt,
           daysRemaining,
           tone,
+          isCritical,
           closeMode: c.closeMode || 'self',
           summary: {
             tps,
@@ -99,15 +115,39 @@ export function useMentorClosureInbox() {
             tradesCount,
             promotionEligible,
             regression,
+            behavioral,
           },
           _raw: c,        // doc completo pra MentorClosureView usar
         };
       })
       .filter(Boolean)
-      .sort((a, b) => a.daysRemaining - b.daysRemaining);   // mais urgentes primeiro
-  }, [closures]);
+      .sort((a, b) => {
+        // Críticos sempre no topo
+        if (a.isCritical && !b.isCritical) return -1;
+        if (!a.isCritical && b.isCritical) return 1;
+        return mode === 'pending'
+          ? a.daysRemaining - b.daysRemaining        // mais urgentes primeiro
+          : b.closedAt - a.closedAt;                 // mais recentes primeiro
+      });
+  }, [closures, mode]);
 
-  return { inbox, pendingCount: inbox.length, loading };
+  // pendingCount sempre conta closures dentro da janela 7d sem comentário
+  // (mesmo em modo 'all'), para o badge do menu manter o significado de "pendente".
+  const pendingCount = useMemo(() => {
+    if (mode === 'pending') return inbox.length;
+    const now = Date.now();
+    return closures.reduce((n, c) => {
+      const closedAt = c.closedAt?.toDate ? c.closedAt.toDate() : c.closedAt ? new Date(c.closedAt) : null;
+      if (!closedAt) return n;
+      const commented = !!(c.mentor?.closingComment && c.mentor.closingComment.trim().length > 0);
+      if (commented) return n;
+      const elapsedMs = now - closedAt.getTime();
+      if (elapsedMs >= WINDOW_DAYS * MS_PER_DAY) return n;
+      return n + 1;
+    }, 0);
+  }, [inbox, closures, mode]);
+
+  return { inbox, pendingCount, loading };
 }
 
 export default useMentorClosureInbox;

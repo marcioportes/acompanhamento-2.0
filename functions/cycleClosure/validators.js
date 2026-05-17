@@ -29,6 +29,10 @@ const CLOSE_MODES = ['self', 'demonstrated', 'co_edited'];
 const isCloseMode = (v) => CLOSE_MODES.includes(v);
 
 /**
+ * @deprecated Servidor agora decide closeMode em closeCycle.js a partir do role
+ * autenticado, então este gate não é mais invocado em produção. Mantido como
+ * utilitário pra eventuais testes futuros ou re-introdução.
+ *
  * Regra: closeMode coerente com role.
  *  - student → 'self'
  *  - mentor  → 'demonstrated' | 'co_edited'
@@ -73,10 +77,8 @@ const validateClosurePayload = (payload) => {
     }
   }
 
-  // closeMode (validado contra role no callable, depois de saber quem está chamando)
-  if (!isCloseMode(payload.closeMode)) {
-    throw new Error(`closeMode inválido: '${payload.closeMode}' (esperado: ${CLOSE_MODES.join(' | ')})`);
-  }
+  // closeMode NÃO é validado aqui — servidor decide o valor em closeCycle.js
+  // a partir do role autenticado, ignorando/sobrescrevendo o que o cliente mandou.
 
   return true;
 };

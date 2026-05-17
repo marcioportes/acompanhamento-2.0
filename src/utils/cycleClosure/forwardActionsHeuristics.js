@@ -40,6 +40,12 @@ const ERROR_TO_COMMITMENT = Object.freeze({
 });
 
 const VALLEY_TO_COMMITMENT = Object.freeze({
+  // Críticos (issue #259 R2) — vêm primeiro porque cortam o padrão autodestrutivo
+  STOP_VIOLATION: 'Auto-bloqueio: após hit do stop do ciclo, app rejeita add-trade até o próximo ciclo',
+  STOP_TAMPERING_SYS: 'Stop é commit pré-trade: alterar SL após entry não é permitido',
+  TILT_SYSTEMIC: 'Pausa de 24h após qualquer dia com tilt detectado (gate disciplinar)',
+
+  // Originais
   TILT:        'Hard stop do dia após 3 losses consecutivos (auto-lock pelo app)',
   REVENGE:     'Após stop, fechar plataforma por 15min antes de qualquer ação',
   OVERTRADING: 'Limite máximo de trades por dia conforme plano (gate na UI)',
@@ -62,18 +68,29 @@ export function suggestCommitmentFromTopError(topErrorsList) {
 }
 
 /**
- * Sugestão 2 — derivada do valley emocional do ciclo.
+ * Sugestão 2 — derivada do valley emocional / sinais críticos do ciclo.
+ *
+ * R2 (#259): prioridade reordenada para que sinais críticos (violação de stop
+ * com trades pós-breach, stop tampering repetido, tilt sistêmico) venham antes
+ * de revenge/tilt isolado. Esses commitments são "auto-defesa" pro próximo ciclo.
  *
  * @param {Object} input
  * @param {Object} input.emotional               — saída de patterns.emotional
  * @param {Object} input.emotional.valley        — { date, score }
- * @param {Object} input.eventCounts             — { tilt, revenge, overtrading, stopTampering }
+ * @param {Object} input.eventCounts             — { tilt, tiltDaysCount, revenge, overtrading, stopTampering, ... }
+ * @param {Object} input.stopBreach              — { tradesAfterStop, severity }
  * @returns {string|null}
  */
-export function suggestCommitmentFromValley({ emotional, eventCounts }) {
+export function suggestCommitmentFromValley({ emotional, eventCounts, stopBreach }) {
   const counts = eventCounts || {};
+  const breach = stopBreach || {};
 
-  // Prioridade: REVENGE > TILT > OVERTRADING > fallback emocional
+  // Prioridade R2 — críticos primeiro
+  if (breach.tradesAfterStop >= 1) return VALLEY_TO_COMMITMENT.STOP_VIOLATION;
+  if ((counts.stopTampering ?? 0) >= 1) return VALLEY_TO_COMMITMENT.STOP_TAMPERING_SYS;
+  if ((counts.tiltDaysCount ?? 0) >= 3) return VALLEY_TO_COMMITMENT.TILT_SYSTEMIC;
+
+  // Originais
   if ((counts.revenge ?? 0) > 0) return VALLEY_TO_COMMITMENT.REVENGE;
   if ((counts.tilt ?? 0) > 0) return VALLEY_TO_COMMITMENT.TILT;
   if ((counts.overtrading ?? 0) > 0) return VALLEY_TO_COMMITMENT.OVERTRADING;
@@ -92,15 +109,18 @@ export function suggestCommitmentFromValley({ emotional, eventCounts }) {
  * @param {Array} input.topErrorsList
  * @param {Object} input.emotional
  * @param {Object} input.eventCounts
+ * @param {Object} input.stopBreach
  * @returns {Array<string>} 0..2 commitments
  */
-export function suggestForwardCommitments({ topErrorsList, emotional, eventCounts }) {
+export function suggestForwardCommitments({ topErrorsList, emotional, eventCounts, stopBreach }) {
   const out = [];
+  // R2: valley/críticos primeiro — se houve violação de stop ou tilt sistêmico, esse é
+  // o commitment de maior prioridade. Erro de compliance vira segundo.
+  const fromValley = suggestCommitmentFromValley({ emotional, eventCounts, stopBreach });
   const fromError = suggestCommitmentFromTopError(topErrorsList);
-  const fromValley = suggestCommitmentFromValley({ emotional, eventCounts });
 
-  if (fromError) out.push(fromError);
-  if (fromValley && fromValley !== fromError) out.push(fromValley);
+  if (fromValley) out.push(fromValley);
+  if (fromError && fromError !== fromValley) out.push(fromError);
   return out.slice(0, 2);
 }
 

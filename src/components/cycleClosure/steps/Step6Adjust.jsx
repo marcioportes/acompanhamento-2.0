@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Edit3, MinusCircle, CheckCircle, Zap, BarChart2 } from 'lucide-react';
+import { Sparkles, Edit3, MinusCircle, CheckCircle, Zap, BarChart2, AlertOctagon } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
 import { usePlans } from '../../../hooks/usePlans';
 import { computeKelly } from '../../../utils/cycleClosure/kellyCalculator';
@@ -60,6 +60,7 @@ export default function Step6Adjust({
   cycleEnd,
   metrics,
   snapshot,
+  patterns,
   forward,
   maturityRegression,
   onChange,
@@ -102,9 +103,16 @@ export default function Step6Adjust({
         rrTarget: plan.rrTarget, cycleStop: plan.cycleStop,
       } : null,
       regression: maturityRegression || [],
+      behavioralCounts: patterns?.eventCounts || {},
+      stopBreach: snapshot?.stopBreach || null,
+      snapshotPlEnd: snapshot?.plEnd,
+      cycleResultPct: snapshot?.resultPercent,
     }),
-    [kelly, metrics, plan, maturityRegression],
+    [kelly, metrics, plan, maturityRegression, patterns, snapshot],
   );
+
+  const isCritical = advice.triggeredRule === 'pause_restructure';
+  const baseCapital = advice.baseCapital ?? plan?.pl;
 
   // Snapshot info no draft.forward
   useEffect(() => {
@@ -121,7 +129,9 @@ export default function Step6Adjust({
       } : null,
       aiSuggestion: {
         newPl: advice.newPl, newRisk: advice.newRiskPerOp, newRRTarget: advice.newRRTarget,
+        newRiskRS: advice.newRiskRS, baseCapital: advice.baseCapital,
         rationale: advice.rationale, risks: advice.risks,
+        triggeredRule: advice.triggeredRule, notifyMentor: advice.notifyMentor,
         source: advice.source,
       },
     });
@@ -191,35 +201,89 @@ export default function Step6Adjust({
 
   return (
     <div className="space-y-4">
+      {/* Banner crítico — PAUSAR (REGRA 0) */}
+      {isCritical && (
+        <div className="glass-card p-5 border-2 border-red-500/60 bg-gradient-to-br from-red-500/15 to-red-500/5">
+          <div className="flex items-start gap-3">
+            <div className="bg-red-500/30 text-red-300 rounded-xl p-2.5 flex-shrink-0">
+              <AlertOctagon className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-baseline gap-2 mb-1">
+                <h4 className="text-lg font-bold text-red-200">🚨 PAUSAR antes de operar o próximo ciclo</h4>
+                <span className="badge bg-red-500/30 text-red-200 border border-red-500/60 text-[10px]">crítico</span>
+              </div>
+              <p className="text-sm text-slate-200 leading-relaxed">{advice.rationale}</p>
+              {advice.risks?.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-red-200/80 pl-4 list-disc">
+                  {advice.risks.map((r, i) => (<li key={i}>{r}</li>))}
+                </ul>
+              )}
+              <p className="text-[11px] text-red-200/70 mt-3">
+                Mentor notificado automaticamente no inbox · você ainda pode editar manualmente abaixo, mas isso fica registrado.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Capital base — mostra comparação quando difere */}
+      {typeof baseCapital === 'number' && typeof plan?.pl === 'number' && baseCapital !== plan.pl && (
+        <div className="glass-card p-4 border border-slate-700/50 bg-slate-800/30">
+          <p className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Capital base para o próximo ciclo</p>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <p className="text-2xl font-bold text-slate-100 mono">R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs text-slate-500">
+              capital pré-ciclo R$ {plan.pl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+              {' · '}
+              <span className={baseCapital < plan.pl ? 'text-red-400' : 'text-emerald-400'}>
+                {baseCapital < plan.pl ? '−' : '+'}{Math.abs(((baseCapital - plan.pl) / plan.pl) * 100).toFixed(1)}%
+              </span>
+            </p>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2">
+            R do próximo ciclo recalculado sobre o saldo real — não sobre o capital inicial do plano.
+          </p>
+        </div>
+      )}
+
       {/* Kelly + MC */}
       <div className="grid grid-cols-2 gap-4">
         <div className="glass-card p-5">
           <div className="flex items-baseline justify-between mb-3">
             <h4 className="font-semibold text-slate-200 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-purple-400" /> Kelly fraction (Quarter)
+              <Zap className="w-4 h-4 text-purple-400" /> Risco ótimo (Kelly ¼)
             </h4>
             <span className="badge badge-purple text-[10px]">matemática</span>
           </div>
+          <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+            Quanto do capital arriscar por trade, calculado do seu histórico. Versão fracionada (¼) — mais conservadora que o Kelly puro.
+          </p>
           {kelly.reason ? (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
-              {kelly.reason === 'insufficient_sample' && `Sample n=${kelly.sampleSize} < 10 — esperar mais trades.`}
+              {kelly.reason === 'insufficient_sample' && `Amostra muito pequena (${kelly.sampleSize} trades < 10) — aguarde mais trades.`}
               {kelly.reason === 'no_trades' && 'Sem trades históricos no plano.'}
               {kelly.reason === 'no_plan' && 'Plano sem capital ou risco definido.'}
-              {kelly.reason === 'zero_variance' && 'Variância zero — todos os trades iguais (sample suspeito).'}
+              {kelly.reason === 'zero_variance' && 'Todos os trades têm o mesmo resultado — amostra suspeita.'}
             </div>
           ) : (
             <>
               <div className="bg-slate-800/40 rounded-lg p-3 mb-3">
-                <p className="text-[11px] text-slate-500">Risco/trade — Quarter-Kelly</p>
+                <p className="text-[11px] text-slate-500">Recomendado por trade</p>
                 <div className="flex items-baseline gap-2">
                   <p className="text-3xl font-bold text-purple-400 mono">
                     {(kelly.kellySafe * 100).toFixed(1)}%
                   </p>
                   <p className="text-xs text-slate-500">vs atual <span className="mono text-slate-300">{plan.riskPerOperation}%</span></p>
                 </div>
+                {typeof baseCapital === 'number' && (
+                  <p className="text-[11px] text-slate-400 mt-1 mono">
+                    R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} × {(kelly.kellySafe * 100).toFixed(1)}% = R$ {Math.round(baseCapital * kelly.kellySafe).toLocaleString('pt-BR')} por trade
+                  </p>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 mono">
-                edge {fmtR(kelly.expectancy_R * 1)} · sample {kelly.sampleSize} trades
+                ganho médio {fmtR(kelly.expectancy_R * 1)} · base de {kelly.sampleSize} trades
               </p>
             </>
           )}
@@ -228,21 +292,32 @@ export default function Step6Adjust({
         <div className="glass-card p-5">
           <div className="flex items-baseline justify-between mb-3">
             <h4 className="font-semibold text-slate-200 flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-sky-400" /> Monte Carlo — próximo ciclo
+              <BarChart2 className="w-4 h-4 text-sky-400" /> Simulação do próximo ciclo
             </h4>
-            <span className="badge badge-sky text-[10px]">{mc.nSims || '—'} sims</span>
+            <span className="badge badge-sky text-[10px]">{mc.nSims || '—'} cenários</span>
           </div>
+          <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+            Projeta milhares de cenários possíveis para o próximo ciclo, sorteando dos seus trades reais. Mostra a faixa esperada de resultado.
+          </p>
           {mc.reason ? (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
-              {mc.reason === 'empty_pool' && 'Sem trades pra bootstrap.'}
-              {mc.reason === 'invalid_n_per_sim' && 'Número de trades por simulação inválido.'}
+              {mc.reason === 'empty_pool' && 'Sem trades suficientes para projetar cenários.'}
+              {mc.reason === 'invalid_n_per_sim' && 'Configuração inválida (trades por cenário).'}
             </div>
           ) : (
             <div className="bg-slate-800/40 rounded-lg p-3">
               <p className="text-[11px] text-slate-500 mb-2">
-                Distribuição (sample = {mc.samplePool === 'priorCycle' ? 'ciclo anterior' : 'últimos 100'})
+                Distribuição (base = {mc.samplePool === 'priorCycle' ? 'ciclo anterior' : 'últimos 100 trades'})
               </p>
               <McHistogram mc={mc} />
+              {typeof baseCapital === 'number' && typeof mc.p50 === 'number' && (
+                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                  Sobre o capital base R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}:{' '}
+                  mediana <span className="text-slate-200 mono">{((mc.p50 / 1000) * 100) >= 0 ? '+' : ''}{((mc.p50 / 1000) * 100).toFixed(1)}%</span>,
+                  cenário ruim (p10) <span className="text-red-300 mono">{((mc.p10 / 1000) * 100).toFixed(1)}%</span>,
+                  cenário bom (p90) <span className="text-emerald-300 mono">+{((mc.p90 / 1000) * 100).toFixed(1)}%</span>.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -266,23 +341,26 @@ export default function Step6Adjust({
 
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Capital (PL)</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Capital base</p>
                 <p className="font-mono text-slate-100">
-                  R$ {(advice.newPl ?? plan.pl).toLocaleString('pt-BR')}
-                  <span className="text-slate-500 text-xs ml-1">{advice.changed && advice.newPl !== plan.pl ? '↺' : '→ manter'}</span>
+                  R$ {Math.round(baseCapital ?? plan.pl).toLocaleString('pt-BR')}
                 </p>
+                <p className="text-[10px] text-slate-500">saldo pós-ciclo</p>
               </div>
               <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Risco / trade</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Risco por trade</p>
                 <p className="font-mono text-slate-100">
                   {advice.newRiskPerOp ?? plan.riskPerOperation}%
-                  <span className="text-slate-500 text-xs ml-1">{advice.changed && advice.newRiskPerOp !== plan.riskPerOperation ? '↺' : '→ manter'}</span>
+                  {typeof advice.newRiskRS === 'number' && advice.newRiskRS > 0 && (
+                    <span className="text-slate-400 text-xs ml-1 mono">· R$ {advice.newRiskRS.toLocaleString('pt-BR')}</span>
+                  )}
+                  <span className="text-slate-500 text-xs ml-1 block">{advice.changed && advice.newRiskPerOp !== plan.riskPerOperation ? (advice.newRiskPerOp === 0 ? '⛔ pausa' : '↺ alterar') : '→ manter'}</span>
                 </p>
               </div>
               <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">RR alvo</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Vitória vale × perda</p>
                 <p className="font-mono text-slate-100">
-                  {advice.newRRTarget ?? plan.rrTarget}
+                  {advice.newRRTarget ?? plan.rrTarget}×
                   <span className="text-slate-500 text-xs ml-1">{advice.changed && advice.newRRTarget !== plan.rrTarget ? '↺' : '→ manter'}</span>
                 </p>
               </div>

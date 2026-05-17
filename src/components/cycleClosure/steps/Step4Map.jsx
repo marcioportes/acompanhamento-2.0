@@ -17,34 +17,11 @@ import { buildSWOT } from '../../../utils/cycleClosure/swotHeuristics';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
 
-function buildAutoStrengthsWeaknesses({ trades, metrics, patterns }) {
-  const strengths = [];
-  const weaknesses = [];
+// Threshold pra mostrar "Aceitar todas" — em quadrantes com poucas sugestões,
+// inclusão individual mantém o engajamento de leitura (decisão Marcio).
+const BULK_ACCEPT_MIN = 4;
 
-  if (typeof metrics?.bestTradeR === 'number' && metrics.bestTradeR >= 1.5) {
-    strengths.push(`Melhor trade do ciclo (${metrics.bestTradeR.toFixed(1)}R) — replicar setup`);
-  }
-  if (typeof metrics?.profitFactor === 'number' && metrics.profitFactor >= 2) {
-    strengths.push(`Profit factor ${metrics.profitFactor.toFixed(2)} — edge sustentado`);
-  }
-  if (patterns?.eventCounts?.tilt === 0 && patterns?.eventCounts?.revenge === 0) {
-    strengths.push('Zero detecção comportamental — disciplina firme');
-  }
-
-  if (typeof metrics?.worstTradeR === 'number' && metrics.worstTradeR <= -1.5) {
-    weaknesses.push(`Pior trade ${metrics.worstTradeR.toFixed(1)}R — outlier de risco`);
-  }
-  if (Array.isArray(patterns?.topErrors) && patterns.topErrors.length > 0) {
-    weaknesses.push(`Violações recorrentes: ${patterns.topErrors.join(', ')}`);
-  }
-  if (typeof metrics?.avgWinR === 'number' && metrics.avgWinR < 1) {
-    weaknesses.push(`avgWinR ${metrics.avgWinR.toFixed(2)} < 1.0 — saio cedo de vencedores`);
-  }
-
-  return { strengths, weaknesses };
-}
-
-function Quadrant({ title, color, items, suggestions, onAdd, onRemove, onSkip, skipped }) {
+function Quadrant({ title, color, items, suggestions, onAdd, onAddAll, onRemove, onSkip, skipped }) {
   const colorMap = {
     emerald: { ring: 'border-emerald-500/30', label: 'text-emerald-300', icon: '💪' },
     red:     { ring: 'border-red-500/30', label: 'text-red-300', icon: '⚠️' },
@@ -91,9 +68,21 @@ function Quadrant({ title, color, items, suggestions, onAdd, onRemove, onSkip, s
 
       {remaining.length > 0 && (
         <div className="mb-3">
-          <p className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1">
-            <Sparkles className="w-3 h-3" /> sugestões automáticas
-          </p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[11px] text-slate-500 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> sugestões automáticas
+            </p>
+            {remaining.length >= BULK_ACCEPT_MIN && onAddAll && (
+              <button
+                type="button"
+                onClick={() => onAddAll(remaining)}
+                className="text-[11px] px-2 py-0.5 rounded-full border border-slate-600/50 bg-slate-700/30 text-slate-300 hover:bg-slate-700/60 transition"
+                title="Adicionar todas as sugestões deste quadrante"
+              >
+                Aceitar todas ({remaining.length})
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {remaining.map((s) => (
               <button
@@ -147,20 +136,23 @@ export default function Step4Map({ studentId, planId, cycleStart, cycleEnd, snap
   );
   const R = useMemo(() => computeR(plan), [plan]);
 
-  // Auto-suggestions
-  const { strengths: autoStrengths, weaknesses: autoWeaknesses } = useMemo(
-    () => buildAutoStrengthsWeaknesses({ trades: cycleTrades, metrics, patterns }),
-    [cycleTrades, metrics, patterns],
-  );
-  const { opportunities: autoOpps, threats: autoThreats } = useMemo(
+  // Auto-suggestions — sempre via buildSWOT (com patterns + snapshot pra ficar ciente)
+  const auto = useMemo(
     () => buildSWOT({
       trades: cycleTrades,
       R,
       maxDDPercent: metrics?.maxDrawdown?.percent,
       cycleStopPercent: snapshot?.stopPercent,
+      metrics,
+      patterns,
+      snapshot,
     }),
-    [cycleTrades, R, metrics, snapshot],
+    [cycleTrades, R, metrics, snapshot, patterns],
   );
+  const autoStrengths = auto.strengths;
+  const autoWeaknesses = auto.weaknesses;
+  const autoOpps = auto.opportunities;
+  const autoThreats = auto.threats;
 
   // Marca etapa como visitada
   useEffect(() => {
@@ -181,6 +173,12 @@ export default function Step4Map({ studentId, planId, cycleStart, cycleEnd, snap
     if (cur.includes(item)) return;
     updateQuad(key, [...cur, item]);
   };
+  const handleAddAll = (key) => (newItems) => {
+    const cur = swot[key] || [];
+    const additions = (Array.isArray(newItems) ? newItems : []).filter((it) => !cur.includes(it));
+    if (additions.length === 0) return;
+    updateQuad(key, [...cur, ...additions]);
+  };
   const handleRemove = (key) => (idx) => {
     updateQuad(key, (swot[key] || []).filter((_, i) => i !== idx));
   };
@@ -188,49 +186,57 @@ export default function Step4Map({ studentId, planId, cycleStart, cycleEnd, snap
   return (
     <div className="glass-card p-8">
       <div className="mb-4">
-        <h3 className="text-xl font-bold mb-1">SWOT do ciclo</h3>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-xl font-bold">Mapa do ciclo</h3>
+          <span className="badge bg-slate-700/40 text-slate-300 border border-slate-600/50 text-[10px] uppercase tracking-wider">opcional</span>
+        </div>
         <p className="text-sm text-slate-400">
-          Forças e fraquezas auto-derivam dos números. Oportunidades e ameaças vêm de regras heurísticas — você edita ou ignora.
+          Pontos fortes e fracos saem dos seus números. Oportunidades e ameaças vêm de padrões detectados — você edita ou descarta.
+          <span className="block text-[11px] text-slate-500 mt-1">(SWOT — Strengths/Weaknesses/Opportunities/Threats)</span>
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <Quadrant
-          title="Strengths"
+          title="Pontos fortes"
           color="emerald"
           items={swot.strengths || []}
           suggestions={autoStrengths}
           onAdd={handleAdd('strengths')}
+          onAddAll={handleAddAll('strengths')}
           onRemove={handleRemove('strengths')}
           onSkip={(v) => setSkip('strengths', v)}
           skipped={skipped.strengths}
         />
         <Quadrant
-          title="Weaknesses"
+          title="Pontos fracos"
           color="red"
           items={swot.weaknesses || []}
           suggestions={autoWeaknesses}
           onAdd={handleAdd('weaknesses')}
+          onAddAll={handleAddAll('weaknesses')}
           onRemove={handleRemove('weaknesses')}
           onSkip={(v) => setSkip('weaknesses', v)}
           skipped={skipped.weaknesses}
         />
         <Quadrant
-          title="Opportunities"
+          title="Oportunidades"
           color="sky"
           items={swot.opportunities || []}
           suggestions={autoOpps}
           onAdd={handleAdd('opportunities')}
+          onAddAll={handleAddAll('opportunities')}
           onRemove={handleRemove('opportunities')}
           onSkip={(v) => setSkip('opportunities', v)}
           skipped={skipped.opportunities}
         />
         <Quadrant
-          title="Threats"
+          title="Ameaças"
           color="amber"
           items={swot.threats || []}
           suggestions={autoThreats}
           onAdd={handleAdd('threats')}
+          onAddAll={handleAddAll('threats')}
           onRemove={handleRemove('threats')}
           onSkip={(v) => setSkip('threats', v)}
           skipped={skipped.threats}

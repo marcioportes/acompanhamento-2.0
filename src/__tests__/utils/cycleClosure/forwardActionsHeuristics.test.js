@@ -81,15 +81,16 @@ describe('suggestCommitmentFromValley', () => {
 });
 
 describe('suggestForwardCommitments — wrapper', () => {
-  it('combina top error + valley em até 2 commitments', () => {
+  it('combina top error + valley em até 2 commitments (valley-críticos primeiro — R2)', () => {
     const out = suggestForwardCommitments({
       topErrorsList: [{ type: 'NO_STOP', count: 1 }],
       emotional: {},
       eventCounts: { revenge: 1 },
     });
     expect(out).toHaveLength(2);
-    expect(out[0]).toContain('SL');
-    expect(out[1]).toBe(VALLEY_COMMITMENT_MAP.REVENGE);
+    // R2: prioridade inverteu — sinal comportamental (REVENGE) é mais crítico que NO_STOP isolado
+    expect(out[0]).toBe(VALLEY_COMMITMENT_MAP.REVENGE);
+    expect(out[1]).toContain('SL');
   });
 
   it('deduplica se ambas sugestões coincidirem', () => {

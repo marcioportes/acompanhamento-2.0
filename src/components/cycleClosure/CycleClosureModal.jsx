@@ -22,11 +22,9 @@ export default function CycleClosureModal({ open, onClose, onSealed, ...wizardPr
 
   if (!open) return null;
 
-  const handleClose = () => {
-    if (window.confirm('Sair do ritual? Seu progresso ficou salvo (autosave) e você pode retomar depois.')) {
-      onClose();
-    }
-  };
+  // Saída direta — rascunho persiste em localStorage via autosave.
+  // Descarte explícito é feito pelo botão "Descartar rascunho" no WizardHeader.
+  const handleClose = () => onClose();
 
   const handleSealed = (closureId) => {
     onSealed?.(closureId);

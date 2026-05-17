@@ -30,19 +30,10 @@ module.exports = onCall(
     const userUid = request.auth.uid;
     const role = isMentor(userEmail) ? 'mentor' : 'student';
 
-    const { closureId, reopenReason } = request.data || {};
+    const { closureId } = request.data || {};
 
     if (!isNonEmptyString(closureId)) {
       throw new HttpsError('invalid-argument', 'closureId é obrigatório');
-    }
-    if (!isNonEmptyString(reopenReason)) {
-      throw new HttpsError(
-        'invalid-argument',
-        'reopenReason é obrigatório (justificativa fica registrada para auditoria)',
-      );
-    }
-    if (reopenReason.length > 1000) {
-      throw new HttpsError('invalid-argument', 'reopenReason não pode passar de 1000 chars');
     }
 
     const db = admin.firestore();
@@ -64,13 +55,8 @@ module.exports = onCall(
           );
         }
 
-        // State: só reabre quem está CLOSED
-        if (closure.status !== 'CLOSED') {
-          throw new HttpsError(
-            'failed-precondition',
-            `Closure está em status ${closure.status}, só CLOSED pode ser reaberto`,
-          );
-        }
+        // Aceita CLOSED (caso normal) e REOPENED (cleanup de docs legados da versão
+        // anterior que mantinha audit trail). Em ambos os casos, doc é deletado.
 
         // Plan deve existir (sanidade — closure aponta planId)
         const planRef = db.collection('plans').doc(closure.planId);
@@ -82,19 +68,13 @@ module.exports = onCall(
 
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        // Snapshot do estado atual em originalSnapshot (preserva versão fechada)
-        // Strip campos de controle pra evitar recursão (originalSnapshot dentro de originalSnapshot)
-        const { originalSnapshot, ...closureSnapshot } = closure;
-
-        const updateClosure = {
-          status: 'REOPENED',
-          originalSnapshot: originalSnapshot || closureSnapshot,
-          reopenedAt: now,
+        // Reabrir = deletar o doc. Re-fechamento depois cria documento novo do zero.
+        console.log('[reopenCycle]', {
+          closureId,
+          studentId: closure.studentId,
           reopenedBy: { uid: userUid, email: userEmail, role },
-          reopenReason,
-        };
-
-        tx.update(closureRef, updateClosure);
+        });
+        tx.delete(closureRef);
 
         // Plan: remove range do hard seal (libera writes naquela janela)
         // arrayRemove exige objeto idêntico — usamos os campos originais do closure.

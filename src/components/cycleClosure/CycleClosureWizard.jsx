@@ -50,12 +50,20 @@ export default function CycleClosureWizard({
   const {
     draft, step, setStep,
     updateSection, replaceSection, setCloseMode,
+    reset,
     submit, submitting, submitError,
     stepStatus, canSeal,
   } = closure;
 
   const [error, setError] = useState(null);
   const [sealConfirmed, setSealConfirmed] = useState(false);
+
+  // Descartar rascunho: limpa localStorage e sai. Sem prompt — o botão no
+  // WizardHeader já tem confirmação inline própria.
+  const handleDiscardDraft = () => {
+    reset();
+    onCancel?.();
+  };
 
   const handleSeal = async () => {
     if (!sealConfirmed) {
@@ -78,6 +86,14 @@ export default function CycleClosureWizard({
     if (!draft._visitedSwot) replaceSection('_visitedSwot', true);
   }, [draft._visitedSwot, replaceSection]);
 
+  const markReflectVisited = useCallback(() => {
+    if (!draft._visitedReflect) replaceSection('_visitedReflect', true);
+  }, [draft._visitedReflect, replaceSection]);
+
+  const markCommitVisited = useCallback(() => {
+    if (!draft._visitedCommit) replaceSection('_visitedCommit', true);
+  }, [draft._visitedCommit, replaceSection]);
+
   // Result badge dinâmico baseado em snapshot
   const resultBadge = draft.snapshot
     ? (() => {
@@ -85,7 +101,11 @@ export default function CycleClosureWizard({
         const status = draft.snapshot.cycleStatus;
         const tone = status === 'GOAL_HIT' ? 'emerald' : status === 'STOP_HIT' ? 'red' : 'amber';
         const sign = pct >= 0 ? '+' : '';
-        return { label: `${sign}${pct?.toFixed(1) ?? '?'}% ${status || 'NEUTRAL'}`, tone };
+        const statusLabel =
+          status === 'GOAL_HIT' ? 'meta batida' :
+          status === 'STOP_HIT' ? 'stop atingido' :
+          'no meio';
+        return { label: `${sign}${pct?.toFixed(1) ?? '—'}% · ${statusLabel}`, tone };
       })()
     : null;
 
@@ -107,6 +127,7 @@ export default function CycleClosureWizard({
         closeMode={draft.closeMode}
         onCloseModeChange={setCloseMode}
         draftUpdatedAt={draft._updatedAt}
+        onDiscardDraft={handleDiscardDraft}
       />
 
       {(error || submitError) && (
@@ -139,8 +160,10 @@ export default function CycleClosureWizard({
           snapshot={draft.snapshot}
           metrics={draft.metrics}
           patterns={draft.patterns}
+          forward={draft.forward}
           aar={draft.aar}
           onChange={(aar) => replaceSection('aar', aar)}
+          onVisited={markReflectVisited}
         />
       )}
       {step === 4 && (
@@ -161,6 +184,9 @@ export default function CycleClosureWizard({
         <Step5Check
           studentId={studentId}
           role={role}
+          metrics={draft.metrics}
+          snapshot={draft.snapshot}
+          patterns={draft.patterns}
           onMaturity={(m) => replaceSection('maturity', m)}
         />
       )}
@@ -172,6 +198,7 @@ export default function CycleClosureWizard({
           cycleEnd={cycleEnd}
           metrics={draft.metrics}
           snapshot={draft.snapshot}
+          patterns={draft.patterns}
           forward={draft.forward}
           maturityRegression={draft.maturity?.regression}
           onChange={(forward) => replaceSection('forward', forward)}
@@ -182,10 +209,12 @@ export default function CycleClosureWizard({
           cycleEnd={cycleEnd}
           metrics={draft.metrics}
           patterns={draft.patterns}
+          snapshot={draft.snapshot}
           forward={draft.forward}
           notes={draft.notes}
           onChange={(forward) => replaceSection('forward', forward)}
           onChangeNotes={(notes) => replaceSection('notes', notes)}
+          onVisited={markCommitVisited}
         />
       )}
       {step === 8 && (
