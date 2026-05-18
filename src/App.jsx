@@ -12,9 +12,10 @@
  * - 2.0.0: View As Student feature
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { installCleanupUtils } from './utils/cleanupOrphans';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import PropFirmPage from './pages/PropFirmPage';
@@ -73,6 +74,10 @@ const ViewAsStudentBanner = ({ student, onClose }) => {
 const AppContent = () => {
   const { user, loading, isMentor } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Em dev, expõe window.__cleanup com findOrphans/deleteOrphans pra purga
+  // pontual do passivo de docs órfãos. Em build de produção é no-op.
+  useEffect(() => { installCleanupUtils(); }, []);
   // SEMPRE inicia em dashboard
   const [currentView, setCurrentView] = useState('dashboard');
   const [showAddTradeModal, setShowAddTradeModal] = useState(false);
