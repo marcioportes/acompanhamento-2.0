@@ -61,19 +61,22 @@ const PlanManagementModal = ({
     if (isOpen) {
       setCurrentStep(1);
       if (editingPlan) {
+        // Numéricos usam ?? (não ||) para preservar 0 como valor explícito —
+        // evita mascarar bug em que doc tem 0 e UI mostra default, confundindo
+        // diagnóstico (cf. EV "Dados insuficientes" silencioso com RO=0).
         setFormData({
           name: editingPlan.name || '',
           type: editingPlan.type || editingPlan.description || 'Day Trade',
           accountId: editingPlan.accountId || '',
-          pl: editingPlan.pl || '',
+          pl: editingPlan.pl ?? '',
           adjustmentCycle: editingPlan.adjustmentCycle || 'Mensal',
-          cycleGoal: editingPlan.cycleGoal || 10.0,
-          cycleStop: editingPlan.cycleStop || 10.0,
+          cycleGoal: editingPlan.cycleGoal ?? 10.0,
+          cycleStop: editingPlan.cycleStop ?? 10.0,
           operationPeriod: editingPlan.operationPeriod || 'Diário',
-          periodGoal: editingPlan.periodGoal || 1.0,
-          periodStop: editingPlan.periodStop || 1.0,
-          riskPerOperation: editingPlan.riskPerOperation || 1.0,
-          rrTarget: editingPlan.rrTarget || 2.0,
+          periodGoal: editingPlan.periodGoal ?? 1.0,
+          periodStop: editingPlan.periodStop ?? 1.0,
+          riskPerOperation: editingPlan.riskPerOperation ?? 1.0,
+          rrTarget: editingPlan.rrTarget ?? 2.0,
         });
       } else {
         setFormData({

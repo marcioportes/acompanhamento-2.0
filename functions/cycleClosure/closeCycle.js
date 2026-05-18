@@ -205,9 +205,21 @@ module.exports = onCall(
 
         const adj = payload.forward?.planAdjustment;
         if (adj?.changed) {
-          if (typeof adj.newPl === 'number') planUpdate.pl = adj.newPl;
-          if (typeof adj.newRiskPerOp === 'number') planUpdate.riskPerOperation = adj.newRiskPerOp;
-          if (typeof adj.newRRTarget === 'number') planUpdate.rrTarget = adj.newRRTarget;
+          // Numéricos só sobrescrevem com valores > 0. Zero é semântica de
+          // PAUSA (REGRA 0 do closurePlanAdvisor sugere newRiskPerOp:0 quando
+          // dispara pause_restructure), não alíquota válida — escrever 0 no
+          // plano quebra readers downstream que filtram `> 0` silenciosamente
+          // (EV Leakage, Risk Asymmetry, tradeGateway rrAssumed, advisor cap).
+          // A pausa fica registrada em closure.behavioralSummary.critical +
+          // notifyMentor; UI/mentor leem dali. Plano preserva RO/PL/RR
+          // anteriores até o aluno retomar com valor explícito.
+          if (typeof adj.newPl === 'number' && adj.newPl > 0) planUpdate.pl = adj.newPl;
+          if (typeof adj.newRiskPerOp === 'number' && adj.newRiskPerOp > 0) {
+            planUpdate.riskPerOperation = adj.newRiskPerOp;
+          }
+          if (typeof adj.newRRTarget === 'number' && adj.newRRTarget > 0) {
+            planUpdate.rrTarget = adj.newRRTarget;
+          }
         }
 
         tx.update(planRef, planUpdate);
