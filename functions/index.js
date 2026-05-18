@@ -1197,8 +1197,9 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     }
 
     // === MATURITY ENGINE (#119 task 07) ===
-    // Recalcula sempre que o trade atualiza para CLOSED (ou já está CLOSED e foi editado).
-    // Guard interno: status !== 'CLOSED' → skip. Isolamento total (INV-03).
+    // Recalcula sempre que o trade tem resultado registrado (execução fechada).
+    // Guard interno: result não numérico → skip. Isolamento total (INV-03).
+    // (antes filtrava por status === 'CLOSED', semântica errada — corrigido.)
     try {
       const { runMaturityRecompute } = require('./maturity/recomputeMaturity');
       const result = await runMaturityRecompute(db, { tradeId: context.params.tradeId, trade: after });

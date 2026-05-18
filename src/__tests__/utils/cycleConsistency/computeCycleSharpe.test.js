@@ -8,7 +8,7 @@
  *  C4 — mesmo dataset com rfr=0 → ~6.80 ± 0.5
  *  C5 — variância zero (P&L diário constante) → null, zero_variance
  *  C6 — multi-day fallback parcial → source 'MIXED', fallbackUsed true
- *  C7 — groupTradesByDay filtra fora-janela e status != 'CLOSED'
+ *  C7 — groupTradesByDay filtra fora-janela (status do trade é semântica de revisão, ignorado)
  *  C8 — meanStdSample edge: 1 item → std=0
  */
 
@@ -150,11 +150,11 @@ describe('computeCycleSharpe (ESM)', () => {
     expect(result.daysWithTrade).toBe(8);
   });
 
-  it('C7 — groupTradesByDay filtra fora-janela e status != CLOSED', () => {
+  it('C7 — groupTradesByDay filtra apenas fora-janela e dados inválidos (status do trade é ignorado)', () => {
     const trades = [
       { date: '02/02/2026', result: 100, status: 'CLOSED' },           // dentro
-      { date: '03/02/2026', result: 200, status: 'OPEN' },             // status errado
-      { date: '04/02/2026', result: 300, status: 'REVIEWED' },         // status errado
+      { date: '03/02/2026', result: 200, status: 'OPEN' },             // status irrelevante — conta
+      { date: '04/02/2026', result: 300, status: 'REVIEWED' },         // status irrelevante — conta
       { date: '01/01/2026', result: 999, status: 'CLOSED' },           // fora-janela (antes)
       { date: '01/03/2026', result: 999, status: 'CLOSED' },           // fora-janela (depois)
       { date: '05/02/2026', result: 150, status: 'CLOSED' },           // dentro
@@ -163,8 +163,10 @@ describe('computeCycleSharpe (ESM)', () => {
       { date: '06/02/2026', result: 'NaN', status: 'CLOSED' },         // result não-numérico
     ];
     const map = groupTradesByDay(trades, '2026-02-01', '2026-02-28');
-    expect(map.size).toBe(2);
+    expect(map.size).toBe(4);
     expect(map.get('2026-02-02')).toBe(100);
+    expect(map.get('2026-02-03')).toBe(200);
+    expect(map.get('2026-02-04')).toBe(300);
     expect(map.get('2026-02-05')).toBe(200); // 150 + 50
   });
 
