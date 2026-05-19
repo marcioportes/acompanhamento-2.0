@@ -387,17 +387,13 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   };
 
   const handleSavePlan = async (planData) => {
-    // Gate de saldo dispara quando aluno está ALOCANDO capital novo:
-    //   - criação de plano, OU
-    //   - edição em que o PL aumenta vs. o PL atual do plano.
-    // Manter/reduzir PL na edição não aloca capital — passa livre, mesmo com
-    // a conta em drawdown (capital base é semântica histórica, não saldo).
-    const isCreating = !editingPlan;
+    // Gate de saldo dispara em criação E em edição: PL não pode exceder
+    // o saldo livre da conta (currentBalance menos PL dos outros planos
+    // ativos). Capital base só faz sentido se cabe no saldo real — após
+    // drawdown, ritual de fechamento força o aluno a recalibrar.
     const requestedPL = Number(planData.pl);
-    const previousPL = Number(editingPlan?.pl || 0);
-    const isAllocatingMore = isCreating || requestedPL > previousPL;
     const targetAccount = accounts.find(a => a.id === planData.accountId);
-    if (isAllocatingMore && targetAccount) {
+    if (targetAccount) {
       const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
       const otherActivePlans = plans.filter(p =>
         p.accountId === planData.accountId && p.active && p.id !== editingPlan?.id

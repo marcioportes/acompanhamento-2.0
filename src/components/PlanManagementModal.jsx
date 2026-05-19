@@ -113,12 +113,14 @@ const PlanManagementModal = ({
       // Conta ainda não apareceu no snapshot — usa pl do editingPlan (defaults pós-criação)
       return editingPlan?.pl ?? 0;
     }
-    // Defaults pré-preenchidos (criação pós-conta PROP) — NÃO devolver pl ao freePl
-    // Sem essa guard, o cálculo dobraria o saldo (freePl + propPlanDefaults.pl).
+    // Defaults pré-preenchidos (criação pós-conta PROP) — usa freePl direto.
     if (editingPlan && editingPlan.__isDefaults) {
       return getAvailablePl(selectedAccount.id, selectedAccount.currentBalance);
     }
-    // Edição real de plano existente — devolver o pl ocupado por este plano ao free
+    // Edição: devolver o pl ocupado por este plano ao saldo livre pra que o
+    // aluno possa manter o mesmo valor. Em drawdown, esse "free + currentPlanPl"
+    // ainda pode ficar abaixo do PL antigo, e o gate (validateStep) bloqueia
+    // com a mensagem certa — o ritual de fechamento força a recalibrar.
     const currentPlanPl = editingPlan && editingPlan.id && editingPlan.accountId === selectedAccount.id
       ? (editingPlan.pl || 0)
       : 0;
@@ -150,14 +152,13 @@ const PlanManagementModal = ({
       if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
 
       const plValue = Number(formData.pl);
-      const previousPL = Number(editingPlan?.pl || 0);
-      const isAllocatingMore = !editingPlan || plValue > previousPL;
       if (isInvalidNum(formData.pl)) {
         newErrors.pl = 'Capital inválido';
-      } else if (isAllocatingMore && plValue > availableCapital + 0.1) {
-        // Gate de saldo dispara em criação OU em edição que aumenta o PL.
-        // Manter/reduzir PL na edição passa livre (capital base é semântica
-        // histórica — currentBalance em drawdown não corrompe o plano).
+      } else if (plValue > availableCapital + 0.1) {
+        // Gate de saldo dispara em criação E em edição: PL não pode exceder
+        // o saldo livre da conta (currentBalance - outros planos ativos).
+        // Após drawdown, manter PL antigo é exatamente o caso que precisa
+        // ser criticado — capital base só faz sentido se cabe no saldo real.
         newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital, accountCurrency)})`;
       }
     }
