@@ -1512,3 +1512,9 @@ exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");
 exports.closeCycle = require("./cycleClosure/closeCycle");
 exports.reopenCycle = require("./cycleClosure/reopenCycle");
 exports.setMentorClosureComment = require("./cycleClosure/setMentorClosureComment");
+
+// ============================================
+// ACCOUNT/PLAN LIFECYCLE — cascade delete via Admin SDK (issue #259 fast-follow)
+// ============================================
+exports.deleteAccountCascade = require("./accounts/deleteAccountCascade");
+exports.deletePlanCascade = require("./accounts/deletePlanCascade");

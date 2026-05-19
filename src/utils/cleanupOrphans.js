@@ -20,6 +20,9 @@
 import { collection, doc, getDocs, query, where, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
+const MENTOR_EMAILS = ['marcio.portes@me.com'];
+const isMentorEmail = (email) => MENTOR_EMAILS.includes((email || '').toLowerCase());
+
 /**
  * Carrega o set de accountIds e planIds ATUAIS no Firestore filtrando pelo
  * studentId do usuário autenticado. Mentor enxerga tudo (sem filtro).
@@ -141,9 +144,7 @@ export async function findOrphans() {
     console.warn('[cleanupOrphans] Faça login antes.');
     return null;
   }
-  // Detecção crude de mentor — checa email do mentor único do projeto. Em prod
-  // poderia ler de claims, mas pra util de dev isso basta.
-  const isMentor = user.email === 'portes.marcio@gmail.com' || /mentor/i.test(user.email || '');
+  const isMentor = isMentorEmail(user.email);
 
   console.log(`[cleanupOrphans] Autenticado como ${user.email} (${isMentor ? 'mentor' : 'aluno'}). Buscando órfãos...`);
   const { orphanTrades, orphanOrders, orphanClosures, orphanMovements, aliveAccountIds, alivePlanIds } =
@@ -175,7 +176,7 @@ export async function deleteOrphans({ skipConfirm = false } = {}) {
     console.warn('[cleanupOrphans] Faça login antes.');
     return null;
   }
-  const isMentor = user.email === 'portes.marcio@gmail.com' || /mentor/i.test(user.email || '');
+  const isMentor = isMentorEmail(user.email);
 
   const { orphanTrades, orphanOrders, orphanClosures, orphanMovements } = await collectOrphans({ user, isMentor });
   const total = orphanTrades.length + orphanOrders.length + orphanClosures.length + orphanMovements.length;

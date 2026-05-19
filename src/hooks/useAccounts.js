@@ -10,9 +10,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp, orderBy
+import {
+  collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, serverTimestamp, orderBy
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -271,133 +272,15 @@ export const useAccounts = (overrideStudentId = null) => {
    *   7. account
    */
   const deleteAccount = useCallback(async (accountId) => {
-    try {
-      console.log(`[useAccounts] Deletando conta ${accountId}...`);
-
-      // ETAPA 1: MOVIMENTOS
-      try {
-        const movementsQuery = query(collection(db, 'movements'), where('accountId', '==', accountId));
-        const movementsSnapshot = await getDocs(movementsQuery);
-        await Promise.all(movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id))));
-        console.log(`[useAccounts] ${movementsSnapshot.size} movimentos deletados`);
-      } catch (e) {
-        console.warn('[useAccounts] Erro movimentos:', e);
-      }
-
-      // ETAPA 2: COLETA PLANOS — não deleta ainda (orders precisam dos planIds)
-      let plansToDelete = [];
-      try {
-        if (isMentor()) {
-          const q = query(collection(db, 'plans'), where('accountId', '==', accountId));
-          const snap = await getDocs(q);
-          plansToDelete = snap.docs;
-        } else {
-          // Aluno: query por studentId + filtro em memória por accountId
-          const q = query(collection(db, 'plans'), where('studentId', '==', user.uid));
-          const snap = await getDocs(q);
-          plansToDelete = snap.docs.filter(d => d.data().accountId === accountId);
-        }
-        console.log(`[useAccounts] ${plansToDelete.length} planos identificados`);
-      } catch (e) {
-        console.warn('[useAccounts] Erro coleta planos:', e);
-      }
-      const planIds = plansToDelete.map((d) => d.id);
-
-      // ETAPA 3: TRADES — duplo query (studentId + studentEmail) com dedup.
-      // Trades antigos podem ter só um dos dois campos populado; tradeGateway
-      // moderno grava ambos. Garante cobertura completa.
-      try {
-        const docMap = new Map();
-        if (isMentor()) {
-          const q = query(collection(db, 'trades'), where('accountId', '==', accountId));
-          const snap = await getDocs(q);
-          for (const d of snap.docs) docMap.set(d.id, d);
-        } else {
-          if (user?.uid) {
-            const qById = query(collection(db, 'trades'), where('studentId', '==', user.uid));
-            const snapById = await getDocs(qById);
-            for (const d of snapById.docs) {
-              if (d.data().accountId === accountId) docMap.set(d.id, d);
-            }
-          }
-          if (user?.email) {
-            const qByEmail = query(collection(db, 'trades'), where('studentEmail', '==', user.email));
-            const snapByEmail = await getDocs(qByEmail);
-            for (const d of snapByEmail.docs) {
-              if (d.data().accountId === accountId) docMap.set(d.id, d);
-            }
-          }
-        }
-        console.log(`[useAccounts] ${docMap.size} trades para deletar`);
-        await Promise.all([...docMap.values()].map(d => deleteDoc(doc(db, 'trades', d.id))));
-      } catch (e) {
-        console.warn('[useAccounts] Erro trades:', e);
-      }
-
-      // ETAPA 4: ORDERS — por planId. Orders não carregam accountId, então
-      // precisamos dos planIds coletados na etapa 2.
-      if (planIds.length > 0) {
-        try {
-          const docMap = new Map();
-          if (isMentor()) {
-            // Firestore where-in tem limite de 10 — quebra em chunks
-            for (let i = 0; i < planIds.length; i += 10) {
-              const chunk = planIds.slice(i, i + 10);
-              const q = query(collection(db, 'orders'), where('planId', 'in', chunk));
-              const snap = await getDocs(q);
-              for (const d of snap.docs) docMap.set(d.id, d);
-            }
-          } else if (user?.uid) {
-            // Aluno: query por studentId + filtro por planId em memória
-            const q = query(collection(db, 'orders'), where('studentId', '==', user.uid));
-            const snap = await getDocs(q);
-            const planIdSet = new Set(planIds);
-            for (const d of snap.docs) {
-              if (planIdSet.has(d.data().planId)) docMap.set(d.id, d);
-            }
-          }
-          console.log(`[useAccounts] ${docMap.size} orders para deletar`);
-          await Promise.all([...docMap.values()].map(d => deleteDoc(doc(db, 'orders', d.id))));
-        } catch (e) {
-          console.warn('[useAccounts] Erro orders:', e);
-        }
-      }
-
-      // ETAPA 5: CYCLE CLOSURES — têm accountId direto no doc.
-      try {
-        let closuresToDelete = [];
-        if (isMentor()) {
-          const q = query(collection(db, 'cycleClosures'), where('accountId', '==', accountId));
-          const snap = await getDocs(q);
-          closuresToDelete = snap.docs;
-        } else if (user?.uid) {
-          const q = query(collection(db, 'cycleClosures'), where('studentId', '==', user.uid));
-          const snap = await getDocs(q);
-          closuresToDelete = snap.docs.filter(d => d.data().accountId === accountId);
-        }
-        console.log(`[useAccounts] ${closuresToDelete.length} closures para deletar`);
-        await Promise.all(closuresToDelete.map(d => deleteDoc(doc(db, 'cycleClosures', d.id))));
-      } catch (e) {
-        console.warn('[useAccounts] Erro cycleClosures:', e);
-      }
-
-      // ETAPA 6: PLANOS — agora sim, depois que orders e closures saíram.
-      try {
-        await Promise.all(plansToDelete.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id))));
-        console.log(`[useAccounts] ${plansToDelete.length} planos deletados`);
-      } catch (e) {
-        console.warn('[useAccounts] Erro deletar planos:', e);
-      }
-
-      // ETAPA 7: CONTA
-      await deleteDoc(doc(db, 'accounts', accountId));
-      console.log(`[useAccounts] Conta deletada`);
-
-    } catch (err) {
-      console.error('[useAccounts] Erro fatal:', err);
-      throw err;
-    }
-  }, [user, isMentor]);
+    // Cascade rodando inteiramente no servidor via Admin SDK — bypassa rules
+    // que bloqueavam delete em orders/cycleClosures no caminho client.
+    // Ordem aplicada pela CF: movements → trades → orders → cycleClosures → plans → account.
+    const functions = getFunctions();
+    const deleteAccountCascadeCF = httpsCallable(functions, 'deleteAccountCascade');
+    const { data } = await deleteAccountCascadeCF({ accountId });
+    console.log('[useAccounts] cascade CF:', data);
+    return data;
+  }, []);
 
   const getAccountsByStudent = useCallback((studentId) => accounts.filter(acc => acc.studentId === studentId), [accounts]);
   

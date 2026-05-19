@@ -230,38 +230,14 @@ export const usePlans = (overrideStudentId = null) => {
    * 4. Deleta o plano
    */
   const deletePlan = useCallback(async (planId) => {
-    try {
-      console.log(`[usePlans] Deletando plano ${planId} com cascade...`);
-
-      // ETAPA 1: TRADES do plano
-      const tradesQuery = query(collection(db, 'trades'), where('planId', '==', planId));
-      const tradesSnapshot = await getDocs(tradesQuery);
-      console.log(`[usePlans] ${tradesSnapshot.size} trades vinculados`);
-
-      // ETAPA 2: Para cada trade, deletar movements
-      for (const tradeDoc of tradesSnapshot.docs) {
-        try {
-          const movQuery = query(collection(db, 'movements'), where('tradeId', '==', tradeDoc.id));
-          const movSnapshot = await getDocs(movQuery);
-          await Promise.all(movSnapshot.docs.map(m => deleteDoc(doc(db, 'movements', m.id))));
-          console.log(`[usePlans] Trade ${tradeDoc.id}: ${movSnapshot.size} movements deletados`);
-        } catch (e) {
-          console.warn(`[usePlans] Erro movements trade ${tradeDoc.id}:`, e);
-        }
-      }
-
-      // ETAPA 3: Deletar trades
-      await Promise.all(tradesSnapshot.docs.map(t => deleteDoc(doc(db, 'trades', t.id))));
-      console.log(`[usePlans] ${tradesSnapshot.size} trades deletados`);
-
-      // ETAPA 4: Deletar plano
-      await deleteDoc(doc(db, 'plans', planId));
-      console.log(`[usePlans] Plano deletado`);
-
-    } catch (err) {
-      console.error('[usePlans] Erro cascade delete:', err);
-      throw err;
-    }
+    // Cascade rodando inteiramente no servidor via Admin SDK — bypassa rules
+    // que bloqueavam delete em orders/cycleClosures no caminho client.
+    // Ordem aplicada pela CF: movements (por tradeId) → trades → orders → cycleClosures → plan.
+    const functions = getFunctions();
+    const deletePlanCascadeCF = httpsCallable(functions, 'deletePlanCascade');
+    const { data } = await deletePlanCascadeCF({ planId });
+    console.log('[usePlans] cascade CF:', data);
+    return data;
   }, []);
 
   /**
