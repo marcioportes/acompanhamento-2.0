@@ -150,13 +150,14 @@ const PlanManagementModal = ({
       if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
 
       const plValue = Number(formData.pl);
+      const previousPL = Number(editingPlan?.pl || 0);
+      const isAllocatingMore = !editingPlan || plValue > previousPL;
       if (isInvalidNum(formData.pl)) {
         newErrors.pl = 'Capital inválido';
-      } else if (!editingPlan && plValue > availableCapital + 0.1) {
-        // Gate de saldo só na CRIAÇÃO. Em edição, o capital base do plano é
-        // semântica histórica (não nova alocação) e currentBalance da conta
-        // pode estar negativo após drawdown — bloquear corrompia o plano
-        // forçando ajuste pra um valor que cabe no saldo dinâmico atual.
+      } else if (isAllocatingMore && plValue > availableCapital + 0.1) {
+        // Gate de saldo dispara em criação OU em edição que aumenta o PL.
+        // Manter/reduzir PL na edição passa livre (capital base é semântica
+        // histórica — currentBalance em drawdown não corrompe o plano).
         newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital, accountCurrency)})`;
       }
     }

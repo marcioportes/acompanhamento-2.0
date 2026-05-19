@@ -387,22 +387,23 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   };
 
   const handleSavePlan = async (planData) => {
-    // Gate de saldo aplica APENAS na criação. Edição é decisão estratégica
-    // (aluno/mentor ajustando plano existente); o capital já está alocado
-    // historicamente e comparar contra `currentBalance` (saldo dinâmico,
-    // pode estar negativo após drawdown) bloqueava ajustes legítimos e
-    // corrompia o plano (forçava reduzir PL pra um valor que cabe no saldo
-    // atual, perdendo o capital base original).
+    // Gate de saldo dispara quando aluno está ALOCANDO capital novo:
+    //   - criação de plano, OU
+    //   - edição em que o PL aumenta vs. o PL atual do plano.
+    // Manter/reduzir PL na edição não aloca capital — passa livre, mesmo com
+    // a conta em drawdown (capital base é semântica histórica, não saldo).
     const isCreating = !editingPlan;
+    const requestedPL = Number(planData.pl);
+    const previousPL = Number(editingPlan?.pl || 0);
+    const isAllocatingMore = isCreating || requestedPL > previousPL;
     const targetAccount = accounts.find(a => a.id === planData.accountId);
-    if (isCreating && targetAccount) {
+    if (isAllocatingMore && targetAccount) {
       const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
       const otherActivePlans = plans.filter(p =>
-        p.accountId === planData.accountId && p.active
+        p.accountId === planData.accountId && p.active && p.id !== editingPlan?.id
       );
       const alreadyAllocated = otherActivePlans.reduce((sum, p) => sum + Number(p.pl || 0), 0);
       const availableBalance = accountTotal - alreadyAllocated;
-      const requestedPL = Number(planData.pl);
 
       if (requestedPL > availableBalance) {
         alert(
