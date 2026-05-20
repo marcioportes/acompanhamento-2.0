@@ -17,6 +17,7 @@ export default function WizardFooter({
   onCancel,
   onSeal,
   canSeal,
+  disableNext = false,
   submitting,
 }) {
   const isLast = currentStep >= totalSteps;
@@ -67,7 +68,9 @@ export default function WizardFooter({
           <button
             type="button"
             onClick={onNext}
-            className="btn-primary text-sm flex items-center gap-2"
+            disabled={disableNext}
+            className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={disableNext ? 'Recalibre o capital no Passo 6 antes de avançar — PL excede o saldo livre da conta' : undefined}
           >
             Próximo: {nextLabel}
             <ChevronRight className="w-4 h-4" />

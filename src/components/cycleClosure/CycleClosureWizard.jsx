@@ -57,6 +57,10 @@ export default function CycleClosureWizard({
 
   const [error, setError] = useState(null);
   const [sealConfirmed, setSealConfirmed] = useState(false);
+  // Flag emitida pelo Step6Adjust quando PL efetivo excede saldo livre da
+  // conta. Bloqueia "Próximo" no Passo 6 e o botão "Selar" no Passo 8.
+  // Servidor tem o gate de fato; esse flag só evita o clique inútil.
+  const [balanceBlock, setBalanceBlock] = useState(false);
 
   // Descartar rascunho: limpa localStorage e sai. Sem prompt — o botão no
   // WizardHeader já tem confirmação inline própria.
@@ -215,6 +219,7 @@ export default function CycleClosureWizard({
           forward={draft.forward}
           maturityRegression={draft.maturity?.regression}
           onChange={handleForward}
+          onBlockSeal={setBalanceBlock}
         />
       )}
       {step === 7 && (
@@ -240,6 +245,15 @@ export default function CycleClosureWizard({
         />
       )}
 
+      {/* Banner de erro replicado acima do footer pra garantir visibilidade
+          após clicar em "Selar" — Step8 é alto e o aluno costuma estar
+          scrollado no rodapé quando o erro retorna do servidor. */}
+      {(error || submitError) && (
+        <div className="glass-card p-4 mt-4 border border-red-500/40 bg-red-500/5">
+          <p className="text-sm text-red-300">⚠️ {error || submitError}</p>
+        </div>
+      )}
+
       <WizardFooter
         currentStep={step}
         totalSteps={8}
@@ -247,7 +261,8 @@ export default function CycleClosureWizard({
         onNext={goNext}
         onCancel={onCancel}
         onSeal={handleSeal}
-        canSeal={canSeal && sealConfirmed}
+        canSeal={canSeal && sealConfirmed && !balanceBlock}
+        disableNext={step === 6 && balanceBlock}
         submitting={submitting}
       />
     </div>

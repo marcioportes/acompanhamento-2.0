@@ -65,6 +65,7 @@ export default function Step6Adjust({
   forward,
   maturityRegression,
   onChange,
+  onBlockSeal,
 }) {
   const { trades = [] } = useTrades(studentId);
   const { plans = [] } = usePlans(studentId);
@@ -95,6 +96,13 @@ export default function Step6Adjust({
   }, [forward, plan]);
 
   const plExceedsBalance = availableBalance !== null && effectivePL > availableBalance + 0.1;
+
+  // Avisar wizard pra bloquear "Próximo" no Passo 6 e "Selar" no Passo 8.
+  // Servidor tem o gate de fato (defesa em profundidade); aqui só evita
+  // que o aluno chegue a clicar e leve um erro 400 silencioso.
+  useEffect(() => {
+    onBlockSeal?.(plExceedsBalance);
+  }, [plExceedsBalance, onBlockSeal]);
 
   const cycleTrades = useMemo(
     () => trades.filter((t) => t.planId === planId && t.date && isInRange(t.date, cycleStart, cycleEnd)),
