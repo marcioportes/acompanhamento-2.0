@@ -94,6 +94,19 @@ export default function CycleClosureWizard({
     if (!draft._visitedCommit) replaceSection('_visitedCommit', true);
   }, [draft._visitedCommit, replaceSection]);
 
+  // Estabilizar callbacks dos steps. Inline arrow-fns são recriadas a cada
+  // render e, quando o step as registra como dependência de useEffect, geram
+  // loop "Maximum update depth exceeded". useCallback com [replaceSection]
+  // mantém referência estável e quebra o loop.
+  const handleSnapshot  = useCallback((snap)    => replaceSection('snapshot', snap),    [replaceSection]);
+  const handleMetrics   = useCallback((m)       => replaceSection('metrics', m),        [replaceSection]);
+  const handlePatterns  = useCallback((p)       => replaceSection('patterns', p),       [replaceSection]);
+  const handleAar       = useCallback((aar)     => replaceSection('aar', aar),          [replaceSection]);
+  const handleSwot      = useCallback((swot)    => replaceSection('swot', swot),        [replaceSection]);
+  const handleMaturity  = useCallback((m)       => replaceSection('maturity', m),       [replaceSection]);
+  const handleForward   = useCallback((forward) => replaceSection('forward', forward),  [replaceSection]);
+  const handleNotes     = useCallback((notes)   => replaceSection('notes', notes),      [replaceSection]);
+
   // Result badge dinâmico baseado em snapshot
   const resultBadge = draft.snapshot
     ? (() => {
@@ -142,8 +155,8 @@ export default function CycleClosureWizard({
           planId={planId}
           cycleStart={cycleStart}
           cycleEnd={cycleEnd}
-          onSnapshot={(snap) => replaceSection('snapshot', snap)}
-          onMetrics={(m) => replaceSection('metrics', m)}
+          onSnapshot={handleSnapshot}
+          onMetrics={handleMetrics}
         />
       )}
       {step === 2 && (
@@ -152,7 +165,7 @@ export default function CycleClosureWizard({
           planId={planId}
           cycleStart={cycleStart}
           cycleEnd={cycleEnd}
-          onPatterns={(p) => replaceSection('patterns', p)}
+          onPatterns={handlePatterns}
         />
       )}
       {step === 3 && (
@@ -162,7 +175,7 @@ export default function CycleClosureWizard({
           patterns={draft.patterns}
           forward={draft.forward}
           aar={draft.aar}
-          onChange={(aar) => replaceSection('aar', aar)}
+          onChange={handleAar}
           onVisited={markReflectVisited}
         />
       )}
@@ -176,7 +189,7 @@ export default function CycleClosureWizard({
           metrics={draft.metrics}
           patterns={draft.patterns}
           swot={draft.swot}
-          onChange={(swot) => replaceSection('swot', swot)}
+          onChange={handleSwot}
           onVisited={markSwotVisited}
         />
       )}
@@ -187,7 +200,7 @@ export default function CycleClosureWizard({
           metrics={draft.metrics}
           snapshot={draft.snapshot}
           patterns={draft.patterns}
-          onMaturity={(m) => replaceSection('maturity', m)}
+          onMaturity={handleMaturity}
         />
       )}
       {step === 6 && (
@@ -201,7 +214,7 @@ export default function CycleClosureWizard({
           patterns={draft.patterns}
           forward={draft.forward}
           maturityRegression={draft.maturity?.regression}
-          onChange={(forward) => replaceSection('forward', forward)}
+          onChange={handleForward}
         />
       )}
       {step === 7 && (
@@ -212,8 +225,8 @@ export default function CycleClosureWizard({
           snapshot={draft.snapshot}
           forward={draft.forward}
           notes={draft.notes}
-          onChange={(forward) => replaceSection('forward', forward)}
-          onChangeNotes={(notes) => replaceSection('notes', notes)}
+          onChange={handleForward}
+          onChangeNotes={handleNotes}
           onVisited={markCommitVisited}
         />
       )}
