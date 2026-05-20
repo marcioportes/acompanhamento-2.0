@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Edit3, MinusCircle, CheckCircle, Zap, BarChart2, AlertOctagon } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
 import { usePlans } from '../../../hooks/usePlans';
+import { useAccounts } from '../../../hooks/useAccounts';
 import { computeKelly } from '../../../utils/cycleClosure/kellyCalculator';
 import { projectNextCycle } from '../../../utils/cycleClosure/monteCarlo';
 import { advisePlanAdjustment } from '../../../utils/cycleClosure/closurePlanAdvisor';
@@ -67,7 +68,33 @@ export default function Step6Adjust({
 }) {
   const { trades = [] } = useTrades(studentId);
   const { plans = [] } = usePlans(studentId);
+  const { accounts = [] } = useAccounts(studentId);
   const plan = useMemo(() => plans.find((p) => p.id === planId) || null, [plans, planId]);
+  const account = useMemo(
+    () => (plan?.accountId ? accounts.find((a) => a.id === plan.accountId) : null),
+    [accounts, plan],
+  );
+
+  // Saldo livre da conta (currentBalance − PL de outros planos ativos).
+  // Servidor (closeCycle) rejeita o fechamento se o PL efetivo do plano após
+  // o ajuste exceder isso. Renderizamos warning aqui pra aluno recalibrar
+  // antes de tentar selar.
+  const availableBalance = useMemo(() => {
+    if (!account) return null;
+    const accountTotal = Number(account.currentBalance ?? account.initialBalance ?? 0);
+    const alreadyAllocated = plans
+      .filter((p) => p.accountId === account.id && p.active && p.id !== planId)
+      .reduce((sum, p) => sum + Number(p.pl || 0), 0);
+    return accountTotal - alreadyAllocated;
+  }, [account, plans, planId]);
+
+  const effectivePL = useMemo(() => {
+    const adj = forward?.planAdjustment;
+    if (adj?.changed && typeof adj.newPl === 'number' && adj.newPl > 0) return adj.newPl;
+    return Number(plan?.pl ?? 0);
+  }, [forward, plan]);
+
+  const plExceedsBalance = availableBalance !== null && effectivePL > availableBalance + 0.1;
 
   const cycleTrades = useMemo(
     () => trades.filter((t) => t.planId === planId && t.date && isInRange(t.date, cycleStart, cycleEnd)),
@@ -199,8 +226,37 @@ export default function Step6Adjust({
 
   const decision = forward?.planAdjustment?.decisionSource;
 
+  const currencyFmt = (v) => {
+    const code = account?.currency || 'BRL';
+    const sym = code === 'USD' ? 'US$' : code === 'EUR' ? '€' : 'R$';
+    return `${sym} ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
   return (
     <div className="space-y-4">
+      {/* Banner de saldo insuficiente — PL efetivo excede o saldo livre da conta.
+          Servidor (closeCycle) rejeita o fechamento; aviso visual aqui força recalibrar. */}
+      {plExceedsBalance && (
+        <div className="glass-card p-5 border-2 border-amber-500/60 bg-gradient-to-br from-amber-500/15 to-amber-500/5">
+          <div className="flex items-start gap-3">
+            <div className="bg-amber-500/30 text-amber-200 rounded-xl p-2.5 flex-shrink-0">
+              <AlertOctagon className="w-6 h-6" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-lg font-bold text-amber-100 mb-1">Capital alocado maior que o saldo da conta</h4>
+              <p className="text-sm text-slate-200 leading-relaxed">
+                O PL do plano após este ciclo seria <strong className="text-amber-200">{currencyFmt(effectivePL)}</strong>,
+                mas a conta tem apenas <strong className="text-amber-200">{currencyFmt(availableBalance)}</strong> livres
+                (saldo atual − planos ativos). Você não pode alocar capital que não tem.
+              </p>
+              <p className="text-[11px] text-amber-100/80 mt-2">
+                Edite manualmente abaixo e reduza o PL pra um valor ≤ saldo livre. O fechamento será bloqueado enquanto isso não couber.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Banner crítico — PAUSAR (REGRA 0) */}
       {isCritical && (
         <div className="glass-card p-5 border-2 border-red-500/60 bg-gradient-to-br from-red-500/15 to-red-500/5">

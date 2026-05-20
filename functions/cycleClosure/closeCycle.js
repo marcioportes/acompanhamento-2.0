@@ -71,6 +71,32 @@ module.exports = onCall(
     const closureRef = db.collection('cycleClosures').doc(closureId);
     const planRef = db.collection('plans').doc(payload.planId);
 
+    // Pré-fetch do saldo livre da conta (Firestore transactions não suportam
+    // queries — fazemos fora). Race condition é tolerável: o ritual fecha um
+    // ciclo de cada vez por aluno, sem mutações paralelas no mesmo escopo.
+    let availableBalance = null;
+    if (payload.accountId) {
+      try {
+        const [accountSnap, otherPlansSnap] = await Promise.all([
+          db.collection('accounts').doc(payload.accountId).get(),
+          db.collection('plans')
+            .where('accountId', '==', payload.accountId)
+            .where('active', '==', true)
+            .get(),
+        ]);
+        if (accountSnap.exists) {
+          const acc = accountSnap.data();
+          const accountTotal = Number(acc.currentBalance ?? acc.initialBalance ?? 0);
+          const alreadyAllocated = otherPlansSnap.docs
+            .filter((d) => d.id !== payload.planId)
+            .reduce((sum, d) => sum + Number(d.data().pl || 0), 0);
+          availableBalance = accountTotal - alreadyAllocated;
+        }
+      } catch (e) {
+        console.warn('[closeCycle] saldo pré-fetch falhou; pulo o gate:', e.message);
+      }
+    }
+
     // Transação atomica: validar plano + verificar não-duplicação + persistir + atualizar plan
     try {
       const result = await db.runTransaction(async (tx) => {
@@ -219,6 +245,21 @@ module.exports = onCall(
           }
           if (typeof adj.newRRTarget === 'number' && adj.newRRTarget > 0) {
             planUpdate.rrTarget = adj.newRRTarget;
+          }
+        }
+
+        // Gate de saldo no fechamento — PL efetivo do plano após o close não
+        // pode exceder o saldo livre da conta. Cobre o caminho em que o aluno
+        // mantém o PL antigo (decisionSource='kept') após drawdown: ritual
+        // OBRIGA recalibração antes de selar.
+        if (availableBalance !== null) {
+          const effectivePL = Number(planUpdate.pl ?? plan.pl ?? 0);
+          if (effectivePL > availableBalance + 0.1) {
+            throw new HttpsError(
+              'failed-precondition',
+              `PL do plano (${effectivePL.toFixed(2)}) excede o saldo livre da conta `
+                + `(${availableBalance.toFixed(2)}). Recalibre o capital no Passo 6 antes de fechar o ciclo.`,
+            );
           }
         }
 
