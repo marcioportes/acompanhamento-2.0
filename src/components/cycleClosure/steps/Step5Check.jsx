@@ -308,7 +308,12 @@ export default function Step5Check({ studentId, role = 'student', metrics, snaps
   }, [maturity, cycleMetrics]);
 
   const promotionEligible = maturity?.proposedTransition === 'PROMOTE';
-  const regression = Array.isArray(maturity?.regression) ? maturity.regression : [];
+  // `regression` precisa ser estável entre renders quando o array não existe;
+  // `[]` literal em cada render quebraria a dep de useEffect e geraria loop.
+  const regression = useMemo(
+    () => (Array.isArray(maturity?.regression) ? maturity.regression : []),
+    [maturity?.regression],
+  );
 
   useEffect(() => {
     if (maturity) {
