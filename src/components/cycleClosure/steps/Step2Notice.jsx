@@ -16,7 +16,7 @@ import React, { useEffect, useMemo } from 'react';
 import { AlertTriangle, Smile, Frown, BarChart3 } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
 import useOrders from '../../../hooks/useOrders';
-import { topErrors } from '../../../utils/cycleClosure/cycleMetrics';
+import { topErrors, topUnifiedErrors } from '../../../utils/cycleClosure/cycleMetrics';
 import { analyzeEmotionsV2 } from '../../../utils/emotionalAnalysisV2';
 import { detectExecutionEvents, EVENT_TYPES } from '../../../utils/executionBehaviorEngine';
 import useMasterData from '../../../hooks/useMasterData';
@@ -172,6 +172,14 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
     partialSizing: executionCounts.partialSizing,
   }), [emotionalAnalysis, tiltDates, revengeDates, executionCounts]);
 
+  // Lista unificada (compliance violations + behavioral events) — autoridade pro
+  // que a UI rotula como "erros do ciclo". `top3` permanece pra preservar
+  // semântica de downstream (swotHeuristics filtra só violations declaradas).
+  const unifiedTop = useMemo(
+    () => topUnifiedErrors(cycleTrades, eventCounts, 5),
+    [cycleTrades, eventCounts],
+  );
+
   // Correlação dias tilt × dias limpos (custo emocional)
   const correlation = useMemo(() => ({
     performanceOnTiltDays: dayBreakdown.dirtyPnl,
@@ -182,6 +190,7 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
 
   const patterns = useMemo(() => ({
     topErrors: top3.map((e) => e.type),
+    unifiedErrors: unifiedTop,
     eventCounts,
     executionEvents: executionEvents.map((e) => ({
       type: e.type, severity: e.severity, tradeId: e.tradeId, timestamp: e.timestamp,
@@ -195,7 +204,7 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
     },
     bestTradeId: null,
     worstTradeId: null,
-  }), [top3, eventCounts, executionEvents, correlation, dayBreakdown]);
+  }), [top3, unifiedTop, eventCounts, executionEvents, correlation, dayBreakdown]);
 
   useEffect(() => {
     if (cycleTrades.length > 0) onPatterns?.(patterns);
@@ -227,22 +236,26 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
         </p>
       </div>
 
-      {/* Top errors */}
+      {/* Erros do ciclo — lista unificada: compliance violations + eventos comportamentais.
+          Comportamento repetido sob pressão (revenge, overtrading) pesa igual a regra escrita. */}
       <section>
         <h4 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4" /> Top 3 erros do ciclo
+          <AlertTriangle className="w-4 h-4" /> Erros do ciclo
         </h4>
-        {top3.length === 0 ? (
-          <p className="text-sm text-slate-500 italic">Nenhuma violação registrada em compliance.</p>
+        {unifiedTop.length === 0 ? (
+          <p className="text-sm text-slate-500 italic">Nenhum erro detectado neste ciclo.</p>
         ) : (
           <div className="space-y-1.5">
-            {top3.map((e, idx) => (
-              <div key={e.type} className="flex items-center justify-between bg-slate-800/30 rounded-lg p-2.5">
-                <span className="text-sm text-slate-200">
-                  <span className="text-slate-500 mr-2">#{idx + 1}</span>
-                  {e.type}
+            {unifiedTop.map((e, idx) => (
+              <div key={`${e.source}-${e.type}`} className="flex items-center justify-between bg-slate-800/30 rounded-lg p-2.5">
+                <span className="text-sm text-slate-200 flex items-center gap-2">
+                  <span className="text-slate-500">#{idx + 1}</span>
+                  {e.label}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${e.source === 'compliance' ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}>
+                    {e.source === 'compliance' ? 'regra' : 'comportamento'}
+                  </span>
                 </span>
-                <span className="badge badge-amber text-[10px]">{e.count}×</span>
+                <span className="badge badge-amber text-[10px]">×{e.count}</span>
               </div>
             ))}
           </div>

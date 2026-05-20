@@ -259,3 +259,77 @@ export function topErrors(trades, n = 3) {
     .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
     .slice(0, n);
 }
+
+// Catálogo único de labels PT-BR cobrindo as duas famílias de erro:
+// (a) compliance violations declaradas (motor Compliance V2)
+// (b) behavioral events (Emotional V2 + Execution Behavior)
+// Mark Douglas: comportamento repetido sob pressão é regra interna violada,
+// não "outra natureza" de erro — UI trata as duas famílias com o mesmo peso.
+export const ERROR_LABELS_PT = {
+  // Compliance V2
+  NO_STOP:            'Sem stop declarado',
+  STOP_VIOLATION:     'Violou stop declarado',
+  STOP_TAMPERING:     'Stop deslocado',
+  OVERSIZED:          'Tamanho excessivo',
+  OUTSIDE_HOURS:      'Fora do horário',
+  ASSET_NOT_ALLOWED:  'Ativo não permitido',
+  NO_TARGET:          'Sem alvo declarado',
+  // Behavioral (Emotional V2 + Execution)
+  tilt:              'Tilt',
+  revenge:           'Vingança',
+  overtrading:       'Excesso de trades',
+  stopTampering:     'Stop deslocado em ordem',
+  rapidReentry:      'Reentrada pós-stop',
+  chaseReentry:      'Perseguição de preço',
+  hesitation:        'Hesitação',
+  breakevenTooEarly: 'Breakeven cedo',
+  partialSizing:     'Sizing parcial',
+};
+
+/**
+ * Catálogo de chaves de eventCounts tratadas como erros comportamentais.
+ * Exclui flags meta (tiltDaysCount, revengeDaysCount, overtradingWarnings)
+ * que são derivações de contagem por dia, não eventos isolados.
+ */
+const BEHAVIORAL_ERROR_KEYS = [
+  'tilt', 'revenge', 'overtrading', 'stopTampering',
+  'rapidReentry', 'chaseReentry', 'hesitation',
+  'breakevenTooEarly', 'partialSizing',
+];
+
+/**
+ * Mescla compliance.violations[] + behavioral eventCounts numa lista única
+ * de "erros do ciclo" ranqueada por count. Cada item carrega `source` pra
+ * UI distinguir tipograficamente quando precisar.
+ *
+ * Retorno:
+ *   [{ type, count, source: 'compliance' | 'behavioral', label }]
+ */
+export function topUnifiedErrors(trades, eventCounts, n = 5) {
+  const out = [];
+  // Compliance: agrupa violations por type
+  const list = Array.isArray(trades) ? trades : [];
+  const complianceCounts = new Map();
+  for (const t of list) {
+    const violations = Array.isArray(t?.compliance?.violations) ? t.compliance.violations : [];
+    for (const v of violations) {
+      const type = typeof v === 'string' ? v : v?.type;
+      if (typeof type !== 'string') continue;
+      complianceCounts.set(type, (complianceCounts.get(type) || 0) + 1);
+    }
+  }
+  for (const [type, count] of complianceCounts.entries()) {
+    out.push({ type, count, source: 'compliance', label: ERROR_LABELS_PT[type] || type });
+  }
+  // Behavioral: pega só chaves do catálogo, descartando zeros
+  const counts = eventCounts && typeof eventCounts === 'object' ? eventCounts : {};
+  for (const key of BEHAVIORAL_ERROR_KEYS) {
+    const count = Number(counts[key]) || 0;
+    if (count > 0) {
+      out.push({ type: key, count, source: 'behavioral', label: ERROR_LABELS_PT[key] || key });
+    }
+  }
+  return out
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, n);
+}

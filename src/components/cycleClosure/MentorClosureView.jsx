@@ -17,6 +17,7 @@ import { ArrowLeft, MessageSquare, Save, Lock, Loader2, ShieldAlert, Unlock } fr
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { KpiCard } from '../reviews/ReviewKpiGrid';
 import { deltaText } from '../../utils/reviewFormatters';
+import { ERROR_LABELS_PT } from '../../utils/cycleClosure/cycleMetrics';
 
 const STAGE_LABEL_MAP = ['Caos', 'Reativo', 'Metódico', 'Profissional', 'Maestria'];
 const MAX_COMMENT_CHARS = 2000;
@@ -364,10 +365,41 @@ export default function MentorClosureView({
                 ? `⚠ ${closure.patterns.eventCounts.tilt} tilt / ${closure.patterns.eventCounts.revenge} revenge`
                 : 'sem padrões'
             }>
-              <p className="text-sm text-slate-400">
-                Principais erros: {(closure.patterns?.topErrors || []).join(', ') || 'nenhum'}.
-                Eventos comportamentais: {Object.entries(closure.patterns?.eventCounts || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || '—'}.
-              </p>
+              {(() => {
+                // Fallback pra closures antigas (sem unifiedErrors): deriva no fly
+                // mesclando patterns.topErrors (raw string array) + eventCounts.
+                const eventCounts = closure.patterns?.eventCounts || {};
+                let unified = Array.isArray(closure.patterns?.unifiedErrors) ? closure.patterns.unifiedErrors : null;
+                if (!unified) {
+                  const fromCompliance = (closure.patterns?.topErrors || []).map((t) => ({
+                    type: t, count: 1, source: 'compliance', label: ERROR_LABELS_PT[t] || t,
+                  }));
+                  const behavioralKeys = ['tilt','revenge','overtrading','stopTampering','rapidReentry','chaseReentry','hesitation','breakevenTooEarly','partialSizing'];
+                  const fromBehavioral = behavioralKeys
+                    .map((k) => ({ type: k, count: Number(eventCounts[k]) || 0, source: 'behavioral', label: ERROR_LABELS_PT[k] || k }))
+                    .filter((e) => e.count > 0);
+                  unified = [...fromCompliance, ...fromBehavioral]
+                    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+                    .slice(0, 5);
+                }
+                const nonZero = Object.entries(eventCounts)
+                  .filter(([, v]) => Number(v) > 0)
+                  .map(([k, v]) => `${ERROR_LABELS_PT[k] || k} ${v}`)
+                  .join(' · ');
+                return (
+                  <p className="text-sm text-slate-400">
+                    Erros do ciclo: {unified.length === 0
+                      ? 'nenhum'
+                      : unified.map((e) => `${e.label}×${e.count}`).join(', ')}.
+                    {nonZero && (
+                      <>
+                        <br />
+                        <span className="text-[11px] text-slate-500">Granularidade: {nonZero}.</span>
+                      </>
+                    )}
+                  </p>
+                );
+              })()}
             </Section>
 
             <Section title="③ Refletir" badge={`Por quê: ${(aar.whyDifference?.attributions || []).join(' + ') || '—'}`}>
