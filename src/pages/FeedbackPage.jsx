@@ -696,7 +696,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
             {trade?.planId && (
               <div className="mt-3">
-                <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+                <PlanSummaryCard plan={tradePlan} accounts={accounts || []} trades={studentTrades || []} />
               </div>
             )}
             {userIsMentor && (
@@ -920,7 +920,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
           {trade?.planId && (
             <div className="mt-4">
-              <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+              <PlanSummaryCard plan={tradePlan} accounts={accounts || []} trades={studentTrades || []} />
             </div>
           )}
           {userIsMentor && (

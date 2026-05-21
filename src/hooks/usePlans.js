@@ -129,7 +129,8 @@ export const usePlans = (overrideStudentId = null) => {
         accountId: planData.accountId,
 
         pl: parseFloat(planData.pl) || 0,
-        currentPl: parseFloat(planData.pl) || 0,
+        // currentPl removido (contrato C2 #259): saldo é derivado on-the-fly
+        // via planBalance.computeCurrentPl. Não inicializa mais o campo legado.
         plPercent: parseFloat(planData.plPercent) || 0,
 
         riskPerOperation: parseFloat(planData.riskPerOperation) || 2,
@@ -314,6 +315,11 @@ export const usePlans = (overrideStudentId = null) => {
 
     const planTrades = localTrades.filter(t => t.planId === planId);
     const basePl = Number(plan.pl) || 0;
+
+    // Saldo persistido em plan.currentPl é LEGADO (contrato C2 #259):
+    // saldo agora é derivado on-the-fly via planBalance.computeCurrentPl.
+    // Mantemos o read aqui só pra detectar drift residual com o campo legado
+    // — eventual divergência sinaliza dado obsoleto no banco, não bug ativo.
     const currentPl = Number(plan.currentPl ?? plan.pl) || 0;
 
     // === Ida: PL calculado a partir dos trades ===

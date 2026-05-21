@@ -18,6 +18,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlans } from '../hooks/usePlans';
+import { useTrades } from '../hooks/useTrades';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import {
   PROP_FIRM_LABELS,
@@ -109,6 +110,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   const { brokers } = useMasterData();
   const { user, isMentor } = useAuth();
   const { plans, addPlan, updatePlan } = usePlans();
+  const { trades } = useTrades();
   const { templates: firestoreTemplates } = usePropFirmTemplates();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -610,7 +612,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
-    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={handleCreatePlanForSelectedAccount} planSubmitting={planSubmitting} />;
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} trades={trades} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={handleCreatePlanForSelectedAccount} planSubmitting={planSubmitting} />;
   }
 
   return (
@@ -624,7 +626,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       </div>
 
       {isMentor() ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} trades={trades} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {

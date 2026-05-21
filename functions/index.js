@@ -286,20 +286,14 @@ const updateAccountBalance = async (accountId, resultDiff) => {
  * @param {string} planId - ID do plano
  * @param {number} resultDiff - Valor a somar (positivo ou negativo)
  */
-const updatePlanPl = async (planId, resultDiff) => {
-  if (!planId || resultDiff === 0) return;
-  const planRef = db.collection('plans').doc(planId);
-  await db.runTransaction(async (t) => {
-    const doc = await t.get(planRef);
-    if (!doc.exists) return;
-    const plan = doc.data();
-    const currentPl = plan.currentPl ?? plan.pl ?? 0;
-    t.update(planRef, {
-      currentPl: currentPl + resultDiff,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-  });
-};
+// DEPRECATED (contrato C2 #259): saldo do plano deixou de ser persistido.
+// Agora é derivado on-the-fly em src/utils/planBalance.computeCurrentPl
+// (pl + Σ trades do ciclo aberto). Campo plan.currentPl é legado e não
+// é mais escrito — fica no doc por backward compat até migration deletar.
+// Chamadores foram mantidos como no-op pra preservar contrato da CF sem
+// quebrar callers; remover ao consolidar a migration.
+// eslint-disable-next-line no-unused-vars
+const updatePlanPl = async (_planId, _resultDiff) => { /* no-op (C2) */ };
 
 // ============================================
 // PROP FIRM HELPERS (#52 Fase 2)

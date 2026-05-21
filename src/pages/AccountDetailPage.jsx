@@ -27,6 +27,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PlanManagementModal from '../components/PlanManagementModal';
 import DebugBadge from '../components/DebugBadge';
 import { buildAuditInfo } from '../utils/mentorPlanAudit';
+import { computeCurrentPl } from '../utils/planBalance';
 
 // --- Helpers de Formatação ---
 
@@ -52,7 +53,7 @@ const translateType = (type) => {
   return map[type] || type;
 };
 
-const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
+const AccountDetailPage = ({ account, onBack, plans = [], trades = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
   const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
   const { user, isMentor } = useAuth();
   
@@ -272,7 +273,7 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreate
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {accountPlans.map(plan => {
               const plInitial = plan.pl || 0;
-              const plCurrent = plan.currentPl ?? plInitial;
+              const plCurrent = computeCurrentPl(plan, trades);
               const plPnL = plCurrent - plInitial;
               const plPnLPercent = plInitial > 0 ? ((plPnL / plInitial) * 100) : 0;
               const roValue = plInitial > 0 ? (plInitial * (plan.riskPerOperation || 0) / 100) : 0;
