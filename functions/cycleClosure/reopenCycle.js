@@ -99,6 +99,42 @@ module.exports = onCall(
           planUpdate.lastClosedCycleEnd = remaining.length > 0 ? remaining[remaining.length - 1] : null;
         }
 
+        // Cache lastCycleClosureId: aponta pro closure mais recente restante
+        // Se este era, recua pro penúltimo (ou null se não houver outros)
+        if (plan.lastCycleClosureId === closureId) {
+          const remainingRanges = (plan.sealedCycleRanges || [])
+            .filter((r) => r && r.closureId !== closureId);
+          planUpdate.lastCycleClosureId = remainingRanges.length > 0
+            ? remainingRanges[remainingRanges.length - 1].closureId
+            : null;
+        }
+
+        // C4 #259: restaurar estado pré-fechamento do plano (PL alocado +
+        // parâmetros). preClosePlanSnapshot é o ground truth gravado pelo
+        // close (C3). Closures antigos (schemaVersion < 3) não têm o campo —
+        // mantém plan como está e loga warning.
+        const pre = closure.preClosePlanSnapshot;
+        if (pre && typeof pre === 'object') {
+          if (typeof pre.pl === 'number' && pre.pl > 0) planUpdate.pl = pre.pl;
+          if (typeof pre.riskPerOperation === 'number' && pre.riskPerOperation > 0) {
+            planUpdate.riskPerOperation = pre.riskPerOperation;
+          }
+          if (typeof pre.rrTarget === 'number' && pre.rrTarget > 0) planUpdate.rrTarget = pre.rrTarget;
+          if (typeof pre.cycleGoal === 'number' && pre.cycleGoal > 0) planUpdate.cycleGoal = pre.cycleGoal;
+          if (typeof pre.cycleStop === 'number' && pre.cycleStop > 0) planUpdate.cycleStop = pre.cycleStop;
+          if (typeof pre.periodGoal === 'number' && pre.periodGoal > 0) planUpdate.periodGoal = pre.periodGoal;
+          if (typeof pre.periodStop === 'number' && pre.periodStop > 0) planUpdate.periodStop = pre.periodStop;
+        } else {
+          console.warn('[reopenCycle] closure sem preClosePlanSnapshot — plan não restaurado:', closureId);
+        }
+
+        // Decrementa currentCycleNumber se o close havia incrementado pra cycleNumber+1
+        if (typeof plan.currentCycleNumber === 'number' && typeof closure.cycleNumber === 'number') {
+          if (plan.currentCycleNumber === closure.cycleNumber + 1) {
+            planUpdate.currentCycleNumber = closure.cycleNumber;
+          }
+        }
+
         tx.update(planRef, planUpdate);
       });
 
