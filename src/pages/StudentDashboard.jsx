@@ -387,28 +387,30 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   };
 
   const handleSavePlan = async (planData) => {
-    // Gate de saldo dispara em criação E em edição: PL não pode exceder
-    // o saldo livre da conta (currentBalance menos PL dos outros planos
-    // ativos). Capital base só faz sentido se cabe no saldo real — após
-    // drawdown, ritual de fechamento força o aluno a recalibrar.
-    const requestedPL = Number(planData.pl);
-    const targetAccount = accounts.find(a => a.id === planData.accountId);
-    if (targetAccount) {
-      const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
-      const otherActivePlans = plans.filter(p =>
-        p.accountId === planData.accountId && p.active && p.id !== editingPlan?.id
-      );
-      const alreadyAllocated = otherActivePlans.reduce((sum, p) => sum + Number(p.pl || 0), 0);
-      const availableBalance = accountTotal - alreadyAllocated;
-
-      if (requestedPL > availableBalance) {
-        alert(
-          `Saldo insuficiente na conta!\n\n` +
-          `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n` +
-          `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n` +
-          `Ajuste o valor do PL ou aumente o saldo da conta.`
+    // Gate de saldo dispara APENAS na criação (contrato C1: PL é imutável
+    // após criação). Em edição, o Modal envia o PL original (campo
+    // read-only) e o valor não muda — revalidar contra saldo livre, que
+    // pode ter drenado por meses já importados, gera falso positivo.
+    if (!editingPlan) {
+      const requestedPL = Number(planData.pl);
+      const targetAccount = accounts.find(a => a.id === planData.accountId);
+      if (targetAccount) {
+        const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
+        const otherActivePlans = plans.filter(p =>
+          p.accountId === planData.accountId && p.active
         );
-        return;
+        const alreadyAllocated = otherActivePlans.reduce((sum, p) => sum + Number(p.pl || 0), 0);
+        const availableBalance = accountTotal - alreadyAllocated;
+
+        if (requestedPL > availableBalance) {
+          alert(
+            `Saldo insuficiente na conta!\n\n` +
+            `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n` +
+            `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n` +
+            `Ajuste o valor do PL ou aumente o saldo da conta.`
+          );
+          return;
+        }
       }
     }
 
@@ -431,7 +433,17 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   const handleDeletePlan = async (e, planId) => {
     e.stopPropagation();
-    if (!confirm('Excluir este plano?')) return;
+    const planTradesCount = trades.filter((t) => t.planId === planId).length;
+    const tradesLine = planTradesCount === 0
+      ? 'Nenhum trade vinculado.'
+      : `${planTradesCount} ${planTradesCount === 1 ? 'trade vinculado será apagado' : 'trades vinculados serão apagados'} em cascata.`;
+    const msg =
+      'Deletar este plano?\n\n'
+      + 'O capital alocado (PL) é imutável após a criação. '
+      + 'Para alterá-lo, é necessário deletar o plano inteiro.\n\n'
+      + `ATENÇÃO: ${tradesLine}\n`
+      + 'Esta ação não pode ser desfeita.';
+    if (!confirm(msg)) return;
     try {
       await deletePlan(planId);
       if (selectedPlanId === planId) setSelectedPlanId(null);

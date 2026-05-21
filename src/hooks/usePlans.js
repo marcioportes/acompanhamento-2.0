@@ -174,8 +174,15 @@ export const usePlans = (overrideStudentId = null) => {
   const updatePlan = useCallback(async (planId, planData, auditInfo = null) => {
     try {
       const planRef = doc(db, 'plans', planId);
+      // Contrato C1: capital alocado (pl) é imutável após criação. Strip
+      // antes de gravar pra impedir bypass via callers que enviem pl no
+      // payload (defesa em profundidade — UI já bloqueia em PlanManagementModal).
+      // A única rota legítima de mudança no pl é o ritual de fechamento de
+      // ciclo (closeCycle CF grava pl do próximo ciclo).
+      // eslint-disable-next-line no-unused-vars
+      const { pl: _ignoredPl, ...safePlanData } = planData;
       const updateData = {
-        ...planData,
+        ...safePlanData,
         updatedAt: serverTimestamp()
       };
 
