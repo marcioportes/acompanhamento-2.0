@@ -12,7 +12,7 @@ const basePlan = {
   id: 'plan-abc',
   name: 'MNQ Conservador',
   pl: 10000,
-  currentPl: 10350,
+  // currentPl removido — campo legado pós-C2 #259 (saldo derivado via trades)
   riskPerOperation: 0.5,
   rrTarget: 1.5,
   blockedEmotions: ['FOMO', 'REVENGE'],
@@ -26,6 +26,12 @@ const basePlan = {
   accountId: 'acc-usd',
   active: true,
 };
+
+// Trades simulando saldo +350 sobre o pl base (preserva os asserts de 3.5%
+// que antes vinham do campo persistido currentPl: 10350).
+const baseTrades = [
+  { id: 't1', planId: 'plan-abc', date: '2026-05-15', result: 350 },
+];
 
 const usdAccount = { id: 'acc-usd', currency: 'USD' };
 
@@ -63,7 +69,7 @@ describe('PlanSummaryCard', () => {
   });
 
   it('expande e colapsa ao clicar no header', () => {
-    render(<PlanSummaryCard plan={basePlan} accounts={[usdAccount]} />);
+    render(<PlanSummaryCard plan={basePlan} accounts={[usdAccount]} trades={baseTrades} />);
     // Colapsado por default — PL atual só aparece na seção expandida
     expect(screen.queryByText(/PL atual/)).toBeNull();
     fireEvent.click(screen.getByText('MNQ Conservador').closest('button'));
@@ -72,7 +78,7 @@ describe('PlanSummaryCard', () => {
   });
 
   it('suporta defaultExpanded', () => {
-    render(<PlanSummaryCard plan={basePlan} accounts={[usdAccount]} defaultExpanded />);
+    render(<PlanSummaryCard plan={basePlan} accounts={[usdAccount]} trades={baseTrades} defaultExpanded />);
     expect(screen.getByText(/PL atual/)).toBeTruthy();
     expect(screen.getByText(/Período \(Diário\)/)).toBeTruthy();
     expect(screen.getByText(/Ciclo \(mensal\)/)).toBeTruthy();
@@ -95,9 +101,13 @@ describe('PlanSummaryCard', () => {
     expect(screen.queryByText(/Ciclo \(mensal\)$/)).toBeNull();
   });
 
-  it('omite "PL atual" quando currentPl ausente', () => {
-    const { currentPl, ...plan } = basePlan;
-    render(<PlanSummaryCard plan={plan} accounts={[usdAccount]} defaultExpanded />);
+  it('omite "PL atual" quando plan.pl ausente', () => {
+    // Contrato C2 #259: saldo é derivado on-the-fly (pl + Σ trades). "PL atual"
+    // só some quando o lastro (plan.pl) some — o campo legado plan.currentPl
+    // não é mais determinante.
+    // eslint-disable-next-line no-unused-vars
+    const { pl, ...plan } = basePlan;
+    render(<PlanSummaryCard plan={plan} accounts={[usdAccount]} trades={[]} defaultExpanded />);
     expect(screen.queryByText(/PL atual/)).toBeNull();
   });
 });
