@@ -37,8 +37,26 @@ function buildSealedError(range, tradeDate) {
   );
 }
 
+function isTradeBeforeLastClosedCycle(plan, tradeDate) {
+  if (!plan || typeof plan !== 'object') return null;
+  if (typeof tradeDate !== 'string' || tradeDate.length === 0) return null;
+  const last = plan.lastClosedCycleEnd;
+  if (typeof last !== 'string' || last.length === 0) return null;
+  return tradeDate <= last ? last : null;
+}
+
+function buildRetroactiveBlockedError(tradeDate, lastClosedCycleEnd) {
+  return (
+    `Trade em ${tradeDate} não pode ser registrado: o ciclo mais recente foi ` +
+    `fechado em ${lastClosedCycleEnd}. Trades só são aceitos a partir do dia ` +
+    `seguinte. Para editar período já fechado, reabra o ciclo correspondente.`
+  );
+}
+
 module.exports = {
   findSealingRange,
   isTradeInSealedRange,
   buildSealedError,
+  isTradeBeforeLastClosedCycle,
+  buildRetroactiveBlockedError,
 };

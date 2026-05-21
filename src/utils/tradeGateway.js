@@ -24,7 +24,7 @@ import {
 import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
 import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
-import { findSealingRange, buildSealedError } from './cycleClosure/sealCheck';
+import { findSealingRange, buildSealedError, isTradeBeforeLastClosedCycle, buildRetroactiveBlockedError } from './cycleClosure/sealCheck';
 
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
@@ -152,6 +152,14 @@ export async function createTrade(tradeData, userContext) {
   if (tradeData.date) {
     const sealedBy = findSealingRange(planData, tradeData.date);
     if (sealedBy) throw new Error(buildSealedError(sealedBy, tradeData.date));
+
+    // C5 #259 — adicional ao range check: bloqueia também trades em períodos
+    // ANTERIORES ao último ciclo fechado (mesmo sem range explícito cobrindo
+    // aquela janela). Garante linha do tempo monotônica para frente após
+    // qualquer fechamento; aluno não pode importar mês passado uma vez que
+    // virou o ciclo mais recente.
+    const retroLast = isTradeBeforeLastClosedCycle(planData, tradeData.date);
+    if (retroLast) throw new Error(buildRetroactiveBlockedError(tradeData.date, retroLast));
   }
 
   // Busca moeda da conta para persistir no trade
