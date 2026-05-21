@@ -171,6 +171,29 @@ module.exports = onCall(
           denialFlag,
         };
 
+        // Foto do plano ANTES do close mexer (contrato C3 #259) — ground truth
+        // pra reabertura restaurar o estado pré-fechamento. Capturada no
+        // servidor a partir do plan lido na transaction, não do payload —
+        // evita confiar no cliente pra um campo que define audit trail.
+        const preClosePlanSnapshot = {
+          pl: Number(plan.pl) || 0,
+          riskPerOperation: Number(plan.riskPerOperation) || 0,
+          rrTarget: Number(plan.rrTarget) || 0,
+          cycleGoal: Number(plan.cycleGoal) || 0,
+          cycleStop: Number(plan.cycleStop) || 0,
+          periodGoal: Number(plan.periodGoal) || 0,
+          periodStop: Number(plan.periodStop) || 0,
+        };
+
+        // Baseline imutável do ciclo (contrato C2 #259) — narrativa formal do
+        // que aconteceu nesse ciclo: PL inicial era X, saldo dinâmico fechou
+        // em Y, virou Z. Independente de qualquer mutação futura no plano.
+        const cycleBaseline = {
+          plInicial: preClosePlanSnapshot.pl,
+          saldoFinal: Number(payload.snapshot?.result) || 0,
+          plFinal: preClosePlanSnapshot.pl + (Number(payload.snapshot?.result) || 0),
+        };
+
         // Build closure doc
         const now = admin.firestore.FieldValue.serverTimestamp();
         const closureDoc = {
@@ -195,6 +218,10 @@ module.exports = onCall(
           notes: payload.notes ?? null,
           behavioralSummary,
 
+          // C3: baseline do ciclo + foto pré-fechamento (audit + reabertura)
+          cycleBaseline,
+          preClosePlanSnapshot,
+
           // Status + reopen
           status: 'CLOSED',
           originalSnapshot: null,
@@ -207,7 +234,7 @@ module.exports = onCall(
           closedBy: { uid: userUid, email: userEmail, role },
           closeMode: payload.closeMode,
           movementId: null,                      // FK pra movements se result ≠ 0 (A-fase futura)
-          schemaVersion: 2,
+          schemaVersion: 3,                      // bump por C3 (cycleBaseline + preClosePlanSnapshot)
           createdAt: now,
         };
 
@@ -229,17 +256,21 @@ module.exports = onCall(
           updatedAt: now,
         };
 
+        // Virada de ciclo (contrato C2 #259): PL do plano após o fechamento
+        // vira o PL(ini) do próximo ciclo. Por default é o plFinal do ciclo
+        // anterior; se o aluno aplicou ajuste no ritual, usa o valor escolhido.
+        // Saldo derivado zera porque o ciclo aberto agora começa em cycleEnd+1
+        // e os trades anteriores não pertencem mais a ele.
         const adj = payload.forward?.planAdjustment;
+        if (adj?.changed && typeof adj.newPl === 'number' && adj.newPl > 0) {
+          planUpdate.pl = adj.newPl;
+        } else if (cycleBaseline.plFinal > 0) {
+          planUpdate.pl = cycleBaseline.plFinal;
+        }
+        // Demais parâmetros (RO, RR) — só com ajuste explícito do aluno e > 0.
+        // Zero é semântica de PAUSA (REGRA 0 do advisor); não vira o plano,
+        // fica registrado em behavioralSummary.critical + notifyMentor.
         if (adj?.changed) {
-          // Numéricos só sobrescrevem com valores > 0. Zero é semântica de
-          // PAUSA (REGRA 0 do closurePlanAdvisor sugere newRiskPerOp:0 quando
-          // dispara pause_restructure), não alíquota válida — escrever 0 no
-          // plano quebra readers downstream que filtram `> 0` silenciosamente
-          // (EV Leakage, Risk Asymmetry, tradeGateway rrAssumed, advisor cap).
-          // A pausa fica registrada em closure.behavioralSummary.critical +
-          // notifyMentor; UI/mentor leem dali. Plano preserva RO/PL/RR
-          // anteriores até o aluno retomar com valor explícito.
-          if (typeof adj.newPl === 'number' && adj.newPl > 0) planUpdate.pl = adj.newPl;
           if (typeof adj.newRiskPerOp === 'number' && adj.newRiskPerOp > 0) {
             planUpdate.riskPerOperation = adj.newRiskPerOp;
           }
