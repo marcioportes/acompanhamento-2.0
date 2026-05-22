@@ -110,7 +110,11 @@ service cloud.firestore {
         isOwner(resource.data.studentId) ||
         isOwnerByEmail(resource.data.studentEmail)
       ) && (
-        resource.data._lockedByMentor != true ||
+        // FIX: usar .get() com default — `resource.data._lockedByMentor` quando o
+        // campo NÃO existe no doc causa runtime error → permission-denied (bug
+        // descoberto em 22/05/2026 via bisseção da rule). Trades nunca tocados
+        // pelo mentor não têm o campo, então acesso direto quebra.
+        resource.data.get('_lockedByMentor', false) != true ||
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['emotionEntry', 'emotionExit', 'setup'])
       ) && (
         isMentor() ||
@@ -301,6 +305,13 @@ service cloud.firestore {
     match /students/{studentId}/maturity/{docId=**} {
       allow read: if isAuthenticated() && (isOwner(studentId) || isMentor());
       allow write: if false;
+    }
+
+    // collectionGroup('maturity') — useMentorMaturityOverview faz query cross-student
+    // pra pintar o semáforo de maturidade na MentorDashboard. Sem essa regra de
+    // collection group a query é default-deny mesmo pro mentor.
+    match /{path=**}/maturity/{docId} {
+      allow read: if isMentor();
     }
 
     // ========== Selic Cache — Risk-free rate diária BCB SGS-11 (CHUNK-09, issue #235) ==========
