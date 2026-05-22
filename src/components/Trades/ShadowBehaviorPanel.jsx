@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import DebugBadge from '../DebugBadge';
+import { formatCurrencyDynamic } from '../../utils/currency';
 
 const SEVERITY_STYLES = {
   HIGH: 'bg-red-500/20 text-red-300 border-red-500/30',
@@ -79,9 +80,134 @@ const RESOLUTION_STYLES = {
   LOW: 'text-zinc-400'
 };
 
-const PatternCard = ({ pattern }) => {
+const fmt = (value, currency) => {
+  if (value == null) return '—';
+  return formatCurrencyDynamic(value, currency || 'USD');
+};
+
+const UNDERSIZED_KEY_SENTENCE = (scenario, planRrTarget) => {
+  switch (scenario) {
+    case 'WIN_RR_HIT':
+      return `RR de ${planRrTarget}:1 cumprido. Alvo do plano não atingido.`;
+    case 'WIN_RR_MISS':
+      return 'Operação subdimensionada e abaixo do alvo do trade.';
+    case 'LOSS_BE':
+      return 'Operação subdimensionada e tomada em loss.';
+    default:
+      return '';
+  }
+};
+
+const UndersizedEducational = ({ scenario, evidence, currency }) => {
+  const {
+    actualRiskAmount, utilizationPct, planRoAmount, actualGain,
+    expectedGainAtPlanRR, rrLocalAchieved, planRsDelivered, planRrTarget
+  } = evidence;
+
+  if (scenario === 'WIN_RR_HIT') {
+    return (
+      <div className="text-xs text-zinc-400 mt-2 leading-relaxed space-y-2">
+        <p>
+          Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)})
+          e atingiu {fmt(actualGain, currency)} — menos de um stop cheio do plano e abaixo do alvo planejado
+          de {fmt(expectedGainAtPlanRR, currency)}.
+        </p>
+        <p>
+          Sua estatística (Payoff/PF/EV) lê este trade como +{rrLocalAchieved}R.
+          Em Rs do plano são +{planRsDelivered}R. Quando vier um loss de RO cheio (−1R do plano),
+          trades assim não cobrem o stop.
+        </p>
+        <p>
+          Se o RO contratado parece grande, ajuste o plano. Subdimensionar esconde o desalinhamento
+          e adia o acerto de contas.
+        </p>
+      </div>
+    );
+  }
+
+  if (scenario === 'WIN_RR_MISS') {
+    const localTarget = actualRiskAmount != null && planRrTarget != null
+      ? actualRiskAmount * planRrTarget
+      : null;
+    return (
+      <div className="text-xs text-zinc-400 mt-2 leading-relaxed space-y-2">
+        <p>
+          Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)})
+          e saiu com {fmt(actualGain, currency)} — abaixo do alvo do próprio trade ({fmt(localTarget, currency)})
+          e muito abaixo do alvo do plano ({fmt(expectedGainAtPlanRR, currency)}).
+        </p>
+        <p>
+          Duplo problema: subdimensionado + saída antes do RR. Sua estatística mede Rs locais
+          (stop usado), não Rs do plano — o trade entra como ganho parcial mas em Rs do plano
+          entregou só +{planRsDelivered}R.
+        </p>
+        <p>
+          Se o RO contratado parece grande, ajuste o plano em vez de operar abaixo dele.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-xs text-zinc-400 mt-2 leading-relaxed space-y-2">
+      <p>
+        Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)})
+        e tomou loss.
+      </p>
+      <p>
+        Operar subdimensionado pode parecer prudente, mas distorce sua estatística cumulativa
+        (Payoff/PF/EV) ao tratar Rs pequenos como equivalentes a Rs cheios do plano.
+      </p>
+    </div>
+  );
+};
+
+const UndersizedBody = ({ pattern, trade, expanded }) => {
+  const evidence = pattern.evidence || {};
+  const { scenario, planRrTarget, utilizationPct } = evidence;
+  const currency = trade?.currency || 'USD';
+  const hasAmounts = evidence.planRoAmount != null;
+  const keySentence = UNDERSIZED_KEY_SENTENCE(scenario, planRrTarget);
+
+  return (
+    <>
+      {hasAmounts ? (
+        <p className="text-sm font-medium text-zinc-100 mt-2">{keySentence}</p>
+      ) : (
+        <p className="text-sm font-medium text-zinc-100 mt-2">
+          Você utilizou {utilizationPct}% do RO contratado. {keySentence}
+        </p>
+      )}
+
+      {hasAmounts && (
+        <UndersizedEducational scenario={scenario} evidence={evidence} currency={currency} />
+      )}
+
+      {expanded && (
+        <div className="mt-3 pt-2 border-t border-white/10">
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">
+            Evidência técnica
+          </p>
+          <div className="grid grid-cols-2 gap-1">
+            {Object.entries(evidence).map(([key, value]) => (
+              <div key={key} className="text-xs">
+                <span className="text-zinc-500">{key}: </span>
+                <span className="text-zinc-300">
+                  {value == null ? '—' : (Array.isArray(value) ? value.length + ' items' : String(value))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+const PatternCard = ({ pattern, trade }) => {
   const [expanded, setExpanded] = useState(false);
   const isPositive = pattern.code === 'CLEAN_EXECUTION' || pattern.code === 'TARGET_HIT';
+  const isUndersized = pattern.code === 'UNDERSIZED_TRADE';
 
   return (
     <div
@@ -111,23 +237,29 @@ const PatternCard = ({ pattern }) => {
         </div>
       </div>
 
-      <p className="text-xs text-zinc-400 mt-1">
-        {PATTERN_DESCRIPTIONS[pattern.code] ?? ''}
-      </p>
+      {isUndersized ? (
+        <UndersizedBody pattern={pattern} trade={trade} expanded={expanded} />
+      ) : (
+        <>
+          <p className="text-xs text-zinc-400 mt-1">
+            {PATTERN_DESCRIPTIONS[pattern.code] ?? ''}
+          </p>
 
-      {expanded && pattern.evidence && (
-        <div className="mt-2 pt-2 border-t border-white/10">
-          <div className="grid grid-cols-2 gap-1">
-            {Object.entries(pattern.evidence).map(([key, value]) => (
-              <div key={key} className="text-xs">
-                <span className="text-zinc-500">{key}: </span>
-                <span className="text-zinc-300">
-                  {Array.isArray(value) ? value.length + ' items' : String(value)}
-                </span>
+          {expanded && pattern.evidence && (
+            <div className="mt-2 pt-2 border-t border-white/10">
+              <div className="grid grid-cols-2 gap-1">
+                {Object.entries(pattern.evidence).map(([key, value]) => (
+                  <div key={key} className="text-xs">
+                    <span className="text-zinc-500">{key}: </span>
+                    <span className="text-zinc-300">
+                      {Array.isArray(value) ? value.length + ' items' : String(value)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -172,14 +304,14 @@ const ShadowBehaviorPanel = ({ trade, isMentor = false, embedded = false }) => {
             {negativePatterns.length > 0 && (
               <div className="space-y-2">
                 {negativePatterns.map((p, i) => (
-                  <PatternCard key={`neg-${i}`} pattern={p} />
+                  <PatternCard key={`neg-${i}`} pattern={p} trade={trade} />
                 ))}
               </div>
             )}
             {positivePatterns.length > 0 && (
               <div className="space-y-2">
                 {positivePatterns.map((p, i) => (
-                  <PatternCard key={`pos-${i}`} pattern={p} />
+                  <PatternCard key={`pos-${i}`} pattern={p} trade={trade} />
                 ))}
               </div>
             )}
