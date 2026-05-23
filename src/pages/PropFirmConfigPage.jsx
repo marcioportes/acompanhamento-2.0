@@ -24,6 +24,7 @@ import {
   DEFAULT_TEMPLATES,
   EMPTY_TEMPLATE
 } from '../constants/propFirmDefaults';
+import { getCurrencySymbol } from '../utils/currency';
 import DebugBadge from '../components/DebugBadge';
 
 const PropFirmConfigPage = ({ embedded = false }) => {
@@ -243,7 +244,7 @@ const PropFirmConfigPage = ({ embedded = false }) => {
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                       <span className="text-sm text-white font-medium truncate">{template.name}</span>
                       <span className="text-xs text-slate-500">
-                        ${template.accountSize?.toLocaleString()} · {DRAWDOWN_TYPE_LABELS[template.drawdown?.type] ?? template.drawdown?.type}
+                        {getCurrencySymbol(template.currency ?? 'USD')}{template.accountSize?.toLocaleString()} · {DRAWDOWN_TYPE_LABELS[template.drawdown?.type] ?? template.drawdown?.type}
                       </span>
                     </button>
                     <div className="flex items-center gap-1.5 ml-2">
@@ -312,7 +313,23 @@ const PropFirmConfigPage = ({ embedded = false }) => {
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-slate-500">Account Size ($)</label>
+                          <label className="text-xs text-slate-500">Moeda</label>
+                          <select
+                            value={editForm.currency ?? 'USD'}
+                            onChange={(e) => setEditForm(prev => ({ ...prev, currency: e.target.value }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-sm"
+                          >
+                            <option value="USD">US$ (USD)</option>
+                            <option value="BRL">R$ (BRL)</option>
+                            <option value="EUR">€ (EUR)</option>
+                            <option value="GBP">£ (GBP)</option>
+                            <option value="ARS">AR$ (ARS)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-500">
+                            Account Size ({getCurrencySymbol(editForm.currency ?? 'USD')})
+                          </label>
                           <input
                             type="number"
                             value={editForm.accountSize ?? 0}

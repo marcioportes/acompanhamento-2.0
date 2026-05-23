@@ -642,11 +642,25 @@ describe('calculateDrawdownState — edge cases', () => {
     })).toThrow();
   });
 
-  it('lança erro sem accountSize válido', () => {
+  it('lança erro sem accountSize válido (negativo)', () => {
     expect(() => calculateDrawdownState({
-      propFirm: {}, template: tpl, accountSize: 0,
+      propFirm: {}, template: tpl, accountSize: -1,
       balanceBefore: 25000, tradeNet: 0, tradeDate: '2026-04-09'
     })).toThrow();
+  });
+
+  it('aceita accountSize=0 (Zero7 — saldo zero + buffer de perda)', () => {
+    // Zero7 modela conta sobre saldo zero: floor = -drawdown.maxAmount.
+    // Não deve lançar erro mesmo com accountSize=0 — issue #273.
+    const tplZero7 = {
+      drawdown: { type: 'STATIC', maxAmount: 997 },
+      consistency: { evalRule: null, fundedRule: null }
+    };
+    expect(() => calculateDrawdownState({
+      propFirm: { lastTradeDate: null, dayBalanceAtOpen: 0, dayPL: 0, dailyTrail: null, peakBalance: 0 },
+      template: tplZero7, accountSize: 0,
+      balanceBefore: 0, tradeNet: 0, tradeDate: '2026-04-09'
+    })).not.toThrow();
   });
 
   it('lança erro sem tradeDate', () => {

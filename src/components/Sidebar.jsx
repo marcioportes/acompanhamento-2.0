@@ -81,7 +81,7 @@ const Sidebar = ({
       badgeColor: 'purple'
     },
     { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
-    { id: 'students', label: 'Alunos', icon: Users },
+    { id: 'students', label: 'Acompanhamento', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },
     {
       id: 'pending',

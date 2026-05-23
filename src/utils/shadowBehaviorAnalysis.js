@@ -100,9 +100,9 @@ export const DEFAULT_CONFIG = {
     maxIntervalMinutes: 120  // flip direction dentro de 2h após loss → viés/narrativa
   },
   undersizedTrade: {
-    ratioThreshold: 0.50,    // riskPercent < 50% do plan.riskPerOperation → flag
-    highRatio: 0.25,         // < 25% = HIGH (4x menor que planejado)
-    mediumRatio: 0.40        // < 40% = MEDIUM
+    ratioThreshold: 0.65,    // riskPercent <= 65% do plan.riskPerOperation → flag (DEC-AUTO-278-01)
+    highRatio: 0.30,         // <= 30% = HIGH
+    mediumRatio: 0.50        // <= 50% = MEDIUM
   },
   hesitation: {
     minCancels: 2            // 2+ cancels before fill
@@ -542,8 +542,15 @@ export const detectDirectionFlip = (trade, adjacentTrades, config = DEFAULT_CONF
  * inflando RR estatistico mas escondendo desalinhamento com o plano de capital.
  * Se ha medo do RO, o ajuste correto e renegociar o plano — nao subdimensionar a operacao.
  *
- * Pre-requisito: caller enriquece trade com `planRoPct` (do plan.riskPerOperation).
- * Sem planRoPct ou riskPercent → detector silencioso (retorna null).
+ * Pre-requisito: caller enriquece trade com `planRoPct` (do plan.riskPerOperation),
+ * `planPl` (capital base do plano) e `planRrTarget` (RR alvo, default 2). Sem planRoPct
+ * ou riskPercent → detector silencioso. Sem planPl → flag dispara, mas amounts ficam null.
+ *
+ * Discriminador `scenario`:
+ *   - 'WIN_RR_HIT'  → result > 0 e RR local entregue >= planRrTarget (trade "boa" no R local
+ *                     mas com gain absoluto bem abaixo do R-plano: rGapVsPlan grande)
+ *   - 'WIN_RR_MISS' → result > 0 mas RR local < planRrTarget (subdimensionado + saída adiantada)
+ *   - 'LOSS_BE'     → result <= 0 ou ausente (campos win-only ficam null)
  */
 export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_CONFIG.undersizedTrade) => {
   const actualPct = trade.riskPercent;
@@ -555,8 +562,27 @@ export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_C
   const ratio = actualPct / planPct;
   if (ratio >= config.ratioThreshold) return null;
 
-  const severity = ratio < config.highRatio ? SEVERITY.HIGH
-    : ratio < config.mediumRatio ? SEVERITY.MEDIUM
+  const hasPl = trade.planPl != null && trade.planPl > 0;
+  const planRoAmount = hasPl ? trade.planPl * planPct / 100 : null;
+  const actualRiskAmount = hasPl ? trade.planPl * actualPct / 100 : null;
+  const planRrTarget = trade.planRrTarget ?? 2;
+  const expectedGainAtPlanRR = planRoAmount != null ? planRoAmount * planRrTarget : null;
+
+  const result = (typeof trade.result === 'number') ? trade.result : null;
+  const isWin = result != null && result > 0;
+
+  const planRsDelivered = isWin && planRoAmount ? result / planRoAmount : null;
+  const rGapVsPlan = isWin && expectedGainAtPlanRR != null ? expectedGainAtPlanRR - result : null;
+  const rrLocalAchieved = isWin && actualRiskAmount ? result / actualRiskAmount : null;
+  const hiddenRrInflation = ratio > 0 ? 1 / ratio : null;
+
+  let scenario;
+  if (!isWin) scenario = 'LOSS_BE';
+  else if (rrLocalAchieved != null && rrLocalAchieved >= planRrTarget) scenario = 'WIN_RR_HIT';
+  else scenario = 'WIN_RR_MISS';
+
+  const severity = ratio <= config.highRatio ? SEVERITY.HIGH
+    : ratio <= config.mediumRatio ? SEVERITY.MEDIUM
       : SEVERITY.LOW;
 
   return {
@@ -569,7 +595,17 @@ export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_C
       actualRiskPct: Math.round(actualPct * 100) / 100,
       planRoPct: Math.round(planPct * 100) / 100,
       ratio: Math.round(ratio * 100) / 100,
-      utilizationPct: Math.round(ratio * 10000) / 100  // ex: 25.00 = usou 25% do RO
+      utilizationPct: Math.round(ratio * 10000) / 100,
+      planRoAmount: planRoAmount != null ? Math.round(planRoAmount * 100) / 100 : null,
+      actualRiskAmount: actualRiskAmount != null ? Math.round(actualRiskAmount * 100) / 100 : null,
+      expectedGainAtPlanRR: expectedGainAtPlanRR != null ? Math.round(expectedGainAtPlanRR * 100) / 100 : null,
+      actualGain: result,
+      planRsDelivered: planRsDelivered != null ? Math.round(planRsDelivered * 100) / 100 : null,
+      rGapVsPlan: rGapVsPlan != null ? Math.round(rGapVsPlan * 100) / 100 : null,
+      hiddenRrInflation: hiddenRrInflation != null ? Math.round(hiddenRrInflation * 100) / 100 : null,
+      rrLocalAchieved: rrLocalAchieved != null ? Math.round(rrLocalAchieved * 100) / 100 : null,
+      planRrTarget,
+      scenario
     }
   };
 };

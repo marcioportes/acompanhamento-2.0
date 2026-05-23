@@ -12,3 +12,5 @@
 | CHUNK-06 (Emotional) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra eventos comportamentais e curva emocional |
 | CHUNK-08 (Mentor Feedback) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra mentor.threadsHighlighted |
 | CHUNK-09 (Onboarding/4D) — leitura | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | input pra maturity scores |
+| CHUNK-04 (Trade Ledger) — leitura | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | shadow lê trades + Panel é renderizado em TradeDetailModal |
+| CHUNK-08 (Mentor Feedback) — leitura | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | ShadowBehaviorPanel também consumido em FeedbackPage |

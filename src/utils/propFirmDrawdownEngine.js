@@ -169,8 +169,8 @@ export function calculateDrawdownState({
   if (!template || !template.drawdown) {
     throw new Error('template.drawdown é obrigatório');
   }
-  if (typeof accountSize !== 'number' || accountSize <= 0) {
-    throw new Error('accountSize deve ser número positivo');
+  if (typeof accountSize !== 'number' || accountSize < 0) {
+    throw new Error('accountSize deve ser número >= 0');
   }
   if (typeof balanceBefore !== 'number') {
     throw new Error('balanceBefore deve ser número');

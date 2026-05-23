@@ -58,6 +58,32 @@ describe('derivePropAlerts — DANGER', () => {
     const ddAlerts = alerts.filter(a => a.level === 'danger');
     expect(ddAlerts.length).toBe(0);
   });
+
+  it('CONSISTENCY_VIOLATION via flag gera danger (Zero7)', () => {
+    const alerts = derivePropAlerts({
+      flags: ['CONSISTENCY_VIOLATION'],
+      consistencyRule: 0.50,
+      currency: 'BRL',
+      fmt
+    });
+    const viol = alerts.find(a => a.text.includes('consistência'));
+    expect(viol).toBeDefined();
+    expect(viol.level).toBe('danger');
+    expect(viol.text).toContain('50%');
+  });
+
+  it('CONSISTENCY_VIOLATION via consistencyViolationDay gera danger com data/valor', () => {
+    const alerts = derivePropAlerts({
+      consistencyViolationDay: { date: '2026-05-15', pl: 510 },
+      consistencyRule: 0.50,
+      currency: 'BRL',
+      fmt
+    });
+    const viol = alerts.find(a => a.text.includes('consistência'));
+    expect(viol).toBeDefined();
+    expect(viol.level).toBe('danger');
+    expect(viol.text).toContain('2026-05-15');
+  });
 });
 
 describe('derivePropAlerts — WARNING', () => {

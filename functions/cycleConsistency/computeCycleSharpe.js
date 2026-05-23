@@ -82,11 +82,16 @@ function meanStdSample(arr) {
 function aggregateSource(daySources) {
   let bcbCount = 0;
   let fallbackCount = 0;
+  let placeholderCount = 0;
   for (const s of daySources) {
-    if (s.isFallback) fallbackCount += 1;
+    if (s.source === 'PLACEHOLDER') placeholderCount += 1;
+    else if (s.isFallback) fallbackCount += 1;
     else bcbCount += 1;
   }
   const fallbackUsed = fallbackCount > 0;
+  if (placeholderCount === daySources.length && daySources.length > 0) {
+    return { source: 'PLACEHOLDER', fallbackUsed: false };
+  }
   let source;
   if (fallbackCount === 0) source = 'BCB';
   else if (bcbCount === 0) source = 'FALLBACK';
@@ -97,6 +102,18 @@ function aggregateSource(daySources) {
 function resolveGetSelicFn(opts) {
   if (typeof opts.getSelicForDateFn === 'function') return opts.getSelicForDateFn;
   return require('../marketData/getSelicForDate').getSelicForDate;
+}
+
+/**
+ * Resolve rfr por moeda (espelho de src/utils/cycleConsistency/computeCycleSharpe.js, #273).
+ */
+function resolveRiskFreeRateFn(currency, opts) {
+  if (typeof opts.getRiskFreeRateFn === 'function') return opts.getRiskFreeRateFn;
+  if (currency === 'BRL' || currency === undefined || currency === null) {
+    return resolveGetSelicFn(opts);
+  }
+  // DT-Zero7-03: SOFR placeholder para trades USD.
+  return () => ({ rateDaily: 0, source: 'PLACEHOLDER', isFallback: false });
 }
 
 /**
@@ -116,6 +133,7 @@ async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, opts = 
   const minDays = typeof opts.minDays === 'number' ? opts.minDays : 5;
   const periodicity = opts.periodicity ?? 'annual';
   const multiplier = periodicity === 'monthly' ? SQRT_21 : SQRT_252;
+  const currency = opts.currency ?? 'BRL';
 
   const groups = groupTradesByDay(trades, cycleStart, cycleEnd);
   const daysWithTrade = groups.size;
@@ -131,10 +149,10 @@ async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, opts = 
   }
 
   const dailyReturns = dailyReturnsFromGroups(groups, plStart);
-  const getSelicFn = resolveGetSelicFn(opts);
+  const getRfrFn = resolveRiskFreeRateFn(currency, opts);
 
   const lookups = await Promise.all(
-    dailyReturns.map((d) => Promise.resolve(getSelicFn(d.dateIso)))
+    dailyReturns.map((d) => Promise.resolve(getRfrFn(d.dateIso)))
   );
 
   const excess = [];
@@ -143,7 +161,7 @@ async function computeCycleSharpe(trades, cycleStart, cycleEnd, plStart, opts = 
     const r = lookups[i] ?? {};
     const rateDaily = typeof r.rateDaily === 'number' && Number.isFinite(r.rateDaily) ? r.rateDaily : 0;
     const isFallback = r.isFallback === true || r.source === 'FALLBACK';
-    daySources.push({ isFallback });
+    daySources.push({ isFallback, source: r.source });
     excess.push(dailyReturns[i].dailyReturn - rateDaily);
   }
 

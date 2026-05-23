@@ -488,7 +488,7 @@ describe('detectDirectionFlip', () => {
 // ============================================
 
 describe('detectUndersizedTrade', () => {
-  it('detects HIGH severity when actual risk < 25% of plan RO', () => {
+  it('detects HIGH severity when actual risk <= 30% of plan RO', () => {
     const trade = baseTrade({ riskPercent: 0.1, planRoPct: 0.5 }); // 20% utilization
     const result = detectUndersizedTrade(trade, []);
     expect(result).not.toBeNull();
@@ -498,22 +498,37 @@ describe('detectUndersizedTrade', () => {
     expect(result.emotionMapping).toBe('AVOIDANCE');
   });
 
-  it('detects MEDIUM severity when ratio is between 25% and 40%', () => {
-    const trade = baseTrade({ riskPercent: 0.15, planRoPct: 0.5 }); // 30% utilization
+  it('detects MEDIUM severity when ratio is between 30% and 50%', () => {
+    const trade = baseTrade({ riskPercent: 0.20, planRoPct: 0.5 }); // 40% utilization
     const result = detectUndersizedTrade(trade, []);
     expect(result.severity).toBe(SEVERITY.MEDIUM);
   });
 
-  it('detects LOW severity when ratio is between 40% and 50%', () => {
-    const trade = baseTrade({ riskPercent: 0.225, planRoPct: 0.5 }); // 45% utilization
+  it('detects LOW severity when ratio is between 50% and 65%', () => {
+    const trade = baseTrade({ riskPercent: 0.275, planRoPct: 0.5 }); // 55% utilization
     const result = detectUndersizedTrade(trade, []);
     expect(result.severity).toBe(SEVERITY.LOW);
   });
 
-  it('returns null when ratio is >= 50% of plan', () => {
+  it('flags LOW at 60% utilization (was null under old 50% threshold)', () => {
     const trade = baseTrade({ riskPercent: 0.30, planRoPct: 0.5 }); // 60% utilization
     const result = detectUndersizedTrade(trade, []);
+    expect(result).not.toBeNull();
+    expect(result.severity).toBe(SEVERITY.LOW);
+  });
+
+  it('returns null when ratio is >= 65% of plan', () => {
+    const trade = baseTrade({ riskPercent: 0.35, planRoPct: 0.5 }); // 70% utilization
+    const result = detectUndersizedTrade(trade, []);
     expect(result).toBeNull();
+  });
+
+  it('flags at 50% utilization as MEDIUM (boundary <=, DEC-AUTO-278-01)', () => {
+    const trade = baseTrade({ riskPercent: 0.25, planRoPct: 0.5 }); // ratio 0.50
+    const result = detectUndersizedTrade(trade, []);
+    expect(result).not.toBeNull();
+    expect(result.severity).toBe(SEVERITY.MEDIUM);
+    expect(result.evidence.utilizationPct).toBe(50);
   });
 
   it('returns null when planRoPct is missing', () => {
@@ -537,11 +552,113 @@ describe('detectUndersizedTrade', () => {
   it('reproduces the exact scenario from validation: arriscou 30 com RO 100 (30%)', () => {
     // riskPercent calculado pela compliance: ex 0.3% (30 / 10000 * 100)
     // planRoPct: 1.0% (100 / 10000 * 100)
+    // Pós-DEC-AUTO-278-01: ratio 0.30 cai em HIGH (boundary <=)
     const trade = baseTrade({ riskPercent: 0.3, planRoPct: 1.0 });
     const result = detectUndersizedTrade(trade, []);
     expect(result).not.toBeNull();
-    expect(result.severity).toBe(SEVERITY.MEDIUM); // 30% utilization
+    expect(result.severity).toBe(SEVERITY.HIGH);
     expect(result.evidence.utilizationPct).toBe(30);
+  });
+
+  it('flags WIN with local RR hit but plan target missed (US$60/RO125 case)', () => {
+    // planPl 125000 → planRoAmount = 125000 * 0.1/100 = 125
+    // actualRiskAmount = 125000 * 0.048/100 = 60
+    // result 120 → rrLocalAchieved = 120/60 = 2.0 (== planRrTarget) → WIN_RR_HIT
+    // planRsDelivered = 120/125 = 0.96; rGapVsPlan = 250 - 120 = 130
+    // hiddenRrInflation = 1/0.48 ≈ 2.08
+    const trade = baseTrade({
+      riskPercent: 0.048,
+      planRoPct: 0.1,
+      planPl: 125000,
+      planRrTarget: 2,
+      result: 120
+    });
+    const r = detectUndersizedTrade(trade, []);
+    expect(r).not.toBeNull();
+    expect(r.severity).toBe(SEVERITY.MEDIUM); // ratio 0.48 ≤ 0.50
+    expect(r.evidence.scenario).toBe('WIN_RR_HIT');
+    expect(r.evidence.planRoAmount).toBe(125);
+    expect(r.evidence.actualRiskAmount).toBe(60);
+    expect(r.evidence.expectedGainAtPlanRR).toBe(250);
+    expect(r.evidence.actualGain).toBe(120);
+    expect(r.evidence.planRsDelivered).toBe(0.96);
+    expect(r.evidence.rGapVsPlan).toBe(130);
+    expect(r.evidence.hiddenRrInflation).toBe(2.08);
+    expect(r.evidence.rrLocalAchieved).toBe(2);
+    expect(r.evidence.planRrTarget).toBe(2);
+  });
+
+  it('flags WIN with local RR miss (subdimensionado + early exit)', () => {
+    // Mesmo setup, result 50 → rrLocalAchieved = 50/60 ≈ 0.83 < 2 → WIN_RR_MISS
+    const trade = baseTrade({
+      riskPercent: 0.048,
+      planRoPct: 0.1,
+      planPl: 125000,
+      planRrTarget: 2,
+      result: 50
+    });
+    const r = detectUndersizedTrade(trade, []);
+    expect(r).not.toBeNull();
+    expect(r.evidence.scenario).toBe('WIN_RR_MISS');
+    expect(r.evidence.planRsDelivered).toBe(0.4); // 50/125
+    expect(r.evidence.rGapVsPlan).toBe(200);      // 250 - 50
+    expect(r.evidence.rrLocalAchieved).toBe(0.83); // round(50/60 * 100)/100
+    expect(r.evidence.actualGain).toBe(50);
+  });
+
+  it('flags LOSS subdimensionado (scenario LOSS_BE, null nos campos win-only)', () => {
+    const trade = baseTrade({
+      riskPercent: 0.048,
+      planRoPct: 0.1,
+      planPl: 125000,
+      planRrTarget: 2,
+      result: -50
+    });
+    const r = detectUndersizedTrade(trade, []);
+    expect(r).not.toBeNull();
+    expect(r.evidence.scenario).toBe('LOSS_BE');
+    expect(r.evidence.actualGain).toBe(-50);
+    expect(r.evidence.planRsDelivered).toBeNull();
+    expect(r.evidence.rGapVsPlan).toBeNull();
+    expect(r.evidence.rrLocalAchieved).toBeNull();
+    // Amounts derivados de planPl continuam computados (independem de result)
+    expect(r.evidence.planRoAmount).toBe(125);
+    expect(r.evidence.actualRiskAmount).toBe(60);
+    expect(r.evidence.expectedGainAtPlanRR).toBe(250);
+  });
+
+  it('flag mecânico quando planPl ausente (sem amounts, ratio + hiddenRrInflation presentes)', () => {
+    const trade = baseTrade({
+      riskPercent: 0.20,
+      planRoPct: 0.5,
+      planPl: null,
+      result: 80
+    });
+    const r = detectUndersizedTrade(trade, []);
+    expect(r).not.toBeNull();
+    expect(r.severity).toBe(SEVERITY.MEDIUM); // ratio 0.40
+    expect(r.evidence.ratio).toBe(0.4);
+    expect(r.evidence.hiddenRrInflation).toBe(2.5); // 1/0.40
+    expect(r.evidence.planRoAmount).toBeNull();
+    expect(r.evidence.actualRiskAmount).toBeNull();
+    expect(r.evidence.expectedGainAtPlanRR).toBeNull();
+    expect(r.evidence.planRsDelivered).toBeNull();
+    expect(r.evidence.rGapVsPlan).toBeNull();
+    expect(r.evidence.rrLocalAchieved).toBeNull();
+  });
+
+  it('planRrTarget default 2 quando ausente', () => {
+    const trade = baseTrade({
+      riskPercent: 0.048,
+      planRoPct: 0.1,
+      planPl: 125000,
+      result: 120
+      // planRrTarget intencionalmente omitido
+    });
+    const r = detectUndersizedTrade(trade, []);
+    expect(r).not.toBeNull();
+    expect(r.evidence.planRrTarget).toBe(2);
+    expect(r.evidence.expectedGainAtPlanRR).toBe(250); // 125 * 2
   });
 });
 

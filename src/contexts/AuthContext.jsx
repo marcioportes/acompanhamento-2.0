@@ -15,6 +15,7 @@ import {
 } from 'firebase/auth';
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { shouldActivateStudent, buildActivatePayload } from '../utils/studentActivation';
 
 const AuthContext = createContext(null);
 
@@ -55,14 +56,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Atualizar status do aluno para ativo
-  const activateStudent = async (studentId) => {
+  // Ativa aluno no 1º login (idempotente — política em studentActivation).
+  // DEC-AUTO-263-07: accessStatus='active' é o sinal canônico do ritual completo.
+  // DEC-AUTO-271-02 (#271): callers passam o student inteiro; decisão e
+  // payload moram em src/utils/studentActivation.js (testáveis).
+  const activateStudent = async (student) => {
+    if (!shouldActivateStudent(student)) return;
     try {
-      await updateDoc(doc(db, 'students', studentId), {
-        status: 'active',
-        firstLoginAt: serverTimestamp()
-      });
-      console.log('[AuthContext] Aluno ativado:', studentId);
+      await updateDoc(doc(db, 'students', student.id), buildActivatePayload(serverTimestamp()));
+      console.log('[AuthContext] Aluno ativado:', student.id);
     } catch (err) {
       console.error('[AuthContext] Erro ao ativar:', err);
     }
@@ -80,12 +82,10 @@ export const AuthProvider = ({ children }) => {
         });
         setUserRole(role);
 
-        // Se é aluno, verificar e ativar se pending
+        // Se é aluno, verificar e ativar (idempotente — só escreve se accessStatus !== 'active').
         if (role === 'student') {
           const student = await checkStudentWhitelist(firebaseUser.email);
-          if (student && student.status === 'pending') {
-            await activateStudent(student.id);
-          }
+          if (student) await activateStudent(student);
         }
       } else {
         setUser(null);
@@ -117,10 +117,8 @@ export const AuthProvider = ({ children }) => {
           throw { code: 'auth/not-authorized', message: 'Email não autorizado. Contate seu mentor.' };
         }
 
-        // Se é aluno novo (pending), ativa
-        if (student.status === 'pending') {
-          await activateStudent(student.id);
-        }
+        // Ativa (idempotente — só escreve se accessStatus !== 'active')
+        await activateStudent(student);
       }
 
       setUserRole(role);

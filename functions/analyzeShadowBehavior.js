@@ -52,7 +52,7 @@ const DEFAULT_CONFIG = {
   targetHit: { tolerancePct: 0.05 },
   earlyExit: { rrThresholdPct: 0.50 },
   directionFlip: { maxIntervalMinutes: 120 },
-  undersizedTrade: { ratioThreshold: 0.50, highRatio: 0.25, mediumRatio: 0.40 },
+  undersizedTrade: { ratioThreshold: 0.65, highRatio: 0.30, mediumRatio: 0.50 },
   hesitation: { minCancels: 2 },
   stopPanic: { maxExitMinutes: 5 },
   fomoEntry: { minDelayMinutes: 10, orderType: 'MARKET' },
@@ -241,9 +241,29 @@ const detectUndersizedTrade = (trade) => {
   const cfg = DEFAULT_CONFIG.undersizedTrade;
   const ratio = actualPct / planPct;
   if (ratio >= cfg.ratioThreshold) return null;
+
+  const hasPl = trade.planPl != null && trade.planPl > 0;
+  const planRoAmount = hasPl ? trade.planPl * planPct / 100 : null;
+  const actualRiskAmount = hasPl ? trade.planPl * actualPct / 100 : null;
+  const planRrTarget = trade.planRrTarget ?? 2;
+  const expectedGainAtPlanRR = planRoAmount != null ? planRoAmount * planRrTarget : null;
+
+  const result = (typeof trade.result === 'number') ? trade.result : null;
+  const isWin = result != null && result > 0;
+
+  const planRsDelivered = isWin && planRoAmount ? result / planRoAmount : null;
+  const rGapVsPlan = isWin && expectedGainAtPlanRR != null ? expectedGainAtPlanRR - result : null;
+  const rrLocalAchieved = isWin && actualRiskAmount ? result / actualRiskAmount : null;
+  const hiddenRrInflation = ratio > 0 ? 1 / ratio : null;
+
+  let scenario;
+  if (!isWin) scenario = 'LOSS_BE';
+  else if (rrLocalAchieved != null && rrLocalAchieved >= planRrTarget) scenario = 'WIN_RR_HIT';
+  else scenario = 'WIN_RR_MISS';
+
   return {
     code: 'UNDERSIZED_TRADE',
-    severity: ratio < cfg.highRatio ? 'HIGH' : ratio < cfg.mediumRatio ? 'MEDIUM' : 'LOW',
+    severity: ratio <= cfg.highRatio ? 'HIGH' : ratio <= cfg.mediumRatio ? 'MEDIUM' : 'LOW',
     confidence: applyPenalty(0.90, trade),
     emotionMapping: EMOTION_MAPPING.UNDERSIZED_TRADE,
     layer: 1,
@@ -251,7 +271,17 @@ const detectUndersizedTrade = (trade) => {
       actualRiskPct: Math.round(actualPct * 100) / 100,
       planRoPct: Math.round(planPct * 100) / 100,
       ratio: Math.round(ratio * 100) / 100,
-      utilizationPct: Math.round(ratio * 10000) / 100
+      utilizationPct: Math.round(ratio * 10000) / 100,
+      planRoAmount: planRoAmount != null ? Math.round(planRoAmount * 100) / 100 : null,
+      actualRiskAmount: actualRiskAmount != null ? Math.round(actualRiskAmount * 100) / 100 : null,
+      expectedGainAtPlanRR: expectedGainAtPlanRR != null ? Math.round(expectedGainAtPlanRR * 100) / 100 : null,
+      actualGain: result,
+      planRsDelivered: planRsDelivered != null ? Math.round(planRsDelivered * 100) / 100 : null,
+      rGapVsPlan: rGapVsPlan != null ? Math.round(rGapVsPlan * 100) / 100 : null,
+      hiddenRrInflation: hiddenRrInflation != null ? Math.round(hiddenRrInflation * 100) / 100 : null,
+      rrLocalAchieved: rrLocalAchieved != null ? Math.round(rrLocalAchieved * 100) / 100 : null,
+      planRrTarget,
+      scenario
     }
   };
 };
@@ -380,7 +410,10 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
   }));
   for (const trade of sorted) {
     if (trade.planId && plansById[trade.planId]) {
-      trade.planRoPct = plansById[trade.planId].riskPerOperation ?? null;
+      const plan = plansById[trade.planId];
+      trade.planRoPct = plan.riskPerOperation ?? null;
+      trade.planPl = plan.pl ?? plan.currentPl ?? null;
+      trade.planRrTarget = plan.rrTarget ?? 2;
     }
   }
 

@@ -10,7 +10,7 @@
 
 import { useState, useMemo } from 'react';
 import { DollarSign, CheckCircle, XCircle, Calculator, History, ChevronDown, ChevronUp } from 'lucide-react';
-import { formatCurrencyDynamic } from '../../utils/currency';
+import { formatCurrencyDynamic, getCurrencySymbol } from '../../utils/currency';
 import {
   calculateQualifyingDays,
   calculatePayoutEligibility,
@@ -73,7 +73,7 @@ const WithdrawalSimulator = ({ account, template, eligibility, totalWithdrawn, c
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{getCurrencySymbol(currency)}</span>
           <input
             type="number"
             value={amount}
@@ -172,8 +172,24 @@ const PropPayoutTracker = ({ account, template, drawdownHistory, movements }) =>
       currentBalance,
       accountSize,
       qualifyingResult,
+      today: new Date(),
+      movements: movements ?? null,
+      accountId: account?.id ?? null,
+      currency,
     });
-  }, [template, propFirm, currentBalance, accountSize, qualifyingResult]);
+  }, [template, propFirm, currentBalance, accountSize, qualifyingResult, movements, account?.id, currency]);
+
+  // Limite de saques na fase (Zero7 — max 4 na Incubadora)
+  const withdrawalLimit = useMemo(() => {
+    const max = template?.payout?.maxWithdrawalsByPhase?.[phase];
+    if (max == null) return null;
+    const used = (movements ?? []).filter(m =>
+      m && (m.type === 'WITHDRAWAL' || m.type === 'withdrawal')
+      && (!account?.id || m.accountId === account.id)
+      && m.phase === phase
+    ).length;
+    return { used, max, remaining: Math.max(0, max - used), limitReached: used >= max };
+  }, [template?.payout?.maxWithdrawalsByPhase, phase, movements, account?.id]);
 
   // Header summary
   const headerColor = eligibility.eligible
@@ -243,8 +259,31 @@ const PropPayoutTracker = ({ account, template, drawdownHistory, movements }) =>
               </div>
               {template?.payout?.qualifyingDays?.minProfit && (
                 <p className="text-[10px] text-slate-600 mt-1">
-                  Critério: profit entre ${template.payout.qualifyingDays.minProfit}
-                  {template.payout.qualifyingDays.maxProfit ? ` e $${template.payout.qualifyingDays.maxProfit}` : '+'} por dia
+                  Critério: profit entre {getCurrencySymbol(currency)}{template.payout.qualifyingDays.minProfit}
+                  {template.payout.qualifyingDays.maxProfit ? ` e ${getCurrencySymbol(currency)}${template.payout.qualifyingDays.maxProfit}` : '+'} por dia
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Limite de saques na fase (Zero7 — Incubadora 4 saques) */}
+          {withdrawalLimit && (
+            <div className="pt-2 border-t border-slate-700/50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] text-slate-500">Saques nesta fase</span>
+                <span className={`text-[11px] font-medium ${withdrawalLimit.limitReached ? 'text-red-400' : withdrawalLimit.remaining === 1 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {withdrawalLimit.used}/{withdrawalLimit.max}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-700/50 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${withdrawalLimit.limitReached ? 'bg-red-400' : withdrawalLimit.remaining === 1 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                  style={{ width: `${Math.min(100, (withdrawalLimit.used / withdrawalLimit.max) * 100)}%` }}
+                />
+              </div>
+              {withdrawalLimit.limitReached && (
+                <p className="text-[10px] text-red-400 mt-1">
+                  Limite de saques atingido — próximos lucros migram para margem da conta
                 </p>
               )}
             </div>
