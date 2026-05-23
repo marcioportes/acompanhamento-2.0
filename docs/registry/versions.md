@@ -35,4 +35,4 @@
 | 1.61.2 | #270 | (sem branch — hotfix direto main) | 12/05/2026 | consumida (commit `63e1ddaf`) — reordem getAccessStatus priorizando firstLoginAt |
 | 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | consumida (PR #272 squash `4b170a1c`) |
 | 1.62.0 | #273 | `feat/issue-273-zero7-prop-firm` | 12/05/2026 | consumida (PR #274 squash `7ff80a38`) |
-| 1.63.0 | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | reservada — UNDERSIZED_TRADE calibragem 65% + evidência educacional (R-local vs R-plano) |
+| 1.63.0 | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | consumida (PR #279 squash `29492b4f`) |

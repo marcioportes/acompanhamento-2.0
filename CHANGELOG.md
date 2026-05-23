@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.63.0] - 22/05/2026 · #278 · PR #279
+
+**feat:** UNDERSIZED_TRADE — calibragem 65% + evidência educacional R-local vs R-plano
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.62.0] - 14/05/2026 · #273 · PR #274
 
 **feat:** mesa Zero7 Tesouraria + catálogo Lucid completo + plano de ataque per-template
