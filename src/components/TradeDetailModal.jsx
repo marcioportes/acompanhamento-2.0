@@ -284,6 +284,17 @@ const TradeDetailModal = ({
                 </p>
               </div>
               
+              <span
+                className="text-xs font-mono text-slate-500/40 select-all cursor-pointer"
+                title="Click para copiar"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard?.writeText(trade.id);
+                }}
+              >
+                {trade.id}
+              </span>
+
               <button
                 onClick={onClose}
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
