@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.64.1] - 24/05/2026 · #280 · PR #281
+
+**fix:** 'marcar sem comentário' não remove item do inbox do mentor
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.64.0] - 24/05/2026 · #259 · PR #264
 
 **feat:** 1A — Ritual completo de Fechamento de Ciclo

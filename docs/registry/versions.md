@@ -37,4 +37,4 @@
 | 1.62.0 | #273 | `feat/issue-273-zero7-prop-firm` | 12/05/2026 | consumida (PR #274 squash `7ff80a38`) |
 | 1.63.0 | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | consumida (PR #279 squash `29492b4f`) |
 | 1.64.0 | #259 | `feat/issue-259-cycle-closure` | 24/05/2026 | consumida (PR #264 squash `a390ecf8`) |
-| 1.64.1 | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | reservada — fix closure inbox 'no comment' não remove item (filtro por timestamp) |
+| 1.64.1 | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | consumida (PR #281 squash `5dacb7c6`) |

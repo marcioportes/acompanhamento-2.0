@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.64.1: [RESERVADA — issue #280] fix(closure-inbox): item não sai do inbox após "marcar sem comentário". `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira null no fluxo "no comment") em vez de `mentor.closingCommentAt` (timestamp sempre setado). Trocar 2 ocorrências (filter + pendingCount) por `!!c.mentor?.closingCommentAt`. Entrada definitiva no encerramento.
+ * - 1.64.1: fix(closure-inbox): item não sai do inbox após "marcar sem comentário". `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira null no fluxo "no comment") em vez de `mentor.closingCommentAt` (timestamp sempre setado). Trocar 2 ocorrências (filter + pendingCount) por `!!c.mentor?.closingCommentAt`. Entrada definitiva no encerramento.
  * - 1.64.0: #259 feat 1A — Ritual completo de Fechamento de Ciclo: wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor (inbox, comment panel, modo demonstração) + contratos C1-C5 (PL imutável, saldo derivado, snapshot/restore, gate retroativo) + sistema inline de toast/confirm substituindo window.alert/confirm. Reserva original era 1.58.0, mas main avançou pra 1.63.0 durante o desenvolvimento — reserva re-tomada em 1.64.0 (próximo minor disponível). PR #264, 24/05/2026.
  * - 1.63.0: feat(shadow): UNDERSIZED_TRADE calibragem 65% (threshold de 0.50 → 0.65, escala 0.30/0.50/0.65 para HIGH/MEDIUM/LOW) + enriquecimento da evidência com `planRoAmount`, `expectedGainAtPlanRR`, `rGapVsPlan`, `hiddenRrInflation` para expor a mentira estatística do R-local vs R-plano + bloco educacional no ShadowBehaviorPanel explicando o gap em prosa + tradeId discreto no header do TradeDetailModal. Fast-follow: detector agregado STAT_MIRAGE (divergência Payoff/PF R-local vs R-plano por janela). Entrada definitiva no encerramento.
  * - 1.62.0: feat adicionar mesa Zero7 Tesouraria ao portfólio CHUNK-17 (primeira mesa BR/BRL, B3 — WIN/WDO/BIT). 8 templates (TRAINEE/JÚNIOR/PLENO/SÊNIOR/EXPERT/MASTER + BIT 8 + BIT 16), schema com 5 campos novos (currency, consistency.maxDayPercentOfTarget, payout.scheduleType/fixedDays/maxWithdrawalsByPhase/ineligibleTradeFilter), accountSize=0 no engine, propFirmConsistency.js (regra 50% gate avaliação + descarte incubadora), payout fixed-days (calendário 10/20/30), contador 4 saques na Incubadora, filtro saldos inaptos (WIN<10pt/WDO<0,5pt/BIT<1000pt), currencyRiskFreeRate em computeCycleSharpe (fecha bug Selic vs USD), mirror CJS em functions/propFirmEngine.js. Entrada definitiva no encerramento.
@@ -357,10 +357,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.64.0',
+  version: '1.64.1',
   build: '20260524',
-  display: 'v1.64.0',
-  full: '1.64.0+20260524',
+  display: 'v1.64.1',
+  full: '1.64.1+20260524',
 };
 export default VERSION;
 export { VERSION };
