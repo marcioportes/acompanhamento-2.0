@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.58.0] - 24/05/2026 · #259 · PR #264
+
+**feat:** 1A — Ritual completo de Fechamento de Ciclo (v1.64.0)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.63.0] - 22/05/2026 · #278 · PR #279
 
 **feat:** UNDERSIZED_TRADE — calibragem 65% + evidência educacional R-local vs R-plano
