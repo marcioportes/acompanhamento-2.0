@@ -20,7 +20,28 @@
 
 ### `plans`
 - Ciclos, `currentCycle`, state machine (IN_PROGRESS → GOAL_HIT/STOP_HIT → POST_GOAL/POST_STOP)
-- **Escritor:** `updatePlan` (CHUNK-03)
+- **Escritor:** `updatePlan` (CHUNK-03) — strip do campo `pl` antes de gravar (C1 #259: PL imutável pós-criação)
+- **Contratos C1-C5 #259** (1.64.0):
+  - `pl` é capital alocado IMUTÁVEL após criação; única rota de mudança é `closeCycle` CF
+  - **Sem `currentPl` persistido** — saldo derivado on-the-fly via `planBalance.computeCurrentPl(plan, trades) = pl + Σ trades_date > lastClosedCycleEnd` (C2). Campo legado pode aparecer em docs antigos (DT-AUTO-259-B); audit button reconstrói via filtro C2
+  - `lastClosedCycleEnd` (ISO YYYY-MM-DD) — cache otimista pra hard seal; rules consultam pra bloquear writes
+  - `sealedCycleRanges[]` — fonte canônica do hard seal (array de `{closureId, cycleStart, cycleEnd}`)
+  - `lastCycleClosureId` — head da cadeia de closures; `reopenCycle` só aceita closure que bate com este campo
+  - `currentCycleNumber` — incrementado a cada `closeCycle`; decrementado a cada `reopenCycle`
+
+### `cycleClosures` (CHUNK-04/16, #259, v1.64.0)
+- Documento imutável do ritual de fechamento — captura de aprendizado por ciclo.
+- **ID determinístico:** `{planId}_{cycleKey}` (ex.: `abc_2026-04` mensal, `abc_2026-Q1` trimestral). Idempotência: re-criar = HttpsError('already-exists').
+- **Escritor:** `closeCycle` CF (admin SDK bypassa rules). Rules: `allow read: isMentor() OR isOwner(studentId); allow write: false`.
+- **Schema (schemaVersion=3):**
+  - **Identidade:** `planId`, `studentId`, `accountId`, `cycleKey`, `cycleNumber`, `cycleStart`, `cycleEnd`
+  - **Status:** `status: 'CLOSED'`, `closedAt`, `closedBy:{uid,email,role}`, `closeMode: 'self'|'demonstrated'|'co_edited'`
+  - **Contrato C3:** `cycleBaseline:{plInicial, saldoFinal, plFinal}` (ground truth — lido na transaction do servidor)
+  - **Contrato C4:** `preClosePlanSnapshot:{pl, riskPerOperation, rrTarget, cycleGoal, cycleStop, periodGoal, periodStop}` (foto pré-close pra reabertura restaurar)
+  - **10 seções A-J:** `snapshot`, `metrics` (TPS/R/Kelly), `patterns` (eventCounts/correlation/stopBreach/dayBreakdown/executionEvents/unifiedErrors), `aar` (Q1-Q4 + attributions/denialFlag), `maturity` (gates/promotionEligible/regression), `swot` (strengths/weaknesses/opportunities/threats), `mentor` (closingComment/pendingFeedbackCount), `forward` (planAdjustment/aiSuggestion/kelly/mcSimulation/behavioralCommitments/nextReviewDate), `notes`
+  - **Sinal crítico:** `behavioralSummary:{critical, denialFlag, severity, triggeredRule, notifyMentor, tilt/revenge/stopTampering counts, stopBreachIndex, pnlPctOfStop, ...}` — usado pelo mentor inbox pra priorizar
+  - **Reopen:** `originalSnapshot`, `reopenedAt`, `reopenedBy`, `reopenReason` (nulos no close normal)
+- **Composite indexes:** `(studentId, status)` pra queue do dashboard + `(status, closedAt)` pra inbox do mentor (janela 7d).
 
 ### `accounts`
 - `currency`, `balance`, `broker`, `propFirm` (CHUNK-17)

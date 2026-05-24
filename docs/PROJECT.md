@@ -221,10 +221,17 @@ trades (collection principal)
                PlanLedgerExtract, MentorDashboard
 
 plans → cycles, currentCycle, state machine (IN_PROGRESS→GOAL_HIT/STOP_HIT→POST_GOAL/POST_STOP)
+  └── pl é IMUTÁVEL pós-criação (C1 #259); saldo derivado on-the-fly (C2);
+      lastClosedCycleEnd + sealedCycleRanges + lastCycleClosureId como cache do ritual
 accounts → currency, balance, broker
 emotions → scoring -4..+3 normalizado 0-100, TILT/REVENGE detection
 csvStagingTrades → staging CSV, nunca dispara CFs diretamente
 orders → staging de ordens brutas (CHUNK-10)
+cycleClosures → doc imutável do ritual de fechamento (CHUNK-04/16, #259)
+  └── ID determinístico {planId}_{cycleKey}; schemaVersion=3 traz cycleBaseline
+      (plInicial/saldoFinal/plFinal) + preClosePlanSnapshot (foto pré-close pra
+      reabertura) + behavioralSummary (critical, denialFlag) + snapshot/metrics/
+      patterns/aar/maturity/swot/mentor/forward
 students/{id}/assessment/ → questionnaire, probing, initial_assessment (CHUNK-09)
 students/{id}/subscriptions → type, status, accessTier, payments subcollection (DEC-055/056)
   └── payments → amount, date, proof, plan vigente no momento
@@ -241,6 +248,11 @@ students/{id}/subscriptions → type, status, accessTier, payments subcollection
 | `analyzeProbingResponse` | callable | Analisa respostas do probing |
 | `generateAssessmentReport` | callable | Gera relatório completo pré-mentor |
 | `checkSubscriptions` | onSchedule (8h BRT) | Detecta vencimentos, marca overdue, expira trials, sincroniza accessTier, envia email |
+| `closeCycle` | callable | Cria `cycleClosures` doc imutável (10 seções A-J) + atualiza plan (pl, lastClosedCycleEnd, sealedCycleRanges, currentCycleNumber+1). Gate de equity do ciclo + permissão aluno/mentor. C3 #259 |
+| `reopenCycle` | callable | Deleta closure doc + restaura plano via `preClosePlanSnapshot`. Gate de cadeia: só último closure (`plan.lastCycleClosureId`). C4 #259 |
+| `setMentorClosureComment` | callable | Mentor adiciona `closure.mentor.closingComment` (janela 7d). #259 |
+| `deleteAccountCascade` | callable | Apaga conta em 7 estágios: movements → trades → orders → cycleClosures → plans → account. #259 B12.5 |
+| `deletePlanCascade` | callable | Apaga plano + trades/orders/movements vinculados + closures. #259 B12.5 |
 
 ---
 

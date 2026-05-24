@@ -37,8 +37,8 @@ Cada frente de desenvolvimento opera em um branch isolado. Arquivos transversais
 |-------|---------|-----------|-------------------|--------|
 | CHUNK-01 | Auth & User Management | Autenticação, login, roles, sessão do usuário | `AuthContext`, `useAuth` | AVAILABLE |
 | CHUNK-02 | Student Management | Dashboard do aluno, gestão de dados do estudante, sidebar do aluno | `StudentDashboard`, `students` collection | AVAILABLE |
-| CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano | `PlanManagementModal`, `plans` collection | AVAILABLE |
-| CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade/enrichTrade, parciais, cálculo de PL | `useTrades`, `trades` collection, `tradeGateway` | AVAILABLE |
+| CHUNK-03 | Plan Management | CRUD de planos, ciclos, metas, stops, state machine do plano. **#259:** pl IMUTÁVEL pós-criação (C1); saldo derivado on-the-fly (C2); cycleClosures collection + closeCycle/reopenCycle CFs | `PlanManagementModal`, `plans` collection, `planBalance.js`, `cycleClosures` | AVAILABLE |
+| CHUNK-04 | Trade Ledger | Registro de trades, gateway addTrade/enrichTrade, parciais, cálculo de PL. **#259:** hard seal em create/update/delete (rules + tradeGateway + sealCheckMirror); gate retroativo (C5) | `useTrades`, `trades` collection, `tradeGateway`, `sealCheck.js` | AVAILABLE |
 | CHUNK-05 | Compliance Engine | Regras de compliance, cálculo de scores, configuração do mentor | `compliance.js`, `ComplianceConfigPage` | AVAILABLE |
 | CHUNK-06 | Emotional System | Scoring emocional, detecção TILT/REVENGE, perfil emocional | `emotionalAnalysisV2`, `useEmotionalProfile` | AVAILABLE |
 | CHUNK-07 | CSV Import | Parser CSV, staging, mapeamento de colunas, validação | `CsvImport/*`, `csvStagingTrades` | AVAILABLE |
@@ -50,6 +50,8 @@ Cada frente de desenvolvimento opera em um branch isolado. Arquivos transversais
 | CHUNK-13 | Context Bar | Barra de contexto unificado Conta>Plano>Ciclo>Período, provider, hook | `StudentContextProvider`, `ContextBar`, `useStudentContext` | AVAILABLE |
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
 | CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
+| CHUNK-16 | Mentor Cockpit | Painel mentor, ranking, alertas, inbox de closures, comment panel, view read-only. **#259:** MentorClosuresInbox + MentorClosureView + ClosurePendingBadge + gate de reabertura encadeada | `MentorDashboard`, `MentorClosuresInbox`, `MentorClosureView`, `useMentorClosureInbox` | AVAILABLE |
+| CHUNK-17 | Prop Firm Engine | Templates de mesas proprietárias, validação de regras, fases (TRAINEE→MASTER), payout schedules, propFirmConsistency | `PropFirmPage`, `PropFirmConfigPage`, `propFirmEngine`, `propFirmTemplates` | AVAILABLE |
 
 ### 6.4 Checklist de Check-Out
 

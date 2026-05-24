@@ -8,6 +8,13 @@
 |----------|---------|-----------------|
 | `onTradeCreated` | `trades` onCreate | Atualiza PL do plano + compliance stats + emotional scoring. **Debt crítico:** dispara em trades `IMPORTED`, corrompendo PL. |
 | `onTradeUpdated` | `trades` onUpdate | Recalcula PL, compliance, maturity (v1.43.0). |
+| `onTradeDeleted` | `trades` onDelete | Reverte PL + recalcula compliance. |
+
+## Hard seal de trades (CHUNK-04, #259, v1.64.0)
+
+- **Server-side (`firestore.rules`):** `isTradeDateNotSealed(planId, tradeDate)` consulta `plan.lastClosedCycleEnd` cache; bloqueia `create/update/delete` em trades cuja data está em ciclo fechado.
+- **Client-side (`tradeGateway.createTrade`):** `findSealingRange(plan, date)` + `isTradeBeforeLastClosedCycle` (C5) — cobre CSV import e criação manual com mensagem rica de erro antes do roundtrip.
+- **CF mirror (`sealCheckMirror.js`):** mesma lógica em CJS pra reuso por CFs admin SDK (que bypassam rules).
 
 ## Callables (via API Claude — Sonnet 4.6)
 
@@ -19,6 +26,16 @@
 | `generateAssessmentReport` | Relatório completo pré-mentor | `ANTHROPIC_API_KEY` |
 | `classifyMaturityProgression` | Narrativa de progressão de maturidade (UP/regressão) | `ANTHROPIC_API_KEY` |
 | `analyzeShadowBehavior` | 15 padrões comportamentais em segundo plano | `ANTHROPIC_API_KEY` |
+
+## Callables — Ritual de Fechamento de Ciclo (CHUNK-04/16, #259, v1.64.0)
+
+| Function | Uso | Notas |
+|----------|-----|-------|
+| `closeCycle` | Cria doc imutável em `cycleClosures/{planId}_{cycleKey}` + atualiza plano (pl, lastClosedCycleEnd, sealedCycleRanges arrayUnion, currentCycleNumber+1, lastCycleClosureId) | Transação atômica. Gate de equity: `effectivePL ≤ cycleBaseline.plFinal + 0.1`. Gera `behavioralSummary` server-side com flag `critical` e `denialFlag` (C3). Permissão: aluno só fecha o próprio; mentor pode demonstrar. |
+| `reopenCycle` | Deleta o closure doc + restaura plano via `preClosePlanSnapshot` (pl, RO, RR, 4 metas) + remove range do `sealedCycleRanges` + decrementa `currentCycleNumber` + recua `lastCycleClosureId` | **Gate de cadeia (#259):** só aceita reabrir o último closure (`plan.lastCycleClosureId === closureId`). Closures pre-C3 sem `preClosePlanSnapshot` logam warning e mantêm plan como está (DT). |
+| `setMentorClosureComment` | Mentor escreve `closure.mentor.closingComment` + `closingCommentAt`. Comment vazio = "no comment" (item sai do inbox). | Janela operacional de 7d pós-close. |
+| `deleteAccountCascade` | Apaga conta em 7 estágios: movements → trades → orders → cycleClosures → plans → account (em batches). | Resolve órfãos que ficavam por rules `allow delete: if false` no client. |
+| `deletePlanCascade` | Apaga plano + trades/orders/movements/cycleClosures vinculados. | Mesma motivação do anterior. |
 
 ## Schedule
 
