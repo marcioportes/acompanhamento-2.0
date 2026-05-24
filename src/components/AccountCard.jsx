@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useConfirmDialog } from './ConfirmDialog';
 import { 
   Wallet, 
   TrendingUp, 
@@ -22,6 +23,7 @@ const AccountCard = ({
   showStudent = false,
   compact = false
 }) => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Calcular variação do saldo
@@ -50,11 +52,15 @@ const AccountCard = ({
   };
   const currencySymbol = currencySymbols[account.currency] || 'R$';
 
-  const handleDelete = () => {
-    if (window.confirm(`Tem certeza que deseja excluir a conta "${account.name}"?`)) {
-      onDelete?.(account);
-    }
+  const handleDelete = async () => {
     setMenuOpen(false);
+    const ok = await confirm({
+      title: `Excluir a conta "${account.name}"?`,
+      body: 'Todos os planos, trades, ordens e movimentos vinculados serão apagados em cascata.',
+      confirmLabel: 'Excluir conta',
+      tone: 'danger',
+    });
+    if (ok) onDelete?.(account);
   };
 
   const handleSetActive = () => {
@@ -287,6 +293,7 @@ const AccountCard = ({
           )}
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 };

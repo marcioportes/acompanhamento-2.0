@@ -20,6 +20,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 
 // Componentes extraídos
 import DashboardHeader from '../components/dashboard/DashboardHeader';
@@ -99,6 +101,8 @@ import { generateIdealEquitySeries, calculateIdealStatus } from '../utils/equity
 const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger, onRequestRetroactivePlan }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   // Contexto unificado (issue #118) — fonte de verdade para conta/plano/ciclo/período
   const studentCtx = useStudentContext();
@@ -380,7 +384,9 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       setEditingTrade(null);
     } catch (error) {
       console.error('Erro ao salvar trade:', error);
-      alert('Erro: ' + error.message);
+      // Re-throw pro AddTradeModal pegar e renderizar inline (glass-card vermelho).
+      // Antes tinha alert() do browser, mas fica horroroso e fecha o modal — pior UX.
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -403,11 +409,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         const availableBalance = accountTotal - alreadyAllocated;
 
         if (requestedPL > availableBalance) {
-          alert(
-            `Saldo insuficiente na conta!\n\n` +
-            `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n` +
-            `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n` +
-            `Ajuste o valor do PL ou aumente o saldo da conta.`
+          toast.error(
+            `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n`
+              + `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n`
+              + `Ajuste o PL ou aumente o saldo da conta.`,
+            { title: 'Saldo insuficiente na conta', duration: 8000 },
           );
           return;
         }
@@ -425,7 +431,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       setEditingPlan(null);
     } catch (error) {
       console.error('Erro ao salvar plano:', error);
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao salvar plano' });
     } finally {
       setIsSubmitting(false);
     }
@@ -437,18 +443,23 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     const tradesLine = planTradesCount === 0
       ? 'Nenhum trade vinculado.'
       : `${planTradesCount} ${planTradesCount === 1 ? 'trade vinculado será apagado' : 'trades vinculados serão apagados'} em cascata.`;
-    const msg =
-      'Deletar este plano?\n\n'
-      + 'O capital alocado (PL) é imutável após a criação. '
+    const body =
+      'O capital alocado (PL) é imutável após a criação. '
       + 'Para alterá-lo, é necessário deletar o plano inteiro.\n\n'
       + `ATENÇÃO: ${tradesLine}\n`
       + 'Esta ação não pode ser desfeita.';
-    if (!confirm(msg)) return;
+    const ok = await confirm({
+      title: 'Deletar este plano?',
+      body,
+      confirmLabel: 'Deletar plano',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await deletePlan(planId);
       if (selectedPlanId === planId) setSelectedPlanId(null);
     } catch (error) {
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao deletar plano' });
     }
   };
 
@@ -793,6 +804,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       />
 
       <DebugBadge component="StudentDashboard" />
+      {confirmDialog}
     </div>
   );
 };

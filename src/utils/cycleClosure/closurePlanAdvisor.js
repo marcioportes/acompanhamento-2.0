@@ -9,9 +9,13 @@
  *      não `plan.pl` original. Mark Douglas: o próximo ciclo opera sobre o
  *      capital QUE EXISTE, não sobre o que existia antes do drawdown.
  *   2) Nova REGRA 0 — PAUSA: dispara antes de qualquer outra regra se houver
- *      sinais de blow-up iminente (violação de stop com trades pós-breach,
- *      tilt sistêmico, revenge ≥3, perda > 1.5× cap). Recomenda size=0 +
- *      sessão com mentor e seta `notifyMentor: true`.
+ *      sinais primários de blow-up iminente (violação de stop com trades
+ *      pós-breach, tilt sistêmico ≥5 dias, revenge ≥3, perda > 1.5× cap).
+ *      Recomenda size=0 + sessão com mentor e seta `notifyMentor: true`.
+ *      Stop tampering é sinal de APOIO: agrega contexto à rationale quando
+ *      a PAUSA já dispara por outro motivo, mas SOZINHO não justifica pausa
+ *      (mover stop pode ser trail legítimo; precisa de outro descarrilamento
+ *      pra virar bandeira crítica).
  *   3) REGRA 3 (reduzir) absorve sinais menores: tilt ≥2 dias OU stop
  *      tampering ≥1 OU revenge ≥1 já merece scale-down preventivo.
  *
@@ -33,12 +37,16 @@ const SCALE_DOWN_FACTOR = 0.75;
 const DD_RATIO_DANGER = 0.70;
 const RULE_ADHERENCE_DANGER = 0.90;
 
-// REGRA 0 — gatilhos críticos (qualquer um dispara pausa)
+// REGRA 0 — gatilhos PRIMÁRIOS (qualquer um dispara pausa sozinho)
 const PAUSE_TRADES_AFTER_STOP_MIN = 3;
 const PAUSE_TILT_DAYS_MIN = 5;
 const PAUSE_REVENGE_MIN = 3;
-const PAUSE_STOP_TAMPERING_MIN = 2;
 const PAUSE_LOSS_RATIO_OF_STOP = 1.5;   // perda final ≥ 1.5× stop planejado
+
+// REGRA 0 — sinais de APOIO (não disparam pausa sozinhos, só agregam contexto
+// quando um primary já dispara). Stop tampering isolado pode ser trail legítimo;
+// só vira bandeira crítica em combinação com outro descarrilamento.
+const PAUSE_STOP_TAMPERING_MIN = 2;
 
 /**
  * @param {Object} input
@@ -112,24 +120,31 @@ export function advisePlanAdjustment({
   const stopTamperingN = typeof counts.stopTampering === 'number' ? counts.stopTampering : 0;
   const lossRatio = typeof breach.pnlPctOfStop === 'number' ? breach.pnlPctOfStop : null;
 
-  const pauseTriggers = [];
+  // Primary triggers — cada um por si só justifica PAUSA.
+  const primaryTriggers = [];
   if (tradesAfterStop >= PAUSE_TRADES_AFTER_STOP_MIN) {
-    pauseTriggers.push(`continuou operando +${tradesAfterStop} trade(s) após hit do stop do ciclo`);
+    primaryTriggers.push(`continuou operando +${tradesAfterStop} trade(s) após hit do stop do ciclo`);
   }
   if (tiltDays >= PAUSE_TILT_DAYS_MIN) {
-    pauseTriggers.push(`${tiltDays} dias com tilt detectado`);
+    primaryTriggers.push(`${tiltDays} dias com tilt detectado`);
   }
   if (revengeN >= PAUSE_REVENGE_MIN) {
-    pauseTriggers.push(`${revengeN} instâncias de vingança`);
-  }
-  if (stopTamperingN >= PAUSE_STOP_TAMPERING_MIN) {
-    pauseTriggers.push(`${stopTamperingN}× stop deslocado durante trade`);
+    primaryTriggers.push(`${revengeN} instâncias de vingança`);
   }
   if (lossRatio != null && lossRatio >= PAUSE_LOSS_RATIO_OF_STOP) {
-    pauseTriggers.push(`perda final ${lossRatio.toFixed(1)}× o cap planejado`);
+    primaryTriggers.push(`perda final ${lossRatio.toFixed(1)}× o cap planejado`);
   }
 
-  if (pauseTriggers.length > 0) {
+  // Supporting signals — só agregam à rationale quando PAUSA já disparou por
+  // outro motivo. Stop tampering sozinho não justifica pausa (pode ser trail
+  // legítimo); precisa de outro descarrilamento pra virar bandeira crítica.
+  const supportingSignals = [];
+  if (stopTamperingN >= PAUSE_STOP_TAMPERING_MIN) {
+    supportingSignals.push(`${stopTamperingN}× stop deslocado durante trade`);
+  }
+
+  if (primaryTriggers.length > 0) {
+    const pauseTriggers = [...primaryTriggers, ...supportingSignals];
     return {
       ...baseOutput,
       newRiskPerOp: 0,

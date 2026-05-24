@@ -12,12 +12,14 @@
  *   - onSaved: callback após salvar comment
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, MessageSquare, Save, Lock, Loader2, ShieldAlert, Unlock } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { KpiCard } from '../reviews/ReviewKpiGrid';
 import { deltaText } from '../../utils/reviewFormatters';
 import { ERROR_LABELS_PT } from '../../utils/cycleClosure/cycleMetrics';
+import { usePlans } from '../../hooks/usePlans';
+import { useConfirmDialog } from '../ConfirmDialog';
 
 const STAGE_LABEL_MAP = ['Caos', 'Reativo', 'Metódico', 'Profissional', 'Maestria'];
 const MAX_COMMENT_CHARS = 2000;
@@ -88,6 +90,17 @@ export default function MentorClosureView({
   const [reopening, setReopening] = useState(false);
   const [reopenConfirmText, setReopenConfirmText] = useState('');
 
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
+  // Reopen só do último closure (head da cadeia). Plan armazena `lastCycleClosureId`
+  // pra apontar o head — se este closure não bate, reopen é bloqueado.
+  const { plans = [] } = usePlans(closure?.studentId || null);
+  const plan = useMemo(
+    () => plans.find((p) => p.id === closure?.planId) || null,
+    [plans, closure?.planId],
+  );
+  const isLatestClosure = !plan?.lastCycleClosureId || plan.lastCycleClosureId === closure?.id;
+
   useEffect(() => {
     setComment(closure?.mentor?.closingComment || '');
     setSavedAt(closure?.mentor?.closingCommentAt || null);
@@ -134,7 +147,13 @@ export default function MentorClosureView({
 
   const markNoComment = async () => {
     if (saving) return;
-    if (!window.confirm('Marcar este closure como "no comment"? O item sai do inbox imediatamente.')) return;
+    const ok = await confirm({
+      title: 'Marcar como "no comment"?',
+      body: 'O item sai do inbox imediatamente. Você ainda pode adicionar um comentário depois.',
+      confirmLabel: 'Marcar sem comentário',
+      tone: 'warning',
+    });
+    if (!ok) return;
     setError(null);
     setSaving(true);
     try {
@@ -194,14 +213,32 @@ export default function MentorClosureView({
           <button
             type="button"
             onClick={() => setReopenOpen((v) => !v)}
-            className="ml-auto btn-secondary text-xs flex items-center gap-1"
-            title="Reabrir apaga este fechamento e libera as datas pra edição"
+            disabled={!isLatestClosure}
+            className="ml-auto btn-secondary text-xs flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={
+              isLatestClosure
+                ? 'Reabrir apaga este fechamento e libera as datas pra edição'
+                : 'Só dá pra reabrir o último ciclo fechado. Reabra os mais recentes primeiro.'
+            }
           >
             <Unlock className="w-3.5 h-3.5" /> Reabrir ciclo
           </button>
         </div>
 
-        {reopenOpen && (
+        {!isLatestClosure && (
+          <div className="glass-card p-3 border border-slate-700/50 bg-slate-800/40 max-w-2xl">
+            <p className="text-xs text-slate-400 flex items-start gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
+              <span>
+                Este não é o último ciclo fechado deste plano. Reabertura segue ordem inversa
+                cronológica (mais recente primeiro) pra preservar a cadeia de PL — closures
+                posteriores foram calculados sobre o pl que este close definiu.
+              </span>
+            </p>
+          </div>
+        )}
+
+        {reopenOpen && isLatestClosure && (
           <div className="glass-card p-3 border border-amber-500/40 bg-amber-500/5 max-w-2xl space-y-2">
             <p className="text-xs text-slate-400 flex items-start gap-1.5">
               <Unlock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -517,6 +554,7 @@ export default function MentorClosureView({
           </div>
           )}
         </div>
+      {confirmDialog}
     </div>
   );
 }

@@ -76,18 +76,27 @@ export default function Step6Adjust({
     [accounts, plan],
   );
 
-  // Saldo livre da conta (currentBalance − PL de outros planos ativos).
-  // Servidor (closeCycle) rejeita o fechamento se o PL efetivo do plano após
-  // o ajuste exceder isso. Renderizamos warning aqui pra aluno recalibrar
-  // antes de tentar selar.
+  const cycleTrades = useMemo(
+    () => trades.filter((t) => t.planId === planId && t.date && isInRange(t.date, cycleStart, cycleEnd)),
+    [trades, planId, cycleStart, cycleEnd],
+  );
+
+  // Saldo disponível pra alocar como newPl do próximo ciclo = equity do plano
+  // ao FIM do ciclo que está sendo fechado (plan.pl + Σ trades_do_ciclo).
+  // NÃO usa account.currentBalance porque a conta pode estar contaminada com
+  // resultados de trades posteriores ao cycleEnd (ex.: abril deixado aberto
+  // enquanto maio já operava — o saldo da conta inclui maio, mas o newPl
+  // deveria ser limitado ao que abril sozinho gerou).
+  // snapshot.plEnd vem do Step1Read, já calculado como plan.pl + Σ cycle_trades.
   const availableBalance = useMemo(() => {
-    if (!account) return null;
-    const accountTotal = Number(account.currentBalance ?? account.initialBalance ?? 0);
-    const alreadyAllocated = plans
-      .filter((p) => p.accountId === account.id && p.active && p.id !== planId)
-      .reduce((sum, p) => sum + Number(p.pl || 0), 0);
-    return accountTotal - alreadyAllocated;
-  }, [account, plans, planId]);
+    const plEnd = Number(snapshot?.plEnd);
+    if (Number.isFinite(plEnd)) return plEnd;
+    // Fallback: equity-on-the-fly se o snapshot ainda não estiver pronto.
+    if (!plan) return null;
+    const basePl = Number(plan.pl) || 0;
+    const cycleTradesSum = cycleTrades.reduce((s, t) => s + (Number(t.result) || 0), 0);
+    return basePl + cycleTradesSum;
+  }, [snapshot, plan, cycleTrades]);
 
   const effectivePL = useMemo(() => {
     const adj = forward?.planAdjustment;
@@ -103,11 +112,6 @@ export default function Step6Adjust({
   useEffect(() => {
     onBlockSeal?.(plExceedsBalance);
   }, [plExceedsBalance, onBlockSeal]);
-
-  const cycleTrades = useMemo(
-    () => trades.filter((t) => t.planId === planId && t.date && isInRange(t.date, cycleStart, cycleEnd)),
-    [trades, planId, cycleStart, cycleEnd],
-  );
 
   // Pool pra Kelly: histórico do plano (max útil)
   const planTrades = useMemo(
@@ -179,7 +183,12 @@ export default function Step6Adjust({
   const [editRR, setEditRR] = useState('');
 
   const startEdit = () => {
-    setEditPl(String(plan?.pl ?? ''));
+    // Pré-preenche com o equity do ciclo (com centavos) — máximo permitido.
+    // Evita confusão do display arredondado vs precisão do gate.
+    const defaultPl = Number.isFinite(availableBalance) && availableBalance > 0
+      ? availableBalance.toFixed(2)
+      : String(plan?.pl ?? '');
+    setEditPl(defaultPl);
     setEditRisk(String(plan?.riskPerOperation ?? ''));
     setEditRR(String(plan?.rrTarget ?? ''));
     setEditing(true);
@@ -242,7 +251,7 @@ export default function Step6Adjust({
 
   return (
     <div className="space-y-4">
-      {/* Banner de saldo insuficiente — PL efetivo excede o saldo livre da conta.
+      {/* Banner de saldo insuficiente — PL efetivo excede o equity do ciclo.
           Servidor (closeCycle) rejeita o fechamento; aviso visual aqui força recalibrar. */}
       {plExceedsBalance && (
         <div className="glass-card p-5 border-2 border-amber-500/60 bg-gradient-to-br from-amber-500/15 to-amber-500/5">
@@ -251,14 +260,14 @@ export default function Step6Adjust({
               <AlertOctagon className="w-6 h-6" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-bold text-amber-100 mb-1">Capital alocado maior que o saldo da conta</h4>
+              <h4 className="text-lg font-bold text-amber-100 mb-1">Capital alocado maior que o equity do ciclo</h4>
               <p className="text-sm text-slate-200 leading-relaxed">
-                O PL do plano após este ciclo seria <strong className="text-amber-200">{currencyFmt(effectivePL)}</strong>,
-                mas a conta tem apenas <strong className="text-amber-200">{currencyFmt(availableBalance)}</strong> livres
-                (saldo atual − planos ativos). Você não pode alocar capital que não tem.
+                O novo PL seria <strong className="text-amber-200">{currencyFmt(effectivePL)}</strong>,
+                mas este ciclo terminou com equity de <strong className="text-amber-200">{currencyFmt(availableBalance)}</strong>
+                (PL inicial + resultado do ciclo). Você não pode alocar capital que o ciclo não gerou.
               </p>
               <p className="text-[11px] text-amber-100/80 mt-2">
-                Edite manualmente abaixo e reduza o PL pra um valor ≤ saldo livre. O fechamento será bloqueado enquanto isso não couber.
+                Edite manualmente abaixo e reduza o PL pra um valor ≤ equity do ciclo. O fechamento será bloqueado enquanto isso não couber.
               </p>
             </div>
           </div>
@@ -296,9 +305,9 @@ export default function Step6Adjust({
         <div className="glass-card p-4 border border-slate-700/50 bg-slate-800/30">
           <p className="text-[11px] text-slate-500 uppercase tracking-wider mb-1">Capital base para o próximo ciclo</p>
           <div className="flex items-baseline gap-3 flex-wrap">
-            <p className="text-2xl font-bold text-slate-100 mono">R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</p>
+            <p className="text-2xl font-bold text-slate-100 mono">{currencyFmt(baseCapital)}</p>
             <p className="text-xs text-slate-500">
-              capital pré-ciclo R$ {plan.pl.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+              capital pré-ciclo {currencyFmt(plan.pl)}
               {' · '}
               <span className={baseCapital < plan.pl ? 'text-red-400' : 'text-emerald-400'}>
                 {baseCapital < plan.pl ? '−' : '+'}{Math.abs(((baseCapital - plan.pl) / plan.pl) * 100).toFixed(1)}%
@@ -306,7 +315,7 @@ export default function Step6Adjust({
             </p>
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
-            R do próximo ciclo recalculado sobre o saldo real — não sobre o capital inicial do plano.
+            R do próximo ciclo recalculado sobre o saldo real — não sobre o capital inicial do plano. Máximo alocável = capital base (com centavos).
           </p>
         </div>
       )}
@@ -407,7 +416,7 @@ export default function Step6Adjust({
               <div className="bg-slate-800/40 rounded-lg p-3">
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">Capital base</p>
                 <p className="font-mono text-slate-100">
-                  R$ {Math.round(baseCapital ?? plan.pl).toLocaleString('pt-BR')}
+                  {currencyFmt(baseCapital ?? plan.pl)}
                 </p>
                 <p className="text-[10px] text-slate-500">saldo pós-ciclo</p>
               </div>
@@ -450,8 +459,13 @@ export default function Step6Adjust({
             <div className="space-y-3">
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">Capital (PL)</label>
-                  <input value={editPl} onChange={(e) => setEditPl(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" />
+                  <label className="text-[11px] text-slate-500 block mb-1">
+                    Capital (PL)
+                    {Number.isFinite(availableBalance) && availableBalance > 0 && (
+                      <span className="text-[10px] text-slate-600"> · máx {currencyFmt(availableBalance)}</span>
+                    )}
+                  </label>
+                  <input value={editPl} onChange={(e) => setEditPl(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" step="0.01" />
                 </div>
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-1">Risco/trade (%)</label>

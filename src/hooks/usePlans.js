@@ -322,8 +322,22 @@ export const usePlans = (overrideStudentId = null) => {
     // — eventual divergência sinaliza dado obsoleto no banco, não bug ativo.
     const currentPl = Number(plan.currentPl ?? plan.pl) || 0;
 
-    // === Ida: PL calculado a partir dos trades ===
-    const totalResult = planTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
+    // === Ida: PL calculado a partir dos trades (contrato C2) ===
+    // Filtra trades pelo ciclo ABERTO — somar todos os trades dupla-conta os
+    // ciclos já fechados (plan.pl já incorpora os ajustes desses closes).
+    const lastClosed = typeof plan.lastClosedCycleEnd === 'string' ? plan.lastClosedCycleEnd : null;
+    let openCycleStart = null;
+    if (lastClosed) {
+      const d = new Date(lastClosed + 'T00:00:00Z');
+      if (!Number.isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        openCycleStart = d.toISOString().slice(0, 10);
+      }
+    }
+    const openCycleTrades = openCycleStart === null
+      ? planTrades
+      : planTrades.filter(t => typeof t.date === 'string' && t.date >= openCycleStart);
+    const totalResult = openCycleTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
     const calculatedPl = Math.round((basePl + totalResult) * 100) / 100;
     const plDivergent = Math.abs(currentPl - calculatedPl) > 0.01; // tolerância centavo
 

@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import {
   Settings, Shield, Zap, BarChart3, Bell,
   Save, RotateCcw, CheckCircle, AlertTriangle,
@@ -112,6 +113,7 @@ const StatusBar = ({ label, emoji, color, value, onChange }) => (
 // ============================================
 
 const ComplianceConfigPage = ({ embedded = false }) => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const {
     config, save, reset, loading, saving, error, lastSaved, defaults, isMentor
   } = useComplianceRules();
@@ -149,9 +151,13 @@ const ComplianceConfigPage = ({ embedded = false }) => {
   };
 
   const handleReset = async () => {
-    if (window.confirm('Restaurar todas as configurações para os valores padrão?')) {
-      await reset();
-    }
+    const ok = await confirm({
+      title: 'Restaurar para os valores padrão?',
+      body: 'Todas as configurações de compliance voltam ao default.',
+      confirmLabel: 'Restaurar',
+      tone: 'warning',
+    });
+    if (ok) await reset();
   };
 
   if (loading) {
@@ -457,6 +463,7 @@ const ComplianceConfigPage = ({ embedded = false }) => {
       </div>
 
       {!embedded && <DebugBadge component="ComplianceConfigPage" />}
+      {confirmDialog}
     </div>
   );
 };

@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import {
   Trophy, Plus, Trash2, Edit3, Save, Loader2,
   AlertTriangle, CheckCircle, Upload, ChevronDown, ChevronUp
@@ -28,6 +29,7 @@ import { getCurrencySymbol } from '../utils/currency';
 import DebugBadge from '../components/DebugBadge';
 
 const PropFirmConfigPage = ({ embedded = false }) => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { isMentor } = useAuth();
   const {
     templates,
@@ -63,7 +65,13 @@ const PropFirmConfigPage = ({ embedded = false }) => {
 
   const handleSeedDefaults = async () => {
     if (templates.length > 0) {
-      if (!window.confirm(`Já existem ${templates.length} templates. Seed vai sobrescrever os defaults. Continuar?`)) return;
+      const ok = await confirm({
+        title: `${templates.length} templates já existem`,
+        body: 'Seed vai sobrescrever os defaults. Continuar?',
+        confirmLabel: 'Sobrescrever',
+        tone: 'warning',
+      });
+      if (!ok) return;
     }
     setSeeding(true);
     try {
@@ -100,7 +108,13 @@ const PropFirmConfigPage = ({ embedded = false }) => {
   };
 
   const handleDelete = async (templateId, templateName) => {
-    if (!window.confirm(`Deletar template "${templateName}"? Esta ação não pode ser desfeita.`)) return;
+    const ok = await confirm({
+      title: `Deletar template "${templateName}"?`,
+      body: 'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Deletar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await deleteTemplate(templateId);
       showFeedback('Template removido');
@@ -164,7 +178,13 @@ const PropFirmConfigPage = ({ embedded = false }) => {
           {templates.length > 0 && (
             <button
               onClick={async () => {
-                if (!window.confirm(`Deletar todos os ${templates.length} templates? Esta ação não pode ser desfeita.`)) return;
+                const ok = await confirm({
+                  title: `Deletar TODOS os ${templates.length} templates?`,
+                  body: 'Esta ação não pode ser desfeita.',
+                  confirmLabel: 'Deletar todos',
+                  tone: 'danger',
+                });
+                if (!ok) return;
                 setClearing(true);
                 try {
                   await deleteAllTemplates();
@@ -434,6 +454,7 @@ const PropFirmConfigPage = ({ embedded = false }) => {
           Erro: {error}
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 

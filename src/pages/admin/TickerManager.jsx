@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../../components/ConfirmDialog';
 import { 
   collection, getDocs, addDoc, deleteDoc, doc, query, orderBy, updateDoc, serverTimestamp 
 } from 'firebase/firestore';
@@ -25,6 +27,8 @@ const Tooltip = ({ text }) => (
  * Foco em densidade de informação e agilidade de cadastro.
  */
 const TickerManager = () => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   // --- ESTADOS ---
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -176,11 +180,19 @@ const TickerManager = () => {
   };
 
   const handleDelete = async (id) => {
-    if(!window.confirm("Excluir este ativo?")) return;
+    const ok = await confirm({
+      title: 'Excluir este ativo?',
+      body: 'A ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await deleteDoc(doc(db, 'tickers', id));
       setTickers(prev => prev.filter(t => t.id !== id));
-    } catch (err) { alert("Erro ao excluir."); }
+    } catch (err) {
+      toast.error(err.message || 'Tente novamente.', { title: 'Erro ao excluir' });
+    }
   };
 
   return (
@@ -352,6 +364,7 @@ const TickerManager = () => {
         .btn-secondary { padding: 0.5rem 1rem; border-radius: 0.5rem; background: rgb(30 41 59); color: rgb(203 213 225); font-size: 0.875rem; }
         .btn-secondary:hover { background: rgb(51 65 85); }
       `}</style>
+      {confirmDialog}
     </div>
   );
 };

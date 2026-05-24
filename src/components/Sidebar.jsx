@@ -29,9 +29,11 @@ import {
   ClipboardCheck,
   Shield,
   FileText,
-  History
+  History,
+  Inbox,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { VERSION } from '../version';
 
 const Sidebar = ({ 
@@ -48,6 +50,10 @@ const Sidebar = ({
   hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
+  const isMentorRole = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
+  // Hook subscreve closures pendentes (janela 7d sem comentário). Só faz sentido
+  // pro mentor — o backend filtra por rules; pro aluno o count fica em 0.
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
 
   // Menu do Aluno
   const studentMenuItems = [
@@ -89,19 +95,26 @@ const Sidebar = ({
       icon: MessageSquare,
       badge: pendingFeedback > 0 ? pendingFeedback : null,
     },
-    { 
-      id: 'attention', 
-      label: 'Precisam Atenção', 
+    {
+      id: 'attention',
+      label: 'Precisam Atenção',
       icon: AlertTriangle,
       badge: studentsNeedingAttention > 0 ? studentsNeedingAttention : null,
       badgeColor: 'red'
+    },
+    {
+      id: 'closures',
+      label: 'Fechamentos',
+      icon: Inbox,
+      badge: closuresPendingCount > 0 ? closuresPendingCount : null,
+      badgeColor: 'red',
     },
     { id: 'ranking', label: 'Ranking', icon: Trophy },
     { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
-  const menuItems = isMentor() ? mentorMenuItems : studentMenuItems;
+  const menuItems = isMentorRole ? mentorMenuItems : studentMenuItems;
 
   const handleLogout = async () => {
     try {

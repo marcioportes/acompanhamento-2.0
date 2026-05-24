@@ -66,6 +66,20 @@ module.exports = onCall(
         }
         const plan = planSnap.data();
 
+        // Reopen só do ÚLTIMO closure (head da cadeia). Closures formam cadeia
+        // sequencial: plan.pl reflete o estado pós-último-close. Reabrir um
+        // closure no meio da cadeia restauraria plan.pl pro estado pré-aquele-
+        // closure, mas closures posteriores foram criados assumindo o plan.pl
+        // pós-aquele close — invalida a cadeia inteira. Política: reopen tem
+        // que ir do mais recente pro mais antigo, nunca pular.
+        if (plan.lastCycleClosureId && plan.lastCycleClosureId !== closureId) {
+          throw new HttpsError(
+            'failed-precondition',
+            `Só dá pra reabrir o último ciclo fechado (${plan.lastCycleClosureId}). `
+              + `Reabra os ciclos mais recentes primeiro pra preservar a cadeia de PL.`,
+          );
+        }
+
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         // Reabrir = deletar o doc. Re-fechamento depois cria documento novo do zero.

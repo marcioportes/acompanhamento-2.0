@@ -15,6 +15,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { installCleanupUtils } from './utils/cleanupOrphans';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
@@ -550,7 +551,9 @@ const AppContent = () => {
 
 const App = () => (
   <AuthProvider>
-    <AppContent />
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   </AuthProvider>
 );
 

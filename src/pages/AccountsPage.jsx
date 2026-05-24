@@ -10,6 +10,8 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import {
   Plus, PlusCircle, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
   TrendingUp, TrendingDown, RefreshCw, AlertTriangle, CheckCircle, ArrowRight, Calendar
@@ -107,6 +109,8 @@ const dateToInputString = (dateObj) => {
  *   o estado no parent (evita re-navegação em unmount/rerender).
  */
 const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
   const { user, isMentor } = useAuth();
@@ -438,7 +442,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       }));
 
     } catch (error) {
-      alert('Erro ao corrigir: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao corrigir' });
     } finally {
       setIsFixing(false);
     }
@@ -447,7 +451,10 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   // --- HANDLE SUBMIT (v1.0.6) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.broker.trim()) return alert('Preencha os campos obrigatórios');
+    if (!formData.name.trim() || !formData.broker.trim()) {
+      toast.error('Preencha os campos obrigatórios.');
+      return;
+    }
     
     // Payload Base
     const basePayload = {
@@ -541,12 +548,18 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       }
       setIsModalOpen(false);
     } catch (err) {
-      alert("Erro ao salvar: " + err.message);
+      toast.error(err.message, { title: 'Erro ao salvar' });
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Deseja excluir esta conta? O histórico será perdido.")) await deleteAccount(id);
+    const ok = await confirm({
+      title: 'Excluir esta conta?',
+      body: 'Todos os planos, trades, ordens, movimentos e fechamentos de ciclo vinculados serão apagados em cascata. Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir conta',
+      tone: 'danger',
+    });
+    if (ok) await deleteAccount(id);
   };
 
   // Handler: Mentor atualiza plano do aluno (com audit trail)
@@ -588,7 +601,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       setEditingPlan(null);
     } catch (error) {
       console.error('Erro ao salvar plano:', error);
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao salvar plano' });
     } finally {
       setPlanSubmitting(false);
     }
@@ -1000,7 +1013,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
               setPropPlanDefaults(null);
             } catch (error) {
               console.error('Erro ao salvar plano:', error);
-              alert('Erro: ' + error.message);
+              toast.error(error.message, { title: 'Erro ao salvar plano' });
             }
             setPlanSubmitting(false);
           }}
@@ -1010,6 +1023,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         />
       )}
       <DebugBadge component="AccountsPage" />
+      {confirmDialog}
     </div>
   );
 };

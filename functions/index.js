@@ -1766,17 +1766,39 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
   let plRecalculated = false;
   
   if (recalcPl && !tradeId) {
+    // Contrato C2 #259: saldo do plano = pl + Σ trades_do_ciclo_aberto.
+    // Pré-C2, plan.pl era IMUTÁVEL e currentPl somava todos os trades. Pós-C2,
+    // plan.pl muda a cada fechamento (vira o newPl do próximo ciclo), então
+    // somar todos os trades dupla-conta os ciclos já fechados — esse era o
+    // bug do audit-button que deixava currentPl preso em valor errado.
+    // Ciclo aberto começa no dia seguinte ao último cycleEnd fechado; se não
+    // houver fechamento, conta todos os trades.
     const allTradesSnap = await db.collection('trades').where('planId', '==', planId).get();
     const basePl = Number(plan.pl) || 0;
-    const totalResult = allTradesSnap.docs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
+    const lastClosed = typeof plan.lastClosedCycleEnd === 'string' ? plan.lastClosedCycleEnd : null;
+    let openCycleStart = null;
+    if (lastClosed) {
+      const d = new Date(lastClosed + 'T00:00:00Z');
+      if (!Number.isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        openCycleStart = d.toISOString().slice(0, 10);
+      }
+    }
+    const openCycleDocs = openCycleStart === null
+      ? allTradesSnap.docs
+      : allTradesSnap.docs.filter((d) => {
+          const date = d.data().date;
+          return typeof date === 'string' && date >= openCycleStart;
+        });
+    const totalResult = openCycleDocs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
     newPl = Math.round((basePl + totalResult) * 100) / 100;
-    
+
     if (Math.abs(oldPl - newPl) > 0.01) {
       await planRef.update({ currentPl: newPl, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
       plRecalculated = true;
-      console.log('[recalculateCompliance] PL recalculado: ' + oldPl + ' -> ' + newPl);
+      console.log('[recalculateCompliance] PL recalculado (C2 open-cycle): ' + oldPl + ' -> ' + newPl);
     }
-    
+
     // Usar PL atualizado para compliance
     plan.currentPl = newPl;
   }

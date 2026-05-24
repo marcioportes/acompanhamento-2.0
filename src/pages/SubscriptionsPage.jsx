@@ -11,6 +11,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import {
   CreditCard, Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
@@ -169,7 +170,9 @@ const PAYMENT_METHODS = [
 
 // ── Receipt upload zone (reutilizado nos modais) ─────────
 
-const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
+const ReceiptUpload = ({ receiptFile, setReceiptFile }) => {
+  const toast = useToast();
+  return (
   <div>
     <label className="block text-sm text-slate-400 mb-1">Comprovante (imagem ou PDF)</label>
     <div
@@ -181,7 +184,7 @@ const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
           if (item.type.startsWith('image/') || item.type === 'application/pdf') {
             e.preventDefault();
             const file = item.getAsFile();
-            if (!file || file.size > 5 * 1024 * 1024) { alert('Maximo 5MB.'); return; }
+            if (!file || file.size > 5 * 1024 * 1024) { toast.error('Máximo 5MB.'); return; }
             setReceiptFile({ file, preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null });
             return;
           }
@@ -192,7 +195,7 @@ const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
     >
       <input id="receipt-file-input" type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
         const file = e.target.files?.[0]; if (!file) return;
-        if (file.size > 5 * 1024 * 1024) { alert('Maximo 5MB.'); return; }
+        if (file.size > 5 * 1024 * 1024) { toast.error('Máximo 5MB.'); return; }
         setReceiptFile({ file, preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null });
       }} />
       {receiptFile ? (
@@ -206,11 +209,13 @@ const ReceiptUpload = ({ receiptFile, setReceiptFile }) => (
       )}
     </div>
   </div>
-);
+  );
+};
 
 // ── Component ────────────────────────────────────────────
 
 const SubscriptionsPage = () => {
+  const toast = useToast();
   const {
     subscriptions, studentsWithoutSubscription, loading, summary,
     addSubscription, updateSubscription, deleteSubscription, registerPayment, getPayments, deletePayment,
@@ -457,7 +462,7 @@ const SubscriptionsPage = () => {
       let studentId = newForm.studentId;
       if (newForm.alunoMode === 'new') {
         if (!newForm.newAlunoName?.trim()) {
-          alert('Nome do aluno obrigatório');
+          toast.error('Nome do aluno é obrigatório.');
           setActionLoading(false);
           return;
         }
@@ -468,7 +473,7 @@ const SubscriptionsPage = () => {
         });
       }
       if (!studentId) {
-        alert('Selecione um aluno existente ou cadastre um novo');
+        toast.error('Selecione um aluno existente ou cadastre um novo.');
         setActionLoading(false);
         return;
       }
@@ -480,7 +485,7 @@ const SubscriptionsPage = () => {
         data.billingPeriodMonths = newForm.billingPeriodMonths;
       }
       await addSubscription(data); closeModal();
-    } catch (err) { console.error(err); alert(err.message); } finally { setActionLoading(false); }
+    } catch (err) { console.error(err); toast.error(err.message, { title: 'Erro ao salvar assinatura' }); } finally { setActionLoading(false); }
   }, [newForm, addSubscription, receiptFile, actionLoading]);
 
   // ── Sub-components ──

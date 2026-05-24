@@ -14,6 +14,8 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../ConfirmDialog';
 import {
   Package, Trash2, CheckSquare, Square, CheckCircle,
   AlertTriangle, Edit3, X, ChevronDown, ChevronUp, Loader2,
@@ -53,6 +55,8 @@ const CsvImportManager = ({
   onActivationComplete,
   getBatches,
 }) => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -99,19 +103,25 @@ const CsvImportManager = ({
         setProgress({ current: i + 1, total: ids.length, label: 'Excluindo...' });
       }
       setSelectedIds(new Set());
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
   const handleDeleteBatch = async (batch) => {
-    if (!confirm(`Excluir TODA a importação (${batch.trades.length} trades do staging)?`)) return;
+    const ok = await confirm({
+      title: 'Excluir TODA a importação?',
+      body: `${batch.trades.length} trade(s) do staging serão removidos.`,
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setProcessing(true);
     setProgress({ current: 0, total: 1, label: 'Excluindo batch...' });
     try {
       await onDeleteStagingBatch(batch.batchId);
       setSelectedIds(new Set());
       setProgress({ current: 1, total: 1, label: 'Concluído' });
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
@@ -132,7 +142,7 @@ const CsvImportManager = ({
       }
       setShowCompleteModal(false);
       setCompleteData({ emotionEntry: '', emotionExit: '', setup: '' });
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
@@ -391,6 +401,7 @@ const CsvImportManager = ({
       <div className="fixed bottom-2 right-2 z-[51]">
         <DebugBadge component="CsvImportManager" />
       </div>
+      {confirmDialog}
     </div>
   );
 };

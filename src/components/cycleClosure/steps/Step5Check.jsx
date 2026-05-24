@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useToast } from '../../../contexts/ToastContext';
 import {
   Award, ShieldAlert, Check, X, Clock,
   ChevronDown, ChevronRight,
@@ -244,6 +245,7 @@ function applyOperator(op, value, threshold) {
 }
 
 export default function Step5Check({ studentId, role = 'student', metrics, snapshot, patterns, onMaturity }) {
+  const toast = useToast();
   const { maturity, loading } = useMaturity(studentId);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
 
@@ -476,7 +478,7 @@ export default function Step5Check({ studentId, role = 'student', metrics, snaps
             <button
               type="button"
               className="btn-secondary text-xs mt-3"
-              onClick={() => alert('A7 — fluxo de override de stage virá em fase posterior.')}
+              onClick={() => toast.info('A7 — fluxo de override de stage virá em fase posterior.', { duration: 4000 })}
             >
               🛡 Override discricionário (mentor)
             </button>

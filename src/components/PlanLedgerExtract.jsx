@@ -25,6 +25,7 @@ import { useMasterData } from '../hooks/useMasterData';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
+import { usePlanClosures } from '../hooks/usePlanClosures';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { computePlanState, getAvailableCycles, getCycleStartDate, getCycleEndDate } from '../utils/planStateMachine';
@@ -134,6 +135,31 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     };
   }, [selectedCycleKey, adjustmentCycle]);
 
+  // C3 #259 — PL(0) histórico do ciclo: ler do closure quando o ciclo já foi
+  // fechado. Sem isso, qualquer ciclo passado renderiza com plan.pl corrente
+  // (que é o PL do próximo ciclo após o close), gerando bug visual no extrato.
+  const { closures: planClosures } = usePlanClosures(plan?.id || null);
+  const matchedClosure = useMemo(() => {
+    if (!selectedCycleRange || !planClosures || planClosures.length === 0) return null;
+    const s = selectedCycleRange.start;
+    const iso = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+    return planClosures.find((c) => c.cycleStart === iso && c.status === 'CLOSED') || null;
+  }, [selectedCycleRange, planClosures]);
+
+  // PL(0) efetivo: closure tem prioridade. Em closures C3+, `cycleBaseline.plInicial`
+  // é o ground truth (lido na transaction do servidor). Closures pre-C3 (schemaVersion=2)
+  // não têm cycleBaseline mas têm `snapshot.plStart` correto. Fallback final pra plan.pl
+  // (caso de ciclo aberto / atual).
+  const effectivePL = useMemo(() => {
+    if (matchedClosure) {
+      const fromBaseline = Number(matchedClosure.cycleBaseline?.plInicial);
+      if (Number.isFinite(fromBaseline) && fromBaseline > 0) return fromBaseline;
+      const fromSnapshot = Number(matchedClosure.snapshot?.plStart);
+      if (Number.isFinite(fromSnapshot) && fromSnapshot > 0) return fromSnapshot;
+    }
+    return Number(plan?.pl) || 0;
+  }, [matchedClosure, plan?.pl]);
+
   // ==================== STATE MACHINE ====================
 
   const planState = useMemo(() => {
@@ -144,7 +170,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
       : {};
 
     return computePlanState(trades, {
-      pl: Number(plan.pl) || 0,
+      pl: effectivePL,
       periodGoal: Number(plan.periodGoal) || 0,
       periodStop: Number(plan.periodStop) || 0,
       cycleGoal: Number(plan.cycleGoal) || 0,
@@ -152,7 +178,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
       operationPeriod: plan.operationPeriod || 'Diário',
       adjustmentCycle: adjustmentCycle,
     }, options);
-  }, [plan, trades, selectedCycleRange, adjustmentCycle]);
+  }, [plan, trades, selectedCycleRange, adjustmentCycle, effectivePL]);
 
   // ==================== DADOS DERIVADOS ====================
 
@@ -225,7 +251,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
 
   if (!plan) return null;
 
-  const startPL = Number(plan.pl) || 0;
+  const startPL = effectivePL;
   const isCycleView = selectedPeriod === null;
 
   // B4: Info de risco do plano para ExtractSummary e ExtractTable

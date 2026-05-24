@@ -113,6 +113,22 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "weekStart", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "cycleClosures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cycleClosures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "closedAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

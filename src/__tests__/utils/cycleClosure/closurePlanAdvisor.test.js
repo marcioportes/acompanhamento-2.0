@@ -233,6 +233,34 @@ describe('REGRA 0 — pause_restructure (R2)', () => {
     });
     expect(out.triggeredRule).not.toBe('pause_restructure');
   });
+
+  it('NÃO dispara com stopTampering isolado — só apoio, precisa outro trigger', () => {
+    // Decisão #259 pós-rebuild R2: stop tampering pode ser trail legítimo.
+    // Sozinho não justifica pausa crítica; vira REGRA 3 (scale_down preventivo).
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      maxDDPercent: 0.025,
+      ruleAdherenceRate: 0.92,
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { tilt: 0, revenge: 0, stopTampering: 2 },
+      stopBreach: { stopBreachIndex: -1, tradesAfterStop: 0 },
+    });
+    expect(out.triggeredRule).not.toBe('pause_restructure');
+  });
+
+  it('stopTampering AGREGA à rationale quando outro trigger primário dispara', () => {
+    const out = advisePlanAdjustment({
+      kelly: { sampleSize: 60, kellySafe: 0.025, expectancy_R: 0.15 },
+      currentPlan: PLAN,
+      regression: [],
+      behavioralCounts: { tilt: 0, revenge: 3, stopTampering: 2 },  // revenge ≥3 dispara, tampering agrega
+      stopBreach: {},
+    });
+    expect(out.triggeredRule).toBe('pause_restructure');
+    expect(out.rationale).toMatch(/3 instâncias de vingança/);
+    expect(out.rationale).toMatch(/2× stop deslocado/);
+  });
 });
 
 describe('Capital base — R2', () => {

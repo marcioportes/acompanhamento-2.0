@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
   Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
@@ -59,6 +60,7 @@ import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { filterSetupsForStudent } from '../utils/setupsFilter';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
+  const toast = useToast();
   const { 
     allTrades, loading, addFeedback, 
     getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
@@ -220,7 +222,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       handleCloseBulkModal();
     } catch (err) {
       console.error('[MentorDashboard] Bulk feedback error:', err);
-      alert('Erro ao aplicar feedback: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao aplicar feedback' });
     } finally {
       setBulkLoading(false);
     }

@@ -16,6 +16,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import {
   ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
@@ -54,6 +55,7 @@ const translateType = (type) => {
 };
 
 const AccountDetailPage = ({ account, onBack, plans = [], trades = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
+  const toast = useToast();
   const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
   const { user, isMentor } = useAuth();
   
@@ -226,7 +228,7 @@ const AccountDetailPage = ({ account, onBack, plans = [], trades = [], onUpdateP
       setShowPlanModal(false);
       setEditingPlan(null);
     } catch (err) {
-      alert('Erro ao salvar plano: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao salvar plano' });
     }
   };
 

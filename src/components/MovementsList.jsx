@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useConfirmDialog } from './ConfirmDialog';
 import { 
   ArrowDownCircle, 
   ArrowUpCircle, 
@@ -15,13 +16,14 @@ import {
 } from 'lucide-react';
 import { formatDate } from '../utils/calculations';
 
-const MovementsList = ({ 
+const MovementsList = ({
   movements, 
   accounts = [],
   onDelete,
   showStudent = false,
   itemsPerPage = 10
 }) => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -73,11 +75,15 @@ const MovementsList = ({
     };
   }, [filteredMovements]);
 
-  const handleDelete = (movement) => {
+  const handleDelete = async (movement) => {
     const typeLabel = movement.type === 'DEPOSIT' ? 'depósito' : 'saque';
-    if (window.confirm(`Tem certeza que deseja excluir este ${typeLabel}? O saldo da conta será revertido automaticamente.`)) {
-      onDelete?.(movement);
-    }
+    const ok = await confirm({
+      title: `Excluir este ${typeLabel}?`,
+      body: 'O saldo da conta será revertido automaticamente.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (ok) onDelete?.(movement);
   };
 
   // Encontrar conta por ID
@@ -386,6 +392,7 @@ const MovementsList = ({
           </>
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 };

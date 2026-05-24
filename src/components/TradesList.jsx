@@ -15,6 +15,7 @@
  */
 
 import React from 'react';
+import { useConfirmDialog } from './ConfirmDialog';
 import { 
   Eye, 
   Edit2, 
@@ -76,6 +77,7 @@ const TradesList = ({
   showStatus = true, // AGORA É TRUE POR PADRÃO
   showStudent = false
 }) => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   // Helper: resolve PL do plano para calcular % sobre PL
   const getPlanPl = (trade) => {
@@ -269,11 +271,15 @@ const TradesList = ({
                       </button>
                     )}
                     {onDeleteTrade && (
-                      <button 
-                        onClick={() => {
-                          if(window.confirm('Tem certeza que deseja excluir este trade? A ação não pode ser desfeita.')) {
-                            onDeleteTrade(trade);
-                          }
+                      <button
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Excluir este trade?',
+                            body: 'A ação não pode ser desfeita.',
+                            confirmLabel: 'Excluir',
+                            tone: 'danger',
+                          });
+                          if (ok) onDeleteTrade(trade);
                         }}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
                         title="Excluir"
@@ -297,6 +303,7 @@ const TradesList = ({
           )}
         </tbody>
       </table>
+      {confirmDialog}
     </div>
   );
 };
