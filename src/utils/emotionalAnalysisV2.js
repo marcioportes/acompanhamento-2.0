@@ -514,9 +514,15 @@ export const detectOvertradingV2 = (trades, config = DEFAULT_DETECTION_CONFIG.ov
  * @param {Array} trades - Trades a analisar
  * @param {Function} getEmotionConfig - Função do useMasterData
  * @param {Object} detectionConfig - Config de detecção (opcional)
+ * @param {Object} options - extras
+ * @param {Array}  options.executionEvents - eventos do executionBehaviorEngine (STOP_TAMPERING,
+ *                 RAPID_REENTRY_POST_STOP, etc) — propagados a detectTilt/Revenge pra que tilt/revenge
+ *                 reflitam padrões de execução, não só sequências de losses. Sem isso, ciclos com
+ *                 stop tampering passam batidos. (issue #259 R2)
  * @returns {Object} Análise completa
  */
-export const analyzeEmotionsV2 = (trades, getEmotionConfig, detectionConfig = DEFAULT_DETECTION_CONFIG) => {
+export const analyzeEmotionsV2 = (trades, getEmotionConfig, detectionConfig = DEFAULT_DETECTION_CONFIG, options = {}) => {
+  const executionEvents = Array.isArray(options?.executionEvents) ? options.executionEvents : [];
   if (!trades || trades.length === 0) {
     return {
       tradesCount: 0,
@@ -557,9 +563,9 @@ export const analyzeEmotionsV2 = (trades, getEmotionConfig, detectionConfig = DE
       config: getEmotionConfig(name)
     }));
 
-  // Detecção de padrões
-  const tilt = detectTiltV2(trades, getEmotionConfig, detectionConfig.tilt);
-  const revenge = detectRevengeV2(trades, getEmotionConfig, detectionConfig.revenge);
+  // Detecção de padrões — executionEvents propagados pra correlacionar com STOP_TAMPERING/RAPID_REENTRY
+  const tilt = detectTiltV2(trades, getEmotionConfig, detectionConfig.tilt, executionEvents);
+  const revenge = detectRevengeV2(trades, getEmotionConfig, detectionConfig.revenge, executionEvents);
   const overtrading = detectOvertradingV2(trades, detectionConfig.overtrading);
 
   // Consolida eventos de compliance

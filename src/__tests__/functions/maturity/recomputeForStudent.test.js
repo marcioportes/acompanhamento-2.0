@@ -76,13 +76,13 @@ function makeMockDb({ assessment, currentMaturity, trades, plans, throwOn } = {}
         };
       }
       if (name === 'trades') {
+        // Após remoção do filtro espúrio por status (revisão ≠ execução),
+        // a query encadeia apenas 1× .where('studentId', '==', ...).
         const where = () => ({
-          where: () => ({
-            get: async () => {
-              if (throwOn === 'trades') throw new Error('trades fetch failed');
-              return makeQuerySnap(trades ?? []);
-            },
-          }),
+          get: async () => {
+            if (throwOn === 'trades') throw new Error('trades fetch failed');
+            return makeQuerySnap(trades ?? []);
+          },
         });
         return { where };
       }

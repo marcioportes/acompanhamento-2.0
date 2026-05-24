@@ -15,7 +15,8 @@
  * - 6.1.1: UI: Aumentado espaçamento da coluna 'Tipo' (w-32 -> w-40)
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import {
   ArrowLeft, Plus, Minus, Calendar,
   TrendingUp, TrendingDown, ArrowDownCircle, ArrowUpCircle,
@@ -27,6 +28,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PlanManagementModal from '../components/PlanManagementModal';
 import DebugBadge from '../components/DebugBadge';
 import { buildAuditInfo } from '../utils/mentorPlanAudit';
+import { computeCurrentPl } from '../utils/planBalance';
 
 // --- Helpers de Formatação ---
 
@@ -52,7 +54,8 @@ const translateType = (type) => {
   return map[type] || type;
 };
 
-const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
+const AccountDetailPage = ({ account, onBack, plans = [], trades = [], onUpdatePlan, onCreatePlan, planSubmitting = false }) => {
+  const toast = useToast();
   const { movements, loading, addDeposit, addWithdrawal } = useMovements(account?.id);
   const { user, isMentor } = useAuth();
   
@@ -75,9 +78,17 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreate
   const [editingPlan, setEditingPlan] = useState(null);
 
   // Abre modal de novo plano automaticamente quando a conta chega com flag _autoOpenPlanModal
-  // (ponto de entrada: botão "Novo plano" no card de conta — issue #154)
+  // (ponto de entrada: botão "Novo plano" no card de conta — issue #154).
+  // Ref rastreia se já auto-abrimos pra este account.id — evita reabrir após
+  // criar/salvar plano (parent re-renderiza com nova ref de account, mas flag persiste).
+  const autoOpenedFor = useRef(null);
   useEffect(() => {
-    if (account?._autoOpenPlanModal && onCreatePlan) {
+    if (
+      account?._autoOpenPlanModal
+      && onCreatePlan
+      && autoOpenedFor.current !== account.id
+    ) {
+      autoOpenedFor.current = account.id;
       setEditingPlan(null);
       setShowPlanModal(true);
     }
@@ -217,7 +228,7 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreate
       setShowPlanModal(false);
       setEditingPlan(null);
     } catch (err) {
-      alert('Erro ao salvar plano: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao salvar plano' });
     }
   };
 
@@ -264,7 +275,7 @@ const AccountDetailPage = ({ account, onBack, plans = [], onUpdatePlan, onCreate
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {accountPlans.map(plan => {
               const plInitial = plan.pl || 0;
-              const plCurrent = plan.currentPl ?? plInitial;
+              const plCurrent = computeCurrentPl(plan, trades);
               const plPnL = plCurrent - plInitial;
               const plPnLPercent = plInitial > 0 ? ((plPnL / plInitial) * 100) : 0;
               const roValue = plInitial > 0 ? (plInitial * (plan.riskPerOperation || 0) / 100) : 0;

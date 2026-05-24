@@ -26,6 +26,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { 
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
   Calendar, TrendingUp, TrendingDown, Clock, AlertCircle, AlertTriangle,
@@ -421,6 +422,7 @@ const ChatMessage = ({ message, onImageClick }) => {
 // ============================================
 
 const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = false, embedded = false, getPartials, uploadFeedbackImage }) => {
+  const toast = useToast();
   const { user, isMentor } = useAuth();
   const [comment, setComment] = useState('');
   const [fullscreenImage, setFullscreenImage] = useState(null);
@@ -572,7 +574,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
         
         // Limite 5MB
         if (file.size > 5 * 1024 * 1024) {
-          alert('Imagem muito grande. Máximo 5MB.');
+          toast.error('Imagem muito grande. Máximo 5MB.');
           return;
         }
 
@@ -603,7 +605,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           imageUrl = await uploadFeedbackImage(pastedImage.file, trade.id);
         } catch (uploadErr) {
           console.error('[FeedbackPage] Upload error:', uploadErr);
-          alert('Erro ao enviar imagem. Tente novamente.');
+          toast.error('Tente novamente.', { title: 'Erro ao enviar imagem' });
           setSending(false);
           return;
         }
@@ -696,7 +698,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
             {trade?.planId && (
               <div className="mt-3">
-                <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+                <PlanSummaryCard plan={tradePlan} accounts={accounts || []} trades={studentTrades || []} />
               </div>
             )}
             {userIsMentor && (
@@ -920,7 +922,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <TradeInfoCard trade={tradeWithPartials || trade} onImageClick={setFullscreenImage} userIsMentor={userIsMentor} onToggleViolation={handleToggleViolation} />
           {trade?.planId && (
             <div className="mt-4">
-              <PlanSummaryCard plan={tradePlan} accounts={accounts || []} />
+              <PlanSummaryCard plan={tradePlan} accounts={accounts || []} trades={studentTrades || []} />
             </div>
           )}
           {userIsMentor && (

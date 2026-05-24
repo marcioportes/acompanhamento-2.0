@@ -174,14 +174,15 @@ describe('computeCVNormalized (ESM)', () => {
     expect(effectiveWinRate([])).toBeNull();
     expect(effectiveWinRate([{ result: 100, status: 'CLOSED' }])).toBe(1);
     expect(effectiveWinRate([{ result: -100, status: 'CLOSED' }])).toBe(0);
-    // Trades não-CLOSED ou result não-numérico são ignorados no denominador.
+    // Trade.status é semântica de revisão — ignorado. Só result não-numérico é filtrado.
     const mixed = [
       { result: 100, status: 'OPEN' },
       { result: 100, status: 'CLOSED' },
       { result: 'NaN', status: 'CLOSED' },
       { result: -50, status: 'CLOSED' },
     ];
-    expect(effectiveWinRate(mixed)).toBeCloseTo(0.5, 10);
+    // 3 trades válidos (100, 100, -50): 2 wins → 2/3 ≈ 0.6667
+    expect(effectiveWinRate(mixed)).toBeCloseTo(2 / 3, 10);
   });
 
   it('C10 — computeCvExpected(0.3, 3): mean=0.20, std≈1.833, cv≈9.165', () => {
@@ -209,17 +210,18 @@ describe('computeCVNormalized (ESM)', () => {
     expect(computeCvObserved([100, -100, 100, -100]).cv).toBeNull();
   });
 
-  it('helper — groupTradesByDay filtra fora-janela e status != CLOSED', () => {
+  it('helper — groupTradesByDay filtra apenas fora-janela (status do trade ignorado)', () => {
     const trades = [
       { date: '02/02/2026', result: 100, status: 'CLOSED' },
-      { date: '03/02/2026', result: 200, status: 'OPEN' },
-      { date: '01/01/2026', result: 999, status: 'CLOSED' },
+      { date: '03/02/2026', result: 200, status: 'OPEN' },           // status irrelevante — conta
+      { date: '01/01/2026', result: 999, status: 'CLOSED' },          // fora-janela (antes)
       { date: '05/02/2026', result: 150, status: 'CLOSED' },
       { date: '05/02/2026', result: 50, status: 'CLOSED' },
     ];
     const map = groupTradesByDay(trades, '2026-02-01', '2026-02-28');
-    expect(map.size).toBe(2);
+    expect(map.size).toBe(3);
     expect(map.get('2026-02-02')).toBe(100);
+    expect(map.get('2026-02-03')).toBe(200);
     expect(map.get('2026-02-05')).toBe(200);
   });
 });

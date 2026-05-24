@@ -535,7 +535,7 @@ const EXPERIENCE_QUESTIONS = [
     type: 'closed',
     text: 'Quais dessas métricas você acompanha regularmente?',
     options: [
-      { id: 'EXP-04-A', text: 'Win rate, RR, drawdown, Sharpe, MFE/MAE', score: 92 },
+      { id: 'EXP-04-A', text: 'Win rate, RR, drawdown, Sharpe, MEP/MEN', score: 92 },
       { id: 'EXP-04-B', text: 'Win rate, RR, drawdown', score: 68 },
       { id: 'EXP-04-C', text: 'Win rate e P&L', score: 42 },
       { id: 'EXP-04-D', text: 'Só P&L total', score: 20 },

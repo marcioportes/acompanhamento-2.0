@@ -14,6 +14,8 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirmDialog } from '../ConfirmDialog';
 import {
   Package, Trash2, CheckSquare, Square, CheckCircle,
   AlertTriangle, Edit3, X, ChevronDown, ChevronUp, Loader2,
@@ -53,6 +55,8 @@ const CsvImportManager = ({
   onActivationComplete,
   getBatches,
 }) => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -99,19 +103,25 @@ const CsvImportManager = ({
         setProgress({ current: i + 1, total: ids.length, label: 'Excluindo...' });
       }
       setSelectedIds(new Set());
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
   const handleDeleteBatch = async (batch) => {
-    if (!confirm(`Excluir TODA a importação (${batch.trades.length} trades do staging)?`)) return;
+    const ok = await confirm({
+      title: 'Excluir TODA a importação?',
+      body: `${batch.trades.length} trade(s) do staging serão removidos.`,
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setProcessing(true);
     setProgress({ current: 0, total: 1, label: 'Excluindo batch...' });
     try {
       await onDeleteStagingBatch(batch.batchId);
       setSelectedIds(new Set());
       setProgress({ current: 1, total: 1, label: 'Concluído' });
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
@@ -132,7 +142,7 @@ const CsvImportManager = ({
       }
       setShowCompleteModal(false);
       setCompleteData({ emotionEntry: '', emotionExit: '', setup: '' });
-    } catch (err) { alert('Erro: ' + err.message); }
+    } catch (err) { toast.error(err.message, { title: 'Erro' }); }
     finally { setProcessing(false); setProgress({ current: 0, total: 0, label: '' }); }
   };
 
@@ -143,10 +153,11 @@ const CsvImportManager = ({
       return t?.isComplete;
     });
     if (readyIds.length === 0) {
-      alert('Nenhum trade selecionado está completo (precisa emotionEntry + emotionExit + setup).');
+      // Caso degenerado: usuário ativou seleção mas nenhum item está completo.
+      // Reverte sinalização pra UI mostrar selectedReadyCount=0 — botão "Ativar"
+      // só aparece se selectedReadyCount > 0, então em prática esse return é defensivo.
       return;
     }
-    if (!confirm(`Ativar ${readyIds.length} trade(s)? O painel será fechado durante o processamento.`)) return;
 
     // Fechar modal ANTES de processar — evita piscar por re-renders do listener
     setSelectedIds(new Set());
@@ -167,18 +178,19 @@ const CsvImportManager = ({
 
   /** Ativar trade individual — fecha modal, processa, sem piscar */
   const handleActivateSingle = async (trade) => {
-    if (!confirm(`Ativar trade ${trade.ticker} ${trade.side}? O painel será fechado durante o processamento.`)) return;
     onClose();
     try {
-      // onActivateTrade pode retornar string (id criado) ou objeto { enriched | skipped }.
+      // onActivateTrade pode retornar string (id criado) ou objeto { enriched | skipped | excursionStripped }.
       const r = await onActivateTrade(trade);
       if (onActivationComplete) {
         if (r && typeof r === 'object' && r.enriched) {
-          onActivationComplete({ success: [], enriched: [{ id: trade.id, matchedTradeId: r.matchedTradeId, fields: r.fields }], skipped: [], failed: [] });
+          onActivationComplete({ success: [], enriched: [{ id: trade.id, matchedTradeId: r.matchedTradeId, fields: r.fields }], skipped: [], failed: [], excursionStripped: [] });
         } else if (r && typeof r === 'object' && r.skipped) {
-          onActivationComplete({ success: [], enriched: [], skipped: [{ id: trade.id, matchedTradeId: r.matchedTradeId, reason: r.reason }], failed: [] });
+          onActivationComplete({ success: [], enriched: [], skipped: [{ id: trade.id, matchedTradeId: r.matchedTradeId, reason: r.reason }], failed: [], excursionStripped: [] });
+        } else if (r && typeof r === 'object' && r.excursionStripped) {
+          onActivationComplete({ success: [r.id], enriched: [], skipped: [], failed: [], excursionStripped: [{ id: trade.id, newTradeId: r.id, reason: r.excursionStripped }] });
         } else if (typeof r === 'string') {
-          onActivationComplete({ success: [r], enriched: [], skipped: [], failed: [] });
+          onActivationComplete({ success: [r], enriched: [], skipped: [], failed: [], excursionStripped: [] });
         }
       }
     } catch (err) {
@@ -194,7 +206,7 @@ const CsvImportManager = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[80vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
+      <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[90vh] rounded-xl flex flex-col shadow-2xl ring-1 ring-white/10">
 
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex justify-between items-center">
@@ -299,7 +311,7 @@ const CsvImportManager = ({
                       </button>
                     </div>
 
-                    <div className="divide-y divide-slate-800/30 max-h-64 overflow-y-auto">
+                    <div className="divide-y divide-slate-800/30">
                       {batch.trades.map(trade => {
                         const isSelected = selectedIds.has(trade.id);
                         const isComplete = trade.isComplete;
@@ -389,6 +401,7 @@ const CsvImportManager = ({
       <div className="fixed bottom-2 right-2 z-[51]">
         <DebugBadge component="CsvImportManager" />
       </div>
+      {confirmDialog}
     </div>
   );
 };

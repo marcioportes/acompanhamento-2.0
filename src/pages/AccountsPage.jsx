@@ -10,6 +10,8 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import {
   Plus, PlusCircle, Wallet, Edit2, Trash2, ShieldCheck, FlaskConical, Trophy, X, Search, Building2, ChevronRight,
   TrendingUp, TrendingDown, RefreshCw, AlertTriangle, CheckCircle, ArrowRight, Calendar
@@ -18,6 +20,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlans } from '../hooks/usePlans';
+import { useTrades } from '../hooks/useTrades';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import {
   PROP_FIRM_LABELS,
@@ -106,10 +109,13 @@ const dateToInputString = (dateObj) => {
  *   o estado no parent (evita re-navegação em unmount/rerender).
  */
 const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { accounts, loading, addAccount, updateAccount, deleteAccount } = useAccounts();
   const { brokers } = useMasterData();
   const { user, isMentor } = useAuth();
   const { plans, addPlan, updatePlan } = usePlans();
+  const { trades } = useTrades();
   const { templates: firestoreTemplates } = usePropFirmTemplates();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -436,7 +442,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       }));
 
     } catch (error) {
-      alert('Erro ao corrigir: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao corrigir' });
     } finally {
       setIsFixing(false);
     }
@@ -445,7 +451,10 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   // --- HANDLE SUBMIT (v1.0.6) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.broker.trim()) return alert('Preencha os campos obrigatórios');
+    if (!formData.name.trim() || !formData.broker.trim()) {
+      toast.error('Preencha os campos obrigatórios.');
+      return;
+    }
     
     // Payload Base
     const basePayload = {
@@ -539,12 +548,18 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       }
       setIsModalOpen(false);
     } catch (err) {
-      alert("Erro ao salvar: " + err.message);
+      toast.error(err.message, { title: 'Erro ao salvar' });
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Deseja excluir esta conta? O histórico será perdido.")) await deleteAccount(id);
+    const ok = await confirm({
+      title: 'Excluir esta conta?',
+      body: 'Todos os planos, trades, ordens, movimentos e fechamentos de ciclo vinculados serão apagados em cascata. Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir conta',
+      tone: 'danger',
+    });
+    if (ok) await deleteAccount(id);
   };
 
   // Handler: Mentor atualiza plano do aluno (com audit trail)
@@ -586,7 +601,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       setEditingPlan(null);
     } catch (error) {
       console.error('Erro ao salvar plano:', error);
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao salvar plano' });
     } finally {
       setPlanSubmitting(false);
     }
@@ -611,7 +626,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
-    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={handleCreatePlanForSelectedAccount} planSubmitting={planSubmitting} />;
+    return <AccountDetailPage account={mergedAccount} onBack={() => setSelectedAccount(null)} plans={plans} trades={trades} onUpdatePlan={handleMentorUpdatePlan} onCreatePlan={handleCreatePlanForSelectedAccount} planSubmitting={planSubmitting} />;
   }
 
   return (
@@ -625,7 +640,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       </div>
 
       {isMentor() ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} trades={trades} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {
@@ -998,7 +1013,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
               setPropPlanDefaults(null);
             } catch (error) {
               console.error('Erro ao salvar plano:', error);
-              alert('Erro: ' + error.message);
+              toast.error(error.message, { title: 'Erro ao salvar plano' });
             }
             setPlanSubmitting(false);
           }}
@@ -1008,6 +1023,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
         />
       )}
       <DebugBadge component="AccountsPage" />
+      {confirmDialog}
     </div>
   );
 };

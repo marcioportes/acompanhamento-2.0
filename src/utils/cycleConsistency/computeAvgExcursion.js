@@ -2,7 +2,7 @@
  * src/utils/cycleConsistency/computeAvgExcursion.js — issue #235 F1.3
  *
  * MEP médio (Máxima Excursão Positiva) e MEN médio (Máxima Excursão Negativa)
- * em % por entry, agregados sobre os trades CLOSED dentro do ciclo.
+ * em % por entry, agregados sobre os trades dentro do ciclo.
  *
  * Algoritmo (memória de cálculo, body do issue #235 §3):
  *
@@ -100,7 +100,7 @@ export function computeAvgExcursion(trades, cycleStart, cycleEnd, opts = {}) {
   const inWindow = [];
   if (Array.isArray(trades)) {
     for (const t of trades) {
-      if (!t || t.status !== 'CLOSED') continue;
+      if (!t) continue;
       const iso = parseDateToIso(t.date);
       if (iso === null) continue;
       if (iso < cycleStart || iso > cycleEnd) continue;

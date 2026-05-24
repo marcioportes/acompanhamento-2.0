@@ -24,6 +24,7 @@ import {
 import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
 import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
+import { findSealingRange, buildSealedError, isTradeBeforeLastClosedCycle, buildRetroactiveBlockedError } from './cycleClosure/sealCheck';
 
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
@@ -144,6 +145,22 @@ export async function createTrade(tradeData, userContext) {
   const planData = planSnap.data();
   const derivedAccountId = planData.accountId;
   if (!derivedAccountId) throw new Error('Plano sem conta vinculada.');
+
+  // === 1.1. HARD SEAL — Issue #259 (1A) ===
+  // Trade.date em range de cycleClosure CLOSED é bloqueado. Para editar, reabrir o ciclo.
+  // Mentor não bypassa (seal é fronteira de auditabilidade — exige reopen explícito com rationale).
+  if (tradeData.date) {
+    const sealedBy = findSealingRange(planData, tradeData.date);
+    if (sealedBy) throw new Error(buildSealedError(sealedBy, tradeData.date));
+
+    // C5 #259 — adicional ao range check: bloqueia também trades em períodos
+    // ANTERIORES ao último ciclo fechado (mesmo sem range explícito cobrindo
+    // aquela janela). Garante linha do tempo monotônica para frente após
+    // qualquer fechamento; aluno não pode importar mês passado uma vez que
+    // virou o ciclo mais recente.
+    const retroLast = isTradeBeforeLastClosedCycle(planData, tradeData.date);
+    if (retroLast) throw new Error(buildRetroactiveBlockedError(tradeData.date, retroLast));
+  }
 
   // Busca moeda da conta para persistir no trade
   const accountRef = doc(db, 'accounts', derivedAccountId);
@@ -487,6 +504,17 @@ export async function editTradeAsMentor(tradeId, edits, userContext, deps = {}) 
 
   if (before._lockedByMentor === true) {
     throw new Error('Trade travado — destrave antes de editar');
+  }
+
+  // Hard seal — issue #259 (1A). Mentor também não bypassa: pra editar trade em ciclo
+  // selado, reabrir o ciclo primeiro (rationale obrigatória).
+  if (before.date && before.planId) {
+    const planRef = docFn(db, 'plans', before.planId);
+    const planSnap = await getDocFn(planRef);
+    if (planSnap.exists()) {
+      const sealedBy = findSealingRange(planSnap.data(), before.date);
+      if (sealedBy) throw new Error(buildSealedError(sealedBy, before.date));
+    }
   }
 
   const editedFields = [];

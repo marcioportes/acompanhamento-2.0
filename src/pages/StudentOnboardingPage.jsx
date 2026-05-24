@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import { useParams } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
@@ -56,6 +57,7 @@ const STATUS_COLORS = {
 };
 
 export default function StudentOnboardingPage({ studentId: studentIdProp, isMentorView = false }) {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const params = useParams();
   const studentId = studentIdProp || params?.studentId;
   const [processing, setProcessing] = useState(false);
@@ -689,10 +691,14 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
           {/* Botão re-processamento — só para mentor, ação destrutiva com confirmação */}
           <div className="flex justify-end mb-4">
             <button
-              onClick={() => {
-                if (window.confirm('Re-processar vai sobrescrever todos os scores da IA no questionário e no aprofundamento com o prompt atualizado. Os textos do aluno são preservados. Confirmar?')) {
-                  handleReprocessAI();
-                }
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Re-processar análise da IA?',
+                  body: 'Vai sobrescrever todos os scores da IA no questionário e no aprofundamento com o prompt atualizado. Os textos do aluno são preservados.',
+                  confirmLabel: 'Re-processar',
+                  tone: 'warning',
+                });
+                if (ok) handleReprocessAI();
               }}
               disabled={processing}
               className={`flex items-center gap-2 px-4 py-2 text-xs rounded-lg border transition-all ${
@@ -733,6 +739,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
       )}
 
       <DebugBadge component="StudentOnboardingPage" />
+      {confirmDialog}
     </div>
   );
 }

@@ -13,7 +13,7 @@
  * Mostra contagens + listas detalhadas. Fecha com Esc, X ou clique fora.
  */
 
-import { CheckCircle, Sparkles, Copy, AlertCircle, X } from 'lucide-react';
+import { CheckCircle, Sparkles, Copy, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 
 const BUCKET_META = {
@@ -35,6 +35,12 @@ const BUCKET_META = {
     color: 'amber',
     description: 'Já existiam como trade — nada a contribuir',
   },
+  excursionStripped: {
+    label: 'MEP/MEN descartados',
+    Icon: AlertTriangle,
+    color: 'orange',
+    description: 'Valores inconsistentes no CSV — trade ativado sem MEP/MEN. Yahoo enrichment vai recalcular.',
+  },
   failed: {
     label: 'Falhas',
     Icon: AlertCircle,
@@ -47,6 +53,7 @@ const COLOR_CLASSES = {
   emerald: { border: 'border-emerald-500/20', bg: 'bg-emerald-500/10', text: 'text-emerald-400', textSoft: 'text-emerald-300' },
   blue:    { border: 'border-blue-500/20',    bg: 'bg-blue-500/10',    text: 'text-blue-400',    textSoft: 'text-blue-300' },
   amber:   { border: 'border-amber-500/20',   bg: 'bg-amber-500/10',   text: 'text-amber-400',   textSoft: 'text-amber-300' },
+  orange:  { border: 'border-orange-500/20',  bg: 'bg-orange-500/10',  text: 'text-orange-400',  textSoft: 'text-orange-300' },
   red:     { border: 'border-red-500/20',     bg: 'bg-red-500/10',     text: 'text-red-400',     textSoft: 'text-red-300' },
 };
 
@@ -83,9 +90,10 @@ const CsvActivationResultModal = ({ isOpen, onClose, result }) => {
   const success = result.success || [];
   const enriched = result.enriched || [];
   const skipped = result.skipped || [];
+  const excursionStripped = result.excursionStripped || [];
   const failed = result.failed || [];
 
-  const hasAnything = success.length + enriched.length + skipped.length + failed.length > 0;
+  const hasAnything = success.length + enriched.length + skipped.length + excursionStripped.length + failed.length > 0;
   if (!hasAnything) return null;
 
   return (
@@ -111,8 +119,8 @@ const CsvActivationResultModal = ({ isOpen, onClose, result }) => {
 
         {/* Tally */}
         <div className="grid grid-cols-2 gap-2 px-5 py-3 shrink-0">
-          {['success', 'enriched', 'skipped', 'failed'].map((bucket) => {
-            const counts = { success: success.length, enriched: enriched.length, skipped: skipped.length, failed: failed.length };
+          {['success', 'enriched', 'skipped', 'excursionStripped', 'failed'].map((bucket) => {
+            const counts = { success: success.length, enriched: enriched.length, skipped: skipped.length, excursionStripped: excursionStripped.length, failed: failed.length };
             const count = counts[bucket];
             if (count === 0) return null;
             const meta = BUCKET_META[bucket];
@@ -152,6 +160,23 @@ const CsvActivationResultModal = ({ isOpen, onClose, result }) => {
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-mono text-slate-300 truncate">{item.matchedTradeId}</p>
                       {item.reason && <p className="text-[10px] text-amber-300/70 mt-0.5 truncate">{item.reason}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {excursionStripped.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-orange-300/80 mb-1.5">MEP/MEN descartados</p>
+              <div className="space-y-1">
+                {excursionStripped.map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 px-3 py-1.5 rounded-lg bg-orange-500/5 border border-orange-500/10">
+                    <AlertTriangle className="w-3 h-3 text-orange-400 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-mono text-slate-300 truncate">{item.newTradeId || item.id}</p>
+                      {item.reason && <p className="text-[10px] text-orange-300/70 mt-0.5">{item.reason}</p>}
                     </div>
                   </div>
                 ))}

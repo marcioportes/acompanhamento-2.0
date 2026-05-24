@@ -129,7 +129,8 @@ export const usePlans = (overrideStudentId = null) => {
         accountId: planData.accountId,
 
         pl: parseFloat(planData.pl) || 0,
-        currentPl: parseFloat(planData.pl) || 0,
+        // currentPl removido (contrato C2 #259): saldo é derivado on-the-fly
+        // via planBalance.computeCurrentPl. Não inicializa mais o campo legado.
         plPercent: parseFloat(planData.plPercent) || 0,
 
         riskPerOperation: parseFloat(planData.riskPerOperation) || 2,
@@ -174,8 +175,15 @@ export const usePlans = (overrideStudentId = null) => {
   const updatePlan = useCallback(async (planId, planData, auditInfo = null) => {
     try {
       const planRef = doc(db, 'plans', planId);
+      // Contrato C1: capital alocado (pl) é imutável após criação. Strip
+      // antes de gravar pra impedir bypass via callers que enviem pl no
+      // payload (defesa em profundidade — UI já bloqueia em PlanManagementModal).
+      // A única rota legítima de mudança no pl é o ritual de fechamento de
+      // ciclo (closeCycle CF grava pl do próximo ciclo).
+      // eslint-disable-next-line no-unused-vars
+      const { pl: _ignoredPl, ...safePlanData } = planData;
       const updateData = {
-        ...planData,
+        ...safePlanData,
         updatedAt: serverTimestamp()
       };
 
@@ -230,38 +238,14 @@ export const usePlans = (overrideStudentId = null) => {
    * 4. Deleta o plano
    */
   const deletePlan = useCallback(async (planId) => {
-    try {
-      console.log(`[usePlans] Deletando plano ${planId} com cascade...`);
-
-      // ETAPA 1: TRADES do plano
-      const tradesQuery = query(collection(db, 'trades'), where('planId', '==', planId));
-      const tradesSnapshot = await getDocs(tradesQuery);
-      console.log(`[usePlans] ${tradesSnapshot.size} trades vinculados`);
-
-      // ETAPA 2: Para cada trade, deletar movements
-      for (const tradeDoc of tradesSnapshot.docs) {
-        try {
-          const movQuery = query(collection(db, 'movements'), where('tradeId', '==', tradeDoc.id));
-          const movSnapshot = await getDocs(movQuery);
-          await Promise.all(movSnapshot.docs.map(m => deleteDoc(doc(db, 'movements', m.id))));
-          console.log(`[usePlans] Trade ${tradeDoc.id}: ${movSnapshot.size} movements deletados`);
-        } catch (e) {
-          console.warn(`[usePlans] Erro movements trade ${tradeDoc.id}:`, e);
-        }
-      }
-
-      // ETAPA 3: Deletar trades
-      await Promise.all(tradesSnapshot.docs.map(t => deleteDoc(doc(db, 'trades', t.id))));
-      console.log(`[usePlans] ${tradesSnapshot.size} trades deletados`);
-
-      // ETAPA 4: Deletar plano
-      await deleteDoc(doc(db, 'plans', planId));
-      console.log(`[usePlans] Plano deletado`);
-
-    } catch (err) {
-      console.error('[usePlans] Erro cascade delete:', err);
-      throw err;
-    }
+    // Cascade rodando inteiramente no servidor via Admin SDK — bypassa rules
+    // que bloqueavam delete em orders/cycleClosures no caminho client.
+    // Ordem aplicada pela CF: movements (por tradeId) → trades → orders → cycleClosures → plan.
+    const functions = getFunctions();
+    const deletePlanCascadeCF = httpsCallable(functions, 'deletePlanCascade');
+    const { data } = await deletePlanCascadeCF({ planId });
+    console.log('[usePlans] cascade CF:', data);
+    return data;
   }, []);
 
   /**
@@ -331,10 +315,29 @@ export const usePlans = (overrideStudentId = null) => {
 
     const planTrades = localTrades.filter(t => t.planId === planId);
     const basePl = Number(plan.pl) || 0;
+
+    // Saldo persistido em plan.currentPl é LEGADO (contrato C2 #259):
+    // saldo agora é derivado on-the-fly via planBalance.computeCurrentPl.
+    // Mantemos o read aqui só pra detectar drift residual com o campo legado
+    // — eventual divergência sinaliza dado obsoleto no banco, não bug ativo.
     const currentPl = Number(plan.currentPl ?? plan.pl) || 0;
 
-    // === Ida: PL calculado a partir dos trades ===
-    const totalResult = planTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
+    // === Ida: PL calculado a partir dos trades (contrato C2) ===
+    // Filtra trades pelo ciclo ABERTO — somar todos os trades dupla-conta os
+    // ciclos já fechados (plan.pl já incorpora os ajustes desses closes).
+    const lastClosed = typeof plan.lastClosedCycleEnd === 'string' ? plan.lastClosedCycleEnd : null;
+    let openCycleStart = null;
+    if (lastClosed) {
+      const d = new Date(lastClosed + 'T00:00:00Z');
+      if (!Number.isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        openCycleStart = d.toISOString().slice(0, 10);
+      }
+    }
+    const openCycleTrades = openCycleStart === null
+      ? planTrades
+      : planTrades.filter(t => typeof t.date === 'string' && t.date >= openCycleStart);
+    const totalResult = openCycleTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
     const calculatedPl = Math.round((basePl + totalResult) * 100) / 100;
     const plDivergent = Math.abs(currentPl - calculatedPl) > 0.01; // tolerância centavo
 

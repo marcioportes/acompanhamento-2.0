@@ -14,7 +14,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle, Loader2, CheckCheck } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import ConversationalOpCard from './ConversationalOpCard';
 import AdjustmentModal from './AdjustmentModal';
@@ -75,6 +75,30 @@ const ConversationalReview = ({
   const allDecided = queue.length > 0 && totals.pending === 0;
   const canSubmit = allDecided && !coverageGap.hasCoverageGap && !loading;
 
+  // Aceitar tudo pendente com defaults sensatos:
+  //  - MATCH_CONFIDENT → confirma com tradeId correlacionado
+  //  - AMBIGUOUS       → confirma com candidato de maior score
+  //  - NEW             → confirma (cria novo trade)
+  //  - AUTOLIQ         → confirma como trade real
+  // Aluno pode reverter individualmente depois.
+  const handleAcceptAllPending = () => {
+    queue.forEach((item, idx) => {
+      if (item.userDecision && item.userDecision !== 'pending') return;
+
+      let payload;
+      if (item.classification === CLASSIFICATION.MATCH_CONFIDENT && item.tradeId) {
+        payload = { decision: 'confirmed', tradeId: item.tradeId };
+      } else if (item.classification === CLASSIFICATION.AMBIGUOUS && item.matchCandidates?.length) {
+        const best = [...item.matchCandidates].sort((a, b) => b.score - a.score)[0];
+        payload = { decision: 'confirmed', tradeId: best.tradeId };
+      } else {
+        // NEW e AUTOLIQ — confirmar sem tradeId (cria novo)
+        payload = { decision: 'confirmed' };
+      }
+      onDecide(idx, payload);
+    });
+  };
+
   // AdjustmentModal state — aberto quando aluno clica "Ajustar" em match_confident
   const [adjustingIdx, setAdjustingIdx] = useState(null);
   const adjustingItem = adjustingIdx != null ? queue[adjustingIdx] : null;
@@ -119,6 +143,18 @@ const ConversationalReview = ({
         <span className="ml-auto text-slate-500">
           {totals.confirmed} confirmada{totals.confirmed === 1 ? '' : 's'} · {totals.discarded} descartada{totals.discarded === 1 ? '' : 's'} · {totals.pending} pendente{totals.pending === 1 ? '' : 's'}
         </span>
+        {totals.pending > 0 && (
+          <button
+            type="button"
+            onClick={handleAcceptAllPending}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded transition-colors"
+            title="Confirma todas as pendentes com defaults: hipótese clara → match; ambígua → maior score; nova/autoliq → cria. Dá pra reverter cada uma depois."
+            data-testid="accept-all-pending"
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            Aceitar todas ({totals.pending})
+          </button>
+        )}
       </div>
 
       {/* Coverage gap banner */}

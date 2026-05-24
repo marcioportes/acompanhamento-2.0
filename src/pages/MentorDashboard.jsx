@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
   Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
@@ -35,6 +36,14 @@ import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
+import MentorClosureView from '../components/cycleClosure/MentorClosureView';
+import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
+import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
+import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Inbox } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -51,6 +60,7 @@ import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { filterSetupsForStudent } from '../utils/setupsFilter';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
+  const toast = useToast();
   const { 
     allTrades, loading, addFeedback, 
     getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
@@ -63,6 +73,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
+  // Issue #259 — view do closure (lateral panel + comment)
+  const [viewingClosure, setViewingClosure] = useState(null);
+  // Flow C — mentor inicia closure pelo aluno em sessão 1:1 (issue #259 A8)
+  const [mentorClosureContext, setMentorClosureContext] = useState(null);
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
@@ -81,7 +96,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking' };
+  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
@@ -207,7 +222,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       handleCloseBulkModal();
     } catch (err) {
       console.error('[MentorDashboard] Bulk feedback error:', err);
-      alert('Erro ao aplicar feedback: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao aplicar feedback' });
     } finally {
       setBulkLoading(false);
     }
@@ -244,6 +259,16 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
           </div>
         </div>
+        {/* Issue #259 A8 — Flow C: mentor inicia closure pelo aluno (sessão 1:1) */}
+        <CycleExpiredGuard
+          studentId={selectedStudent.studentId}
+          role="mentor"
+          studentName={selectedStudent.name}
+          onStartClosure={(item) => setMentorClosureContext(item)}
+          plans={plans.filter((p) => p.studentId === selectedStudent.studentId)}
+          trades={selectedStudentTrades}
+        />
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             title="P&L Total"
@@ -279,6 +304,23 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
         </div>
         <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
+
+        {/* Flow C — modal do wizard em modo mentor */}
+        <CycleClosureModal
+          open={mentorClosureContext !== null}
+          onClose={() => setMentorClosureContext(null)}
+          onSealed={() => setMentorClosureContext(null)}
+          studentId={selectedStudent.studentId}
+          studentName={selectedStudent.name}
+          planId={mentorClosureContext?.planId}
+          cycleKey={mentorClosureContext?.cycleKey}
+          cycleNumber={mentorClosureContext?.cycleNumber}
+          cycleStart={mentorClosureContext?.cycleStart}
+          cycleEnd={mentorClosureContext?.cycleEnd}
+          accountId={mentorClosureContext?.accountId}
+          role="mentor"
+          planName={mentorClosureContext?.planName}
+        />
       </div>
     );
   }
@@ -297,6 +339,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
           { id: 'ranking', sidebarId: 'ranking', label: 'Ranking', icon: Trophy },
+          { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
         ].map(tab => (
           <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
             className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
@@ -627,6 +670,24 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             })}
           </div>
         </div>
+      )}
+
+      {activeView === 'closures' && !viewingClosure && (
+        <MentorClosuresInbox
+          students={students}
+          plansById={plans.reduce((acc, p) => { acc[p.id] = p; return acc; }, {})}
+          onOpen={(item) => setViewingClosure(item)}
+        />
+      )}
+
+      {activeView === 'closures' && viewingClosure && (
+        <MentorClosureView
+          closure={viewingClosure._raw || viewingClosure}
+          studentName={students.find((s) => s.studentId === viewingClosure.studentId)?.name}
+          viewerRole="mentor"
+          onClose={() => setViewingClosure(null)}
+          onSaved={() => setViewingClosure(null)}
+        />
       )}
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />

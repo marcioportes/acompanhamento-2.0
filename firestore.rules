@@ -23,6 +23,17 @@ service cloud.firestore {
       return request.auth.token.email == 'marcio.portes@me.com';
     }
 
+    // Hard seal — issue #259 (1A). Bloqueia write em trade cuja date está em
+    // algum cycle fechado do plano (sealedCycleRanges). Cache simples via
+    // lastClosedCycleEnd (fronteira otimista — gateway client tem check rico).
+    // Trade.date deve estar acima de lastClosedCycleEnd OU plano não tem ciclo selado.
+    function isTradeDateNotSealed(planId, tradeDate) {
+      let plan = get(/databases/$(database)/documents/plans/$(planId)).data;
+      return !('lastClosedCycleEnd' in plan) ||
+             plan.lastClosedCycleEnd == null ||
+             tradeDate > plan.lastClosedCycleEnd;
+    }
+
     // ==================================================
     // REGRAS DE COLEÇÃO
     // ==================================================
@@ -104,7 +115,9 @@ service cloud.firestore {
     // ou CF (admin SDK bypassa rules).
     match /trades/{tradeId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      // Hard seal #259 — bloqueia create se date está em ciclo fechado do plano.
+      allow create: if isAuthenticated() &&
+        isTradeDateNotSealed(request.resource.data.planId, request.resource.data.date);
       allow update: if isAuthenticated() && (
         isMentor() ||
         isOwner(resource.data.studentId) ||
@@ -128,12 +141,16 @@ service cloud.firestore {
           // Issue #221 — limpeza de violação (compliance + emocional). Aluno read-only.
           'mentorClearedViolations'
         ])
-      );
+      ) &&
+      // Hard seal #259 — bloqueia update se date está em ciclo fechado.
+      isTradeDateNotSealed(resource.data.planId, resource.data.date);
       allow delete: if isAuthenticated() && (
         isMentor() ||
         isOwner(resource.data.studentId) ||
         isOwnerByEmail(resource.data.studentEmail)
-      );
+      ) &&
+      // Hard seal #259 — bloqueia delete se date está em ciclo fechado.
+      isTradeDateNotSealed(resource.data.planId, resource.data.date);
 
       // PARCIAIS (subcollection de trades)
       match /partials/{partialId} {
@@ -178,6 +195,18 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated();
+    }
+
+    // CYCLE CLOSURES — Issue #259 (1A — Ritual completo de Fechamento de Ciclo)
+    // Documento imutável escrito pela CF closeCycle (admin SDK bypassa rules).
+    // Read: aluno dono (resource.data.studentId == auth.uid) OU mentor.
+    // Write: false — toda mutação é via CF (closeCycle, reopenCycle).
+    match /cycleClosures/{closureId} {
+      allow read: if isAuthenticated() && (
+        isMentor() ||
+        isOwner(resource.data.studentId)
+      );
+      allow write: if false;
     }
 
     // ==================================================

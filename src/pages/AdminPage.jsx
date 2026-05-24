@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import { 
   Database, 
   Shield, 
@@ -11,6 +12,7 @@ import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import TickerManager from './admin/TickerManager'; // Certifique-se de criar a pasta admin
 
 const AdminPage = () => {
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { user, isMentor } = useAuth();
   const [activeTab, setActiveTab] = useState('tickers');
   
@@ -33,7 +35,15 @@ const AdminPage = () => {
 
   // Wrappers para as funções de seed existentes
   const handleSystemAction = async (actionType, actionFn) => {
-    if (actionType === 'force' && !window.confirm('Cuidado! Isso pode sobrescrever dados. Continuar?')) return;
+    if (actionType === 'force') {
+      const ok = await confirm({
+        title: 'Sobrescrever dados existentes?',
+        body: 'Cuidado: esta operação pode substituir o dataset atual.',
+        confirmLabel: 'Sobrescrever',
+        tone: 'warning',
+      });
+      if (!ok) return;
+    }
     
     setSysLoading(actionType);
     setSysResult(null);
@@ -168,6 +178,7 @@ const AdminPage = () => {
         </div>
 
       </div>
+      {confirmDialog}
     </div>
   );
 };

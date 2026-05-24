@@ -286,20 +286,14 @@ const updateAccountBalance = async (accountId, resultDiff) => {
  * @param {string} planId - ID do plano
  * @param {number} resultDiff - Valor a somar (positivo ou negativo)
  */
-const updatePlanPl = async (planId, resultDiff) => {
-  if (!planId || resultDiff === 0) return;
-  const planRef = db.collection('plans').doc(planId);
-  await db.runTransaction(async (t) => {
-    const doc = await t.get(planRef);
-    if (!doc.exists) return;
-    const plan = doc.data();
-    const currentPl = plan.currentPl ?? plan.pl ?? 0;
-    t.update(planRef, {
-      currentPl: currentPl + resultDiff,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-  });
-};
+// DEPRECATED (contrato C2 #259): saldo do plano deixou de ser persistido.
+// Agora é derivado on-the-fly em src/utils/planBalance.computeCurrentPl
+// (pl + Σ trades do ciclo aberto). Campo plan.currentPl é legado e não
+// é mais escrito — fica no doc por backward compat até migration deletar.
+// Chamadores foram mantidos como no-op pra preservar contrato da CF sem
+// quebrar callers; remover ao consolidar a migration.
+// eslint-disable-next-line no-unused-vars
+const updatePlanPl = async (_planId, _resultDiff) => { /* no-op (C2) */ };
 
 // ============================================
 // PROP FIRM HELPERS (#52 Fase 2)
@@ -1583,8 +1577,9 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     }
 
     // === MATURITY ENGINE (#119 task 07) ===
-    // Recalcula sempre que o trade atualiza para CLOSED (ou já está CLOSED e foi editado).
-    // Guard interno: status !== 'CLOSED' → skip. Isolamento total (INV-03).
+    // Recalcula sempre que o trade tem resultado registrado (execução fechada).
+    // Guard interno: result não numérico → skip. Isolamento total (INV-03).
+    // (antes filtrava por status === 'CLOSED', semântica errada — corrigido.)
     try {
       const { runMaturityRecompute } = require('./maturity/recomputeMaturity');
       const result = await runMaturityRecompute(db, { tradeId: context.params.tradeId, trade: after });
@@ -1771,17 +1766,39 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
   let plRecalculated = false;
   
   if (recalcPl && !tradeId) {
+    // Contrato C2 #259: saldo do plano = pl + Σ trades_do_ciclo_aberto.
+    // Pré-C2, plan.pl era IMUTÁVEL e currentPl somava todos os trades. Pós-C2,
+    // plan.pl muda a cada fechamento (vira o newPl do próximo ciclo), então
+    // somar todos os trades dupla-conta os ciclos já fechados — esse era o
+    // bug do audit-button que deixava currentPl preso em valor errado.
+    // Ciclo aberto começa no dia seguinte ao último cycleEnd fechado; se não
+    // houver fechamento, conta todos os trades.
     const allTradesSnap = await db.collection('trades').where('planId', '==', planId).get();
     const basePl = Number(plan.pl) || 0;
-    const totalResult = allTradesSnap.docs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
+    const lastClosed = typeof plan.lastClosedCycleEnd === 'string' ? plan.lastClosedCycleEnd : null;
+    let openCycleStart = null;
+    if (lastClosed) {
+      const d = new Date(lastClosed + 'T00:00:00Z');
+      if (!Number.isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        openCycleStart = d.toISOString().slice(0, 10);
+      }
+    }
+    const openCycleDocs = openCycleStart === null
+      ? allTradesSnap.docs
+      : allTradesSnap.docs.filter((d) => {
+          const date = d.data().date;
+          return typeof date === 'string' && date >= openCycleStart;
+        });
+    const totalResult = openCycleDocs.reduce((sum, d) => sum + (Number(d.data().result) || 0), 0);
     newPl = Math.round((basePl + totalResult) * 100) / 100;
-    
+
     if (Math.abs(oldPl - newPl) > 0.01) {
       await planRef.update({ currentPl: newPl, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
       plRecalculated = true;
-      console.log('[recalculateCompliance] PL recalculado: ' + oldPl + ' -> ' + newPl);
+      console.log('[recalculateCompliance] PL recalculado (C2 open-cycle): ' + oldPl + ' -> ' + newPl);
     }
-    
+
     // Usar PL atualizado para compliance
     plan.currentPl = newPl;
   }
@@ -1891,3 +1908,16 @@ exports.onTradeCreatedAutoEnrich = require("./marketData/onTradeCreatedAutoEnric
 // MARKET DATA — Selic diária BCB SGS-11 (issue #235 F0.1)
 // ============================================
 exports.fetchSelicDaily = require("./marketData/fetchSelicDaily");
+
+// ============================================
+// CYCLE CLOSURE — Ritual completo de Fechamento de Ciclo (CHUNK-03/04/16, issue #259)
+// ============================================
+exports.closeCycle = require("./cycleClosure/closeCycle");
+exports.reopenCycle = require("./cycleClosure/reopenCycle");
+exports.setMentorClosureComment = require("./cycleClosure/setMentorClosureComment");
+
+// ============================================
+// ACCOUNT/PLAN LIFECYCLE — cascade delete via Admin SDK (issue #259 fast-follow)
+// ============================================
+exports.deleteAccountCascade = require("./accounts/deleteAccountCascade");
+exports.deletePlanCascade = require("./accounts/deletePlanCascade");

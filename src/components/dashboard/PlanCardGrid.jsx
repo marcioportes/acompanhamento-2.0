@@ -21,6 +21,7 @@ import {
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
 import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
+import { getOpenCycleStart } from '../../utils/planBalance';
 import DebugBadge from '../DebugBadge';
 
 const MiniProgressBar = ({ current, target, isLoss }) => {
@@ -95,7 +96,14 @@ const PlanCardGrid = ({
         const isSelected = selectedPlanId === plan.id;
         const planAccount = accounts.find(a => a.id === plan.accountId);
         const planCurrency = planAccount?.currency || 'BRL';
-        const planTrades = trades.filter(t => t.planId === plan.id);
+        // Filtrar pelo ciclo ABERTO (contrato C2 #259) — plan.pl já incorpora
+        // ajustes dos closes passados; somar todos os trades dupla-conta o que
+        // já foi para o capital base.
+        const allPlanTrades = trades.filter(t => t.planId === plan.id);
+        const openCycleStart = getOpenCycleStart(plan);
+        const planTrades = openCycleStart === null
+          ? allPlanTrades
+          : allPlanTrades.filter(t => typeof t.date === 'string' && t.date >= openCycleStart);
         const periodPnL = calculatePeriodPnL(planTrades, plan.operationPeriod);
         const cyclePnL = calculateCyclePnL(planTrades, plan.adjustmentCycle);
         const planInitialPL = Number(plan.pl) || 0;

@@ -10,9 +10,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDocs, serverTimestamp, orderBy
+import {
+  collection, query, where, onSnapshot, addDoc, updateDoc, doc, getDocs, serverTimestamp, orderBy
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -258,70 +259,28 @@ export const useAccounts = (overrideStudentId = null) => {
 
   /**
    * Deletar conta com CASCADE DELETE
+   *
+   * Ordem dos passos (importante — coleta planIds ANTES de deletar planos):
+   *   1. movements             (where accountId)
+   *   2. coleta planIds        (query por accountId — mentor — ou studentId — aluno)
+   *   3. trades                (duplo query studentId+studentEmail dedup + filtro accountId,
+   *                             aluno; where accountId mentor)
+   *   4. orders                (where planId in planIds — em chunks de 10 por limite Firestore;
+   *                             aluno usa fallback por studentId+filtro)
+   *   5. cycleClosures         (where accountId)
+   *   6. plans                 (deleta após orders pra não criar planId fantasma)
+   *   7. account
    */
   const deleteAccount = useCallback(async (accountId) => {
-    try {
-      console.log(`[useAccounts] Deletando conta ${accountId}...`);
-
-      // ETAPA 1: MOVIMENTOS
-      try {
-        const movementsQuery = query(collection(db, 'movements'), where('accountId', '==', accountId));
-        const movementsSnapshot = await getDocs(movementsQuery);
-        await Promise.all(movementsSnapshot.docs.map(docSnap => deleteDoc(doc(db, 'movements', docSnap.id))));
-        console.log(`[useAccounts] ${movementsSnapshot.size} movimentos deletados`);
-      } catch (e) {
-        console.warn('[useAccounts] Erro movimentos:', e);
-      }
-      
-      // ETAPA 2: PLANOS
-      try {
-        let plansToDelete = [];
-        if (isMentor()) {
-          const q = query(collection(db, 'plans'), where('accountId', '==', accountId));
-          const snap = await getDocs(q);
-          plansToDelete = snap.docs;
-        } else {
-          // Aluno: query por studentId + filtro em memória por accountId
-          // (evita índice composto accountId+studentId)
-          const q = query(collection(db, 'plans'), where('studentId', '==', user.uid));
-          const snap = await getDocs(q);
-          plansToDelete = snap.docs.filter(d => d.data().accountId === accountId);
-        }
-        await Promise.all(plansToDelete.map(docSnap => deleteDoc(doc(db, 'plans', docSnap.id))));
-        console.log(`[useAccounts] ${plansToDelete.length} planos deletados`);
-      } catch (e) {
-        console.warn('[useAccounts] Erro planos:', e);
-      }
-
-      // ETAPA 3: TRADES (FIX: FILTRO EM MEMÓRIA)
-      try {
-        let tradesToDelete = [];
-
-        if (isMentor()) {
-           const q = query(collection(db, 'trades'), where('accountId', '==', accountId));
-           const snap = await getDocs(q);
-           tradesToDelete = snap.docs;
-        } else if (user?.email) {
-           const q = query(collection(db, 'trades'), where('studentEmail', '==', user.email));
-           const snap = await getDocs(q);
-           tradesToDelete = snap.docs.filter(doc => doc.data().accountId === accountId);
-        }
-
-        console.log(`[useAccounts] ${tradesToDelete.length} trades para deletar`);
-        await Promise.all(tradesToDelete.map(docSnap => deleteDoc(doc(db, 'trades', docSnap.id))));
-      } catch (e) {
-        console.warn('[useAccounts] Erro trades:', e);
-      }
-      
-      // ETAPA 4: CONTA
-      await deleteDoc(doc(db, 'accounts', accountId));
-      console.log(`[useAccounts] Conta deletada`);
-      
-    } catch (err) { 
-      console.error('[useAccounts] Erro fatal:', err);
-      throw err; 
-    }
-  }, [user, isMentor]);
+    // Cascade rodando inteiramente no servidor via Admin SDK — bypassa rules
+    // que bloqueavam delete em orders/cycleClosures no caminho client.
+    // Ordem aplicada pela CF: movements → trades → orders → cycleClosures → plans → account.
+    const functions = getFunctions();
+    const deleteAccountCascadeCF = httpsCallable(functions, 'deleteAccountCascade');
+    const { data } = await deleteAccountCascadeCF({ accountId });
+    console.log('[useAccounts] cascade CF:', data);
+    return data;
+  }, []);
 
   const getAccountsByStudent = useCallback((studentId) => accounts.filter(acc => acc.studentId === studentId), [accounts]);
   

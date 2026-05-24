@@ -12,9 +12,11 @@
  * - 2.0.0: View As Student feature
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, Eye } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { installCleanupUtils } from './utils/cleanupOrphans';
 import LoginPage from './pages/LoginPage';
 import StudentDashboard from './pages/StudentDashboard';
 import PropFirmPage from './pages/PropFirmPage';
@@ -30,6 +32,7 @@ import SubscriptionsPage from './pages/SubscriptionsPage';
 import ReviewQueuePage from './pages/ReviewQueuePage';
 import WeeklyReviewPage from './pages/WeeklyReviewPage';
 import StudentReviewsPage from './pages/StudentReviewsPage';
+import ClosuresPage from './pages/ClosuresPage';
 import Sidebar from './components/Sidebar';
 import Loading from './components/Loading';
 import AddTradeModal from './components/AddTradeModal';
@@ -72,6 +75,10 @@ const ViewAsStudentBanner = ({ student, onClose }) => {
 const AppContent = () => {
   const { user, loading, isMentor } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Em dev, expõe window.__cleanup com findOrphans/deleteOrphans pra purga
+  // pontual do passivo de docs órfãos. Em build de produção é no-op.
+  useEffect(() => { installCleanupUtils(); }, []);
   // SEMPRE inicia em dashboard
   const [currentView, setCurrentView] = useState('dashboard');
   const [showAddTradeModal, setShowAddTradeModal] = useState(false);
@@ -443,6 +450,8 @@ const AppContent = () => {
           return <StudentFeedbackPage />;
         case 'student-reviews':
           return <StudentReviewsPage onNavigateToFeedback={handleNavigateToFeedback} />;
+        case 'closures':
+          return <ClosuresPage viewAs={viewingAsStudent} />;
         case 'baseline':
           // Marco Zero — BaselineReport do assessment validado pelo mentor
           return (
@@ -542,7 +551,9 @@ const AppContent = () => {
 
 const App = () => (
   <AuthProvider>
-    <AppContent />
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   </AuthProvider>
 );
 

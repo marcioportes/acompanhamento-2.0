@@ -14,6 +14,7 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import StudentContextProvider from '../contexts/StudentContextProvider';
 import { useStudentContext } from '../hooks/useStudentContext';
 import { useAccounts } from '../hooks/useAccounts';
@@ -48,6 +49,7 @@ const ZoneHeader = ({ number, title, subtitle }) => (
 );
 
 const PropFirmPageBody = ({ viewAs }) => {
+  const toast = useToast();
   const overrideStudentId = viewAs?.uid || null;
   const studentCtx = useStudentContext();
   const { accounts, updateAccount } = useAccounts(overrideStudentId);
@@ -157,7 +159,7 @@ const PropFirmPageBody = ({ viewAs }) => {
         propFirm: { phase: newPhase, phaseStartDate: new Date().toISOString() },
       });
     } catch (err) {
-      alert('Erro ao alterar fase: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao alterar fase' });
     }
   };
 

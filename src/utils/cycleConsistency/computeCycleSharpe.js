@@ -40,9 +40,11 @@ function parseDateToIso(value) {
 
 /**
  * Agrupa trades por dia (ISO `YYYY-MM-DD`), filtrando por janela
- * `[cycleStart, cycleEnd]` (inclusive) e `status === 'CLOSED'`.
- * Trades sem `date` parseável, sem `result` numérico ou fora da janela
- * são ignorados silenciosamente.
+ * `[cycleStart, cycleEnd]` (inclusive). Trades sem `date` parseável, sem
+ * `result` numérico ou fora da janela são ignorados silenciosamente.
+ *
+ * NOTA: filtro `status === 'CLOSED'` removido (status é semântica de
+ * revisão, não de execução — trade é monolítico desde a criação).
  *
  * @param {Array<{date:string,result:number,status:string}>} trades
  * @param {string} cycleStart — ISO `YYYY-MM-DD`
@@ -54,7 +56,7 @@ export function groupTradesByDay(trades, cycleStart, cycleEnd) {
   if (!Array.isArray(trades) || trades.length === 0) return map;
 
   for (const t of trades) {
-    if (!t || t.status !== 'CLOSED') continue;
+    if (!t) continue;
     const iso = parseDateToIso(t.date);
     if (iso === null) continue;
     if (iso < cycleStart || iso > cycleEnd) continue;

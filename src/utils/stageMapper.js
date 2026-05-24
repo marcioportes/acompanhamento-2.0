@@ -98,7 +98,7 @@ export const STAGE_RUBRIC = {
     characteristics: [
       'Sistema robusto; testado em múltiplos market conditions',
       'Diversificação: múltiplas estratégias ou timeframes',
-      'Advanced journaling: MFE/MAE, Sharpe ratio, edge identification',
+      'Advanced journaling: MEP/MEN, Sharpe ratio, edge identification',
       'Emoção sob controle; raramente viola rules',
       'Dados dirigem decisões; atua como gestor de capital próprio',
     ],

@@ -9,8 +9,8 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  X, Target, ShieldAlert, Wallet, 
+import {
+  X, Target, ShieldAlert, Wallet, Lock,
   TrendingUp, ArrowRight, ArrowLeft, Save, Loader2, AlertCircle
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
@@ -61,19 +61,22 @@ const PlanManagementModal = ({
     if (isOpen) {
       setCurrentStep(1);
       if (editingPlan) {
+        // Numéricos usam ?? (não ||) para preservar 0 como valor explícito —
+        // evita mascarar bug em que doc tem 0 e UI mostra default, confundindo
+        // diagnóstico (cf. EV "Dados insuficientes" silencioso com RO=0).
         setFormData({
           name: editingPlan.name || '',
           type: editingPlan.type || editingPlan.description || 'Day Trade',
           accountId: editingPlan.accountId || '',
-          pl: editingPlan.pl || '',
+          pl: editingPlan.pl ?? '',
           adjustmentCycle: editingPlan.adjustmentCycle || 'Mensal',
-          cycleGoal: editingPlan.cycleGoal || 10.0,
-          cycleStop: editingPlan.cycleStop || 10.0,
+          cycleGoal: editingPlan.cycleGoal ?? 10.0,
+          cycleStop: editingPlan.cycleStop ?? 10.0,
           operationPeriod: editingPlan.operationPeriod || 'Diário',
-          periodGoal: editingPlan.periodGoal || 1.0,
-          periodStop: editingPlan.periodStop || 1.0,
-          riskPerOperation: editingPlan.riskPerOperation || 1.0,
-          rrTarget: editingPlan.rrTarget || 2.0,
+          periodGoal: editingPlan.periodGoal ?? 1.0,
+          periodStop: editingPlan.periodStop ?? 1.0,
+          riskPerOperation: editingPlan.riskPerOperation ?? 1.0,
+          rrTarget: editingPlan.rrTarget ?? 2.0,
         });
       } else {
         setFormData({
@@ -110,12 +113,14 @@ const PlanManagementModal = ({
       // Conta ainda não apareceu no snapshot — usa pl do editingPlan (defaults pós-criação)
       return editingPlan?.pl ?? 0;
     }
-    // Defaults pré-preenchidos (criação pós-conta PROP) — NÃO devolver pl ao freePl
-    // Sem essa guard, o cálculo dobraria o saldo (freePl + propPlanDefaults.pl).
+    // Defaults pré-preenchidos (criação pós-conta PROP) — usa freePl direto.
     if (editingPlan && editingPlan.__isDefaults) {
       return getAvailablePl(selectedAccount.id, selectedAccount.currentBalance);
     }
-    // Edição real de plano existente — devolver o pl ocupado por este plano ao free
+    // Edição: devolver o pl ocupado por este plano ao saldo livre pra que o
+    // aluno possa manter o mesmo valor. Em drawdown, esse "free + currentPlanPl"
+    // ainda pode ficar abaixo do PL antigo, e o gate (validateStep) bloqueia
+    // com a mensagem certa — o ritual de fechamento força a recalibrar.
     const currentPlanPl = editingPlan && editingPlan.id && editingPlan.accountId === selectedAccount.id
       ? (editingPlan.pl || 0)
       : 0;
@@ -145,12 +150,18 @@ const PlanManagementModal = ({
     if (step === 1) {
       if (!formData.name.trim()) newErrors.name = 'Nome é obrigatório';
       if (!formData.accountId) newErrors.accountId = 'Selecione uma conta';
-      
-      const plValue = Number(formData.pl);
-      if (isInvalidNum(formData.pl)) {
-        newErrors.pl = 'Capital inválido';
-      } else if (plValue > availableCapital + 0.1) {
-         newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital, accountCurrency)})`;
+
+      // PL é imutável após criação (contrato C1): só validar saldo na criação.
+      // Em edição, o campo é read-only e o valor permanece igual ao do plano
+      // existente — não faz sentido revalidar contra saldo livre, que pode ter
+      // drenado por trades de meses já importados.
+      if (!editingPlan) {
+        const plValue = Number(formData.pl);
+        if (isInvalidNum(formData.pl)) {
+          newErrors.pl = 'Capital inválido';
+        } else if (plValue > availableCapital + 0.1) {
+          newErrors.pl = `Saldo insuficiente (Disp: ${formatCurrency(availableCapital, accountCurrency)})`;
+        }
       }
     }
 
@@ -280,19 +291,41 @@ const PlanManagementModal = ({
 
                   <div className="col-span-2 bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
                     <label className="input-label flex justify-between mb-2">
-                      <span className="flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-400"/> Capital Alocado (PL)</span>
-                      <span className="text-xs text-emerald-400 font-mono">Disponível: {formatCurrency(availableCapital, accountCurrency)}</span>
+                      <span className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-emerald-400"/> Capital Alocado (PL)
+                        {editingPlan && <Lock className="w-3.5 h-3.5 text-slate-500" title="Imutável após criação" />}
+                      </span>
+                      {!editingPlan && (
+                        <span className="text-xs text-emerald-400 font-mono">Disponível: {formatCurrency(availableCapital, accountCurrency)}</span>
+                      )}
                     </label>
-                    
-                    <div className={`flex items-stretch rounded-lg overflow-hidden border ${errors.pl ? 'border-red-500' : 'border-slate-600'}`}>
+
+                    <div className={`flex items-stretch rounded-lg overflow-hidden border ${errors.pl ? 'border-red-500' : 'border-slate-600'} ${editingPlan ? 'opacity-60' : ''}`}>
                       <div className="bg-slate-700/50 px-4 flex items-center justify-center border-r border-slate-600">
                         <span className="text-slate-300 font-bold">{currencySymbol}</span>
                       </div>
-                      <input type="number" name="pl" value={formData.pl} onChange={handleChange} className="flex-1 bg-slate-900 text-white p-3 outline-none font-bold text-lg" placeholder="0.00" />
+                      <input
+                        type="number"
+                        name="pl"
+                        value={formData.pl}
+                        onChange={handleChange}
+                        readOnly={!!editingPlan}
+                        disabled={!!editingPlan}
+                        title={editingPlan ? 'Capital alocado é imutável após criação. Para alterar, delete o plano.' : undefined}
+                        className={`flex-1 bg-slate-900 text-white p-3 outline-none font-bold text-lg ${editingPlan ? 'cursor-not-allowed' : ''}`}
+                        placeholder="0.00"
+                      />
                     </div>
                     {errors.pl && <span className="error-msg mt-2">{errors.pl}</span>}
 
-                    {selectedAccount && formData.pl > 0 && formData.pl <= availableCapital && (
+                    {editingPlan ? (
+                      <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                        <Lock className="w-3 h-3 inline mr-1 text-slate-500" />
+                        Capital alocado é o lastro do plano e não pode ser alterado durante o ciclo.
+                        Para mudar, é necessário <strong className="text-amber-300">deletar o plano</strong> —
+                        todos os trades vinculados serão apagados em cascata.
+                      </p>
+                    ) : selectedAccount && formData.pl > 0 && formData.pl <= availableCapital && (
                       <div className="mt-3">
                         <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                           <span>Alocação</span>

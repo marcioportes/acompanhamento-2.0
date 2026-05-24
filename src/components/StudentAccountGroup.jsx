@@ -13,17 +13,19 @@
  */
 
 import { useState } from 'react';
+import { computeCurrentPl } from '../utils/planBalance';
 import {
   ChevronDown, ChevronUp, User,
   TrendingUp, TrendingDown, Edit2, Eye, Wallet,
   CheckCircle, Target, Trophy, Skull, Activity, Settings, PlusCircle
 } from 'lucide-react';
 
-const StudentAccountGroup = ({ 
-  studentName, 
-  studentEmail, 
+const StudentAccountGroup = ({
+  studentName,
+  studentEmail,
   accounts = [],
   plans = [],
+  trades = [],
   balancesByAccountId = {},
   onAccountClick,
   onEditAccount,
@@ -74,10 +76,10 @@ const StudentAccountGroup = ({
     return plans.filter(p => p.accountId === accountId && p.active !== false);
   };
 
-  // Status simplificado do plano
+  // Status simplificado do plano (saldo derivado, contrato C2 #259)
   const getPlanStatusBadge = (plan) => {
     const pl = Number(plan.pl) || 0;
-    const currentPl = plan.currentPl ?? pl;
+    const currentPl = computeCurrentPl(plan, trades);
     const pnl = currentPl - pl;
     const goalVal = pl * ((plan.periodGoal || 0) / 100);
     const stopVal = pl * ((plan.periodStop || 0) / 100);
@@ -253,7 +255,7 @@ const StudentAccountGroup = ({
                   <div className="ml-6 mt-1 mb-2 space-y-1 animate-in slide-in-from-top-1">
                     {accPlans.map(plan => {
                       const plInitial = Number(plan.pl) || 0;
-                      const plCurrent = plan.currentPl ?? plInitial;
+                      const plCurrent = computeCurrentPl(plan, trades);
                       const plPnL = plCurrent - plInitial;
                       const statusBadge = getPlanStatusBadge(plan);
                       const StatusIcon = statusBadge.icon;

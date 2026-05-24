@@ -7,6 +7,8 @@
  * - 3.0: Tab Tickers com UI hierárquica, filtro por bolsa, importar populares
  */
 import { useState, useMemo } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 import { 
   Settings, TrendingUp, Building2, Landmark, DollarSign, Heart,
   Plus, Edit2, Trash2, X, Check, Loader2, AlertCircle, Shield,
@@ -105,6 +107,8 @@ const POPULAR_TICKERS = {
 
 
 const SettingsPage = () => {
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const { user, isMentor } = useAuth();
   const { trades } = useTrades();
   const { 
@@ -279,18 +283,25 @@ const SettingsPage = () => {
 
   const handleDelete = async (item) => {
     const usage = checkUsage(activeTab, item);
+    const label = item.name || item.symbol || item.code;
     if (usage > 0) {
-      alert(`Não é possível excluir: "${item.name || item.symbol || item.code}" está sendo usado em ${usage} trade(s).`);
+      toast.error(
+        `"${label}" está sendo usado em ${usage} trade(s).`,
+        { title: 'Não é possível excluir', duration: 6000 },
+      );
       return;
     }
-    let confirmMsg = `Excluir "${item.name || item.symbol || item.code}"?`;
+    let title = `Excluir "${label}"?`;
+    let body = null;
     if (activeTab === 'exchanges') {
       const linkedTickers = tickers.filter(t => t.exchange === item.code);
       if (linkedTickers.length > 0) {
-        confirmMsg = `Excluir a bolsa "${item.code}"?\n\nATENÇÃO: ${linkedTickers.length} ticker(s) vinculado(s) serão desativados:\n${linkedTickers.map(t => t.symbol).join(', ')}`;
+        title = `Excluir a bolsa "${item.code}"?`;
+        body = `ATENÇÃO: ${linkedTickers.length} ticker(s) vinculado(s) serão desativados:\n${linkedTickers.map(t => t.symbol).join(', ')}`;
       }
     }
-    if (!window.confirm(confirmMsg)) return;
+    const ok = await confirm({ title, body, confirmLabel: 'Excluir', tone: 'danger' });
+    if (!ok) return;
     try {
       const actions = {
         setups: deleteSetup, exchanges: deleteExchange, tickers: deleteTicker,
@@ -298,12 +309,20 @@ const SettingsPage = () => {
       };
       await actions[activeTab](item.id);
     } catch (err) {
-      alert('Erro: ' + err.message);
+      toast.error(err.message, { title: 'Erro ao excluir' });
     }
   };
 
   const handleAdminAction = async (action) => {
-    if (action === 'force' && !window.confirm('Sobrescrever dados existentes?')) return;
+    if (action === 'force') {
+      const ok = await confirm({
+        title: 'Sobrescrever dados existentes?',
+        body: 'Esta operação substitui o dataset atual por completo.',
+        confirmLabel: 'Sobrescrever',
+        tone: 'warning',
+      });
+      if (!ok) return;
+    }
     setAdminLoading(action);
     setAdminResult(null);
     try {
@@ -909,6 +928,7 @@ const SettingsPage = () => {
       )}
 
       <DebugBadge component="SettingsPage" />
+      {confirmDialog}
     </div>
   );
 };

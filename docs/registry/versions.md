@@ -36,3 +36,4 @@
 | 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | consumida (PR #272 squash `4b170a1c`) |
 | 1.62.0 | #273 | `feat/issue-273-zero7-prop-firm` | 12/05/2026 | consumida (PR #274 squash `7ff80a38`) |
 | 1.63.0 | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | consumida (PR #279 squash `29492b4f`) |
+| 1.64.0 | #259 | `feat/issue-259-cycle-closure` | 23/05/2026 | reservada — v1.58.0 original pulada após main avançar pra 1.63.0; reserva re-tomada |

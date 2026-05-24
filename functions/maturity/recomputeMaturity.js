@@ -4,7 +4,11 @@
 //
 // Orquestra fetch + compute + write para `students/{uid}/maturity/{current|history/...}`.
 // Isolamento (INV-03): falhas internas NÃO propagam — sempre retorna { skipped, ... }.
-// Gate: roda apenas quando trade.status === 'CLOSED' (§3.1 D11).
+// Gate: roda apenas para trades com resultado registrado (execução fechada).
+// Antes filtrávamos por trade.status === 'CLOSED', mas isso é semântica de
+// revisão (lifecycle OPEN→REVIEWED→CLOSED no fluxo de feedback do mentor) —
+// não de execução. Trade é monolítico desde a criação; o que importa para o
+// motor é que tenha resultado fechado (result numérico).
 //
 // Path D10 (literal, sub-sub-collection):
 //   students/{uid}/maturity/current                                ← doc
@@ -127,11 +131,15 @@ function buildMaturityPayloads({
 
 /**
  * Handler CF — orquestra fetch + compute + write. Isolamento total (INV-03).
- * Gate: trade.status === 'CLOSED' E trade.studentId presente.
+ * Gate: trade tem resultado registrado (execução fechada) E trade.studentId presente.
  */
 async function runMaturityRecompute(db, { tradeId, trade, admin: adminOverride } = {}) {
-  if (!trade || trade.status !== 'CLOSED') {
-    return { skipped: true, reason: 'status != CLOSED' };
+  if (!trade) {
+    return { skipped: true, reason: 'no trade' };
+  }
+  const hasResult = typeof trade.result === 'number' && Number.isFinite(trade.result);
+  if (!hasResult) {
+    return { skipped: true, reason: 'no result registered' };
   }
 
   const studentId = trade.studentId;
@@ -187,9 +195,11 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       : baselineStage;
     const stageCurrent = Math.max(storedStage, baselineStage);
 
+    // NOTA: query NÃO filtra por status (semântica de revisão, não execução).
+    // O engine consume trades com resultado fechado; o filtro semântico de
+    // execução é o `result` numérico finito, feito downstream em preComputeShapes.
     const tradesSnap = await db.collection('trades')
       .where('studentId', '==', studentId)
-      .where('status', '==', 'CLOSED')
       .get();
     const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 

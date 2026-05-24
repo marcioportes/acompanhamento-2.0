@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Target, Ban, Calendar, ChevronDown, ChevronUp, Archive, AlertCircle } from 'lucide-react';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
 import { getCycleStartDate, getCycleEndDate } from '../utils/planStateMachine';
+import { computeCurrentPl } from '../utils/planBalance';
 
 const ONE_DAY_MS = 86400000;
 
@@ -10,10 +11,13 @@ const formatBR = (date) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, className = '' }) => {
+const PlanSummaryCard = ({ plan, accounts = [], trades = [], defaultExpanded = false, className = '' }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   const currency = useMemo(() => getPlanCurrency(plan, accounts), [plan, accounts]);
+  // Saldo derivado (contrato C2 #259): capital atual = pl + Σ trades do ciclo aberto.
+  // Substitui plan.currentPl persistido, que acumulava divergência ao longo do tempo.
+  const currentPlValue = useMemo(() => computeCurrentPl(plan, trades), [plan, trades]);
 
   const cycle = useMemo(() => {
     if (!plan) return null;
@@ -33,10 +37,9 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
   const pctOfPL = useMemo(() => {
     if (!plan) return null;
     const pl = Number(plan.pl) || 0;
-    const currentPl = Number(plan.currentPl);
-    if (!pl || Number.isNaN(currentPl)) return null;
-    return ((currentPl - pl) / pl) * 100;
-  }, [plan]);
+    if (!pl) return null;
+    return ((currentPlValue - pl) / pl) * 100;
+  }, [plan, currentPlValue]);
 
   if (!plan) {
     return (
@@ -150,11 +153,11 @@ const PlanSummaryCard = ({ plan, accounts = [], defaultExpanded = false, classNa
               </span>
             </div>
           )}
-          {plan.currentPl != null && (
+          {plan.pl != null && (
             <div className="flex justify-between text-slate-300">
               <span className="text-slate-500">PL atual</span>
               <span className={pctOfPL != null && pctOfPL >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                {formatCurrencyDynamic(plan.currentPl, currency)}
+                {formatCurrencyDynamic(currentPlValue, currency)}
                 {pctOfPL != null && (
                   <span className="text-slate-500 ml-1">
                     ({pctOfPL >= 0 ? '+' : ''}{pctOfPL.toFixed(1)}% no ciclo)

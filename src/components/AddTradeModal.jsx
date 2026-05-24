@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAccounts } from '../hooks/useAccounts';
 import { useMasterData } from '../hooks/useMasterData';
+import { useToast } from '../contexts/ToastContext';
 import { calculateFromPartials } from '../utils/tradeCalculations';
 import { validateExcursionPrices } from '../utils/tradeGateway';
 import { detectInstrumentType, convertExcursionRawToPrice, derivePtsFromPrice } from '../utils/excursionParsing';
@@ -44,13 +45,14 @@ const AddTradeModal = ({
   loading = false,
   plans = []
 }) => {
+  const toast = useToast();
   const { accounts, loading: accountsLoading } = useAccounts();
-  const { 
-    setups, 
-    emotions, 
-    exchanges, 
+  const {
+    setups,
+    emotions,
+    exchanges,
     tickers: masterTickers,
-    loading: masterLoading 
+    loading: masterLoading
   } = useMasterData(); 
 
   // --- ESTADOS ---
@@ -515,7 +517,7 @@ const AddTradeModal = ({
         if (!file) return;
 
         if (file.size > 5 * 1024 * 1024) {
-          alert('Imagem muito grande. Maximo 5MB.');
+          toast.error('Imagem muito grande. Máximo 5MB.');
           return;
         }
 

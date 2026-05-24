@@ -167,7 +167,8 @@ describe('usePlans.addPlan — issue #183 ownership', () => {
 
     const payload = lastAddDocPayload();
     expect(payload.pl).toBe(25000);
-    expect(payload.currentPl).toBe(25000);
+    // currentPl não é mais inicializado (contrato C2 #259: saldo derivado).
+    expect(payload.currentPl).toBeUndefined();
     expect(payload.riskPerOperation).toBe(1.5);
     expect(payload.rrTarget).toBe(3);
     expect(payload.active).toBe(true);

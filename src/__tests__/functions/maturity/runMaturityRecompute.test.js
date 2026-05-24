@@ -76,13 +76,13 @@ function makeMockDb({ assessment, currentMaturity, trades, plans, throwOn } = {}
         };
       }
       if (name === 'trades') {
+        // Após remoção do filtro espúrio por status (revisão ≠ execução),
+        // a query encadeia apenas 1× .where('studentId', '==', ...).
         const where = () => ({
-          where: () => ({
-            get: async () => {
-              if (throwOn === 'trades') throw new Error('trades fetch failed');
-              return makeQuerySnap(trades ?? []);
-            },
-          }),
+          get: async () => {
+            if (throwOn === 'trades') throw new Error('trades fetch failed');
+            return makeQuerySnap(trades ?? []);
+          },
         });
         return { where };
       }
@@ -109,21 +109,23 @@ describe('runMaturityRecompute', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
-  it('trade status=OPEN → skipped reason="status != CLOSED"', async () => {
+  it('trade sem result numérico → skipped reason="no result registered"', async () => {
+    // Gate atual: result registrado (execução fechada). Status do trade é
+    // semântica de revisão, não de execução — trade é monolítico desde criação.
     const { db } = makeMockDb({});
     const r = await runMaturityRecompute(db, {
       tradeId: 't1',
-      trade: { status: 'OPEN', studentId: 's1' },
+      trade: { studentId: 's1' /* sem result */ },
     });
     expect(r.skipped).toBe(true);
-    expect(r.reason).toBe('status != CLOSED');
+    expect(r.reason).toBe('no result registered');
   });
 
   it('trade sem studentId → skipped reason="missing studentId"', async () => {
     const { db } = makeMockDb({});
     const r = await runMaturityRecompute(db, {
       tradeId: 't1',
-      trade: { status: 'CLOSED' },
+      trade: { result: 100 /* sem studentId */ },
     });
     expect(r.skipped).toBe(true);
     expect(r.reason).toBe('missing studentId');
@@ -141,7 +143,7 @@ describe('runMaturityRecompute', () => {
 
     const r = await runMaturityRecompute(db, {
       tradeId: 't1',
-      trade: { status: 'CLOSED', studentId: 's1' },
+      trade: { result: 100, studentId: 's1' },
       admin: fakeAdmin,
     });
 
@@ -172,7 +174,7 @@ describe('runMaturityRecompute', () => {
 
     const r = await runMaturityRecompute(db, {
       tradeId: 't1',
-      trade: { status: 'CLOSED', studentId: 's1' },
+      trade: { result: 100, studentId: 's1' },
       admin: fakeAdmin,
     });
 
@@ -191,7 +193,7 @@ describe('runMaturityRecompute', () => {
     const { db } = makeMockDb({ throwOn: 'trades' });
     const r = await runMaturityRecompute(db, {
       tradeId: 't1',
-      trade: { status: 'CLOSED', studentId: 's1' },
+      trade: { result: 100, studentId: 's1' },
       admin: fakeAdmin,
     });
     expect(r.skipped).toBe(true);

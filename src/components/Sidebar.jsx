@@ -28,9 +28,12 @@ import {
   CreditCard,
   ClipboardCheck,
   Shield,
-  FileText
+  FileText,
+  History,
+  Inbox,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { VERSION } from '../version';
 
 const Sidebar = ({ 
@@ -47,6 +50,11 @@ const Sidebar = ({
   hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
+  const isMentorRole = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
+  // Hook subscreve closures pendentes (janela 7d sem comentário). Só faz sentido
+  // pro mentor — rules bloqueiam read pro aluno (e ele só vê os próprios). Passa
+  // `enabled` pra evitar firebase call desnecessário (e quebrar tests jsdom).
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox({ enabled: isMentorRole });
 
   // Menu do Aluno
   const studentMenuItems = [
@@ -59,6 +67,7 @@ const Sidebar = ({
       badgeColor: 'green'
     },
     { id: 'student-reviews', label: 'Revisões', icon: ClipboardCheck },
+    { id: 'closures', label: 'Ciclos Fechados', icon: History },
     { id: 'journal', label: 'Diário', icon: BookOpen },
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).
@@ -87,19 +96,26 @@ const Sidebar = ({
       icon: MessageSquare,
       badge: pendingFeedback > 0 ? pendingFeedback : null,
     },
-    { 
-      id: 'attention', 
-      label: 'Precisam Atenção', 
+    {
+      id: 'attention',
+      label: 'Precisam Atenção',
       icon: AlertTriangle,
       badge: studentsNeedingAttention > 0 ? studentsNeedingAttention : null,
       badgeColor: 'red'
+    },
+    {
+      id: 'closures',
+      label: 'Fechamentos',
+      icon: Inbox,
+      badge: closuresPendingCount > 0 ? closuresPendingCount : null,
+      badgeColor: 'red',
     },
     { id: 'ranking', label: 'Ranking', icon: Trophy },
     { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
 
-  const menuItems = isMentor() ? mentorMenuItems : studentMenuItems;
+  const menuItems = isMentorRole ? mentorMenuItems : studentMenuItems;
 
   const handleLogout = async () => {
     try {

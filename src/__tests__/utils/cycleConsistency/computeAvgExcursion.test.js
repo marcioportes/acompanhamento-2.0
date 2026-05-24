@@ -184,19 +184,18 @@ describe('computeAvgExcursion (ESM)', () => {
     expect(excursionPctForTrade(null)).toBeNull();
   });
 
-  it('helper — filtra fora-janela e status != CLOSED', () => {
+  it('helper — filtra apenas fora-janela (status do trade é semântica de revisão, não de execução)', () => {
     const trades = [
-      // dentro janela, CLOSED, com dado
+      // dentro janela — conta independentemente do status
       { date: '02/02/2026', status: 'CLOSED', side: 'LONG', entry: 100, mepPrice: 102, menPrice: 99 },
-      // dentro janela, mas OPEN → ignorado
       { date: '03/02/2026', status: 'OPEN',   side: 'LONG', entry: 100, mepPrice: 102, menPrice: 99 },
-      // fora janela (antes), CLOSED → ignorado
+      // fora janela (antes) → ignorado
       { date: '01/01/2026', status: 'CLOSED', side: 'LONG', entry: 100, mepPrice: 102, menPrice: 99 },
-      // fora janela (depois), CLOSED → ignorado
+      // fora janela (depois) → ignorado
       { date: '01/03/2026', status: 'CLOSED', side: 'LONG', entry: 100, mepPrice: 102, menPrice: 99 },
     ];
     const result = computeAvgExcursion(trades, '2026-02-01', '2026-02-28');
-    expect(result.totalTrades).toBe(1);
-    expect(result.tradesWithData).toBe(1);
+    expect(result.totalTrades).toBe(2);
+    expect(result.tradesWithData).toBe(2);
   });
 });

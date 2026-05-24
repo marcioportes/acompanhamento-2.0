@@ -20,6 +20,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Wallet, X, Activity, Upload } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 
 // Componentes extraídos
 import DashboardHeader from '../components/dashboard/DashboardHeader';
@@ -45,6 +47,8 @@ import PlanManagementModal from '../components/PlanManagementModal';
 import PlanExtractModal from '../components/PlanExtractModal';
 import PlanAuditModal from '../components/dashboard/PlanAuditModal';
 import DebugBadge from '../components/DebugBadge';
+import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
+import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 
 // CSV Import v2 (staging)
 import CsvImportWizard from '../components/csv/CsvImportWizard';
@@ -97,6 +101,8 @@ import { generateIdealEquitySeries, calculateIdealStatus } from '../utils/equity
 const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedger, onRequestRetroactivePlan }) => {
   const { user } = useAuth();
   const overrideStudentId = viewAs?.uid || null;
+  const toast = useToast();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   // Contexto unificado (issue #118) — fonte de verdade para conta/plano/ciclo/período
   const studentCtx = useStudentContext();
@@ -152,6 +158,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [filters, setFilters] = useState({ ticker: 'all', accountId: 'all', setup: 'all', emotion: 'all', exchange: 'all', result: 'all', search: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  // Closure modal — issue #259 (1A)
+  const [closureContext, setClosureContext] = useState(null);    // {planId, cycleKey, cycleNumber, cycleStart, cycleEnd, accountId, planName} | null
   const [editingTrade, setEditingTrade] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -376,31 +384,39 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       setEditingTrade(null);
     } catch (error) {
       console.error('Erro ao salvar trade:', error);
-      alert('Erro: ' + error.message);
+      // Re-throw pro AddTradeModal pegar e renderizar inline (glass-card vermelho).
+      // Antes tinha alert() do browser, mas fica horroroso e fecha o modal — pior UX.
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleSavePlan = async (planData) => {
-    const targetAccount = accounts.find(a => a.id === planData.accountId);
-    if (targetAccount) {
-      const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
-      const otherActivePlans = plans.filter(p => 
-        p.accountId === planData.accountId && p.active && p.id !== editingPlan?.id
-      );
-      const alreadyAllocated = otherActivePlans.reduce((sum, p) => sum + Number(p.pl || 0), 0);
-      const availableBalance = accountTotal - alreadyAllocated;
+    // Gate de saldo dispara APENAS na criação (contrato C1: PL é imutável
+    // após criação). Em edição, o Modal envia o PL original (campo
+    // read-only) e o valor não muda — revalidar contra saldo livre, que
+    // pode ter drenado por meses já importados, gera falso positivo.
+    if (!editingPlan) {
       const requestedPL = Number(planData.pl);
-
-      if (requestedPL > availableBalance) {
-        alert(
-          `Saldo insuficiente na conta!\n\n` +
-          `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n` +
-          `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n` +
-          `Ajuste o valor do PL ou aumente o saldo da conta.`
+      const targetAccount = accounts.find(a => a.id === planData.accountId);
+      if (targetAccount) {
+        const accountTotal = Number(targetAccount.currentBalance ?? targetAccount.initialBalance ?? 0);
+        const otherActivePlans = plans.filter(p =>
+          p.accountId === planData.accountId && p.active
         );
-        return;
+        const alreadyAllocated = otherActivePlans.reduce((sum, p) => sum + Number(p.pl || 0), 0);
+        const availableBalance = accountTotal - alreadyAllocated;
+
+        if (requestedPL > availableBalance) {
+          toast.error(
+            `Disponível para este Plano: ${formatCurrencyDynamic(availableBalance, targetAccount?.currency)}\n`
+              + `Você tentou alocar: ${formatCurrencyDynamic(requestedPL, targetAccount?.currency)}\n\n`
+              + `Ajuste o PL ou aumente o saldo da conta.`,
+            { title: 'Saldo insuficiente na conta', duration: 8000 },
+          );
+          return;
+        }
       }
     }
 
@@ -415,7 +431,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       setEditingPlan(null);
     } catch (error) {
       console.error('Erro ao salvar plano:', error);
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao salvar plano' });
     } finally {
       setIsSubmitting(false);
     }
@@ -423,12 +439,27 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   const handleDeletePlan = async (e, planId) => {
     e.stopPropagation();
-    if (!confirm('Excluir este plano?')) return;
+    const planTradesCount = trades.filter((t) => t.planId === planId).length;
+    const tradesLine = planTradesCount === 0
+      ? 'Nenhum trade vinculado.'
+      : `${planTradesCount} ${planTradesCount === 1 ? 'trade vinculado será apagado' : 'trades vinculados serão apagados'} em cascata.`;
+    const body =
+      'O capital alocado (PL) é imutável após a criação. '
+      + 'Para alterá-lo, é necessário deletar o plano inteiro.\n\n'
+      + `ATENÇÃO: ${tradesLine}\n`
+      + 'Esta ação não pode ser desfeita.';
+    const ok = await confirm({
+      title: 'Deletar este plano?',
+      body,
+      confirmLabel: 'Deletar plano',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await deletePlan(planId);
       if (selectedPlanId === planId) setSelectedPlanId(null);
     } catch (error) {
-      alert('Erro: ' + error.message);
+      toast.error(error.message, { title: 'Erro ao deletar plano' });
     }
   };
 
@@ -484,6 +515,16 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           para que os dropdowns (que abrem com top-full) caiam sobre o conteúdo
           neutro abaixo, e não sobre o título/botões. */}
       <ContextBar accounts={accounts} plans={plans} trades={trades} />
+
+      {/* Issue #259 (1A) — Banner de ciclos vencidos pendentes de fechamento */}
+      <CycleExpiredGuard
+        studentId={overrideStudentId || user?.uid}
+        role={viewAs ? 'mentor' : 'student'}
+        studentName={viewAs?.name}
+        onStartClosure={(item) => setClosureContext(item)}
+        plans={plans}
+        trades={trades}
+      />
 
       {/* CSV Import — Card de staging */}
       {stagingTrades.length > 0 && (
@@ -745,7 +786,25 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         />
       )}
 
+      {/* Issue #259 (1A) — Modal full-screen do wizard de Fechamento */}
+      <CycleClosureModal
+        open={closureContext !== null}
+        onClose={() => setClosureContext(null)}
+        onSealed={() => setClosureContext(null)}
+        studentId={overrideStudentId || user?.uid}
+        planId={closureContext?.planId}
+        cycleKey={closureContext?.cycleKey}
+        cycleNumber={closureContext?.cycleNumber}
+        cycleStart={closureContext?.cycleStart}
+        cycleEnd={closureContext?.cycleEnd}
+        accountId={closureContext?.accountId}
+        role={viewAs ? 'mentor' : 'student'}
+        studentName={viewAs?.name}
+        planName={closureContext?.planName}
+      />
+
       <DebugBadge component="StudentDashboard" />
+      {confirmDialog}
     </div>
   );
 };

@@ -43,7 +43,7 @@ function parseDateToIso(value) {
 
 /**
  * Agrupa trades por dia (ISO `YYYY-MM-DD`), filtrando por janela
- * `[cycleStart, cycleEnd]` (inclusive) e `status === 'CLOSED'`.
+ * `[cycleStart, cycleEnd]` (inclusive). Trade é monolítico desde a criação — não filtramos por trade.status (semântica de revisão, não de execução).
  * Mesmo contrato do helper homônimo em computeCycleSharpe.js (DEC-AUTO-235-T06-A:
  * duplicação intencional para preservar mirror discipline F1.1).
  *
@@ -57,7 +57,7 @@ export function groupTradesByDay(trades, cycleStart, cycleEnd) {
   if (!Array.isArray(trades) || trades.length === 0) return map;
 
   for (const t of trades) {
-    if (!t || t.status !== 'CLOSED') continue;
+    if (!t) continue;
     const iso = parseDateToIso(t.date);
     if (iso === null) continue;
     if (iso < cycleStart || iso > cycleEnd) continue;
@@ -69,11 +69,11 @@ export function groupTradesByDay(trades, cycleStart, cycleEnd) {
 }
 
 /**
- * WR efetiva sobre lista de trades CLOSED já filtrados por janela.
+ * WR efetiva sobre lista de trades já filtrados por janela.
  * Conta `result > 0` como win. Retorna null se a lista é vazia ou
  * se nenhum trade tem `result` numérico finito (denominador zerado).
  *
- * @param {Array<{result:number,status:string}>} trades
+ * @param {Array<{result:number}>} trades
  * @returns {number|null}
  */
 export function effectiveWinRate(trades) {
@@ -81,7 +81,7 @@ export function effectiveWinRate(trades) {
   let wins = 0;
   let total = 0;
   for (const t of trades) {
-    if (!t || t.status !== 'CLOSED') continue;
+    if (!t) continue;
     if (typeof t.result !== 'number' || !Number.isFinite(t.result)) continue;
     total += 1;
     if (t.result > 0) wins += 1;
@@ -208,7 +208,7 @@ export function computeCVNormalized(trades, plan, cycleStart, cycleEnd, opts = {
   // Trades efetivamente dentro da janela (mesma filtragem do groupBy).
   const inWindowTrades = [];
   for (const t of trades) {
-    if (!t || t.status !== 'CLOSED') continue;
+    if (!t) continue;
     const iso = parseDateToIso(t.date);
     if (iso === null) continue;
     if (iso < cycleStart || iso > cycleEnd) continue;
