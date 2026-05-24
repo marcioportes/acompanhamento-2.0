@@ -24,6 +24,14 @@ vi.mock('../../version', () => ({
   default: { display: 'v0.0.0-test' },
 }));
 
+// Hook do mentor inbox usa onSnapshot do Firestore — em jsdom sem mock, o
+// `collection(db, ...)` quebra. Mockamos como no-op (pendingCount=0) pra
+// preservar o foco do teste no menu sem render side-effects.
+vi.mock('../../hooks/useMentorClosureInbox', () => ({
+  default: () => ({ inbox: [], pendingCount: 0, loading: false }),
+  useMentorClosureInbox: () => ({ inbox: [], pendingCount: 0, loading: false }),
+}));
+
 import Sidebar from '../../components/Sidebar';
 
 const baseProps = {

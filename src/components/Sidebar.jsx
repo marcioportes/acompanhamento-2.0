@@ -52,8 +52,9 @@ const Sidebar = ({
   const { user, logout, isMentor } = useAuth();
   const isMentorRole = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
   // Hook subscreve closures pendentes (janela 7d sem comentário). Só faz sentido
-  // pro mentor — o backend filtra por rules; pro aluno o count fica em 0.
-  const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
+  // pro mentor — rules bloqueiam read pro aluno (e ele só vê os próprios). Passa
+  // `enabled` pra evitar firebase call desnecessário (e quebrar tests jsdom).
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox({ enabled: isMentorRole });
 
   // Menu do Aluno
   const studentMenuItems = [

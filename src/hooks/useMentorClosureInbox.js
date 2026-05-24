@@ -33,11 +33,19 @@ function urgencyTone(daysRemaining) {
   return 'emerald';
 }
 
-export function useMentorClosureInbox({ mode = 'pending' } = {}) {
+export function useMentorClosureInbox({ mode = 'pending', enabled = true } = {}) {
   const [closures, setClosures] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) {
+      // Callers que não são mentor (ex.: Sidebar do aluno) podem desligar a
+      // assinatura — evita firebase calls em jsdom/tests sem mock e respeita
+      // rules de leitura (aluno não vê closures de outros).
+      setClosures([]);
+      setLoading(false);
+      return undefined;
+    }
     setLoading(true);
     // 'pending': subscribe à janela 7d; 'all': todos CLOSED
     let q;
@@ -66,7 +74,7 @@ export function useMentorClosureInbox({ mode = 'pending' } = {}) {
       },
     );
     return () => unsub();
-  }, [mode]);
+  }, [mode, enabled]);
 
   const inbox = useMemo(() => {
     const now = Date.now();
