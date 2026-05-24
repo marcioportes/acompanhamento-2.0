@@ -3,8 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.58.0: #259 feat 1A — Ritual completo de Fechamento de Ciclo (v1.64.0) (PR #264, 24/05/2026)
- * - 1.64.0: [RESERVADA — issue #259] feat ritual completo de fechamento de ciclo (wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor: inbox, comment panel, modo demonstração). v1.58.0 reservada originalmente foi pulada — main avançou pra 1.63.0 antes do #259 mergear, reserva re-tomada na próxima minor disponível. Entrada definitiva no encerramento.
+ * - 1.64.0: #259 feat 1A — Ritual completo de Fechamento de Ciclo: wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor (inbox, comment panel, modo demonstração) + contratos C1-C5 (PL imutável, saldo derivado, snapshot/restore, gate retroativo) + sistema inline de toast/confirm substituindo window.alert/confirm. Reserva original era 1.58.0, mas main avançou pra 1.63.0 durante o desenvolvimento — reserva re-tomada em 1.64.0 (próximo minor disponível). PR #264, 24/05/2026.
  * - 1.63.0: feat(shadow): UNDERSIZED_TRADE calibragem 65% (threshold de 0.50 → 0.65, escala 0.30/0.50/0.65 para HIGH/MEDIUM/LOW) + enriquecimento da evidência com `planRoAmount`, `expectedGainAtPlanRR`, `rGapVsPlan`, `hiddenRrInflation` para expor a mentira estatística do R-local vs R-plano + bloco educacional no ShadowBehaviorPanel explicando o gap em prosa + tradeId discreto no header do TradeDetailModal. Fast-follow: detector agregado STAT_MIRAGE (divergência Payoff/PF R-local vs R-plano por janela). Entrada definitiva no encerramento.
  * - 1.62.0: feat adicionar mesa Zero7 Tesouraria ao portfólio CHUNK-17 (primeira mesa BR/BRL, B3 — WIN/WDO/BIT). 8 templates (TRAINEE/JÚNIOR/PLENO/SÊNIOR/EXPERT/MASTER + BIT 8 + BIT 16), schema com 5 campos novos (currency, consistency.maxDayPercentOfTarget, payout.scheduleType/fixedDays/maxWithdrawalsByPhase/ineligibleTradeFilter), accountSize=0 no engine, propFirmConsistency.js (regra 50% gate avaliação + descarte incubadora), payout fixed-days (calendário 10/20/30), contador 4 saques na Incubadora, filtro saldos inaptos (WIN<10pt/WDO<0,5pt/BIT<1000pt), currencyRiskFreeRate em computeCycleSharpe (fecha bug Selic vs USD), mirror CJS em functions/propFirmEngine.js. Entrada definitiva no encerramento.
  * - 1.61.3: #271 fix causa raiz do badge "aguardando 1º login" — regra Firestore bloqueava activateStudent. firestore.rules:45 allowlist do isOwner não incluía 'accessStatus' (regressão silenciosa do DEC-AUTO-263-07 que adicionou esse campo ao update no cliente sem propagar para a regra); update inteiro era rejeitado, catch engolia o erro e nada era escrito — firstLoginAt ficava null mesmo após login. Fix em 4 frentes: (A1) firestore.rules adiciona 'accessStatus' na allowlist; (A2) AuthContext.activateStudent extraída para src/utils/studentActivation.js (shouldActivateStudent + buildActivatePayload puros) com guard idempotente `accessStatus !== 'active'` (substitui status === 'pending', cobre docs com status='active' inconsistente); (A3) 8 testes novos protegendo invariante allowlist↔payload; (B1) functions/scripts/sync-access-from-auth.js backfilla docs em prod com lastSignInTime do Firebase Auth (idempotente; dry-run default; --apply para escrever). Auto-recovery sem backfill: sessão Firebase Auth válida + reabrir app → onAuthStateChanged dispara activateStudent → regra agora passa → doc fica certo. Suite 3037/3037. Entrada definitiva no encerramento.
@@ -357,10 +356,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.58.0',
+  version: '1.64.0',
   build: '20260524',
-  display: 'v1.58.0',
-  full: '1.58.0+20260524',
+  display: 'v1.64.0',
+  full: '1.64.0+20260524',
 };
 export default VERSION;
 export { VERSION };

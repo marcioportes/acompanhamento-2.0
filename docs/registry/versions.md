@@ -29,11 +29,11 @@
 | 1.56.1 | #252 | `feat/issue-252-payments-in-month-expand` | 04/05/2026 | consumida (PR #253 squash `4e2a57fa`) |
 | 1.56.2 | #254 | `fix/issue-254-payments-cg-rules` | 04/05/2026 | consumida (PR #255 squash `47e07e21`) |
 | 1.56.3 | #256 | `fix/issue-256-filter-counters-intersect` | 05/05/2026 | consumida (PR #257 squash `2f1bfe48`) |
-| 1.58.0 | #259 | `feat/issue-259-cycle-closure` | 07/05/2026 | consumida (PR #264 squash `a390ecf8`) |
+| 1.58.0 | #259 | (RESERVA PULADA) | 07/05/2026 | pulada — main avançou pra 1.63.0 antes do #259 mergear; reserva re-tomada em 1.64.0 |
 | 1.61.0 | #263 | `feat/issue-263-students-plan-filter` | 07/05/2026 | consumida (PR #265 squash `c00681c2`) |
 | 1.61.1 | #266 | `fix/issue-266-subscription-email-overdue` | 11/05/2026 | consumida (PR #268 squash `5a1e5953`) |
 | 1.61.2 | #270 | (sem branch — hotfix direto main) | 12/05/2026 | consumida (commit `63e1ddaf`) — reordem getAccessStatus priorizando firstLoginAt |
 | 1.61.3 | #271 | `fix/issue-271-firestore-rules-accessstatus` | 12/05/2026 | consumida (PR #272 squash `4b170a1c`) |
 | 1.62.0 | #273 | `feat/issue-273-zero7-prop-firm` | 12/05/2026 | consumida (PR #274 squash `7ff80a38`) |
 | 1.63.0 | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | consumida (PR #279 squash `29492b4f`) |
-| 1.64.0 | #259 | `feat/issue-259-cycle-closure` | 23/05/2026 | reservada — v1.58.0 original pulada após main avançar pra 1.63.0; reserva re-tomada |
+| 1.64.0 | #259 | `feat/issue-259-cycle-closure` | 24/05/2026 | consumida (PR #264 squash `a390ecf8`) |

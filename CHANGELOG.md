@@ -8,11 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.58.0] - 24/05/2026 · #259 · PR #264
+## [1.64.0] - 24/05/2026 · #259 · PR #264
 
-**feat:** 1A — Ritual completo de Fechamento de Ciclo (v1.64.0)
+**feat:** 1A — Ritual completo de Fechamento de Ciclo
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- Wizard 8 etapas (Read/Notice/Reflect/Map/Check/Adjust/Commit/Seal) com autosave + CycleExpiredGuard sequencial + Timeline de capítulos
+- Camada mentor: inbox com semáforo de urgência + comment panel + gate de reabertura encadeada
+- 6 Cloud Functions (closeCycle, reopenCycle, setMentorClosureComment, deleteAccountCascade, deletePlanCascade, sealCheckMirror) + 2 composite indexes
+- Métricas: TPS, R-multiple, Expectancy_R, ruleAdherenceRate, Kelly real Quarter, Monte Carlo bootstrap
+- IA stub heurístico: 6 regras (PAUSE crítico → fallback)
+- Contratos C1-C5: PL imutável, saldo derivado on-the-fly, snapshot/restore na reabertura, gate retroativo
+- Sistema inline de toast/confirm substituindo window.alert/confirm em 13 arquivos
+- 203 suítes / 3239 testes verdes
+- Reserva 1.58.0 original pulada — main avançou pra 1.63.0 durante o dev, reserva re-tomada em 1.64.0
 
 
 ## [1.63.0] - 22/05/2026 · #278 · PR #279
