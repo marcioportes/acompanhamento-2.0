@@ -5,5 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-04 (Trade Ledger) — leitura | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | shadow lê trades + Panel é renderizado em TradeDetailModal |
-| CHUNK-08 (Mentor Feedback) — leitura | #278 | `feat/issue-278-undersized-evidence` | 22/05/2026 | ShadowBehaviorPanel também consumido em FeedbackPage |
+| CHUNK-08 (Mentor Feedback) — ESCRITA | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | useMentorClosureInbox filtra closure inbox por timestamp em vez de conteúdo |

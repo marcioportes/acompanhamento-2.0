@@ -2,9 +2,11 @@
  * useMentorClosureInbox.js — inbox de closures do mentor.
  *
  * Dois modos:
- *  - 'pending' (default): janela 7d após selo, sem mentor.closingComment.
- *    "no comment" automático: closures com closedAt < now-7d saem via filtro.
- *  - 'all': todos closures CLOSED (sem janela, sem filtro de comentário).
+ *  - 'pending' (default): janela 7d após selo, sem mentor.closingCommentAt.
+ *    "no comment" explícito (issue #280): mentor marca processado mesmo sem texto;
+ *    closingCommentAt é o sinal de "mentor olhou", não o conteúdo do comentário.
+ *    Janela 7d expira via filtro: closures com closedAt < now-7d saem.
+ *  - 'all': todos closures CLOSED (sem janela, sem filtro de processamento).
  *
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
  *
@@ -83,9 +85,10 @@ export function useMentorClosureInbox({ mode = 'pending', enabled = true } = {})
         const closedAt = c.closedAt?.toDate ? c.closedAt.toDate() : c.closedAt ? new Date(c.closedAt) : null;
         if (!closedAt) return null;
 
-        const closingCommented = !!(c.mentor?.closingComment && c.mentor.closingComment.trim().length > 0);
-        // No modo 'pending', esconde closures já comentados; no 'all', mantém tudo.
-        if (mode === 'pending' && closingCommented) return null;
+        // Issue #280: filtra por closingCommentAt (timestamp setado pela CF sempre que
+        // mentor processa, com ou sem texto). closingComment vira null no fluxo "no comment".
+        const closingProcessed = !!c.mentor?.closingCommentAt;
+        if (mode === 'pending' && closingProcessed) return null;
 
         const elapsedMs = now - closedAt.getTime();
         const daysRemaining = Math.max(0, Math.ceil((WINDOW_DAYS * MS_PER_DAY - elapsedMs) / MS_PER_DAY));
@@ -147,8 +150,9 @@ export function useMentorClosureInbox({ mode = 'pending', enabled = true } = {})
     return closures.reduce((n, c) => {
       const closedAt = c.closedAt?.toDate ? c.closedAt.toDate() : c.closedAt ? new Date(c.closedAt) : null;
       if (!closedAt) return n;
-      const commented = !!(c.mentor?.closingComment && c.mentor.closingComment.trim().length > 0);
-      if (commented) return n;
+      // Issue #280: timestamp como sinal de "mentor processou" (vide inbox useMemo acima).
+      const processed = !!c.mentor?.closingCommentAt;
+      if (processed) return n;
       const elapsedMs = now - closedAt.getTime();
       if (elapsedMs >= WINDOW_DAYS * MS_PER_DAY) return n;
       return n + 1;
