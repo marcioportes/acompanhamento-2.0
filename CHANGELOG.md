@@ -12,7 +12,10 @@ Version source of truth: `src/version.js`.
 
 **fix:** 'marcar sem comentário' não remove item do inbox do mentor
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira `null` no fluxo "no comment"); trocado por `!!c.mentor?.closingCommentAt` (timestamp sempre setado pela CF) em 2 lugares — filtro de itens (`:86`) e `pendingCount` (`:150`)
+- Semântica passa a ser "mentor processou (com ou sem comentário)" em vez de "tem texto de comentário"
+- Edge case aceito: mentor digita, salva e apaga o texto → item fica fora do inbox (timestamp persiste)
+- Teste de regressão em `useMentorClosureInbox.test.js`; 5 testes verdes
 
 
 ## [1.64.0] - 24/05/2026 · #259 · PR #264

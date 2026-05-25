@@ -5,4 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-08 (Mentor Feedback) — ESCRITA | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | useMentorClosureInbox filtra closure inbox por timestamp em vez de conteúdo |
+| _(nenhum lock ativo)_ | | | | |
