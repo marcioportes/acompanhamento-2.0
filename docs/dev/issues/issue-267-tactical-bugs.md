@@ -5,10 +5,11 @@
 ## Autorização (OBRIGATÓRIA — sem isto é PROIBIDO iniciar desenvolvimento)
 
 **Status atual do documento:**
-- [ ] Mockup apresentado (bug 2 — modo "todo histórico") **← pendente**
-- [x] Memória de cálculo apresentada (bug 1 — MEN/MEP; discutida no chat 25/05, confirmada por Marcio)
+- [x] Mockup apresentado + APROVADO (bug 2 — "Todos os ciclos" no dropdown Ciclo; 25/05)
+- [x] Memória de cálculo apresentada (bug 1 — MEN/MEP; confirmada 25/05)
+- [~] Memória de cálculo apresentada (bug 2 — saldo de abertura transportado/carry-over; 26/05) **← aguardando Marcio validar 3 pontos** (semântico do carry-over; sub-período no escopo?; validar persistência de `cycleBaseline.plInicial` do #259 antes de B1)
 - [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [ ] Gate Pré-Código liberado (bug 2)
 
 ## Context
 
@@ -48,6 +49,7 @@ bugs 1 e 6 são backend/diagnóstico — sem UI nova.
 _(log linear; 1 linha por task)_
 - A1+A2 [bug1-men-mep-abort-tz] ok — enrichTradeWithExcursions: remove fallback (date/janela-zero) + toBrasiliaISO (naive→UTC-3); suíte 3251 verde
 - A3 [bug1-testes] ok — 6 testes novos (abort falta entry/exit; toBrasiliaISO; janela 13:30 UTC não 10:30)
+- B1-design [bug2-carryover] discussão — mockup "Todos os ciclos" aprovado; memória de cálculo do saldo de abertura transportado apresentada (curva de ciclo abre em effectivePL = closure.cycleBaseline.plInicial → snapshot.plStart → plan.pl). Achados: EquityCurve recebe aggregatedInitialBalance (StudentDashboard.jsx:613); plan.pl seeded de account.initialBalance (AccountSetupWizard.jsx:166), rola em closeCycle.js:245; curva ideal já usa plan.pl (equityCurveIdeal.js:49) → mismatch visível. Aguardando 3 validações de Marcio (ver Autorização).
 
 ## Shared Deltas
 - `src/version.js` — bump v1.65.0
