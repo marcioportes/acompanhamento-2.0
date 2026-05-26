@@ -8,3 +8,4 @@
 | CHUNK-04 (Trade Ledger) — ESCRITA | #267 | `fix/issue-267-tactical-bugs` | 25/05/2026 | bug 1 MEN/MEP Yahoo (CF enrichment) + bug 6 compliance/extrato |
 | CHUNK-13 (Context Bar) — ESCRITA | #267 | `fix/issue-267-tactical-bugs` | 25/05/2026 | bug 2 modo "todo histórico" destravando Ciclo |
 | CHUNK-05 (Compliance) — ESCRITA | #267 | `fix/issue-267-tactical-bugs` | 25/05/2026 | bug 6 mentorClearedViolations não persiste no extrato/gates 4D |
+| CHUNK-02 (Student Management) — ESCRITA | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | paridade indicadores+nomenclatura dashboard↔fechamento (SSoT métricas; CHUNK-03/05/06 só leitura) |
