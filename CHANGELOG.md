@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.67.0] - 27/05/2026 · #267 · PR #283
+
+**fix:** bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.66.0] - 27/05/2026 · #282 · PR #284
 
 **feat:** paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo

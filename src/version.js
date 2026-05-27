@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.67.0: #267 fix bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D (PR #283, 27/05/2026)
  * - 1.66.0: #282 feat paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo — SSoT única de tiles de métricas (técnico + tooltip) + Sharpe/CV/MEP/MEN trazidos pro wizard (PR #284, 27/05/2026)
  * - 1.64.1: fix(closure-inbox): item não sai do inbox após "marcar sem comentário". `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira null no fluxo "no comment") em vez de `mentor.closingCommentAt` (timestamp sempre setado). Trocar 2 ocorrências (filter + pendingCount) por `!!c.mentor?.closingCommentAt`. Entrada definitiva no encerramento.
  * - 1.64.0: #259 feat 1A — Ritual completo de Fechamento de Ciclo: wizard 8 etapas + Kelly real + Monte Carlo + IA stub heurístico + camada mentor (inbox, comment panel, modo demonstração) + contratos C1-C5 (PL imutável, saldo derivado, snapshot/restore, gate retroativo) + sistema inline de toast/confirm substituindo window.alert/confirm. Reserva original era 1.58.0, mas main avançou pra 1.63.0 durante o desenvolvimento — reserva re-tomada em 1.64.0 (próximo minor disponível). PR #264, 24/05/2026.
@@ -358,10 +359,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.66.0',
+  version: '1.67.0',
   build: '20260527',
-  display: 'v1.66.0',
-  full: '1.66.0+20260527',
+  display: 'v1.67.0',
+  full: '1.67.0+20260527',
 };
 export default VERSION;
 export { VERSION };
