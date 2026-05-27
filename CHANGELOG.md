@@ -12,7 +12,14 @@ Version source of truth: `src/version.js`.
 
 **fix:** bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D
 
-- _(decisões/testes/files — ajustar antes do commit)_
+Guarda-chuva. Escopo final: bugs 1, 2, 6 (bug 3→#275, bug 4→#269, bug 5 retirado).
+
+- **bug 1 — MEN/MEP via Yahoo** (`functions/marketData/enrichTradeWithExcursions.js`): enrichment **aborta** (`excursionSource: 'unavailable'`) quando falta `entryTime` OU `exitTime`, em vez de cair em janela inventada (`date`/duração-zero); `entryTime`/`exitTime` naive interpretados como America/Sao_Paulo (UTC-3) — janela Yahoo reflete o horário real do trade (DEC-AUTO-267-01/02).
+- **bug 2 — carry-over de patrimônio** (`src/utils/openingBalance.js`, `useDashboardMetrics`, `EquityCurve`, `equityCurveIdeal`): a curva de patrimônio de um ciclo abre no **fechamento do ciclo anterior** (não no aporte), por forward-sum derivado `aporte + Σ trades antes da janela + Σ ajuste-não-trade de fechamentos`. Corredor ideal ancora na mesma abertura (alinha as curvas em ciclos passados). Single-currency; multi-moeda mantém saldo por moeda (DEC-AUTO-267-03/04).
+- **bug 2 — "Todos os ciclos"** (`ContextBar`, `cycleResolver`, `StudentContextProvider`): sentinela `__ALL__` no dropdown Ciclo destrava a obrigatoriedade de ciclo → todo o histórico (Período fica "Todo o histórico", desabilitado).
+- **bug 6 — limpeza de compliance reflete no extrato e no 4D** (`functions/maturity/preComputeShapes.js`, `src/components/extract/ExtractTable.jsx`): `calcComplianceRate` conta via `hasEffectiveRedFlags` → propaga `mentorClearedViolations` aos gates Compliance ≥80%/≥95% e à dimensão Operacional; extrato suprime badges NO_STOP/RO/RR limpos pelo mentor. Eventos de execução (#208) ficam fora — não são limpáveis (DEC-AUTO-267-05).
+- Cosmético (sugestão de aluno): campo Observações do modal de entrada `rows` 2→4.
+- Testes: +29 (openingBalance, sentinela, calcComplianceRate cleared-aware, tz/abort do enrichment). Suíte 3288/3288. **Deploy de CFs** (`enrichTradeWithExcursions` + `preComputeShapes`).
 
 
 ## [1.66.0] - 27/05/2026 · #282 · PR #284
