@@ -9,7 +9,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { ChevronDown, Lock, Calendar, Briefcase, Target, Clock } from 'lucide-react';
 import DebugBadge from './DebugBadge';
 import useStudentContext from '../hooks/useStudentContext';
-import { PERIOD_KIND, getCycleKey } from '../utils/cycleResolver';
+import { PERIOD_KIND, getCycleKey, ALL_CYCLES_KEY } from '../utils/cycleResolver';
 
 const PERIOD_LABELS = {
   [PERIOD_KIND.CYCLE]: 'Ciclo completo',
@@ -160,14 +160,18 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
       const k = getCycleKey(adjustmentCycle, d);
       if (k) keys.add(k);
     }
-    return Array.from(keys)
+    const cycleList = Array.from(keys)
       .sort((a, b) => b.localeCompare(a)) // DESC (mais recente primeiro)
       .map(k => ({
         value: k,
         label: k,
         sublabel: k === getCycleKey(adjustmentCycle, new Date()) ? 'Atual' : null
       }));
+    // Sentinela no topo (#267): destrava a obrigatoriedade de ciclo → todo o histórico.
+    return [{ value: ALL_CYCLES_KEY, label: 'Todos os ciclos', sublabel: 'Todo o histórico' }, ...cycleList];
   }, [selectedPlan, trades]);
+
+  const isAllCycles = cycleKey === ALL_CYCLES_KEY;
 
   const periodOptions = useMemo(() => [
     { value: PERIOD_KIND.CYCLE, label: PERIOD_LABELS[PERIOD_KIND.CYCLE] },
@@ -223,11 +227,11 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
         <Dropdown
           icon={Clock}
           label="Período"
-          value={period?.kind || PERIOD_KIND.CYCLE}
-          options={periodOptions}
+          value={isAllCycles ? null : (period?.kind || PERIOD_KIND.CYCLE)}
+          options={isAllCycles ? [] : periodOptions}
           onChange={setPeriodKind}
-          disabled={!cycleKey}
-          placeholder="—"
+          disabled={!cycleKey || isAllCycles}
+          placeholder={isAllCycles ? 'Todo o histórico' : '—'}
         />
 
         {isReadOnlyCycle && (

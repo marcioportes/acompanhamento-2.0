@@ -24,6 +24,12 @@ export const CYCLE_STATUS = {
   FINALIZED: 'FINALIZED'  // now > cycleEnd → read-only
 };
 
+// Opção-sentinela "Todos os ciclos" (bug 2 — #267): destrava a obrigatoriedade de ciclo
+// na ContextBar. cycleKey = sentinela → period null → useDashboardMetrics pula o filtro
+// temporal e mostra todo o histórico do escopo. Não bate o regex de parseCycleKey de
+// propósito → resolveCycle retorna null (sem ciclo resolvido, sem badge "finalizado").
+export const ALL_CYCLES_KEY = '__ALL__';
+
 // ============================================
 // HELPERS DE DATA
 // ============================================

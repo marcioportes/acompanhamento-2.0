@@ -26,6 +26,7 @@ import {
   calculateDurationDelta,
 } from '../utils/dashboardMetrics';
 import { hasEffectiveRedFlags } from '../utils/violationFilter';
+import { computeOpeningBalance } from '../utils/openingBalance';
 
 /** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
 const PERIOD_KIND_LABELS = {
@@ -51,6 +52,7 @@ const useDashboardMetrics = ({
   selectedPlanId,
   accountTypeFilter,
   context = null,
+  closures = [],
 }) => {
   // === Filtros de conta ===
   const filteredAccountsByType = useMemo(() => {
@@ -126,6 +128,38 @@ const useDashboardMetrics = ({
   const aggregatedCurrentBalance = useMemo(() =>
     accountsInScope.reduce((sum, acc) => sum + (acc.currentBalance ?? acc.initialBalance ?? 0), 0),
   [accountsInScope]);
+
+  // === Carry-over de patrimônio (bug 2 — issue #267) ===
+  // Saldo de abertura da janela = aporte + Σ trades antes da janela + Σ ajustes não-trade
+  // de fechamentos anteriores. Alimenta a base da EquityCurve (`windowOpeningBalance`) e do
+  // corredor ideal (`cycleOpeningBalance`), pra que ciclos após o 1º abram no patrimônio de
+  // FECHAMENTO do ciclo anterior, não no aporte original. Carry é temporal → usa trades do
+  // escopo SEM filtro de janela/granular (filtrar por ticker não muda o patrimônio acumulado).
+  const scopedTradesForCarry = useMemo(() => (
+    selectedPlanId ? allAccountTrades.filter(t => t.planId === selectedPlanId) : allAccountTrades
+  ), [allAccountTrades, selectedPlanId]);
+
+  const closuresInScope = useMemo(() => {
+    if (!Array.isArray(closures) || closures.length === 0) return [];
+    const idSet = new Set(selectedAccountIds);
+    return closures.filter(c => (
+      selectedPlanId ? c.planId === selectedPlanId : idSet.has(c.accountId)
+    ));
+  }, [closures, selectedPlanId, selectedAccountIds]);
+
+  const windowOpeningBalance = useMemo(() => computeOpeningBalance({
+    windowStart: context?.periodRange?.start ?? null,
+    initialBalance: aggregatedInitialBalance,
+    trades: scopedTradesForCarry,
+    closures: closuresInScope,
+  }), [context?.periodRange?.start, aggregatedInitialBalance, scopedTradesForCarry, closuresInScope]);
+
+  const cycleOpeningBalance = useMemo(() => computeOpeningBalance({
+    windowStart: context?.cycleStart ?? null,
+    initialBalance: aggregatedInitialBalance,
+    trades: scopedTradesForCarry,
+    closures: closuresInScope,
+  }), [context?.cycleStart, aggregatedInitialBalance, scopedTradesForCarry, closuresInScope]);
 
   // v1.15.0: Multi-moeda
   const balancesByCurrency = useMemo(() =>
@@ -292,6 +326,9 @@ const useDashboardMetrics = ({
     aggregatedCurrentBalance,
     balancesByCurrency,
     dominantCurrency,
+    // Carry-over de patrimônio (bug 2 — #267)
+    windowOpeningBalance,
+    cycleOpeningBalance,
     // Métricas
     drawdown,
     maxDrawdownData,

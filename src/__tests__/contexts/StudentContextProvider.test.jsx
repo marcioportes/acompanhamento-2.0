@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { StudentContextProvider } from '../../contexts/StudentContextProvider';
 import { useStudentContext } from '../../hooks/useStudentContext';
-import { PERIOD_KIND, CYCLE_STATUS } from '../../utils/cycleResolver';
+import { PERIOD_KIND, CYCLE_STATUS, ALL_CYCLES_KEY } from '../../utils/cycleResolver';
 
 const mockAccounts = [
   { id: 'a1', active: true, name: 'Conta Real', type: 'REAL' },
@@ -142,6 +142,16 @@ describe('StudentContextProvider', () => {
       expect(result.current.planId).toBe(planId);
       expect(result.current.cycleKey).toBe(cycleKey);
       expect(result.current.period.kind).toBe(PERIOD_KIND.WEEK);
+    });
+
+    it('"Todos os ciclos" (sentinela #267) zera período → todo histórico', () => {
+      const { result } = renderHook(() => useStudentContext(), wrap());
+      act(() => result.current.setCycleKey(ALL_CYCLES_KEY));
+      expect(result.current.cycleKey).toBe(ALL_CYCLES_KEY);
+      expect(result.current.period).toBeNull();        // → periodRange null → sem filtro temporal
+      expect(result.current.periodRange).toBeNull();
+      expect(result.current.selectedCycle).toBeNull(); // sem ciclo resolvido
+      expect(result.current.isReadOnlyCycle).toBe(false); // badge "finalizado" some
     });
   });
 

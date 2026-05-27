@@ -7,9 +7,11 @@
 **Status atual do documento:**
 - [x] Mockup apresentado + APROVADO (bug 2 — "Todos os ciclos" no dropdown Ciclo; 25/05)
 - [x] Memória de cálculo apresentada (bug 1 — MEN/MEP; confirmada 25/05)
-- [~] Memória de cálculo apresentada (bug 2 — saldo de abertura transportado/carry-over; 26/05) **← aguardando Marcio validar 3 pontos** (semântico do carry-over; sub-período no escopo?; validar persistência de `cycleBaseline.plInicial` do #259 antes de B1)
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado (bug 2)
+- [x] Memória de cálculo apresentada (bug 2 — saldo de abertura transportado/carry-over; 26/05)
+- [x] Marcio validou os 3 pontos (26/05): (1) carry-over semântico confirmado — ciclo abre no fechamento do anterior; (2) sub-período (semana/mês) **entra** no escopo; (3) **decidido 3b** (derivado, ancorado em fechamento real) — placeholder-snap (3a) rejeitado
+- [x] Marcio autorizou implementação bug 2 (26/05, "ok, 3b")
+- [x] Gate Pré-Código liberado (bug 2)
+- [x] +cosmético: aumentar altura do campo Observações no modal de entrada (sugestão de aluno; `AddTradeModal.jsx` rows 2→4; 26/05)
 
 ## Context
 
@@ -36,12 +38,19 @@ bugs 1 e 6 são backend/diagnóstico — sem UI nova.
   2. `fetchYahooBars.js` / `toUnixSeconds`: timezone — `entryTime`/`exitTime` precisam refletir o horário real do trade do aluno; string sem offset lida como UTC desloca a janela e produz min/max de minutos errados (silencioso).
 - **Correção:** abortar quando faltar horário + converter timezone corretamente. Não cravar "qual dos dois" — ambos entram (decisão de Marcio 25/05).
 
+**bug 2 — saldo de abertura transportado (carry-over) — regra 3b (derivado, ancorado)**
+- **Regra única:** `abertura(janela) = último fechamento formal ≤ início da janela (+) Σ result(trades entre esse fechamento e o início da janela)`. Sem fechamento anterior → `account.initialBalance + Σ trades antes da janela`.
+- **Por recorte:** Todos os ciclos → `account.initialBalance` (O(1)); Ciclo inteiro → `effectivePL(ciclo)` = `closure.cycleBaseline.plInicial → snapshot.plStart → plan.pl` (O(1), zero soma); Sub-período → `effectivePL(ciclo) + Σ trades do ciclo antes do período` (O(k), k = trades de 1 ciclo).
+- **Por que 3b e não placeholder (3a):** ajuste não-trade (aporte/saque) só nasce no ritual de fechamento (`Step6Adjust → adj.newPl`); logo onde não há fechamento, `aporte+Σtrades` é exato; onde há, a âncora do fechamento já captura o ajuste. Placeholder-snap poluiria `cycleClosures` (alimenta inbox do mentor + fila sequencial `useCycleExpiredQueue`) e exigiria escrita nova (INV-15/AP-06). Fechamentos formam prefixo contíguo (fila sequencial) → âncora sempre limpa, sem buraco.
+- **Implementação:** elevar `effectivePL` (hoje preso em `PlanLedgerExtract.jsx:153`) → util/hook compartilhado `openingBalance(window)`; alimentar `EquityCurve.buildEquityCurve(trades, initialBalance)` (`EquityCurve.jsx:51`) e `calculateIdealStatus` (`StudentDashboard.jsx:330`) no lugar de `aggregatedInitialBalance` (`StudentDashboard.jsx:613`). Curva ideal já usa `plan.pl` (`equityCurveIdeal.js:49`) → alinha de graça. Sem cache/escrita nova.
+
 ## Phases
 - A1 — bug 1: abortar enrichment quando faltar entryTime/exitTime (remover fallback)
 - A2 — bug 1: conversão correta de timezone na janela de busca Yahoo
 - A3 — bug 1: testes (massa Yahoo; cases de abort; tz)
-- B1 — bug 2: mockup modo "todo histórico" (aprovação) → implementação
-- B2 — bug 2: testes
+- B1 — bug 2: "Todos os ciclos" no dropdown Ciclo (sentinela) + carry-over 3b (util/hook `openingBalance` → EquityCurve + curva ideal)
+- B2 — bug 2: testes (openingBalance: todo histórico / ciclo / sub-período; âncora em fechamento; sem fechamento)
+- B3 — cosmético: campo Observações `AddTradeModal` rows 2→4 (✅ feito)
 - C1 — bug 6: diagnóstico (hook leitura do extrato vs CF recomputeForStudent/onTradeUpdated)
 - C2 — bug 6: fix causa raiz + testes
 
@@ -49,7 +58,8 @@ bugs 1 e 6 são backend/diagnóstico — sem UI nova.
 _(log linear; 1 linha por task)_
 - A1+A2 [bug1-men-mep-abort-tz] ok — enrichTradeWithExcursions: remove fallback (date/janela-zero) + toBrasiliaISO (naive→UTC-3); suíte 3251 verde
 - A3 [bug1-testes] ok — 6 testes novos (abort falta entry/exit; toBrasiliaISO; janela 13:30 UTC não 10:30)
-- B1-design [bug2-carryover] discussão — mockup "Todos os ciclos" aprovado; memória de cálculo do saldo de abertura transportado apresentada (curva de ciclo abre em effectivePL = closure.cycleBaseline.plInicial → snapshot.plStart → plan.pl). Achados: EquityCurve recebe aggregatedInitialBalance (StudentDashboard.jsx:613); plan.pl seeded de account.initialBalance (AccountSetupWizard.jsx:166), rola em closeCycle.js:245; curva ideal já usa plan.pl (equityCurveIdeal.js:49) → mismatch visível. Aguardando 3 validações de Marcio (ver Autorização).
+- B1-design [bug2-carryover] discussão — mockup "Todos os ciclos" aprovado; memória de cálculo do saldo de abertura transportado apresentada (curva de ciclo abre em effectivePL = closure.cycleBaseline.plInicial → snapshot.plStart → plan.pl). Achados: EquityCurve recebe aggregatedInitialBalance (StudentDashboard.jsx:613); plan.pl seeded de account.initialBalance (AccountSetupWizard.jsx:166), rola em closeCycle.js:245; curva ideal já usa plan.pl (equityCurveIdeal.js:49) → mismatch visível. 3 validações de Marcio CONCLUÍDAS 26/05 → 3b decidido, sub-período no escopo (ver Autorização + regra na Memória de Cálculo).
+- B3 [observacoes-altura] ok — AddTradeModal.jsx:1091 textarea Observações rows 2→4 (sugestão de aluno; cosmético, resize-none mantido).
 
 ## Shared Deltas
 - `src/version.js` — bump v1.65.0
@@ -62,6 +72,8 @@ _(log linear; 1 linha por task)_
 _(apenas IDs — texto em docs/decisions.md, formalizar no encerramento)_
 - DEC-AUTO-267-01 — entryTime/exitTime naive interpretados como America/Sao_Paulo (UTC-3 fixo, Brasil sem DST desde 2019); strings com offset/Z respeitadas
 - DEC-AUTO-267-02 — enrichment aborta (unavailable) quando falta entryTime OU exitTime; sem fallback pra trade.date
+- DEC-AUTO-267-03 — carry-over de patrimônio por forward-sum derivado (3b), não placeholder-snap (3a): abertura = aporte + Σ trades antes da janela + Σ ajuste-não-trade de fechamentos anteriores. Sem escrita nova (INV-15) nem poluição de cycleClosures.
+- DEC-AUTO-267-04 — carry-over aplica-se ao caminho single-currency da EquityCurve; modo multi-moeda (tabs, ≥2 moedas) segue usando saldo inicial por moeda (limitação conhecida, fora do escopo do bug report).
 
 ## Chunks
 - CHUNK-04 (escrita) — bug 1 (CF enrichment) + bug 6 (leitura de trades no extrato)

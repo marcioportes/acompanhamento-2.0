@@ -8,7 +8,8 @@ import {
   getDefaultContext,
   getDefaultPlanForAccount,
   PERIOD_KIND,
-  CYCLE_STATUS
+  CYCLE_STATUS,
+  ALL_CYCLES_KEY
 } from '../../utils/cycleResolver';
 
 // ============================================
@@ -127,6 +128,12 @@ describe('resolveCycle', () => {
 
   it('retorna null para cycleKey inválido', () => {
     expect(resolveCycle('foo', { adjustmentCycle: 'Mensal' })).toBeNull();
+  });
+
+  it('sentinela "Todos os ciclos" (#267) não resolve ciclo', () => {
+    expect(ALL_CYCLES_KEY).toBe('__ALL__');
+    expect(resolveCycle(ALL_CYCLES_KEY, { adjustmentCycle: 'Mensal' })).toBeNull();
+    expect(parseCycleKey(ALL_CYCLES_KEY)).toBeNull();
   });
 });
 

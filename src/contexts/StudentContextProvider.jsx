@@ -17,7 +17,8 @@ import {
   getPeriodRange,
   parseCycleKey,
   PERIOD_KIND,
-  CYCLE_STATUS
+  CYCLE_STATUS,
+  ALL_CYCLES_KEY
 } from '../utils/cycleResolver.js';
 
 export const StudentContext = createContext(null);
@@ -175,7 +176,8 @@ export const StudentContextProvider = ({ scopeStudentId, accounts = [], plans = 
 
   const setCycleKey = useCallback((cycleKey) => {
     const now = new Date();
-    if (!selectedPlan || !cycleKey) {
+    // Sentinela "Todos os ciclos" (#267): sem ciclo resolvido e period null → todo histórico.
+    if (!selectedPlan || !cycleKey || cycleKey === ALL_CYCLES_KEY) {
       setPersisted({ ...state, cycleKey, period: null, updatedAt: now.toISOString() });
       return;
     }
