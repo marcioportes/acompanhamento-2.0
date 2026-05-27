@@ -41,6 +41,7 @@
 const { computeCycleBasedComplianceRate } = require('./computeCycleBasedComplianceRate');
 const { computeEmotionalAnalysisShape } = require('./emotionalAnalysisMirror');
 const { detectExecutionEvents } = require('./executionBehaviorMirror');
+const { hasEffectiveRedFlags } = require('./violationFilter');
 
 function isNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -138,9 +139,11 @@ function deriveAdvancedMetricsPresent(trades) {
 
 function calcComplianceRate(trades) {
   if (!Array.isArray(trades) || trades.length === 0) return null;
-  const withFlags = trades.filter(
-    (t) => t.hasRedFlags || (Array.isArray(t.redFlags) && t.redFlags.length > 0),
-  ).length;
+  // Issue #267 bug 6: respeita `mentorClearedViolations`. Trade conta como NÃO-conforme
+  // só se tem ao menos uma red flag NÃO limpa pelo mentor. Antes contava flag crua →
+  // limpeza do mentor não refletia no `complianceRate` (gates rule-compliance-80/95 +
+  // dimensão Operacional via computeOperational). DEC-AUTO-267-05.
+  const withFlags = trades.filter((t) => hasEffectiveRedFlags(t)).length;
   const compliant = trades.length - withFlags;
   return (compliant / trades.length) * 100;
 }

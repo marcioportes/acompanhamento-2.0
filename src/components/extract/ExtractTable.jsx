@@ -17,6 +17,7 @@ import {
 import { PERIOD_STATES } from '../../utils/planStateMachine';
 import { calculateAssumedRR } from '../../utils/tradeCalculations';
 import { matchEmotionalEventsToTrade } from '../../utils/extractInlineEvents';
+import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilter';
 import TradeStatusBadges from '../TradeStatusBadges';
 import ExcursionDisplay from '../ExcursionDisplay';
 import { Lock } from 'lucide-react';
@@ -164,13 +165,19 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             const exitEmoji = exitCfg?.emoji || '';
             const exitName = exitCfg?.name || exitCfg?.label || trade.emotionExit || '';
 
-            // Compliance
+            // Compliance — issue #267 bug 6: respeita mentorClearedViolations. Quando o
+            // mentor limpa a violação (chave = flag.type, ex.: 'RISCO_ACIMA_PERMITIDO'), o
+            // badge some do extrato. NO_STOP via effectiveRedFlags; RO/RR via isViolationCleared
+            // (roStatus/rrStatus são campos próprios, co-emitidos com a red flag pela CF).
             const riskPercent = trade.riskPercent != null ? `${Number(trade.riskPercent).toFixed(1)}%` : '-';
-            const hasNoStop = Array.isArray(trade.redFlags) && trade.redFlags.some(f =>
+            const effFlags = effectiveRedFlags(trade);
+            const hasNoStop = effFlags.some(f =>
               (typeof f === 'string' ? f : f.type) === 'TRADE_SEM_STOP'
             );
-            const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO';
-            const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME';
+            const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO'
+              && !isViolationCleared(trade, 'RISCO_ACIMA_PERMITIDO');
+            const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME'
+              && !isViolationCleared(trade, 'RR_ABAIXO_MINIMO');
 
             // RR: real (do trade) ou assumido (DEC-007: gravado no trade pela CF)
             let rrDisplay = '-';
@@ -189,7 +196,7 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                 rrDisplay = `${assumed.rrRatio.toFixed(2)}:1`;
               }
             }
-            const rrNonCompliant = trade.compliance?.rrStatus === 'NAO_CONFORME';
+            const rrNonCompliant = rrFora; // #267 bug 6: já considera mentorClearedViolations
 
             // Inline events
             const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
