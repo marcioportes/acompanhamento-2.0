@@ -80,6 +80,7 @@ import { currentTrigger, shouldGenerateAI } from '../utils/maturityAITrigger';
 // Contexto unificado (issue #118 — DEC-047)
 import StudentContextProvider from '../contexts/StudentContextProvider';
 import useStudentContext from '../hooks/useStudentContext';
+import { useStudentClosures } from '../hooks/useStudentClosures';
 import ContextBar from '../components/ContextBar';
 
 // Utils
@@ -131,6 +132,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   // Maturity snapshot (issue #119 task 11)
   const maturityStudentId = overrideStudentId ?? user?.uid ?? null;
+
+  // Closures do aluno — base do carry-over de patrimônio (bug 2 — #267).
+  // Single where (studentId) → sem índice composto. Filtragem por escopo no hook de métricas.
+  const { closures: studentClosures } = useStudentClosures(maturityStudentId);
   const { maturity, loading: maturityLoading, error: maturityError } =
     useMaturity(maturityStudentId);
 
@@ -213,7 +218,9 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       planId: studentCtx.planId,
       cycleKey: studentCtx.cycleKey,
       periodRange: studentCtx.periodRange,
+      cycleStart: studentCtx.selectedCycle?.start ?? null,
     },
+    closures: studentClosures,
   });
 
   const {
@@ -222,6 +229,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     stats,
     aggregatedInitialBalance,
     aggregatedCurrentBalance,
+    windowOpeningBalance,
+    cycleOpeningBalance,
     balancesByCurrency,
     dominantCurrency,
     drawdown,
@@ -322,8 +331,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     const plan = studentCtx.selectedPlan;
     const cycle = studentCtx.selectedCycle;
     if (!plan || !cycle?.start || !cycle?.end) return null;
-    return generateIdealEquitySeries(plan, { startDate: cycle.start, endDate: cycle.end });
-  }, [studentCtx.selectedPlan, studentCtx.selectedCycle]);
+    // Carry-over (#267): ancora o corredor na abertura do ciclo (não em plan.pl, que é o PL
+    // atual). Em ciclo passado isso alinha o corredor ideal à curva real no mesmo y.
+    return generateIdealEquitySeries(plan, { startDate: cycle.start, endDate: cycle.end }, cycleOpeningBalance);
+  }, [studentCtx.selectedPlan, studentCtx.selectedCycle, cycleOpeningBalance]);
 
   const idealEquityStatus = useMemo(() => {
     if (!idealEquitySeries) return null;
@@ -612,7 +623,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
             {filteredTrades.length > 0 ? (
               <EquityCurve
                 trades={filteredTrades}
-                initialBalance={aggregatedInitialBalance}
+                initialBalance={windowOpeningBalance}
                 currency={dominantCurrency || 'BRL'}
                 currencies={balancesByCurrency}
                 accounts={accounts}

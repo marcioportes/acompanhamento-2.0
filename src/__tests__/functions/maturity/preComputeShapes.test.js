@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   preComputeShapes,
   deriveAdvancedMetricsPresent,
+  calcComplianceRate,
   ADVANCED_METRICS_MIN_TRADES,
   ADVANCED_METRICS_MIN_RATIO,
 } from '../../../../functions/maturity/preComputeShapes';
@@ -98,5 +99,39 @@ describe('preComputeShapes — wiring de advancedMetricsPresent', () => {
     expect(shape.payoff).not.toBe(null);
     expect(shape.maxDrawdown).toHaveProperty('maxDD');
     expect(shape.advancedMetricsPresent).toBe(true);
+  });
+});
+
+describe('calcComplianceRate — issue #267 bug 6: respeita mentorClearedViolations', () => {
+  it('conta trade com red flag NÃO limpa como não-conforme', () => {
+    const trades = [
+      { id: 't1', redFlags: [{ type: 'TRADE_SEM_STOP' }], mentorClearedViolations: [] },
+      { id: 't2', redFlags: [], mentorClearedViolations: [] },
+    ];
+    expect(calcComplianceRate(trades)).toBe(50); // 1 de 2 conforme
+  });
+
+  it('red flag limpa pelo mentor volta a contar como conforme (reflete no 4D)', () => {
+    const trades = [
+      { id: 't1', redFlags: [{ type: 'TRADE_SEM_STOP' }], mentorClearedViolations: ['TRADE_SEM_STOP'] },
+      { id: 't2', redFlags: [], mentorClearedViolations: [] },
+    ];
+    expect(calcComplianceRate(trades)).toBe(100); // limpeza → 2 de 2 conforme
+  });
+
+  it('trade com 2 flags, só 1 limpa, segue não-conforme', () => {
+    const trades = [
+      { id: 't1', redFlags: [{ type: 'RISCO_ACIMA_PERMITIDO' }, { type: 'RR_ABAIXO_MINIMO' }], mentorClearedViolations: ['RR_ABAIXO_MINIMO'] },
+    ];
+    expect(calcComplianceRate(trades)).toBe(0); // ainda tem RISCO não limpo
+  });
+
+  it('hasRedFlags legacy (boolean, sem types) é mantido — não dá pra limpar parcial', () => {
+    const trades = [{ id: 't1', hasRedFlags: true, mentorClearedViolations: ['TRADE_SEM_STOP'] }];
+    expect(calcComplianceRate(trades)).toBe(0);
+  });
+
+  it('null para janela vazia', () => {
+    expect(calcComplianceRate([])).toBe(null);
   });
 });

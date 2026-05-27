@@ -41,12 +41,16 @@ const formatISO = (date) => {
  *
  * @param {{ pl: number, cycleGoal: number, cycleStop: number }} plan
  * @param {{ startDate: string|Date, endDate: string|Date }} cycle
+ * @param {number} [basePl] - patrimônio de abertura do ciclo (carry-over, #267). Quando
+ *   informado (> 0) ancora o corredor nele em vez de `plan.pl` — alinha o corredor ideal
+ *   à curva real ao ver ciclos passados (plan.pl é o PL atual, não o de abertura daquele ciclo).
  * @returns {Array<{ date: string, goal: number, stop: number, dayIndex: number }>|null}
  */
-export const generateIdealEquitySeries = (plan, cycle) => {
+export const generateIdealEquitySeries = (plan, cycle, basePl) => {
   if (!plan || !cycle) return null;
 
-  const pl = Number(plan.pl);
+  const candidateBase = Number(basePl);
+  const pl = Number.isFinite(candidateBase) && candidateBase > 0 ? candidateBase : Number(plan.pl);
   const cycleGoal = Number(plan.cycleGoal);
   const cycleStop = Number(plan.cycleStop);
 

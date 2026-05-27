@@ -34,6 +34,18 @@ const { computeExcursionFromBars } = require('./computeExcursionFromBars');
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
 const isMentorEmail = (email) => MENTOR_EMAILS.includes(email?.toLowerCase?.());
 
+// Horários de trade são gravados pela UI como string naive (`YYYY-MM-DDTHH:MM:SS`,
+// sem offset), no horário local do aluno = Brasília. A CF roda em UTC: parsear a
+// string naive como UTC deslocaria a janela em 3h e buscaria os minutos errados no
+// Yahoo. Normalizar para America/Sao_Paulo (UTC-3 fixo — Brasil sem DST desde 2019).
+// Strings que já tragam offset/Z são absolutas e passam sem alteração.
+const BRASILIA_OFFSET = '-03:00';
+const HAS_TZ = /[zZ]$|[+-]\d{2}:?\d{2}$/;
+function toBrasiliaISO(value) {
+  if (typeof value !== 'string' || value === '') return value;
+  return HAS_TZ.test(value) ? value : `${value}${BRASILIA_OFFSET}`;
+}
+
 /**
  * Helper puro reusável fora do callable (ex.: trigger onTradeCreated).
  *
@@ -63,12 +75,16 @@ async function runEnrichment({ tradeId }, deps = {}) {
     return { ok: false, reason: `sem mapping Yahoo para ${trade.ticker}`, source: 'unavailable' };
   }
 
-  const from = trade.entryTime || trade.date;
-  const to = trade.exitTime || trade.entryTime;
-  if (!from || !to) {
+  // Premissa: trade tem entryTime E exitTime. Faltando qualquer um, abortar — sem
+  // fallback pra trade.date (gerava janela do dia inteiro → min/max errados) nem pra
+  // entryTime (janela de duração zero). bug 1 #267.
+  if (!trade.entryTime || !trade.exitTime) {
     await tradeRef.update({ excursionSource: 'unavailable' });
     return { ok: false, reason: 'trade sem entryTime/exitTime', source: 'unavailable' };
   }
+
+  const from = toBrasiliaISO(trade.entryTime);
+  const to = toBrasiliaISO(trade.exitTime);
 
   const fetchResult = await fetchYahooBars(
     { yahooSymbol, from, to },
@@ -125,3 +141,4 @@ const enrichTradeWithExcursions = onCall(
 
 module.exports = enrichTradeWithExcursions;
 module.exports.runEnrichment = runEnrichment;
+module.exports.toBrasiliaISO = toBrasiliaISO;

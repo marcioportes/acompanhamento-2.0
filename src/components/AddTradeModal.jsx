@@ -1088,7 +1088,7 @@ const AddTradeModal = ({
               <div><label className="input-label">Emoção Saída</label><select name="emotionExit" value={formData.emotionExit} onChange={handleChange} className="input-dark w-full"><option value="">Selecione...</option>{emotions.map(e => <option key={e.id} value={e.name}>{e.emoji} {e.name}</option>)}</select></div>
             </div>
 
-            <div><label className="input-label">Observações</label><textarea name="notes" rows="2" value={formData.notes} onChange={handleChange} onPaste={(e) => handlePasteImage(e)} className="input-dark w-full resize-none" placeholder="Racional do trade... (Ctrl+V para colar imagem)" /></div>
+            <div><label className="input-label">Observações</label><textarea name="notes" rows="4" value={formData.notes} onChange={handleChange} onPaste={(e) => handlePasteImage(e)} className="input-dark w-full resize-none" placeholder="Racional do trade... (Ctrl+V para colar imagem)" /></div>
 
             <div className="grid grid-cols-2 gap-4">
                {['htf', 'ltf'].map(type => (
