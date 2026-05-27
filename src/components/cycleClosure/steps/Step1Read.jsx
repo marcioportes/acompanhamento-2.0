@@ -10,6 +10,7 @@ import React, { useEffect, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
 import { usePlans } from '../../../hooks/usePlans';
+import { useCycleConsistency } from '../../../hooks/useCycleConsistency';
 import {
   computeCycleMetrics,
   computeRuleAdherenceRate,
@@ -21,6 +22,13 @@ import {
   computeWinRateConsistency,
   TPS_WEIGHTS,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
+import {
+  MetricTile,
+  expectancyContent, winRateContent, payoffContent, profitFactorContent, drawdownContent, adherenceContent,
+  sharpeContent, cvContent, mepContent, menContent,
+  buildSharpeTooltip, buildCvTooltip, MEP_TOOLTIP, MEN_TOOLTIP,
+  EXPECTANCY_TOOLTIP, WIN_RATE_TOOLTIP, PAYOFF_TOOLTIP, PROFIT_FACTOR_TOOLTIP, DRAWDOWN_TOOLTIP, ADHERENCE_TOOLTIP,
+} from '../../metrics/cycleMetricTiles';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
 
@@ -28,11 +36,6 @@ function formatBRL(v) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
-function formatPct(v, digits = 1) {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return `${v.toFixed(digits)}%`;
-}
-
 function StatCard({ label, primary, secondary, tone = 'slate' }) {
   const toneCls =
     tone === 'emerald' ? 'text-emerald-400' :
@@ -44,16 +47,6 @@ function StatCard({ label, primary, secondary, tone = 'slate' }) {
       <p className="text-xs text-slate-500 mb-1">{label}</p>
       <p className={`text-2xl font-bold mono ${toneCls}`}>{primary}</p>
       {secondary && <p className="text-xs text-slate-500 mono">{secondary}</p>}
-    </div>
-  );
-}
-
-function SmallStat({ label, value, secondary, danger }) {
-  return (
-    <div className={`bg-slate-800/30 rounded-xl p-3 ${danger ? 'border border-red-500/30' : ''}`}>
-      <p className="text-[11px] text-slate-500">{label}</p>
-      <p className={`font-semibold mono ${danger ? 'text-red-400' : 'text-slate-100'}`}>{value}</p>
-      {secondary && <p className="text-[10px] text-slate-600">{secondary}</p>}
     </div>
   );
 }
@@ -117,6 +110,9 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   const ruleAdherenceRate = useMemo(() => computeRuleAdherenceRate(cycleTrades), [cycleTrades]);
   const top3Errors = useMemo(() => topErrors(cycleTrades, 3), [cycleTrades]);
   const stopBreach = useMemo(() => computeStopBreach(cycleTrades, plan), [cycleTrades, plan]);
+
+  // #282 — mesmas métricas de consistência do dashboard (display-time, não congela no frozenSnapshot).
+  const consistency = useCycleConsistency({ trades: cycleTrades, plan, cycleStart, cycleEnd });
 
   // Snapshot
   const snapshot = useMemo(() => {
@@ -249,49 +245,61 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
         />
       </div>
 
+      {/* #282 — Performance + Consistência: nomenclatura técnica canônica + tooltip didático,
+          mesma SSoT (cycleMetricTiles) e mesmos cálculos do card do dashboard. */}
       <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-        <Activity className="w-4 h-4" /> Como você operou no ciclo
+        <Activity className="w-4 h-4" /> Performance
       </h4>
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <SmallStat
-          label="Ganho médio por trade"
-          value={metrics.expectancy_R != null ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'}
-          secondary={
-            metrics.expectancy_R != null && metrics.expectancy_R >= 0.5 ? 'excelente · cada trade rende em média 0,5R+' :
-            metrics.expectancy_R >= 0.3 ? 'no alvo · saldo positivo consistente' :
-            'abaixo do ideal · ganho médio fraco'
-          }
-        />
-        <SmallStat
-          label="Taxa de acerto"
-          value={metrics.winRate != null ? formatPct(metrics.winRate * 100) : '—'}
-          secondary={`${metrics.winners} vitórias em ${metrics.count} trades`}
-        />
-        <SmallStat
-          label="Ganho médio / Perda média (em R)"
-          value={`${metrics.avgWinR != null ? metrics.avgWinR.toFixed(2) : '—'} / ${metrics.avgLossR != null ? metrics.avgLossR.toFixed(2) : '—'}`}
-          secondary={metrics.avgLossR && metrics.avgLossR !== 0 ? `vitória vale ${(metrics.avgWinR / Math.abs(metrics.avgLossR)).toFixed(2)}× a perda` : ''}
-        />
-        <SmallStat
-          label="Maior queda do capital"
-          value={formatPct(Math.abs(maxDD.percent * 100))}
-          secondary={formatBRL(maxDD.value)}
-          danger={Math.abs(maxDD.percent) > 0.04}
-        />
-        <SmallStat
-          label="Lucro ÷ Prejuízo"
-          value={metrics.profitFactor != null ? metrics.profitFactor.toFixed(2) : '—'}
-          secondary={metrics.profitFactor != null
-            ? (metrics.profitFactor >= 1.5 ? 'sólido' : metrics.profitFactor >= 1 ? 'no positivo' : 'no negativo')
-            : ''}
-        />
-        <SmallStat
-          label="Disciplina (regras respeitadas)"
-          value={ruleAdherenceRate != null ? formatPct(ruleAdherenceRate * 100) : '—'}
-          secondary={top3Errors.length > 0 ? `${top3Errors.length} tipos de violação` : 'sem violações'}
-          danger={ruleAdherenceRate != null && ruleAdherenceRate < 0.9}
-        />
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label: 'Expectancy (R)', tooltip: EXPECTANCY_TOOLTIP, ...expectancyContent(metrics.expectancy_R) },
+          { label: 'Win Rate', tooltip: WIN_RATE_TOOLTIP, ...winRateContent(metrics.winRate, metrics.winners, metrics.count) },
+          { label: 'Payoff', tooltip: PAYOFF_TOOLTIP, ...payoffContent(metrics.avgWinR, metrics.avgLossR) },
+          { label: 'Profit Factor', tooltip: PROFIT_FACTOR_TOOLTIP, ...profitFactorContent(metrics.profitFactor) },
+          { label: 'Max Drawdown', tooltip: DRAWDOWN_TOOLTIP, ...drawdownContent(maxDD.percent, maxDD.value) },
+          { label: 'Aderência', tooltip: ADHERENCE_TOOLTIP, ...adherenceContent(ruleAdherenceRate, top3Errors.length) },
+        ].map((t) => (
+          <MetricTile
+            key={t.label} label={t.label} value={t.value} theme={t.theme}
+            bandLabel={t.bandLabel} caption={t.caption} tooltip={t.tooltip}
+            isInsufficient={!!t.valueClassName}
+          />
+        ))}
       </div>
+
+      <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+        <Activity className="w-4 h-4" /> Consistência Operacional
+      </h4>
+      {consistency.loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" data-testid="consistency-skeleton">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 bg-slate-700/30 rounded animate-pulse" />
+              <div className="h-7 bg-slate-700/30 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
+            {[
+              { label: 'Sharpe', tooltip: buildSharpeTooltip(consistency.sharpe, cycleStart), ...sharpeContent(consistency.sharpe) },
+              { label: 'CV norm.', tooltip: buildCvTooltip(consistency.cvNormalized, plan), ...cvContent(consistency.cvNormalized) },
+              { label: 'MEP médio', tooltip: MEP_TOOLTIP, ...mepContent(consistency.avgExcursion) },
+              { label: 'MEN médio', tooltip: MEN_TOOLTIP, ...menContent(consistency.avgExcursion) },
+            ].map((t) => (
+              <MetricTile
+                key={t.label} label={t.label} value={t.value} theme={t.theme}
+                bandLabel={t.bandLabel} caption={t.caption} badge={t.badge} tooltip={t.tooltip}
+                isInsufficient={!!t.valueClassName}
+              />
+            ))}
+          </div>
+          {consistency.avgExcursion?.coverageBelowThreshold && consistency.avgExcursion.coverageLabel && (
+            <p className="text-[10px] text-amber-400/80 mb-6">{consistency.avgExcursion.coverageLabel}</p>
+          )}
+        </>
+      )}
 
       {/* Stop breach alert — só renderiza se houve violação */}
       {stopBreach.stopBreachIndex !== -1 && (
@@ -370,7 +378,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
             </summary>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
               <TPSComponentCard
-                label="Lucro ÷ Prejuízo"
+                label="Profit Factor"
                 rawValue={metrics.profitFactor != null ? metrics.profitFactor.toFixed(2) : '—'}
                 ptsGot={tps.breakdown.pf * 100}
                 ptsMax={TPS_WEIGHTS.profitFactor * 100}
@@ -379,7 +387,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
                 hint="ganhos médios menores que perdas — alvo escalonado ou alvo maior"
               />
               <TPSComponentCard
-                label="Queda do capital"
+                label="Max Drawdown"
                 rawValue={`${(Math.abs(maxDD.percent) * 100).toFixed(1)}%`}
                 ptsGot={tps.breakdown.dd * 100}
                 ptsMax={TPS_WEIGHTS.drawdown * 100}
@@ -388,7 +396,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
                 hint="ficou perto/passou do stop — reduzir size ou parar antes"
               />
               <TPSComponentCard
-                label="Ganho médio"
+                label="Expectancy (R)"
                 rawValue={metrics.expectancy_R != null ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'}
                 ptsGot={tps.breakdown.exp * 100}
                 ptsMax={TPS_WEIGHTS.expectancy * 100}
@@ -406,7 +414,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
                 hint="winrate semanal oscila muito — buscar regime estável"
               />
               <TPSComponentCard
-                label="Disciplina (regras)"
+                label="Aderência"
                 rawValue={ruleAdherenceRate != null ? `${(ruleAdherenceRate * 100).toFixed(1)}%` : '—'}
                 ptsGot={tps.breakdown.rule * 100}
                 ptsMax={TPS_WEIGHTS.rule * 100}
