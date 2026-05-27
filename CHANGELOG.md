@@ -12,7 +12,10 @@ Version source of truth: `src/version.js`.
 
 **feat:** paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **SSoT de apresentação** `src/components/metrics/cycleMetricTiles.jsx` — `MetricTile` + themes/contents/tooltips, consumido por dashboard e wizard. Vocabulário **técnico + tooltip didático** (DEC-AUTO-282-01).
+- **Dashboard** `CycleConsistencyCard` passa a consumir a SSoT (−240 linhas locais), sem regressão visual.
+- **Wizard de Fechamento** (`Step1Read`) ganha o grupo **Consistência** (Sharpe / CV norm. / MEP médio / MEN médio via `useCycleConsistency`), o grupo **Performance** re-rotulado pro técnico e o breakdown do TPS alinhado. Consistência é display-time, não congela no `frozenSnapshot` (DEC-AUTO-282-02).
+- Testes: +14 (11 SSoT + 3 wizard). Suíte 3258/3258. Sem mudança em Firestore/CFs.
 
 
 ## [1.64.1] - 24/05/2026 · #280 · PR #281
