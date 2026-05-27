@@ -39,4 +39,4 @@
 | 1.64.0 | #259 | `feat/issue-259-cycle-closure` | 24/05/2026 | consumida (PR #264 squash `a390ecf8`) |
 | 1.64.1 | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | consumida (PR #281 squash `5dacb7c6`) |
 | 1.65.0 | #267 | `fix/issue-267-tactical-bugs` | 25/05/2026 | reservada (escopo final: bugs 1, 2, 6 — 3→#275, 4→#269, 5 retirado) |
-| 1.66.0 | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | reservada (paridade indicadores+nomenclatura dashboard↔fechamento; sobre 1.64.1 consumida, +1 minor livre acima da reserva ativa #267) |
+| 1.66.0 | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | consumida (PR #284 squash `45c90a38`) |

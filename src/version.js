@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.66.0: #282 feat paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo (PR #284, 27/05/2026)
  * - 1.66.0: #282 Paridade de indicadores e nomenclatura entre Dashboard e Fechamento de Ciclo — SSoT única de métricas de ciclo + vocabulário canônico único + trazer Sharpe/CV norm./MEP médio/MEN médio para o wizard de fechamento (hoje só no dashboard, #235). Unifica fonte e nomes; não altera fórmulas existentes. Reservada na abertura. Entrada definitiva no encerramento.
  * - 1.65.0: #267 Correção de Bugs Táticos (escopo final): bug 1 MEN/MEP Yahoo — abortar quando faltar entryTime/exitTime (em vez de fallback pra trade.date/janela-zero) + conversão correta de timezone pro horário do trade do aluno; bug 2 Context Bar — modo "todo histórico" destravando obrigatoriedade de Ciclo; bug 6 limpeza de compliance (mentorClearedViolations) não persiste no extrato/gates 4D. Desmembrados: bug 3→#275, bug 4→#269, bug 5 retirado (purge de cancelados é decisão futura). Reservada na abertura. Entrada definitiva no encerramento.
  * - 1.64.1: fix(closure-inbox): item não sai do inbox após "marcar sem comentário". `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira null no fluxo "no comment") em vez de `mentor.closingCommentAt` (timestamp sempre setado). Trocar 2 ocorrências (filter + pendingCount) por `!!c.mentor?.closingCommentAt`. Entrada definitiva no encerramento.
@@ -359,10 +360,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.64.1',
-  build: '20260524',
-  display: 'v1.64.1',
-  full: '1.64.1+20260524',
+  version: '1.66.0',
+  build: '20260527',
+  display: 'v1.66.0',
+  full: '1.66.0+20260527',
 };
 export default VERSION;
 export { VERSION };

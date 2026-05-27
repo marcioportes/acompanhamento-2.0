@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.66.0] - 27/05/2026 · #282 · PR #284
+
+**feat:** paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.64.1] - 24/05/2026 · #280 · PR #281
 
 **fix:** 'marcar sem comentário' não remove item do inbox do mentor
