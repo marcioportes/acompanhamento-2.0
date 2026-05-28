@@ -40,3 +40,4 @@
 | 1.64.1 | #280 | `fix/issue-280-closure-inbox-no-comment` | 24/05/2026 | consumida (PR #281 squash `5dacb7c6`) |
 | 1.67.0 | #267 | `fix/issue-267-tactical-bugs` | 27/05/2026 | consumida (PR #283 squash `fdf75671`) |
 | 1.66.0 | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | consumida (PR #284 squash `45c90a38`) |
+| 1.68.0 | #285 | `feat/issue-285-trade-timezone` | 27/05/2026 | reservada (tz explícito no horário do trade — MEP/MEN manual+import + gate de promoção) |

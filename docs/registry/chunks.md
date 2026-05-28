@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-04 (Trade Ledger) — ESCRITA | #285 | `feat/issue-285-trade-timezone` | 27/05/2026 | tz explícito no horário do trade + enrich usa tz + enrich no update |

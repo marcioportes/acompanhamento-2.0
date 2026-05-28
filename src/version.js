@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.68.0: #285 feat timezone explícito no horário do trade — MEP/MEN correto (manual + import) + gate de promoção. [RESERVADA — entrada definitiva no encerramento.]
  * - 1.67.0: #267 fix bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D (PR #283, 27/05/2026)
  * - 1.66.0: #282 feat paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo — SSoT única de tiles de métricas (técnico + tooltip) + Sharpe/CV/MEP/MEN trazidos pro wizard (PR #284, 27/05/2026)
  * - 1.64.1: fix(closure-inbox): item não sai do inbox após "marcar sem comentário". `useMentorClosureInbox` filtrava por presença de conteúdo em `mentor.closingComment` (vira null no fluxo "no comment") em vez de `mentor.closingCommentAt` (timestamp sempre setado). Trocar 2 ocorrências (filter + pendingCount) por `!!c.mentor?.closingCommentAt`. Entrada definitiva no encerramento.
