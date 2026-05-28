@@ -170,12 +170,17 @@ fi
 
 # 3b. CHANGELOG.md — nova entrada ≤8 linhas (formato Fase 2)
 if [ -n "$VER" ]; then
+  # Resumo: bullets de 1º nível ("- …") do corpo do PR (#286). Exclui o próprio
+  # placeholder. Fallback pro placeholder se o PR não tiver bullets (back-compat).
+  PR_BULLETS=$(gh pr view "$PR" --json body --jq '.body' 2>/dev/null \
+    | grep -E '^- ' | grep -vE '^- _\(' | head -8 || true)
+  [ -n "$PR_BULLETS" ] || PR_BULLETS="- _(decisões/testes/files — ajustar antes do commit)_"
   CHANGELOG_BLOCK=$(cat <<EOF
 ## [${VER}] - ${TODAY} · #${ISSUE} · PR #${PR}
 
 **${PR_TYPE}:** ${PR_SUMMARY}
 
-- _(decisões/testes/files — ajustar antes do commit)_
+${PR_BULLETS}
 EOF
 )
   if $DRY_RUN; then
@@ -244,9 +249,18 @@ if [ -n "$VER" ] && $TOUCHES_PRODUCT; then
           print
         }
       ' "$REPO/src/version.js" > "$REPO/src/version.js.tmp" && mv "$REPO/src/version.js.tmp" "$REPO/src/version.js"
+    elif grep -qE "^ ?\* - ${VER}:" "$REPO/src/version.js"; then
+      # Reserva SEM tag [RESERVADA] (formato textual usado pelas sessões atuais,
+      # ex.: "Reservada na abertura. Entrada definitiva no encerramento."):
+      # SUBSTITUI a linha existente "* - ${VER}:" pelo oneliner final em vez de
+      # inserir uma 2ª — evita duplicata (gap descoberto no encerramento #282/#286).
+      awk -v ver="$VER" -v line="$VERSION_LINE" '
+        !done && $0 ~ ("^ ?\\* - " ver ":") { print line; done=1; next }
+        { print }
+      ' "$REPO/src/version.js" > "$REPO/src/version.js.tmp" && mv "$REPO/src/version.js.tmp" "$REPO/src/version.js"
     else
-      # Insere oneliner após "* CHANGELOG". Usa awk em vez de sed para preservar
-      # o espaço inicial (GNU sed `a` strip leading whitespace por design).
+      # Sem reserva prévia: insere oneliner após "* CHANGELOG". Usa awk em vez de
+      # sed para preservar o espaço inicial (GNU sed `a` strip leading whitespace).
       awk -v line="$VERSION_LINE" '
         { print }
         /^ \* CHANGELOG/ { print line }
@@ -277,13 +291,13 @@ if [ -n "$VER" ]; then
 fi
 
 # 3e. registry/chunks.md — liberar locks da sessão
-LOCK_LINES=$(grep -E "^\| CHUNK-[A-Z0-9]+ \| #${ISSUE} \|" "$REPO/docs/registry/chunks.md" || true)
+LOCK_LINES=$(grep -E "^\| CHUNK-[A-Z0-9]+[^|]*\| #${ISSUE} \|" "$REPO/docs/registry/chunks.md" || true)
 if [ -n "$LOCK_LINES" ]; then
   if $DRY_RUN; then
     echo "  [dry-run] registry/chunks.md ← remover linhas:"
     echo "$LOCK_LINES" | sed 's/^/    /'
   else
-    grep -vE "^\| CHUNK-[A-Z0-9]+ \| #${ISSUE} \|" "$REPO/docs/registry/chunks.md" > "$REPO/docs/registry/chunks.md.tmp"
+    grep -vE "^\| CHUNK-[A-Z0-9]+[^|]*\| #${ISSUE} \|" "$REPO/docs/registry/chunks.md" > "$REPO/docs/registry/chunks.md.tmp"
     mv "$REPO/docs/registry/chunks.md.tmp" "$REPO/docs/registry/chunks.md"
   fi
 fi
