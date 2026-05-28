@@ -297,3 +297,73 @@ describe('runEnrichment — bug 1 #267 (janela busca o horário de Brasília, n�
     );
   });
 });
+
+describe('runEnrichment — issue #285 (entryTime com offset explícito do fuso do trade)', () => {
+  it('entryTime ET 16:23 (EDT/-04:00) busca Yahoo na janela 20:23 UTC (não Brasília)', async () => {
+    // Cenário real: aluno lança NQ lendo TradingView em ET, app grava ISO+offset.
+    const trade = futuresTrade({
+      entryTime: '2026-05-27T16:23:00-04:00', // 16:23 ET = 20:23 UTC
+      exitTime: '2026-05-27T17:45:00-04:00',  // 17:45 ET = 21:45 UTC
+    });
+    const { db, updateFn } = makeMockDb(trade);
+
+    const expectedT1 = Math.floor(new Date('2026-05-27T20:23:00Z').getTime() / 1000);
+    const expectedT2 = Math.floor(new Date('2026-05-27T21:45:00Z').getTime() / 1000);
+    const wrongBrasiliaT1 = Math.floor(new Date('2026-05-27T19:23:00Z').getTime() / 1000);
+
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        chart: { result: [{
+          timestamp: [expectedT1, expectedT1 + 60, expectedT2],
+          indicators: { quote: [{ high: [100, 110, 105], low: [98, 99, 95] }] },
+        }] },
+      }),
+    });
+
+    const result = await runEnrichment(
+      { tradeId: 't-1' },
+      { db, fetchFn, now: () => new Date('2026-05-27T22:00:00Z') }
+    );
+
+    const url = fetchFn.mock.calls[0][0];
+    expect(url).toContain(`period1=${expectedT1}`);
+    expect(url).toContain(`period2=${expectedT2}`);
+    // Confirma que NÃO usou Brasília (-3h) — usou o offset explícito do trade (-4h).
+    expect(url).not.toContain(`period1=${wrongBrasiliaT1}`);
+    expect(result.ok).toBe(true);
+    expect(result.mepPrice).toBe(110);
+    expect(result.menPrice).toBe(95);
+  });
+
+  it('entryTime ET dezembro (EST/-05:00) — switch DST captura offset diferente', async () => {
+    // Mesma hora de relógio (16:23 ET), mês diferente → offset diferente → janela UTC diferente.
+    const trade = futuresTrade({
+      entryTime: '2026-12-15T16:23:00-05:00', // 16:23 EST = 21:23 UTC (não 20:23)
+      exitTime: '2026-12-15T17:00:00-05:00',  // 17:00 EST = 22:00 UTC
+    });
+    const { db } = makeMockDb(trade);
+
+    const expectedT1 = Math.floor(new Date('2026-12-15T21:23:00Z').getTime() / 1000);
+    const expectedT2 = Math.floor(new Date('2026-12-15T22:00:00Z').getTime() / 1000);
+
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        chart: { result: [{
+          timestamp: [expectedT1, expectedT2],
+          indicators: { quote: [{ high: [200, 201], low: [199, 198] }] },
+        }] },
+      }),
+    });
+
+    await runEnrichment(
+      { tradeId: 't-1' },
+      { db, fetchFn, now: () => new Date('2026-12-15T22:30:00Z') }
+    );
+
+    const url = fetchFn.mock.calls[0][0];
+    expect(url).toContain(`period1=${expectedT1}`);
+    expect(url).toContain(`period2=${expectedT2}`);
+  });
+});

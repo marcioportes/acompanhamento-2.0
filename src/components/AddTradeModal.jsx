@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   X, 
   Upload, 
@@ -21,6 +21,14 @@ import { useToast } from '../contexts/ToastContext';
 import { calculateFromPartials } from '../utils/tradeCalculations';
 import { validateExcursionPrices } from '../utils/tradeGateway';
 import { detectInstrumentType, convertExcursionRawToPrice, derivePtsFromPrice } from '../utils/excursionParsing';
+import useLocalStorage from '../hooks/useLocalStorage';
+import {
+  TIMEZONE_LIST,
+  defaultTzForTicker,
+  combineDateTimeWithTz,
+  toBrasiliaDisplay,
+  TIMEZONES,
+} from '../utils/tradeTimezone';
 
 const SIDES = ['LONG', 'SHORT'];
 
@@ -97,6 +105,14 @@ const AddTradeModal = ({
   // --- SISTEMA DE PARCIAIS (SEMPRE ATIVO) ---
   const [partials, setPartials] = useState([]);
   const [resultOverride, setResultOverride] = useState(null);
+
+  // #285 — fuso de referência do horário do trade (sticky por aluno via localStorage).
+  // Default inicial = ET pra futuros CME, BRT pro resto. Após a 1ª escolha do aluno,
+  // sticky prevalece (last-used). Gravado em `entryTime`/`exitTime` como ISO+offset.
+  const [selectedTz, setSelectedTz] = useLocalStorage(
+    'addTradeLastTimezone',
+    defaultTzForTicker(editTrade?.ticker || ''),
+  );
 
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
@@ -190,15 +206,29 @@ const AddTradeModal = ({
     return timePart.substring(0, 5);
   };
 
-  /** Combina data BR (DD/MM/AAAA) + hora (HH:MM ou HH:MM:SS) em ISO string */
+  /** Combina data BR (DD/MM/AAAA) + hora (HH:MM ou HH:MM:SS) em ISO + offset.
+   *  #285: grava instante absoluto com offset do fuso selecionado. Enrich
+   *  (HAS_TZ) passa direto sem aplicar Brasília fixo. DST automático pela data. */
   const combineDateTimeISO = (dateBr, time) => {
     if (!dateBr || dateBr.length !== 10 || !time || time.length < 5) return '';
     const isoDate = brToIso(dateBr);
     if (!isoDate) return '';
-    // Se já tem segundos (HH:MM:SS), usar direto; senão, adicionar :00
-    const timePart = time.length >= 8 ? time : `${time}:00`;
-    return `${isoDate}T${timePart}`;
+    return combineDateTimeWithTz(isoDate, time, selectedTz) || '';
   };
+
+  /** Helper "Equivalente em Brasília" — preview do horário gravado em BRT, pro
+   *  aluno conferir mentalmente que não trocou de fuso sem perceber. */
+  const brtEntryPreview = useMemo(() => {
+    if (!formData.entryDate || !formData.entryTime || !selectedTz) return '';
+    const iso = combineDateTimeWithTz(formData.entryDate, formData.entryTime, selectedTz);
+    return toBrasiliaDisplay(iso);
+  }, [formData.entryDate, formData.entryTime, selectedTz]);
+
+  const brtExitPreview = useMemo(() => {
+    if (!formData.exitDate || !formData.exitTime || !selectedTz) return '';
+    const iso = combineDateTimeWithTz(formData.exitDate, formData.exitTime, selectedTz);
+    return toBrasiliaDisplay(iso);
+  }, [formData.exitDate, formData.exitTime, selectedTz]);
 
   // --- HELPER: Formato moeda para exibição ---
   const formatResultDisplay = (value) => {
@@ -928,7 +958,27 @@ const AddTradeModal = ({
                       <Plus className="w-3 h-3" /> Adicionar
                     </button>
                   </div>
-                  
+
+                  {/* #285 — Fuso de referência (sticky, default por instrumento; grava ISO+offset) */}
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-900/40 rounded-md border border-slate-700/30 mb-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Fuso</span>
+                    <select
+                      value={selectedTz}
+                      onChange={(e) => setSelectedTz(e.target.value)}
+                      className="input-dark text-xs py-1 px-2"
+                      aria-label="Fuso de referência do horário do trade"
+                    >
+                      {TIMEZONE_LIST.map((tz) => (
+                        <option key={tz.id} value={tz.id}>{tz.label}</option>
+                      ))}
+                    </select>
+                    {selectedTz !== TIMEZONES.BRT.id && (brtEntryPreview || brtExitPreview) && (
+                      <span className="text-[10px] text-slate-500 ml-auto whitespace-nowrap">
+                        ≈ Brasília: {brtEntryPreview || '—'}{brtExitPreview ? ` → ${brtExitPreview}` : ''}
+                      </span>
+                    )}
+                  </div>
+
                   {/* Header — Item 1: "Tipo" ao invés de "Ponta" + Item 2: Data e Hora separados */}
                   <div className="grid grid-cols-[80px_1fr_70px_100px_95px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
                     <span>Tipo</span>

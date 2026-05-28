@@ -1437,8 +1437,13 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       ? after.mentorClearedViolations : []).slice().sort());
     const clearedChanged = fpClearedBefore !== fpClearedAfter;
 
+    // Issue #285 — detectar mudança em entryTime/exitTime (re-enrich MEP/MEN com a
+    // nova janela) ou mepPrice zerado pela ação "Recalcular MEP/MEN" da UI.
+    const timeChanged = before.entryTime !== after.entryTime || before.exitTime !== after.exitTime;
+    const mepCleared = before.mepPrice != null && after.mepPrice == null;
+
     // Guard: se apenas riskPercent/rrRatio/compliance/redFlags mudaram, é loop da própria CF
-    if (!resultChanged && !planChanged && !complianceChanged && !clearedChanged) {
+    if (!resultChanged && !planChanged && !complianceChanged && !clearedChanged && !timeChanged && !mepCleared) {
       return null;
     }
     
@@ -1545,6 +1550,26 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         console.log(`[onTradeUpdated] Maturity recomputado por toggle de cleared (student=${after.studentId}, before=${fpClearedBefore}, after=${fpClearedAfter})`);
       } catch (recomputeErr) {
         console.error('[onTradeUpdated] Erro recompute maturity (cleared toggle):', recomputeErr);
+      }
+    }
+
+    // === ISSUE #285 — RE-ENRICH MEP/MEN POR MUDANÇA DE HORA/TZ OU RECALCULAR ===
+    // Hora/tz mudou OU aluno clicou "Recalcular MEP/MEN" (mepPrice virou null).
+    // O guard interno de `runEnrichment` faz no-op se mep/men já preenchidos,
+    // então o re-enrich só acontece quando a chamada faz sentido (mep null).
+    // Falha silenciosa por design (enrich é best-effort, não bloqueia o update).
+    // Loop guard: a própria escrita do enrich só muda mep/men/excursionSource, que
+    // não estão em nenhum dos detectores acima → próximo trigger early-return.
+    if (timeChanged || mepCleared) {
+      try {
+        const { runEnrichment } = require('./marketData/enrichTradeWithExcursions');
+        const tradeId = context.params.tradeId;
+        const result = await runEnrichment({ tradeId }, { db });
+        if (!result.ok && !result.skipped) {
+          console.log(`[onTradeUpdated] re-enrich (${timeChanged ? 'hora/tz' : 'recalcular'}): ${result.reason}`);
+        }
+      } catch (enrichErr) {
+        console.warn('[onTradeUpdated] erro re-enrich (suprimido):', enrichErr.message);
       }
     }
 

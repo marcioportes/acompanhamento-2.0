@@ -358,6 +358,24 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (onNavigateToFeedback) onNavigateToFeedback(trade);
   };
 
+  // #285 — "Recalcular MEP/MEN": zera mep/men/excursionSource → onTradeUpdated
+  // detecta `mepCleared`, dispara runEnrichment com a janela do entryTime/exitTime atuais.
+  const handleRecalcMepMen = async (tradeId) => {
+    const ok = await confirm({
+      title: 'Recalcular MEP/MEN?',
+      message: 'Os valores atuais serão zerados e o sistema buscará os candles novamente para a janela do trade. Use após corrigir hora ou fuso.',
+      confirmLabel: 'Recalcular',
+      variant: 'default',
+    });
+    if (!ok) return;
+    try {
+      await updateTrade(tradeId, { mepPrice: null, menPrice: null, excursionSource: null });
+      toast.success('Recalculando MEP/MEN…');
+    } catch (err) {
+      toast.error(`Falha ao zerar: ${err.message || err}`);
+    }
+  };
+
   /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240).
    *  Retorna o resultado bruto do hook — UI de feedback fica com o CsvImportManager/Modal. */
   const handleActivateStagingTrade = async (stagingTrade) => {
@@ -726,7 +744,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} getPartials={getPartials} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} getPartials={getPartials} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
       {/* PlanLedgerExtract: ledger agora é currentView no App.jsx (#102 Fase 0), não modal aqui */}
