@@ -75,6 +75,8 @@ import useMasterData from '../hooks/useMasterData';
 import { useSetups } from '../hooks/useSetups';
 import { useMaturity } from '../hooks/useMaturity';
 import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
+import useLatestClosedReview from '../hooks/useLatestClosedReview';
+import { ALL_CYCLES_KEY } from '../utils/cycleResolver';
 import { currentTrigger, shouldGenerateAI } from '../utils/maturityAITrigger';
 
 // Contexto unificado (issue #118 — DEC-047)
@@ -356,6 +358,20 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // aparecem com plano selecionado — garante escopo de moeda única + baseline.
   // Sem plano sobra só a Curva de Patrimônio (nível-conta, multi-moeda própria).
   const planSelected = selectedPlanId != null;
+
+  // Review do ciclo selecionado (#289 Fase 2): fonte única, compartilhada entre
+  // SWOT e o card de Maturidade. Filtra por plano + cycleKey (null em "Todos os
+  // ciclos" → última review). Ciclo passado (read-only) usa o maturitySnapshot
+  // congelado desta review; ciclo ativo usa a maturidade viva (maturity/current).
+  const swotPlanFilter = selectedPlanId || swotAccountPlanIds || null;
+  const cycleFilter = studentCtx.cycleKey === ALL_CYCLES_KEY ? null : (studentCtx.cycleKey || null);
+  const { review: cycleReview, loading: cycleReviewLoading } = useLatestClosedReview(
+    maturityStudentId, swotPlanFilter, cycleFilter,
+  );
+  const isPastCycle = Boolean(studentCtx.isReadOnlyCycle);
+  const displayMaturity = isPastCycle
+    ? (cycleReview?.frozenSnapshot?.maturitySnapshot ?? null)
+    : maturity;
 
   // === Handlers ===
   const handleViewFeedbackHistory = (trade) => {
@@ -726,23 +742,25 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         );
       })()}
 
-      {/* Análises */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <SwotAnalysis
-          studentId={overrideStudentId || user?.uid}
-          planId={selectedPlanId}
-          accountPlanIds={swotAccountPlanIds}
-          /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
-             (hoje 'weekly-review' é restrita a mentor em App.jsx). */
-        />
-        {planSelected && <SetupAnalysis trades={filteredTrades} setupsMeta={setups} currency={dominantCurrency || 'BRL'} />}
-      </div>
+      {/* Análises — gated por plano (#289). SWOT segue o ciclo selecionado via
+          cycleReview (Fase 2). */}
+      {planSelected && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <SwotAnalysis
+            review={cycleReview}
+            loading={cycleReviewLoading}
+            /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
+               (hoje 'weekly-review' é restrita a mentor em App.jsx). */
+          />
+          <SetupAnalysis trades={filteredTrades} setupsMeta={setups} currency={dominantCurrency || 'BRL'} />
+        </div>
+      )}
       {planSelected && (
         <div className="mb-6">
           <EmotionAnalysis
             trades={filteredTrades}
             globalWR={stats?.winRate}
-            maturity={maturity}
+            maturity={displayMaturity}
             currency={dominantCurrency || 'BRL'}
           />
         </div>
@@ -751,21 +769,35 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       {/* Progressão de Maturidade (issue #119 D13) — posicionado logo após a
           Matriz Emocional 4D para manter a ligação visual "depois da matriz".
           PendingTakeaways permanece antes. INV-17 consolidação: quadrante
-          Maturidade da Matriz 4D foi reduzido a teaser. */}
-      <div className="mb-6">
-        <MaturityProgressionCard
-          maturity={maturity}
-          loading={maturityLoading}
-          error={maturityError}
-          aiGenerating={aiGenerating}
-          aiError={aiError}
-          onRefresh={handleRefreshMaturity}
-          refreshing={recomputeLoading}
-          refreshThrottled={recomputeThrottled}
-          refreshNextAllowedAt={recomputeNextAllowedAt}
-          refreshError={recomputeError}
-        />
-      </div>
+          Maturidade da Matriz 4D foi reduzido a teaser.
+          #289 Fase 2: gated por plano. Ciclo passado (read-only) mostra o
+          maturitySnapshot congelado da review do ciclo, sem refresh/IA; ciclo
+          ativo mostra a maturidade viva. */}
+      {planSelected && (
+        <div className="mb-6">
+          {isPastCycle && !displayMaturity ? (
+            <div className="glass-card p-6 text-center">
+              <h3 className="font-bold text-white text-sm mb-1">Progressão de Maturidade</h3>
+              <p className="text-slate-400 text-sm">
+                Sem revisão fechada neste ciclo — maturidade histórica indisponível.
+              </p>
+            </div>
+          ) : (
+            <MaturityProgressionCard
+              maturity={displayMaturity}
+              loading={isPastCycle ? cycleReviewLoading : maturityLoading}
+              error={isPastCycle ? null : maturityError}
+              aiGenerating={isPastCycle ? false : aiGenerating}
+              aiError={isPastCycle ? null : aiError}
+              onRefresh={isPastCycle ? null : handleRefreshMaturity}
+              refreshing={recomputeLoading}
+              refreshThrottled={recomputeThrottled}
+              refreshNextAllowedAt={recomputeNextAllowedAt}
+              refreshError={recomputeError}
+            />
+          )}
+        </div>
+      )}
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />

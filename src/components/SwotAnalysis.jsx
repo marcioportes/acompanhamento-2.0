@@ -14,7 +14,6 @@ import {
   CheckCircle2, Loader2,
 } from 'lucide-react';
 import DebugBadge from './DebugBadge';
-import useLatestClosedReview from '../hooks/useLatestClosedReview';
 import { formatDate } from '../utils/calculations';
 
 const QUADRANTS = [
@@ -77,11 +76,10 @@ const SourceBadge = ({ swot }) => {
   );
 };
 
-const SwotAnalysis = ({ studentId, planId = null, accountPlanIds = null, onNavigateToReview }) => {
-  // Precedência: planId específico > accountPlanIds (conta sem plano) > null (global)
-  const planFilter = planId || accountPlanIds || null;
-  const { review, loading } = useLatestClosedReview(studentId || null, planFilter);
-
+// review/loading são fornecidos pelo StudentDashboard (#289): o fetch foi
+// elevado para uma fonte única (useLatestClosedReview com filtro de ciclo),
+// compartilhada com o card de Maturidade (snapshot congelado do ciclo).
+const SwotAnalysis = ({ review = null, loading = false, onNavigateToReview }) => {
   if (loading) {
     return (
       <div className="glass-card p-6" data-testid="swot-loading">

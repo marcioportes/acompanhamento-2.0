@@ -1,20 +1,14 @@
 /**
  * SwotAnalysis.test.jsx
- * @description Testes do SwotAnalysis refatorado para consumir review.swot
- *              (issue #164 — E1: SWOT vem da última review CLOSED).
+ * @description Testes do SwotAnalysis. A partir do #289 (Fase 2) o componente é
+ *              presentacional: recebe `review`/`loading` como props (o fetch com
+ *              filtro de ciclo foi elevado ao StudentDashboard e compartilhado
+ *              com o card de Maturidade).
  * @see src/components/SwotAnalysis.jsx
- * @see src/hooks/useLatestClosedReview.js
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-
-const mockHookReturn = { review: null, loading: false, error: null };
-
-vi.mock('../../hooks/useLatestClosedReview', () => ({
-  __esModule: true,
-  default: () => mockHookReturn,
-}));
 
 vi.mock('../../components/DebugBadge', () => ({
   __esModule: true,
@@ -23,25 +17,15 @@ vi.mock('../../components/DebugBadge', () => ({
 
 import SwotAnalysis from '../../components/SwotAnalysis';
 
-const setHook = (overrides) => {
-  Object.assign(mockHookReturn, { review: null, loading: false, error: null }, overrides);
-};
-
 describe('SwotAnalysis', () => {
-  beforeEach(() => {
-    setHook({});
-  });
-
   it('estado loading mostra skeleton/placeholder discreto', () => {
-    setHook({ loading: true });
-    render(<SwotAnalysis studentId="s1" />);
+    render(<SwotAnalysis loading review={null} />);
     expect(screen.getByTestId('swot-loading')).toBeInTheDocument();
   });
 
   it('estado vazio: sem review CLOSED mostra mensagem e CTA "Ver Revisão Semanal"', () => {
     const onNavigate = vi.fn();
-    setHook({ review: null, loading: false });
-    render(<SwotAnalysis studentId="s1" onNavigateToReview={onNavigate} />);
+    render(<SwotAnalysis review={null} loading={false} onNavigateToReview={onNavigate} />);
     expect(screen.getByText(/Aguardando primeira Revisão Semanal/i)).toBeInTheDocument();
     const btn = screen.getByRole('button', { name: /Ver Revisão Semanal/i });
     expect(btn).toBeInTheDocument();
@@ -50,30 +34,27 @@ describe('SwotAnalysis', () => {
   });
 
   it('estado vazio sem onNavigateToReview: botão não aparece', () => {
-    setHook({ review: null, loading: false });
-    render(<SwotAnalysis studentId="s1" />);
+    render(<SwotAnalysis review={null} loading={false} />);
     expect(screen.getByText(/Aguardando primeira Revisão Semanal/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Ver Revisão Semanal/i })).toBeNull();
   });
 
   it('review com swot completo renderiza os 4 quadrantes com itens', () => {
-    setHook({
-      review: {
-        id: 'r1',
-        weekStart: '2026-04-13',
-        swot: {
-          strengths: ['Respeitou stops', 'WR 66% em MNQ'],
-          weaknesses: ['Overtrading após 15h'],
-          opportunities: ['Explorar setups de abertura'],
-          threats: ['Concentração em MNQ'],
-          aiUnavailable: false,
-          modelVersion: 'claude-sonnet-4-6',
-          generatedAt: { seconds: 1712937600, nanoseconds: 0 },
-          generationCount: 1,
-        },
+    const review = {
+      id: 'r1',
+      weekStart: '2026-04-13',
+      swot: {
+        strengths: ['Respeitou stops', 'WR 66% em MNQ'],
+        weaknesses: ['Overtrading após 15h'],
+        opportunities: ['Explorar setups de abertura'],
+        threats: ['Concentração em MNQ'],
+        aiUnavailable: false,
+        modelVersion: 'claude-sonnet-4-6',
+        generatedAt: { seconds: 1712937600, nanoseconds: 0 },
+        generationCount: 1,
       },
-    });
-    render(<SwotAnalysis studentId="s1" />);
+    };
+    render(<SwotAnalysis review={review} loading={false} />);
     expect(screen.getByText('Respeitou stops')).toBeInTheDocument();
     expect(screen.getByText('WR 66% em MNQ')).toBeInTheDocument();
     expect(screen.getByText('Overtrading após 15h')).toBeInTheDocument();
@@ -86,65 +67,47 @@ describe('SwotAnalysis', () => {
   });
 
   it('aiUnavailable=false: badge verde com modelVersion', () => {
-    setHook({
-      review: {
-        id: 'r1',
-        swot: {
-          strengths: ['ok'],
-          weaknesses: [],
-          opportunities: [],
-          threats: [],
-          aiUnavailable: false,
-          modelVersion: 'claude-sonnet-4-6',
-        },
+    const review = {
+      id: 'r1',
+      swot: {
+        strengths: ['ok'], weaknesses: [], opportunities: [], threats: [],
+        aiUnavailable: false, modelVersion: 'claude-sonnet-4-6',
       },
-    });
-    render(<SwotAnalysis studentId="s1" />);
+    };
+    render(<SwotAnalysis review={review} loading={false} />);
     const badge = screen.getByTestId('swot-source-badge');
     expect(badge).toHaveTextContent(/IA/);
     expect(badge).toHaveTextContent(/claude-sonnet-4-6/);
   });
 
   it('aiUnavailable=true: badge amber "Fallback determinístico"', () => {
-    setHook({
-      review: {
-        id: 'r1',
-        swot: {
-          strengths: ['ok'],
-          weaknesses: [],
-          opportunities: [],
-          threats: [],
-          aiUnavailable: true,
-        },
+    const review = {
+      id: 'r1',
+      swot: {
+        strengths: ['ok'], weaknesses: [], opportunities: [], threats: [],
+        aiUnavailable: true,
       },
-    });
-    render(<SwotAnalysis studentId="s1" />);
+    };
+    render(<SwotAnalysis review={review} loading={false} />);
     const badge = screen.getByTestId('swot-source-badge');
     expect(badge).toHaveTextContent(/Fallback determinístico/i);
   });
 
   it('quadrante com array vazio renderiza mensagem "Sem itens"', () => {
-    setHook({
-      review: {
-        id: 'r1',
-        swot: {
-          strengths: ['força única'],
-          weaknesses: [],
-          opportunities: [],
-          threats: [],
-          aiUnavailable: false,
-          modelVersion: 'x',
-        },
+    const review = {
+      id: 'r1',
+      swot: {
+        strengths: ['força única'], weaknesses: [], opportunities: [], threats: [],
+        aiUnavailable: false, modelVersion: 'x',
       },
-    });
-    render(<SwotAnalysis studentId="s1" />);
+    };
+    render(<SwotAnalysis review={review} loading={false} />);
     const semItens = screen.getAllByText(/Sem itens/i);
     expect(semItens.length).toBeGreaterThanOrEqual(3); // weaknesses, opportunities, threats
   });
 
   it('renderiza DebugBadge com component="SwotAnalysis"', () => {
-    setHook({ review: null });
-    render(<SwotAnalysis studentId="s1" />);
+    render(<SwotAnalysis review={null} loading={false} />);
     expect(screen.getByTestId('debug-badge')).toHaveTextContent('SwotAnalysis');
   });
 });
