@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.69.0] - 29/05/2026 · #289 · PR #291
+
+**feat:** SWOT e Maturidade escopados ao ciclo (Fase 2, PR 2/2)
+
+- **SWOT segue o ciclo**: `useLatestClosedReview` ganha filtro `cycleKey` (match no topo ou em `frozenSnapshot.planContext.cycleKey`); `null` = sem filtro ("Todos os ciclos" → última revisão).
+- **Arquitetura**: fetch da review elevado para `StudentDashboard` (fonte única, compartilhada entre SWOT e Maturidade). `SwotAnalysis` vira presentacional (`review`/`loading` como props).
+- **Maturidade segue o ciclo**:
+- **Gate**: SWOT + Maturidade agora atrás de `planSelected` (precisam de ciclo → plano). Convergência final: **sem plano = só Curva de Patrimônio + CTA.**
+- `useLatestClosedReview`: +4 casos de `cycleKey` (14 total).
+- `SwotAnalysis.test.jsx`: reescrito para props (8).
+- Invariante de gate: +1 caso Fase 2 (5).
+- Suíte **3324 verdes** (209 arquivos) + build.
+
+
 ## [1.68.0] - 28/05/2026 · #285 · PR #288
 
 **feat:** timezone explícito no horário do trade — MEP/MEN correto (manual + backend)

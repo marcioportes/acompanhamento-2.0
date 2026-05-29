@@ -41,4 +41,4 @@
 | 1.67.0 | #267 | `fix/issue-267-tactical-bugs` | 27/05/2026 | consumida (PR #283 squash `fdf75671`) |
 | 1.66.0 | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | consumida (PR #284 squash `45c90a38`) |
 | 1.68.0 | #285 | `feat/issue-285-trade-timezone` | 27/05/2026 | consumida (PR #288 squash `a1519aff`) |
-| 1.69.0 | #289 | `feat/issue-289-context-gated-analytics` | 28/05/2026 | reservada (Dashboard-Aluno — análises governadas pelo contexto: gate plano/ciclo) |
+| 1.69.0 | #289 | `feat/issue-289-context-gated-analytics` | 28/05/2026 | consumida (PR #291 squash `92cc2c6e`) |
