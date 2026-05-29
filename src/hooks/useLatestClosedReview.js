@@ -9,6 +9,9 @@
  * @param {string|null} studentId - UID do aluno. Se null, não dispara listener.
  * @param {string|string[]|null} [planFilter=null] - string → where(planId ==);
  *   array → where(planId in) (máx 30); array vazio → sem review; null → sem filtro.
+ * @param {string|null} [cycleKey=null] - quando truthy, restringe à review daquele
+ *   ciclo (review.cycleKey ou frozenSnapshot.planContext.cycleKey). null → sem filtro
+ *   de ciclo (última review fechada). Passe null para "Todos os ciclos" (#289).
  * @returns {{ review: Object|null, loading: boolean, error: Error|null }}
  */
 
@@ -18,7 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const useLatestClosedReview = (studentId, planFilter = null) => {
+const useLatestClosedReview = (studentId, planFilter = null, cycleKey = null) => {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(Boolean(studentId));
   const [error, setError] = useState(null);
@@ -26,6 +29,7 @@ const useLatestClosedReview = (studentId, planFilter = null) => {
   const planFilterKey = Array.isArray(planFilter)
     ? `arr:${planFilter.join(',')}`
     : (planFilter || '');
+  const cycleKeyDep = cycleKey || '';
 
   useEffect(() => {
     if (!studentId) {
@@ -63,12 +67,23 @@ const useLatestClosedReview = (studentId, planFilter = null) => {
       return null; // null = sem filtro
     })();
 
-    const matches = (data) => {
+    const matchesPlan = (data) => {
       if (!allowedSet) return true;
       const top = data?.planId;
       const frozen = data?.frozenSnapshot?.planContext?.planId;
       return (top && allowedSet.has(top)) || (frozen && allowedSet.has(frozen));
     };
+
+    // Filtro de ciclo (#289): só quando cycleKey truthy. Aceita match no topo
+    // ou no snapshot congelado (planContext.cycleKey).
+    const matchesCycle = (data) => {
+      if (!cycleKey) return true;
+      const top = data?.cycleKey;
+      const frozen = data?.frozenSnapshot?.planContext?.cycleKey;
+      return top === cycleKey || frozen === cycleKey;
+    };
+
+    const matches = (data) => matchesPlan(data) && matchesCycle(data);
 
     const unsub = onSnapshot(
       q,
@@ -89,7 +104,7 @@ const useLatestClosedReview = (studentId, planFilter = null) => {
     );
 
     return () => unsub();
-  }, [studentId, planFilterKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [studentId, planFilterKey, cycleKeyDep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { review, loading, error };
 };

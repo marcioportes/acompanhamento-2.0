@@ -113,6 +113,61 @@ describe('useLatestClosedReview', () => {
     expect(result.current.review?.id).toBe('r1');
   });
 
+  it('filtra por cycleKey (top-level) quando fornecido (#289)', async () => {
+    const { result } = renderHook(() => useLatestClosedReview('student-1', null, '2026-04'));
+    const [, onNext] = mockOnSnapshot.mock.calls[0];
+    act(() => {
+      onNext({
+        empty: false,
+        docs: [
+          { id: 'r-may', data: () => ({ cycleKey: '2026-05', weekStart: '2026-05-04', swot: {} }) },
+          { id: 'r-apr', data: () => ({ cycleKey: '2026-04', weekStart: '2026-04-13', swot: { strengths: ['x'] } }) },
+        ],
+      });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.review?.id).toBe('r-apr');
+  });
+
+  it('filtra por cycleKey via frozenSnapshot.planContext.cycleKey (#289)', async () => {
+    const { result } = renderHook(() => useLatestClosedReview('student-1', null, '2026-04'));
+    const [, onNext] = mockOnSnapshot.mock.calls[0];
+    act(() => {
+      onNext({
+        empty: false,
+        docs: [
+          { id: 'r1', data: () => ({ frozenSnapshot: { planContext: { cycleKey: '2026-04' } }, weekStart: '2026-04-13', swot: {} }) },
+        ],
+      });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.review?.id).toBe('r1');
+  });
+
+  it('cycleKey null não filtra ciclo (última review CLOSED) (#289)', async () => {
+    const { result } = renderHook(() => useLatestClosedReview('student-1', null, null));
+    const [, onNext] = mockOnSnapshot.mock.calls[0];
+    act(() => {
+      onNext({
+        empty: false,
+        docs: [
+          { id: 'r-latest', data: () => ({ cycleKey: '2026-05', weekStart: '2026-05-04', swot: {} }) },
+        ],
+      });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.review?.id).toBe('r-latest');
+  });
+
+  it('recria o listener quando cycleKey muda (#289)', () => {
+    const { rerender } = renderHook(({ ck }) => useLatestClosedReview('student-1', null, ck), {
+      initialProps: { ck: '2026-04' },
+    });
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+    rerender({ ck: '2026-05' });
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
+  });
+
   it('popula review com o primeiro doc do snapshot', async () => {
     const { result } = renderHook(() => useLatestClosedReview('student-1'));
     const [, onNext] = mockOnSnapshot.mock.calls[0];

@@ -30,12 +30,22 @@ describe('StudentDashboard.jsx — gate de análises por plano (#289)', () => {
     expect(/const planSelected = selectedPlanId != null/.test(src)).toBe(true);
   });
 
-  it('gateia MetricsCards, SetupAnalysis, EmotionAnalysis e TradingCalendar por planSelected', () => {
-    // cada analytic que soma result aparece sob um guard planSelected &&
+  it('gateia MetricsCards, EmotionAnalysis, TradingCalendar e a linha SWOT/Setup por planSelected', () => {
+    // cada analytic que soma result / é relativo ao plano aparece sob planSelected &&
     expect(/planSelected && \(\s*<MetricsCards/.test(src)).toBe(true);
-    expect(/planSelected && <SetupAnalysis/.test(src)).toBe(true);
     expect(/planSelected && \(\s*<div[^>]*>\s*<EmotionAnalysis/.test(src)).toBe(true);
     expect(/planSelected && \(\s*<div className="lg:col-span-1">\s*<TradingCalendar/.test(src)).toBe(true);
+    // Fase 2: SWOT e Setup vivem juntos numa linha grid gated por plano
+    expect(/planSelected && \(\s*<div className="grid[^"]*">\s*<SwotAnalysis/.test(src)).toBe(true);
+    expect(/<SetupAnalysis/.test(src)).toBe(true);
+  });
+
+  it('SWOT recebe a review do ciclo (cycleReview) e a Maturidade segue o ciclo (#289 Fase 2)', () => {
+    // SWOT consome a review elevada (filtrada por cycleKey), não fetch próprio
+    expect(/<SwotAnalysis\s+review=\{cycleReview\}/.test(src)).toBe(true);
+    // Maturidade exibida = frozen (ciclo passado) vs viva (ciclo ativo)
+    expect(/const displayMaturity = isPastCycle/.test(src)).toBe(true);
+    expect(/maturity=\{displayMaturity\}/.test(src)).toBe(true);
   });
 
   it('NÃO gateia a Curva de Patrimônio (EquityCurve sempre visível)', () => {
