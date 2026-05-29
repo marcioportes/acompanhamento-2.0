@@ -31,6 +31,8 @@ import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 import ConversationalReview from '../components/OrderImport/ConversationalReview';
 
+import useLocalStorage from '../hooks/useLocalStorage';
+import { TIMEZONES, TIMEZONE_LIST } from '../utils/tradeTimezone';
 import { detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
 import { validateBatch } from '../utils/orderValidation';
@@ -160,6 +162,9 @@ const OrderImportPage = ({
 
   // Plan selection
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  // Fuso do lote (#292): em que fuso estão os horários das ordens do arquivo.
+  // Sticky entre sessões; fallback Brasília. Aplicado na reconstrução → ISO+offset.
+  const [importTimezone, setImportTimezone] = useLocalStorage('orderImportLastTimezone', TIMEZONES.BRT.id);
 
   // Staging + reconstruction
   const [batchId, setBatchId] = useState(null);
@@ -289,7 +294,7 @@ const OrderImportPage = ({
       setBatchId(newBatchId);
 
       setProgress('Reconstruindo operações...');
-      const ops = reconstructOperations(parsedOrders);
+      const ops = reconstructOperations(parsedOrders, { timezone: importTimezone });
       associateNonFilledOrders(ops, parsedOrders);
       enrichOperationsWithStopSemantic(ops);
       enrichOperationsWithStopAnalysis(ops);
@@ -724,6 +729,25 @@ const OrderImportPage = ({
                   Nenhum plano encontrado. Crie um plano antes de importar ordens.
                 </p>
               )}
+
+              {/* Fuso do lote (#292): em que fuso estão os horários das ordens */}
+              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Fuso dos horários do arquivo
+                </label>
+                <select
+                  value={importTimezone}
+                  onChange={(e) => setImportTimezone(e.target.value)}
+                  className="w-full bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                >
+                  {TIMEZONE_LIST.map(tz => (
+                    <option key={tz.id} value={tz.id}>{tz.label}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Corretora US (ex.: Tradovate) normalmente exporta em ET; corretora BR em Brasília.
+                </p>
+              </div>
 
               <div className="flex justify-between pt-2">
                 <button
