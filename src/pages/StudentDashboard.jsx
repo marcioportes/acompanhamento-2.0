@@ -352,6 +352,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       .map(p => p.id);
   }, [plans, studentCtx.accountId, selectedPlanId]);
 
+  // Gate de IA (#289): análises que somam `result` / são relativas ao plano só
+  // aparecem com plano selecionado — garante escopo de moeda única + baseline.
+  // Sem plano sobra só a Curva de Patrimônio (nível-conta, multi-moeda própria).
+  const planSelected = selectedPlanId != null;
+
   // === Handlers ===
   const handleViewFeedbackHistory = (trade) => {
     setViewingTrade(null);
@@ -581,6 +586,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         accounts={accounts}
         trades={trades}
         selectedPlanId={selectedPlanId}
+        contextSelection={{ cycleKey: studentCtx.cycleKey, periodKind: studentCtx.period?.kind, isReadOnlyCycle: studentCtx.isReadOnlyCycle }}
         viewAs={viewAs}
         onSelectPlan={(id) => studentCtx.setPlan(id)}
         onOpenLedger={(plan) => onOpenLedger?.(plan?.id)}
@@ -596,7 +602,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         </div>
       )}
 
-      {/* Cards de Métricas */}
+      {/* Cards de Métricas — gated por plano (#289): somam result / relativos ao plano */}
+      {planSelected && (
       <MetricsCards
         stats={stats}
         aggregatedCurrentBalance={aggregatedCurrentBalance}
@@ -633,10 +640,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         durationDelta={durationDelta}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}
       />
+      )}
 
-      {/* Gráficos */}
+      {/* Gráficos — Curva de Patrimônio SEMPRE visível (nível-conta, multi-moeda própria).
+          Calendário gated por plano (#289): soma P&L/dia, mesmo defeito de moeda. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="lg:col-span-2">
+        <div className={planSelected ? 'lg:col-span-2' : 'lg:col-span-3'}>
           <div className="glass-card h-[400px] w-full relative p-4">
             {filteredTrades.length > 0 ? (
               <EquityCurve
@@ -656,13 +665,26 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
             )}
           </div>
         </div>
-        <div className="lg:col-span-1">
-          <TradingCalendar trades={filteredTrades} selectedDate={calendarSelectedDate} onSelectDate={(date) => { setCalendarSelectedDate(date === calendarSelectedDate ? null : date); if (date !== calendarSelectedDate) setTimeout(() => document.getElementById('daily-trades')?.scrollIntoView({ behavior: 'smooth' }), 100); }} />
-        </div>
+        {planSelected && (
+          <div className="lg:col-span-1">
+            <TradingCalendar trades={filteredTrades} currency={dominantCurrency || 'BRL'} focusDate={studentCtx.periodRange?.start || studentCtx.selectedCycle?.start || null} selectedDate={calendarSelectedDate} onSelectDate={(date) => { setCalendarSelectedDate(date === calendarSelectedDate ? null : date); if (date !== calendarSelectedDate) setTimeout(() => document.getElementById('daily-trades')?.scrollIntoView({ behavior: 'smooth' }), 100); }} />
+          </div>
+        )}
       </div>
 
-      {/* Trades do dia selecionado — totalização */}
-      {calendarSelectedDate && (() => {
+      {/* CTA quando sem plano — análises detalhadas exigem escopo de plano (#289) */}
+      {!planSelected && (
+        <div className="glass-card p-6 text-center mb-6">
+          <Activity className="w-12 h-12 mx-auto mb-3 text-slate-700" />
+          <h3 className="font-bold text-white mb-1">Selecione um plano para ver as análises</h3>
+          <p className="text-slate-400 text-sm max-w-xl mx-auto">
+            As análises detalhadas (Financeiro, Setups, Emocional, Calendário) somam resultados em uma única moeda e só fazem sentido no escopo de um plano. Escolha um plano nos cards acima.
+          </p>
+        </div>
+      )}
+
+      {/* Trades do dia selecionado — totalização (gated por plano via calendário) */}
+      {planSelected && calendarSelectedDate && (() => {
         const dayTrades = filteredTrades.filter(t => t.date === calendarSelectedDate);
         const dayGain = dayTrades.filter(t => (t.result || 0) > 0).reduce((s, t) => s + t.result, 0);
         const dayLoss = dayTrades.filter(t => (t.result || 0) < 0).reduce((s, t) => s + t.result, 0);
@@ -713,15 +735,18 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           /* TODO(#164): onNavigateToReview — aguardando rota aluno para Revisão Semanal
              (hoje 'weekly-review' é restrita a mentor em App.jsx). */
         />
-        <SetupAnalysis trades={filteredTrades} setupsMeta={setups} />
+        {planSelected && <SetupAnalysis trades={filteredTrades} setupsMeta={setups} currency={dominantCurrency || 'BRL'} />}
       </div>
-      <div className="mb-6">
-        <EmotionAnalysis
-          trades={filteredTrades}
-          globalWR={stats?.winRate}
-          maturity={maturity}
-        />
-      </div>
+      {planSelected && (
+        <div className="mb-6">
+          <EmotionAnalysis
+            trades={filteredTrades}
+            globalWR={stats?.winRate}
+            maturity={maturity}
+            currency={dominantCurrency || 'BRL'}
+          />
+        </div>
+      )}
 
       {/* Progressão de Maturidade (issue #119 D13) — posicionado logo após a
           Matriz Emocional 4D para manter a ligação visual "depois da matriz".

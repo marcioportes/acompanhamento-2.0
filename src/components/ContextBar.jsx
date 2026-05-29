@@ -9,13 +9,7 @@ import { useMemo, useState, useRef, useEffect } from 'react';
 import { ChevronDown, Lock, Calendar, Briefcase, Target, Clock } from 'lucide-react';
 import DebugBadge from './DebugBadge';
 import useStudentContext from '../hooks/useStudentContext';
-import { PERIOD_KIND, getCycleKey, ALL_CYCLES_KEY } from '../utils/cycleResolver';
-
-const PERIOD_LABELS = {
-  [PERIOD_KIND.CYCLE]: 'Ciclo completo',
-  [PERIOD_KIND.WEEK]: 'Semana atual',
-  [PERIOD_KIND.MONTH]: 'Mês atual'
-};
+import { PERIOD_KIND, PERIOD_LABELS, getCycleKey, ALL_CYCLES_KEY } from '../utils/cycleResolver';
 
 // ============================================
 // DROPDOWN GENÉRICO

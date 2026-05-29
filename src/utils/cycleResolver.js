@@ -19,6 +19,13 @@ export const PERIOD_KIND = {
   MONTH: 'MONTH'
 };
 
+// Rótulos de exibição do período (SSoT — consumidos por ContextBar e PlanCardGrid, #289).
+export const PERIOD_LABELS = {
+  [PERIOD_KIND.CYCLE]: 'Ciclo completo',
+  [PERIOD_KIND.WEEK]: 'Semana atual',
+  [PERIOD_KIND.MONTH]: 'Mês atual'
+};
+
 export const CYCLE_STATUS = {
   ACTIVE: 'ACTIVE',       // now está dentro do range do ciclo
   FINALIZED: 'FINALIZED'  // now > cycleEnd → read-only

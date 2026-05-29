@@ -23,7 +23,7 @@ import { formatCurrency } from '../utils/calculations';
 import { analyzeBySetupV2 } from '../utils/setupAnalysisV2';
 import DebugBadge from './DebugBadge';
 
-const fmtSignedCurrency = (v) => (v >= 0 ? `+${formatCurrency(v)}` : formatCurrency(v));
+const fmtSignedCurrency = (v, currency = 'BRL') => (v >= 0 ? `+${formatCurrency(v, currency)}` : formatCurrency(v, currency));
 const fmtPct = (v, digits = 0) => `${v.toFixed(digits)}%`;
 const fmtSignedPct = (v, digits = 0) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
 
@@ -178,7 +178,7 @@ const buildInsight = (cards) => {
   return null;
 };
 
-const SetupCard = ({ card }) => {
+const SetupCard = ({ card, currency = 'BRL' }) => {
   const profitable = card.totalPL >= 0;
   const borderClass = profitable ? 'border-emerald-500/20' : 'border-red-500/20';
   const bgClass = profitable ? 'bg-emerald-500/5' : 'bg-red-500/5';
@@ -201,7 +201,7 @@ const SetupCard = ({ card }) => {
         </div>
         <div className="flex items-baseline gap-2 mt-1">
           <span className={`font-mono font-bold text-sm whitespace-nowrap ${totalColor}`}>
-            {fmtSignedCurrency(card.totalPL)}
+            {fmtSignedCurrency(card.totalPL, currency)}
           </span>
           <span className="text-[10px] text-slate-500 whitespace-nowrap">WR {fmtPct(card.wr, 0)}</span>
         </div>
@@ -211,7 +211,7 @@ const SetupCard = ({ card }) => {
         <Quadrant label="Financial" sublabel="por trade">
           <KPI
             label="EV"
-            value={fmtSignedCurrency(card.ev)}
+            value={fmtSignedCurrency(card.ev, currency)}
             valueClassName={card.ev >= 0 ? 'text-emerald-400' : 'text-red-400'}
           />
           <KPI
@@ -307,7 +307,7 @@ const SetupCard = ({ card }) => {
   );
 };
 
-const SetupAnalysis = ({ trades, setupsMeta }) => {
+const SetupAnalysis = ({ trades, setupsMeta, currency = 'BRL' }) => {
   const cards = useMemo(
     () => analyzeBySetupV2(trades, { setupsMeta }),
     [trades, setupsMeta],
@@ -359,7 +359,7 @@ const SetupAnalysis = ({ trades, setupsMeta }) => {
       {regulars.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
           {regulars.map((c) => (
-            <SetupCard key={c.setup} card={c} />
+            <SetupCard key={c.setup} card={c} currency={currency} />
           ))}
         </div>
       )}
@@ -380,7 +380,7 @@ const SetupAnalysis = ({ trades, setupsMeta }) => {
           {expanded && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
               {sporadics.map((c) => (
-                <SetupCard key={c.setup} card={c} />
+                <SetupCard key={c.setup} card={c} currency={currency} />
               ))}
             </div>
           )}
