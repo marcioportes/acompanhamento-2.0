@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo). [RESERVADA — entrada definitiva no encerramento.]
  * - 1.68.0: #285 feat timezone explícito no horário do trade — MEP/MEN correto (manual + import) + gate de promoção.
  * - 1.67.0: #267 fix bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D (PR #283, 27/05/2026)
  * - 1.66.0: #282 feat paridade de indicadores e nomenclatura Dashboard ↔ Fechamento de Ciclo — SSoT única de tiles de métricas (técnico + tooltip) + Sharpe/CV/MEP/MEN trazidos pro wizard (PR #284, 27/05/2026)
