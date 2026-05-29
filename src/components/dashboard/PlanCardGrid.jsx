@@ -16,9 +16,10 @@
 import {
   PlusCircle, Check, Settings, Trash2, RefreshCw, Calendar, ScrollText,
   Skull, Trophy, TrendingUp, TrendingDown, Smile, Frown, Meh,
-  AlertTriangle, Activity, ShieldCheck
+  AlertTriangle, Activity, ShieldCheck, Clock, Lock
 } from 'lucide-react';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import { PERIOD_LABELS, ALL_CYCLES_KEY } from '../../utils/cycleResolver';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
 import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
 import { getOpenCycleStart } from '../../utils/planBalance';
@@ -82,6 +83,7 @@ const PlanCardGrid = ({
   accounts,
   trades,
   selectedPlanId,
+  contextSelection = null,
   viewAs,
   onSelectPlan,
   onOpenLedger,
@@ -161,6 +163,28 @@ const PlanCardGrid = ({
                 </div>
                 <h3 className={`font-bold truncate mb-1 pr-6 ${isSelected ? 'text-white' : 'text-slate-300'}`}>{plan.name}</h3>
                 <p className="text-xs text-slate-500 truncate max-w-[150px]">{planAccount?.name}</p>
+                {/* Contexto ativo da barra no card selecionado (#289): ciclo + período + estado */}
+                {isSelected && contextSelection && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-300">
+                      <Calendar className="w-3 h-3" />
+                      {!contextSelection.cycleKey || contextSelection.cycleKey === ALL_CYCLES_KEY
+                        ? 'Todos os ciclos'
+                        : `Ciclo ${contextSelection.cycleKey}`}
+                    </span>
+                    {contextSelection.cycleKey && contextSelection.cycleKey !== ALL_CYCLES_KEY && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-slate-700/40 border border-slate-600/40 text-slate-300">
+                        <Clock className="w-3 h-3" />
+                        {PERIOD_LABELS[contextSelection.periodKind] || PERIOD_LABELS.CYCLE}
+                      </span>
+                    )}
+                    {contextSelection.isReadOnlyCycle && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                        <Lock className="w-3 h-3" /> finalizado
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="mt-3 mb-1 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
                   <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold block mb-0.5">Saldo do Plano (PL)</span>
                   <div className="flex items-baseline gap-2">

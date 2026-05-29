@@ -22,7 +22,7 @@ import { buildEmotionMatrix4D } from '../utils/emotionMatrix4D';
 import { STAGE_NAMES } from '../utils/maturityEngine/constants';
 import DebugBadge from './DebugBadge';
 
-const fmtSignedCurrency = (v) => (v >= 0 ? `+${formatCurrency(v)}` : formatCurrency(v));
+const fmtSignedCurrency = (v, currency = 'BRL') => (v >= 0 ? `+${formatCurrency(v, currency)}` : formatCurrency(v, currency));
 const fmtPct = (v, digits = 0) => `${v >= 0 ? '' : ''}${v.toFixed(digits)}%`;
 const fmtSignedPct = (v, digits = 0) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
 
@@ -204,7 +204,7 @@ const buildInsight = (cards) => {
   };
 };
 
-const EmotionAnalysis = ({ trades, globalWR, maturity = null }) => {
+const EmotionAnalysis = ({ trades, globalWR, maturity = null, currency = 'BRL' }) => {
   const cards = useMemo(
     () => buildEmotionMatrix4D(trades, { globalWR, sparklineWindow: 10 }),
     [trades, globalWR],
@@ -275,7 +275,7 @@ const EmotionAnalysis = ({ trades, globalWR, maturity = null }) => {
                   className={`font-mono font-bold text-sm ${totalColor} cursor-help`}
                   title={`Resultado acumulado das ${c.count} operação(ões) nesta emoção. Sinal e cor seguem o saldo final.`}
                 >
-                  {fmtSignedCurrency(c.totalPL)}
+                  {fmtSignedCurrency(c.totalPL, currency)}
                 </span>
               </div>
 
@@ -288,9 +288,9 @@ const EmotionAnalysis = ({ trades, globalWR, maturity = null }) => {
                 >
                   <KPI
                     label="Expect"
-                    value={fmtSignedCurrency(c.expectancy)}
+                    value={fmtSignedCurrency(c.expectancy, currency)}
                     valueClassName={c.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}
-                    tooltip={`Expectancy = totalPL / count = ${fmtSignedCurrency(c.totalPL)} / ${c.count} = ${fmtSignedCurrency(c.expectancy)}. Resultado médio por trade nesta emoção. Positivo = edge a favor; negativo = sangria.`}
+                    tooltip={`Expectancy = totalPL / count = ${fmtSignedCurrency(c.totalPL, currency)} / ${c.count} = ${fmtSignedCurrency(c.expectancy, currency)}. Resultado médio por trade nesta emoção. Positivo = edge a favor; negativo = sangria.`}
                   />
                   <KPI
                     label="Payoff"

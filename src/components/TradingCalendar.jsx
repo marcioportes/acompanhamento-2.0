@@ -1,16 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
-
-/**
- * Utilitário local para formatação monetária compacta
- */
-const formatCurrency = (value) => 
-  new Intl.NumberFormat('pt-BR', { 
-    style: 'currency', 
-    currency: 'BRL',
-    minimumFractionDigits: 0, 
-    maximumFractionDigits: 2 
-  }).format(value);
+import { formatCurrencyCompact } from '../utils/currency';
 
 /**
  * TradingCalendar (Versão Interativa com Contador)
@@ -18,9 +8,25 @@ const formatCurrency = (value) =>
  * @param {Array} trades - Lista de trades para calcular P&L.
  * @param {string|null} selectedDate - Data atualmente selecionada (YYYY-MM-DD).
  * @param {Function} onSelectDate - Callback ao clicar em um dia.
+ * @param {string} currency - Moeda dominante do conjunto de trades (ex.: 'BRL', 'USD').
+ * @param {Date|string|null} focusDate - Mês inicial exibido; segue o período da barra
+ *   de contexto (#289). Navegação manual com as setas persiste até focusDate mudar.
  */
-const TradingCalendar = ({ trades = [], selectedDate, onSelectDate }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
+const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = 'BRL', focusDate = null }) => {
+  const formatCurrency = (value) => formatCurrencyCompact(value, currency);
+
+  const [currentDate, setCurrentDate] = useState(() => (focusDate ? new Date(focusDate) : new Date()));
+
+  // Sincroniza o mês exibido com o período selecionado na barra de contexto (#289).
+  // Depende de uma chave ano-mês (primitivo) para não disparar a cada render só
+  // porque o objeto Date trocou de identidade; navegação manual persiste até a
+  // troca real de ciclo/período.
+  const focusMonthKey = focusDate
+    ? (() => { const d = new Date(focusDate); return Number.isNaN(d.getTime()) ? null : d.getFullYear() * 12 + d.getMonth(); })()
+    : null;
+  useEffect(() => {
+    if (focusMonthKey != null) setCurrentDate(new Date(focusDate));
+  }, [focusMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- ENGINE DE DADOS ---
   const dailyData = useMemo(() => {
