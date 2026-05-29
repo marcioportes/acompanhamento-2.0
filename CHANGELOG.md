@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.70.0] - 29/05/2026 · #292 · PR #293
+
+**feat:** timezone explícito no import de trades (CSV + Order)
+
+- Seletor **"Fuso dos horários"** no passo de Mapeamento (layout vira 3 colunas: Bolsa · Data · Fuso), por lote.
+- Default **sticky** (localStorage) + **derivado da Exchange** (CME/CBOT/NYMEX/COMEX → ET, B3 → BRT); persiste no template.
+- `csvMapper.buildTradeFromRow`/`applyMapping` gravam `entry`/`exitTime` via `naiveIsoToOffset` — ponto único, cobre modo padrão e inferência. tz **não vaza** como campo do trade.
+- Seletor "Fuso" na etapa de seleção de plano (sticky, fallback BRT).
+- **Bug latente corrigido:** `reconstructOperations` fazia `new Date(naive).toISOString()`, interpretando o horário no fuso do servidor → `Z` ambíguo. Agora reconstrói no fuso do lote (`_iso`) → ISO+offset; ordens já com offset/Z passam direto; **duração preservada** (offset constante não distorce `durationMs`).
+- `csvMapper`: +6 casos de fuso (naive/ET-EST/ET-EDT/BRT/sem-vazamento/applyMapping).
+- `orderReconstruction`: +5 casos (naive/BRT/ET-DST/offset-passa-direto/duração).
+- Suíte **3335 verdes** (209 arquivos) + build.
+
+
 ## [1.69.0] - 29/05/2026 · #289 · PR #291
 
 **feat:** SWOT e Maturidade escopados ao ciclo (Fase 2, PR 2/2)

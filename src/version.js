@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote. [RESERVADA — entrada definitiva no encerramento.]
+ * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
  * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo).
  * - 1.68.0: #285 feat timezone explícito no horário do trade — MEP/MEN correto (manual + import) + gate de promoção.
  * - 1.67.0: #267 fix bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D (PR #283, 27/05/2026)
@@ -362,10 +362,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.69.0',
+  version: '1.70.0',
   build: '20260529',
-  display: 'v1.69.0',
-  full: '1.69.0+20260529',
+  display: 'v1.70.0',
+  full: '1.70.0+20260529',
 };
 export default VERSION;
 export { VERSION };
