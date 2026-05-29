@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.68.0] - 28/05/2026 · #285 · PR #288
+
+**feat:** timezone explícito no horário do trade — MEP/MEN correto (manual + backend)
+
+- **AddTradeModal**: seletor **Fuso** sticky (`useLocalStorage`), default **ET** pra CME, **BRT** pro resto; helper **"≈ Brasília"** pro aluno conferir mentalmente.
+- **`combineDateTimeWithTz`**: grava `entryTime`/`exitTime` como **ISO+offset** (ex.: `2026-05-27T16:23:00-04:00`) — instante absoluto.
+- **TradeDetailModal**: botão **"🔄 Recalcular MEP/MEN"** (CME futures + `excursionSource`), zera mep/men → `onTradeUpdated` re-enriquece.
+- **`onTradeUpdated`**: detecta `timeChanged || mepCleared`, dispara `runEnrichment` idempotente; loop guard (enrich só toca mep/men/excursionSource).
+- **`enrichTradeWithExcursions`**: reconhece `HAS_TZ` → ISO+offset passa direto sem aplicar Brasília fixo; legado naive segue Brasília-assumido.
+- **`utils/tradeTimezone`**: `isUSDST` (2º dom março / 1º dom novembro), `getOffset` com DST automático ET/CT, BRT fixo -03:00, `defaultTzForTicker`.
+- (a) Seletor sticky + default por instrumento.
+- (b) Legado naive mantido como está (Brasília-assumido).
+
+
 ## [1.67.0] - 27/05/2026 · #267 · PR #283
 
 **fix:** bugs táticos — MEN/MEP Yahoo, carry-over de patrimônio, cleared no 4D
