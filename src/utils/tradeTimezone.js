@@ -1,0 +1,117 @@
+/**
+ * tradeTimezone.js — issue #285
+ *
+ * Helpers puros para o seletor de fuso no `AddTradeModal`. Calcula o offset UTC
+ * pra uma data + fuso, considerando DST automaticamente (US Eastern/Central têm
+ * horário de verão; Brasília é UTC-3 fixo desde 2019).
+ *
+ * O fuso é gravado no `entryTime`/`exitTime` do trade como **ISO + offset**
+ * (ex.: `"2026-05-27T16:23:00-04:00"`) — instante absoluto, sem ambiguidade.
+ * O enrichment (que já reconhece `HAS_TZ`) passa direto sem aplicar Brasília.
+ *
+ * @see functions/marketData/enrichTradeWithExcursions.js — toBrasiliaISO/HAS_TZ
+ */
+
+export const TIMEZONES = {
+  ET:  { id: 'America/New_York',  label: 'Nova York (ET)' },
+  CT:  { id: 'America/Chicago',   label: 'Chicago (CT)' },
+  BRT: { id: 'America/Sao_Paulo', label: 'Brasília (BRT)' },
+};
+
+export const TIMEZONE_LIST = [TIMEZONES.ET, TIMEZONES.CT, TIMEZONES.BRT];
+
+// Prefixos de futuros CME (US) — MANTER SINCRONIZADO com
+// functions/marketData/symbolMapper.js MAPPINGS. Ordem-sensível: micros antes
+// dos cheios pra não bater MNQ em NQ.
+const CME_PREFIXES = ['MNQ', 'MES', 'MGC', 'MCL', 'MYM', 'M2K', 'NQ', 'ES', 'GC', 'CL', 'YM', 'RTY'];
+
+/** Dia do mês do N-ésimo domingo (year, monthOneBased, n). */
+function nthSundayOfMonth(year, monthOneBased, n) {
+  const first = new Date(Date.UTC(year, monthOneBased - 1, 1));
+  const dow = first.getUTCDay(); // 0=Sun
+  const firstSunday = dow === 0 ? 1 : 1 + (7 - dow);
+  return firstSunday + 7 * (n - 1);
+}
+
+/**
+ * True se a data está em DST nos EUA (regra atual: 2º domingo de março a
+ * 1º domingo de novembro). Granularidade de data — ignora o switch às 2h
+ * local (irrelevante pra entrada de trade).
+ *
+ * @param {string} dateISO — 'YYYY-MM-DD' (sufixo extra ignorado)
+ * @returns {boolean}
+ */
+export function isUSDST(dateISO) {
+  if (typeof dateISO !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(dateISO)) return false;
+  const [y, m, d] = dateISO.slice(0, 10).split('-').map(Number);
+  if (m < 3 || m > 11) return false;
+  if (m > 3 && m < 11) return true;
+  if (m === 3) return d >= nthSundayOfMonth(y, 3, 2);
+  if (m === 11) return d < nthSundayOfMonth(y, 11, 1);
+  return false;
+}
+
+/**
+ * Offset UTC (`'-HH:MM'`) pra uma data + fuso. DST automático em ET/CT;
+ * BRT é fixo `-03:00`.
+ *
+ * @param {string} dateISO — 'YYYY-MM-DD'
+ * @param {string} tz — id IANA
+ * @returns {string}
+ */
+export function getOffset(dateISO, tz) {
+  if (tz === TIMEZONES.BRT.id) return '-03:00';
+  const dst = isUSDST(dateISO);
+  if (tz === TIMEZONES.ET.id) return dst ? '-04:00' : '-05:00';
+  if (tz === TIMEZONES.CT.id) return dst ? '-05:00' : '-06:00';
+  return '-03:00'; // fallback defensivo
+}
+
+/**
+ * True se o ticker é um futuro CME (mapeável no Yahoo). Espelha o predicado
+ * de `symbolMapper.mapToYahoo` sem depender do CJS server-side.
+ */
+export function isCMEFutureTicker(ticker) {
+  if (!ticker || typeof ticker !== 'string') return false;
+  const upper = ticker.toUpperCase().trim();
+  return CME_PREFIXES.some((p) => upper.startsWith(p));
+}
+
+/**
+ * Default inicial de fuso pra um ticker — ET pra futuros CME, BRT pro resto.
+ * Sticky (último escolhido pelo aluno) sobrescreve via localStorage no caller.
+ */
+export function defaultTzForTicker(ticker) {
+  return isCMEFutureTicker(ticker) ? TIMEZONES.ET.id : TIMEZONES.BRT.id;
+}
+
+/**
+ * Combina data (YYYY-MM-DD) + hora (HH:MM ou HH:MM:SS) + fuso → ISO + offset.
+ * Offset é calculado pra DATA do trade (não "hoje") — DST correto pro instante.
+ *
+ * @returns {string|null} ex.: `'2026-05-27T16:23:00-04:00'`
+ */
+export function combineDateTimeWithTz(dateISO, time, tz) {
+  if (!dateISO || !time || !tz) return null;
+  const timePart = time.length >= 8 ? time : `${time}:00`;
+  return `${dateISO}T${timePart}${getOffset(dateISO, tz)}`;
+}
+
+/**
+ * Equivalente em Brasília (`'HH:MM'`) de um ISO com offset — usado no helper
+ * embaixo do campo pro aluno conferir mentalmente.
+ *
+ * Funciona pra ISO+offset (instante absoluto) e pra naive (assume Brasília,
+ * legado) — nos dois casos retorna a hora local de Brasília.
+ */
+export function toBrasiliaDisplay(isoWithOffset) {
+  if (!isoWithOffset || typeof isoWithOffset !== 'string') return '';
+  const d = new Date(isoWithOffset);
+  if (isNaN(d.getTime())) return '';
+  // Pega componentes da hora local de Brasília (UTC-3) sem depender da TZ do JS env.
+  const brtMs = d.getTime() - 3 * 3600 * 1000;
+  const brt = new Date(brtMs);
+  const hh = String(brt.getUTCHours()).padStart(2, '0');
+  const mm = String(brt.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}

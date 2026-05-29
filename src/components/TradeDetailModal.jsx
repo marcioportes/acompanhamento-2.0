@@ -36,6 +36,7 @@ import TradeStatusBadges from './TradeStatusBadges';
 import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
 import ExecutionPatternsPanel from './Trades/ExecutionPatternsPanel';
 import ExcursionDisplay from './ExcursionDisplay';
+import { isCMEFutureTicker } from '../utils/tradeTimezone';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -134,6 +135,7 @@ const TradeDetailModal = ({
   onAddFeedback,
   feedbackLoading = false,
   onViewFeedbackHistory,
+  onRecalcMepMen,  // #285: handler async (tradeId) => Promise — quando definido, mostra "Recalcular MEP/MEN"
   getPartials,  // LEGADO — mantido para compatibilidade, mas parciais vêm do campo _partials do trade
 }) => {
   const [fullscreenImage, setFullscreenImage] = useState(null);
@@ -366,7 +368,22 @@ const TradeDetailModal = ({
             </div>
 
             {/* MEP/MEN — issue #187. Display em pts (futures) ou % (equity), derivado do storage em preço. */}
-            <ExcursionDisplay trade={trade} variant="full" className="mb-6" />
+            <ExcursionDisplay trade={trade} variant="full" className="mb-2" />
+
+            {/* #285 — Recalcular MEP/MEN: zera os valores e o trigger onTradeUpdated re-enriquece
+                com a janela do entryTime/exitTime atuais. Útil após corrigir hora ou fuso. */}
+            {onRecalcMepMen && trade.excursionSource && isCMEFutureTicker(trade.ticker) && (
+              <div className="mb-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onRecalcMepMen(trade.id)}
+                  className="text-xs px-3 py-1.5 rounded-md bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+                  title="Zera MEP/MEN e busca os candles novamente para a janela atual"
+                >
+                  🔄 Recalcular MEP/MEN
+                </button>
+              </div>
+            )}
 
 
             {/* Resultado editado vs calculado */}
