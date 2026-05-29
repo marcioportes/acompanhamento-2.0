@@ -570,3 +570,50 @@ describe('Fase D — gap temporal entre operações', () => {
     expect(mnqOps[1].hasPriorGap).toBe(false); // 28min < 60min threshold
   });
 });
+
+// ============================================
+// #292 — fuso do lote: entry/exitTime viram ISO+offset
+// ============================================
+
+describe('reconstructOperations — fuso do lote (#292)', () => {
+  const simpleOps = [
+    { externalOrderId: 'E1', instrument: 'NQM6', side: 'BUY', status: 'FILLED',
+      quantity: 1, filledQuantity: 1, filledPrice: 25100,
+      submittedAt: '2026-03-19T10:11:00', filledAt: '2026-03-19T10:11:25' },
+    { externalOrderId: 'X1', instrument: 'NQM6', side: 'SELL', status: 'FILLED',
+      quantity: 1, filledQuantity: 1, filledPrice: 25110,
+      submittedAt: '2026-03-19T10:14:00', filledAt: '2026-03-19T10:14:15' },
+  ];
+
+  it('sem timezone: entry/exitTime preservam o horário naive da corretora (legado)', () => {
+    const [op] = reconstructOperations(simpleOps);
+    expect(op.entryTime).toBe('2026-03-19T10:11:25');
+    expect(op.exitTime).toBe('2026-03-19T10:14:15');
+  });
+
+  it('timezone BRT: grava offset -03:00 fixo', () => {
+    const [op] = reconstructOperations(simpleOps, { timezone: 'America/Sao_Paulo' });
+    expect(op.entryTime).toBe('2026-03-19T10:11:25-03:00');
+    expect(op.exitTime).toBe('2026-03-19T10:14:15-03:00');
+  });
+
+  it('timezone ET (19/03, DST ativo): grava offset -04:00', () => {
+    const [op] = reconstructOperations(simpleOps, { timezone: 'America/New_York' });
+    expect(op.entryTime).toBe('2026-03-19T10:11:25-04:00');
+  });
+
+  it('ordens já com offset/Z não são reconvertidas', () => {
+    const withZ = [
+      { ...simpleOps[0], filledAt: '2026-03-19T13:11:25Z', submittedAt: '2026-03-19T13:11:00Z' },
+      { ...simpleOps[1], filledAt: '2026-03-19T13:14:15Z', submittedAt: '2026-03-19T13:14:00Z' },
+    ];
+    const [op] = reconstructOperations(withZ, { timezone: 'America/Sao_Paulo' });
+    expect(op.entryTime).toBe('2026-03-19T13:11:25Z');
+  });
+
+  it('duração preservada (offset constante não distorce durationMs)', () => {
+    const naive = reconstructOperations(simpleOps)[0];
+    const tzd = reconstructOperations(simpleOps, { timezone: 'America/New_York' })[0];
+    expect(tzd.durationMs).toBe(naive.durationMs);
+  });
+});

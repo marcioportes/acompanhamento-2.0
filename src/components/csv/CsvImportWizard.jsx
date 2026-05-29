@@ -29,8 +29,10 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { X, Upload, Link2, Eye, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import useCsvTemplates from '../../hooks/useCsvTemplates';
+import useLocalStorage from '../../hooks/useLocalStorage';
 import { parseCSV } from '../../utils/csvParser';
 import { applyMapping, getMissingFields } from '../../utils/csvMapper';
+import { TIMEZONES, defaultTzForExchange } from '../../utils/tradeTimezone';
 import { validateBatch, getIncompleteSummary } from '../../utils/csvValidator';
 import DebugBadge from '../DebugBadge';
 
@@ -79,6 +81,8 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   const [valueMap, setValueMap] = useState({ side: { 'C': 'LONG', 'V': 'SHORT', 'Compra': 'LONG', 'Venda': 'SHORT' } });
   const [defaults, setDefaults] = useState({ exchange: '' });
   const [dateFormat, setDateFormat] = useState('');
+  // Fuso do lote (#292): sticky entre sessões; derivado da Exchange ao trocá-la.
+  const [timezone, setTimezone] = useLocalStorage('csvImportLastTimezone', TIMEZONES.BRT.id);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templatePlatform, setTemplatePlatform] = useState('');
@@ -89,8 +93,15 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   // === STATE: Etapa 3 (Preview) ===
   const mappedResult = useMemo(() => {
     if (!csvData || !mapping || Object.keys(mapping).length === 0) return null;
-    return applyMapping(csvData.rows, { mapping, valueMap, defaults, dateFormat });
-  }, [csvData, mapping, valueMap, defaults, dateFormat]);
+    return applyMapping(csvData.rows, { mapping, valueMap, defaults, dateFormat, timezone });
+  }, [csvData, mapping, valueMap, defaults, dateFormat, timezone]);
+
+  // Deriva o fuso do lote da Exchange selecionada (#292) — CME/US → ET, B3 → BRT.
+  // Re-deriva ao trocar de Exchange; o seletor permite override manual depois.
+  useEffect(() => {
+    if (defaults.exchange) setTimezone(defaultTzForExchange(defaults.exchange));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaults.exchange]);
 
   const validationResult = useMemo(() => {
     if (!mappedResult) return null;
@@ -136,6 +147,7 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     setValueMap(tpl.valueMap || { side: { 'C': 'LONG', 'V': 'SHORT' } });
     setDefaults(tpl.defaults || { exchange: '' });
     setDateFormat(tpl.dateFormat || '');
+    if (tpl.timezone) setTimezone(tpl.timezone);
   };
 
   const handleTemplateChange = (templateId) => {
@@ -156,7 +168,7 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
         await addTemplate({
           name: templateName.trim(),
           platform: templatePlatform.trim(),
-          mapping, valueMap, defaults, dateFormat,
+          mapping, valueMap, defaults, dateFormat, timezone,
           delimiter: csvData?.delimiter || ';',
         });
       } catch (err) {
@@ -311,6 +323,8 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
               onValueMapChange={setValueMap}
               onDefaultsChange={setDefaults}
               onDateFormatChange={setDateFormat}
+              timezone={timezone}
+              onTimezoneChange={setTimezone}
               saveTemplate={saveTemplate}
               templateName={templateName}
               templatePlatform={templatePlatform}

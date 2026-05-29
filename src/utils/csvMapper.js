@@ -22,6 +22,7 @@
  */
 
 import { detectInstrumentType, convertExcursionRawToPrice } from './excursionParsing.js';
+import { naiveIsoToOffset } from './tradeTimezone.js';
 
 // ============================================
 // DATE PARSING
@@ -254,7 +255,7 @@ export const REQUIRED_FIELDS_INFERRED = ['ticker', 'qty'];
 /**
  * Converte uma row do CSV em trade data usando o mapeamento.
  */
-export const buildTradeFromRow = (row, mapping, valueMap = {}, defaults = {}, dateFormat = '') => {
+export const buildTradeFromRow = (row, mapping, valueMap = {}, defaults = {}, dateFormat = '', tz = null) => {
   const errors = [];
   const trade = {};
 
@@ -432,6 +433,14 @@ export const buildTradeFromRow = (row, mapping, valueMap = {}, defaults = {}, da
     trade.ticker = trade.ticker.toUpperCase().trim();
   }
 
+  // Fuso do lote (#292): converte entry/exitTime naive → ISO+offset (instante
+  // absoluto). Ponto único — cobre modo padrão e inferência. Sem tz = naive
+  // (enrich assume Brasília, legado #285 decisão b).
+  if (tz) {
+    if (trade.entryTime) trade.entryTime = naiveIsoToOffset(trade.entryTime, tz);
+    if (trade.exitTime) trade.exitTime = naiveIsoToOffset(trade.exitTime, tz);
+  }
+
   // Aplicar defaults para campos não em SYSTEM_FIELDS
   for (const [key, val] of Object.entries(defaults)) {
     if (trade[key] === undefined && val != null) {
@@ -451,14 +460,14 @@ export const buildTradeFromRow = (row, mapping, valueMap = {}, defaults = {}, da
 // ============================================
 
 export const applyMapping = (rows, template) => {
-  const { mapping = {}, valueMap = {}, defaults = {}, dateFormat = '' } = template;
+  const { mapping = {}, valueMap = {}, defaults = {}, dateFormat = '', timezone = null } = template;
   const trades = [];
   const errors = [];
   let valid = 0;
   let invalid = 0;
 
   for (let i = 0; i < rows.length; i++) {
-    const { trade, errors: rowErrors } = buildTradeFromRow(rows[i], mapping, valueMap, defaults, dateFormat);
+    const { trade, errors: rowErrors } = buildTradeFromRow(rows[i], mapping, valueMap, defaults, dateFormat, timezone);
 
     if (rowErrors.length > 0) {
       errors.push({ row: i + 1, errors: rowErrors });

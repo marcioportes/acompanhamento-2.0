@@ -25,6 +25,7 @@
  */
 
 import { aggregateFills } from './orderFillAggregator';
+import { naiveIsoToOffset } from './tradeTimezone';
 
 // Threshold padrão para considerar gap temporal entre operações do mesmo
 // instrumento. 60 minutos cobre janela de almoço, pausas longas intraday
@@ -37,13 +38,16 @@ export const DEFAULT_GAP_THRESHOLD_MS = 60 * 60 * 1000;
 // ============================================
 
 /**
- * Extrai timestamp em ms para ordenação.
- * Prioriza filledAt (momento real), fallback submittedAt.
+ * Instante efetivo da ordem como ISO+offset (#292). Prioriza filledAt, fallback
+ * submittedAt. Aplica o fuso do lote ao horário naive da corretora — sem isto,
+ * `new Date(naive)` interpretaria no fuso do ambiente (ambíguo). Já com offset/Z
+ * (ex.: corretora exporta UTC) passa direto; sem tz mantém o comportamento legado.
+ * @returns {string|null}
  */
-const getEffectiveTimestamp = (order) => {
+const getEffectiveIso = (order, tz) => {
   const ts = order.filledAt || order.submittedAt;
-  if (!ts) return 0;
-  return new Date(ts).getTime();
+  if (!ts) return null;
+  return naiveIsoToOffset(ts, tz);
 };
 
 /**
@@ -91,14 +95,19 @@ export const reconstructOperations = (orders, opts = {}) => {
   const gapThresholdMs = typeof opts.gapThresholdMs === 'number'
     ? opts.gapThresholdMs
     : DEFAULT_GAP_THRESHOLD_MS;
+  const tz = opts.timezone || null; // fuso do lote (#292) — null = legado naive
 
   // Step 0: Agregar fills N×M do mesmo externalOrderId numa ordem lógica única
   const aggregated = aggregateFills(orders);
 
-  // Step 1: Separar FILLED das demais
+  // Step 1: Separar FILLED das demais. _iso = instante absoluto (ISO+offset no
+  // fuso do lote); _ts = ms derivado dele (ordenação/gap/duração consistentes).
   const filledOrders = aggregated
     .filter(o => o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
-    .map(o => ({ ...o, _ts: getEffectiveTimestamp(o) }))
+    .map(o => {
+      const iso = getEffectiveIso(o, tz);
+      return { ...o, _iso: iso, _ts: iso ? new Date(iso).getTime() : 0 };
+    })
     .sort((a, b) => a._ts - b._ts);
 
   if (!filledOrders.length) return [];
@@ -170,6 +179,12 @@ export const reconstructOperations = (orders, opts = {}) => {
         const durationMs = exitTime - entryTime;
         const durationStr = formatDuration(durationMs);
 
+        // Instantes absolutos (ISO+offset) para gravar no trade (#292).
+        const entryIso = currentEntries[0]._iso;
+        const exitIso = currentExits.length > 0
+          ? currentExits[currentExits.length - 1]._iso
+          : entryIso;
+
         operations.push({
           operationId: `OP-${String(opCounter).padStart(3, '0')}`,
           instrument,
@@ -182,8 +197,8 @@ export const reconstructOperations = (orders, opts = {}) => {
           avgEntryPrice: avgEntry,
           avgExitPrice: avgExit,
           resultPoints,
-          entryTime: new Date(entryTime).toISOString(),
-          exitTime: new Date(exitTime).toISOString(),
+          entryTime: entryIso || new Date(entryTime).toISOString(),
+          exitTime: exitIso || new Date(exitTime).toISOString(),
           duration: durationStr,
           durationMs,
           hasStopProtection: false,   // preenchido em associateNonFilledOrders

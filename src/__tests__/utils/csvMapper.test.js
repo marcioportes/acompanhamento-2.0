@@ -213,6 +213,46 @@ describe('buildTradeFromRow', () => {
     expect(errors).toHaveLength(0);
     expect(trade.stopLoss).toBeUndefined();
   });
+
+  // #292 — fuso do lote: entry/exitTime viram ISO+offset
+  describe('fuso do lote (#292)', () => {
+    it('sem tz: entryTime/exitTime ficam naive (retrocompat)', () => {
+      const { trade } = buildTradeFromRow(validRow, mapping, valueMap, {}, '');
+      expect(trade.entryTime).toBe('2026-03-03T10:30:00');
+      expect(trade.exitTime).toBe('2026-03-03T10:45:00');
+    });
+
+    it('com tz ET (março, EST): grava offset -05:00', () => {
+      // 2026-03-03 é antes do 2º domingo de março → ainda EST
+      const { trade } = buildTradeFromRow(validRow, mapping, valueMap, {}, '', 'America/New_York');
+      expect(trade.entryTime).toBe('2026-03-03T10:30:00-05:00');
+      expect(trade.exitTime).toBe('2026-03-03T10:45:00-05:00');
+    });
+
+    it('com tz ET (maio, EDT): grava offset -04:00 (DST)', () => {
+      const row = { ...validRow, 'Data Entrada': '15/05/2026 10:30:00', 'Data Saída': '15/05/2026 10:45:00' };
+      const { trade } = buildTradeFromRow(row, mapping, valueMap, {}, '', 'America/New_York');
+      expect(trade.entryTime).toBe('2026-05-15T10:30:00-04:00');
+    });
+
+    it('com tz BRT: grava offset -03:00 fixo', () => {
+      const { trade } = buildTradeFromRow(validRow, mapping, valueMap, {}, '', 'America/Sao_Paulo');
+      expect(trade.entryTime).toBe('2026-03-03T10:30:00-03:00');
+    });
+
+    it('tz não vaza como campo trade.timezone', () => {
+      const { trade } = buildTradeFromRow(validRow, mapping, valueMap, {}, '', 'America/New_York');
+      expect(trade.timezone).toBeUndefined();
+    });
+
+    it('applyMapping propaga template.timezone para as linhas', () => {
+      const rows = [{ ...validRow }];
+      const result = applyMapping(rows, {
+        mapping, valueMap, defaults: {}, dateFormat: '', timezone: 'America/New_York',
+      });
+      expect(result.trades[0].entryTime).toBe('2026-03-03T10:30:00-05:00');
+    });
+  });
 });
 
 // ============================================

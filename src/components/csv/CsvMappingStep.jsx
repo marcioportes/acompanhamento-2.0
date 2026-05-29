@@ -19,7 +19,8 @@
 
 import { useMemo } from 'react';
 import { SYSTEM_FIELDS } from '../../utils/csvMapper';
-import { Link2, Save, AlertTriangle, Zap, Globe, Calendar } from 'lucide-react';
+import { TIMEZONE_LIST } from '../../utils/tradeTimezone';
+import { Link2, Save, AlertTriangle, Zap, Globe, Calendar, Clock } from 'lucide-react';
 
 const CsvMappingStep = ({
   headers,
@@ -29,6 +30,8 @@ const CsvMappingStep = ({
   defaults,
   dateFormat,
   exchanges = [],
+  timezone = '',
+  onTimezoneChange,
   onMappingChange,
   onValueMapChange,
   onDefaultsChange,
@@ -102,7 +105,7 @@ const CsvMappingStep = ({
       {/* ====================================== */}
       {/* SEÇÃO 1: CONFIGURAÇÕES CRÍTICAS (TOPO) */}
       {/* ====================================== */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {/* Exchange — obrigatório, vazio por default */}
         <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
           <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
@@ -144,6 +147,25 @@ const CsvMappingStep = ({
             <option value="MM/DD/YYYY">MM/DD/YYYY (Americano)</option>
             <option value="YYYY-MM-DD">YYYY-MM-DD (ISO)</option>
           </select>
+        </div>
+
+        {/* Fuso do lote (#292) — horários do arquivo são interpretados neste fuso */}
+        <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+          <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <Clock className="w-3 h-3" /> Fuso dos horários
+          </label>
+          <select
+            value={timezone || ''}
+            onChange={(e) => onTimezoneChange?.(e.target.value)}
+            className="w-full bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+          >
+            {TIMEZONE_LIST.map(tz => (
+              <option key={tz.id} value={tz.id}>{tz.label}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-slate-500 mt-1">
+            Em que fuso estão os horários do arquivo (sugerido pela bolsa).
+          </p>
         </div>
       </div>
 

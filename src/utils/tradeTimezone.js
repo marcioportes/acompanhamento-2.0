@@ -20,6 +20,9 @@ export const TIMEZONES = {
 
 export const TIMEZONE_LIST = [TIMEZONES.ET, TIMEZONES.CT, TIMEZONES.BRT];
 
+// Detecta ISO já com offset/Z — não reconverter.
+const HAS_TZ = /[zZ]$|[+-]\d{2}:?\d{2}$/;
+
 // Prefixos de futuros CME (US) — MANTER SINCRONIZADO com
 // functions/marketData/symbolMapper.js MAPPINGS. Ordem-sensível: micros antes
 // dos cheios pra não bater MNQ em NQ.
@@ -85,6 +88,20 @@ export function defaultTzForTicker(ticker) {
   return isCMEFutureTicker(ticker) ? TIMEZONES.ET.id : TIMEZONES.BRT.id;
 }
 
+// Exchanges US (horário de mercado em ET) — bolsas brasileiras usam BRT (#292).
+const US_EXCHANGES = ['CME', 'CBOT', 'NYMEX', 'COMEX', 'GLOBEX', 'NYSE', 'NASDAQ', 'CBOE'];
+
+/**
+ * Default de fuso por exchange no import CSV (#292) — ET pras bolsas US, BRT
+ * pro resto (B3 etc.). Case-insensitive. Sticky/manual sobrescreve no caller.
+ */
+export function defaultTzForExchange(exchange) {
+  if (!exchange || typeof exchange !== 'string') return TIMEZONES.BRT.id;
+  return US_EXCHANGES.includes(exchange.toUpperCase().trim())
+    ? TIMEZONES.ET.id
+    : TIMEZONES.BRT.id;
+}
+
 /**
  * Combina data (YYYY-MM-DD) + hora (HH:MM ou HH:MM:SS) + fuso → ISO + offset.
  * Offset é calculado pra DATA do trade (não "hoje") — DST correto pro instante.
@@ -95,6 +112,23 @@ export function combineDateTimeWithTz(dateISO, time, tz) {
   if (!dateISO || !time || !tz) return null;
   const timePart = time.length >= 8 ? time : `${time}:00`;
   return `${dateISO}T${timePart}${getOffset(dateISO, tz)}`;
+}
+
+/**
+ * Converte um ISO naive (`YYYY-MM-DDTHH:MM[:SS]`) para instante absoluto
+ * (ISO+offset) no fuso informado (#292, import por lote). Já com offset/Z, ou
+ * sem tz, ou malformado → retorna o valor original (legado segue Brasília no
+ * enrich). Usado por csvMapper e orderReconstruction.
+ *
+ * @param {string|null} naiveIso
+ * @param {string|null} tz — IANA id; null/'' não converte
+ * @returns {string|null}
+ */
+export function naiveIsoToOffset(naiveIso, tz) {
+  if (!naiveIso || !tz || HAS_TZ.test(naiveIso)) return naiveIso;
+  const [date, time] = naiveIso.split('T');
+  if (!date || !time) return naiveIso;
+  return combineDateTimeWithTz(date, time, tz) || naiveIso;
 }
 
 /**
