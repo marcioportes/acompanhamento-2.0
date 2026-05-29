@@ -42,3 +42,4 @@
 | 1.66.0 | #282 | `feat/issue-282-metrics-parity` | 26/05/2026 | consumida (PR #284 squash `45c90a38`) |
 | 1.68.0 | #285 | `feat/issue-285-trade-timezone` | 27/05/2026 | consumida (PR #288 squash `a1519aff`) |
 | 1.69.0 | #289 | `feat/issue-289-context-gated-analytics` | 28/05/2026 | consumida (PR #291 squash `92cc2c6e`) |
+| 1.70.0 | #292 | `feat/issue-292-import-timezone` | 29/05/2026 | reservada (timezone explícito no import de trades — CSV + Order, fuso por lote) |
