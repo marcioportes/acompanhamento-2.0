@@ -54,6 +54,33 @@ const toMs = (value) => {
 };
 
 /**
+ * Timestamp em ms para COMPARAÇÃO DE PROXIMIDADE op↔trade — hora-de-parede
+ * (wall-clock), offset-neutro (issue #296).
+ *
+ * O horário da ordem chega naive (`2026-05-01T11:30:49`, do CSV da corretora),
+ * enquanto `trade.entryTime` desde #285/#292 é instante absoluto com offset
+ * (`...-04:00`). Comparar naive vs absoluto desloca os dois lados quando os trades
+ * foram gravados em fuso ≠ ambiente (ex.: ET em futuros CME) → 1h de gap → fora da
+ * janela de 5min → falso "operação nova". Como ordem e trade vêm da MESMA corretora
+ * no MESMO fuso de exibição, a hora-de-parede é a chave de junção robusta: extrai
+ * `YYYY-MM-DDTHH:MM:SS` (descarta offset/Z) e parseia como UTC. Sem componente de
+ * hora (data pura, Timestamp Firestore, Date) → fallback `toMs`.
+ *
+ * @param {*} value
+ * @returns {number|null}
+ */
+const toWallMs = (value) => {
+  if (typeof value === 'string') {
+    const m = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/);
+    if (m) {
+      const t = new Date(`${m[1]}T${m[2]}Z`);
+      if (!isNaN(t.getTime())) return t.getTime();
+    }
+  }
+  return toMs(value);
+};
+
+/**
  * Checa se um timestamp de trade tem componente de hora (vs. apenas data).
  * Trades importados por CSV podem ter só data (YYYY-MM-DD ou DD/MM/YYYY sem hora).
  * @param {*} value
@@ -117,7 +144,7 @@ export const correlateOrder = (order, trades) => {
     return { tradeId: null, confidence: 0, matchType: 'ghost', details: 'Sem trades para correlação' };
   }
 
-  const orderTs = toMs(order.filledAt || order.submittedAt);
+  const orderTs = toWallMs(order.filledAt || order.submittedAt);
   if (!orderTs) {
     return { tradeId: null, confidence: 0, matchType: 'ghost', details: 'Ordem sem timestamp' };
   }
@@ -131,8 +158,9 @@ export const correlateOrder = (order, trades) => {
     if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
 
     // Filtro 2: timestamp — usar entryTime para ordens de abertura, exitTime para fechamento
-    const tradeEntryTs = toMs(trade.entryTime || trade.openedAt);
-    const tradeExitTs = toMs(trade.exitTime || trade.closedAt);
+    // Comparação wall-clock (offset-neutro, #296): ordem naive vs trade absoluto.
+    const tradeEntryTs = toWallMs(trade.entryTime || trade.openedAt);
+    const tradeExitTs = toWallMs(trade.exitTime || trade.closedAt);
 
     // Determinar se a trade tem hora ou só data
     const tradeHasTime = hasTimeComponent(trade.entryTime) || hasTimeComponent(trade.exitTime);
@@ -303,7 +331,7 @@ export const correlateOrders = (orders, trades) => {
   let matchedCount = 0;
 
   for (const order of sortedOrders) {
-    const orderTs = toMs(order.filledAt || order.submittedAt);
+    const orderTs = toWallMs(order.filledAt || order.submittedAt);
 
     if (!orderTs) {
       correlations.push({
@@ -329,8 +357,8 @@ export const correlateOrders = (orders, trades) => {
       const tradeInstrument = (trade.ticker || '').toUpperCase();
       if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
 
-      const tradeEntryTs = toMs(trade.entryTime || trade.openedAt);
-      const tradeExitTs = toMs(trade.exitTime || trade.closedAt);
+      const tradeEntryTs = toWallMs(trade.entryTime || trade.openedAt);
+      const tradeExitTs = toWallMs(trade.exitTime || trade.closedAt);
       const tradeHasTime = hasTimeComponent(trade.entryTime) || hasTimeComponent(trade.exitTime);
       const window = tradeHasTime ? CORRELATION_WINDOW_MS : CORRELATION_WINDOW_DAY_MS;
 
@@ -456,8 +484,8 @@ export const correlateCancelledOrders = (cancelledOrders, trades) => {
     const status = order?.status;
     if (status !== 'CANCELLED' && status !== 'REJECTED' && status !== 'EXPIRED') continue;
 
-    const submittedTs = toMs(order.submittedAt);
-    const cancelledTs = toMs(order.cancelledAt) || toMs(order.filledAt) || submittedTs;
+    const submittedTs = toWallMs(order.submittedAt);
+    const cancelledTs = toWallMs(order.cancelledAt) || toWallMs(order.filledAt) || submittedTs;
     if (!submittedTs && !cancelledTs) continue;
 
     const orderStart = submittedTs ?? cancelledTs;
@@ -471,8 +499,8 @@ export const correlateCancelledOrders = (cancelledOrders, trades) => {
       const tradeInstrument = (trade.ticker || trade.instrument || '').toUpperCase();
       if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
 
-      const entryTs = toMs(trade.entryTime || trade.openedAt);
-      const exitTs = toMs(trade.exitTime || trade.closedAt);
+      const entryTs = toWallMs(trade.entryTime || trade.openedAt);
+      const exitTs = toWallMs(trade.exitTime || trade.closedAt);
       if (!entryTs) continue;
 
       const tradeStart = entryTs - CANCEL_TRADE_PADDING_MS;

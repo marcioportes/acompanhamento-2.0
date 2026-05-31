@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.71.1: #296 fix import de ordens pedia plano retroativo / duplicava trades existentes — correlator comparava naive (ordem) vs absoluto (trade); wall-clock neutraliza offset.
  * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
  * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
  * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo).
@@ -363,10 +364,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.71.0',
+  version: '1.71.1',
   build: '20260531',
-  display: 'v1.71.0',
-  full: '1.71.0+20260531',
+  display: 'v1.71.1',
+  full: '1.71.1+20260531',
 };
 export default VERSION;
 export { VERSION };
