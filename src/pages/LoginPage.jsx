@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, EyeOff, Loader2, Mail, Lock, ArrowRight, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { EspelhoMark, EspelhoLockup } from '../components/EspelhoLogo';
+import HeroParticles from '../components/HeroParticles';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -138,25 +139,33 @@ const LoginPage = () => {
         </div>
       </div>
 
-      {/* --- LADO DIREITO (DECORAÇÃO) --- */}
-      <div className="hidden lg:flex flex-1 items-center justify-center bg-slate-900 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-teal-500/10 via-slate-900 to-slate-900" />
-          <div className="absolute bottom-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-teal-400/10 via-slate-900 to-slate-900" />
-        </div>
+      {/* --- LADO DIREITO (HERO) — porte do ambiente visual do portal /espelho --- */}
+      <div className="hidden lg:flex flex-1 items-center justify-center bg-slate-950 relative overflow-hidden espelho-grain">
+        {/* orbs flutuantes + partículas (atrás do conteúdo) */}
+        <div className="espelho-orb espelho-orb-1" aria-hidden="true" />
+        <div className="espelho-orb espelho-orb-2" aria-hidden="true" />
+        <HeroParticles />
 
-        <div className="relative text-center p-12 max-w-lg z-10">
-          <div className="mb-10 flex justify-center text-5xl text-teal-400">
+        <div className="relative text-center px-12 max-w-lg z-10">
+          <p className="espelho-in text-xs uppercase tracking-[0.3em] text-teal-400 font-medium mb-10">
+            Produto
+          </p>
+
+          <div className="espelho-in d1 mb-3 flex justify-center text-6xl xl:text-7xl text-teal-400">
             <EspelhoLockup />
           </div>
-          <h3 className="text-4xl font-display font-bold text-white mb-4 leading-tight">
+          <p className="espelho-in d1 text-sm uppercase tracking-[0.35em] text-slate-500 mb-10">
+            do Trader
+          </p>
+
+          <h3 className="espelho-in d2 text-3xl xl:text-4xl font-display font-bold text-white mb-4 leading-tight">
             Domine sua <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-teal-300">Alta Performance</span>
           </h3>
-          <p className="text-lg text-slate-400 mb-12 leading-relaxed">
-            O ambiente definitivo para registrar, analisar e evoluir seus trades com precisão profissional.
+          <p className="espelho-in d2 text-lg text-slate-400 mb-12 leading-relaxed">
+            O sistema que cruza emoção declarada, plano escrito e execução real — operação por operação.
           </p>
-          
-          <div className="grid grid-cols-3 gap-8 border-t border-slate-800 pt-8">
+
+          <div className="espelho-in d3 grid grid-cols-3 gap-8 border-t border-slate-800/80 pt-8">
             <div>
               <p className="text-2xl font-bold text-white mb-1">100%</p>
               <p className="text-xs text-slate-500 uppercase tracking-wider">Foco</p>
