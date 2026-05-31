@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.71.0] - 31/05/2026 · #294 · PR #295
+
+**feat:** rebrand Espelho do Trader nas telas de entrada (Login + Sidebar)
+
+- **Nova marca** `src/components/EspelhoLogo.jsx` — `EspelhoMark` (símbolo ‹|› teal isolado) + `EspelhoLockup` («‹|› Espelho» com reflexo). Porte JSX de `marcioportes-portal/app/components/EspelhoLogo.tsx`.
+- **Sidebar** — "Tchio / Alpha" → ‹|› + "Espelho / do Trader"; item de menu ativo migra de azul para teal.
+- **Login (esquerda)** — "Acompanhamento 2.0 Trading Journal" → logo Espelho do Trader.
+- **Login (decoração direita) — hero elevado** — porte do ambiente visual do portal: `HeroParticles` (canvas de partículas teal), orbs flutuantes, grain, `EspelhoLockup` em 6xl/7xl com eyebrow "Produto" + tagline "do Trader" + headline do produto. Animações `espelho-in` (fade-up escalonado), respeitando `prefers-reduced-motion`.
+- `npm run build` verde.
+- Suite Sidebar 12/12 (sem testes acoplados ao wordmark antigo).
+- Smoke visual em `localhost:5173` aprovado por Marcio (31/05/2026).
+
+
 ## [1.70.0] - 29/05/2026 · #292 · PR #293
 
 **feat:** timezone explícito no import de trades (CSV + Order)

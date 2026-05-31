@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) — marca ‹|› teal, wordmark "Espelho / do Trader".
+ * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
  * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
  * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo).
  * - 1.68.0: #285 feat timezone explícito no horário do trade — MEP/MEN correto (manual + import) + gate de promoção.
