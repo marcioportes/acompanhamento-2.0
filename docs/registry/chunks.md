@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-10 | #296 | `fix/issue-296-correlator-wallclock` | 31/05/2026 | correlator tz-cego (wall-clock) |
