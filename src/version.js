@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.71.1: #296 fix import de ordens pedia plano retroativo / duplicava trades existentes — correlator comparava naive (ordem) vs absoluto (trade); wall-clock neutraliza offset.
+ * - 1.71.1: #296 fix correlator op↔trade compara wall-clock (offset-neutro) (PR #297, 31/05/2026)
  * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
  * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
  * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo).

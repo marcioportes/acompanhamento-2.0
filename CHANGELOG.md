@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.71.1] - 31/05/2026 · #296 · PR #297
+
+**fix:** correlator op↔trade compara wall-clock (offset-neutro)
+
+- Massa real: **59/59** ordens casam em qualquer fuso (naive/BRT/ET/CT). Era 3/59 em ET.
+- +5 testes de regressão; suite correlator 31/31; suites order/csv/reconstruction 111/111; build verde.
+- Sem alteração de Firestore/CF.
+- Vigência de plano = fim do período do ciclo (cobertura de trades genuinamente novos; hoje ancora em `plan.createdAt`).
+- Default de fuso do order import = BRT fixo (vs ET no CSV/manual) → instante absoluto errado em trades novos do order import.
+
+
 ## [1.71.0] - 31/05/2026 · #294 · PR #295
 
 **feat:** rebrand Espelho do Trader nas telas de entrada (Login + Sidebar)
