@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) — marca ‹|› teal, wordmark "Espelho / do Trader".
  * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
  * - 1.69.0: #289 feat Dashboard-Aluno — análises governadas pelo contexto (gate plano/ciclo).
  * - 1.68.0: #285 feat timezone explícito no horário do trade — MEP/MEN correto (manual + import) + gate de promoção.
@@ -362,10 +363,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.70.0',
-  build: '20260529',
-  display: 'v1.70.0',
-  full: '1.70.0+20260529',
+  version: '1.71.0',
+  build: '20260531',
+  display: 'v1.71.0',
+  full: '1.71.0+20260531',
 };
 export default VERSION;
 export { VERSION };

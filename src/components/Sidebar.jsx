@@ -22,7 +22,6 @@ import {
   AlertTriangle,
   Wallet,
   BookOpen,
-  LineChart,
   Settings,
   Brain,
   CreditCard,
@@ -33,6 +32,7 @@ import {
   Inbox,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { EspelhoMark } from './EspelhoLogo';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { VERSION } from '../version';
 
@@ -135,15 +135,15 @@ const Sidebar = ({
         {/* Logo */}
         <div className="p-6 border-b border-slate-800/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <LineChart className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-slate-800/60 border border-teal-500/20 flex items-center justify-center flex-shrink-0">
+              <EspelhoMark className="w-6 h-6" />
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h1 className="font-display font-bold text-white truncate">
-                  Tchio
+                <h1 className="font-display font-bold text-white truncate leading-tight">
+                  Espelho
                 </h1>
-                <p className="text-xs text-slate-500">Alpha</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-teal-400/80">do Trader</p>
               </div>
             )}
           </div>
@@ -168,8 +168,8 @@ const Sidebar = ({
               key={item.id}
               onClick={() => onViewChange(item.id)}
               className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                currentView === item.id 
-                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                currentView === item.id
+                  ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
               }`}
             >
