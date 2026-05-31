@@ -332,3 +332,44 @@ describe('correlateCancelledOrders', () => {
     expect(result[0].tradeId).toBe('T2');
   });
 });
+
+// ============================================
+// Issue #296 — correlação wall-clock (offset-neutra)
+// Regressão: ordem com horário NAIVE (CSV da corretora) deve casar com trade
+// gravado em fuso explícito (ET/BRT) — mesma hora-de-parede, mesma corretora.
+// Antes do fix, trade em ET ficava 1h fora da janela de 5min → ghost → "nova".
+// ============================================
+describe('correlateOrder — wall-clock tz-neutro (#296)', () => {
+  const naiveOrder = () => makeOrder({
+    instrument: 'MNQM6', side: 'BUY', quantity: 1,
+    submittedAt: '2026-05-01T11:30:49',
+    filledAt: '2026-05-01T11:30:49',
+  });
+  const tradeWithTz = (off) => makeTrade({
+    id: 'tradeMNQ', ticker: 'MNQM6', side: 'LONG', qty: 1,
+    entryTime: `2026-05-01T11:30:49${off}`,
+    exitTime: `2026-05-01T11:37:05${off}`,
+  });
+
+  it.each([
+    ['naive', ''],
+    ['BRT -03:00', '-03:00'],
+    ['ET -04:00', '-04:00'],
+    ['CT -05:00', '-05:00'],
+  ])('casa ordem naive com trade gravado em %s', (_label, off) => {
+    const result = correlateOrder(naiveOrder(), [tradeWithTz(off)]);
+    expect(result.tradeId).toBe('tradeMNQ');
+    expect(result.matchType).not.toBe('ghost');
+  });
+
+  it('correlateOrders: lote inteiro casa com trades em ET (sem órfãs)', () => {
+    const orders = [
+      makeOrder({ _rowIndex: 1, externalOrderId: 'O1', instrument: 'MNQM6', side: 'SELL',
+        submittedAt: '2026-05-01T11:30:49', filledAt: '2026-05-01T11:30:49' }),
+      makeOrder({ _rowIndex: 2, externalOrderId: 'O2', instrument: 'MNQM6', side: 'BUY',
+        submittedAt: '2026-05-01T11:37:05', filledAt: '2026-05-01T11:37:05' }),
+    ];
+    const { correlations } = correlateOrders(orders, [tradeWithTz('-04:00')]);
+    expect(correlations.filter(c => c.tradeId).length).toBe(2);
+  });
+});
