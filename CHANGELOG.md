@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.72.0] - 01/06/2026 · #299 · PR #300
+
+**feat:** baseline + taxonomia + mapa de pesos do framework
+
+- **`docs/dev/behavioral-weight-map.md`** — mapa de pesos derivado do `trader_evolution_framework.md` (aprovado por Marcio 01/06; findings passam a mapear viés→dimensão E/F/O; positivos como bônus; `ruleViolationRate` §5.3 como gate). Números finais calibram na Fase 2.
+- **`src/constants/behavioralTaxonomy.js`** (+ mirror CJS `functions/maturity/behavioralTaxonomyMirror.js`) — SSoT: 17 padrões canônicos, `LEGACY_CODE_ALIAS` colapsando as 4 sobreposições (hesitação×3, loss-chasing×2, stop-panic×2, sub-sizing×2), helpers `resolveCanonical`/`getPattern`, `SCORING_CODES`/`GATE_CODES`.
+- **`behavioralBaseline.snapshot.test.js`** — congela outputs atuais (STOP_TAMPERING/HIGH, tilt 3, revenge×2, periodScore 40) como contrato de não-regressão das Fases 1/3/5.
+- **`behavioralTaxonomy.parity.test.js`** — paridade ESM≡CJS + invariantes.
+- Suíte completa **3354/3354** + build verdes. Zero regressão.
+- Paridade ESM≡CJS verde. Nenhuma alteração de Firestore/CF.
+
+
 ## [1.71.1] - 31/05/2026 · #296 · PR #297
 
 **fix:** correlator op↔trade compara wall-clock (offset-neutro)
