@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.73.0: #301 feat CHUNK-11 Fase 1 — motor unificado detectBehavior (dark/compat, reusa detectores + dual-emit).
  * - 1.72.0: #299 feat baseline + taxonomia + mapa de pesos do framework (PR #300, 01/06/2026)
  * - 1.71.1: #296 fix correlator op↔trade compara wall-clock (offset-neutro) (PR #297, 31/05/2026)
  * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
@@ -365,10 +366,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.72.0',
+  version: '1.73.0',
   build: '20260601',
-  display: 'v1.72.0',
-  full: '1.72.0+20260601',
+  display: 'v1.73.0',
+  full: '1.73.0+20260601',
 };
 export default VERSION;
 export { VERSION };

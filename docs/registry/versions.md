@@ -46,3 +46,4 @@
 | 1.71.0 | #294 | `feat/issue-294-rebrand-espelho` | 31/05/2026 | consumida (PR #295 squash `29a669de`) |
 | 1.71.1 | #296 | `fix/issue-296-correlator-wallclock` | 31/05/2026 | consumida (PR #297 squash `42fd3da2`) |
 | 1.72.0 | #299 | `feat/issue-299-chunk11-fase0` | 01/06/2026 | consumida (PR #300 squash `c10be425`) |
+| 1.73.0 | #301 | `feat/issue-301-chunk11-fase1` | 01/06/2026 | reservada |

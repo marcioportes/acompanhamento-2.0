@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-11 | #301 | `feat/issue-301-chunk11-fase1` | 01/06/2026 | Epic #298 Fase 1 — motor unificado dark/compat |
