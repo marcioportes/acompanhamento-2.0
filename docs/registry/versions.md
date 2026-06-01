@@ -47,3 +47,4 @@
 | 1.71.1 | #296 | `fix/issue-296-correlator-wallclock` | 31/05/2026 | consumida (PR #297 squash `42fd3da2`) |
 | 1.72.0 | #299 | `feat/issue-299-chunk11-fase0` | 01/06/2026 | consumida (PR #300 squash `c10be425`) |
 | 1.73.0 | #301 | `feat/issue-301-chunk11-fase1` | 01/06/2026 | reservada |
+| 1.72.1 | #302 | `fix/issue-302-mentor-feedback-seal` | 01/06/2026 | reservada (patch sobre 1.72.0; bump do version.js no fechamento p/ não rebaixar main 1.73.0) |
