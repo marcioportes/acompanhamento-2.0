@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.72.0: #299 feat CHUNK-11 Fase 0 — baseline + taxonomia comportamental + mapa de pesos do framework (groundwork, zero mudança de produção).
  * - 1.71.1: #296 fix correlator op↔trade compara wall-clock (offset-neutro) (PR #297, 31/05/2026)
  * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
  * - 1.70.0: #292 feat timezone explícito no import de trades (CSV + Order) — fuso por lote.
@@ -364,10 +365,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.71.1',
-  build: '20260531',
-  display: 'v1.71.1',
-  full: '1.71.1+20260531',
+  version: '1.72.0',
+  build: '20260601',
+  display: 'v1.72.0',
+  full: '1.72.0+20260601',
 };
 export default VERSION;
 export { VERSION };

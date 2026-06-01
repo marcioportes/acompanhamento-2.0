@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Baseline comportamental (Fase 0) — contrato de não-regressão > emotionalAnalysisV2: periodScore [congelado] 1`] = `40`;
+
+exports[`Baseline comportamental (Fase 0) — contrato de não-regressão > emotionalAnalysisV2: revenge [congelado] 1`] = `
+{
+  "count": 2,
+  "detected": true,
+}
+`;
+
+exports[`Baseline comportamental (Fase 0) — contrato de não-regressão > emotionalAnalysisV2: tilt [congelado] 1`] = `
+{
+  "detected": true,
+  "sequences": 1,
+  "totalTiltTrades": 3,
+}
+`;
+
+exports[`Baseline comportamental (Fase 0) — contrato de não-regressão > executionBehaviorEngine: eventos por trade [congelado] 1`] = `
+[
+  {
+    "severity": "HIGH",
+    "tradeId": "T1",
+    "type": "STOP_TAMPERING",
+  },
+]
+`;
