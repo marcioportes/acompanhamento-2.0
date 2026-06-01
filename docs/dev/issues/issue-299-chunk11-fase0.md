@@ -2,7 +2,7 @@
 
 ## Autorização
 - [x] Plano do épico aprovado (sessão 01/06, arquivo valiant-doodling-sunrise)
-- [ ] **Mapa de pesos (`behavioral-weight-map.md`) aprovado por Marcio** ← gate desta fase
+- [x] **Mapa de pesos (`behavioral-weight-map.md`) aprovado por Marcio** (01/06 "aprovado" — inclui as 3 decisões: findings novos pesam em F/O, positivos como bônus, faixas ruleViolationRate como gates)
 - [x] Gate Pré-Código liberado (groundwork, zero mudança de produção)
 
 ## Context

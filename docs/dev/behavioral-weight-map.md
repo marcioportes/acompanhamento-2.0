@@ -1,8 +1,8 @@
 # Mapa de Pesos Comportamentais — derivado do Framework Evolutivo
 
-> **Status: RASCUNHO — aguarda aprovação de Marcio (gate da Fase 0, antes de qualquer wiring na Fase 2).**
-> SSoT de origem: [`trader_evolution_framework.md`](trader_evolution_framework.md).
-> Este mapa substitui os `EVENT_PENALTIES` ad-hoc de `emotionalAnalysisV2.js:77`.
+> **Status: APROVADO por Marcio (01/06/2026)** — inclui as 3 decisões abertas (findings novos pesam em F/O; positivos como bônus; faixas `ruleViolationRate` §5.3 viram gates). Números finais por severidade calibram na Fase 2 sobre a baseline congelada.
+> SSoT de origem: [`trader_evolution_framework.md`](trader_evolution_framework.md). Encodado em `src/constants/behavioralTaxonomy.js`.
+> Este mapa substitui os `EVENT_PENALTIES` ad-hoc de `emotionalAnalysisV2.js:77` (wiring na Fase 2).
 
 ## Princípio
 
