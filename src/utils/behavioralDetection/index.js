@@ -12,27 +12,41 @@
  *   events     — wrap de `detectExecutionEvents` (#208). Dual-emit: preserva `type`,
  *                adiciona `legacyCode` + `canonicalCode`. Filtrar os 2 campos extras
  *                devolve o array idêntico ao de hoje → baseline #299 intacto (A4).
- *   byTrade    — wrap de `analyzeShadowForTrade` (#129). ESM-only (sem mirror CJS;
- *                a maturidade server-side não consome shadow per-trade — DEC-AUTO-301). [A2]
- *   aggregates — scoreInputs (emocional #189) + byFamily/gateInputs (dedupe por
- *                família com precedência DEC-074: ordens > parciais > sequência). [A2]
+ *   byTrade    — wrap de `analyzeShadowBatch`/`analyzeShadowForTrade` (#129). ESM-only
+ *                (sem mirror CJS; a maturidade server-side não consome shadow per-trade
+ *                — DEC-AUTO-301-01). Cada pattern enriquecido com canonicalCode + family.
+ *   aggregates — scoreInputs (emocional #189) + byFamily/gateInputs.
+ *
+ * byFamily — dedupe por (tradeId, family): events e shadow que apontam para a mesma
+ * família no mesmo trade COLAPSAM numa entrada (não contam 2x no gate). Precedência
+ * DEC-074: maior resolutionLayer da taxonomia vence (HIGH>MEDIUM>LOW = ordens>parciais
+ * >sequência); empate → fonte `events` (ordem bruta é o sinal mais forte).
  *
  * Contrato de retorno:
  *   { events, byTrade, aggregates: { scoreInputs, byFamily, gateInputs }, meta }
  */
 
 import { detectExecutionEvents } from '../executionBehaviorEngine';
-import { resolveCanonical } from '../../constants/behavioralTaxonomy';
+import { analyzeShadowBatch } from '../shadowBehaviorAnalysis';
+import {
+  calculatePeriodScore,
+  detectTiltV2,
+  detectRevengeV2,
+} from '../emotionalAnalysisV2';
+import {
+  resolveCanonical,
+  getPattern,
+  GATE_CODES,
+} from '../../constants/behavioralTaxonomy';
 
 export const BEHAVIORAL_DETECTION_VERSION = '1.0.0';
+
+const RESOLUTION_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
 /**
  * Enriquece um evento de execução com código canônico + legado, preservando o
  * objeto original intacto (dual-emit). `legacyCode` é o `type` de hoje;
  * `canonicalCode` resolve pela taxonomia (4 sobreposições colapsadas).
- *
- * @param {object} event - evento cru de `detectExecutionEvents`
- * @returns {object} evento + { legacyCode, canonicalCode }
  */
 const enrichEvent = (event) => ({
   ...event,
@@ -40,32 +54,137 @@ const enrichEvent = (event) => ({
   canonicalCode: resolveCanonical(event.type),
 });
 
+/** Agrupa ordens planas por trade (correlatedTradeId) — entrada do shadow batch. */
+const groupOrdersByTrade = (orders) => {
+  const map = {};
+  for (const o of orders) {
+    const tid = o?.correlatedTradeId;
+    if (!tid) continue;
+    (map[tid] ??= []).push(o);
+  }
+  return map;
+};
+
+/**
+ * Coleta detecções canônicas (events + shadow) numa lista achatada para o dedupe.
+ * @returns {Array<{tradeId, canonicalCode, family, source, resolutionLayer}>}
+ */
+const collectDetections = (events, byTrade) => {
+  const out = [];
+  for (const e of events) {
+    const p = e.canonicalCode ? getPattern(e.canonicalCode) : null;
+    if (!p) continue;
+    out.push({
+      tradeId: e.tradeId ?? null, canonicalCode: e.canonicalCode,
+      family: p.family, source: 'events', resolutionLayer: p.resolutionLayer,
+    });
+  }
+  for (const [tradeId, shadow] of byTrade) {
+    for (const pat of shadow.patterns) {
+      const p = pat.canonicalCode ? getPattern(pat.canonicalCode) : null;
+      if (!p) continue;
+      out.push({
+        tradeId, canonicalCode: pat.canonicalCode,
+        family: p.family, source: 'shadow', resolutionLayer: p.resolutionLayer,
+      });
+    }
+  }
+  return out;
+};
+
+/** Vence a detecção de maior resolução; empate → fonte `events`. */
+const winsOver = (cand, cur) => {
+  const rc = RESOLUTION_RANK[cand.resolutionLayer] ?? 0;
+  const rk = RESOLUTION_RANK[cur.resolutionLayer] ?? 0;
+  if (rc !== rk) return rc > rk;
+  return cand.source === 'events' && cur.source !== 'events';
+};
+
+/**
+ * Colapsa detecções por (tradeId, family) e deriva gateInputs. Função pura,
+ * exportada para teste determinístico da precedência DEC-074 (a integração com
+ * os detectores reais raramente produz colisão cross-engine).
+ *
+ * @param {Array<{tradeId, canonicalCode, family, source, resolutionLayer}>} detections
+ * @returns {{ byFamily: Map, gateInputs: string[] }}
+ */
+export const dedupeByFamily = (detections) => {
+  const best = new Map();
+  for (const d of detections) {
+    const key = `${d.tradeId}|${d.family}`;
+    const cur = best.get(key);
+    if (!cur || winsOver(d, cur)) best.set(key, d);
+  }
+  const byFamily = new Map();
+  for (const d of best.values()) {
+    if (!byFamily.has(d.family)) byFamily.set(d.family, []);
+    byFamily.get(d.family).push({
+      tradeId: d.tradeId, canonicalCode: d.canonicalCode,
+      source: d.source, resolutionLayer: d.resolutionLayer,
+    });
+  }
+  const detected = new Set([...best.values()].map((d) => d.canonicalCode));
+  const gateInputs = GATE_CODES.filter((c) => detected.has(c));
+  return { byFamily, gateInputs };
+};
+
 /**
  * Motor unificado de detecção comportamental (dark).
  *
  * @param {object}   params
- * @param {Array}    [params.trades=[]]   - trades do período
- * @param {Array}    [params.orders=[]]   - ordens de execução (para o caminho events)
- * @param {object}   [params.config={}]   - overrides de config dos detectores
+ * @param {Array}    [params.trades=[]]              - trades do período
+ * @param {Array}    [params.orders=[]]              - ordens planas (caminho events + fallback shadow)
+ * @param {object}   [params.ordersByTradeId]        - mapa tradeId→orders[] (shadow); derivado de `orders` se ausente
+ * @param {Function} [params.getEmotionConfig]       - lookup de config de emoção; ausente → scoreInputs null
+ * @param {Array}    [params.complianceEvents=[]]    - eventos de compliance (fato) p/ periodScore
+ * @param {object}   [params.config={}]              - overrides do caminho events
  * @returns {{ events: Array, byTrade: Map, aggregates: object, meta: object }}
  */
-export const detectBehavior = ({ trades = [], orders = [], config = {} } = {}) => {
-  // --- Caminho events (A1) — wrap dual-emit de detectExecutionEvents ---
+export const detectBehavior = ({
+  trades = [],
+  orders = [],
+  ordersByTradeId,
+  getEmotionConfig,
+  complianceEvents = [],
+  config = {},
+} = {}) => {
+  // --- events (A1) — wrap dual-emit ---
   const rawEvents = detectExecutionEvents({ trades, orders, config });
   const events = rawEvents.map(enrichEvent);
 
-  // --- byTrade (A2) / aggregates (A2): placeholders desta fase ---
+  // --- byTrade (A2) — wrap shadow, enriquecido com canonicalCode + family ---
+  const ordersMap = ordersByTradeId ?? groupOrdersByTrade(orders);
+  const rawByTrade = analyzeShadowBatch(trades, ordersMap);
   const byTrade = new Map();
-  const aggregates = {
-    scoreInputs: null,
-    byFamily: new Map(),
-    gateInputs: [],
-  };
+  for (const [tradeId, shadow] of rawByTrade) {
+    byTrade.set(tradeId, {
+      ...shadow,
+      patterns: shadow.patterns.map((p) => ({
+        ...p,
+        canonicalCode: resolveCanonical(p.code),
+        family: getPattern(p.code)?.family ?? null,
+      })),
+    });
+  }
+
+  // --- aggregates (A2) ---
+  // scoreInputs: só com getEmotionConfig (não inventa config emocional).
+  let scoreInputs = null;
+  if (typeof getEmotionConfig === 'function') {
+    scoreInputs = {
+      periodScore: calculatePeriodScore(trades, getEmotionConfig, complianceEvents),
+      tilt: detectTiltV2(trades, getEmotionConfig, undefined, rawEvents),
+      revenge: detectRevengeV2(trades, getEmotionConfig, undefined, rawEvents),
+    };
+  }
+
+  // byFamily + gateInputs: dedupe por (tradeId, family) com precedência DEC-074.
+  const { byFamily, gateInputs } = dedupeByFamily(collectDetections(events, byTrade));
 
   return {
     events,
     byTrade,
-    aggregates,
+    aggregates: { scoreInputs, byFamily, gateInputs },
     meta: { version: BEHAVIORAL_DETECTION_VERSION, baselineCompatible: true },
   };
 };
