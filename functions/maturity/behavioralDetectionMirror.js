@@ -54,6 +54,24 @@ const winsOver = (cand, cur) => {
   return cand.source === 'events' && cur.source !== 'events';
 };
 
+/** Dobra o sinal emocional (TILT/LOSS_CHASING) em detecções — paridade com ESM. DEC-AUTO-301-03. */
+const emotionalDetections = (scoreInputs) => {
+  if (!scoreInputs) return [];
+  const out = [];
+  const add = (canonicalCode, detected) => {
+    if (!detected) return;
+    const p = getPattern(canonicalCode);
+    if (!p) return;
+    out.push({
+      tradeId: null, canonicalCode, family: p.family,
+      source: 'emotional', resolutionLayer: p.resolutionLayer,
+    });
+  };
+  add('TILT', scoreInputs.tilt?.detected);
+  add('LOSS_CHASING', scoreInputs.revenge?.detected);
+  return out;
+};
+
 /** Colapsa detecções por (tradeId, family) + deriva gateInputs. Paridade com ESM. */
 const dedupeByFamily = (detections) => {
   const best = new Map();
@@ -70,8 +88,9 @@ const dedupeByFamily = (detections) => {
       source: d.source, resolutionLayer: d.resolutionLayer,
     });
   }
-  const detected = new Set([...best.values()].map((d) => d.canonicalCode));
-  const gateInputs = GATE_CODES.filter((c) => detected.has(c));
+  // gate-ness é propriedade da FAMÍLIA (cabeça), não do código canônico (ver ESM).
+  const detectedFamilies = new Set([...best.values()].map((d) => d.family));
+  const gateInputs = GATE_CODES.filter((c) => detectedFamilies.has(c));
   return { byFamily, gateInputs };
 };
 
@@ -97,7 +116,10 @@ const detectBehavior = ({
     };
   }
 
-  const { byFamily, gateInputs } = dedupeByFamily(collectDetections(events));
+  const { byFamily, gateInputs } = dedupeByFamily([
+    ...collectDetections(events),
+    ...emotionalDetections(scoreInputs),
+  ]);
 
   return {
     events,

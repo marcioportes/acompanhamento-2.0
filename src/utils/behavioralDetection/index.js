@@ -17,10 +17,13 @@
  *                — DEC-AUTO-301-01). Cada pattern enriquecido com canonicalCode + family.
  *   aggregates — scoreInputs (emocional #189) + byFamily/gateInputs.
  *
- * byFamily — dedupe por (tradeId, family): events e shadow que apontam para a mesma
- * família no mesmo trade COLAPSAM numa entrada (não contam 2x no gate). Precedência
- * DEC-074: maior resolutionLayer da taxonomia vence (HIGH>MEDIUM>LOW = ordens>parciais
- * >sequência); empate → fonte `events` (ordem bruta é o sinal mais forte).
+ * byFamily — dedupe por (tradeId, family): execução, shadow E emocional que apontam
+ * para a mesma família no mesmo trade COLAPSAM numa entrada (não contam 2x no gate).
+ * Precedência DEC-074: maior resolutionLayer da taxonomia vence (HIGH>MEDIUM>LOW =
+ * ordens>parciais>sequência); empate → fonte `events` (ordem bruta é o sinal mais forte).
+ * gateInputs é o sinal de gate UNIFICADO (DEC-AUTO-301-03): inclui TILT/LOSS_CHASING
+ * vindos do motor emocional (detectTiltV2/RevengeV2), que não têm evento/shadow próprio
+ * mas a maturidade gata neles (evaluateMaturity tiltRevengeCount).
  *
  * Contrato de retorno:
  *   { events, byTrade, aggregates: { scoreInputs, byFamily, gateInputs }, meta }
@@ -101,6 +104,35 @@ const winsOver = (cand, cur) => {
 };
 
 /**
+ * Dobra o sinal EMOCIONAL (detectTiltV2/detectRevengeV2) em detecções canônicas.
+ * TILT e a revenge emocional (→ LOSS_CHASING) só vêm do motor emocional — não há
+ * evento de execução nem pattern shadow que resolva para elas — então sem isto o
+ * gateInputs nunca poderia conter TILT, embora a maturidade gate nesse sinal
+ * (evaluateMaturity tiltRevengeCount). DEC-AUTO-301-03: gateInputs é sinal de gate
+ * UNIFICADO (execução + shadow + emocional). resolutionLayer vem da taxonomia
+ * (emocional é resolução baixa; ordens/shadow da mesma família vencem no dedupe).
+ *
+ * @param {object|null} scoreInputs
+ * @returns {Array<{tradeId, canonicalCode, family, source, resolutionLayer}>}
+ */
+const emotionalDetections = (scoreInputs) => {
+  if (!scoreInputs) return [];
+  const out = [];
+  const add = (canonicalCode, detected) => {
+    if (!detected) return;
+    const p = getPattern(canonicalCode);
+    if (!p) return;
+    out.push({
+      tradeId: null, canonicalCode, family: p.family,
+      source: 'emotional', resolutionLayer: p.resolutionLayer,
+    });
+  };
+  add('TILT', scoreInputs.tilt?.detected);
+  add('LOSS_CHASING', scoreInputs.revenge?.detected);
+  return out;
+};
+
+/**
  * Colapsa detecções por (tradeId, family) e deriva gateInputs. Função pura,
  * exportada para teste determinístico da precedência DEC-074 (a integração com
  * os detectores reais raramente produz colisão cross-engine).
@@ -123,8 +155,12 @@ export const dedupeByFamily = (detections) => {
       source: d.source, resolutionLayer: d.resolutionLayer,
     });
   }
-  const detected = new Set([...best.values()].map((d) => d.canonicalCode));
-  const gateInputs = GATE_CODES.filter((c) => detected.has(c));
+  // gate-ness é propriedade da FAMÍLIA (cabeça da família), não do código canônico:
+  // p.ex. shadow detecta IMPULSE_CLUSTER (gate=false) cuja família OVERTRADING é gate.
+  // Como o dedupe colapsa por família, o gate cruza por família. GATE_CODES são todas
+  // cabeças de família (code===family), então a interseção por família é exata.
+  const detectedFamilies = new Set([...best.values()].map((d) => d.family));
+  const gateInputs = GATE_CODES.filter((c) => detectedFamilies.has(c));
   return { byFamily, gateInputs };
 };
 
@@ -179,7 +215,11 @@ export const detectBehavior = ({
   }
 
   // byFamily + gateInputs: dedupe por (tradeId, family) com precedência DEC-074.
-  const { byFamily, gateInputs } = dedupeByFamily(collectDetections(events, byTrade));
+  // Sinal de gate UNIFICADO: execução (events) + shadow (byTrade) + emocional (scoreInputs).
+  const { byFamily, gateInputs } = dedupeByFamily([
+    ...collectDetections(events, byTrade),
+    ...emotionalDetections(scoreInputs),
+  ]);
 
   return {
     events,

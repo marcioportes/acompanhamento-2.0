@@ -95,16 +95,26 @@ describe('detectBehavior — A2 aggregates.byFamily (dedupe / colapso)', () => {
 });
 
 describe('detectBehavior — A2 aggregates.gateInputs', () => {
-  it('gateInputs ⊆ GATE_CODES e todos foram detectados', () => {
+  it('gateInputs ⊆ GATE_CODES e cada um é uma família detectada', () => {
     const { aggregates } = detectBehavior({ trades: TRADES, orders: ORDERS });
-    const detected = new Set();
-    for (const [, entries] of aggregates.byFamily) {
-      for (const e of entries) detected.add(e.canonicalCode);
-    }
+    const families = new Set(aggregates.byFamily.keys());
     for (const code of aggregates.gateInputs) {
       expect(GATE_CODES).toContain(code);
-      expect(detected.has(code)).toBe(true);
+      expect(families.has(code)).toBe(true); // gate cruza por família, não por código
     }
+  });
+
+  it('fold emocional: tilt/revenge detectados entram em gateInputs (sinal unificado)', () => {
+    // Fixtures disparam tilt+revenge via execução; com getEmotionConfig viram gate.
+    const { aggregates } = detectBehavior({ trades: TRADES, orders: ORDERS, getEmotionConfig });
+    expect(aggregates.scoreInputs.tilt.detected).toBe(true);
+    expect(aggregates.gateInputs).toContain('TILT');
+    expect(aggregates.gateInputs).toContain('LOSS_CHASING');
+  });
+
+  it('sem getEmotionConfig: TILT não pode entrar (sem motor emocional)', () => {
+    const { aggregates } = detectBehavior({ trades: TRADES, orders: ORDERS });
+    expect(aggregates.gateInputs).not.toContain('TILT');
   });
 });
 
@@ -171,6 +181,18 @@ describe('dedupeByFamily — colapso + precedência DEC-074 (determinístico)', 
     ]);
     expect(gateInputs).toContain('STOP_PANIC');
     expect(gateInputs).not.toContain('GREED_CLUSTER');
+  });
+
+  it('gate cruza por FAMÍLIA: membro não-gate (IMPULSE_CLUSTER) aciona família gate (OVERTRADING)', () => {
+    // IMPULSE_CLUSTER.feedsGates=false, mas sua família OVERTRADING é gate.
+    expect(getPattern('IMPULSE_CLUSTER').feedsGates).toBe(false);
+    expect(getPattern('IMPULSE_CLUSTER').family).toBe('OVERTRADING');
+    expect(getPattern('OVERTRADING').feedsGates).toBe(true);
+    // detecção carrega canonicalCode do membro, family da cabeça.
+    const { gateInputs } = dedupeByFamily([
+      { tradeId: 'T2', family: 'OVERTRADING', canonicalCode: 'IMPULSE_CLUSTER', source: 'shadow', resolutionLayer: 'LOW' },
+    ]);
+    expect(gateInputs).toContain('OVERTRADING');
   });
 });
 
