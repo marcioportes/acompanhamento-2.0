@@ -19,6 +19,8 @@ Ver #301 + Epic #298. Taxonomia: `src/constants/behavioralTaxonomy.js` (Fase 0).
 ## Sessions
 - `A1 [events dual-emit] commit 64488685 ok` — wrap detectExecutionEvents, baseline #299 intacto (5 testes)
 - `A2 [byTrade+aggregates] commit 3c52320f ok` — shadow ESM-only + scoreInputs/byFamily/gateInputs; dedupeByFamily puro testado (13 testes)
+- `A3 [mirror CJS + paridade] commit d988536e ok` — behavioralDetectionMirror (events+scoreInputs+dedupe); paridade ESM≡CJS (6 testes)
+- `A4 [verificação] ok` — suíte 3378/3378, build verde, baseline #299 intacto, motor dark (zero consumidor de produção)
 
 ## Shared Deltas
 - src/version.js — v1.73.0 (reservada no main)
