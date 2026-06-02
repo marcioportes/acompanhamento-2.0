@@ -17,13 +17,18 @@ Ver #301 + Epic #298. Taxonomia: `src/constants/behavioralTaxonomy.js` (Fase 0).
 - A4 — baseline #299 inalterado; suíte + build verdes; nada plugado
 
 ## Sessions
-- (a preencher)
+- `A1 [events dual-emit] commit 64488685 ok` — wrap detectExecutionEvents, baseline #299 intacto (5 testes)
+- `A2 [byTrade+aggregates] commit 3c52320f ok` — shadow ESM-only + scoreInputs/byFamily/gateInputs; dedupeByFamily puro testado (13 testes)
 
 ## Shared Deltas
 - src/version.js — v1.73.0 (reservada no main)
 - docs/registry/versions.md — consumir v1.73.0 (encerramento)
 - docs/registry/chunks.md — liberar CHUNK-11 (encerramento)
 - CHANGELOG.md — entrada [1.73.0]
+
+## Decisions
+- DEC-AUTO-301-01 — shadow (byTrade) é ESM-only; sem mirror CJS (maturidade server-side não consome shadow per-trade). Paridade ESM≡CJS cobre só a superfície compartilhada (events + scoreInputs). Aprovado por Marcio 01/06/2026.
+- DEC-AUTO-301-02 — byFamily colapsa por (tradeId, family); precedência DEC-074 (maior resolutionLayer; empate→events). Confirmado por Marcio 01/06/2026.
 
 ## Chunks
 - CHUNK-11 (escrita)
