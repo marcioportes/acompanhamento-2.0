@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.72.1] - 03/06/2026 · #302 · PR #303
+
+**fix:** hard seal #259 isenta feedback do mentor em ciclo fechado
+
+- **A) Trade em ciclo fechado.** Status `OPEN` (workflow de revisão) e ciclo selado (fechamento) são ortogonais — aluno fecha ciclo com trades ainda `OPEN` esperando o mentor.
+- **B) Plano órfão.** `get(/plans/planId).data` quebra se o plano foi deletado → `permission-denied`.
+- Sem harness de rules-unit-testing no repo (consistente com #271/#254 — deploy + smoke). Validação de sintaxe via deploy.
+- Smoke pós-deploy: feedback em massa em trade de ciclo fechado.
+
+
 ## [1.72.0] - 01/06/2026 · #299 · PR #300
 
 **feat:** baseline + taxonomia + mapa de pesos do framework
