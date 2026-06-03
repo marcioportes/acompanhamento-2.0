@@ -141,9 +141,25 @@ service cloud.firestore {
           // Issue #221 — limpeza de violação (compliance + emocional). Aluno read-only.
           'mentorClearedViolations'
         ])
-      ) &&
-      // Hard seal #259 — bloqueia update se date está em ciclo fechado.
-      isTradeDateNotSealed(resource.data.planId, resource.data.date);
+      ) && (
+        // Hard seal #259 — bloqueia update se date está em ciclo fechado.
+        isTradeDateNotSealed(resource.data.planId, resource.data.date) ||
+        // Exceção #302 — metadados de revisão do mentor são isentos do seal:
+        // mentor revisa/classifica trade em qualquer estado de ciclo (decisão de
+        // produto 01/06/2026). Quando o ÚNICO delta é metadado mentor-only, dispensa
+        // o seal e NÃO chama get() — resolve também plano órfão (get().data quebra).
+        // Bug original: bulk feedback (writeBatch atômico) caía se 1 trade do lote
+        // estava em ciclo selado. Allowlist espelha o bloco aluno-readonly acima.
+        (
+          isMentor() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'mentorFeedback', 'feedbackDate', 'feedbackHistory', 'status', 'updatedAt',
+            'mentorClassification', 'mentorClassificationFlags',
+            'mentorClassificationReason', 'mentorClassifiedAt', 'mentorClassifiedBy',
+            'mentorClearedViolations'
+          ])
+        )
+      );
       allow delete: if isAuthenticated() && (
         isMentor() ||
         isOwner(resource.data.studentId) ||
