@@ -4,7 +4,7 @@
  *
  * CHANGELOG:
  * - 1.72.1: #302 fix hard seal #259 isenta feedback do mentor em ciclo fechado (PR #303, 03/06/2026)
- * - 1.73.0: #301 feat CHUNK-11 Fase 1 — motor unificado detectBehavior (dark/compat, reusa detectores + dual-emit).
+ * - 1.73.0: #301 feat motor unificado detectBehavior + ativação + UX + Confronto Emocional (#301) (PR #304, 04/06/2026)
  * - 1.72.0: #299 feat baseline + taxonomia + mapa de pesos do framework (PR #300, 01/06/2026)
  * - 1.71.1: #296 fix correlator op↔trade compara wall-clock (offset-neutro) (PR #297, 31/05/2026)
  * - 1.71.0: #294 feat rebrand Espelho do Trader nas telas de entrada (Login + Sidebar) (PR #295, 31/05/2026)
@@ -368,9 +368,9 @@
  */
 const VERSION = {
   version: '1.73.0',
-  build: '20260601',
+  build: '20260604',
   display: 'v1.73.0',
-  full: '1.73.0+20260601',
+  full: '1.73.0+20260604',
 };
 export default VERSION;
 export { VERSION };

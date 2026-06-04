@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.73.0] - 04/06/2026 · #301 · PR #304
+
+**feat:** motor unificado detectBehavior + ativação + UX + Confronto Emocional (#301)
+
+- `detectBehavior` (`src/utils/behavioralDetection/`) wrap dos 4 caminhos (execução #208, shadow #129, emocional #189, agregados) com dual-emit (canônico+legado). Baseline #299 intacto + paridade ESM≡CJS. Taxonomia SSoT `src/constants/behavioralTaxonomy.js` (Fase 0).
+- **Persistência:** campo inline `trade.behaviorProfile` (DEC-AUTO-301-04, INV-15 aprovado).
+- **Auto-trigger:** `recomputeForStudent` (onTradeCreated/onTradeUpdated) grava só o delta por fingerprint; campo fora do guard → sem loop. on-plan-change via `recalculateCompliance`.
+- **Backfill:** callable `analyzeShadowBehavior` sobrescreve legados.
+- **DRY:** detectores shadow extraídos p/ `functions/shadow/shadowDetectors.js` (desacoplado de firebase-functions).
+- `BehaviorPanel` consolida ① adesão ao plano → ② padrões (narrativa semântica + cor por severidade) → ③ trava de gate → interpretação do mentor. Aposenta ShadowBehaviorPanel + ExecutionPatternsPanel + redFlags inline. Aluno vê os dados.
+- Estado vazio distingue não-calculado / limpo / alinhado.
+- Confronta `emotionEntry` declarada × emoção que a execução sugere (matriz aprovada). Banner manchete 🔴/◐/✓, tom espelho.
+
+
 ## [1.72.1] - 03/06/2026 · #302 · PR #303
 
 **fix:** hard seal #259 isenta feedback do mentor em ciclo fechado
