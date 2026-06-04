@@ -83,6 +83,28 @@ describe('BehaviorPanel', () => {
     expect(screen.queryByText(/ainda não calculado/)).not.toBeInTheDocument();
   });
 
+  it('legado COM redFlags mas SEM profile → mostra violação E "ainda não calculado" (decoupled)', () => {
+    const t = {
+      id: 'T6', currency: 'USD',
+      redFlags: [{ type: 'NO_STOP', message: 'Trade sem stop loss definido' }],
+      // sem behaviorProfile (motor comportamental nunca rodou)
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText(/Trade sem stop loss definido/)).toBeInTheDocument(); // ① violação
+    expect(screen.getByText(/ainda não calculado/)).toBeInTheDocument();          // ② estado do motor
+  });
+
+  it('motor rodou, sem padrão, mas com violação → "Nenhum padrão comportamental"', () => {
+    const t = {
+      id: 'T7', currency: 'USD',
+      redFlags: [{ type: 'NO_STOP', message: 'Trade sem stop loss definido' }],
+      behaviorProfile: { version: '1.0.0', families: [], gateInputs: [], scoreContribution: { tilt: false, revenge: false } },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText(/Nenhum padrão comportamental detectado/)).toBeInTheDocument();
+    expect(screen.queryByText(/execução alinhada/)).not.toBeInTheDocument(); // não afirma "alinhada" com violação presente
+  });
+
   it('renderiza NARRATIVA semântica (não despeja campos crus no card)', () => {
     const t = {
       id: 'T3', currency: 'USD',

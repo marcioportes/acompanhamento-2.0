@@ -114,28 +114,12 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
   const gateInputs = profile?.gateInputs ?? [];
 
   const computed = !!profile; // o motor já rodou neste trade?
-  const nothing = effective.length === 0 && cleared.length === 0 && families.length === 0;
 
   return (
     <div className="mt-4">
       {!embedded && <DebugBadge component="BehaviorPanel" />}
       <div className="bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-zinc-200">Comportamento do trade</h3>
-
-        {nothing && (
-          computed ? (
-            // Motor rodou e não achou nada negativo → afirmação, não ausência.
-            <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-              <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
-              <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
-            </div>
-          ) : (
-            // Motor ainda não rodou neste trade (legado sem recompute).
-            <p className="text-xs text-zinc-500">
-              Comportamento ainda não calculado neste trade{isMentor ? ' — use “Recalcular Comportamento”.' : '.'}
-            </p>
-          )
-        )}
 
         {/* ① Adesão ao plano */}
         {(effective.length > 0 || cleared.length > 0) && (
@@ -169,16 +153,30 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
           </section>
         )}
 
-        {/* ② Padrões comportamentais */}
-        {families.length > 0 && (
-          <section>
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Padrões comportamentais</p>
+        {/* ② Padrões comportamentais — sempre informa o estado do motor (independente de ①) */}
+        <section>
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Padrões comportamentais</p>
+          {!computed ? (
+            // Motor ainda não rodou neste trade (legado sem recompute) — mesmo com violações acima.
+            <p className="text-xs text-zinc-500">
+              Comportamento ainda não calculado neste trade{isMentor ? ' — use “Recalcular Comportamento”.' : '.'}
+            </p>
+          ) : families.length > 0 ? (
             <div className="space-y-2">
               {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} />)}
               {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} />)}
             </div>
-          </section>
-        )}
+          ) : (effective.length === 0 && cleared.length === 0) ? (
+            // Motor rodou, nada negativo e sem violação → afirmação de execução alinhada.
+            <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+              <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
+              <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
+            </div>
+          ) : (
+            // Motor rodou, sem padrão comportamental, mas há violação de plano em ①.
+            <p className="text-xs text-zinc-500">Nenhum padrão comportamental detectado.</p>
+          )}
+        </section>
 
         {/* ③ Trava de gate */}
         {gateInputs.length > 0 && (
