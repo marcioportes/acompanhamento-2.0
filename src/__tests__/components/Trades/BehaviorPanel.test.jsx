@@ -72,4 +72,44 @@ describe('BehaviorPanel', () => {
     render(<BehaviorPanel trade={{ id: 'T2', currency: 'USD' }} isMentor embedded />);
     expect(screen.getByText(/Sem violações ou padrões detectados/)).toBeInTheDocument();
   });
+
+  it('renderiza NARRATIVA semântica (não despeja campos crus no card)', () => {
+    const t = {
+      id: 'T3', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        families: [{
+          family: 'HOLD_ASYMMETRY', canonicalCode: 'HOLD_ASYMMETRY', severity: 'HIGH', source: 'shadow',
+          resolutionLayer: 'LOW', emotionMapping: 'FEAR', valence: 'negative', isGate: false, confidence: 0.95,
+          evidence: { tradeDurationMinutes: 60, avgWinDurationMinutes: 5, ratio: 12 },
+        }],
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    // narrativa tece os números numa frase
+    expect(screen.getByText(/Você segurou este trade por 60 min/)).toBeInTheDocument();
+    // campos crus NÃO aparecem no card colapsado
+    expect(screen.queryByText(/tradeDurationMinutes:/)).not.toBeInTheDocument();
+    // ao expandir, aparece o accordion "Evidência técnica" com os campos crus
+    fireEvent.click(screen.getByText(/Você segurou este trade por 60 min/));
+    expect(screen.getByText('Evidência técnica')).toBeInTheDocument();
+    expect(screen.getByText(/tradeDurationMinutes:/)).toBeInTheDocument();
+  });
+
+  it('cai na descrição (prosa) quando faltam campos da narrativa — nunca dump cru', () => {
+    const t = {
+      id: 'T4', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        families: [{
+          family: 'LOSS_CHASING', canonicalCode: 'LOSS_CHASING', severity: 'HIGH', source: 'shadow',
+          resolutionLayer: 'MEDIUM', emotionMapping: 'REVENGE', valence: 'negative', isGate: true,
+          confidence: null, evidence: { foo: 1 },
+        }],
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText(/Reentrada rápida após uma perda/)).toBeInTheDocument(); // descrição-prosa
+    expect(screen.queryByText(/foo:/)).not.toBeInTheDocument(); // sem dump cru colapsado
+  });
 });

@@ -13,7 +13,7 @@ import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilter';
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
-  BEHAVIOR_LABELS, BEHAVIOR_DESCRIPTIONS, UndersizedBody,
+  BEHAVIOR_LABELS, narrativeFor, UndersizedBody,
 } from './behaviorDisplay';
 
 const FamilyCard = ({ family, currency }) => {
@@ -52,9 +52,11 @@ const FamilyCard = ({ family, currency }) => {
         <UndersizedBody evidence={family.evidence || {}} currency={currency} expanded={expanded} />
       ) : (
         <>
-          <p className="text-xs text-zinc-400 mt-1">{BEHAVIOR_DESCRIPTIONS[family.canonicalCode] ?? ''}</p>
-          {expanded && family.evidence && (
-            <div className="mt-2 pt-2 border-t border-white/10">
+          {/* Narrativa semântica (não despeja campos técnicos) — o aluno lê o que aconteceu. */}
+          <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{narrativeFor({ ...family, currency })}</p>
+          {expanded && family.evidence && Object.keys(family.evidence).length > 0 && (
+            <div className="mt-3 pt-2 border-t border-white/10">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Evidência técnica</p>
               <div className="grid grid-cols-2 gap-1">
                 {Object.entries(family.evidence).map(([key, value]) => (
                   <div key={key} className="text-xs">

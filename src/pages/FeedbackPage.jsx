@@ -824,10 +824,10 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}
                   className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
-                  title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+                  title="(Re)calcula o comportamento de todos os trades do aluno no período"
                 >
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
-                  {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+                  {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
               </>
             )}

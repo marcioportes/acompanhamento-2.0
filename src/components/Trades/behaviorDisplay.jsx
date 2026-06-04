@@ -73,6 +73,65 @@ export const BEHAVIOR_DESCRIPTIONS = {
 
 const fmt = (value, currency) => (value == null ? '—' : formatCurrencyDynamic(value, currency || 'USD'));
 
+const num = (v) => (v == null ? null : (typeof v === 'number' ? v : Number(v)));
+
+/**
+ * Narrativa semântica por código canônico — tece os números da evidência numa frase
+ * que o aluno entende, em vez de despejar os campos técnicos crus no card. Retorna null
+ * quando faltam campos esperados → o card cai na descrição (também prosa). Os campos
+ * crus seguem disponíveis no accordion "evidência técnica".
+ */
+export const BEHAVIOR_NARRATIVE = {
+  HOLD_ASYMMETRY: (e) => {
+    const d = num(e.tradeDurationMinutes); const a = num(e.avgWinDurationMinutes); const r = num(e.ratio);
+    if (d == null || a == null) return null;
+    return `Você segurou este trade por ${d} min — ${r ? `${r}× ` : ''}muito mais que a média de ${a} min dos seus trades vencedores. Segurar o perdedor e cortar o vencedor cedo é o avesso do que o plano pede.`;
+  },
+  LOSS_CHASING: (e, c) => {
+    const i = num(e.intervalMinutes); const pl = num(e.previousLoss);
+    if (i == null) return null;
+    return `Você reentrou ${i} min depois ${pl != null ? `de um stop de ${fmt(pl, c)}` : 'de uma perda'}. Reentrada quente logo após o stop costuma ser tentativa de recuperar, não uma leitura nova do mercado.`;
+  },
+  OVERTRADING: (e) => {
+    const n = num(e.tradesInWindow); const t = num(e.threshold);
+    if (n == null) return null;
+    return `Foram ${n} trades na janela${t != null ? ` (acima do limite de ${t})` : ''}. Volume alto em pouco tempo dilui a seletividade e costuma vir da ansiedade de estar no mercado.`;
+  },
+  IMPULSE_CLUSTER: (e) => {
+    const n = num(e.clusterCount);
+    if (n == null) return null;
+    return `${n} trades em sequência muito rápida, sem espaço para análise entre um e outro — execução no impulso.`;
+  },
+  DIRECTION_FLIP: (e, c) => {
+    const i = num(e.intervalMinutes);
+    if (e.previousSide == null || e.currentSide == null) return null;
+    return `${i != null ? `${i} min depois ` : 'Logo após '}de um ${e.previousSide}${e.previousResult != null ? ` que deu ${fmt(num(e.previousResult), c)}` : ''}, você virou para ${e.currentSide} no mesmo ${e.instrument || 'ativo'}. Virar a mão logo após o loss costuma ser narrativa quebrada, não sinal.`;
+  },
+  EARLY_EXIT: (e) => {
+    const pct = num(e.rrAchievedPct); const ar = num(e.actualRR); const pr = num(e.planRR);
+    if (pct == null && ar == null) return null;
+    return `Você saiu com ${pct != null ? `${pct}% do alvo` : 'lucro abaixo do alvo'}${ar != null && pr != null ? ` (RR ${ar} contra ${pr} do plano)` : ''}. Cortar o vencedor cedo encolhe o R que precisa pagar os stops.`;
+  },
+  HESITATION: (e) => {
+    const n = num(e.cancelledOrdersCount);
+    if (n == null) return null;
+    return `${n} ordens canceladas antes de você entrar — indecisão na execução. Hesitar no gatilho costuma trocar o trade do plano por um pior.`;
+  },
+  TARGET_HIT: (e) =>
+    `Você saiu no alvo planejado${e.planRR ? ` (${e.planRR}:1)` : ''}. Paciência na execução — o trade foi até onde o plano mandou.`,
+  CLEAN_EXECUTION: () =>
+    'Stop no lugar, RR respeitado e nenhum padrão negativo. É exatamente assim que o plano espera que você opere.',
+};
+
+export const narrativeFor = (family) => {
+  const builder = BEHAVIOR_NARRATIVE[family.canonicalCode];
+  if (builder) {
+    const out = builder(family.evidence || {}, family.currency);
+    if (out) return out;
+  }
+  return BEHAVIOR_DESCRIPTIONS[family.canonicalCode] ?? '';
+};
+
 const UNDERSIZED_KEY_SENTENCE = (scenario, planRrTarget) => {
   switch (scenario) {
     case 'WIN_RR_HIT': return `RR de ${planRrTarget}:1 cumprido. Alvo do plano não atingido.`;
