@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { recomputeBehaviorProfiles } = require(
+const { recomputeBehaviorProfiles, recomputeBehaviorForStudent } = require(
   '../../../../functions/behavior/recomputeBehaviorProfiles.js',
 );
 
@@ -87,5 +87,44 @@ describe('recomputeBehaviorProfiles — persistência', () => {
     await recomputeBehaviorProfiles(db, admin, { trades: clusterTrades(), plans, computedBy: 'backfill' });
     expect(writes.length).toBeGreaterThan(0);
     for (const w of writes) expect(w.data.behaviorProfile.computedBy).toBe('backfill');
+  });
+});
+
+// Mock db que serve queries por coleção (p/ a variante com fetch — on-plan-change).
+const makeFetchMockDb = ({ trades = [], plans = [], orders = [], emotions = [] }) => {
+  const writes = [];
+  const snap = (arr) => ({ docs: arr.map((o) => ({ id: o.id, data: () => o })) });
+  const byName = { trades, plans, orders, emotions };
+  const db = {
+    collection: (name) => ({
+      where: () => ({ get: async () => snap(byName[name] || []) }),
+      get: async () => snap(byName[name] || []),
+      doc: (id) => ({ __id: id }),
+    }),
+    batch: () => {
+      const ops = [];
+      return { update: (ref, data) => ops.push({ id: ref.__id, data }), commit: async () => { writes.push(...ops); } };
+    },
+  };
+  return { db, writes };
+};
+
+describe('recomputeBehaviorForStudent — variante com fetch (on-plan-change)', () => {
+  it('studentId vazio → no-op', async () => {
+    const { db, writes } = makeFetchMockDb({});
+    const res = await recomputeBehaviorForStudent(db, admin, null);
+    expect(res).toEqual({ written: 0, scanned: 0 });
+    expect(writes.length).toBe(0);
+  });
+
+  it('carrega trades/plans e grava behaviorProfile', async () => {
+    const { db, writes } = makeFetchMockDb({ trades: clusterTrades(), plans });
+    const res = await recomputeBehaviorForStudent(db, admin, 'S1', { computedBy: 'auto' });
+    expect(res.written).toBeGreaterThan(0);
+    expect(writes.length).toBe(res.written);
+    for (const w of writes) {
+      expect(Object.keys(w.data)).toEqual(['behaviorProfile']);
+      expect(w.data.behaviorProfile.computedBy).toBe('auto');
+    }
   });
 });

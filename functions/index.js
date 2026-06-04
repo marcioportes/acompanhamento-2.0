@@ -1883,6 +1883,20 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
   }
   
   console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
+
+  // Fase 2 #301 (on-plan-change): mudança no plano (riskPerOperation/rrTarget) afeta
+  // UNDERSIZED_TRADE/TARGET_HIT — refaz behaviorProfile do aluno. As updates de compliance
+  // acima escrevem campos de SAÍDA (riskPercent/redFlags), que não disparam onTradeUpdated,
+  // então o refresh precisa ser explícito. Isolado (INV-03): falha não afeta o retorno.
+  if (plan.studentId) {
+    try {
+      const { recomputeBehaviorForStudent } = require('./behavior/recomputeBehaviorProfiles');
+      await recomputeBehaviorForStudent(db, admin, plan.studentId, { computedBy: 'auto' });
+    } catch (behErr) {
+      console.warn('[recalculateCompliance] behaviorProfile recompute failed:', behErr.message);
+    }
+  }
+
   return { success: true, updated, planId, oldPl, newPl, plRecalculated };
 });
 

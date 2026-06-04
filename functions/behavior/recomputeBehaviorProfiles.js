@@ -59,4 +59,36 @@ async function recomputeBehaviorProfiles(db, admin, {
   return { written, scanned: profiles.size };
 }
 
-module.exports = { recomputeBehaviorProfiles };
+/**
+ * Variante que CARREGA os dados do aluno e recomputa (p/ callers que não os têm em mão,
+ * ex.: on-plan-change em recalculateCompliance). Mesmas 4 coleções de recomputeForStudent.
+ *
+ * @param {Object} db, @param {Object} admin, @param {string} studentId
+ * @param {Object} [opts] — { computedBy }
+ */
+async function recomputeBehaviorForStudent(db, admin, studentId, { computedBy = 'auto' } = {}) {
+  if (!studentId) return { written: 0, scanned: 0 };
+
+  const [tradesSnap, plansSnap] = await Promise.all([
+    db.collection('trades').where('studentId', '==', studentId).get(),
+    db.collection('plans').where('studentId', '==', studentId).get(),
+  ]);
+  const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  let orders = [];
+  try {
+    const s = await db.collection('orders').where('studentId', '==', studentId).get();
+    orders = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { /* orders opcional — executionEvents=[] */ }
+
+  let emotions = [];
+  try {
+    const s = await db.collection('emotions').get();
+    emotions = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { /* fallback neutro */ }
+
+  return recomputeBehaviorProfiles(db, admin, { trades, plans, orders, emotions, computedBy });
+}
+
+module.exports = { recomputeBehaviorProfiles, recomputeBehaviorForStudent };

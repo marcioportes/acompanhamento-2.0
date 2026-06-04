@@ -15,6 +15,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { analyzeShadowForTradeCF, sortChronologically, SHADOW_VERSION } = require('./shadow/shadowDetectors');
+const { recomputeBehaviorProfiles } = require('./behavior/recomputeBehaviorProfiles');
 
 // ============================================
 // CF callable
@@ -76,6 +77,13 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
   const ordersSnap = await db.collection('orders').where('studentId', '==', studentId).get();
   const allOrders = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+  // Fase 2 #301: emoções p/ o sinal tilt/revenge do motor no backfill (getEmotionConfig).
+  let emotions = [];
+  try {
+    const emSnap = await db.collection('emotions').get();
+    emotions = emSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (e) { /* fallback neutro */ }
+
   const tradeIdsInPeriod = new Set(trades.map(t => t.id));
   const ordersByTradeId = {};
   for (const order of allOrders) {
@@ -108,12 +116,26 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
     await batch.commit();
   }
 
-  console.log(`[analyzeShadowBehavior] ${analyzed}/${trades.length} trades analisados para ${studentId} (${dateFrom || '*'} a ${dateTo || '*'})`);
+  // Fase 2 #301: (re)computa e SOBRESCREVE behaviorProfile dos mesmos trades (inclui legados
+  // sem profile). Reusa o wrapper puro; adminShim só precisa de FieldValue.serverTimestamp.
+  const plansArr = Object.entries(plansById).map(([id, planData]) => ({ id, ...planData }));
+  let behaviorWritten = 0;
+  try {
+    const r = await recomputeBehaviorProfiles(db, { firestore: { FieldValue } }, {
+      trades: sorted, plans: plansArr, orders: allOrders, emotions, computedBy: 'backfill',
+    });
+    behaviorWritten = r.written;
+  } catch (e) {
+    console.warn('[analyzeShadowBehavior] behaviorProfile backfill failed:', e.message);
+  }
+
+  console.log(`[analyzeShadowBehavior] ${analyzed}/${trades.length} shadow + ${behaviorWritten} behaviorProfile para ${studentId} (${dateFrom || '*'} a ${dateTo || '*'})`);
 
   return {
     analyzed,
     total: trades.length,
     ordersFound: allOrders.length,
-    message: `${analyzed} trades analisados com shadow behavior.`
+    behaviorWritten,
+    message: `${analyzed} trades (shadow) · ${behaviorWritten} perfis comportamentais atualizados.`
   };
 });
