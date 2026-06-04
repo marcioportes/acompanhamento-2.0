@@ -68,9 +68,19 @@ describe('BehaviorPanel', () => {
     expect(screen.getByText('SLOT_MENTOR')).toBeInTheDocument();
   });
 
-  it('trade sem profile e sem flags mostra estado vazio', () => {
+  it('trade SEM profile (motor não rodou) → "ainda não calculado", não "limpo"', () => {
     render(<BehaviorPanel trade={{ id: 'T2', currency: 'USD' }} isMentor embedded />);
-    expect(screen.getByText(/Sem violações ou padrões detectados/)).toBeInTheDocument();
+    expect(screen.getByText(/ainda não calculado/)).toBeInTheDocument();
+  });
+
+  it('motor rodou e nada negativo → afirmação de execução alinhada (não ausência)', () => {
+    const t = {
+      id: 'T5', currency: 'USD',
+      behaviorProfile: { version: '1.0.0', families: [], gateInputs: [], scoreContribution: { tilt: false, revenge: false } },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText(/execução alinhada/)).toBeInTheDocument();
+    expect(screen.queryByText(/ainda não calculado/)).not.toBeInTheDocument();
   });
 
   it('renderiza NARRATIVA semântica (não despeja campos crus no card)', () => {

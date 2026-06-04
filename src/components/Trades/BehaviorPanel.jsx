@@ -113,6 +113,7 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
   // ③ Gate
   const gateInputs = profile?.gateInputs ?? [];
 
+  const computed = !!profile; // o motor já rodou neste trade?
   const nothing = effective.length === 0 && cleared.length === 0 && families.length === 0;
 
   return (
@@ -121,7 +122,20 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
       <div className="bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-zinc-200">Comportamento do trade</h3>
 
-        {nothing && <p className="text-xs text-zinc-500">Sem violações ou padrões detectados neste trade.</p>}
+        {nothing && (
+          computed ? (
+            // Motor rodou e não achou nada negativo → afirmação, não ausência.
+            <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+              <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
+              <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
+            </div>
+          ) : (
+            // Motor ainda não rodou neste trade (legado sem recompute).
+            <p className="text-xs text-zinc-500">
+              Comportamento ainda não calculado neste trade{isMentor ? ' — use “Recalcular Comportamento”.' : '.'}
+            </p>
+          )
+        )}
 
         {/* ① Adesão ao plano */}
         {(effective.length > 0 || cleared.length > 0) && (
