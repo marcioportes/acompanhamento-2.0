@@ -33,8 +33,7 @@ import {
 } from 'lucide-react';
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
-import ShadowBehaviorPanel from './Trades/ShadowBehaviorPanel';
-import ExecutionPatternsPanel from './Trades/ExecutionPatternsPanel';
+import BehaviorPanel from './Trades/BehaviorPanel';
 import ExcursionDisplay from './ExcursionDisplay';
 import { isCMEFutureTicker } from '../utils/tradeTimezone';
 
@@ -455,16 +454,9 @@ const TradeDetailModal = ({
             {/* Ordens da Corretora (V1.1c — issue #93) */}
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
 
-            {/* Padrões de execução detectados a partir das ordens correlacionadas
-                (#208 Fase 6 — visibilidade atômica). Posicionado logo após o
-                TradeOrdersPanel para que aluno/mentor leiam "estas ordens →
-                este padrão" na sequência natural. */}
-            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={allTrades} embedded />
-
-            {/* Shadow Behavior — mentor-only (#129) */}
-            {isMentor && trade.shadowBehavior && (
-              <ShadowBehaviorPanel trade={trade} isMentor={isMentor} embedded />
-            )}
+            {/* Comportamento consolidado (Fase 2 #301): adesão ao plano → padrões → gate.
+                Substitui ExecutionPatternsPanel + ShadowBehaviorPanel. Aluno vê os dados. */}
+            <BehaviorPanel trade={trade} isMentor={isMentor} embedded />
 
             {/* Observações do Aluno */}
             {notes && (

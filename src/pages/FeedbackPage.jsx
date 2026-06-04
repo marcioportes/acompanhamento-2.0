@@ -38,8 +38,7 @@ import DebugBadge from '../components/DebugBadge';
 import TradeStatusBadges from '../components/TradeStatusBadges';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradeLockBadge from '../components/TradeLockBadge';
-import ShadowBehaviorPanel from '../components/Trades/ShadowBehaviorPanel';
-import ExecutionPatternsPanel from '../components/Trades/ExecutionPatternsPanel';
+import BehaviorPanel from '../components/Trades/BehaviorPanel';
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
@@ -243,72 +242,7 @@ const TradeInfoCard = ({ trade, onImageClick, userIsMentor = false, onToggleViol
         );
       })()}
 
-      {/* Red Flags — issue #221: efetivas (não cleared) + bloco "Limpas pelo mentor" */}
-      {trade.compliance === undefined && trade.riskPercent === undefined ? (
-        <div className="bg-slate-800/50 border border-slate-700/30 rounded-xl p-3 flex items-center gap-2">
-          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-          <span className="text-xs text-slate-400">Processando compliance...</span>
-        </div>
-      ) : trade.redFlags && Array.isArray(trade.redFlags) && trade.redFlags.length > 0 ? (
-        (() => {
-          const effective = effectiveRedFlags(trade);
-          const cleared = (Array.isArray(trade.redFlags) ? trade.redFlags : [])
-            .filter(f => isViolationCleared(trade, f.type));
-          return (
-            <div className="space-y-2">
-              {effective.length > 0 && (
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
-                  <div className="flex items-center gap-2 text-amber-400 mb-2">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Violações ({effective.length})</span>
-                  </div>
-                  <div className="space-y-1">
-                    {effective.map((flag, i) => (
-                      <div key={`eff-${i}`} className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-amber-300/80 flex-1">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
-                        {userIsMentor && flag.type && (
-                          <button
-                            type="button"
-                            onClick={() => onToggleViolation && onToggleViolation(flag.type)}
-                            title="Limpar esta violação (toggle)"
-                            className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 transition-colors"
-                          >
-                            ✕ Limpar
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {cleared.length > 0 && (
-                <div className="bg-slate-800/30 border border-slate-700/30 rounded-xl p-3">
-                  <div className="flex items-center gap-2 text-slate-500 mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider">Limpas pelo mentor ({cleared.length})</span>
-                  </div>
-                  <div className="space-y-1">
-                    {cleared.map((flag, i) => (
-                      <div key={`cleared-${i}`} className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-slate-500 line-through flex-1">• {typeof flag === 'string' ? flag : flag.message || flag.rule || 'Violação'}</p>
-                        {userIsMentor && flag.type && (
-                          <button
-                            type="button"
-                            onClick={() => onToggleViolation && onToggleViolation(flag.type)}
-                            title="Restaurar — volta a contar como violação"
-                            className="shrink-0 text-[10px] px-2 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200 transition-colors"
-                          >
-                            ↺ Restaurar
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()
-      ) : null}
+      {/* Red Flags movidas para o BehaviorPanel (bloco ① "Adesão ao plano") — Fase 2 #301. */}
 
       {/* Parciais — exibe quando trade tem dados carregados */}
       {trade._loadedPartials?.length > 0 && (
@@ -702,33 +636,16 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               </div>
             )}
             {userIsMentor && (
-              <div className="mt-3">
-                <MentorEditPanel
-                  trade={trade}
-                  onSaveAndLock={handleSaveAndLock}
-                  onRevertToOriginal={handleRevertToOriginal}
-                />
-              </div>
-            )}
-            {/* Issue #219 — classificação mentor sempre visível; aluno read-only */}
-            <div className="mt-3">
-              <MentorClassificationPanel
-                trade={trade}
-                onSave={userIsMentor ? handleClassify : undefined}
-                readOnly={!userIsMentor}
-              />
-            </div>
-            {userIsMentor && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <PinToReviewButton trade={trade} />
                 <button
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}
                   className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
-                  title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+                  title="(Re)calcula o comportamento de todos os trades do aluno no período"
                 >
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
-                  {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+                  {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
                 {shadowMessage && (
                   <div className={`w-full text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
@@ -737,17 +654,25 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 )}
               </div>
             )}
-            {/* Ordens correlacionadas + padrões de execução (#208 — visível
-                ao mentor durante feedback para contextualizar o que vai
-                escrever). Mesma sequência narrativa do TradeDetailModal:
-                ordens → padrões. */}
+            {/* Ordens correlacionadas — evidência crua (ordens → comportamento). */}
             <div className="mt-3">
               <TradeOrdersPanel trade={trade} orders={orders} embedded />
             </div>
-            <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
-            {userIsMentor && trade.shadowBehavior && (
-              <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} embedded />
-            )}
+            {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
+            <BehaviorPanel
+              trade={trade}
+              isMentor={userIsMentor}
+              embedded
+              onToggleViolation={handleToggleViolation}
+              mentorSlot={userIsMentor ? (
+                <div className="space-y-3">
+                  <MentorClassificationPanel trade={trade} onSave={handleClassify} readOnly={false} />
+                  <MentorEditPanel trade={trade} onSaveAndLock={handleSaveAndLock} onRevertToOriginal={handleRevertToOriginal} />
+                </div>
+              ) : (
+                <MentorClassificationPanel trade={trade} readOnly />
+              )}
+            />
           </div>
 
           {/* Coluna Direita - Chat */}
@@ -899,10 +824,10 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}
                   className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-300 border border-purple-500/30 rounded-lg transition-colors"
-                  title="Analisa shadow behavior de todos os trades do aluno no dia deste trade"
+                  title="(Re)calcula o comportamento de todos os trades do aluno no período"
                 >
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
-                  {shadowLoading ? 'Analisando...' : 'Analisar comportamento'}
+                  {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
               </>
             )}
@@ -925,32 +850,25 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
               <PlanSummaryCard plan={tradePlan} accounts={accounts || []} trades={studentTrades || []} />
             </div>
           )}
-          {userIsMentor && (
-            <div className="mt-4">
-              <MentorEditPanel
-                trade={trade}
-                onSaveAndLock={handleSaveAndLock}
-                onRevertToOriginal={handleRevertToOriginal}
-              />
-            </div>
-          )}
-          {/* Issue #219 — classificação mentor sempre visível; aluno read-only */}
-          <div className="mt-4">
-            <MentorClassificationPanel
-              trade={trade}
-              onSave={userIsMentor ? handleClassify : undefined}
-              readOnly={!userIsMentor}
-            />
-          </div>
-          {/* Ordens correlacionadas + padrões de execução (#208 — também
-              presentes na variante standalone). */}
+          {/* Ordens correlacionadas — evidência crua (ordens → comportamento). */}
           <div className="mt-4">
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
           </div>
-          <ExecutionPatternsPanel trade={trade} orders={orders} allTrades={studentTrades} embedded />
-          {userIsMentor && trade.shadowBehavior && (
-            <ShadowBehaviorPanel trade={trade} isMentor={userIsMentor} />
-          )}
+          {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
+          <BehaviorPanel
+            trade={trade}
+            isMentor={userIsMentor}
+            embedded
+            onToggleViolation={handleToggleViolation}
+            mentorSlot={userIsMentor ? (
+              <div className="space-y-3">
+                <MentorClassificationPanel trade={trade} onSave={handleClassify} readOnly={false} />
+                <MentorEditPanel trade={trade} onSaveAndLock={handleSaveAndLock} onRevertToOriginal={handleRevertToOriginal} />
+              </div>
+            ) : (
+              <MentorClassificationPanel trade={trade} readOnly />
+            )}
+          />
         </div>
 
         {/* Coluna Direita - Chat */}

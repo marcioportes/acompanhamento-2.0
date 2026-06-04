@@ -18,6 +18,7 @@
 const { evaluateMaturity } = require('./evaluateMaturity');
 const { validateCurrentDoc, validateHistoryDoc } = require('./maturityDocSchema');
 const { preComputeShapes } = require('./preComputeShapes');
+const { recomputeBehaviorProfiles } = require('../behavior/recomputeBehaviorProfiles');
 
 function pad2(n) {
   return n < 10 ? `0${n}` : `${n}`;
@@ -230,6 +231,16 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
     } catch (emErr) {
       console.warn('[maturityRecompute] failed to load emotions, fallback neutral:',
         emErr.message);
+    }
+
+    // CHUNK-11 Fase 2 (#301): recomputa trade.behaviorProfile (motor unificado) a partir
+    // dos mesmos dados já carregados. Isolado (INV-03): falha aqui não afeta a maturidade.
+    // Grava só o delta por fingerprint; behaviorProfile está fora do guard de
+    // onTradeUpdated (index.js:1446) → o write não re-dispara recompute.
+    try {
+      await recomputeBehaviorProfiles(db, admin, { trades, plans, orders, emotions });
+    } catch (behErr) {
+      console.warn('[maturityRecompute] behaviorProfile recompute failed:', behErr.message);
     }
 
     const now = new Date();
