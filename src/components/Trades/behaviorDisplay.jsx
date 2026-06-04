@@ -132,6 +132,51 @@ export const narrativeFor = (family) => {
   return BEHAVIOR_DESCRIPTIONS[family.canonicalCode] ?? '';
 };
 
+// Confronto emocional: estilo + copy por veredicto (matriz aprovada). Tom espelho, não acusação.
+export const CONFRONT_TONE_STYLES = {
+  red: 'bg-red-500/10 border-red-500/40 text-red-200',
+  amber: 'bg-amber-500/10 border-amber-500/30 text-amber-200',
+  emerald: 'bg-emerald-500/5 border-emerald-500/20 text-emerald-300/90',
+};
+
+const emo = (code) => EMOTION_LABELS[code] ?? code;
+
+/** Retorna {tone, text} para o banner do confronto, ou null quando não há o que dizer. */
+export const emotionConfrontDisplay = (confront) => {
+  if (!confront) return null;
+  const { verdict, declared, suggested } = confront;
+  const dec = declared?.name;
+  const sug = suggested ? emo(suggested.emotion) : null;
+
+  switch (verdict) {
+    case 'MISALIGNED':
+      return { tone: 'red', text: `Você declarou “${dec}”, mas a execução sugere ${sug}. Vale revisitar o que você sentiu de fato na entrada.` };
+    case 'ATTENTION':
+      if (declared?.category === 'NEGATIVE') {
+        return { tone: 'amber', text: `Você declarou “${dec}” e a execução foi de ${sug} — emoção reconhecida, mas não contida.` };
+      }
+      if (!suggested) {
+        return { tone: 'amber', text: `Você declarou “${dec}”, mas a execução saiu limpa — vale confirmar a intensidade.` };
+      }
+      return { tone: 'amber', text: `Você declarou “${dec}”, e há sinais de ${sug} na execução.` };
+    case 'ALIGNED':
+      if (declared?.category === 'NEGATIVE' && !suggested) {
+        return { tone: 'emerald', text: `Você declarou “${dec}” mas executou limpo — boa regulação emocional.` };
+      }
+      if ((declared?.category === 'NEGATIVE' || declared?.category === 'CRITICAL') && suggested) {
+        return { tone: 'emerald', text: `Você declarou “${dec}” e a execução confirma — consciência emocional presente.` };
+      }
+      return null; // positiva/neutra + limpo = ideal, sem ruído
+    case 'NO_DECLARED':
+      // só vale nudge se há emoção detectada para confrontar
+      return suggested
+        ? { tone: 'amber', text: `A execução sugere ${sug}, mas a emoção da entrada não foi declarada. Declare para ativar o confronto.` }
+        : null;
+    default:
+      return null;
+  }
+};
+
 const UNDERSIZED_KEY_SENTENCE = (scenario, planRrTarget) => {
   switch (scenario) {
     case 'WIN_RR_HIT': return `RR de ${planRrTarget}:1 cumprido. Alvo do plano não atingido.`;

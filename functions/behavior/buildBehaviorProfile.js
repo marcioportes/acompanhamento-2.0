@@ -51,6 +51,9 @@ const behaviorFingerprint = (profile) => {
     g: [...(profile.gateInputs || [])].sort(),
     s: profile.scoreContribution || {},
     r: profile.resolution || null,
+    e: profile.emotionConfront
+      ? [profile.emotionConfront.verdict, profile.emotionConfront.declared?.category ?? null, profile.emotionConfront.suggested?.code ?? null]
+      : null,
   };
   return crypto.createHash('sha1').update(JSON.stringify(canonical)).digest('hex');
 };
@@ -61,6 +64,56 @@ const byDisplayOrder = (a, b) => {
   const vb = b.valence === 'positive' ? 1 : 0;
   if (va !== vb) return va - vb; // negativos primeiro
   return (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
+};
+
+/** Família negativa dominante (maior severidade; empate → a que trava gate). */
+const dominantNegativeFamily = (families) => {
+  let best = null;
+  for (const f of families) {
+    if (f.valence === 'positive') continue;
+    if (!best) { best = f; continue; }
+    const d = (SEVERITY_RANK[f.severity] ?? 0) - (SEVERITY_RANK[best.severity] ?? 0);
+    if (d > 0 || (d === 0 && f.isGate && !best.isGate)) best = f;
+  }
+  return best;
+};
+
+/**
+ * Confronto emocional — matriz aprovada (categoria da emoção declarada × severidade do
+ * padrão dominante). Veredicto: ALIGNED | ATTENTION | MISALIGNED | NO_DECLARED.
+ * 'CLEAN' = sem padrão negativo. Categoria declarada vem de getEmotionConfig.analysisCategory.
+ */
+const verdictFor = (declaredCategory, detSeverity) => {
+  if (!declaredCategory) return 'NO_DECLARED';
+  switch (declaredCategory) {
+    case 'POSITIVE':
+      if (detSeverity === 'CLEAN') return 'ALIGNED';
+      if (detSeverity === 'LOW') return 'ATTENTION';
+      return 'MISALIGNED'; // MEDIUM/HIGH
+    case 'NEUTRAL':
+      if (detSeverity === 'CLEAN' || detSeverity === 'LOW') return 'ALIGNED';
+      if (detSeverity === 'MEDIUM') return 'ATTENTION';
+      return 'MISALIGNED'; // HIGH
+    case 'NEGATIVE':
+      return detSeverity === 'HIGH' ? 'ATTENTION' : 'ALIGNED'; // clean=regulou, low/med=consciente
+    case 'CRITICAL':
+      return detSeverity === 'CLEAN' ? 'ATTENTION' : 'ALIGNED'; // consciente (alto risco)
+    default:
+      return 'ALIGNED';
+  }
+};
+
+const computeEmotionConfront = (trade, families, getEmotionConfig) => {
+  const dom = dominantNegativeFamily(families);
+  const detSeverity = dom ? dom.severity : 'CLEAN';
+  const suggested = dom
+    ? { emotion: dom.emotionMapping, code: dom.canonicalCode, severity: dom.severity }
+    : null;
+  const entryName = trade.emotionEntry || null;
+  if (!entryName) return { declared: null, suggested, verdict: 'NO_DECLARED' };
+  const cfg = typeof getEmotionConfig === 'function' ? getEmotionConfig(entryName) : null;
+  const category = (cfg && cfg.analysisCategory) || 'NEUTRAL';
+  return { declared: { name: entryName, category }, suggested, verdict: verdictFor(category, detSeverity) };
 };
 
 /**
@@ -189,6 +242,8 @@ const buildBehaviorProfiles = ({
       },
       resolution: (shadow && shadow.resolution) || 'LOW',
       orderCount: (shadow && shadow.orderCount) || 0,
+      // Confronto emocional: emoção declarada na entrada × emoção que a execução sugere.
+      emotionConfront: computeEmotionConfront(trade, families, getEmotionConfig),
     };
     profile.fingerprint = behaviorFingerprint(profile);
     profiles.set(trade.id, profile);
@@ -200,5 +255,6 @@ const buildBehaviorProfiles = ({
 module.exports = {
   buildBehaviorProfiles,
   behaviorFingerprint,
+  computeEmotionConfront,
   PROFILE_VERSION,
 };

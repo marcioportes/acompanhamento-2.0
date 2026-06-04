@@ -14,6 +14,7 @@ import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilt
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
   BEHAVIOR_LABELS, narrativeFor, UndersizedBody,
+  emotionConfrontDisplay, CONFRONT_TONE_STYLES,
 } from './behaviorDisplay';
 
 const FamilyCard = ({ family, currency }) => {
@@ -120,6 +121,22 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
       {!embedded && <DebugBadge component="BehaviorPanel" />}
       <div className="bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-zinc-200">Comportamento do trade</h3>
+
+        {/* Confronto emocional: emoção declarada × emoção que a execução sugere (manchete). */}
+        {(() => {
+          const c = emotionConfrontDisplay(profile?.emotionConfront);
+          if (!c) return null;
+          const icon = c.tone === 'red' ? '⚠' : c.tone === 'amber' ? '◐' : '✓';
+          return (
+            <div className={`flex items-start gap-2 rounded-lg p-3 border ${CONFRONT_TONE_STYLES[c.tone]}`}>
+              <span className="text-sm leading-none mt-0.5">{icon}</span>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider opacity-70 mb-0.5">Confronto emocional</p>
+                <p className="text-xs leading-relaxed">{c.text}</p>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ① Adesão ao plano */}
         {(effective.length > 0 || cleared.length > 0) && (

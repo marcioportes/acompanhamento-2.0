@@ -94,6 +94,43 @@ describe('BehaviorPanel', () => {
     expect(screen.getByText(/ainda não calculado/)).toBeInTheDocument();          // ② estado do motor
   });
 
+  it('confronto MISALIGNED → banner vermelho "execução sugere"', () => {
+    const t = {
+      id: 'T8', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', families: [], gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        emotionConfront: { verdict: 'MISALIGNED', declared: { name: 'Confiante', category: 'POSITIVE' }, suggested: { emotion: 'REVENGE', code: 'LOSS_CHASING', severity: 'HIGH' } },
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText('Confronto emocional')).toBeInTheDocument();
+    expect(screen.getByText(/declarou “Confiante”, mas a execução sugere Vingança/)).toBeInTheDocument();
+  });
+
+  it('confronto ALIGNED + declarada negativa + limpo → reforço "boa regulação"', () => {
+    const t = {
+      id: 'T9', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', families: [], gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        emotionConfront: { verdict: 'ALIGNED', declared: { name: 'Ansioso', category: 'NEGATIVE' }, suggested: null },
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.getByText(/boa regulação emocional/)).toBeInTheDocument();
+  });
+
+  it('confronto ideal (positiva + limpo) → sem banner (ALIGNED silencioso)', () => {
+    const t = {
+      id: 'T10', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', families: [], gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        emotionConfront: { verdict: 'ALIGNED', declared: { name: 'Calmo', category: 'POSITIVE' }, suggested: null },
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor embedded />);
+    expect(screen.queryByText('Confronto emocional')).not.toBeInTheDocument();
+  });
+
   it('motor rodou, sem padrão, mas com violação → "Nenhum padrão comportamental"', () => {
     const t = {
       id: 'T7', currency: 'USD',
