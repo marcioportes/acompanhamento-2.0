@@ -31,6 +31,7 @@ Ver #301 + Epic #298. Taxonomia: `src/constants/behavioralTaxonomy.js` (Fase 0).
 ## Decisions
 - DEC-AUTO-301-01 — shadow (byTrade) é ESM-only; sem mirror CJS (maturidade server-side não consome shadow per-trade). Paridade ESM≡CJS cobre só a superfície compartilhada (events + scoreInputs). Aprovado por Marcio 01/06/2026.
 - DEC-AUTO-301-02 — byFamily colapsa por (tradeId, family); precedência DEC-074 (maior resolutionLayer; empate→events). Confirmado por Marcio 01/06/2026.
+- DEC-AUTO-301-03 — gateInputs é sinal de gate UNIFICADO (execução+shadow+emocional): tilt/revenge emocional dobram em TILT/LOSS_CHASING; gate cruza por FAMÍLIA (membro não-gate aciona família gate, ex. IMPULSE_CLUSTER→OVERTRADING). Confirmado por Marcio 02/06/2026.
 
 ## Chunks
 - CHUNK-11 (escrita)
