@@ -16,6 +16,7 @@
   - `_studentOriginal: { emotionEntry, emotionExit, setup, capturedAt }` — snapshot do que o aluno declarou. Gravado APENAS na 1ª edit do mentor; **imutável após** (não regrava em edits subsequentes).
   - `_unlockedAt: Timestamp` (opcional) — quando o lock foi removido.
   - `_unlockedBy: { uid, email, reason }` (opcional) — autor + motivo. Import preserva auditoria com `reason: 'import:<batchId>'` (DEC-AUTO-188-03 — broker > mentor; CF `onTradeUpdated` destrava server-side quando `importBatchId` muda).
+- **Perfil comportamental consolidado (`behaviorProfile`, Fase 2 #301, INV-15 / DEC-AUTO-301-04):** campo INLINE (snapshot do motor `detectBehavior`) — `{ version, engineMeta, families[], gateInputs[], scoreContribution, computedAt, computedBy, resolution, orderCount, fingerprint }`. Escrita só por CFs (admin SDK) no recompute on-create/on-update + backfill; `fingerprint` evita write redundante (fora do guard de `onTradeUpdated` → não re-dispara). **Read mentor + aluno** (educativo). Supersede a renderização de `shadowBehavior`/execution patterns na UI; `shadowBehavior` segue escrito 1 ciclo (transição). Compliance (`redFlags`) permanece campo separado.
 - **Consumers:** `StudentDashboard`, `TradingCalendar`, `AccountStatement`, `FeedbackPage`, `PlanLedgerExtract`, `MentorDashboard`.
 
 ### `plans`
