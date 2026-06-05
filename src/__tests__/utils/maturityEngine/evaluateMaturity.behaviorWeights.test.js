@@ -38,11 +38,12 @@ const makeTrade = (id, dayOffset, families) => {
   return t;
 };
 const window = (count) => Array.from({ length: count }, (_, i) => makeTrade(`T${i + 1}`, i));
-// janela de `count` trades onde só o PRIMEIRO carrega o finding (1 ocorrência, sem bater o cap).
-const windowOne = (count, families) => [makeTrade('F1', 0, families), ...Array.from({ length: count - 1 }, (_, i) => makeTrade(`T${i + 2}`, i + 1))];
+// `count` trades TODOS com profile (vida nova); só o primeiro carrega o finding, o resto
+// fica limpo (families: []). Assim withProfile = count e a penalidade é rate-normalized.
+const windowOne = (count, families) => [makeTrade('F1', 0, families), ...Array.from({ length: count - 1 }, (_, i) => makeTrade(`T${i + 2}`, i + 1, []))];
 
-const greed = [{ canonicalCode: 'GREED_CLUSTER', severity: 'MEDIUM', valence: 'negative' }]; // F, M(-8)
-const averaging = [{ canonicalCode: 'AVERAGING_DOWN', severity: 'HIGH', valence: 'negative' }]; // E+F, A(-15)
+const greed = [{ canonicalCode: 'GREED_CLUSTER', severity: 'MEDIUM', valence: 'negative' }]; // F, MED
+const averaging = [{ canonicalCode: 'AVERAGING_DOWN', severity: 'HIGH', valence: 'negative' }]; // E+F, HIGH
 
 describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
   it('janela SEM behaviorProfile não muda F/O (baseline intacta)', () => {
@@ -54,8 +55,8 @@ describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
   it('GREED_CLUSTER (F, médio) baixa só o F em −8', () => {
     const plain = esm(baseInput({ trades: window(12) }));
     const withG = esm(baseInput({ trades: windowOne(12, greed) }));
-    expect(withG.dimensionScores.financial).toBe(plain.dimensionScores.financial - 8);
-    expect(withG.breakdown.financial.behavioralNet).toBe(-8);
+    expect(withG.dimensionScores.financial).toBe(plain.dimensionScores.financial - 1);
+    expect(withG.breakdown.financial.behavioralNet).toBe(-1);
     expect(withG.dimensionScores.operational).toBe(plain.dimensionScores.operational); // GREED não toca O
   });
 
@@ -63,7 +64,7 @@ describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
     const plain = esm(baseInput({ trades: window(12) }));
     const withA = esm(baseInput({ trades: windowOne(12, averaging) })); // AVERAGING é E+F
     expect(withA.dimensionScores.emotional).toBe(plain.dimensionScores.emotional); // E inalterado no B1
-    expect(withA.dimensionScores.financial).toBe(plain.dimensionScores.financial - 15); // F sim
+    expect(withA.dimensionScores.financial).toBe(plain.dimensionScores.financial - 2); // F sim
   });
 
   it('gate ruleViolationRate: janela com padrões (rate alto) reprova o gate (B2)', () => {

@@ -1,12 +1,13 @@
 // ⚠️ ESPELHO de src/utils/maturityEngine/behaviorWeights.js — MANTER SINCRONIZADO ⚠️
 /**
- * behaviorWeights (CJS) — agrega `trade.behaviorProfile.families` em penalidade/bônus
- * por dimensão 4D + `ruleViolationRate`. CHUNK-11 Fase 2 (#305). Ver fonte ESM p/ doc.
+ * behaviorWeights (CJS) — agrega `trade.behaviorProfile.families` em penalidade/bônus por
+ * dimensão 4D + `ruleViolationRate`. Rate-normalized (Fase D). Ver fonte ESM p/ doc.
  */
 const { getPattern } = require('./behavioralTaxonomyMirror');
 
-const SEVERITY_PENALTY = Object.freeze({ HIGH: 15, MEDIUM: 8, LOW: 4 });
-const POSITIVE_BONUS = 3;
+const SEVERITY_WEIGHT = Object.freeze({ HIGH: 3, MEDIUM: 2, LOW: 1 });
+const POSITIVE_WEIGHT = 1;
+const INTENSITY_SCALE = 8;
 const PENALTY_CAP_PER_DIM = 25;
 const BONUS_CAP_PER_DIM = 10;
 
@@ -21,8 +22,8 @@ const GATE_COUNT_MAP = Object.freeze({
 const clearedKey = (code, tradeId) => `${code}:${tradeId}`;
 
 function aggregateBehaviorWeights(trades = []) {
-  const pen = { E: 0, F: 0, O: 0 };
-  const bon = { E: 0, F: 0, O: 0 };
+  const wpen = { E: 0, F: 0, O: 0 };
+  const wbon = { E: 0, F: 0, O: 0 };
   const gateCounts = { tampering: 0, chase: 0, sizing: 0, tiltRevenge: 0 };
   let withProfile = 0;
   let violationTrades = 0;
@@ -42,10 +43,10 @@ function aggregateBehaviorWeights(trades = []) {
       if (!p) continue;
       const dims = Array.isArray(p.dimensao) ? p.dimensao : [];
       if (f.valence === 'positive') {
-        for (const d of dims) if (bon[d] != null) bon[d] += POSITIVE_BONUS;
+        for (const d of dims) if (wbon[d] != null) wbon[d] += POSITIVE_WEIGHT;
       } else {
-        const points = SEVERITY_PENALTY[f.severity] ?? SEVERITY_PENALTY.LOW;
-        for (const d of dims) if (pen[d] != null) pen[d] += points;
+        const w = SEVERITY_WEIGHT[f.severity] ?? SEVERITY_WEIGHT.LOW;
+        for (const d of dims) if (wpen[d] != null) wpen[d] += w;
         hasViolation = true;
         const gc = GATE_COUNT_MAP[code];
         if (gc) gateCounts[gc] += 1;
@@ -54,10 +55,10 @@ function aggregateBehaviorWeights(trades = []) {
     if (hasViolation) violationTrades += 1;
   }
 
-  const capPen = (v) => Math.min(v, PENALTY_CAP_PER_DIM);
-  const capBon = (v) => Math.min(v, BONUS_CAP_PER_DIM);
-  const byDimension = { E: capPen(pen.E), F: capPen(pen.F), O: capPen(pen.O) };
-  const bonusByDimension = { E: capBon(bon.E), F: capBon(bon.F), O: capBon(bon.O) };
+  const penDim = (d) => (withProfile > 0 ? Math.min(PENALTY_CAP_PER_DIM, Math.round((wpen[d] / withProfile) * INTENSITY_SCALE)) : 0);
+  const bonDim = (d) => (withProfile > 0 ? Math.min(BONUS_CAP_PER_DIM, Math.round((wbon[d] / withProfile) * INTENSITY_SCALE)) : 0);
+  const byDimension = { E: penDim('E'), F: penDim('F'), O: penDim('O') };
+  const bonusByDimension = { E: bonDim('E'), F: bonDim('F'), O: bonDim('O') };
   const netByDimension = {
     E: bonusByDimension.E - byDimension.E,
     F: bonusByDimension.F - byDimension.F,
@@ -70,5 +71,5 @@ function aggregateBehaviorWeights(trades = []) {
 
 module.exports = {
   aggregateBehaviorWeights,
-  SEVERITY_PENALTY, POSITIVE_BONUS, PENALTY_CAP_PER_DIM, BONUS_CAP_PER_DIM,
+  SEVERITY_WEIGHT, POSITIVE_WEIGHT, INTENSITY_SCALE, PENALTY_CAP_PER_DIM, BONUS_CAP_PER_DIM,
 };

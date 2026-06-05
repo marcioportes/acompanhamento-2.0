@@ -4,26 +4,30 @@
  * penalidade/bônus por dimensão 4D (E/F/O) + `ruleViolationRate`, governado pelo
  * mapa de pesos do framework (`docs/dev/behavioral-weight-map.md`). CHUNK-11 Fase 2 (#305).
  *
- * Princípios:
- * - Severidade → penalidade (escala calibra na Fase D sobre baseline #299).
- * - Dimensão(ões) vêm da taxonomia (`pattern.dimensao`); positivos = bônus.
- * - "Vida nova": só trade COM `behaviorProfile` pesa. Legado (sem profile) é ignorado.
- * - Clearing estendido: finding com chave `canonicalCode:tradeId` em
- *   `trade.mentorClearedViolations` não penaliza.
- * - Cap por dimensão/janela: um dia ruim não zera a dimensão.
+ * Penalidade RATE-NORMALIZED (calibrado na Fase D, 05/06/2026): a penalidade por
+ * dimensão é a INTENSIDADE MÉDIA por trade — `Σ(peso_severidade na dim) / N_trades × SCALE`,
+ * capada. Proporcional ao tamanho da janela e ao rate (não conta absoluto, não satura cedo).
+ * Pesos relativos: HIGH=3 / MEDIUM=2 / LOW=1. Positivos = bônus análogo.
  *
- * PURO: sem I/O. O caller (computeEmotional/Financial/Operational + evaluateMaturity)
- * aplica `netByDimension` ao score base e usa `ruleViolationRate`/`gateCounts` nos gates.
+ * Princípios:
+ * - "Vida nova": só trade COM `behaviorProfile` pesa; legado (sem profile) é ignorado e
+ *   também fica fora do denominador N.
+ * - Clearing estendido: finding com chave `canonicalCode:tradeId` em
+ *   `trade.mentorClearedViolations` não penaliza nem conta como violação.
+ *
+ * PURO: sem I/O. O caller aplica `netByDimension` ao score base + usa
+ * `ruleViolationRate`/`gateCounts` nos gates.
  */
 import { getPattern } from '../../constants/behavioralTaxonomy';
 
-// Escala derivada da severidade — PONTO DE PARTIDA, calibra na Fase D (mapa de pesos §).
-export const SEVERITY_PENALTY = Object.freeze({ HIGH: 15, MEDIUM: 8, LOW: 4 });
-export const POSITIVE_BONUS = 3;
+// Peso relativo de severidade (intensidade); SCALE converte intensidade média → pontos.
+// PONTO DE PARTIDA calibrado na Fase D: janela 100% HIGH numa dimensão ≈ −24 (≈ cap).
+export const SEVERITY_WEIGHT = Object.freeze({ HIGH: 3, MEDIUM: 2, LOW: 1 });
+export const POSITIVE_WEIGHT = 1;
+export const INTENSITY_SCALE = 8;
 export const PENALTY_CAP_PER_DIM = 25;
 export const BONUS_CAP_PER_DIM = 10;
 
-// Famílias que alimentam os counts==0 dos gates (espelha GATE_CODES + #208).
 const GATE_COUNT_MAP = Object.freeze({
   STOP_PANIC: 'tampering',
   CHASE_REENTRY: 'chase',
@@ -41,14 +45,12 @@ const clearedKey = (code, tradeId) => `${code}:${tradeId}`;
  *   byDimension:{E:number,F:number,O:number},        // penalidade capada (positiva)
  *   bonusByDimension:{E:number,F:number,O:number},    // bônus capado
  *   netByDimension:{E:number,F:number,O:number},      // bonus - penalidade (sinal a somar ao score)
- *   ruleViolationRate:number,                          // trades-com-violação / trades-com-profile
- *   gateCounts:{tampering,chase,sizing,tiltRevenge},
- *   withProfile:number, violationTrades:number
+ *   ruleViolationRate:number, gateCounts, withProfile, violationTrades
  * }}
  */
 export function aggregateBehaviorWeights(trades = []) {
-  const pen = { E: 0, F: 0, O: 0 };
-  const bon = { E: 0, F: 0, O: 0 };
+  const wpen = { E: 0, F: 0, O: 0 }; // soma de pesos de severidade por dimensão
+  const wbon = { E: 0, F: 0, O: 0 };
   const gateCounts = { tampering: 0, chase: 0, sizing: 0, tiltRevenge: 0 };
   let withProfile = 0;
   let violationTrades = 0;
@@ -68,10 +70,10 @@ export function aggregateBehaviorWeights(trades = []) {
       if (!p) continue;
       const dims = Array.isArray(p.dimensao) ? p.dimensao : [];
       if (f.valence === 'positive') {
-        for (const d of dims) if (bon[d] != null) bon[d] += POSITIVE_BONUS;
+        for (const d of dims) if (wbon[d] != null) wbon[d] += POSITIVE_WEIGHT;
       } else {
-        const points = SEVERITY_PENALTY[f.severity] ?? SEVERITY_PENALTY.LOW;
-        for (const d of dims) if (pen[d] != null) pen[d] += points;
+        const w = SEVERITY_WEIGHT[f.severity] ?? SEVERITY_WEIGHT.LOW;
+        for (const d of dims) if (wpen[d] != null) wpen[d] += w;
         hasViolation = true;
         const gc = GATE_COUNT_MAP[code];
         if (gc) gateCounts[gc] += 1;
@@ -80,10 +82,11 @@ export function aggregateBehaviorWeights(trades = []) {
     if (hasViolation) violationTrades += 1;
   }
 
-  const capPen = (v) => Math.min(v, PENALTY_CAP_PER_DIM);
-  const capBon = (v) => Math.min(v, BONUS_CAP_PER_DIM);
-  const byDimension = { E: capPen(pen.E), F: capPen(pen.F), O: capPen(pen.O) };
-  const bonusByDimension = { E: capBon(bon.E), F: capBon(bon.F), O: capBon(bon.O) };
+  // Intensidade média por trade × escala, capada → proporcional ao rate e à janela.
+  const penDim = (d) => (withProfile > 0 ? Math.min(PENALTY_CAP_PER_DIM, Math.round((wpen[d] / withProfile) * INTENSITY_SCALE)) : 0);
+  const bonDim = (d) => (withProfile > 0 ? Math.min(BONUS_CAP_PER_DIM, Math.round((wbon[d] / withProfile) * INTENSITY_SCALE)) : 0);
+  const byDimension = { E: penDim('E'), F: penDim('F'), O: penDim('O') };
+  const bonusByDimension = { E: bonDim('E'), F: bonDim('F'), O: bonDim('O') };
   const netByDimension = {
     E: bonusByDimension.E - byDimension.E,
     F: bonusByDimension.F - byDimension.F,
