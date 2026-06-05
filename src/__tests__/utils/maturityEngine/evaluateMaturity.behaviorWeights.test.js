@@ -66,6 +66,22 @@ describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
     expect(withA.dimensionScores.financial).toBe(plain.dimensionScores.financial - 15); // F sim
   });
 
+  it('gate ruleViolationRate: janela com padrões (rate alto) reprova o gate (B2)', () => {
+    // 12 trades, todos com finding → ruleViolationRate = 1.0 (≥ floor 10)
+    const all = Array.from({ length: 12 }, (_, i) => makeTrade(`T${i + 1}`, i, greed));
+    const out = esm(baseInput({ trades: all })); // stage 3 → gate rule-violation-rate-5 (≤0.05)
+    const gate = out.gates.find((g) => g.id === 'rule-violation-rate-5');
+    expect(gate).toBeTruthy();
+    expect(gate.met).toBe(false);
+  });
+
+  it('gate ruleViolationRate: janela limpa (profiled, sem finding) passa o gate (B2)', () => {
+    const clean = Array.from({ length: 12 }, (_, i) => makeTrade(`T${i + 1}`, i, [])); // profiled, zero finding
+    const out = esm(baseInput({ trades: clean }));
+    const gate = out.gates.find((g) => g.id === 'rule-violation-rate-5');
+    expect(gate.met).toBe(true); // rate 0 ≤ 0.05
+  });
+
   it('paridade ESM≡CJS na superfície do B1 (dimensões + behavioralNet)', () => {
     const input = baseInput({ trades: windowOne(12, greed) });
     const a = esm(input); const b = cjs(input);
