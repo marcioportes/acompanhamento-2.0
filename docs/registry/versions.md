@@ -48,4 +48,4 @@
 | 1.72.0 | #299 | `feat/issue-299-chunk11-fase0` | 01/06/2026 | consumida (PR #300 squash `c10be425`) |
 | 1.73.0 | #301 | `feat/issue-301-chunk11-fase1` | 01/06/2026 | consumida (PR #304 squash `67122d42`) |
 | 1.72.1 | #302 | `fix/issue-302-mentor-feedback-seal` | 01/06/2026 | consumida (PR #303 squash `4d72dea5`) |
-| 1.74.0 | #305 | `feat/issue-305-chunk11-fase2` | 04/06/2026 | RESERVADA |
+| 1.74.0 | #305 | `feat/issue-305-chunk11-fase2` | 04/06/2026 | consumida (PR #306 squash `730ff902`) |

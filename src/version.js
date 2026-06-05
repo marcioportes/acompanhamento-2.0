@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.74.0: #305 feat pesos do comportamento no 4D + ruleViolationRate gates + clearing (#305) (PR #306, 05/06/2026)
  * - 1.72.1: #302 fix hard seal #259 isenta feedback do mentor em ciclo fechado (PR #303, 03/06/2026)
  * - 1.73.0: #301 feat motor unificado detectBehavior + ativação + UX + Confronto Emocional (#301) (PR #304, 04/06/2026)
  * - 1.72.0: #299 feat baseline + taxonomia + mapa de pesos do framework (PR #300, 01/06/2026)
@@ -367,10 +368,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.73.0',
-  build: '20260604',
-  display: 'v1.73.0',
-  full: '1.73.0+20260604',
+  version: '1.74.0',
+  build: '20260605',
+  display: 'v1.74.0',
+  full: '1.74.0+20260605',
 };
 export default VERSION;
 export { VERSION };

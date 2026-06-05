@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.74.0] - 05/06/2026 · #305 · PR #306
+
+**feat:** pesos do comportamento no 4D + ruleViolationRate gates + clearing (#305)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.73.0] - 04/06/2026 · #301 · PR #304
 
 **feat:** motor unificado detectBehavior + ativação + UX + Confronto Emocional (#301)
