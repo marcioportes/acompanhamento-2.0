@@ -181,4 +181,24 @@ describe('BehaviorPanel', () => {
     expect(screen.getByText(/Reentrada rápida após uma perda/)).toBeInTheDocument(); // descrição-prosa
     expect(screen.queryByText(/foo:/)).not.toBeInTheDocument(); // sem dump cru colapsado
   });
+
+  it('C: mentor vê "Dispensar" no finding negativo; clique → onToggleViolation(canonicalCode:tradeId)', () => {
+    const onToggle = vi.fn();
+    render(<BehaviorPanel trade={trade} isMentor embedded onToggleViolation={onToggle} />);
+    fireEvent.click(screen.getByText('✕ Dispensar'));
+    expect(onToggle).toHaveBeenCalledWith('LOSS_CHASING:T1');
+  });
+
+  it('C: finding dispensado aparece greyed com "Restaurar"', () => {
+    const t = { ...trade, mentorClearedViolations: ['LOSS_CHASING:T1'] };
+    render(<BehaviorPanel trade={t} isMentor embedded onToggleViolation={() => {}} />);
+    expect(screen.getByText('↺ Restaurar')).toBeInTheDocument();
+    expect(screen.getByText(/dispensado pelo mentor/)).toBeInTheDocument();
+    expect(screen.queryByText('✕ Dispensar')).not.toBeInTheDocument();
+  });
+
+  it('C: aluno não vê o botão de dispensar', () => {
+    render(<BehaviorPanel trade={trade} isMentor={false} embedded onToggleViolation={() => {}} />);
+    expect(screen.queryByText('✕ Dispensar')).not.toBeInTheDocument();
+  });
 });
