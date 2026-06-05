@@ -30,6 +30,7 @@ const GATES_BY_TRANSITION = {
     { id: 'basic-journal', label: 'Journal em 50%+ dos trades', dim: 'op', metric: 'journalRate', op: '>=', threshold: 0.50 },
     { id: 'stop-usage', label: 'Stop em 80%+ dos trades', dim: 'fin', metric: 'stopUsageRate', op: '>=', threshold: 0.80 },
     { id: 'plan-linked-trades', label: 'Plan-linked ≥ 70%', dim: 'op', metric: 'planAdherence', op: '>=', threshold: 70 },
+    { id: 'rule-violation-rate-30', label: 'Padrões de risco ≤ 30%', dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.30 },
   ],
   '2-3': [
     { id: 'emotional-55', label: 'Emocional ≥ 55', dim: 'emo', metric: 'E', op: '>=', threshold: 55 },
@@ -40,6 +41,7 @@ const GATES_BY_TRANSITION = {
     { id: 'compliance-95', label: 'Compliance ≥ 95%', dim: 'op', metric: 'complianceRate', op: '>=', threshold: 95 },
     { id: 'winrate-45', label: 'Win rate ≥ 45%', dim: 'fin', metric: 'winRate', op: '>=', threshold: 45 },
     { id: 'payoff-1_2', label: 'Payoff ≥ 1.2', dim: 'fin', metric: 'payoff', op: '>=', threshold: 1.2 },
+    { id: 'rule-violation-rate-15', label: 'Padrões de risco ≤ 15%', dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.15 },
   ],
   '3-4': [
     { id: 'emotional-75', label: 'Emocional ≥ 75', dim: 'emo', metric: 'E', op: '>=', threshold: 75 },
@@ -57,6 +59,7 @@ const GATES_BY_TRANSITION = {
     { id: 'no-stop-tampering', label: 'Sem stop tampering', dim: 'op', metric: 'stopTamperingCount', op: '==', threshold: 0 },
     { id: 'no-chase', label: 'Sem chase reentry', dim: 'op', metric: 'chaseCount', op: '==', threshold: 0 },
     { id: 'disciplined-sizing', label: 'Sizing de stop disciplinado', dim: 'op', metric: 'partialStopCount', op: '==', threshold: 0 },
+    { id: 'rule-violation-rate-5', label: 'Padrões de risco ≤ 5%', dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.05 },
   ],
   '4-5': [
     { id: 'emotional-85', label: 'Emocional ≥ 85 (SAGE)', dim: 'emo', metric: 'E', op: '>=', threshold: 85 },
@@ -68,6 +71,7 @@ const GATES_BY_TRANSITION = {
     { id: 'zero-tilt-revenge', label: 'Zero tilt/revenge 90 dias', dim: 'emo', metric: 'tiltRevengeCount', op: '==', threshold: 0 },
     { id: 'annual-return-15', label: 'Retorno anualizado ≥ 15%', dim: 'fin', metric: 'annualizedReturn', op: '>=', threshold: 15 },
     { id: 'sharpe-1_5', label: 'Sharpe anual ≥ 1.5', dim: 'fin', metric: 'annualSharpe', op: '>=', threshold: 1.5 },
+    { id: 'rule-violation-rate-1', label: 'Padrões de risco ≤ 1%', dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.01 },
   ],
 };
 

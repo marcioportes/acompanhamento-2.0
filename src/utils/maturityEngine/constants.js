@@ -97,6 +97,13 @@ export const GATES_BY_TRANSITION = {
       howTo: 'Selecionar o plano sempre que registrar trade. Trades soltos viram exceção, não regra.',
       dim: 'op', metric: 'planAdherence', op: '>=', threshold: 70,
     },
+    {
+      id: 'rule-violation-rate-30', label: 'Padrões de risco ≤ 30%',
+      friendlyLabel: 'Padrões comportamentais em no máximo 30% dos trades', unit: '%',
+      whatIs: 'Fração dos seus trades com algum padrão de risco (revenge, overtrading, sub-sizing…). Quanto menor, mais limpo o processo.',
+      howTo: 'Cada card de Comportamento diz o que corrigir no trade. Corrija um padrão por vez: a janela rola, os trades ruins saem, os limpos entram e a taxa cai.',
+      dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.30,
+    },
   ],
   '2-3': [
     {
@@ -154,6 +161,13 @@ export const GATES_BY_TRANSITION = {
       whatIs: 'Vitória vale R$X, derrota vale R$Y. Payoff = X/Y. Acima de 1,2 = ganhos compensam perdas com folga.',
       howTo: 'Deixar vencedores rodarem até o alvo. Cortar perdedores rápido no SL — não esticar.',
       dim: 'fin', metric: 'payoff', op: '>=', threshold: 1.2,
+    },
+    {
+      id: 'rule-violation-rate-15', label: 'Padrões de risco ≤ 15%',
+      friendlyLabel: 'Padrões comportamentais em no máximo 15% dos trades', unit: '%',
+      whatIs: 'Fração dos seus trades com algum padrão de risco. Na faixa metódica, o processo fica consistente — poucos lapsos.',
+      howTo: 'Os padrões recorrentes (revenge, overtrading) são os que mais pesam. Atacar os de severidade Alta primeiro derruba a taxa mais rápido.',
+      dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.15,
     },
   ],
   '3-4': [
@@ -251,6 +265,13 @@ export const GATES_BY_TRANSITION = {
       howTo: 'Saída parcial só por trigger pré-definido (chegou no alvo 1, mudou contexto técnico). Nunca por ansiedade.',
       dim: 'op', metric: 'partialStopCount', op: '==', threshold: 0,
     },
+    {
+      id: 'rule-violation-rate-5', label: 'Padrões de risco ≤ 5%',
+      friendlyLabel: 'Padrões comportamentais em no máximo 5% dos trades', unit: '%',
+      whatIs: 'Quase nenhum trade com padrão de risco — disciplina de processo nível profissional.',
+      howTo: 'Aqui o que sobra são lapsos pontuais. Revisar o Confronto Emocional dos poucos trades marcados fecha o gap.',
+      dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.05,
+    },
   ],
   '4-5': [
     {
@@ -315,6 +336,13 @@ export const GATES_BY_TRANSITION = {
       whatIs: 'Sharpe ≥ 1.5 = retorno alto pra cada unidade de risco. Hedge fund de respeito tem essa faixa.',
       howTo: 'Sustentar drawdown baixo e retorno consistente simultaneamente. Volatilidade controlada é o caminho.',
       dim: 'fin', metric: 'annualSharpe', op: '>=', threshold: 1.5,
+    },
+    {
+      id: 'rule-violation-rate-1', label: 'Padrões de risco ≤ 1%',
+      friendlyLabel: 'Padrões comportamentais em no máximo 1% dos trades', unit: '%',
+      whatIs: 'Processo praticamente sem lapsos — execução desacoplada da emoção (perfil Mastery).',
+      howTo: 'Manutenção: o motor sinaliza qualquer recaída na hora; a janela rolando preserva a taxa perto de zero.',
+      dim: 'op', metric: 'ruleViolationRate', op: '<=', threshold: 0.01,
     },
   ],
 };

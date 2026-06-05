@@ -17,32 +17,46 @@ import {
   emotionConfrontDisplay, CONFRONT_TONE_STYLES,
 } from './behaviorDisplay';
 
-const FamilyCard = ({ family, currency }) => {
+const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolation }) => {
   const [expanded, setExpanded] = useState(false);
   const isPositive = family.valence === 'positive';
   const isUndersized = family.canonicalCode === 'SUB_SIZING';
   const label = BEHAVIOR_LABELS[family.canonicalCode] ?? family.family;
+  // Clearing estendido (#305 Fase 2 C): mentor dispensa o finding → para de penalizar.
+  const clearKey = `${family.canonicalCode}:${trade?.id}`;
+  const cleared = !isPositive && isViolationCleared(trade, clearKey);
 
   return (
     <div
-      className={`border rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/5 ${familyStyle(family)}`}
+      className={`border rounded-lg p-3 cursor-pointer transition-colors hover:bg-white/5 ${familyStyle(family)} ${cleared ? 'opacity-50' : ''}`}
       onClick={() => setExpanded(!expanded)}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium">{isPositive ? '✦' : '⚠'} {label}</span>
+          <span className={`text-sm font-medium ${cleared ? 'line-through' : ''}`}>{isPositive ? '✦' : '⚠'} {label}</span>
           {!isPositive && (
             <span className={`text-xs px-1.5 py-0.5 rounded border ${familyStyle(family)}`}>
               {SEVERITY_LABELS[family.severity] ?? family.severity}
             </span>
           )}
-          {family.isGate && (
+          {family.isGate && !cleared && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-300 border border-red-500/40 inline-flex items-center gap-0.5">
               <Lock className="w-2.5 h-2.5" /> gate
             </span>
           )}
+          {cleared && <span className="text-[10px] text-slate-400">dispensado pelo mentor</span>}
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-400 shrink-0">
+          {!isPositive && isMentor && onToggleViolation && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggleViolation(clearKey); }}
+              title={cleared ? 'Restaurar — volta a penalizar a maturidade' : 'Dispensar — não penaliza a maturidade'}
+              className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${cleared ? 'border-slate-600/40 text-slate-400 hover:bg-slate-700/40 hover:text-slate-200' : 'border-white/20 text-zinc-300 hover:bg-white/10'}`}
+            >
+              {cleared ? '↺ Restaurar' : '✕ Dispensar'}
+            </button>
+          )}
           {family.emotionMapping && <span>{EMOTION_LABELS[family.emotionMapping] ?? family.emotionMapping}</span>}
           {family.confidence != null && <span>{Math.round(family.confidence * 100)}%</span>}
           <span className="text-zinc-500">{expanded ? '▲' : '▼'}</span>
@@ -180,8 +194,8 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
             </p>
           ) : families.length > 0 ? (
             <div className="space-y-2">
-              {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} />)}
-              {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} />)}
+              {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
+              {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
             </div>
           ) : (effective.length === 0 && cleared.length === 0) ? (
             // Motor rodou, nada negativo e sem violação → afirmação de execução alinhada.

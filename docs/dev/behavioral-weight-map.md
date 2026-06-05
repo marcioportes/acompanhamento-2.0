@@ -1,8 +1,41 @@
 # Mapa de Pesos Comportamentais — derivado do Framework Evolutivo
 
-> **Status: APROVADO por Marcio (01/06/2026)** — inclui as 3 decisões abertas (findings novos pesam em F/O; positivos como bônus; faixas `ruleViolationRate` §5.3 viram gates). Números finais por severidade calibram na Fase 2 sobre a baseline congelada.
+> **Status: APROVADO por Marcio (01/06/2026)** — inclui as 3 decisões abertas (findings novos pesam em F/O; positivos como bônus; faixas `ruleViolationRate` §5.3 viram gates). **Calibração final aprovada 05/06/2026 (Fase D, #305) — ver seção "Calibração" abaixo.**
 > SSoT de origem: [`trader_evolution_framework.md`](trader_evolution_framework.md). Encodado em `src/constants/behavioralTaxonomy.js`.
-> Este mapa substitui os `EVENT_PENALTIES` ad-hoc de `emotionalAnalysisV2.js:77` (wiring na Fase 2).
+> Wiring em `src/utils/maturityEngine/behaviorWeights.js` (+ espelho CJS), consumido por `evaluateMaturity`. (No #305 a migração do Emocional dos `EVENT_PENALTIES` ad-hoc ficou de fora — fast-follow; B1 modula F/O.)
+
+## Calibração (Fase D, #305, 05/06/2026)
+
+Penalidade **RATE-NORMALIZED** (não count-absoluto — o count-absoluto saturava o cap com 2 findings): a penalidade por dimensão é a **intensidade média por trade**, proporcional ao tamanho da janela e ao rate.
+
+```
+penalidade_dim = min(CAP, round( Σ(peso_severidade dos findings na dim) / N_trades_com_profile × SCALE ))
+bônus_dim      = min(BONUS_CAP, round( Σ(peso_positivo na dim) / N × SCALE ))
+net_dim        = bônus_dim − penalidade_dim     (somado ao score base 0-100)
+```
+
+| Parâmetro | Valor |
+|---|---|
+| Peso de severidade | HIGH=3 · MEDIUM=2 · LOW=1 |
+| Peso positivo | 1 |
+| `SCALE` | 8 (janela 100% HIGH numa dim ≈ −24 ≈ cap) |
+| `CAP` penalidade / dim | 25 |
+| `BONUS_CAP` / dim | 10 |
+| Floor de cobertura (`ruleViolationRate` = null) | 10 trades com profile |
+
+`ruleViolationRate = trades_com_violação / trades_com_profile` (vida nova: legado sem profile fora do numerador E do denominador). Gates: 1→2 ≤0.30 · 2→3 ≤0.15 · 3→4 ≤0.05 · 4→5 ≤0.01.
+
+**Impacto (cenários representativos, net por dimensão):**
+
+| Cenário | netE | netF | netO | rate |
+|---|---|---|---|---|
+| Limpo (20, Execução limpa) | +8 | +0 | +0 | 0% |
+| Leve (2/20 revenge HIGH) | −2 | +0 | +0 | 10% |
+| Moderado (5/20 sub-sizing MED) | −4 | −4 | +0 | 25% |
+| Dia ruim (9: overtrading + revenge + flip) | −19 | +0 | −13 | 100% |
+| 100 trades, 5 revenge HIGH | −1 | +0 | +0 | 5% |
+
+Promoção = competência (score base) + modulação rolling (penalidade some quando o padrão sai da janela) + gates. Score base inalterado; comportamento modula em cima.
 
 ## Princípio
 

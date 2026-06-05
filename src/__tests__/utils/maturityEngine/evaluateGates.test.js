@@ -10,6 +10,7 @@ const metrics12AllMet = {
   journalRate: 0.50,       // >= 0.50 → met
   stopUsageRate: 0.80,     // >= 0.80 → met
   planAdherence: 70,       // >= 70 → met
+  ruleViolationRate: 0.30, // <= 0.30 → met (CHUNK-11 Fase 2)
 };
 
 const metrics12AllMissed = {
@@ -19,6 +20,7 @@ const metrics12AllMissed = {
   journalRate: 0.30,
   stopUsageRate: 0.60,
   planAdherence: 50,
+  ruleViolationRate: 0.40, // > 0.30 → miss
 };
 
 const metrics23AllMet = {
@@ -30,6 +32,7 @@ const metrics23AllMet = {
   complianceRate: 95,
   winRate: 45,
   payoff: 1.2,
+  ruleViolationRate: 0.15, // <= 0.15 → met
 };
 
 const metrics23AllMissed = {
@@ -41,6 +44,7 @@ const metrics23AllMissed = {
   complianceRate: 80,
   winRate: 30,
   payoff: 0.8,
+  ruleViolationRate: 0.25, // > 0.15 → miss
 };
 
 const metrics34AllMet = {
@@ -58,6 +62,7 @@ const metrics34AllMet = {
   stopTamperingCount: 0,
   chaseCount: 0,
   partialStopCount: 0,
+  ruleViolationRate: 0.05, // <= 0.05 → met
 };
 
 const metrics34AllMissed = {
@@ -75,6 +80,7 @@ const metrics34AllMissed = {
   stopTamperingCount: 3,
   chaseCount: 2,
   partialStopCount: 4,
+  ruleViolationRate: 0.10, // > 0.05 → miss
 };
 
 const metrics45AllMet = {
@@ -87,6 +93,7 @@ const metrics45AllMet = {
   tiltRevengeCount: 0,      // == 0 → met
   annualizedReturn: 15,
   annualSharpe: 1.5,
+  ruleViolationRate: 0.01, // <= 0.01 → met
 };
 
 const metrics45AllMissed = {
@@ -99,14 +106,15 @@ const metrics45AllMissed = {
   tiltRevengeCount: 3,
   annualizedReturn: 10,
   annualSharpe: 1.0,
+  ruleViolationRate: 0.05, // > 0.01 → miss
 };
 
 describe('evaluateGates — transições', () => {
   it('stage 1 com todas métricas no limiar → todos os 6 gates met', () => {
     const out = evaluateGates(1, metrics12AllMet);
     expect(out.transition).toBe('1-2');
-    expect(out.gatesTotal).toBe(6);
-    expect(out.gatesMet).toBe(6);
+    expect(out.gatesTotal).toBe(7);
+    expect(out.gatesMet).toBe(7);
     expect(out.gatesRatio).toBe(1);
     expect(out.mastery).toBe(false);
     expect(out.gates.every((g) => g.met === true)).toBe(true);
@@ -117,7 +125,7 @@ describe('evaluateGates — transições', () => {
     const out = evaluateGates(1, metrics12AllMissed);
     expect(out.transition).toBe('1-2');
     expect(out.gatesMet).toBe(0);
-    expect(out.gatesTotal).toBe(6);
+    expect(out.gatesTotal).toBe(7);
     expect(out.gatesRatio).toBe(0);
     expect(out.gates.every((g) => g.met === false)).toBe(true);
     expect(out.gates.every((g) => typeof g.gap === 'number' && g.gap > 0)).toBe(true);
@@ -126,15 +134,15 @@ describe('evaluateGates — transições', () => {
   it('stage 2 com todas métricas no limiar → todos os 8 gates met', () => {
     const out = evaluateGates(2, metrics23AllMet);
     expect(out.transition).toBe('2-3');
-    expect(out.gatesTotal).toBe(8);
-    expect(out.gatesMet).toBe(8);
+    expect(out.gatesTotal).toBe(9);
+    expect(out.gatesMet).toBe(9);
     expect(out.gatesRatio).toBe(1);
   });
 
   it('stage 2 com métricas abaixo → nenhum gate met', () => {
     const out = evaluateGates(2, metrics23AllMissed);
     expect(out.transition).toBe('2-3');
-    expect(out.gatesTotal).toBe(8);
+    expect(out.gatesTotal).toBe(9);
     expect(out.gatesMet).toBe(0);
     expect(out.gates.every((g) => g.met === false)).toBe(true);
   });
@@ -142,30 +150,30 @@ describe('evaluateGates — transições', () => {
   it('stage 3 com todas métricas no limiar → todos os 13 gates met', () => {
     const out = evaluateGates(3, metrics34AllMet);
     expect(out.transition).toBe('3-4');
-    expect(out.gatesTotal).toBe(13);
-    expect(out.gatesMet).toBe(13);
+    expect(out.gatesTotal).toBe(14);
+    expect(out.gatesMet).toBe(14);
     expect(out.gatesRatio).toBe(1);
   });
 
   it('stage 3 com métricas abaixo → nenhum gate met', () => {
     const out = evaluateGates(3, metrics34AllMissed);
     expect(out.transition).toBe('3-4');
-    expect(out.gatesTotal).toBe(13);
+    expect(out.gatesTotal).toBe(14);
     expect(out.gatesMet).toBe(0);
   });
 
   it('stage 4 com todas métricas no limiar → todos os 9 gates met', () => {
     const out = evaluateGates(4, metrics45AllMet);
     expect(out.transition).toBe('4-5');
-    expect(out.gatesTotal).toBe(9);
-    expect(out.gatesMet).toBe(9);
+    expect(out.gatesTotal).toBe(10);
+    expect(out.gatesMet).toBe(10);
     expect(out.gatesRatio).toBe(1);
   });
 
   it('stage 4 com métricas abaixo → nenhum gate met', () => {
     const out = evaluateGates(4, metrics45AllMissed);
     expect(out.transition).toBe('4-5');
-    expect(out.gatesTotal).toBe(9);
+    expect(out.gatesTotal).toBe(10);
     expect(out.gatesMet).toBe(0);
   });
 });
@@ -181,9 +189,9 @@ describe('evaluateGates — métricas ausentes (METRIC_UNAVAILABLE)', () => {
       planAdherence: 70,
     };
     const out = evaluateGates(1, metrics);
-    expect(out.gatesTotal).toBe(6);
+    expect(out.gatesTotal).toBe(7);
     expect(out.gatesMet).toBe(4);
-    expect(out.gatesRatio).toBeCloseTo(4 / 6, 6);
+    expect(out.gatesRatio).toBeCloseTo(4 / 7, 6);
 
     const maxdd = out.gates.find((g) => g.id === 'maxdd-under-20');
     expect(maxdd.met).toBeNull();
@@ -199,7 +207,7 @@ describe('evaluateGates — métricas ausentes (METRIC_UNAVAILABLE)', () => {
   it('metrics undefined inteiro → todos os gates retornam met=null', () => {
     const out = evaluateGates(2, undefined);
     expect(out.transition).toBe('2-3');
-    expect(out.gatesTotal).toBe(8);
+    expect(out.gatesTotal).toBe(9);
     expect(out.gatesMet).toBe(0);
     expect(out.gates.every((g) => g.met === null)).toBe(true);
     expect(out.gates.every((g) => g.reason === 'METRIC_UNAVAILABLE')).toBe(true);
@@ -340,8 +348,8 @@ describe('evaluateGates — agregação gatesRatio', () => {
     };
     const out = evaluateGates(1, partial);
     expect(out.gatesMet).toBe(3);
-    expect(out.gatesTotal).toBe(6);
-    expect(out.gatesRatio).toBeCloseTo(0.5, 6);
+    expect(out.gatesTotal).toBe(7);
+    expect(out.gatesRatio).toBeCloseTo(3 / 7, 6);
   });
 
   it('mix met/missed/null: gatesMet conta só true, gatesTotal inclui null (visibilidade)', () => {
@@ -354,9 +362,9 @@ describe('evaluateGates — agregação gatesRatio', () => {
       planAdherence: 70,     // met
     };
     const out = evaluateGates(1, partial);
-    expect(out.gatesTotal).toBe(6);
+    expect(out.gatesTotal).toBe(7);
     expect(out.gatesMet).toBe(4);
-    expect(out.gatesRatio).toBeCloseTo(4 / 6, 6);
+    expect(out.gatesRatio).toBeCloseTo(4 / 7, 6);
     const nullGate = out.gates.find((g) => g.metric === 'complianceRate');
     expect(nullGate.met).toBeNull();
   });

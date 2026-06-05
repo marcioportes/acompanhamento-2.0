@@ -104,7 +104,7 @@ describe('evaluateMaturity — integração por stage', () => {
     });
     expect(isScoreOk(out.dimensionScores.composite)).toBe(true);
     expect(out.dimensionScores.composite).toBeGreaterThan(50);
-    expect(out.gatesTotal).toBe(13); // 3→4: 10 gates legacy + 3 gates comportamentais (#208)
+    expect(out.gatesTotal).toBe(14); // 3→4: 10 gates legacy + 3 gates comportamentais (#208)
   });
 
   it('Stage 4 professional — 80 trades, métricas 4→5 fortes mas nem todas perfeitas', () => {
@@ -130,7 +130,7 @@ describe('evaluateMaturity — integração por stage', () => {
       complianceRate100: 100,
     });
     expect(isScoreOk(out.dimensionScores.composite)).toBe(true);
-    expect(out.gatesTotal).toBe(9); // 4→5 tem 9 gates
+    expect(out.gatesTotal).toBe(10); // 4→5 tem 9 gates
   });
 
   it('Stage 5 mastery — mastery → gates vazio, proposed STAY, M=100 esperado', () => {
