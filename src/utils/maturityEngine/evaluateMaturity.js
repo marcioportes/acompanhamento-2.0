@@ -38,6 +38,7 @@ import { computeMaturity } from './computeMaturity.js';
 import { evaluateGates } from './evaluateGates.js';
 import { detectRegressionSignal } from './detectRegressionSignal.js';
 import { proposeStageTransition } from './proposeStageTransition.js';
+import { aggregateBehaviorWeights } from './behaviorWeights.js';
 
 /**
  * @param {{
@@ -86,7 +87,7 @@ export function evaluateMaturity({
 
   // 2. Dimensões
   const emotional = computeEmotional({ trades: W, emotionConfig: null, emotionalAnalysis });
-  const financial = computeFinancial({
+  let financial = computeFinancial({
     trades: W,
     initialBalance,
     stats,
@@ -95,7 +96,23 @@ export function evaluateMaturity({
     consistencyCV,
     maxDrawdown,
   });
-  const operational = computeOperational({ trades: W, plans: safePlans, complianceRate });
+  let operational = computeOperational({ trades: W, plans: safePlans, complianceRate });
+
+  // 2b. Modulação comportamental (CHUNK-11 Fase 2 #305). "Vida nova": só trade com
+  // behaviorProfile pesa → janela sem profile = net 0 (baseline intacta). E fica de fora
+  // do B1 (já penaliza via EVENT_PENALTIES no periodScore — migra no B2, sem double-count).
+  const behaviorWeights = aggregateBehaviorWeights(W);
+  const clampScore = (x) => Math.max(0, Math.min(100, x));
+  financial = {
+    ...financial,
+    score: clampScore(financial.score + behaviorWeights.netByDimension.F),
+    breakdown: { ...financial.breakdown, behavioralNet: behaviorWeights.netByDimension.F },
+  };
+  operational = {
+    ...operational,
+    score: clampScore(operational.score + behaviorWeights.netByDimension.O),
+    breakdown: { ...operational.breakdown, behavioralNet: behaviorWeights.netByDimension.O },
+  };
 
   // 3. Métricas para gates
   const strategyConsWks = computeStrategyConsistencyWeeks(W, safePlans);
@@ -118,6 +135,7 @@ export function evaluateMaturity({
   // METRIC_UNAVAILABLE (null) quando <30 trades com order data linked
   // (DEC-AUTO-208-03 — gate fica pendente, DEC-020 preservada).
   const EXECUTION_COVERAGE_FLOOR = 30;
+  const BEHAVIOR_COVERAGE_FLOOR = 10; // CHUNK-11 Fase 2 #305 — mín. trades com behaviorProfile p/ rate
   const hasOrderCoverage = (tradesWithOrderData ?? 0) >= EXECUTION_COVERAGE_FLOOR;
   const tradeIdsInWindow = new Set(W.map((t) => t?.id).filter(Boolean));
   const eventsInWindow = (executionEvents ?? []).filter(
@@ -152,6 +170,11 @@ export function evaluateMaturity({
     stopTamperingCount,
     chaseCount,
     partialStopCount,
+    // CHUNK-11 Fase 2 #305 — taxa de findings comportamentais na janela.
+    // null (METRIC_UNAVAILABLE) se cobertura < floor (vida nova: poucos trades com profile).
+    ruleViolationRate: behaviorWeights.withProfile >= BEHAVIOR_COVERAGE_FLOOR
+      ? behaviorWeights.ruleViolationRate
+      : null,
   };
 
   // 4. Gates
