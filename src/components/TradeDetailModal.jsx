@@ -34,6 +34,7 @@ import {
 import TradeOrdersPanel from './OrderImport/TradeOrdersPanel';
 import TradeStatusBadges from './TradeStatusBadges';
 import BehaviorPanel from './Trades/BehaviorPanel';
+import TradeReviewSection from './Trades/TradeReviewSection';
 import ExcursionDisplay from './ExcursionDisplay';
 import { isCMEFutureTicker } from '../utils/tradeTimezone';
 
@@ -135,6 +136,7 @@ const TradeDetailModal = ({
   feedbackLoading = false,
   onViewFeedbackHistory,
   onRecalcMepMen,  // #285: handler async (tradeId) => Promise — quando definido, mostra "Recalcular MEP/MEN"
+  onSubmitReview,  // #308: handler async (tradeId, { wouldRepeat, answers }) => Promise — auto-revisão do aluno
   getPartials,  // LEGADO — mantido para compatibilidade, mas parciais vêm do campo _partials do trade
 }) => {
   const [fullscreenImage, setFullscreenImage] = useState(null);
@@ -457,6 +459,13 @@ const TradeDetailModal = ({
             {/* Comportamento consolidado (Fase 2 #301): adesão ao plano → padrões → gate.
                 Substitui ExecutionPatternsPanel + ShadowBehaviorPanel. Aluno vê os dados. */}
             <BehaviorPanel trade={trade} isMentor={isMentor} embedded />
+
+            {/* #308 — Auto-revisão do aluno (processo × resultado). Aluno revisa; mentor vê como contexto. */}
+            <TradeReviewSection
+              trade={trade}
+              canReview={!isMentor}
+              onSubmit={onSubmitReview ? (payload) => onSubmitReview(trade.id, payload) : null}
+            />
 
             {/* Observações do Aluno */}
             {notes && (

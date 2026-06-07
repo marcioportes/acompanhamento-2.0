@@ -39,6 +39,7 @@ import { computeMentorClassificationStats } from '../utils/mentorClassificationS
 import TradesList from '../components/TradesList';
 import AddTradeModal from '../components/AddTradeModal';
 import TradeDetailModal from '../components/TradeDetailModal';
+import { submitTradeReview } from '../utils/tradeGateway';
 import Filters from '../components/Filters';
 import AccountSetupWizard from '../components/AccountSetupWizard';
 import Loading from '../components/Loading';
@@ -395,6 +396,12 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     } catch (err) {
       toast.error(`Falha ao zerar: ${err.message || err}`);
     }
+  };
+
+  // #308 — auto-revisão do aluno; update otimista do trade aberto p/ leitura imediata.
+  const handleSubmitReview = async (tradeId, payload) => {
+    const res = await submitTradeReview(tradeId, payload, { uid: user?.uid, email: user?.email });
+    setViewingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
   };
 
   /** Wrapper para activateTrade que injeta addTrade + trades do plano (dedup + enrich #240).
@@ -801,7 +808,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} />
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} getPartials={getPartials} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} getPartials={getPartials} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
       {/* PlanLedgerExtract: ledger agora é currentView no App.jsx (#102 Fase 0), não modal aqui */}
