@@ -17,6 +17,7 @@ import {
   defaultTzForTicker,
   combineDateTimeWithTz,
   toBrasiliaDisplay,
+  tzFromStoredIso,
   TIMEZONES,
 } from '../../utils/tradeTimezone';
 
@@ -163,5 +164,34 @@ describe('toBrasiliaDisplay', () => {
     expect(toBrasiliaDisplay(null)).toBe('');
     expect(toBrasiliaDisplay('')).toBe('');
     expect(toBrasiliaDisplay('lixo')).toBe('');
+  });
+});
+
+describe('tzFromStoredIso — deriva fuso do ISO gravado (consulta/edição)', () => {
+  it('offset -03:00 → Brasília', () => {
+    expect(tzFromStoredIso('2026-06-03T10:21:57-03:00')).toBe(TIMEZONES.BRT.id);
+  });
+
+  it('offset -04:00 em junho (DST) → Nova York (ET)', () => {
+    expect(tzFromStoredIso('2026-06-03T10:21:57-04:00')).toBe(TIMEZONES.ET.id);
+  });
+
+  it('offset -06:00 em dezembro (sem DST) → Chicago (CT)', () => {
+    expect(tzFromStoredIso('2026-12-25T10:00:00-06:00')).toBe(TIMEZONES.CT.id);
+  });
+
+  it('aceita offset sem dois-pontos e Z', () => {
+    expect(tzFromStoredIso('2026-06-03T10:21:57-0300')).toBe(TIMEZONES.BRT.id);
+    expect(tzFromStoredIso('2026-06-03T10:21:57Z')).toBe(null); // +00:00 não casa nenhum fuso conhecido
+  });
+
+  it('naive (legado, sem offset) → null', () => {
+    expect(tzFromStoredIso('2026-06-03T10:21:57')).toBe(null);
+  });
+
+  it('entrada inválida → null', () => {
+    expect(tzFromStoredIso(null)).toBe(null);
+    expect(tzFromStoredIso('')).toBe(null);
+    expect(tzFromStoredIso('lixo')).toBe(null);
   });
 });

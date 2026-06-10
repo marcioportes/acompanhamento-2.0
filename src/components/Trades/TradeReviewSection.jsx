@@ -68,7 +68,7 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit }) => {
       <div className="relative border border-white/10 rounded-xl p-4 bg-white/5 mt-4">
         <div className="flex items-center gap-2 mb-3">
           <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-          <span className="text-sm font-medium text-zinc-200">Auto-revisão</span>
+          <span className="text-sm font-medium text-zinc-200">Espelho</span>
           {meta && <span className="text-xs text-zinc-400">· {meta.label}</span>}
           <span className={`text-xs px-1.5 py-0.5 rounded border ${existing.wouldRepeat ? 'border-emerald-500/30 text-emerald-300' : 'border-amber-500/30 text-amber-300'}`}>
             Faria de novo: {existing.wouldRepeat ? 'Sim' : 'Não'}
@@ -88,7 +88,7 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit }) => {
         )}
         {banner && (
           <div className={`text-xs rounded-lg border px-3 py-2 ${CONFRONT_TONE_STYLES[banner.tone]}`}>
-            <span className="font-medium">Espelho · </span>{banner.text}
+            <span className="font-medium">Reflexo · </span>{banner.text}
           </div>
         )}
         <DebugBadge component="TradeReviewSection" />
@@ -124,14 +124,14 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit }) => {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-            <span className="text-sm text-zinc-300">Este trade ainda não foi revisado.</span>
+            <span className="text-sm text-zinc-300">Este trade ainda não passou pelo espelho.</span>
           </div>
           <button
             type="button"
             onClick={() => setEditing(true)}
             className="text-sm px-3 py-1.5 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
           >
-            Revisar agora
+            Olhar no espelho
           </button>
         </div>
         <DebugBadge component="TradeReviewSection" />
@@ -145,7 +145,7 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit }) => {
     <div className="relative border border-white/10 rounded-xl p-4 bg-white/5 mt-4">
       <div className="flex items-center gap-2 mb-3">
         <ClipboardCheck className="w-4 h-4 text-zinc-300" />
-        <span className="text-sm font-medium text-zinc-200">Auto-revisão</span>
+        <span className="text-sm font-medium text-zinc-200">Espelho</span>
         <span className={`text-xs px-1.5 py-0.5 rounded border ${isWin ? 'border-emerald-500/30 text-emerald-300' : 'border-red-500/30 text-red-300'}`}>
           {isWin ? 'Ganho' : 'Perda'}
         </span>

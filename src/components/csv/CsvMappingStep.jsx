@@ -157,14 +157,15 @@ const CsvMappingStep = ({
           <select
             value={timezone || ''}
             onChange={(e) => onTimezoneChange?.(e.target.value)}
-            className="w-full bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+            className={`w-full bg-slate-800/80 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer ${timezone ? 'border-slate-700/50' : 'border-amber-500/50'}`}
           >
+            <option value="" disabled>Selecione o fuso…</option>
             {TIMEZONE_LIST.map(tz => (
               <option key={tz.id} value={tz.id}>{tz.label}</option>
             ))}
           </select>
           <p className="text-[10px] text-slate-500 mt-1">
-            Em que fuso estão os horários do arquivo (sugerido pela bolsa).
+            Em que fuso estão os horários do arquivo (sugerido pela bolsa; obrigatório).
           </p>
         </div>
       </div>

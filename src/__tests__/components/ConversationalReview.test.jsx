@@ -183,3 +183,80 @@ describe('ConversationalReview — gate de submit', () => {
     expect(onDecide).not.toHaveBeenCalled();
   });
 });
+
+describe('ConversationalReview — resolução do coverage gap (descartar / aceitar)', () => {
+  const gapItem = { ...newItem('g'), userDecision: 'confirmed' };
+  const coverageGap = {
+    hasCoverageGap: true,
+    gapOperations: [
+      { operation: gapItem.operation, opMs: Date.parse('2026-02-12T14:41:30'), reason: 'Data anterior ao plano mais antigo da conta' },
+    ],
+  };
+
+  it('lista as operações do gap (data + ticker + motivo)', () => {
+    render(
+      <ConversationalReview
+        queue={[gapItem]}
+        coverageGap={coverageGap}
+        onDecide={() => {}}
+        onBack={() => {}}
+        onSubmit={() => {}}
+      />
+    );
+    const list = screen.getByTestId('coverage-gap-list');
+    expect(list).toBeInTheDocument();
+    expect(list.textContent).toMatch(/12\/02\/2026/);
+    expect(list.textContent).toMatch(/MNQH6/);
+    expect(list.textContent).toMatch(/anterior ao plano/i);
+  });
+
+  it('"Descartar estas" chama onDiscardGap', () => {
+    const onDiscardGap = vi.fn();
+    render(
+      <ConversationalReview
+        queue={[gapItem]}
+        coverageGap={coverageGap}
+        onDecide={() => {}}
+        onBack={() => {}}
+        onSubmit={() => {}}
+        onDiscardGap={onDiscardGap}
+      />
+    );
+    fireEvent.click(screen.getByTestId('gap-discard'));
+    expect(onDiscardGap).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Aceitar no plano atual" chama onAcceptGapInPlan', () => {
+    const onAcceptGapInPlan = vi.fn();
+    render(
+      <ConversationalReview
+        queue={[gapItem]}
+        coverageGap={coverageGap}
+        onDecide={() => {}}
+        onBack={() => {}}
+        onSubmit={() => {}}
+        onAcceptGapInPlan={onAcceptGapInPlan}
+      />
+    );
+    fireEvent.click(screen.getByTestId('gap-accept'));
+    expect(onAcceptGapInPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it('gap resolvido libera submit e esconde os botões de ação', () => {
+    render(
+      <ConversationalReview
+        queue={[gapItem]}
+        coverageGap={coverageGap}
+        gapResolution="accepted"
+        onDecide={() => {}}
+        onBack={() => {}}
+        onSubmit={() => {}}
+        onAcceptGapInPlan={() => {}}
+        onDiscardGap={() => {}}
+      />
+    );
+    expect(screen.getByTestId('submit-decisions')).not.toBeDisabled();
+    expect(screen.queryByTestId('gap-accept')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('gap-discard')).not.toBeInTheDocument();
+  });
+});

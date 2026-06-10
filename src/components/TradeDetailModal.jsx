@@ -460,12 +460,9 @@ const TradeDetailModal = ({
                 Substitui ExecutionPatternsPanel + ShadowBehaviorPanel. Aluno vê os dados. */}
             <BehaviorPanel trade={trade} isMentor={isMentor} embedded />
 
-            {/* #308 — Auto-revisão do aluno (processo × resultado). Aluno revisa; mentor vê como contexto. */}
-            <TradeReviewSection
-              trade={trade}
-              canReview={!isMentor}
-              onSubmit={onSubmitReview ? (payload) => onSubmitReview(trade.id, payload) : null}
-            />
+            {/* #308 — Espelho do trade (read-only aqui). Escrita mora no fluxo de edição (lápis);
+                o olho só exibe o espelho já preenchido como contexto. */}
+            <TradeReviewSection trade={trade} />
 
             {/* Observações do Aluno */}
             {notes && (

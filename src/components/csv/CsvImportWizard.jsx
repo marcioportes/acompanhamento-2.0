@@ -29,7 +29,6 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { X, Upload, Link2, Eye, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import useCsvTemplates from '../../hooks/useCsvTemplates';
-import useLocalStorage from '../../hooks/useLocalStorage';
 import { parseCSV } from '../../utils/csvParser';
 import { applyMapping, getMissingFields } from '../../utils/csvMapper';
 import { TIMEZONES, defaultTzForExchange } from '../../utils/tradeTimezone';
@@ -82,7 +81,9 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
   const [defaults, setDefaults] = useState({ exchange: '' });
   const [dateFormat, setDateFormat] = useState('');
   // Fuso do lote (#292): sticky entre sessões; derivado da Exchange ao trocá-la.
-  const [timezone, setTimezone] = useLocalStorage('csvImportLastTimezone', TIMEZONES.BRT.id);
+  // #292 — fuso do lote. Começa em BRANCO (sem sticky silencioso); a exchange apenas
+  // SUGERE quando ainda em branco (não sobrescreve escolha manual). Obrigatório p/ avançar.
+  const [timezone, setTimezone] = useState('');
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [templatePlatform, setTemplatePlatform] = useState('');
@@ -96,10 +97,11 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     return applyMapping(csvData.rows, { mapping, valueMap, defaults, dateFormat, timezone });
   }, [csvData, mapping, valueMap, defaults, dateFormat, timezone]);
 
-  // Deriva o fuso do lote da Exchange selecionada (#292) — CME/US → ET, B3 → BRT.
-  // Re-deriva ao trocar de Exchange; o seletor permite override manual depois.
+  // Sugere o fuso do lote pela Exchange (#292) — CME/US → ET, B3 → BRT — mas APENAS
+  // quando ainda em branco. Não sobrescreve escolha manual (edição errada não pode
+  // punir o aluno travando o fuso); o seletor permite trocar sempre.
   useEffect(() => {
-    if (defaults.exchange) setTimezone(defaultTzForExchange(defaults.exchange));
+    if (defaults.exchange && !timezone) setTimezone(defaultTzForExchange(defaults.exchange));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaults.exchange]);
 
@@ -230,6 +232,8 @@ const CsvImportWizard = ({ plans = [], accounts = [], masterTickers = [], addSta
     if (currentStep === 1) {
       // Exchange obrigatório
       if (!defaults.exchange) return false;
+      // Fuso do lote obrigatório (#292) — aluno deve eleger; MEP/MEN depende do instante.
+      if (!timezone) return false;
 
       // Ticker e qty sempre obrigatórios
       if (!mapping.ticker || !mapping.qty) return false;

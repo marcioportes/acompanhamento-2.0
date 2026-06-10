@@ -66,10 +66,11 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
 
   const { user } = useAuth();
 
-  // #308 — auto-revisão do aluno; update otimista do trade aberto p/ leitura imediata.
+  // #308 — Espelho do trade; update otimista do trade aberto/em edição p/ leitura imediata.
   const handleSubmitReview = async (tradeId, payload) => {
     const res = await submitTradeReview(tradeId, payload, { uid: user?.uid, email: user?.email });
     setViewingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
+    setEditingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
   };
   const [showFilters, setShowFilters] = useState(true);
   const [showCsvWizard, setShowCsvWizard] = useState(false);
@@ -253,11 +254,12 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         onSubmit={handleAddTrade} 
         editTrade={editingTrade} 
         loading={isSubmitting} 
-        accounts={accounts} 
-        plans={plans}       
-        setups={setups}     
+        accounts={accounts}
+        plans={plans}
+        setups={setups}
+        onSubmitReview={handleSubmitReview}
       />
-      
+
       <TradeDetailModal
         isOpen={!!viewingTrade}
         onClose={() => setViewingTrade(null)}
@@ -265,7 +267,6 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         plans={plans}
         orders={orders}
         onViewFeedbackHistory={handleViewFeedbackHistory}
-        onSubmitReview={handleSubmitReview}
         getPartials={getPartials}
       />
 
