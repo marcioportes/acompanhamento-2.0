@@ -58,6 +58,9 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 
+// Cascata de hard-delete de aluno — módulo testável (issue #309).
+const { deleteStudentData } = require('./students/deleteStudentData');
+
 // === PROP FIRM ENGINE (Fase 2 #52) ===
 // Engine puro testado em src/__tests__/utils/propFirmDrawdownEngine.test.js (58 testes)
 // Espelhado em functions/propFirmEngine.js — DT-034: unificar via build step
@@ -531,47 +534,6 @@ const deleteCollection = async (collRef, batchSize = 100) => {
   }
 };
 
-// Helper — apaga recursivamente uma collection e TODAS suas subcollections
-// (em profundidade arbitrária). Usado pelo deleteStudent no modo deep
-// cleanup pra garantir que nenhuma sub-sub-coleção do aluno sobreviva.
-const deleteCollectionRecursive = async (collRef, batchSize = 100) => {
-  let snapshot = await collRef.limit(batchSize).get();
-  let count = 0;
-  while (!snapshot.empty) {
-    for (const d of snapshot.docs) {
-      const subColls = await d.ref.listCollections();
-      for (const sc of subColls) {
-        count += await deleteCollectionRecursive(sc, batchSize);
-      }
-    }
-    const batch = db.batch();
-    snapshot.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    count += snapshot.size;
-    snapshot = await collRef.limit(batchSize).get();
-  }
-  return count;
-};
-
-// Helper — apaga em batch todos os docs de uma coleção top-level que tenham
-// `studentId == sid`. Retorna count pra log. DEC-AUTO-263-08 (refinado
-// 2026-05-10): deleteStudent cascateia também trades/orders/notifications/
-// plans/csvStaging/csvStagingTrades/accounts/crossCheck (opção A — limpeza
-// total, LGPD-like).
-const deleteByStudentIdQuery = async (collName, sid, batchSize = 100) => {
-  let count = 0;
-  while (true) {
-    const snap = await db.collection(collName).where('studentId', '==', sid).limit(batchSize).get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-    count += snap.size;
-    if (snap.size < batchSize) break;
-  }
-  return count;
-};
-
 // Helper — copia recursivamente uma collection (e suas subcollections) entre
 // caminhos. Usado pelo "modo promote" do createStudent pra mover
 // /students/{old}/subscriptions/* + payments aninhados pra /students/{new}/...
@@ -725,7 +687,10 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.deleteStudent = functions.https.onCall(async (data, context) => {
+// timeoutSeconds: 300 (#309) — hard delete LGPD-like itera subcollections +
+// 9 coleções top-level + paginação de movements + 1 deleteFiles por trade.
+// Aluno com muitos trades pode estourar o default de 60s e deixar delete parcial.
+exports.deleteStudent = functions.runWith({ timeoutSeconds: 300 }).https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
   }
@@ -747,43 +712,19 @@ exports.deleteStudent = functions.https.onCall(async (data, context) => {
     }
 
     // Hard delete cascateado deep (DEC-AUTO-263-08 refinado 2026-05-10
-    // — opção A, limpeza total LGPD-like):
-    //   1. Todas subcollections de /students/{sid}/ (subscriptions+payments,
-    //      assessment, maturity+_historyBucket, reviews, etc.) via listCollections
-    //      recursivo — qualquer subcoll futura entra automaticamente.
-    //   2. Coleções top-level com studentId: trades, orders, notifications,
-    //      plans, csvStaging, csvStagingTrades, accounts, crossCheck.
-    //   3. Doc /students/{sid}.
-    //   4. Auth user.
-    const TOP_LEVEL_COLLECTIONS = [
-      'trades',
-      'orders',
-      'notifications',
-      'plans',
-      'csvStaging',
-      'csvStagingTrades',
-      'accounts',
-      'crossCheck',
-    ];
+    // — opção A, limpeza total LGPD-like; issue #309 fechou 3 lacunas:
+    // movements por accountId, cycleClosures, Storage). A cascata Firestore +
+    // Storage mora em ./students/deleteStudentData (testável); aqui só fica o
+    // Auth user, que é admin.auth() e não entra na cascata de dados.
+    let bucket = null;
+    try { bucket = admin.storage().bucket(); } catch (e) {
+      console.warn('[deleteStudent] Storage bucket indisponível (cleanup pulado):', e.message);
+    }
     for (const sid of studentIds) {
-      const studentRef = db.collection('students').doc(sid);
-      const counts = {};
-      // 1. Subcollections recursivas
-      const subColls = await studentRef.listCollections();
-      for (const sc of subColls) {
-        counts[`sub:${sc.id}`] = await deleteCollectionRecursive(sc);
-      }
-      // 2. Top-level por studentId
-      for (const coll of TOP_LEVEL_COLLECTIONS) {
-        const n = await deleteByStudentIdQuery(coll, sid);
-        if (n > 0) counts[`top:${coll}`] = n;
-      }
-      // 3. Doc principal
-      await studentRef.delete();
-      counts['students'] = 1;
+      const counts = await deleteStudentData({ db, bucket, sid });
       console.log(`[deleteStudent] Deep cleanup /students/${sid}:`, counts);
 
-      // 4. Auth user (uid pode ser pseudo-id de createInlineStudent — nesse caso
+      // Auth user (uid pode ser pseudo-id de createInlineStudent — nesse caso
       // não existe Auth e o catch absorve.)
       try { await admin.auth().deleteUser(sid); } catch (e) {
         if (e.code !== 'auth/user-not-found') console.warn('[deleteStudent] Auth delete:', e.message);
