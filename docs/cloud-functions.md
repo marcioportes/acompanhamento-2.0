@@ -36,6 +36,7 @@
 | `setMentorClosureComment` | Mentor escreve `closure.mentor.closingComment` + `closingCommentAt`. Comment vazio = "no comment" (item sai do inbox). | Janela operacional de 7d pós-close. |
 | `deleteAccountCascade` | Apaga conta em 7 estágios: movements → trades → orders → cycleClosures → plans → account (em batches). | Resolve órfãos que ficavam por rules `allow delete: if false` no client. |
 | `deletePlanCascade` | Apaga plano + trades/orders/movements/cycleClosures vinculados. | Mesma motivação do anterior. |
+| `deleteStudent` | Hard delete LGPD-like do aluno: subcollections recursivas de `students/{sid}/*` + top-level por `studentId` (trades, orders, notifications, plans, csvStaging, csvStagingTrades, accounts, crossCheck, **cycleClosures**) + **movements por accountId** (DEP/WTD/INITIAL_BALANCE/ADJUSTMENT só têm accountId) **e por studentId** (TRADE_RESULT órfão) + **Storage** `trades/{tradeId}/` best-effort + doc + Auth user. Cascata em `functions/students/deleteStudentData.js` (testável). | Mentor-only. `timeoutSeconds: 300` (#309). Storage best-effort não aborta (DEC-AUTO-309-01). |
 
 ## Schedule
 
