@@ -687,7 +687,10 @@ exports.createStudent = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.deleteStudent = functions.https.onCall(async (data, context) => {
+// timeoutSeconds: 300 (#309) — hard delete LGPD-like itera subcollections +
+// 9 coleções top-level + paginação de movements + 1 deleteFiles por trade.
+// Aluno com muitos trades pode estourar o default de 60s e deixar delete parcial.
+exports.deleteStudent = functions.runWith({ timeoutSeconds: 300 }).https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Usuário não autenticado');
   }

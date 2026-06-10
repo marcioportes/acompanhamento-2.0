@@ -7,7 +7,8 @@
  *   2. Top-level por studentId: trades, orders, notifications, plans, csvStaging,
  *      csvStagingTrades, accounts, crossCheck, cycleClosures.
  *   3. movements por accountId (DEP/WTD/INITIAL_BALANCE/ADJUSTMENT só têm accountId;
- *      TRADE_RESULT tem studentId mas accountId basta) — coletados ANTES de apagar accounts.
+ *      coletados ANTES de apagar accounts) + por studentId (belt-and-suspenders pra
+ *      TRADE_RESULT órfão cujo account já foi deletado avulso).
  *   4. Storage best-effort: trades/{tradeId}/ (screenshots HTF/LTF). DEC-AUTO-309-01.
  *   5. Doc /students/{sid}.
  * Auth user e fallback-by-email continuam em index.js (admin.auth, fora desta cascata).
@@ -131,8 +132,12 @@ const deleteStudentData = async ({ db, bucket, sid }) => {
     if (n > 0) counts[`top:${coll}`] = n;
   }
 
-  // 3. movements por accountId (cobre depósito/saque/initial/adjustment sem studentId).
-  const movementsDeleted = await deleteMovementsByAccountIds(db, accountIds);
+  // 3. movements: por accountId (cobre depósito/saque/initial/adjustment sem studentId)
+  //    + belt-and-suspenders por studentId (captura TRADE_RESULT órfão cujo account
+  //    já foi deletado avulso e portanto não está em accountIds).
+  const movementsByAccount = await deleteMovementsByAccountIds(db, accountIds);
+  const movementsByStudent = await deleteByStudentIdQuery(db, 'movements', sid);
+  const movementsDeleted = movementsByAccount + movementsByStudent;
   if (movementsDeleted > 0) counts['movements'] = movementsDeleted;
 
   // 4. Storage best-effort.

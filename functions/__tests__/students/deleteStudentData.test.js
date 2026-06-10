@@ -134,6 +134,16 @@ describe('deleteStudentData (issue #309)', () => {
     expect(ids(db.store, 'movements')).toEqual(['m9']);
   });
 
+  it('apaga TRADE_RESULT órfão (studentId mas account já deletado avulso)', async () => {
+    const seed = seedTwoStudents();
+    // m5: TRADE_RESULT de S1 cujo account 'GONE' não está em accounts (orfão).
+    seed.movements.push({ id: 'm5', accountId: 'GONE', studentId: 'S1', type: 'TRADE_RESULT' });
+    const db = makeFakeDb(seed);
+    await deleteStudentData({ db, bucket: fakeBucket(), sid: 'S1' });
+    // m5 não cai por accountId (GONE fora de [A1,A2]) mas cai pelo passe por studentId.
+    expect(ids(db.store, 'movements')).toEqual(['m9']);
+  });
+
   it('apaga cycleClosures do aluno e preserva os de outro aluno', async () => {
     const db = makeFakeDb(seedTwoStudents());
     await deleteStudentData({ db, bucket: fakeBucket(), sid: 'S1' });
