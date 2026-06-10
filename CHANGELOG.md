@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.75.0] - 10/06/2026 · #308 · PR #311
+
+**feat:** Espelho (auto-revisão de trade) + fixes de import + email
+
+- **Espelho (CHUNK-04):** questionário processo × resultado por trade; espelho determinístico (confronto declarado × detectado), não mexe no 4D. Escrita no fluxo de edição (lápis, só trade fechado); olho read-only. `firestore.rules`: aluno grava `selfReview`, isento do seal #259, imutável após DISCUSSED.
+- **Coverage gap no import (CHUNK-10):** banner lista ops sem plano e oferece Descartar / Aceitar no plano atual / Criar plano retroativo (gate duro → resolúvel).
+- **Timezone (#292):** trade novo exige eleger fuso (MEP/MEN); edição deriva do banco (`tzFromStoredIso`); import sem sticky silencioso (corrige "Brasília → NY"). Fix de closure stale do `importTimezone`.
+- **Email de boas-vindas (CHUNK-01):** `APP_NAME` nome de código → **Espelho**; `APP_URL` → **app.marcioportes.com.br**.
+
 ## [1.74.1] - 10/06/2026 · #309 · PR #310
 
 **fix:** deleteStudent limpa movements/cycleClosures/Storage órfãos (#309)
