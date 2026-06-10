@@ -39,15 +39,26 @@ const CLASSIFICATION_LABEL = {
  * @param {Function} [props.onCreateRetroactivePlan] — navega para AccountDetailPage com _autoOpenPlanModal
  * @param {boolean} [props.loading]
  */
+/** opMs (ms) → data BR DD/MM/YYYY HH:MM (INV-06). null → rótulo neutro. */
+const formatGapDate = (ms) => {
+  if (ms == null) return 'sem data';
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 const ConversationalReview = ({
   queue = [],
   tradesById,
   tradesByDate,
   coverageGap = { hasCoverageGap: false, gapOperations: [] },
+  gapResolution = null,           // null | 'accepted' | 'discarded'
   onDecide,
   onBack,
   onSubmit,
   onCreateRetroactivePlan,
+  onAcceptGapInPlan,
+  onDiscardGap,
   loading = false,
 }) => {
   const totals = useMemo(() => {
@@ -73,7 +84,9 @@ const ConversationalReview = ({
   }, [queue]);
 
   const allDecided = queue.length > 0 && totals.pending === 0;
-  const canSubmit = allDecided && !coverageGap.hasCoverageGap && !loading;
+  // Gap resolvido = não há gap OU o usuário já decidiu (aceitar no plano / descartar).
+  const gapResolved = !coverageGap.hasCoverageGap || gapResolution != null;
+  const canSubmit = allDecided && gapResolved && !loading;
 
   // Aceitar tudo pendente com defaults sensatos:
   //  - MATCH_CONFIDENT → confirma com tradeId correlacionado
@@ -160,26 +173,66 @@ const ConversationalReview = ({
       {/* Coverage gap banner */}
       {coverageGap.hasCoverageGap && (
         <div
-          className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30"
+          className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30"
           data-testid="coverage-gap-banner"
         >
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div className="flex-1 text-xs text-amber-200">
-            <p className="font-medium">
-              Detectamos {coverageGap.gapOperations.length} operaç{coverageGap.gapOperations.length === 1 ? 'ão' : 'ões'} em períodos sem plano vigente.
-            </p>
-            <p className="mt-1 text-amber-300/80">
-              Crie um plano retroativo antes de confirmar — a data da operação precisa estar coberta por um plano ativo.
-            </p>
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs text-amber-200">
+              <p className="font-medium">
+                {coverageGap.gapOperations.length} operaç{coverageGap.gapOperations.length === 1 ? 'ão' : 'ões'} em período sem plano vigente
+                {gapResolution === 'accepted' && ' — aceitas no plano atual.'}
+                {gapResolution === 'discarded' && ' — descartadas.'}
+              </p>
+              {gapResolution == null && (
+                <p className="mt-1 text-amber-300/80">
+                  Têm data anterior ao plano existente. Escolha o que fazer com elas:
+                </p>
+              )}
+              <ul className="mt-2 space-y-0.5" data-testid="coverage-gap-list">
+                {coverageGap.gapOperations.map((g, i) => (
+                  <li key={i} className="flex items-center gap-2 text-amber-100/90">
+                    <span className="font-mono">{formatGapDate(g.opMs)}</span>
+                    <span className="text-amber-300/60">·</span>
+                    <span className="font-mono">{(g.operation?.instrument || '—').toUpperCase()}</span>
+                    <span className="text-amber-300/60">— {g.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          {onCreateRetroactivePlan && (
-            <button
-              type="button"
-              onClick={onCreateRetroactivePlan}
-              className="px-3 py-1.5 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg transition-colors"
-            >
-              Criar plano retroativo
-            </button>
+          {gapResolution == null && (
+            <div className="flex flex-wrap gap-2 mt-3 justify-end">
+              {onDiscardGap && (
+                <button
+                  type="button"
+                  onClick={onDiscardGap}
+                  data-testid="gap-discard"
+                  className="px-3 py-1.5 text-xs font-medium bg-red-500/15 hover:bg-red-500/25 text-red-200 border border-red-500/40 rounded-lg transition-colors"
+                >
+                  Descartar estas
+                </button>
+              )}
+              {onAcceptGapInPlan && (
+                <button
+                  type="button"
+                  onClick={onAcceptGapInPlan}
+                  data-testid="gap-accept"
+                  className="px-3 py-1.5 text-xs font-medium bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-500/40 rounded-lg transition-colors"
+                >
+                  Aceitar no plano atual
+                </button>
+              )}
+              {onCreateRetroactivePlan && (
+                <button
+                  type="button"
+                  onClick={onCreateRetroactivePlan}
+                  className="px-3 py-1.5 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg transition-colors"
+                >
+                  Criar plano retroativo
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -271,8 +324,8 @@ const ConversationalReview = ({
           disabled={!canSubmit}
           className="flex items-center gap-2 px-4 py-2 text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           title={
-            coverageGap.hasCoverageGap
-              ? 'Crie um plano retroativo antes de avançar'
+            coverageGap.hasCoverageGap && !gapResolved
+              ? 'Resolva as operações sem plano (descartar / aceitar no plano / criar plano retroativo)'
               : !allDecided
                 ? `Decida as ${totals.pending} operações pendentes antes de avançar`
                 : 'Processar decisões'

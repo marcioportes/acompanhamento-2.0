@@ -158,7 +158,15 @@ service cloud.firestore {
             'mentorClassificationReason', 'mentorClassifiedAt', 'mentorClassifiedBy',
             'mentorClearedViolations'
           ])
-        )
+        ) ||
+        // Exceção #308 — auto-revisão do aluno é reflexão (metadado), isenta do seal
+        // #259 quando o ÚNICO delta é selfReview (mesma lógica de metadado do #302).
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['selfReview', 'updatedAt'])
+      ) && (
+        // #308 — auto-revisão imutável depois que o trade é discutido em revisão
+        // (reviewState=DISCUSSED, #269). Vale para todos. get() com default p/ docs sem o campo.
+        resource.data.get('reviewState', 'NONE') != 'DISCUSSED' ||
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['selfReview'])
       );
       allow delete: if isAuthenticated() && (
         isMentor() ||

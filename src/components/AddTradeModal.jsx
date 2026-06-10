@@ -21,10 +21,10 @@ import { useToast } from '../contexts/ToastContext';
 import { calculateFromPartials } from '../utils/tradeCalculations';
 import { validateExcursionPrices } from '../utils/tradeGateway';
 import { detectInstrumentType, convertExcursionRawToPrice, derivePtsFromPrice } from '../utils/excursionParsing';
-import useLocalStorage from '../hooks/useLocalStorage';
+import TradeReviewSection from './Trades/TradeReviewSection';
 import {
   TIMEZONE_LIST,
-  defaultTzForTicker,
+  tzFromStoredIso,
   combineDateTimeWithTz,
   toBrasiliaDisplay,
   TIMEZONES,
@@ -51,7 +51,8 @@ const AddTradeModal = ({
   onSubmit, 
   editTrade = null,
   loading = false,
-  plans = []
+  plans = [],
+  onSubmitReview = null
 }) => {
   const toast = useToast();
   const { accounts, loading: accountsLoading } = useAccounts();
@@ -106,13 +107,10 @@ const AddTradeModal = ({
   const [partials, setPartials] = useState([]);
   const [resultOverride, setResultOverride] = useState(null);
 
-  // #285 — fuso de referência do horário do trade (sticky por aluno via localStorage).
-  // Default inicial = ET pra futuros CME, BRT pro resto. Após a 1ª escolha do aluno,
-  // sticky prevalece (last-used). Gravado em `entryTime`/`exitTime` como ISO+offset.
-  const [selectedTz, setSelectedTz] = useLocalStorage(
-    'addTradeLastTimezone',
-    defaultTzForTicker(editTrade?.ticker || ''),
-  );
+  // #285/#292 — fuso de referência do horário do trade. Gravado em entryTime/exitTime
+  // como ISO+offset. Trade NOVO: começa em branco e o aluno é obrigado a eleger (MEP/MEN
+  // depende do instante). Edição: derivado do que está gravado no banco (tzFromStoredIso).
+  const [selectedTz, setSelectedTz] = useState('');
 
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
@@ -319,6 +317,8 @@ const AddTradeModal = ({
         ]);
       }
       setResultOverride(editTrade.resultEdited ? editTrade.result?.toString() : null);
+      // Edição: fuso vem do banco (offset gravado). Legado naive → Brasília (#285), editável.
+      setSelectedTz(tzFromStoredIso(editTrade.entryTime) || TIMEZONES.BRT.id);
     } else {
       const now = new Date();
       const todayIso = now.toISOString().split('T')[0];
@@ -355,6 +355,8 @@ const AddTradeModal = ({
         { type: 'ENTRY', price: '', qty: '', dateTime: '', seq: 1, _dateBr: todayBr, _time: timeNow },
         { type: 'EXIT', price: '', qty: '', dateTime: '', seq: 2, _dateBr: todayBr, _time: '' }
       ]);
+      // Trade novo: fuso em branco — força o aluno a eleger (MEP/MEN depende do instante).
+      setSelectedTz('');
     }
     setErrors({});
   }, [editTrade, isOpen, plans, exchanges, setups, emotions]); 
@@ -630,6 +632,7 @@ const AddTradeModal = ({
     if (!formData.ticker.trim()) newErrors.ticker = 'Ticker é obrigatório';
     if (!formData.planId) newErrors.planId = 'Selecione um plano';
     if (!formData.setup) newErrors.setup = 'Selecione um setup';
+    if (!selectedTz) newErrors.timezone = 'Eleja o fuso do horário (necessário para MEP/MEN)';
     
     // Validar stop loss (opcional, mas se informado deve ser coerente)
     if (formData.stopLoss) {
@@ -959,25 +962,27 @@ const AddTradeModal = ({
                     </button>
                   </div>
 
-                  {/* #285 — Fuso de referência (sticky, default por instrumento; grava ISO+offset) */}
-                  <div className="flex items-center gap-2 px-2 py-1.5 bg-slate-900/40 rounded-md border border-slate-700/30 mb-1">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Fuso</span>
+                  {/* #285/#292 — Fuso de referência. Novo = em branco (aluno elege); edição = do banco. Grava ISO+offset. */}
+                  <div className={`flex items-center gap-2 px-2 py-1.5 bg-slate-900/40 rounded-md border mb-1 ${errors.timezone ? 'border-red-500/60' : 'border-slate-700/30'}`}>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Fuso *</span>
                     <select
                       value={selectedTz}
-                      onChange={(e) => setSelectedTz(e.target.value)}
+                      onChange={(e) => { setSelectedTz(e.target.value); if (errors.timezone) setErrors(prev => ({ ...prev, timezone: null })); }}
                       className="input-dark text-xs py-1 px-2"
                       aria-label="Fuso de referência do horário do trade"
                     >
+                      <option value="" disabled>Selecione o fuso…</option>
                       {TIMEZONE_LIST.map((tz) => (
                         <option key={tz.id} value={tz.id}>{tz.label}</option>
                       ))}
                     </select>
-                    {selectedTz !== TIMEZONES.BRT.id && (brtEntryPreview || brtExitPreview) && (
+                    {selectedTz && selectedTz !== TIMEZONES.BRT.id && (brtEntryPreview || brtExitPreview) && (
                       <span className="text-[10px] text-slate-500 ml-auto whitespace-nowrap">
                         ≈ Brasília: {brtEntryPreview || '—'}{brtExitPreview ? ` → ${brtExitPreview}` : ''}
                       </span>
                     )}
                   </div>
+                  {errors.timezone && <p className="text-[10px] text-red-400 mb-1 px-2">{errors.timezone}</p>}
 
                   {/* Header — Item 1: "Tipo" ao invés de "Ponta" + Item 2: Data e Hora separados */}
                   <div className="grid grid-cols-[80px_1fr_70px_100px_95px_28px] gap-2 text-[10px] text-slate-500 uppercase tracking-wider px-1">
@@ -1155,6 +1160,16 @@ const AddTradeModal = ({
             </div>
 
           </form>
+
+          {/* #308 — Espelho do trade: escrita mora aqui (fluxo do lápis). Só em edição
+              de trade fechado (com result); fora do <form> p/ ter save próprio. */}
+          {editTrade && editTrade.result != null && onSubmitReview && (
+            <TradeReviewSection
+              trade={editTrade}
+              canReview={true}
+              onSubmit={(payload) => onSubmitReview(editTrade.id, payload)}
+            />
+          )}
         </div>
 
         {/* FOOTER */}

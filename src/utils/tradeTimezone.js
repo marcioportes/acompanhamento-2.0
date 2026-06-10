@@ -132,6 +132,27 @@ export function naiveIsoToOffset(naiveIso, tz) {
 }
 
 /**
+ * Deriva o id IANA do fuso a partir de um ISO já gravado (consulta/edição #292):
+ * casa o offset do ISO contra cada fuso conhecido NA DATA do trade (DST correto).
+ * Naive (legado, sem offset) ou sem match → null (caller decide o fallback).
+ * Empate (ex.: -05:00 = ET-inverno ou CT-verão) → prioriza a ordem de TIMEZONE_LIST.
+ *
+ * @param {string|null} iso — ex.: '2026-06-03T10:21:57-03:00'
+ * @returns {string|null} id IANA (ex.: 'America/Sao_Paulo') ou null
+ */
+export function tzFromStoredIso(iso) {
+  if (!iso || typeof iso !== 'string') return null;
+  const m = iso.match(/T\d{2}:\d{2}(?::\d{2})?([+-]\d{2}:?\d{2}|[zZ])$/);
+  if (!m) return null; // naive (legado) — sem offset gravado
+  let off = m[1];
+  if (off === 'Z' || off === 'z') off = '+00:00';
+  if (!off.includes(':')) off = `${off.slice(0, 3)}:${off.slice(3)}`;
+  const date = iso.slice(0, 10);
+  const match = TIMEZONE_LIST.find((tz) => getOffset(date, tz.id) === off);
+  return match ? match.id : null;
+}
+
+/**
  * Equivalente em Brasília (`'HH:MM'`) de um ISO com offset — usado no helper
  * embaixo do campo pro aluno conferir mentalmente.
  *

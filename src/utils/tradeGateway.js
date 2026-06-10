@@ -25,6 +25,8 @@ import { db } from '../firebase';
 import { calculateTradeResult, calculateResultPercent } from './calculations';
 import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
 import { findSealingRange, buildSealedError, isTradeBeforeLastClosedCycle, buildRetroactiveBlockedError } from './cycleClosure/sealCheck';
+import { TRADE_REVIEW_VERSION, questionsForQuadrant } from '../constants/tradeReviewFramework';
+import { classifyTrade } from './tradeReviewConfront';
 
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
@@ -758,4 +760,77 @@ export async function toggleViolationClearedAsMentor(tradeId, violationKey, user
   await updateDocFn(tradeRef, patch);
   console.log(`[tradeGateway] Trade ${tradeId} violation ${action}: ${violationKey}`);
   return { id: tradeId, action, violationKey };
+}
+
+/**
+ * Auto-revisão de trade pelo próprio aluno (issue #308).
+ *
+ * Questionário processo × resultado: o resultado (ganho/perda) é automático por
+ * `sign(trade.result)`; o aluno declara `wouldRepeat` ("faria de novo sem saber o
+ * resultado?") e responde 2–3 perguntas reflexivas do quadrante derivado
+ * (ver src/constants/tradeReviewFramework.js + classifyTrade).
+ *
+ * NÃO mexe no score 4D — é instrumento de consciência/reflexão. Classificação e
+ * confronto declarado×detectado são DERIVADOS em display-time, não persistidos.
+ *
+ * Imutável após `reviewState === 'DISCUSSED'` (#269). Só o autor do trade revisa.
+ * Reenvio sobrescreve a auto-revisão anterior (idempotente por trade).
+ *
+ * @param {string} tradeId
+ * @param {Object} input - { wouldRepeat: boolean, answers?: Record<string,string> }
+ * @param {Object} userContext - { uid, email }
+ * @param {Object} [deps]
+ * @returns {Promise<{ id, quadrant, before, after }>}
+ */
+export async function submitTradeReview(tradeId, input, userContext, deps = {}) {
+  const getDocFn = deps.getDocFn ?? getDoc;
+  const updateDocFn = deps.updateDocFn ?? updateDoc;
+  const docFn = deps.docFn ?? doc;
+
+  if (!userContext?.uid) throw new Error('Usuário não autenticado');
+  if (!tradeId) throw new Error('tradeId obrigatório');
+  if (!input || typeof input !== 'object') throw new Error('input obrigatório');
+
+  const { wouldRepeat, answers = {} } = input;
+  if (typeof wouldRepeat !== 'boolean') throw new Error('wouldRepeat deve ser boolean');
+  if (typeof answers !== 'object' || Array.isArray(answers)) throw new Error('answers deve ser objeto');
+
+  const tradeRef = docFn(db, 'trades', tradeId);
+  const tradeSnap = await getDocFn(tradeRef);
+  if (!tradeSnap.exists()) throw new Error(`Trade ${tradeId} não encontrado`);
+  const before = tradeSnap.data();
+
+  if (before.studentId && before.studentId !== userContext.uid) {
+    throw new Error('Apenas o autor do trade pode revisá-lo');
+  }
+  if (before.reviewState === 'DISCUSSED') {
+    throw new Error('Trade já discutido em revisão — auto-revisão imutável');
+  }
+
+  // Valida as respostas contra o catálogo do quadrante derivado; descarta vazias.
+  const quadrant = classifyTrade(before.result, wouldRepeat);
+  const validIds = new Set(questionsForQuadrant(quadrant).map((q) => q.id));
+  const cleanAnswers = {};
+  for (const [k, v] of Object.entries(answers)) {
+    if (!validIds.has(k)) throw new Error(`pergunta inválida para o quadrante ${quadrant}: ${k}`);
+    if (v == null) continue;
+    if (typeof v !== 'string') throw new Error(`resposta de ${k} deve ser string`);
+    const trimmed = v.trim();
+    if (trimmed) cleanAnswers[k] = trimmed;
+  }
+
+  const patch = {
+    selfReview: {
+      version: TRADE_REVIEW_VERSION,
+      wouldRepeat,
+      answers: cleanAnswers,
+      reviewedAt: serverTimestamp(),
+      reviewedBy: { uid: userContext.uid, email: userContext.email || null },
+    },
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDocFn(tradeRef, patch);
+  console.log(`[tradeGateway] Trade ${tradeId} auto-revisado: ${quadrant} wouldRepeat=${wouldRepeat}`);
+  return { id: tradeId, quadrant, before, after: { ...before, ...patch } };
 }

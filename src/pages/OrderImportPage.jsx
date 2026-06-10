@@ -31,7 +31,6 @@ import CreationResultPanel from '../components/OrderImport/CreationResultPanel';
 import MatchedOperationsPanel from '../components/OrderImport/MatchedOperationsPanel';
 import ConversationalReview from '../components/OrderImport/ConversationalReview';
 
-import useLocalStorage from '../hooks/useLocalStorage';
 import { TIMEZONES, TIMEZONE_LIST } from '../utils/tradeTimezone';
 import { detectOrderFormat } from '../utils/orderParsers';
 import { normalizeBatch } from '../utils/orderNormalizer';
@@ -163,8 +162,9 @@ const OrderImportPage = ({
   // Plan selection
   const [selectedPlanId, setSelectedPlanId] = useState('');
   // Fuso do lote (#292): em que fuso estão os horários das ordens do arquivo.
-  // Sticky entre sessões; fallback Brasília. Aplicado na reconstrução → ISO+offset.
-  const [importTimezone, setImportTimezone] = useLocalStorage('orderImportLastTimezone', TIMEZONES.BRT.id);
+  // Começa em BRANCO — o aluno é obrigado a eleger antes de analisar (sem sticky
+  // silencioso, que metia ET de import anterior). Aplicado na reconstrução → ISO+offset.
+  const [importTimezone, setImportTimezone] = useState('');
 
   // Staging + reconstruction
   const [batchId, setBatchId] = useState(null);
@@ -173,6 +173,7 @@ const OrderImportPage = ({
   // Conversational queue (Fase C) — operações classificadas com decisão do aluno
   const [conversationalQueue, setConversationalQueue] = useState([]);
   const [coverageGap, setCoverageGap] = useState({ hasCoverageGap: false, gapOperations: [] });
+  const [gapResolution, setGapResolution] = useState(null); // null | 'accepted' | 'discarded'
 
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
@@ -279,7 +280,7 @@ const OrderImportPage = ({
   // STEP 3: PLAN SELECT → STAGING + RECONSTRUCTION
   // ============================================
   const handlePlanConfirm = useCallback(async () => {
-    if (!selectedPlanId || !orderStaging) return;
+    if (!selectedPlanId || !orderStaging || !importTimezone) return;
 
     setStep(STEPS.STAGING_WRITE);
     setError(null);
@@ -309,7 +310,7 @@ const OrderImportPage = ({
       setStep(STEPS.PLAN_SELECT);
       setProgress('');
     }
-  }, [selectedPlanId, parsedOrders, parseResult, orderStaging]);
+  }, [selectedPlanId, parsedOrders, parseResult, orderStaging, importTimezone]);
 
   // ============================================
   // STEP 4: STAGING REVIEW → CATEGORIZE → CONVERSATIONAL REVIEW
@@ -421,6 +422,7 @@ const OrderImportPage = ({
         accountId,
       });
       setCoverageGap(gap);
+      setGapResolution(null);
 
       setConversationalQueue(queue);
       setStep(STEPS.CONVERSATIONAL_REVIEW);
@@ -461,11 +463,34 @@ const OrderImportPage = ({
     }
   }, [onRequestRetroactivePlan, accountId]);
 
+  // Aceitar as operações do gap NO plano existente: confirma-as (serão criadas sob
+  // selectedPlanId, mesmo com data anterior ao início do plano) e marca o gap resolvido.
+  const handleAcceptGapInPlan = useCallback(() => {
+    const gapOps = new Set(coverageGap.gapOperations.map(g => g.operation));
+    setConversationalQueue(prev => prev.map(item =>
+      gapOps.has(item.operation) && (!item.userDecision || item.userDecision === 'pending')
+        ? { ...item, userDecision: 'confirmed', userDecisionAt: new Date().toISOString() }
+        : item
+    ));
+    setGapResolution('accepted');
+  }, [coverageGap]);
+
+  // Descartar as operações do gap: marca-as como discarded (não serão criadas).
+  const handleDiscardGap = useCallback(() => {
+    const gapOps = new Set(coverageGap.gapOperations.map(g => g.operation));
+    setConversationalQueue(prev => prev.map(item =>
+      gapOps.has(item.operation)
+        ? { ...item, userDecision: 'discarded', userDecisionAt: new Date().toISOString() }
+        : item
+    ));
+    setGapResolution('discarded');
+  }, [coverageGap]);
+
   // ============================================
   // STEP 6: INGESTING — processa decisões do aluno
   // ============================================
   const handleConversationalSubmit = useCallback(async () => {
-    if (coverageGap.hasCoverageGap) return; // Gate duro
+    if (coverageGap.hasCoverageGap && gapResolution == null) return; // Gate: só bloqueia gap não resolvido
 
     setStep(STEPS.INGESTING);
     setIngesting(true);
@@ -612,6 +637,7 @@ const OrderImportPage = ({
     }
   }, [
     coverageGap.hasCoverageGap,
+    gapResolution,
     conversationalQueue,
     parseResult,
     planTrades,
@@ -738,8 +764,9 @@ const OrderImportPage = ({
                 <select
                   value={importTimezone}
                   onChange={(e) => setImportTimezone(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                  className={`w-full bg-slate-800/80 border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer ${importTimezone ? 'border-slate-700/50' : 'border-amber-500/50'}`}
                 >
+                  <option value="" disabled>Selecione o fuso…</option>
                   {TIMEZONE_LIST.map(tz => (
                     <option key={tz.id} value={tz.id}>{tz.label}</option>
                   ))}
@@ -758,7 +785,8 @@ const OrderImportPage = ({
                 </button>
                 <button
                   onClick={handlePlanConfirm}
-                  disabled={!selectedPlanId}
+                  disabled={!selectedPlanId || !importTimezone}
+                  title={!importTimezone ? 'Eleja o fuso dos horários do arquivo antes de analisar' : ''}
                   className="flex items-center gap-1 px-4 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Analisar Operações <ArrowRight className="w-3.5 h-3.5" />
@@ -792,10 +820,13 @@ const OrderImportPage = ({
               tradesById={tradesById}
               tradesByDate={tradesByDate}
               coverageGap={coverageGap}
+              gapResolution={gapResolution}
               onDecide={handleDecide}
               onBack={() => setStep(STEPS.STAGING_REVIEW)}
               onSubmit={handleConversationalSubmit}
               onCreateRetroactivePlan={onRequestRetroactivePlan ? handleRetroactivePlan : null}
+              onAcceptGapInPlan={handleAcceptGapInPlan}
+              onDiscardGap={handleDiscardGap}
               loading={ingesting}
             />
           )}

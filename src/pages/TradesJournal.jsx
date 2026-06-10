@@ -30,6 +30,8 @@ import useCsvStaging from '../hooks/useCsvStaging';
 import useMasterData from '../hooks/useMasterData';
 import useOrders from '../hooks/useOrders';
 import { filterTradesByPeriod, filterTradesByDateRange, searchTrades } from '../utils/calculations';
+import { submitTradeReview } from '../utils/tradeGateway';
+import { useAuth } from '../contexts/AuthContext';
 
 // Helpers
 const isRealAccount = (acc) => {
@@ -61,6 +63,15 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const [editingTrade, setEditingTrade] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { user } = useAuth();
+
+  // #308 — Espelho do trade; update otimista do trade aberto/em edição p/ leitura imediata.
+  const handleSubmitReview = async (tradeId, payload) => {
+    const res = await submitTradeReview(tradeId, payload, { uid: user?.uid, email: user?.email });
+    setViewingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
+    setEditingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
+  };
   const [showFilters, setShowFilters] = useState(true);
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [showCsvManager, setShowCsvManager] = useState(false);
@@ -243,11 +254,12 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         onSubmit={handleAddTrade} 
         editTrade={editingTrade} 
         loading={isSubmitting} 
-        accounts={accounts} 
-        plans={plans}       
-        setups={setups}     
+        accounts={accounts}
+        plans={plans}
+        setups={setups}
+        onSubmitReview={handleSubmitReview}
       />
-      
+
       <TradeDetailModal
         isOpen={!!viewingTrade}
         onClose={() => setViewingTrade(null)}
