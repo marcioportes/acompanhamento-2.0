@@ -101,8 +101,8 @@ const VERSION = {
 // ============================================
 
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
-const APP_NAME = 'Tchio-Alpha - Acompanhamento 2.0';
-const APP_URL = 'https://marcioportes.com.br'; // Ajuste se necessário
+const APP_NAME = 'Espelho';
+const APP_URL = 'https://app.marcioportes.com.br'; // URL de login do app (produção)
 
 // ============================================
 // CONSTANTES
