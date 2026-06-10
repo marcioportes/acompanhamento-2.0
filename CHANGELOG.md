@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.74.1] - 10/06/2026 · #309 · PR #310
+
+**fix:** deleteStudent limpa movements/cycleClosures/Storage órfãos (#309)
+
+- `movements` de **DEPOSIT/WITHDRAWAL/INITIAL_BALANCE/ADJUSTMENT** só têm `accountId` (sem `studentId`) → ficavam órfãos. Só `TRADE_RESULT` tem `studentId`.
+- `cycleClosures` (top-level com `studentId`) estava **fora** de `TOP_LEVEL_COLLECTIONS`.
+- Screenshots HTF/LTF em `trades/{tradeId}/...` no Storage nunca eram limpas.
+- movement de **depósito (só accountId)** E de **trade (studentId)** ambos apagados;
+- `cycleClosures` apagado; isolamento dos dados de outro aluno;
+- Storage best-effort (falha não aborta) + bucket null;
+- aluno sem contas; counts por coleção.
+- `firebase deploy --only functions` (toca `functions/`).
+
+
 ## [1.74.0] - 05/06/2026 · #305 · PR #306
 
 **feat:** pesos do comportamento no 4D + ruleViolationRate gates + clearing (#305)

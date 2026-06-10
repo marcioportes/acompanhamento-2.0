@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.74.1: #309 fix deleteStudent limpa movements/cycleClosures/Storage órfãos (#309) (PR #310, 10/06/2026)
  * - 1.74.0: #305 feat pesos do comportamento no 4D + ruleViolationRate gates + clearing (#305) (PR #306, 05/06/2026)
  * - 1.72.1: #302 fix hard seal #259 isenta feedback do mentor em ciclo fechado (PR #303, 03/06/2026)
  * - 1.73.0: #301 feat motor unificado detectBehavior + ativação + UX + Confronto Emocional (#301) (PR #304, 04/06/2026)
@@ -368,10 +369,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.74.0',
-  build: '20260605',
-  display: 'v1.74.0',
-  full: '1.74.0+20260605',
+  version: '1.74.1',
+  build: '20260610',
+  display: 'v1.74.1',
+  full: '1.74.1+20260610',
 };
 export default VERSION;
 export { VERSION };
