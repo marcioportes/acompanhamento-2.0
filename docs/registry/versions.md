@@ -49,4 +49,5 @@
 | 1.73.0 | #301 | `feat/issue-301-chunk11-fase1` | 01/06/2026 | consumida (PR #304 squash `67122d42`) |
 | 1.72.1 | #302 | `fix/issue-302-mentor-feedback-seal` | 01/06/2026 | consumida (PR #303 squash `4d72dea5`) |
 | 1.74.0 | #305 | `feat/issue-305-chunk11-fase2` | 04/06/2026 | consumida (PR #306 squash `730ff902`) |
+| 1.74.1 | #309 | `fix/issue-309-deletestudent-orphans` | 10/06/2026 | consumida (PR #310 squash `8c3091ef`) |
 | 1.75.0 | #308 | `feat/issue-308-trade-self-review` | 07/06/2026 | RESERVADA |
