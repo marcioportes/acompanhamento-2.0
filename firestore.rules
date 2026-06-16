@@ -116,8 +116,10 @@ service cloud.firestore {
     match /trades/{tradeId} {
       allow read: if isAuthenticated();
       // Hard seal #259 — bloqueia create se date está em ciclo fechado do plano.
+      // #269 — trade nasce NONE ou DRAFT (nunca DISCUSSED, que só vem de publish via admin SDK).
       allow create: if isAuthenticated() &&
-        isTradeDateNotSealed(request.resource.data.planId, request.resource.data.date);
+        isTradeDateNotSealed(request.resource.data.planId, request.resource.data.date) &&
+        (request.resource.data.get('reviewState', 'NONE') in ['NONE', 'DRAFT']);
       allow update: if isAuthenticated() && (
         isMentor() ||
         isOwner(resource.data.studentId) ||
@@ -167,6 +169,11 @@ service cloud.firestore {
         // (reviewState=DISCUSSED, #269). Vale para todos. get() com default p/ docs sem o campo.
         resource.data.get('reviewState', 'NONE') != 'DISCUSSED' ||
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['selfReview'])
+      ) && (
+        // #269 — transições de reviewState/draftReviewId são EXCLUSIVAS das callables
+        // (createReviewDraft/publishReview/deleteReviewDraft via admin SDK, que bypassa rules).
+        // Nenhum cliente (aluno OU mentor) altera esses campos por update direto.
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reviewState', 'draftReviewId'])
       );
       allow delete: if isAuthenticated() && (
         isMentor() ||

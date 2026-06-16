@@ -242,9 +242,21 @@ export async function createTrade(tradeData, userContext) {
     }
   }
 
+  // === 4.1. REVIEW STATE (#269) ===
+  // Trade nasce DRAFT se o PLANO tem revisão DRAFT ativa (ponteiro plan.activeDraftReviewId
+  // mantido pelas callables createReviewDraft/publishReview/deleteReviewDraft); senão NONE.
+  // Leitura não-transacional do ponteiro: a janela de corrida (draft publicado/descartado entre
+  // a leitura do plano e a escrita do trade) é auto-curada — publishReview/deleteReviewDraft
+  // re-varrem por draftReviewId e reconciliam o reviewState. Granularidade por plano preserva
+  // single-currency (#289/#111) — backlog de revisão nunca mistura planos/moedas.
+  const activeDraftReviewId = planData.activeDraftReviewId || null;
+  const reviewState = activeDraftReviewId ? 'DRAFT' : 'NONE';
+
   // === 5. MONTAGEM DO DOCUMENTO ===
   const newTrade = {
     ...tradeData,
+    reviewState,
+    draftReviewId: activeDraftReviewId,
     date: legacyDate, entryTime, exitTime, duration,
     ticker: tradeData.ticker?.toUpperCase() || '',
     entry, exit, qty,

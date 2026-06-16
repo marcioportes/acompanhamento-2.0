@@ -488,3 +488,30 @@ describe('createTrade — currency da conta', () => {
     expect(result.currency).toBe('BRL');
   });
 });
+
+describe('createTrade — reviewState (#269)', () => {
+  it('nasce NONE quando o plano não tem revisão DRAFT ativa', async () => {
+    setupDefaultMocks({ planData: {} });
+
+    const result = await createTrade(baseTradeData, USER_CONTEXT);
+    expect(result.reviewState).toBe('NONE');
+    expect(result.draftReviewId).toBeNull();
+  });
+
+  it('nasce DRAFT e herda draftReviewId quando o plano tem DRAFT ativo', async () => {
+    setupDefaultMocks({ planData: { activeDraftReviewId: '2026-W16-1234' } });
+
+    const result = await createTrade(baseTradeData, USER_CONTEXT);
+    expect(result.reviewState).toBe('DRAFT');
+    expect(result.draftReviewId).toBe('2026-W16-1234');
+  });
+
+  it('persiste reviewState/draftReviewId no documento gravado (addDoc)', async () => {
+    setupDefaultMocks({ planData: { activeDraftReviewId: 'R-abc' } });
+
+    await createTrade(baseTradeData, USER_CONTEXT);
+    const written = mockAddDoc.mock.calls[0][1];
+    expect(written.reviewState).toBe('DRAFT');
+    expect(written.draftReviewId).toBe('R-abc');
+  });
+});
