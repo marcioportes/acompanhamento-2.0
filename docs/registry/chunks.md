@@ -5,3 +5,6 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-04 | #269 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | revisao-swot |
+| CHUNK-08 | #269 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | revisao-swot |
+| CHUNK-16 | #262 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | revisao-swot |

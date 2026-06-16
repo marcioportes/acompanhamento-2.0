@@ -51,3 +51,4 @@
 | 1.74.0 | #305 | `feat/issue-305-chunk11-fase2` | 04/06/2026 | consumida (PR #306 squash `730ff902`) |
 | 1.74.1 | #309 | `fix/issue-309-deletestudent-orphans` | 10/06/2026 | consumida (PR #310 squash `8c3091ef`) |
 | 1.75.0 | #308 | `feat/issue-308-trade-self-review` | 10/06/2026 | consumida (PR #311 squash `6602b815`) |
+| 1.76.0 | #269 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | reservada (junta #269 + #262 + bug SWOT/rascunho) |
