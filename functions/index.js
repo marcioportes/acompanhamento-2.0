@@ -1883,6 +1883,8 @@ exports.publishReview = require("./reviews/publishReview");
 exports.deleteReviewDraft = require("./reviews/deleteReviewDraft");
 // #269 Fase C — migration retroativa de reviewState (D8: dry-run + apply com safeguard)
 exports.migrateReviewStateBackfill = require("./reviews/migrateReviewStateBackfill");
+// #262 — estilo customizável da SWOT semanal (tom/foco/profundidade, global por mentor)
+exports.setMentorSwotStyle = require("./reviews/setMentorSwotStyle");
 
 // ============================================
 // MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
