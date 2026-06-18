@@ -44,6 +44,7 @@ module.exports = onCall(
     if (!isNonEmptyString(studentId)) throw new HttpsError('invalid-argument', 'studentId é obrigatório');
     if (!isNonEmptyString(planId)) throw new HttpsError('invalid-argument', 'planId é obrigatório');
     const skipTradeIds = Array.isArray(request.data?.skipTradeIds) ? request.data.skipTradeIds : [];
+    const cycleKey = isNonEmptyString(request.data?.cycleKey) ? request.data.cycleKey : null;
 
     const db = admin.firestore();
     const studentRef = db.collection('students').doc(studentId);
@@ -74,15 +75,23 @@ module.exports = onCall(
       const skip = new Set(skipTradeIds);
       const drafted = pendingSnap.docs.filter((d) => !skip.has(d.id));
       const bounds = computePeriodBounds(drafted.map((d) => d.data().entryTime), todayISO);
+      // Aliases legados weekStart/weekEnd (D2): muitas queries/ordenações da UI ainda
+      // ordenam por weekStart — Firestore exclui docs sem o campo. Fallback p/ hoje
+      // quando o backlog está vazio (periodStart null), garantindo presença/ordenação.
+      const weekStart = bounds.periodStart || todayISO;
+      const weekEnd = bounds.periodEnd || todayISO;
 
       // ── writes ────────────────────────────────────────────────────
       tx.set(reviewRef, {
         studentId,
         planId,
+        cycleKey,
         status: 'DRAFT',
         sequenceNumber: null,          // atribuído no publishReview
         periodStart: bounds.periodStart,
         periodEnd: bounds.periodEnd,
+        weekStart,
+        weekEnd,
         includedTradeIds: [],          // congelado no publish
         frozenSnapshot: null,          // construído no publish (Fase D)
         swot: null,                    // gerado no publish (Fase E)

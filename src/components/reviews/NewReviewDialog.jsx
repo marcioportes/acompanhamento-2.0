@@ -1,270 +1,174 @@
 /**
  * NewReviewDialog
- * @version 1.0.0 (v1.33.0)
- * @description Modal do mentor para criar uma nova revisão semanal (issue #102, Fase C.3).
+ * @version 2.0.0 (#269 — Revisão por backlog)
+ * @description Modal do mentor para criar uma revisão a partir do BACKLOG do plano.
  *
- * Fluxo:
- *   1. Mentor escolhe período (ISO week atual default, ajustável livre G3)
- *   2. Dialog computa snapshot client-side via buildClientSnapshot
- *   3. Chama useWeeklyReviews.createReview → retorna reviewId
- *   4. Parent abre WeeklyReviewModal em DRAFT com o reviewId
+ * Fluxo (#269):
+ *   1. Sem picker de período. Dialog lista os trades reviewState='NONE' do plano,
+ *      agrupados por dia. Mentor pode destildar trades para deixar para a próxima.
+ *   2. Chama useWeeklyReviews.createReviewDraft(planId, { skipTradeIds, cycleKey }).
+ *      A callable absorve em bulk os NONE (menos os pulados), seta o ponteiro
+ *      plan.activeDraftReviewId e cria o doc DRAFT.
+ *   3. Parent abre a Sessão (WeeklyReviewPage) em DRAFT com o reviewId.
+ *
+ * Unicidade por plano: se já há um DRAFT aberto, reabre o existente (1 rascunho/plano).
  *
  * G1: acesso gated pelo caller (mentor-only). Este componente assume mentor.
- * G3: customPeriod marcado no snapshot — UI downstream hide comparação.
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { X, Calendar, AlertTriangle, Loader2 } from 'lucide-react';
-import {
-  getISOWeekKey,
-  getISOWeekRange,
-} from '../../utils/weeklyReviewSnapshot';
-import { buildClientSnapshot } from '../../utils/clientSnapshotBuilder';
+import { X, ClipboardList, Loader2 } from 'lucide-react';
+import { groupBacklogByDay } from '../../utils/reviewHelpers';
 import DebugBadge from '../DebugBadge';
 
-const todayISO = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+const fmtDayBR = (iso) => {
+  if (!iso || iso === 'sem-data') return 'Sem data';
+  const [y, m, d] = iso.split('-');
+  return y && m && d ? `${d}/${m}/${y}` : iso;
 };
 
-const filterTradesByRange = (trades, startISO, endISO) => {
-  if (!Array.isArray(trades)) return [];
-  return trades.filter(t => {
-    const d = t.date || (t.entryTime ? t.entryTime.slice(0, 10) : null);
-    if (!d) return false;
-    return d >= startISO && d <= endISO;
-  });
+const fmtMoney = (v) => {
+  const n = Number(v) || 0;
+  const s = n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return n > 0 ? `+${s}` : s;
 };
 
 const NewReviewDialog = ({
   plan,
   allTrades,
   cycleKey,
-  emotionalMetrics,
-  existingReviews = [],  // reviews do plano (para detectar duplicata de semana)
-  createReview,          // (payload) => {reviewId, status}
-  onCreated,             // (reviewId) => void — parent abre WeeklyReviewModal
+  existingReviews = [],   // reviews do plano (para detectar DRAFT aberto)
+  createReviewDraft,      // (planId, { skipTradeIds, cycleKey }) => { reviewId, draftedCount, existing }
+  onCreated,              // (reviewId) => void — parent abre a Sessão
   onClose,
 }) => {
-  const [mode, setMode] = useState('iso');  // 'iso' | 'custom'
-  // Data ISO escolhida pelo mentor — qualquer dia da semana alvo. Default: hoje.
-  const [isoPick, setIsoPick] = useState(todayISO());
-  const [customStart, setCustomStart] = useState(todayISO());
-  const [customEnd, setCustomEnd] = useState(todayISO());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Set de tradeIds que o mentor optou por PULAR (ficam NONE para a próxima revisão).
+  const [skipped, setSkipped] = useState(() => new Set());
 
-  // Semana ISO derivada da data escolhida (snap para seg→dom).
-  const pickedIsoRange = useMemo(() => {
-    if (!isoPick) return getISOWeekRange(new Date());
-    return getISOWeekRange(isoPick);
-  }, [isoPick]);
-  const pickedIsoKey = useMemo(() => {
-    if (!isoPick) return getISOWeekKey(new Date());
-    return getISOWeekKey(isoPick);
-  }, [isoPick]);
+  // Backlog do plano (reviewState='NONE'), agrupado por dia.
+  const groups = useMemo(
+    () => groupBacklogByDay((allTrades || []).filter(t => t.planId === plan?.id)),
+    [allTrades, plan?.id]
+  );
+  const totalPending = useMemo(
+    () => groups.reduce((acc, g) => acc + g.trades.length, 0),
+    [groups]
+  );
+  const firstDay = groups.length ? groups[groups.length - 1].day : null;
+  const selectedCount = totalPending - skipped.size;
 
-  const periodInfo = useMemo(() => {
-    if (mode === 'iso') {
-      return {
-        weekStart: pickedIsoRange.weekStart,
-        weekEnd: pickedIsoRange.weekEnd,
-        periodKey: pickedIsoKey,
-        customPeriod: null,
-        isCustom: false,
-      };
-    }
-    const valid = customStart && customEnd && customStart <= customEnd;
-    return {
-      weekStart: valid ? customStart : pickedIsoRange.weekStart,
-      weekEnd: valid ? customEnd : pickedIsoRange.weekEnd,
-      periodKey: `CUSTOM-${Date.now()}`,
-      customPeriod: valid ? { start: customStart, end: customEnd } : null,
-      isCustom: true,
-      valid,
-    };
-  }, [mode, pickedIsoRange, pickedIsoKey, customStart, customEnd]);
-
-  const previewTrades = useMemo(
-    () => filterTradesByRange(allTrades, periodInfo.weekStart, periodInfo.weekEnd),
-    [allTrades, periodInfo.weekStart, periodInfo.weekEnd]
+  // DRAFT aberto desse plano (unicidade per-plano — 1 rascunho por vez).
+  const existingDraft = useMemo(
+    () => (existingReviews || []).find(r => r.status === 'DRAFT') || null,
+    [existingReviews]
   );
 
-  // Qualquer DRAFT aberto desse plano (unicidade per-plano — 1 rascunho por vez).
-  // Se existe, dialog força reabrir o existente em vez de criar outro com janela diferente.
-  const existingDraftForWindow = useMemo(() => {
-    return (existingReviews || []).find(r => r.status === 'DRAFT') || null;
-  }, [existingReviews]);
-
-  const canSubmit = mode === 'iso' || periodInfo.valid;
+  const toggleSkip = useCallback((tradeId) => {
+    setSkipped(prev => {
+      const next = new Set(prev);
+      if (next.has(tradeId)) next.delete(tradeId); else next.add(tradeId);
+      return next;
+    });
+  }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!canSubmit) return;
-    // Se já existe rascunho pra essa janela do mesmo plano, reabre ao invés de duplicar.
-    if (existingDraftForWindow) {
-      onCreated?.(existingDraftForWindow.id);
+    // Já existe rascunho aberto → reabre em vez de duplicar.
+    if (existingDraft) {
+      onCreated?.(existingDraft.id);
       onClose?.();
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const snapshot = buildClientSnapshot({
-        plan,
-        trades: previewTrades,
-        cycleKey,
-        emotionalMetrics,
+      const res = await createReviewDraft(plan.id, {
+        skipTradeIds: [...skipped],
+        cycleKey: cycleKey || null,
       });
-      const payload = {
-        studentId: plan.studentId,
-        planId: plan.id,
-        weekStart: periodInfo.weekStart,
-        weekEnd: periodInfo.weekEnd,
-        periodKey: periodInfo.periodKey,
-        customPeriod: periodInfo.customPeriod,
-        cycleKey,
-        snapshot,
-      };
-      const res = await createReview(payload);
       if (!res?.reviewId) throw new Error('CF não retornou reviewId');
       onCreated?.(res.reviewId);
       onClose?.();
     } catch (e) {
-      console.error('[NewReviewDialog] create failed', e);
-      setError(e.message || 'Falha ao criar revisão');
+      console.error('[NewReviewDialog] createReviewDraft failed', e);
+      setError(e.message || 'Falha ao criar rascunho');
     } finally {
       setBusy(false);
     }
-  }, [canSubmit, existingDraftForWindow, plan, previewTrades, cycleKey, emotionalMetrics, periodInfo, createReview, onCreated, onClose]);
+  }, [existingDraft, createReviewDraft, plan?.id, skipped, cycleKey, onCreated, onClose]);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 rounded-xl border border-slate-800 shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+      <div className="w-full max-w-md bg-slate-900 rounded-xl border border-slate-800 shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white">Nova Revisão Semanal</h3>
+            <ClipboardList className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-bold text-white">Nova Revisão</h3>
           </div>
           <button onClick={onClose} disabled={busy} className="text-slate-500 hover:text-slate-300 disabled:opacity-40">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="text-xs text-slate-400">Plano: <span className="text-white font-medium">{plan?.name || plan?.id}</span></div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setMode('iso')}
-              disabled={busy}
-              className={`px-3 py-2 text-xs rounded-lg border transition-colors ${
-                mode === 'iso'
-                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                  : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-600'
-              }`}
-            >
-              Semana ISO
-              <div className="text-[10px] text-slate-500 mt-1">qualquer semana</div>
-            </button>
-            <button
-              onClick={() => setMode('custom')}
-              disabled={busy}
-              className={`px-3 py-2 text-xs rounded-lg border transition-colors ${
-                mode === 'custom'
-                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-                  : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-600'
-              }`}
-            >
-              Período personalizado
-              <div className="text-[10px] text-slate-500 mt-1">G3</div>
-            </button>
+        <div className="p-5 space-y-3 overflow-y-auto">
+          <div className="text-xs text-slate-400">
+            Plano: <span className="text-white font-medium">{plan?.name || plan?.id}</span>
           </div>
 
-          {mode === 'iso' && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                <label className="text-slate-400 w-20">Qualquer dia</label>
-                <input
-                  type="date"
-                  value={isoPick}
-                  onChange={(e) => setIsoPick(e.target.value)}
-                  disabled={busy}
-                  className="flex-1 input-dark"
-                  title="Escolha qualquer dia — a semana ISO (seg→dom) é derivada automaticamente"
-                />
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsoPick(todayISO())}
-                  disabled={busy}
-                  className="px-2 py-0.5 text-[10px] text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/10 rounded disabled:opacity-40"
-                >
-                  hoje
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const d = new Date();
-                    d.setDate(d.getDate() - 7);
-                    setIsoPick(d.toISOString().slice(0, 10));
-                  }}
-                  disabled={busy}
-                  className="px-2 py-0.5 text-[10px] text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:bg-emerald-500/10 rounded disabled:opacity-40"
-                >
-                  semana passada
-                </button>
-              </div>
-              <div className="text-xs text-slate-400 bg-slate-800/40 rounded-lg px-3 py-2">
-                Semana {pickedIsoKey} · de <span className="text-white font-mono">{pickedIsoRange.weekStart}</span> até{' '}
-                <span className="text-white font-mono">{pickedIsoRange.weekEnd}</span>
-              </div>
-            </div>
-          )}
-
-          {mode === 'custom' && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs">
-                <label className="text-slate-400 w-10">Início</label>
-                <input
-                  type="date"
-                  value={customStart}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  disabled={busy}
-                  className="flex-1 input-dark"
-                />
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <label className="text-slate-400 w-10">Fim</label>
-                <input
-                  type="date"
-                  value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  disabled={busy}
-                  className="flex-1 input-dark"
-                />
-              </div>
-              {!periodInfo.valid && (
-                <div className="text-[11px] text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> Início precisa ser anterior ou igual ao fim.
-                </div>
-              )}
-              <div className="text-[11px] text-amber-400/80 bg-amber-500/5 rounded px-2 py-1 border border-amber-500/20">
-                G3: comparação com revisão anterior ficará oculta em períodos customizados.
-              </div>
-            </div>
-          )}
-
-          <div className="bg-slate-800/30 rounded-lg px-3 py-2 text-xs">
-            <div className="text-slate-400">Trades no período selecionado:</div>
-            <div className="text-white font-mono text-sm">{previewTrades.length}</div>
-          </div>
-
-          {existingDraftForWindow && (
+          {existingDraft ? (
             <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
-              Já existe um rascunho aberto deste plano ({existingDraftForWindow.periodKey}, {existingDraftForWindow.weekStart} → {existingDraftForWindow.weekEnd}). Regra: 1 rascunho por plano. Clicando abaixo, você reabre o existente. Para usar outra janela, publique ou apague o atual primeiro.
+              Já existe um rascunho aberto deste plano. Regra: 1 rascunho por plano. Clicando abaixo,
+              você reabre o existente. Para começar outro, publique ou descarte o atual primeiro.
             </div>
+          ) : totalPending === 0 ? (
+            <div className="text-xs text-slate-400 bg-slate-800/40 rounded-lg px-3 py-3 text-center">
+              Nenhum trade pendente de revisão neste plano. Um rascunho vazio será criado e absorverá
+              automaticamente os próximos trades.
+            </div>
+          ) : (
+            <>
+              <div className="text-xs text-slate-300">
+                Pendentes{firstDay ? <> desde <span className="text-white font-medium">{fmtDayBR(firstDay)}</span></> : null}:
+                {' '}<span className="text-white font-semibold">{selectedCount}</span>
+                {skipped.size > 0 && <span className="text-slate-500"> · {skipped.size} pulado(s)</span>}
+              </div>
+
+              <div className="space-y-2">
+                {groups.map((g) => (
+                  <div key={g.day} className="rounded-lg border border-slate-800 bg-slate-800/30">
+                    <div className="px-3 py-1.5 text-[11px] text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                      <span>{fmtDayBR(g.day)}</span>
+                      <span className="text-slate-600">{g.trades.length} trade(s)</span>
+                    </div>
+                    <ul className="divide-y divide-slate-800/60">
+                      {g.trades.map((t) => {
+                        const skip = skipped.has(t.id);
+                        const result = Number(t.result) || 0;
+                        return (
+                          <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={!skip}
+                              onChange={() => toggleSkip(t.id)}
+                              disabled={busy}
+                              className="accent-emerald-500 shrink-0"
+                              title={skip ? 'Pular — fica para a próxima revisão' : 'Incluir nesta revisão'}
+                            />
+                            <span className={`text-xs flex-1 truncate ${skip ? 'text-slate-600 line-through' : 'text-slate-200'}`}>
+                              {(t.symbol || t.ticker || '—')} {t.side === 'SHORT' ? 'V' : 'C'} {Number(t.qty) || 0}
+                            </span>
+                            <span className={`text-xs font-mono ${skip ? 'text-slate-600' : result > 0 ? 'text-emerald-400' : result < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                              {fmtMoney(t.result)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
 
           {error && (
@@ -274,7 +178,7 @@ const NewReviewDialog = ({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-800">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-800 shrink-0">
           <button
             onClick={onClose}
             disabled={busy}
@@ -284,11 +188,11 @@ const NewReviewDialog = ({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!canSubmit || busy}
+            disabled={busy}
             className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 flex items-center gap-1.5"
           >
             {busy && <Loader2 className="w-3 h-3 animate-spin" />}
-            {existingDraftForWindow ? 'Abrir rascunho existente' : 'Criar revisão DRAFT'}
+            {existingDraft ? 'Abrir rascunho existente' : 'Criar rascunho →'}
           </button>
         </div>
         <DebugBadge component="NewReviewDialog" />

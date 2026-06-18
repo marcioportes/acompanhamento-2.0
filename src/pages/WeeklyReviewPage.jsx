@@ -26,7 +26,7 @@ import { db } from '../firebase';
 import {
   ChevronLeft, Loader2, FileText, TrendingUp, TrendingDown,
   RefreshCw, Sparkles, AlertTriangle, CheckCircle2, Save, MessageSquare,
-  Archive, Send, Trophy, Target,
+  Archive, Send, Trophy, Target, Trash2,
   Award, Shield, Activity, ExternalLink,
 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
@@ -429,15 +429,14 @@ const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) =
   const tradesQ = query(collection(db, 'trades'), where('planId', '==', planId));
   const tradesSnap = await getDocs(tradesQ);
   const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const weekTrades = allTrades.filter(t => {
-    const td = t.date || (t.entryTime ? t.entryTime.slice(0, 10) : null);
-    if (!td) return false;
-    return td >= review.weekStart && td <= review.weekEnd;
-  });
-  // Trades explicitamente incluídos (podem estar fora do período).
+  // #269 — conjunto da revisão = trades EMPENHADOS no rascunho (draftReviewId === review.id)
+  // ∪ includedTradeIds (revisitar trade fora do backlog). Substitui o filtro por janela
+  // ISO [weekStart, weekEnd], que ignorava a curadoria do rascunho (bug original).
+  const draftTrades = allTrades.filter(t => t.draftReviewId === review.id);
+  // Trades explicitamente incluídos (podem estar DISCUSSED/fora do backlog).
   const includedIds = new Set(review?.includedTradeIds || []);
   const extraTrades = includedIds.size > 0
-    ? allTrades.filter(t => includedIds.has(t.id) && !weekTrades.some(w => w.id === t.id))
+    ? allTrades.filter(t => includedIds.has(t.id) && !draftTrades.some(w => w.id === t.id))
     : [];
 
   // Fetch defensivo de maturity/current — usado em DRAFTs para preview live do
@@ -463,7 +462,7 @@ const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) =
 
   return buildClientSnapshot({
     plan,
-    trades: weekTrades,
+    trades: draftTrades,
     extraTrades,
     cycleKey: review.cycleKey || null,
     cycleStart: cycleRange ? toIso(cycleRange.start) : null,
@@ -492,7 +491,7 @@ const WeeklyReviewPage = ({
   // Stage 3 + 4: hook + state para SWOT, Notas e Takeaways.
   // Stage 5a: closeReview + archiveReview para action footer (publish/archive).
   const {
-    generateSwot, updateSessionNotes, closeReview, archiveReview,
+    generateSwot, updateSessionNotes, closeReview, archiveReview, deleteReview,
     addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
     updateMeetingLinks,
     actionLoading,
@@ -500,6 +499,7 @@ const WeeklyReviewPage = ({
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [sessionNotesDraft, setSessionNotesDraft] = useState('');
   // Issue #197: drafts dos links de reunião/gravação (editáveis em DRAFT e CLOSED).
   const [meetingLinkDraft, setMeetingLinkDraft] = useState('');
@@ -698,6 +698,17 @@ const WeeklyReviewPage = ({
     } catch { /* surfaced by hook */ }
   };
 
+  // #269 — descartar rascunho: callable deleteReviewDraft reverte os trades a NONE,
+  // apaga o doc e limpa o ponteiro. Só DRAFT. Volta à fila de revisão ao concluir.
+  const handleDiscard = async () => {
+    if (review?.status !== 'DRAFT') return;
+    try {
+      await deleteReview(review.id);
+      setConfirmDiscard(false);
+      onBack?.();
+    } catch { /* surfaced by hook */ }
+  };
+
   // Stage 5a: archive CLOSED→ARCHIVED (terminal, imutável, some do dashboard aluno).
   const handleArchive = async () => {
     if (review?.status !== 'CLOSED') return;
@@ -735,12 +746,18 @@ const WeeklyReviewPage = ({
     const parts = [];
     if (plan?.name) parts.push(`Plano ${plan.name}`);
     if (cycleKey) parts.push(`Ciclo ${cycleKey}`);
-    if (review?.weekStart && review?.weekEnd) {
-      parts.push(`${review.weekStart} – ${review.weekEnd}`);
-    }
-    if (review?.periodKey) parts.push(review.periodKey);
+    // #269 — período do backlog (periodStart/End), com fallback p/ aliases legados.
+    const pStart = review?.periodStart || review?.weekStart;
+    const pEnd = review?.periodEnd || review?.weekEnd;
+    if (pStart && pEnd) parts.push(`${pStart} – ${pEnd}`);
     return parts.join(' · ') || '—';
-  }, [plan?.name, cycleKey, review?.weekStart, review?.weekEnd, review?.periodKey]);
+  }, [plan?.name, cycleKey, review?.periodStart, review?.periodEnd, review?.weekStart, review?.weekEnd]);
+
+  // Título: "Revisão #N" quando publicada (sequenceNumber), senão "Revisão (rascunho)".
+  const reviewTitle = useMemo(() => {
+    if (typeof review?.sequenceNumber === 'number') return `Revisão #${review.sequenceNumber}`;
+    return review?.status === 'DRAFT' ? 'Revisão (rascunho)' : 'Revisão';
+  }, [review?.sequenceNumber, review?.status]);
 
   return (
     <div className="min-h-screen bg-slate-950 py-6">
@@ -772,7 +789,7 @@ const WeeklyReviewPage = ({
               <div>
                 <div className="text-lg font-medium text-white flex items-center gap-2">
                   <FileText className="w-4 h-4 text-slate-300" />
-                  Revisão semanal — {student?.name || student?.email || 'Aluno'}
+                  {reviewTitle} — {student?.name || student?.email || 'Aluno'}
                 </div>
                 <div className="text-xs text-slate-300 mt-1">{headerMeta}</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Fundação: PlanLedgerExtract (modo revisão)</div>
@@ -938,11 +955,43 @@ const WeeklyReviewPage = ({
                       </button>
                     </div>
                   </div>
+                ) : confirmDiscard ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+                    <div className="text-[12px] text-red-300 mb-2 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        Descartar o rascunho devolve todos os trades ao backlog (voltam a ficar
+                        pendentes de revisão) e apaga este rascunho. Notas e takeaways não publicados
+                        são perdidos.
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setConfirmDiscard(false)}
+                        disabled={actionLoading}
+                        className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-white disabled:opacity-40"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleDiscard}
+                        disabled={actionLoading}
+                        className="px-4 py-1.5 text-[12px] font-medium bg-red-500/20 border border-red-500/40 text-red-300 rounded-lg hover:bg-red-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
+                      >
+                        {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        Confirmar descarte
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500">
-                      Rascunho em preparação — indicadores vão congelar ao publicar.
-                    </span>
+                    <button
+                      onClick={() => setConfirmDiscard(true)}
+                      disabled={actionLoading}
+                      className="px-3 py-1.5 text-[12px] text-slate-400 hover:text-red-300 border border-slate-700 hover:border-red-500/40 rounded-lg inline-flex items-center gap-1.5 disabled:opacity-40"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Descartar rascunho
+                    </button>
                     <button
                       onClick={() => setConfirmPublish(true)}
                       disabled={actionLoading}

@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot, getDocs,
-  doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove,
+  doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -131,6 +131,29 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [functions, carryOverTakeaways]);
 
+  // #269 — cria rascunho por BACKLOG (sem janela de período). A callable absorve
+  // em bulk os trades reviewState='NONE' do plano e mantém o ponteiro
+  // plan.activeDraftReviewId. skipTradeIds = trades que o mentor optou por deixar
+  // para a próxima (continuam NONE). cycleKey opcional para métricas por ciclo.
+  const createReviewDraft = useCallback(async (planId, { skipTradeIds = [], cycleKey = null } = {}) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const cf = httpsCallable(functions, 'createReviewDraft');
+      const res = await cf({ studentId, planId, skipTradeIds, cycleKey });
+      const data = res.data || {};
+      if (data.reviewId && planId) {
+        await carryOverTakeaways({ newReviewId: data.reviewId, planId, newWeekStart: null });
+      }
+      return data;
+    } catch (err) {
+      setError(err.message || 'Erro ao criar rascunho de revisão');
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  }, [functions, studentId, carryOverTakeaways]);
+
   const generateSwot = useCallback(async ({ reviewId }) => {
     setActionLoading(true);
     setError(null);
@@ -146,30 +169,36 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [functions, studentId]);
 
-  // closeReview publica o rascunho. Se frozenSnapshot for fornecido, sobrescreve
-  // o snapshot atual (recomputado no momento do publish — indicadores congelam aqui,
-  // não no create). Campos meetingLink/videoLink são opcionais: só vão ao payload se
-  // EXPLICITAMENTE passados (undefined preserva o valor atual do doc).
+  // closeReview publica o rascunho (#269: via callable publishReview). A callable
+  // faz a transição atômica DRAFT→CLOSED, flipa os trades empenhados para DISCUSSED,
+  // atribui sequenceNumber e limpa o ponteiro plan.activeDraftReviewId. frozenSnapshot
+  // (recomputado no publish) é passthrough. Links meeting/video são persistidos antes
+  // via updateDoc direto (campos do doc da review, permitidos ao mentor em DRAFT).
   const closeReview = useCallback(async (reviewId, opts = {}) => {
     setActionLoading(true);
     setError(null);
     try {
       const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const payload = {
-        status: 'CLOSED',
-        closedAt: serverTimestamp(),
-      };
-      if (opts.meetingLink !== undefined) payload.meetingLink = opts.meetingLink;
-      if (opts.videoLink !== undefined) payload.videoLink = opts.videoLink;
-      if (opts.frozenSnapshot) payload.frozenSnapshot = opts.frozenSnapshot;
-      await updateDoc(ref, payload);
+      const pre = {};
+      if (opts.meetingLink !== undefined) pre.meetingLink = opts.meetingLink;
+      if (opts.videoLink !== undefined) pre.videoLink = opts.videoLink;
+      if (Object.keys(pre).length > 0) await updateDoc(ref, pre);
+
+      const cf = httpsCallable(functions, 'publishReview');
+      const res = await cf({
+        studentId,
+        reviewId,
+        frozenSnapshot: opts.frozenSnapshot ?? null,
+        swot: opts.swot ?? null,
+      });
+      return res.data;
     } catch (err) {
-      setError(err.message || 'Erro ao fechar revisão');
+      setError(err.message || 'Erro ao publicar revisão');
       throw err;
     } finally {
       setActionLoading(false);
     }
-  }, [studentId]);
+  }, [functions, studentId]);
 
   const archiveReview = useCallback(async (reviewId) => {
     setActionLoading(true);
@@ -188,20 +217,23 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Deletar revisão (mentor-only, bloqueado em ARCHIVED via rules).
+  // Descartar rascunho (#269: via callable deleteReviewDraft). A callable reverte
+  // os trades empenhados de volta a reviewState='NONE', apaga o doc da review e
+  // limpa o ponteiro plan.activeDraftReviewId. Só DRAFT pode ser descartado.
   const deleteReview = useCallback(async (reviewId) => {
     setActionLoading(true);
     setError(null);
     try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      await deleteDoc(ref);
+      const cf = httpsCallable(functions, 'deleteReviewDraft');
+      const res = await cf({ studentId, reviewId });
+      return res.data;
     } catch (err) {
-      setError(err.message || 'Erro ao deletar revisão');
+      setError(err.message || 'Erro ao descartar rascunho');
       throw err;
     } finally {
       setActionLoading(false);
     }
-  }, [studentId]);
+  }, [functions, studentId]);
 
   // Salva campos editáveis do rascunho (sessionNotes, meetingLink, videoLink) SEM mudar
   // o status. Usado pelo ReviewToolsPanel/WeeklyReviewModal — mentor digita e persiste
@@ -401,6 +433,7 @@ export const useWeeklyReviews = (studentId) => {
     actionLoading,
     error,
     createReview,
+    createReviewDraft,
     generateSwot,
     closeReview,
     archiveReview,

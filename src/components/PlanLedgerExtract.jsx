@@ -48,7 +48,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
   const studentIdForReviews = plan?.studentId || null;
-  const { createReview, reviews: allReviews } = useWeeklyReviews(studentIdForReviews);
+  const { createReviewDraft, reviews: allReviews } = useWeeklyReviews(studentIdForReviews);
 
   // Seletor temporal: null = ciclo inteiro, string = periodKey
   const [selectedPeriod, setSelectedPeriod] = useState(null);
@@ -418,9 +418,8 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
           plan={plan}
           allTrades={trades}
           cycleKey={selectedCycleKey}
-          emotionalMetrics={emotional.metrics}
           existingReviews={planReviews}
-          createReview={createReview}
+          createReviewDraft={createReviewDraft}
           onCreated={(reviewId) => setActiveReviewId(reviewId)}
           onClose={() => setNewReviewOpen(false)}
         />
