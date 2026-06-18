@@ -225,7 +225,13 @@ service cloud.firestore {
     match /plans/{planId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated();
+      // #269 (D7) — `activeDraftReviewId` é ponteiro mantido EXCLUSIVAMENTE pelas
+      // callables (createReviewDraft/publishReview/deleteReviewDraft via admin SDK,
+      // que bypassa rules). Nenhum cliente o altera por update direto; tradeGateway
+      // apenas lê. Mantém o demais update aberto (posição pré-existente do plano).
+      allow update: if isAuthenticated() &&
+        request.resource.data.get('activeDraftReviewId', null) == resource.data.get('activeDraftReviewId', null);
+      allow delete: if isAuthenticated();
     }
 
     // CYCLE CLOSURES — Issue #259 (1A — Ritual completo de Fechamento de Ciclo)

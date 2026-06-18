@@ -1877,6 +1877,10 @@ exports.generatePropFirmApproachPlan = require("./propFirm/generatePropFirmAppro
 // ============================================
 exports.createWeeklyReview = require("./reviews/createWeeklyReview");
 exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
+// #269 — Revisão por backlog (máquina de estados reviewState NONE/DRAFT/DISCUSSED)
+exports.createReviewDraft = require("./reviews/createReviewDraft");
+exports.publishReview = require("./reviews/publishReview");
+exports.deleteReviewDraft = require("./reviews/deleteReviewDraft");
 
 // ============================================
 // MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
