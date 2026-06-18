@@ -90,6 +90,7 @@ _(log linear)_
 - A — `1144cbc2` — schema+gateway: `trade.reviewState`/`draftReviewId` + hook lendo `plan.activeDraftReviewId` + rules + índice (`planId,reviewState,entryTime`). 27 testes gateway.
 - B — `0fd75dbb` — callables `createReviewDraft`/`publishReview`/`deleteReviewDraft` (por plano, ponteiro D7, `sequenceNumber`, transações) + helpers puros (+7 testes) + guard rules `activeDraftReviewId`.
 - C — `35f640a9` — `migrateReviewStateBackfill` (D8 dry-run/apply, safeguard via `expectedChanges`, reconcilia trades+`sequenceNumber`+ponteiro) + `migrationLogic.js` puro (+8 testes). Fonte DISCUSSED = periodTrades ∪ top/bottom ∪ includedTradeIds.
+- D — `94bb8b49` (cutover) + `a2ad4ff9` (selfReview) — UI por backlog: NewReviewDialog lista NONE por dia (skip), hook→callables, rebuildSnapshot sobre draftReviewId∪includedTradeIds (mata bug SWOT), header período+#seq, Descartar rascunho, PinToReviewButton+PlanLedgerExtract migrados. Slot Espelho read-only na Sessão (§19). +4 testes backlog. Mockup confirmado por Marcio.
 
 ## Shared Deltas
 - `src/version.js` — bump v1.76.0
