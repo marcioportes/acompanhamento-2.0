@@ -822,6 +822,7 @@ const WeeklyReviewPage = ({
                 weekStart={review.weekStart}
                 weekEnd={review.weekEnd}
                 onNavigateToFeedback={onNavigateToFeedback}
+                showSelfReview
               />
             </Section>
 

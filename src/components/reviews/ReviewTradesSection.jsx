@@ -13,9 +13,10 @@
  * - onNavigateToFeedback: ({ id, ticker, ...trade }) => void. Quando null ou omitido, coluna de ação não renderiza (aluno sem navegação contextual; embedded em modal; etc.).
  */
 
-import { useMemo, useState } from 'react';
-import { MessageSquare } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { MessageSquare, ClipboardCheck } from 'lucide-react';
 import ExcursionDisplay from '../ExcursionDisplay';
+import TradeReviewSection from '../Trades/TradeReviewSection';
 import {
   buildVisibleRows,
   fmtMoney,
@@ -29,8 +30,18 @@ const ReviewTradesSection = ({
   weekStart = null,
   weekEnd = null,
   onNavigateToFeedback = null,
+  showSelfReview = false,   // #269/#308 — exibe a auto-revisão (Espelho) read-only por trade na Sessão
 }) => {
   const [expandedDays, setExpandedDays] = useState(new Set());
+  const [expandedMirror, setExpandedMirror] = useState(new Set());
+  const toggleMirror = (tradeId) => {
+    setExpandedMirror((prev) => {
+      const next = new Set(prev);
+      if (next.has(tradeId)) next.delete(tradeId);
+      else next.add(tradeId);
+      return next;
+    });
+  };
   const rows = useMemo(() => buildVisibleRows(trades, expandedDays), [trades, expandedDays]);
   const toggleDay = (date) => {
     setExpandedDays((prev) => {
@@ -114,8 +125,11 @@ const ReviewTradesSection = ({
             const emotionText = rawExit && rawExit !== rawEntry
               ? `${rawEntry || '—'} → ${rawExit}`
               : (rawEntry || '—');
+            const hasMirror = showSelfReview && !!t.selfReview;
+            const mirrorOpen = hasMirror && expandedMirror.has(t.tradeId);
             return (
-              <tr key={t.tradeId || idx} className="hover:bg-slate-800/20">
+              <Fragment key={t.tradeId || idx}>
+              <tr className="hover:bg-slate-800/20">
                 <td className="px-2 py-1 font-mono text-slate-400" title={dateFullBR}>{dateShort}</td>
                 <td className="px-2 py-1 font-mono text-slate-500">{fmtTime(t.entryTime)}</td>
                 <td className="px-2 py-1 text-white font-medium">
@@ -139,7 +153,16 @@ const ReviewTradesSection = ({
                 <td className={`px-2 py-1 text-right font-medium tabular-nums ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                   {isWin ? '+' : ''}{fmtMoney(t.pnl, currency)}
                 </td>
-                <td className="px-1 py-1 text-center">
+                <td className="px-1 py-1 text-center whitespace-nowrap">
+                  {hasMirror ? (
+                    <button
+                      onClick={() => toggleMirror(t.tradeId)}
+                      className={`p-0.5 rounded transition-colors ${mirrorOpen ? 'text-emerald-400' : 'text-slate-500 hover:text-emerald-400'}`}
+                      title={mirrorOpen ? 'Recolher o Espelho (auto-revisão do aluno)' : 'Ver o Espelho (auto-revisão do aluno)'}
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
                   {onNavigateToFeedback && t.tradeId ? (
                     <button
                       onClick={handleOpenFeedback}
@@ -151,6 +174,17 @@ const ReviewTradesSection = ({
                   ) : null}
                 </td>
               </tr>
+              {mirrorOpen && (
+                <tr className="bg-slate-900/60">
+                  <td colSpan={8} className="px-3 pb-3">
+                    <TradeReviewSection
+                      trade={{ id: t.tradeId, result: t.pnl, selfReview: t.selfReview }}
+                      canReview={false}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             );
           })}
         </tbody>

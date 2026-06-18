@@ -74,6 +74,9 @@ const projectTrade = (trade) => {
     else if (k === 'emotionEntry') out.emotionEntry = trade.emotionEntry || trade.emotion || null;
     else out[k] = trade[k] ?? null;
   }
+  // #269/#308 — auto-revisão do aluno acompanha o registro congelado da revisão
+  // (slot read-only de contexto na Sessão do mentor). Ausente em trades sem espelho.
+  out.selfReview = trade.selfReview ?? null;
   return out;
 };
 
