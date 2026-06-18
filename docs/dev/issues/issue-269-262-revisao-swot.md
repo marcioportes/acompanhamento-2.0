@@ -87,6 +87,8 @@ _(pendente — base em `Temp/spec-269.md` §5 + exemplo numérico §5.5)_
 
 ## Sessions
 _(log linear)_
+- A — `1144cbc2` — schema+gateway: `trade.reviewState`/`draftReviewId` + hook lendo `plan.activeDraftReviewId` + rules + índice (`planId,reviewState,entryTime`). 27 testes gateway.
+- B — `0fd75dbb` — callables `createReviewDraft`/`publishReview`/`deleteReviewDraft` (por plano, ponteiro D7, `sequenceNumber`, transações) + helpers puros (+7 testes) + guard rules `activeDraftReviewId`.
 
 ## Shared Deltas
 - `src/version.js` — bump v1.76.0
