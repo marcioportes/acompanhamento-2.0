@@ -1881,6 +1881,8 @@ exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
 exports.createReviewDraft = require("./reviews/createReviewDraft");
 exports.publishReview = require("./reviews/publishReview");
 exports.deleteReviewDraft = require("./reviews/deleteReviewDraft");
+// #269 Fase C — migration retroativa de reviewState (D8: dry-run + apply com safeguard)
+exports.migrateReviewStateBackfill = require("./reviews/migrateReviewStateBackfill");
 
 // ============================================
 // MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
