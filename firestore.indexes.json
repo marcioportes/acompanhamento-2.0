@@ -79,7 +79,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "planId", "order": "ASCENDING" },
-        { "fieldPath": "reviewState", "order": "ASCENDING" },
+        { "fieldPath": "reviewId", "order": "ASCENDING" },
         { "fieldPath": "entryTime", "order": "DESCENDING" }
       ]
     },

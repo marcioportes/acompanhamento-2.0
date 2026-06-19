@@ -116,10 +116,12 @@ service cloud.firestore {
     match /trades/{tradeId} {
       allow read: if isAuthenticated();
       // Hard seal #259 — bloqueia create se date está em ciclo fechado do plano.
-      // #269 — trade nasce NONE ou DRAFT (nunca DISCUSSED, que só vem de publish via admin SDK).
+      // #269 v2 — trade nasce no backlog: reviewId=null e status != DISCUSSED
+      // (a FK é carimbada pelo trigger e o terminal DISCUSSED só vem do publish, ambos admin SDK).
       allow create: if isAuthenticated() &&
         isTradeDateNotSealed(request.resource.data.planId, request.resource.data.date) &&
-        (request.resource.data.get('reviewState', 'NONE') in ['NONE', 'DRAFT']);
+        request.resource.data.get('reviewId', null) == null &&
+        request.resource.data.get('status', 'OPEN') != 'DISCUSSED';
       allow update: if isAuthenticated() && (
         isMentor() ||
         isOwner(resource.data.studentId) ||
@@ -165,15 +167,19 @@ service cloud.firestore {
         // #259 quando o ÚNICO delta é selfReview (mesma lógica de metadado do #302).
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['selfReview', 'updatedAt'])
       ) && (
-        // #308 — auto-revisão imutável depois que o trade é discutido em revisão
-        // (reviewState=DISCUSSED, #269). Vale para todos. get() com default p/ docs sem o campo.
-        resource.data.get('reviewState', 'NONE') != 'DISCUSSED' ||
+        // #308/#269 v2 — auto-revisão imutável depois que o trade é discutido
+        // (status=DISCUSSED). get() com default p/ docs sem o campo.
+        resource.data.get('status', 'OPEN') != 'DISCUSSED' ||
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['selfReview'])
       ) && (
-        // #269 — transições de reviewState/draftReviewId são EXCLUSIVAS das callables
-        // (createReviewDraft/publishReview/deleteReviewDraft via admin SDK, que bypassa rules).
-        // Nenhum cliente (aluno OU mentor) altera esses campos por update direto.
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reviewState', 'draftReviewId'])
+        // #269 v2 — a FK reviewId é EXCLUSIVA do trigger onTradeUpdated / publishReview
+        // (admin SDK, bypassa rules). Nenhum cliente altera reviewId por update direto.
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['reviewId'])
+      ) && (
+        // #269 v2 — status terminal DISCUSSED só vem do publish (admin SDK). Cliente nunca
+        // escreve DISCUSSED; e como request.resource preserva o status atual, isto também
+        // torna QUALQUER trade já DISCUSSED imutável a writes de cliente (terminal/imortal).
+        request.resource.data.get('status', 'OPEN') != 'DISCUSSED'
       );
       allow delete: if isAuthenticated() && (
         isMentor() ||
@@ -225,10 +231,10 @@ service cloud.firestore {
     match /plans/{planId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      // #269 (D7) — `activeDraftReviewId` é ponteiro mantido EXCLUSIVAMENTE pelas
-      // callables (createReviewDraft/publishReview/deleteReviewDraft via admin SDK,
-      // que bypassa rules). Nenhum cliente o altera por update direto; tradeGateway
-      // apenas lê. Mantém o demais update aberto (posição pré-existente do plano).
+      // #269 v2 — `activeDraftReviewId` é ponteiro mantido EXCLUSIVAMENTE pelo trigger
+      // onTradeUpdated (getOrCreateOpenReview) e por publishReview, ambos via admin SDK
+      // (bypassa rules). Nenhum cliente o altera por update direto. Mantém o demais update
+      // aberto (posição pré-existente do plano).
       allow update: if isAuthenticated() &&
         request.resource.data.get('activeDraftReviewId', null) == resource.data.get('activeDraftReviewId', null);
       allow delete: if isAuthenticated();
