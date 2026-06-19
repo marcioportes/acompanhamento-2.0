@@ -1354,11 +1354,29 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
   const after = change.after.data();
   
   try {
+    // #269 v2 — carimba a FK reviewId no PRIMEIRO feedback do mentor (OPEN→REVIEWED),
+    // qualquer caminho: addFeedbackComment (individual) OU batch client-side (bulk).
+    // É o único chokepoint da relação trade↔revisão semanal. Roda ANTES do loop guard
+    // (mudança só de status não passaria por ele). Idempotente: o update de reviewId
+    // re-dispara este trigger, mas `enteredReviewed && !after.reviewId` fica falso.
+    const enteredReviewed = before.status !== 'REVIEWED' && after.status === 'REVIEWED';
+    if (enteredReviewed && !after.reviewId && after.studentId && after.planId) {
+      try {
+        const { getOrCreateOpenReview } = require('./reviews/openReview');
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const { reviewId } = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
+        await change.after.ref.update({ reviewId });
+        console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
+      } catch (anchorErr) {
+        console.error('[onTradeUpdated] getOrCreateOpenReview falhou:', anchorErr);
+      }
+    }
+
     const oldResult = before.result || 0;
     const newResult = after.result || 0;
     const planChanged = before.planId !== after.planId;
     const resultChanged = Math.abs(newResult - oldResult) > 0.01;
-    
+
     // Detectar mudanças em qualquer campo que afeta compliance.
     // `emotionEntry` adicionado em v1.45.0 (#188 Fase E): mentor pode editar emoção
     // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
