@@ -117,3 +117,79 @@ _(IDs — texto em docs/decisions.md)_
 - `trade.reviewState` + `trade.draftReviewId` (campos novos)
 - `plan.activeDraftReviewId` (campo novo — ponteiro do DRAFT corrente por plano)
 - collection/doc `mentorConfig` + `swotStyle` (estrutura nova)
+
+---
+
+## REDESENHO v2 — modelo normalizado (19/06/2026)
+
+> Decisão do Marcio (19/06, após review do deploy v1.76.0): as Fases A–E criaram uma
+> **gororoba de modelagem** — DOIS ciclos paralelos de "revisado" no trade
+> (`status` OPEN/REVIEWED/QUESTION/CLOSED, já existente do CHUNK-08, **+** `reviewState`
+> NONE/DRAFT/DISCUSSED, novo do #269) **+** `review.includedTradeIds` como pertencimento
+> (array interno na revisão, com a FK `draftReviewId` sendo **apagada** no publish).
+> Substituído por **FK única + ciclo único**. Refaz o miolo antes da migration rodar
+> (sem dado de produção a proteger).
+
+### Domínio (linguagem de produto)
+Três coisas distintas que a v1 misturava:
+1. **Reflexão do aluno (Espelho)** — `trade.selfReview`, parte da entrada do trade. Insumo.
+2. **Revisão monolítica do mentor** — seu feedback operação por operação (`trade.mentorFeedback`
+   + fio, CHUNK-08). É o que vira insumo da reunião.
+3. **Revisão semanal** — a reunião; o *conjunto* dos trades que você revisou = a pauta.
+
+### Modelo de dados
+- **`trade.reviewId: string | null`** — FK para a revisão semanal. `null` = backlog
+  ("ainda não revisei"). Imortal: setada uma vez, NUNCA apagada (nem no publish).
+- **`trade.status`** — ciclo ÚNICO, ganha estado terminal `DISCUSSED`:
+  `OPEN → REVIEWED ⇄ QUESTION → CLOSED → (publicação) → DISCUSSED` (terminal, imutável).
+- **Morrem:** `trade.reviewState`, `trade.draftReviewId`, `review.includedTradeIds`
+  (pertencimento = `trades WHERE reviewId == reviewId`).
+- **Mantém:** `plan.activeDraftReviewId` (ponteiro da revisão aberta do plano — o gateway
+  client-side lê por ID, sem query); `review.frozenSnapshot` (cópia congelada imortal dos
+  dados do trade, sobrevive a edição/exclusão); takeaways / sessionNotes / swot / links.
+
+### Atribuição do `review_id` (o gatilho)
+- Carimbado na **primeira transição `OPEN → REVIEWED`** — seu primeiro feedback no trade,
+  **individual OU em massa** (`bulkFeedback`). Único chokepoint. Idempotente: o trade quica
+  REVIEWED ⇄ QUESTION e termina em CLOSED sem reatribuir.
+- A revisão semanal aberta do plano é criada **sob demanda** no 1º feedback pós-última-reunião.
+  Substitui o `createReviewDraft` manual + dialog/picker de backlog.
+- Pertencimento = `review_id`; o estado do fio de feedback é irrelevante pra pauta (um trade
+  `status=CLOSED` com `reviewId` no rascunho **aparece** na pauta).
+
+### Publicação (reunião)
+- Mentor publica → `review.status: DRAFT → CLOSED` + `sequenceNumber` + congela `frozenSnapshot`
+  + limpa `plan.activeDraftReviewId`.
+- TODOS os trades com `reviewId == review` viram **`status=DISCUSSED`** (força fios em
+  REVIEWED/QUESTION/CLOSED ao terminal — a reunião ao vivo supera o fio assíncrono). `reviewId`
+  NÃO é tocado (já está setado).
+
+### Imutabilidade (resolve a escolha A/B sozinha)
+- `status == 'DISCUSSED'` → trava (rules + `onTradeUpdated` + `submitTradeReview`). O cadeado mora
+  no campo de lifecycle que JÁ existe — sem cache paralelo, sem `get()` na revisão.
+
+### Callables revisadas
+- `createReviewDraft` → vira `getOrCreateOpenReview(studentId, planId)` **interno**, disparado
+  pelo feedback (não é mais ação de UI).
+- `publishReview` → não escreve a *relação* nos trades (já têm `reviewId`); seta
+  `status=DISCUSSED` + fecha a review.
+- `deleteReviewDraft` → **ver Edge aberto abaixo.**
+- `migrateReviewStateBackfill` → escreve `trade.reviewId` (+ `status=DISCUSSED` p/ CLOSED/ARCHIVED)
+  a partir da mesma fonte legada (periodTrades ∪ includedTradeIds). Conflito → review mais recente.
+
+### Limpeza acoplada (autorizada 19/06)
+- Remover o vocabulário de status **morto** em `src/firebase.js` (`TRADE_STATUS`:
+  PENDING_REVIEW/REVIEWED/IN_REVISION) que não bate com o vivo (`OPEN/REVIEWED/QUESTION/CLOSED`).
+
+### Descartar revisão (RESOLVIDO 19/06 — opção a)
+- **`deleteReviewDraft` / botão "Descartar rascunho" são REMOVIDOS.** No modelo auto-aberto,
+  "descartar" perdeu propósito: a revisão é só o balaio dos trades que o mentor revisou. Não quer
+  reunião agora → **não publica**; a revisão aberta espera. Sem limbo, sem re-ancoragem.
+
+### Impacto (arquivos)
+- `tradeGateway.createTrade` (nasce com `reviewId`), `addFeedbackComment` CF + `bulkFeedback`/
+  `useTrades` (gatilho `review_id` no OPEN→REVIEWED), as 3 callables, `migrateReviewStateBackfill`
+  + `migrationLogic`, `firestore.rules` (trava por `status=DISCUSSED`), `firestore.indexes`
+  (`planId,reviewState,entryTime` → `planId,reviewId`), `reviewHelpers`, `NewReviewDialog`
+  (some criação/picker), `WeeklyReviewPage` (workspace inalterado), `firebase.js` (limpeza),
+  testes correlatos. Re-deploy de functions + rules + índices.

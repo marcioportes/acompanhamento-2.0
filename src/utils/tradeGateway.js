@@ -242,21 +242,16 @@ export async function createTrade(tradeData, userContext) {
     }
   }
 
-  // === 4.1. REVIEW STATE (#269) ===
-  // Trade nasce DRAFT se o PLANO tem revisão DRAFT ativa (ponteiro plan.activeDraftReviewId
-  // mantido pelas callables createReviewDraft/publishReview/deleteReviewDraft); senão NONE.
-  // Leitura não-transacional do ponteiro: a janela de corrida (draft publicado/descartado entre
-  // a leitura do plano e a escrita do trade) é auto-curada — publishReview/deleteReviewDraft
-  // re-varrem por draftReviewId e reconciliam o reviewState. Granularidade por plano preserva
-  // single-currency (#289/#111) — backlog de revisão nunca mistura planos/moedas.
-  const activeDraftReviewId = planData.activeDraftReviewId || null;
-  const reviewState = activeDraftReviewId ? 'DRAFT' : 'NONE';
+  // === 4.1. REVIEW (#269 v2) ===
+  // Trade nasce no BACKLOG (reviewId=null): o aluno acabou de registrar, o mentor ainda
+  // não revisou. A FK `reviewId` é carimbada SÓ no 1º feedback do mentor (transição
+  // OPEN→REVIEWED), pelo trigger onTradeUpdated → getOrCreateOpenReview. `null` explícito:
+  // a query de backlog (`where reviewId == null`) não retorna docs sem o campo.
 
   // === 5. MONTAGEM DO DOCUMENTO ===
   const newTrade = {
     ...tradeData,
-    reviewState,
-    draftReviewId: activeDraftReviewId,
+    reviewId: null,
     date: legacyDate, entryTime, exitTime, duration,
     ticker: tradeData.ticker?.toUpperCase() || '',
     entry, exit, qty,
@@ -785,7 +780,7 @@ export async function toggleViolationClearedAsMentor(tradeId, violationKey, user
  * NÃO mexe no score 4D — é instrumento de consciência/reflexão. Classificação e
  * confronto declarado×detectado são DERIVADOS em display-time, não persistidos.
  *
- * Imutável após `reviewState === 'DISCUSSED'` (#269). Só o autor do trade revisa.
+ * Imutável após `status === 'DISCUSSED'` (#269 v2 — terminal do ciclo). Só o autor revisa.
  * Reenvio sobrescreve a auto-revisão anterior (idempotente por trade).
  *
  * @param {string} tradeId
@@ -815,7 +810,7 @@ export async function submitTradeReview(tradeId, input, userContext, deps = {}) 
   if (before.studentId && before.studentId !== userContext.uid) {
     throw new Error('Apenas o autor do trade pode revisá-lo');
   }
-  if (before.reviewState === 'DISCUSSED') {
+  if (before.status === 'DISCUSSED') {
     throw new Error('Trade já discutido em revisão — auto-revisão imutável');
   }
 

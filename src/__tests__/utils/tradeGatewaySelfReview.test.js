@@ -44,7 +44,7 @@ describe('submitTradeReview', () => {
   });
 
   it('rejeita trade já DISCUSSED (imutável)', async () => {
-    const deps = makeDeps(makeTrade({ reviewState: 'DISCUSSED' }));
+    const deps = makeDeps(makeTrade({ status: 'DISCUSSED' }));
     await expect(submitTradeReview('t1', { wouldRepeat: true }, studentCtx, deps))
       .rejects.toThrow(/imutável/i);
   });
