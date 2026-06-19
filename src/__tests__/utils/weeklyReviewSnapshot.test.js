@@ -109,6 +109,8 @@ describe('pickTopTrades / pickBottomTrades', () => {
       mepPrice: null,
       menPrice: null,
       excursionSource: null,
+      // issue #269 Fase D — slot Espelho (§19): selfReview inline (read-only na Sessão)
+      selfReview: null,
     });
   });
 

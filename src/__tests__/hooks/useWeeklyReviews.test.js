@@ -128,17 +128,26 @@ describe('useWeeklyReviews', () => {
     expect(mockCallable).toHaveBeenCalledWith({ studentId: 'student-1', reviewId: 'r1' });
   });
 
-  it('closeReview updates doc with status=CLOSED + closedAt', async () => {
+  it('closeReview publica via callable publishReview e persiste links via updateDoc (#269 Fase D)', async () => {
+    mockCallable.mockResolvedValueOnce({ data: { status: 'CLOSED', sequenceNumber: 3 } });
     const { result } = renderHook(() => useWeeklyReviews('student-1'));
+    let returned;
     await act(async () => {
-      await result.current.closeReview('r1', { meetingLink: 'https://zoom.us/j/1' });
+      returned = await result.current.closeReview('r1', { meetingLink: 'https://zoom.us/j/1' });
     });
+    // links vão por updateDoc direto antes do publish; status NÃO é mais escrito no cliente
     expect(mockUpdateDoc).toHaveBeenCalled();
-    const [, payload] = mockUpdateDoc.mock.calls[0];
-    expect(payload.status).toBe('CLOSED');
-    expect(payload.meetingLink).toBe('https://zoom.us/j/1');
-    expect(payload.closedAt).toEqual({ __type: 'serverTimestamp' });
-    expect('takeaways' in payload).toBe(false);
+    const [, pre] = mockUpdateDoc.mock.calls[0];
+    expect(pre.meetingLink).toBe('https://zoom.us/j/1');
+    expect('status' in pre).toBe(false);
+    // a transição DRAFT→CLOSED é da callable publishReview
+    expect(mockCallable).toHaveBeenCalledWith({
+      studentId: 'student-1',
+      reviewId: 'r1',
+      frozenSnapshot: null,
+      swot: null,
+    });
+    expect(returned).toEqual({ status: 'CLOSED', sequenceNumber: 3 });
   });
 
   it('archiveReview updates doc with status=ARCHIVED + archivedAt', async () => {
