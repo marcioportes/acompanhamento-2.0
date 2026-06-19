@@ -1,7 +1,7 @@
 /**
- * migrationLogic.test.js — Issue #269 (Fase C)
+ * migrationLogic.test.js — Issue #269 v2
  *
- * Cobre o núcleo puro da migration retroativa de reviewState (D8).
+ * Cobre o núcleo puro da migration retroativa (FK reviewId + status DISCUSSED).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,9 +11,10 @@ const require = createRequire(import.meta.url);
 const {
   collectDiscussedTradeIds,
   buildReviewMaps,
-  targetReviewState,
+  targetReview,
   assignSequenceNumbers,
   tradeNeedsUpdate,
+  tradeUpdateData,
 } = require('../../reviews/migrationLogic');
 
 const closed = (id, opts = {}) => ({ id, status: 'CLOSED', ...opts });
@@ -41,16 +42,26 @@ describe('collectDiscussedTradeIds', () => {
   });
 });
 
-describe('buildReviewMaps + targetReviewState', () => {
-  it('DISCUSSED vence DRAFT (imortalidade)', () => {
+describe('buildReviewMaps + targetReview', () => {
+  it('DISCUSSED (review fechada) vence DRAFT; FK = id da review', () => {
     const reviews = [
       closed('R1', { frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } }),
       draft('R2', { planId: 'p1', frozenSnapshot: { periodTrades: [{ tradeId: 't1' }, { tradeId: 't2' }] } }),
     ];
     const maps = buildReviewMaps(reviews);
-    expect(targetReviewState('t1', maps)).toEqual({ reviewState: 'DISCUSSED', draftReviewId: null });
-    expect(targetReviewState('t2', maps)).toEqual({ reviewState: 'DRAFT', draftReviewId: 'R2' });
-    expect(targetReviewState('t9', maps)).toEqual({ reviewState: 'NONE', draftReviewId: null });
+    expect(targetReview('t1', maps)).toEqual({ reviewId: 'R1', status: 'DISCUSSED' });
+    expect(targetReview('t2', maps)).toEqual({ reviewId: 'R2', status: null });   // draft: status intocado
+    expect(targetReview('t9', maps)).toEqual({ reviewId: null, status: null });   // backlog
+  });
+
+  it('trade em duas reviews fechadas → vence a mais recente, conflito reportado', () => {
+    const reviews = [
+      closed('R-old', { periodStart: '2026-04-01', frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } }),
+      closed('R-new', { periodStart: '2026-06-01', frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } }),
+    ];
+    const maps = buildReviewMaps(reviews);
+    expect(targetReview('t1', maps)).toEqual({ reviewId: 'R-new', status: 'DISCUSSED' });
+    expect(maps.conflicts).toEqual([{ tradeId: 't1', kept: 'R-new', dropped: 'R-old' }]);
   });
 
   it('ponteiro do plano = DRAFT mais recente; múltiplos DRAFT geram conflito reportado', () => {
@@ -91,10 +102,24 @@ describe('assignSequenceNumbers', () => {
 });
 
 describe('tradeNeedsUpdate', () => {
-  it('detecta divergência de estado e de ponteiro', () => {
-    expect(tradeNeedsUpdate({ reviewState: 'NONE', draftReviewId: null }, { reviewState: 'NONE', draftReviewId: null })).toBe(false);
-    expect(tradeNeedsUpdate({}, { reviewState: 'NONE', draftReviewId: null })).toBe(true); // legado sem campo
-    expect(tradeNeedsUpdate({ reviewState: 'DRAFT', draftReviewId: 'R1' }, { reviewState: 'DRAFT', draftReviewId: 'R2' })).toBe(true);
-    expect(tradeNeedsUpdate({ reviewState: 'DISCUSSED', draftReviewId: null }, { reviewState: 'DISCUSSED', draftReviewId: null })).toBe(false);
+  it('detecta divergência de reviewId e de status (quando o alvo o define)', () => {
+    // backlog estável (campo já presente e null, alvo não toca status)
+    expect(tradeNeedsUpdate({ reviewId: null }, { reviewId: null, status: null })).toBe(false);
+    // legado SEM o campo reviewId → precisa materializar reviewId=null (query de backlog)
+    expect(tradeNeedsUpdate({}, { reviewId: null, status: null })).toBe(true);
+    // FK diverge
+    expect(tradeNeedsUpdate({ reviewId: 'R1' }, { reviewId: 'R2', status: null })).toBe(true);
+    // já tem a FK certa mas status ainda não é DISCUSSED
+    expect(tradeNeedsUpdate({ reviewId: 'R1', status: 'CLOSED' }, { reviewId: 'R1', status: 'DISCUSSED' })).toBe(true);
+    // tudo no alvo
+    expect(tradeNeedsUpdate({ reviewId: 'R1', status: 'DISCUSSED' }, { reviewId: 'R1', status: 'DISCUSSED' })).toBe(false);
+  });
+});
+
+describe('tradeUpdateData', () => {
+  it('omite status quando o alvo não o define', () => {
+    expect(tradeUpdateData({ reviewId: 'R1', status: 'DISCUSSED' })).toEqual({ reviewId: 'R1', status: 'DISCUSSED' });
+    expect(tradeUpdateData({ reviewId: 'R2', status: null })).toEqual({ reviewId: 'R2' });
+    expect(tradeUpdateData({ reviewId: null, status: null })).toEqual({ reviewId: null });
   });
 });

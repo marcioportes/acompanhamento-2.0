@@ -1,7 +1,7 @@
 /**
  * migrateReviewStateBackfill.js — Cloud Function callable (#269 Fase C, D8).
  *
- * Migration retroativa idempotente que preenche `trade.reviewState`/`draftReviewId`,
+ * Migration retroativa idempotente que preenche `trade.reviewId` (+ status=DISCUSSED),
  * `review.sequenceNumber` e o ponteiro `plan.activeDraftReviewId` a partir das reviews
  * existentes. Núcleo de decisão em reviews/migrationLogic.js (puro, testado).
  *
@@ -23,7 +23,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const { isMentor } = require('./validators');
 const {
-  buildReviewMaps, assignSequenceNumbers, targetReviewState, tradeNeedsUpdate,
+  buildReviewMaps, assignSequenceNumbers, targetReview, tradeNeedsUpdate, tradeUpdateData,
 } = require('./migrationLogic');
 
 const BATCH_SIZE = 400; // < limite 500 de ops por WriteBatch
@@ -44,12 +44,12 @@ async function planForStudent(db, studentId) {
 
   const ops = []; // { ref, data }
 
-  // Trades → reviewState/draftReviewId
+  // Trades → reviewId (+ status=DISCUSSED quando em review fechada)
   let tradeUpdates = 0;
   for (const d of tradesSnap.docs) {
-    const target = targetReviewState(d.id, maps);
+    const target = targetReview(d.id, maps);
     if (tradeNeedsUpdate(d.data(), target)) {
-      ops.push({ ref: d.ref, data: { reviewState: target.reviewState, draftReviewId: target.draftReviewId } });
+      ops.push({ ref: d.ref, data: tradeUpdateData(target) });
       tradeUpdates += 1;
     }
   }
