@@ -1895,11 +1895,11 @@ exports.generatePropFirmApproachPlan = require("./propFirm/generatePropFirmAppro
 // ============================================
 exports.createWeeklyReview = require("./reviews/createWeeklyReview");
 exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
-// #269 — Revisão por backlog (máquina de estados reviewState NONE/DRAFT/DISCUSSED)
-exports.createReviewDraft = require("./reviews/createReviewDraft");
+// #269 v2 — Revisão semanal: FK única trade.reviewId + ciclo único status→DISCUSSED.
+// A revisão aberta nasce sob demanda no 1º feedback (trigger onTradeUpdated → openReview.js);
+// publishReview fecha e marca os membros DISCUSSED. (createReviewDraft/deleteReviewDraft mortos.)
 exports.publishReview = require("./reviews/publishReview");
-exports.deleteReviewDraft = require("./reviews/deleteReviewDraft");
-// #269 Fase C — migration retroativa de reviewState (D8: dry-run + apply com safeguard)
+// #269 v2 — migration retroativa: escreve trade.reviewId (+status=DISCUSSED) das reviews legadas
 exports.migrateReviewStateBackfill = require("./reviews/migrateReviewStateBackfill");
 // #262 — estilo customizável da SWOT semanal (tom/foco/profundidade, global por mentor)
 exports.setMentorSwotStyle = require("./reviews/setMentorSwotStyle");
