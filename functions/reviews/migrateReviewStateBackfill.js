@@ -44,11 +44,23 @@ async function planForStudent(db, studentId) {
 
   const ops = []; // { ref, data }
 
+  // Reviews DRAFT existentes (para validar o fallback de draftReviewId legado).
+  const draftReviewIds = new Set(
+    reviewsSnap.docs.filter((r) => r.data().status === 'DRAFT').map((r) => r.id)
+  );
+
   // Trades → reviewId (+ status=DISCUSSED quando em review fechada)
   let tradeUpdates = 0;
   for (const d of tradesSnap.docs) {
-    const target = targetReview(d.id, maps);
-    if (tradeNeedsUpdate(d.data(), target)) {
+    const data = d.data();
+    let target = targetReview(d.id, maps);
+    // Fallback v1: rascunho legado guardava a associação no TRADE (draftReviewId), não no
+    // array da review. Se o trade não caiu em nenhuma review (lado-review vazio p/ DRAFTs)
+    // mas aponta para um DRAFT existente, preserva essa FK. Não toca status.
+    if (target.reviewId === null && data.draftReviewId && draftReviewIds.has(data.draftReviewId)) {
+      target = { reviewId: data.draftReviewId, status: null };
+    }
+    if (tradeNeedsUpdate(data, target)) {
       ops.push({ ref: d.ref, data: tradeUpdateData(target) });
       tradeUpdates += 1;
     }
