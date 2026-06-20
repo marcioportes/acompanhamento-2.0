@@ -32,7 +32,6 @@ import { computePlanState, getAvailableCycles, getCycleStartDate, getCycleEndDat
 import { buildTableRows } from '../utils/extractTableRows';
 import { computeExtractSummaryMetrics } from '../utils/extractSummaryMetrics';
 import DebugBadge from './DebugBadge';
-import NewReviewDialog from './reviews/NewReviewDialog';
 import ReviewToolsPanel from './reviews/ReviewToolsPanel';
 
 // Sub-componentes
@@ -48,11 +47,10 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
   const emotional = useEmotionalProfile({ trades, detectionConfig, statusThresholds });
   const studentIdForReviews = plan?.studentId || null;
-  const { createReviewDraft, reviews: allReviews } = useWeeklyReviews(studentIdForReviews);
+  const { reviews: allReviews } = useWeeklyReviews(studentIdForReviews);
 
   // Seletor temporal: null = ciclo inteiro, string = periodKey
   const [selectedPeriod, setSelectedPeriod] = useState(null);
-  const [newReviewOpen, setNewReviewOpen] = useState(false);
   // activeReviewId: revisão sendo visualizada no painel (mode='review' deriva disso)
   const [activeReviewId, setActiveReviewId] = useState(initialReviewId);
   useEffect(() => { setActiveReviewId(initialReviewId); }, [initialReviewId]);
@@ -82,15 +80,11 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
     return planReviews.find(r => r.status === 'DRAFT') || null;
   }, [planReviews]);
 
-  // Handler do botão "Nova Revisão" / "Continuar rascunho":
-  // se já existe QUALQUER DRAFT do plano, ativa mode='review' nele.
-  // Senão, abre dialog de período → on created, ativa mode='review' no novo.
-  const handleNewOrOpenReview = useCallback(() => {
-    if (openDraft) {
-      setActiveReviewId(openDraft.id);
-    } else {
-      setNewReviewOpen(true);
-    }
+  // #269 v2 — não há mais "criar revisão": a revisão semanal nasce sozinha no 1º feedback
+  // do mentor. O botão só CONTINUA a revisão aberta do plano (se houver). As demais
+  // revisões abrem pelo <select> ao lado.
+  const handleOpenReview = useCallback(() => {
+    if (openDraft) setActiveReviewId(openDraft.id);
   }, [openDraft]);
 
   const handleBackToLive = useCallback(() => setActiveReviewId(null), []);
@@ -308,14 +302,14 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
                 Voltar ao live
               </button>
             )}
-            {mentor && mode === 'live' && (
+            {mentor && mode === 'live' && openDraft && (
               <button
-                onClick={handleNewOrOpenReview}
+                onClick={handleOpenReview}
                 className="px-3 py-1.5 text-xs font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 flex items-center gap-1.5"
-                title={openDraft ? `Rascunho aberto (${openDraft.periodKey}) — continuar` : 'Criar nova revisão semanal'}
+                title="Continuar a revisão semanal aberta deste plano"
               >
                 <FileCheck2 className="w-3.5 h-3.5" />
-                {openDraft ? 'Continuar rascunho' : 'Nova Revisão'}
+                Continuar revisão
               </button>
             )}
             {mentor && mode === 'live' && planReviews.length > 0 && (
@@ -412,18 +406,6 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
 
       </div>
       <DebugBadge component="PlanLedgerExtract" />
-
-      {newReviewOpen && mentor && (
-        <NewReviewDialog
-          plan={plan}
-          allTrades={trades}
-          cycleKey={selectedCycleKey}
-          existingReviews={planReviews}
-          createReviewDraft={createReviewDraft}
-          onCreated={(reviewId) => setActiveReviewId(reviewId)}
-          onClose={() => setNewReviewOpen(false)}
-        />
-      )}
     </div>
   );
 };

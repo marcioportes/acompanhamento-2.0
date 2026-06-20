@@ -64,4 +64,33 @@ async function getOrCreateOpenReview(db, studentId, planId, todayISO) {
   });
 }
 
-module.exports = { getOrCreateOpenReview, buildOpenReviewDoc };
+/**
+ * Carry-over best-effort: ao abrir a revisão do plano, replica os takeaways NÃO encerrados
+ * (!done) da última revisão CLOSED/ARCHIVED do mesmo plano. Preserva a feature que no v1
+ * vivia no cliente (createReviewDraft). Não-transacional, idempotente por novo reviewId.
+ */
+async function carryOverOpenTakeaways(db, studentId, planId, newReviewId) {
+  const reviewsRef = db.collection('students').doc(studentId).collection('reviews');
+  const snap = await reviewsRef.get();
+  const prev = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((r) => r.id !== newReviewId
+      && (r.status === 'CLOSED' || r.status === 'ARCHIVED')
+      && (r.planId === planId || r.frozenSnapshot?.planContext?.planId === planId))
+    .sort((a, b) => String(b.weekStart || '').localeCompare(String(a.weekStart || '')))[0];
+  if (!prev) return 0;
+  const openItems = (Array.isArray(prev.takeawayItems) ? prev.takeawayItems : []).filter((it) => !it.done);
+  if (openItems.length === 0) return 0;
+  const carried = openItems.map((it, i) => ({
+    id: `carry-${newReviewId}-${i}`,
+    text: it.text,
+    done: false,
+    createdAt: new Date().toISOString(),
+    sourceTradeId: it.sourceTradeId || null,
+    carriedOverFromReviewId: prev.id,
+  }));
+  await reviewsRef.doc(newReviewId).update({ takeawayItems: carried });
+  return carried.length;
+}
+
+module.exports = { getOrCreateOpenReview, buildOpenReviewDoc, carryOverOpenTakeaways };

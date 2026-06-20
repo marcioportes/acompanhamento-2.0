@@ -50,7 +50,6 @@ import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify, toggleViolationClearedAsMentor as gatewayToggleViolation } from '../utils/tradeGateway';
 import { effectiveRedFlags, isViolationCleared } from '../utils/violationFilter';
-import PinToReviewButton from '../components/reviews/PinToReviewButton';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -637,7 +636,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             )}
             {userIsMentor && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <PinToReviewButton trade={trade} />
                 <button
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}
@@ -819,7 +817,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <div className="flex items-center gap-3">
             {userIsMentor && (
               <>
-                <PinToReviewButton trade={trade} />
                 <button
                   onClick={handleAnalyzeShadow}
                   disabled={shadowLoading}

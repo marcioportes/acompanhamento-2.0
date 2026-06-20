@@ -131,28 +131,9 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [functions, carryOverTakeaways]);
 
-  // #269 — cria rascunho por BACKLOG (sem janela de período). A callable absorve
-  // em bulk os trades reviewState='NONE' do plano e mantém o ponteiro
-  // plan.activeDraftReviewId. skipTradeIds = trades que o mentor optou por deixar
-  // para a próxima (continuam NONE). cycleKey opcional para métricas por ciclo.
-  const createReviewDraft = useCallback(async (planId, { skipTradeIds = [], cycleKey = null } = {}) => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      const cf = httpsCallable(functions, 'createReviewDraft');
-      const res = await cf({ studentId, planId, skipTradeIds, cycleKey });
-      const data = res.data || {};
-      if (data.reviewId && planId) {
-        await carryOverTakeaways({ newReviewId: data.reviewId, planId, newWeekStart: null });
-      }
-      return data;
-    } catch (err) {
-      setError(err.message || 'Erro ao criar rascunho de revisão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [functions, studentId, carryOverTakeaways]);
+  // #269 v2 — não há mais criação manual de rascunho nem inclusão explícita de trade.
+  // A revisão semanal nasce sob demanda no 1º feedback do mentor (trigger onTradeUpdated
+  // → getOrCreateOpenReview, server-side) e os trades entram ao virarem REVIEWED.
 
   const generateSwot = useCallback(async ({ reviewId }) => {
     setActionLoading(true);
@@ -217,23 +198,8 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Descartar rascunho (#269: via callable deleteReviewDraft). A callable reverte
-  // os trades empenhados de volta a reviewState='NONE', apaga o doc da review e
-  // limpa o ponteiro plan.activeDraftReviewId. Só DRAFT pode ser descartado.
-  const deleteReview = useCallback(async (reviewId) => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      const cf = httpsCallable(functions, 'deleteReviewDraft');
-      const res = await cf({ studentId, reviewId });
-      return res.data;
-    } catch (err) {
-      setError(err.message || 'Erro ao descartar rascunho');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [functions, studentId]);
+  // #269 v2 — "descartar rascunho" não existe: a revisão é o balaio dos trades que o
+  // mentor revisou. Não quer fazer a reunião agora → não publica; a revisão aberta espera.
 
   // Salva campos editáveis do rascunho (sessionNotes, meetingLink, videoLink) SEM mudar
   // o status. Usado pelo ReviewToolsPanel/WeeklyReviewModal — mentor digita e persiste
@@ -387,59 +353,15 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
-  // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
-  // (caso mentor revise trade antigo em rascunho de semana diferente).
-  const addIncludedTrade = useCallback(async (reviewId, tradeId) => {
-    if (!tradeId) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      await updateDoc(ref, { includedTradeIds: arrayUnion(tradeId) });
-    } catch (err) {
-      setError(err.message || 'Erro ao incluir trade na revisão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId]);
-
-  // Pin rápido: anexa uma linha ao campo sessionNotes de uma revisão (DRAFT).
-  // Usado pelo PinToReviewButton — pontos observados no Feedback Trade são
-  // notas de sessão, não takeaways (takeaways = ação/item estruturado).
-  const appendSessionNotes = useCallback(async (reviewId, line) => {
-    if (!line || !String(line).trim()) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const current = reviews.find(r => r.id === reviewId);
-      const existing = typeof current?.sessionNotes === 'string' ? current.sessionNotes : '';
-      const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-      const next = existing + sep + String(line).trim();
-      await updateDoc(ref, { sessionNotes: next });
-    } catch (err) {
-      setError(err.message || 'Erro ao anotar nota da sessão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId, reviews]);
-
   return {
     reviews,
     isLoading,
     actionLoading,
     error,
     createReview,
-    createReviewDraft,
     generateSwot,
     closeReview,
     archiveReview,
-    deleteReview,
-    appendSessionNotes,
-    addIncludedTrade,
     updateSessionNotes,
     saveDraftFields,
     updateMeetingLinks,
