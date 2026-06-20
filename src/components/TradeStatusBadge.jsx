@@ -10,7 +10,8 @@ const TRADE_STATUS = {
   OPEN: 'OPEN',
   REVIEWED: 'REVIEWED',
   QUESTION: 'QUESTION',
-  CLOSED: 'CLOSED'
+  CLOSED: 'CLOSED',
+  DISCUSSED: 'DISCUSSED'   // #269 v2 — terminal: discutido na revisão semanal (imutável)
 };
 
 const STATUS_CONFIG = {
@@ -42,6 +43,13 @@ const STATUS_CONFIG = {
     bgClass: 'bg-purple-500/20',
     textClass: 'text-purple-400',
     borderClass: 'border-purple-500/30'
+  },
+  [TRADE_STATUS.DISCUSSED]: {
+    label: 'Discutido',
+    icon: CheckCircle,
+    bgClass: 'bg-indigo-500/20',
+    textClass: 'text-indigo-300',
+    borderClass: 'border-indigo-500/30'
   }
 };
 

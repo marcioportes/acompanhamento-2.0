@@ -93,6 +93,15 @@ _(log linear)_
 - D — `94bb8b49` (cutover) + `a2ad4ff9` (selfReview) — UI por backlog: NewReviewDialog lista NONE por dia (skip), hook→callables, rebuildSnapshot sobre draftReviewId∪includedTradeIds (mata bug SWOT), header período+#seq, Descartar rascunho, PinToReviewButton+PlanLedgerExtract migrados. Slot Espelho read-only na Sessão (§19). +4 testes backlog. Mockup confirmado por Marcio.
 - E — `b66b6289` — #262 SWOT customizável: `swotPromptBuilder.js` puro (tom/foco/profundidade, neutro=2, +7 testes) + callable `setMentorSwotStyle` (mentorConfig.swotStyle, campo novo em doc existente) + consumo no `generateWeeklySwot` + card de 3 sliders no ComplianceConfigPage. Metade-ciclo deferida (#260).
 
+### REDESENHO v2 (19-20/06) — substitui A–E pelo modelo normalizado
+- v2.1 — gateway nasce `reviewId=null` (remove `reviewState`/`draftReviewId`); trava Espelho por `status=DISCUSSED`. 34 testes gateway.
+- v2.2 — `openReview.js` (`getOrCreateOpenReview` transacional/idempotente via ponteiro) + trigger `onTradeUpdated` ancora `reviewId` no 1º feedback (OPEN→REVIEWED, individual ou bulk). +5 testes.
+- v2.3 — `publishReview` marca membros `status=DISCUSSED` (`WHERE reviewId==id`), período dos membros, sem `includedTradeIds`. Mata `createReviewDraft`/`deleteReviewDraft`.
+- v2.4 — `migrationLogic` v2: `discussedByTradeId` (mais recente vence) + alvo `{reviewId, status}`; legado sem campo materializa `reviewId=null`. +testes (functions 179).
+- v2.5 — rules: create `reviewId=null`+`status!=DISCUSSED`; `reviewId`/DISCUSSED exclusivos do admin SDK (DISCUSSED trava todo write de cliente); índice `planId,reviewId,entryTime`.
+- v2.6 — UI: `WeeklyReviewPage` membros por `t.reviewId`; `PlanLedgerExtract` botão "Continuar revisão"; remove `NewReviewDialog`/`PinToReviewButton`/Descartar; carry-over de takeaways portado p/ server. src 3459 verde.
+- v2.7 — limpeza `TRADE_STATUS` morto (`firebase.js`); badge/thread aprendem `DISCUSSED`. Re-deploy functions+rules+índices.
+
 ## Shared Deltas
 - `src/version.js` — bump v1.76.0
 - `docs/registry/versions.md` — marcar v1.76.0 consumida
