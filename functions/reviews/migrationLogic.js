@@ -9,10 +9,21 @@
  *   1. em review CLOSED/ARCHIVED → reviewId = aquela review + status='DISCUSSED' (imortal)
  *      Conflito (trade em N reviews fechadas) → vence a MAIS RECENTE.
  *   2. em review DRAFT           → reviewId = o draft, status NÃO é tocado (ainda não discutido)
- *   3. caso contrário            → reviewId = null (backlog), status NÃO é tocado
+ *   3. COM feedback, fora de review → ancora no rascunho VIGENTE do plano (sinalizado por
+ *      `anchorToPlanDraft:true`; a callable provisiona/resolve o reviewId). Mantém o invariante
+ *      "rascunho aberto = trades com feedback ∧ status≠DISCUSSED" também para o legado, pra que
+ *      nada escape da próxima reunião. status NÃO é tocado.
+ *   4. caso contrário (sem feedback) → reviewId = null (backlog), status NÃO é tocado
  */
 
 const CLOSED_STATUSES = new Set(['CLOSED', 'ARCHIVED']);
+
+// "Tem feedback" = já passou por OPEN→REVIEWED (mentor comentou ao menos uma vez). Cobre o fio
+// REVIEWED ⇄ QUESTION → CLOSED. OPEN = sem feedback (backlog); DISCUSSED = terminal (tratado no ramo 1).
+const FEEDBACK_STATUSES = new Set(['REVIEWED', 'QUESTION', 'CLOSED']);
+
+/** Trade legado já recebeu feedback do mentor? (status fora de OPEN/DISCUSSED) */
+const tradeHasFeedback = (trade) => FEEDBACK_STATUSES.has(trade?.status);
 
 /**
  * IDs de trades de uma review = união de
@@ -35,7 +46,9 @@ const collectDiscussedTradeIds = (review) => {
       if (typeof id === 'string' && id) ids.push(id);
     }
   }
-  return ids;
+  // Dedupe: top/bottomTrades são subconjuntos de periodTrades e includedTradeIds repete —
+  // duplicata intra-review não é conflito (senão o mesmo trade "conflita" consigo mesmo).
+  return [...new Set(ids)];
 };
 
 /** Chave cronológica de uma review: closedAt → periodStart → weekStart → ''. */
@@ -73,7 +86,8 @@ const buildReviewMaps = (reviews) => {
   for (const r of closedDesc) {
     for (const id of r.ids) {
       if (discussedByTradeId.has(id)) {
-        conflicts.push({ tradeId: id, kept: discussedByTradeId.get(id), dropped: r.id });
+        const kept = discussedByTradeId.get(id);
+        if (kept !== r.id) conflicts.push({ tradeId: id, kept, dropped: r.id }); // só conflito REAL entre reviews distintas
       } else {
         discussedByTradeId.set(id, r.id);
       }
@@ -108,14 +122,22 @@ const buildReviewMaps = (reviews) => {
 
 /**
  * Estado-alvo de um trade. `status` = null significa "não tocar o status".
- * @returns {{reviewId:string|null, status:'DISCUSSED'|null}}
+ * `anchorToPlanDraft:true` = trade com feedback fora de review → a callable resolve o reviewId
+ * para o rascunho vigente do plano (criando-o se preciso).
+ * @param {string} tradeId
+ * @param {object} maps  retorno de buildReviewMaps
+ * @param {object} [trade]  doc do trade (precisa do `status` p/ detectar feedback)
+ * @returns {{reviewId:string|null, status:'DISCUSSED'|null, anchorToPlanDraft?:boolean}}
  */
-const targetReview = (tradeId, { discussedByTradeId, draftByTradeId }) => {
+const targetReview = (tradeId, { discussedByTradeId, draftByTradeId }, trade) => {
   if (discussedByTradeId.has(tradeId)) {
     return { reviewId: discussedByTradeId.get(tradeId), status: 'DISCUSSED' };
   }
   if (draftByTradeId.has(tradeId)) {
     return { reviewId: draftByTradeId.get(tradeId), status: null };
+  }
+  if (tradeHasFeedback(trade)) {
+    return { reviewId: null, status: null, anchorToPlanDraft: true };
   }
   return { reviewId: null, status: null };
 };
@@ -157,6 +179,8 @@ const tradeUpdateData = (target) => {
 
 module.exports = {
   CLOSED_STATUSES,
+  FEEDBACK_STATUSES,
+  tradeHasFeedback,
   collectDiscussedTradeIds,
   buildReviewMaps,
   chronoKey,

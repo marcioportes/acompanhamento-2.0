@@ -11,12 +11,17 @@
  *                            Safeguard D8: prova que o mentor rodou o dry-run e que nada
  *                            derivou entre dry-run e apply (sem precisar de collection de guard).
  *
+ * Trades legados COM feedback fora de qualquer review são ancorados no rascunho VIGENTE do
+ * plano (provisionado aqui se não existir) — invariante "rascunho aberto = feedback ∧ ≠DISCUSSED"
+ * também no legado, pra nada escapar da próxima reunião.
+ *
  * Input:  { dryRun?: boolean, studentId?: string, expectedChanges?: number }
  *         studentId escopa a um aluno (batches por aluno, §9.2). Ausente → todos.
  * Output: { dryRun, totalPlannedChanges, applied, students: [{studentId, tradeUpdates,
- *           reviewSeqUpdates, planPointerUpdates, conflicts}], conflicts: [...] }
+ *           reviewSeqUpdates, planPointerUpdates, reviewsCreated, orphanAnchored, conflicts}],
+ *           conflicts: [...] }
  *
- * @version 1.0 — issue #269
+ * @version 2.0 — issue #269 v2 (ancoragem de órfãos-com-feedback no rascunho vigente)
  */
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -28,8 +33,33 @@ const {
 
 const BATCH_SIZE = 400; // < limite 500 de ops por WriteBatch
 
+/** Doc de um rascunho aberto provisionado pela migration (espelha openReview.buildOpenReviewDoc,
+ *  mas marcado como origem backfill). period* nulos; weekStart/End = placeholder de ordenação. */
+function buildMigrationDraftDoc(studentId, planId, todayISO) {
+  return {
+    studentId,
+    planId,
+    cycleKey: null,
+    status: 'DRAFT',
+    sequenceNumber: null,
+    periodStart: null,
+    periodEnd: null,
+    weekStart: todayISO,
+    weekEnd: todayISO,
+    frozenSnapshot: null,
+    swot: null,
+    source: 'backfill',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdBy: 'system:migration',
+    closedAt: null,
+    archivedAt: null,
+    meetingLink: null,
+    videoLink: null,
+  };
+}
+
 /** Planeja (sem escrever) todas as mutações de UM aluno. */
-async function planForStudent(db, studentId) {
+async function planForStudent(db, studentId, todayISO) {
   const studentRef = db.collection('students').doc(studentId);
 
   const [reviewsSnap, tradesSnap, plansSnap] = await Promise.all([
@@ -42,26 +72,66 @@ async function planForStudent(db, studentId) {
   const maps = buildReviewMaps(reviews);
   const seqMap = assignSequenceNumbers(reviews);
 
-  const ops = []; // { ref, data }
+  const ops = []; // { ref, data, type? } — type 'set' cria doc novo; default = update
 
   // Reviews DRAFT existentes (para validar o fallback de draftReviewId legado).
   const draftReviewIds = new Set(
     reviewsSnap.docs.filter((r) => r.data().status === 'DRAFT').map((r) => r.id)
   );
+  // Planos vivos do aluno — só ancoramos órfãos em plano existente.
+  const alivePlanIds = new Set(plansSnap.docs.map((d) => d.id));
 
-  // Trades → reviewId (+ status=DISCUSSED quando em review fechada)
-  let tradeUpdates = 0;
+  // ── Passo 1: alvo base por trade + coleta dos órfãos-com-feedback por plano ──
+  // resolvedTargets guarda o alvo já decidido (exceto reviewId dos órfãos, resolvido no passo 2).
+  const resolvedTargets = new Map(); // tradeId → { ref, data, target }
+  const orphanByPlan = new Map();    // planId → [tradeId]
   for (const d of tradesSnap.docs) {
     const data = d.data();
-    let target = targetReview(d.id, maps);
-    // Fallback v1: rascunho legado guardava a associação no TRADE (draftReviewId), não no
-    // array da review. Se o trade não caiu em nenhuma review (lado-review vazio p/ DRAFTs)
-    // mas aponta para um DRAFT existente, preserva essa FK. Não toca status.
+    let target = targetReview(d.id, maps, data);
+    // Fallback v1: rascunho legado guardava a associação no TRADE (draftReviewId). Tem
+    // prioridade sobre a ancoragem genérica: é uma FK explícita para um DRAFT existente.
     if (target.reviewId === null && data.draftReviewId && draftReviewIds.has(data.draftReviewId)) {
       target = { reviewId: data.draftReviewId, status: null };
+    } else if (target.anchorToPlanDraft) {
+      // Órfão com feedback: vai pro rascunho vigente do plano (resolvido no passo 2).
+      if (data.planId && alivePlanIds.has(data.planId)) {
+        const list = orphanByPlan.get(data.planId) || [];
+        list.push(d.id);
+        orphanByPlan.set(data.planId, list);
+      } else {
+        // Sem plano vivo: não há rascunho onde ancorar → fica backlog (reviewId=null).
+        target = { reviewId: null, status: null };
+      }
     }
+    resolvedTargets.set(d.id, { ref: d.ref, data, target });
+  }
+
+  // ── Passo 2: provisiona o rascunho vigente por plano (reusa o DRAFT existente; cria se não houver) ──
+  const effectivePointers = new Map(maps.planPointers); // planId → reviewId DRAFT vigente
+  let reviewsCreated = 0;
+  for (const planId of orphanByPlan.keys()) {
+    if (!effectivePointers.has(planId)) {
+      const reviewRef = studentRef.collection('reviews').doc();
+      ops.push({ ref: reviewRef, data: buildMigrationDraftDoc(studentId, planId, todayISO), type: 'set' });
+      effectivePointers.set(planId, reviewRef.id);
+      reviewsCreated += 1;
+    }
+  }
+  // Resolve o reviewId dos órfãos agora que o draft do plano existe.
+  let orphanAnchored = 0;
+  for (const [planId, tradeIds] of orphanByPlan.entries()) {
+    const draftId = effectivePointers.get(planId);
+    for (const tid of tradeIds) {
+      resolvedTargets.get(tid).target = { reviewId: draftId, status: null };
+      orphanAnchored += 1;
+    }
+  }
+
+  // ── Passo 3: ops de trade (só quando difere do alvo) ──
+  let tradeUpdates = 0;
+  for (const { ref, data, target } of resolvedTargets.values()) {
     if (tradeNeedsUpdate(data, target)) {
-      ops.push({ ref: d.ref, data: tradeUpdateData(target) });
+      ops.push({ ref, data: tradeUpdateData(target) });
       tradeUpdates += 1;
     }
   }
@@ -76,10 +146,10 @@ async function planForStudent(db, studentId) {
     }
   }
 
-  // Plans → reconcilia activeDraftReviewId (seta o DRAFT ativo; limpa ponteiros órfãos)
+  // Plans → reconcilia activeDraftReviewId (inclui os drafts recém-provisionados).
   let planPointerUpdates = 0;
   for (const d of plansSnap.docs) {
-    const target = maps.planPointers.get(d.id) || null;
+    const target = effectivePointers.get(d.id) || null;
     const current = d.data().activeDraftReviewId ?? null;
     if (current !== target) {
       ops.push({ ref: d.ref, data: { activeDraftReviewId: target } });
@@ -93,6 +163,8 @@ async function planForStudent(db, studentId) {
     tradeUpdates,
     reviewSeqUpdates,
     planPointerUpdates,
+    reviewsCreated,
+    orphanAnchored,
     conflicts: maps.conflicts,
   };
 }
@@ -101,7 +173,11 @@ async function commitOps(db, ops) {
   for (let i = 0; i < ops.length; i += BATCH_SIZE) {
     const batch = db.batch();
     for (const op of ops.slice(i, i + BATCH_SIZE)) {
-      batch.update(op.ref, { ...op.data, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      if (op.type === 'set') {
+        batch.set(op.ref, op.data); // doc novo (createdAt já no payload)
+      } else {
+        batch.update(op.ref, { ...op.data, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      }
     }
     await batch.commit();
   }
@@ -120,6 +196,7 @@ module.exports = onCall(
     const expectedChanges = request.data?.expectedChanges;
 
     const db = admin.firestore();
+    const todayISO = new Date().toISOString().slice(0, 10); // placeholder weekStart dos drafts provisionados
 
     // Lista de alunos a processar.
     let studentIds;
@@ -134,7 +211,7 @@ module.exports = onCall(
     const allOps = [];
     const allConflicts = [];
     for (const sid of studentIds) {
-      const plan = await planForStudent(db, sid);
+      const plan = await planForStudent(db, sid, todayISO);
       allOps.push(...plan.ops);
       if (plan.conflicts.length) allConflicts.push(...plan.conflicts.map((c) => ({ studentId: sid, ...c })));
       perStudent.push({
@@ -142,6 +219,8 @@ module.exports = onCall(
         tradeUpdates: plan.tradeUpdates,
         reviewSeqUpdates: plan.reviewSeqUpdates,
         planPointerUpdates: plan.planPointerUpdates,
+        reviewsCreated: plan.reviewsCreated,
+        orphanAnchored: plan.orphanAnchored,
         conflicts: plan.conflicts.length,
       });
     }
@@ -154,7 +233,7 @@ module.exports = onCall(
         dryRun: true,
         applied: false,
         totalPlannedChanges,
-        students: perStudent.filter((s) => s.tradeUpdates || s.reviewSeqUpdates || s.planPointerUpdates || s.conflicts),
+        students: perStudent.filter((s) => s.tradeUpdates || s.reviewSeqUpdates || s.planPointerUpdates || s.reviewsCreated || s.orphanAnchored || s.conflicts),
         conflicts: allConflicts,
       };
     }
@@ -177,8 +256,13 @@ module.exports = onCall(
       dryRun: false,
       applied: true,
       totalPlannedChanges,
-      students: perStudent.filter((s) => s.tradeUpdates || s.reviewSeqUpdates || s.planPointerUpdates || s.conflicts),
+      students: perStudent.filter((s) => s.tradeUpdates || s.reviewSeqUpdates || s.planPointerUpdates || s.reviewsCreated || s.orphanAnchored || s.conflicts),
       conflicts: allConflicts,
     };
   }
 );
+
+// Reuso pelo runner de dry-run standalone (scripts/issue-269-migration-dryrun.mjs): mesma
+// lógica de planejamento da callable, sem deploy e sem duplicar regra.
+module.exports.planForStudent = planForStudent;
+module.exports.buildMigrationDraftDoc = buildMigrationDraftDoc;

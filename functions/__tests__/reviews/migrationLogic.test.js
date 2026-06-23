@@ -15,6 +15,7 @@ const {
   assignSequenceNumbers,
   tradeNeedsUpdate,
   tradeUpdateData,
+  tradeHasFeedback,
 } = require('../../reviews/migrationLogic');
 
 const closed = (id, opts = {}) => ({ id, status: 'CLOSED', ...opts });
@@ -40,6 +41,18 @@ describe('collectDiscussedTradeIds', () => {
     expect(collectDiscussedTradeIds({ id: 'X' })).toEqual([]);
     expect(collectDiscussedTradeIds({ frozenSnapshot: { periodTrades: [{ tradeId: 5 }, {}] } })).toEqual([]);
   });
+
+  it('dedupe: trade em periodTrades ∩ top/bottom ∩ includedTradeIds aparece uma vez só', () => {
+    const r = closed('R1', {
+      frozenSnapshot: {
+        periodTrades: [{ tradeId: 't1' }, { tradeId: 't2' }],
+        topTrades: [{ tradeId: 't1' }],
+        bottomTrades: [{ tradeId: 't2' }],
+      },
+      includedTradeIds: ['t1', 't2'],
+    });
+    expect(collectDiscussedTradeIds(r).sort()).toEqual(['t1', 't2']);
+  });
 });
 
 describe('buildReviewMaps + targetReview', () => {
@@ -52,6 +65,14 @@ describe('buildReviewMaps + targetReview', () => {
     expect(targetReview('t1', maps)).toEqual({ reviewId: 'R1', status: 'DISCUSSED' });
     expect(targetReview('t2', maps)).toEqual({ reviewId: 'R2', status: null });   // draft: status intocado
     expect(targetReview('t9', maps)).toEqual({ reviewId: null, status: null });   // backlog
+  });
+
+  it('duplicata intra-review (mesmo trade em periodTrades+includedTradeIds) NÃO vira conflito', () => {
+    const maps = buildReviewMaps([
+      closed('R1', { frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] }, includedTradeIds: ['t1'] }),
+    ]);
+    expect(targetReview('t1', maps)).toEqual({ reviewId: 'R1', status: 'DISCUSSED' });
+    expect(maps.conflicts).toEqual([]);
   });
 
   it('trade em duas reviews fechadas → vence a mais recente, conflito reportado', () => {
@@ -72,6 +93,43 @@ describe('buildReviewMaps + targetReview', () => {
     const maps = buildReviewMaps(reviews);
     expect(maps.planPointers.get('p1')).toBe('R-new');
     expect(maps.conflicts).toEqual([{ planId: 'p1', kept: 'R-new', dropped: 'R-old' }]);
+  });
+});
+
+describe('tradeHasFeedback', () => {
+  it('true para o fio de feedback (REVIEWED/QUESTION/CLOSED); false p/ OPEN, DISCUSSED, ausente', () => {
+    expect(tradeHasFeedback({ status: 'REVIEWED' })).toBe(true);
+    expect(tradeHasFeedback({ status: 'QUESTION' })).toBe(true);
+    expect(tradeHasFeedback({ status: 'CLOSED' })).toBe(true);
+    expect(tradeHasFeedback({ status: 'OPEN' })).toBe(false);
+    expect(tradeHasFeedback({ status: 'DISCUSSED' })).toBe(false);
+    expect(tradeHasFeedback(undefined)).toBe(false);
+    expect(tradeHasFeedback({})).toBe(false);
+  });
+});
+
+describe('targetReview — ancoragem de órfão-com-feedback (#269 v2)', () => {
+  it('trade COM feedback fora de qualquer review → anchorToPlanDraft (callable resolve o reviewId)', () => {
+    const maps = buildReviewMaps([]);
+    expect(targetReview('t1', maps, { status: 'REVIEWED' }))
+      .toEqual({ reviewId: null, status: null, anchorToPlanDraft: true });
+    expect(targetReview('t2', maps, { status: 'CLOSED' }))
+      .toEqual({ reviewId: null, status: null, anchorToPlanDraft: true });
+  });
+
+  it('trade OPEN (sem feedback) fora de review → backlog, sem ancorar', () => {
+    const maps = buildReviewMaps([]);
+    expect(targetReview('t1', maps, { status: 'OPEN' })).toEqual({ reviewId: null, status: null });
+  });
+
+  it('review fechada vence o feedback: trade discutido → DISCUSSED mesmo com status de fio', () => {
+    const maps = buildReviewMaps([closed('R1', { frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } })]);
+    expect(targetReview('t1', maps, { status: 'CLOSED' })).toEqual({ reviewId: 'R1', status: 'DISCUSSED' });
+  });
+
+  it('trade já num DRAFT existente → ramo draft, sem ancoragem genérica', () => {
+    const maps = buildReviewMaps([draft('R2', { planId: 'p1', frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } })]);
+    expect(targetReview('t1', maps, { status: 'REVIEWED' })).toEqual({ reviewId: 'R2', status: null });
   });
 });
 
