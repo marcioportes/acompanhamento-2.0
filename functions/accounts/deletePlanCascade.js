@@ -16,12 +16,13 @@
  *   trades (por planId) →
  *   orders (por planId) →
  *   cycleClosures (por planId) →
+ *   reviews (subcollection students/{studentId}/reviews, por planId — #269 v2) →
  *   plan.
  *
  * Cada coleção em batches de 400 (limite 500/batch).
  *
  * Input:  { planId: string }
- * Output: { deleted: { movements, trades, orders, cycleClosures, plan }, total: number }
+ * Output: { deleted: { movements, trades, orders, cycleClosures, reviews, plan }, total: number }
  *
  * Issue #259 fast-follow — paralelo a deleteAccountCascade.
  */
@@ -97,11 +98,22 @@ module.exports = onCall(
     const closuresSnap = await db.collection('cycleClosures').where('planId', '==', planId).get();
     const closureRefs = closuresSnap.docs.map((d) => d.ref);
 
+    // #269 v2 — reviews semanais vivem em students/{studentId}/reviews com FK planId.
+    // Cascade impede revisões órfãs quando o plano some.
+    const reviewRefs = [];
+    if (plan.studentId) {
+      const reviewsSnap = await db
+        .collection('students').doc(plan.studentId).collection('reviews')
+        .where('planId', '==', planId).get();
+      reviewsSnap.docs.forEach((d) => reviewRefs.push(d.ref));
+    }
+
     const counts = {
       movements:     await deleteDocsInBatches(db, movementRefs),
       trades:        await deleteDocsInBatches(db, tradeRefs),
       orders:        await deleteDocsInBatches(db, orderRefs),
       cycleClosures: await deleteDocsInBatches(db, closureRefs),
+      reviews:       await deleteDocsInBatches(db, reviewRefs),
       plan:          0,
     };
 
