@@ -262,7 +262,8 @@ module.exports = onCall(
   }
 );
 
-// Reuso pelo runner de dry-run standalone (scripts/issue-269-migration-dryrun.mjs): mesma
-// lógica de planejamento da callable, sem deploy e sem duplicar regra.
+// Reuso pelos runners standalone (scripts/issue-269-migration-{dryrun,apply}.mjs): mesma
+// lógica de planejamento E de commit da callable, sem deploy e sem duplicar regra.
 module.exports.planForStudent = planForStudent;
 module.exports.buildMigrationDraftDoc = buildMigrationDraftDoc;
+module.exports.commitOps = commitOps;
