@@ -1362,15 +1362,23 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     const enteredReviewed = before.status !== 'REVIEWED' && after.status === 'REVIEWED';
     if (enteredReviewed && !after.reviewId && after.studentId && after.planId) {
       try {
-        const { getOrCreateOpenReview, carryOverOpenTakeaways } = require('./reviews/openReview');
-        const todayISO = new Date().toISOString().slice(0, 10);
-        const { reviewId, created } = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
-        await change.after.ref.update({ reviewId });
-        if (created) {
-          try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
-          catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
+        // Filtro matriz (#269): Revisão é só do track Alpha (alpha + trial-alpha), definido
+        // pelo PLANO/subscription do aluno. Fora disso (Espelho, VIP, sem-sub) o feedback não
+        // cria revisão — não há dupla. Self-review por IA (futuro) é outro caminho, não ancora aqui.
+        const { studentInReviewScope } = require('./_shared/studentClassify');
+        if (!(await studentInReviewScope(db, after.studentId))) {
+          console.log(`[onTradeUpdated] trade ${context.params.tradeId}: aluno ${after.studentId} fora do escopo de Revisão (não-alpha/trial) — sem ancoragem`);
+        } else {
+          const { getOrCreateOpenReview, carryOverOpenTakeaways } = require('./reviews/openReview');
+          const todayISO = new Date().toISOString().slice(0, 10);
+          const { reviewId, created } = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
+          await change.after.ref.update({ reviewId });
+          if (created) {
+            try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
+            catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
+          }
+          console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
         }
-        console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
       } catch (anchorErr) {
         console.error('[onTradeUpdated] getOrCreateOpenReview falhou:', anchorErr);
       }

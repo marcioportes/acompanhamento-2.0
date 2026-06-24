@@ -62,6 +62,13 @@ function buildMigrationDraftDoc(studentId, planId, todayISO) {
 async function planForStudent(db, studentId, todayISO) {
   const studentRef = db.collection('students').doc(studentId);
 
+  // Filtro matriz (#269): só track Alpha (alpha + trial-alpha) tem Revisão. Aluno fora de
+  // escopo não recebe ancoragem nem rascunho — re-run não reinjeta pauta de quem não está na dupla.
+  const { studentInReviewScope } = require('../_shared/studentClassify');
+  if (!(await studentInReviewScope(db, studentId))) {
+    return { studentId, ops: [], tradeUpdates: 0, reviewSeqUpdates: 0, planPointerUpdates: 0, reviewsCreated: 0, orphanAnchored: 0, conflicts: [] };
+  }
+
   const [reviewsSnap, tradesSnap, plansSnap] = await Promise.all([
     studentRef.collection('reviews').get(),
     db.collection('trades').where('studentId', '==', studentId).get(),

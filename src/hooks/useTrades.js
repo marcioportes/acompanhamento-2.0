@@ -34,6 +34,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
 import { calculateFromPartials, calculateAssumedRR } from '../utils/tradeCalculations';
 import { createTrade } from '../utils/tradeGateway';
+import { classifyStudent, inReviewScope } from '../utils/studentClassify';
+
+/**
+ * Filtro matriz (#269): mentor só dá feedback a aluno do track Alpha (alpha + trial-alpha),
+ * definido pelo plano/subscription. Lança se fora de escopo. Lê subs sob demanda.
+ */
+async function assertStudentInReviewScope(studentId) {
+  if (!studentId) throw new Error('Trade sem studentId — feedback bloqueado');
+  const subsSnap = await getDocs(collection(db, 'students', studentId, 'subscriptions'));
+  if (!inReviewScope(classifyStudent(subsSnap.docs.map((d) => d.data())))) {
+    throw new Error('Feedback disponível apenas para alunos Alpha ou Trial-Alpha (em dupla com o mentor).');
+  }
+}
 
 // Status constants
 const STATUS = {
@@ -463,7 +476,10 @@ export const useTrades = (overrideStudentId = null) => {
     
     const trade = tradeSnap.data();
     const userIsMentor = isMentor();
-    
+
+    // Filtro matriz (#269): mentor só dá feedback a aluno em dupla (alpha/trial-alpha).
+    if (userIsMentor) await assertStudentInReviewScope(trade.studentId);
+
     // Determina o novo status
     let newStatus = trade.status;
     if (userIsMentor) {
@@ -534,6 +550,10 @@ export const useTrades = (overrideStudentId = null) => {
   const addBulkFeedback = useCallback(async (tradeIds, content) => {
     if (!user || !isMentor()) throw new Error('Apenas mentores');
     if (!tradeIds?.length || !content?.trim()) throw new Error('IDs e conteúdo obrigatórios');
+
+    // Filtro matriz (#269): todos do mesmo aluno (contrato do bulk); valida o escopo uma vez.
+    const firstSnap = await getDoc(doc(db, 'trades', tradeIds[0]));
+    if (firstSnap.exists()) await assertStudentInReviewScope(firstSnap.data().studentId);
 
     const batch = writeBatch(db);
     const now = new Date().toISOString();
