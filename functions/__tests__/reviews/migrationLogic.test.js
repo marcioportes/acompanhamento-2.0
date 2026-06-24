@@ -131,6 +131,16 @@ describe('targetReview — ancoragem de órfão-com-feedback (#269 v2)', () => {
     const maps = buildReviewMaps([draft('R2', { planId: 'p1', frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } })]);
     expect(targetReview('t1', maps, { status: 'REVIEWED' })).toEqual({ reviewId: 'R2', status: null });
   });
+
+  it('DISCUSSED com FK setada (publicação go-forward, fora do snapshot) NÃO regride — re-run não zera reviewId', () => {
+    const maps = buildReviewMaps([]); // review go-forward não materializa membros no snapshot
+    expect(targetReview('t1', maps, { status: 'DISCUSSED', reviewId: 'Rgf' }))
+      .toEqual({ reviewId: 'Rgf', status: 'DISCUSSED' });
+    // a FK vence até quando o snapshot de outra review fechada aponta para id diferente
+    const maps2 = buildReviewMaps([closed('R2', { frozenSnapshot: { periodTrades: [{ tradeId: 't1' }] } })]);
+    expect(targetReview('t1', maps2, { status: 'DISCUSSED', reviewId: 'Rgf' }))
+      .toEqual({ reviewId: 'Rgf', status: 'DISCUSSED' });
+  });
 });
 
 describe('assignSequenceNumbers', () => {

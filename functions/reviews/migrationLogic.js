@@ -130,6 +130,12 @@ const buildReviewMaps = (reviews) => {
  * @returns {{reviewId:string|null, status:'DISCUSSED'|null, anchorToPlanDraft?:boolean}}
  */
 const targetReview = (tradeId, { discussedByTradeId, draftByTradeId }, trade) => {
+  // Terminal imortal: trade já DISCUSSED com FK setada (publicação go-forward, cujo membro
+  // NÃO vive no frozenSnapshot) nunca regride. A FK é a fonte da verdade do pertencimento —
+  // sem isto um re-run da migration zeraria reviewId desses trades (corrupção).
+  if (trade?.status === 'DISCUSSED' && trade?.reviewId) {
+    return { reviewId: trade.reviewId, status: 'DISCUSSED' };
+  }
   if (discussedByTradeId.has(tradeId)) {
     return { reviewId: discussedByTradeId.get(tradeId), status: 'DISCUSSED' };
   }
