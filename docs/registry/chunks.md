@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-11 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | humanizar Evidência técnica do BehaviorPanel |
