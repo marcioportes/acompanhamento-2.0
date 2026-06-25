@@ -7,7 +7,7 @@
 | Function | Trigger | Responsabilidade |
 |----------|---------|-----------------|
 | `onTradeCreated` | `trades` onCreate | Atualiza PL do plano + compliance stats + emotional scoring. **Debt crítico:** dispara em trades `IMPORTED`, corrompendo PL. |
-| `onTradeUpdated` | `trades` onUpdate | Recalcula PL, compliance, maturity (v1.43.0). |
+| `onTradeUpdated` | `trades` onUpdate | Recalcula PL, compliance, maturity (v1.43.0). **#269 v2:** na 1ª transição `OPEN→REVIEWED` ancora `trade.reviewId` (`getOrCreateOpenReview`) — **único chokepoint** da relação trade↔revisão semanal. **Filtro matriz:** só ancora se o aluno está no escopo da Revisão (`studentInReviewScope` = bucket `{alpha, trial-alpha}`); fora disso pula. |
 | `onTradeDeleted` | `trades` onDelete | Reverte PL + recalcula compliance. |
 
 ## Hard seal de trades (CHUNK-04, #259, v1.64.0)
@@ -35,7 +35,16 @@
 | `reopenCycle` | Deleta o closure doc + restaura plano via `preClosePlanSnapshot` (pl, RO, RR, 4 metas) + remove range do `sealedCycleRanges` + decrementa `currentCycleNumber` + recua `lastCycleClosureId` | **Gate de cadeia (#259):** só aceita reabrir o último closure (`plan.lastCycleClosureId === closureId`). Closures pre-C3 sem `preClosePlanSnapshot` logam warning e mantêm plan como está (DT). |
 | `setMentorClosureComment` | Mentor escreve `closure.mentor.closingComment` + `closingCommentAt`. Comment vazio = "no comment" (item sai do inbox). | Janela operacional de 7d pós-close. |
 | `deleteAccountCascade` | Apaga conta em 7 estágios: movements → trades → orders → cycleClosures → plans → account (em batches). | Resolve órfãos que ficavam por rules `allow delete: if false` no client. |
-| `deletePlanCascade` | Apaga plano + trades/orders/movements/cycleClosures vinculados. | Mesma motivação do anterior. |
+| `deletePlanCascade` | Apaga plano + trades/orders/movements/cycleClosures **+ reviews** (`students/{uid}/reviews` por `planId`, #269 v2) vinculados. | Cascade de reviews evita revisões órfãs de plano morto. `deleteAccountCascade` idem para todos os planos da conta. |
+
+## Callables — Revisão semanal v2 (CHUNK-04/08/16, #269/#262, v1.76.0)
+
+| Function | Uso | Notas |
+|----------|-----|-------|
+| `getOrCreateOpenReview` | **Interno** (chamado por `onTradeUpdated`): retorna a revisão DRAFT aberta do plano, criando-a sob demanda. Idempotente via `plan.activeDraftReviewId` (transação no doc do plano). | Substitui o antigo `createReviewDraft` manual. Carrega carry-over de takeaways abertos. |
+| `publishReview` | DRAFT→CLOSED: `sequenceNumber`, congela `frozenSnapshot`, marca **todos** os membros (`reviewId==id`) `status=DISCUSSED`, limpa `plan.activeDraftReviewId`. | Não toca `reviewId` (já setado). Mentor-only. |
+| `setMentorSwotStyle` | Grava `mentorConfig/{uid}.swotStyle` (tom/foco/profundidade) — #262. | Consumido por `generateWeeklySwot` via `swotPromptBuilder`. |
+| `migrateReviewStateBackfill` | Migração retroativa (dry-run + safeguard D8 `expectedChanges`): preenche `trade.reviewId` (+`status=DISCUSSED` p/ reviews fechadas), provisiona rascunho vigente p/ órfãos-com-feedback, reconcilia `sequenceNumber`/ponteiros. Pula aluno fora de escopo. | One-time #269. Idempotente; blinda `DISCUSSED` contra re-run. |
 | `deleteStudent` | Hard delete LGPD-like do aluno: subcollections recursivas de `students/{sid}/*` + top-level por `studentId` (trades, orders, notifications, plans, csvStaging, csvStagingTrades, accounts, crossCheck, **cycleClosures**) + **movements por accountId** (DEP/WTD/INITIAL_BALANCE/ADJUSTMENT só têm accountId) **e por studentId** (TRADE_RESULT órfão) + **Storage** `trades/{tradeId}/` best-effort + doc + Auth user. Cascata em `functions/students/deleteStudentData.js` (testável). | Mentor-only. `timeoutSeconds: 300` (#309). Storage best-effort não aborta (DEC-AUTO-309-01). |
 
 ## Schedule

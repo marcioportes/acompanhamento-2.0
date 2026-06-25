@@ -17,7 +17,11 @@
   - `_unlockedAt: Timestamp` (opcional) — quando o lock foi removido.
   - `_unlockedBy: { uid, email, reason }` (opcional) — autor + motivo. Import preserva auditoria com `reason: 'import:<batchId>'` (DEC-AUTO-188-03 — broker > mentor; CF `onTradeUpdated` destrava server-side quando `importBatchId` muda).
 - **Perfil comportamental consolidado (`behaviorProfile`, Fase 2 #301, INV-15 / DEC-AUTO-301-04):** campo INLINE (snapshot do motor `detectBehavior`) — `{ version, engineMeta, families[], gateInputs[], scoreContribution, computedAt, computedBy, resolution, orderCount, fingerprint }`. Escrita só por CFs (admin SDK) no recompute on-create/on-update + backfill; `fingerprint` evita write redundante (fora do guard de `onTradeUpdated` → não re-dispara). **Read mentor + aluno** (educativo). Supersede a renderização de `shadowBehavior`/execution patterns na UI; `shadowBehavior` segue escrito 1 ciclo (transição). Compliance (`redFlags`) permanece campo separado.
-- **Espelho / auto-revisão (`selfReview`, #308, v1.75.0):** campo INLINE (não subcollection, DEC-AUTO-308-01) — `{ wouldRepeat: boolean, answers: { [questionId]: string }, createdAt, createdBy }`. Escrito pelo aluno dono via gateway `submitTradeReview` (INV-02). Rules: gravável só pelo dono, **isento do seal #259** (delta só `selfReview`+`updatedAt`), **imutável após** `reviewState=DISCUSSED` (#269). Quadrante e confronto declarado × detectado são derivados em display-time (não persistidos).
+- **Espelho / auto-revisão (`selfReview`, #308, v1.75.0):** campo INLINE (não subcollection, DEC-AUTO-308-01) — `{ wouldRepeat: boolean, answers: { [questionId]: string }, createdAt, createdBy }`. Escrito pelo aluno dono via gateway `submitTradeReview` (INV-02). Rules: gravável só pelo dono, **isento do seal #259** (delta só `selfReview`+`updatedAt`), **imutável após** `status=DISCUSSED` (#269 v2). Quadrante e confronto declarado × detectado são derivados em display-time (não persistidos).
+- **Revisão semanal — FK única (`reviewId` + `status`, #269 v2, v1.76.0):** modelo normalizado que substitui o efêmero `reviewState`/`draftReviewId`/`review.includedTradeIds` (todos REMOVIDOS).
+  - `reviewId: string | null` — FK **imortal** para a revisão semanal (`students/{uid}/reviews/{id}`). `null` = backlog ("ainda não revisado"). Carimbada **uma vez** na 1ª transição `OPEN→REVIEWED` (1º feedback do mentor, individual ou bulk), via trigger `onTradeUpdated → getOrCreateOpenReview`. Nunca apagada (nem no publish). Pertencimento da pauta = `trades WHERE reviewId == id`.
+  - `status` ganha terminal **`DISCUSSED`** (`OPEN → REVIEWED ⇄ QUESTION → CLOSED → (publicação) → DISCUSSED`). Imutável após DISCUSSED (rules + `onTradeUpdated` + `submitTradeReview`). A publicação (`publishReview`) força todos os membros a `DISCUSSED`.
+  - **Filtro matriz (#269):** `reviewId` só é ancorado para aluno no escopo da Revisão = bucket `{alpha, trial-alpha}` (`classifyStudent` sobre subscriptions; `functions/_shared/studentClassify.js`). Espelho/VIP/sem-sub não geram revisão; `onTradeUpdated` pula a ancoragem e `useTrades` bloqueia o feedback do mentor.
 - **Consumers:** `StudentDashboard`, `TradingCalendar`, `AccountStatement`, `FeedbackPage`, `PlanLedgerExtract`, `MentorDashboard`.
 
 ### `plans`
@@ -57,9 +61,12 @@
 ### `orders` (staging de ordens brutas)
 - Parse ProfitChart-Pro, cross-check (CHUNK-10, `tradeGateway`)
 
-### `reviews`
+### `reviews` (`students/{uid}/reviews/{id}`)
 - Evento persistido (DEC-045) com `maturitySnapshot` congelado no fechamento (v1.43.0)
 - Campos `meetingLink`/`videoLink` são **metadata operacional** (DEC-AUTO-197-01, v1.46.1) — editáveis por mentor em DRAFT e CLOSED via `useWeeklyReviews.updateMeetingLinks`. Não fazem parte do `frozenSnapshot`. ARCHIVED bloqueia.
+- **#269 v2 (v1.76.0):** pertencimento = `trades WHERE reviewId == id` (acabou `includedTradeIds`). A revisão DRAFT **nasce sob demanda** no 1º feedback (`getOrCreateOpenReview`, idempotente via ponteiro `plan.activeDraftReviewId`); `source` ∈ `backlog`|`backfill`. `publishReview`: DRAFT→CLOSED + `sequenceNumber` + `frozenSnapshot` + marca membros `status=DISCUSSED` + limpa o ponteiro. Não há mais ação de UI "criar/descartar rascunho". Cascade: `deletePlanCascade`/`deleteAccountCascade` apagam as reviews do plano.
+- **`plan.activeDraftReviewId: string | null`** (CHUNK-03, #269): ponteiro denormalizado da revisão DRAFT vigente do plano — lido por ID na transação do gateway (client não faz query). Setado em `getOrCreateOpenReview`, limpo no `publishReview`.
+- **`mentorConfig/{mentorUid}.swotStyle`** (#262, v1.76.0): estilo do prompt da SWOT semanal (tom/foco/profundidade, neutro=2), global por mentor. Escrito por `setMentorSwotStyle`; consumido por `generateWeeklySwot` via `swotPromptBuilder`.
 
 ## Subcollections
 
