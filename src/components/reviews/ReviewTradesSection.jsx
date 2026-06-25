@@ -158,7 +158,7 @@ const ReviewTradesSection = ({
                     <button
                       onClick={() => toggleMirror(t.tradeId)}
                       className={`p-0.5 rounded transition-colors ${mirrorOpen ? 'text-emerald-400' : 'text-slate-500 hover:text-emerald-400'}`}
-                      title={mirrorOpen ? 'Recolher o Espelho (auto-revisão do aluno)' : 'Ver o Espelho (auto-revisão do aluno)'}
+                      title={mirrorOpen ? 'Recolher a reflexão do aluno' : 'Ver a reflexão do aluno'}
                     >
                       <ClipboardCheck className="w-3.5 h-3.5" />
                     </button>

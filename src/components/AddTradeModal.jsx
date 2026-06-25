@@ -831,8 +831,8 @@ const AddTradeModal = ({
         <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl my-8 shadow-2xl flex flex-col max-h-[90vh]">
           <div className="flex-none flex items-center justify-between p-4 border-b border-slate-800">
             <div>
-              <h2 className="text-xl font-bold text-white">Trade registrado · Espelho</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Reflita sobre a decisão, sem se prender ao resultado.</p>
+              <h2 className="text-xl font-bold text-white">Reflexão sobre o trade</h2>
+              <p className="text-sm text-slate-500 mt-0.5">Analise a decisão que tomou — o que a motivou e se você a repetiria, independente do resultado.</p>
             </div>
             <button onClick={closeAll} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
           </div>
