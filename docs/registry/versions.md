@@ -52,3 +52,4 @@
 | 1.74.1 | #309 | `fix/issue-309-deletestudent-orphans` | 10/06/2026 | consumida (PR #310 squash `8c3091ef`) |
 | 1.75.0 | #308 | `feat/issue-308-trade-self-review` | 10/06/2026 | consumida (PR #311 squash `6602b815`) |
 | 1.76.0 | #269 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | consumida (PR #312 squash `7bc7eb57`) |
+| 1.77.0 | #313 | `feat/issue-313-espelho-na-entrada` | 24/06/2026 | reservada |

@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-04 | #313 | `feat/issue-313-espelho-na-entrada` | 24/06/2026 | espelho-entrada |
