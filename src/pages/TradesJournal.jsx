@@ -147,10 +147,10 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
     setIsSubmitting(true);
     try {
-      if (editingTrade) await updateTrade(editingTrade.id, tradeData, htfFile, ltfFile);
-      else await addTrade(tradeData, htfFile, ltfFile);
-      setShowAddModal(false);
-      setEditingTrade(null);
+      if (editingTrade) { await updateTrade(editingTrade.id, tradeData, htfFile, ltfFile); return null; }
+      // #313: retorna o trade criado p/ o AddTradeModal abrir o Espelho no registro.
+      // O fechamento passa a ser do modal (onClose), não daqui.
+      return await addTrade(tradeData, htfFile, ltfFile);
     } finally { setIsSubmitting(false); }
   };
 
