@@ -1,46 +1,35 @@
-# Issue #315 — feat: humanizar "Evidência técnica" do BehaviorPanel
+# Issue #315 — feat: Evidência técnica do BehaviorPanel visível só pro mentor
 
 > Template enxuto (R4). Fast-track autorizado por Marcio (25/06/2026).
 
 ## Autorização
 
 **Status atual do documento:**
-- [x] Mockup apresentado (tabela antes→depois no chat + body do issue)
-- [x] Memória de cálculo — N/A (sem fórmula; só mapeamento rótulo + formatação)
-- [x] Marcio autorizou — 25/06/2026 "abre a issue fast-track"
+- [x] Mockup — N/A (esconde elemento existente; sem UI nova)
+- [x] Memória de cálculo — N/A (sem fórmula)
+- [x] Marcio autorizou — 25/06/2026 "rebaixa pra opção 1, ajusta o escopo da issue, só mentor vê"
 - [x] Gate Pré-Código liberado
 
 ## Context
 
 O accordion "Evidência técnica" do `BehaviorPanel` despeja campos crus do schema do
-motor comportamental (`intervalMinutes`, `previousSide`, `actualRR: 0.11538…`). Sem o
-dicionário de dados, o aluno não entende o que aquilo diz sobre o que ele fez.
-Objetivo: substituir o dump por rótulos PT-BR + valores formatados, mantendo a
-transparência do diagnóstico.
+motor (`intervalMinutes`, `actualRR: 0.11538…`, `hiddenRrInflation`). Painel colapsado,
+atrás da narrativa que já é humanizada. Avaliação de ROI (25/06): humanizar o universo
+de campos é over-engineering com cauda de manutenção num epic ativo (CHUNK-11).
+**Decisão:** evidência crua vira mentor-only; aluno fica só com a narrativa.
 
 ## Spec
 Ver issue body no GitHub: #315.
 
 ## Mockup
-Accordion mantém o mesmo layout (grid 2 colunas), trocando `key: rawValue` por
-`Rótulo PT-BR: valor formatado`. Título "Evidência técnica" → menos intimidador
-("Os números por trás" / "Como cheguei nisso" — decidir na implementação).
-Exemplos (DIRECTION_FLIP):
-- Tempo desde o trade anterior: 7,9 min
-- Operação anterior: Compra · Resultado anterior: −R$ 49,00
-- Esta operação: Venda · Ativo: WINM26
+N/A — esconde bloco existente do aluno. Sem layout novo.
 
 ## Memória de Cálculo
-N/A — sem cálculo. Apenas:
-- Dicionário `EVIDENCE_FIELD_LABELS` (key → { label, format }).
-- Formatadores: moeda (`formatCurrencyDynamic`), %, min, lado (LONG→Compra/SHORT→Venda),
-  RR (2 casas). Campo não-mapeado → fallback (oculta campos só-de-motor:
-  `scenario`, `hiddenRrInflation`, `planRsDelivered`, `rrLocalAchieved`).
+N/A.
 
 ## Phases
-- A1 — Dicionário de rótulos + formatadores em `behaviorDisplay.jsx` + testes (INV-05)
-- A2 — Componente `EvidenceTechnical` compartilhado; trocar dump em `BehaviorPanel.jsx` e `UndersizedBody`
-- A3 — Revisar título do bloco + build verde
+- A1 — Testes (INV-05): aluno NÃO vê "Evidência técnica" ao expandir; mentor vê
+- A2 — `BehaviorPanel.jsx`: gate do bloco atrás de `isMentor`; `UndersizedBody` recebe e gateia `isMentor`; atualizar comentário de cabeçalho
 
 ## Sessions
 - _(a preencher)_
