@@ -435,11 +435,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     try {
       if (editingTrade) {
         await updateTrade(editingTrade.id, tradeData, htfFile, ltfFile);
-      } else {
-        await addTrade(tradeData, htfFile, ltfFile);
+        return null;
       }
-      setShowAddModal(false);
-      setEditingTrade(null);
+      // #313: retorna o trade criado p/ o AddTradeModal abrir o Espelho no registro.
+      // Fechamento passa a ser do modal (onClose).
+      return await addTrade(tradeData, htfFile, ltfFile);
     } catch (error) {
       console.error('Erro ao salvar trade:', error);
       // Re-throw pro AddTradeModal pegar e renderizar inline (glass-card vermelho).
