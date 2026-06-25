@@ -165,6 +165,49 @@ describe('BehaviorPanel', () => {
     expect(screen.getByText(/tradeDurationMinutes:/)).toBeInTheDocument();
   });
 
+  it('#315: aluno (isMentor=false) expande mas NÃO vê "Evidência técnica" — só a narrativa', () => {
+    const t = {
+      id: 'T3b', currency: 'USD',
+      behaviorProfile: {
+        version: '1.0.0', gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        families: [{
+          family: 'HOLD_ASYMMETRY', canonicalCode: 'HOLD_ASYMMETRY', severity: 'HIGH', source: 'shadow',
+          resolutionLayer: 'LOW', emotionMapping: 'FEAR', valence: 'negative', isGate: false, confidence: 0.95,
+          evidence: { tradeDurationMinutes: 60, avgWinDurationMinutes: 5, ratio: 12 },
+        }],
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor={false} embedded />);
+    fireEvent.click(screen.getByText(/Você segurou este trade por 60 min/));
+    expect(screen.queryByText('Evidência técnica')).not.toBeInTheDocument();
+    expect(screen.queryByText(/tradeDurationMinutes:/)).not.toBeInTheDocument();
+    // narrativa permanece
+    expect(screen.getByText(/Você segurou este trade por 60 min/)).toBeInTheDocument();
+  });
+
+  it('#315: aluno (isMentor=false) no SUB_SIZING não vê o accordion cru, mas vê o texto educacional', () => {
+    const t = {
+      id: 'T3c', currency: 'BRL',
+      behaviorProfile: {
+        version: '1.0.0', gateInputs: [], scoreContribution: { tilt: false, revenge: false },
+        families: [{
+          family: 'SUB_SIZING', canonicalCode: 'SUB_SIZING', severity: 'HIGH', source: 'shadow',
+          resolutionLayer: 'LOW', emotionMapping: 'AVOIDANCE', valence: 'negative', isGate: true, confidence: 0.9,
+          evidence: {
+            scenario: 'WIN_RR_MISS', planRrTarget: 2, utilizationPct: 26, planRoAmount: 200,
+            actualRiskAmount: 52, expectedGainAtPlanRR: 400, actualGain: 6, planRsDelivered: 0.03,
+          },
+        }],
+      },
+    };
+    render(<BehaviorPanel trade={t} isMentor={false} embedded />);
+    fireEvent.click(screen.getByText('⚠ Operação subdimensionada')); // título do card (desambigua da frase-chave)
+    expect(screen.queryByText('Evidência técnica')).not.toBeInTheDocument();
+    expect(screen.queryByText(/utilizationPct:/)).not.toBeInTheDocument();
+    // texto educacional (prosa) permanece
+    expect(screen.getByText(/abaixo do alvo do próprio trade/)).toBeInTheDocument();
+  });
+
   it('cai na descrição (prosa) quando faltam campos da narrativa — nunca dump cru', () => {
     const t = {
       id: 'T4', currency: 'USD',

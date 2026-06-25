@@ -4,8 +4,9 @@
  * Substitui ShadowBehaviorPanel + ExecutionPatternsPanel + redFlags inline.
  *
  * Hierarquia: ① Adesão ao plano (fato) → ② Padrões comportamentais (opinião/motor) →
- * ③ Trava de gate → camada do mentor (slot). Aluno vê os dados; só os controles de
- * limpar violação / editar são gated por isMentor (decisão Marcio: aluno vê tudo).
+ * ③ Trava de gate → camada do mentor (slot). Aluno vê a narrativa humanizada; os
+ * controles de limpar violação / editar E o accordion "Evidência técnica" cru são
+ * mentor-only (isMentor) — #315: o dump de campos do schema não tem leitura pro aluno.
  */
 import React, { useState } from 'react';
 import { AlertTriangle, Lock } from 'lucide-react';
@@ -64,12 +65,13 @@ const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolati
       </div>
 
       {isUndersized ? (
-        <UndersizedBody evidence={family.evidence || {}} currency={currency} expanded={expanded} />
+        <UndersizedBody evidence={family.evidence || {}} currency={currency} expanded={expanded} isMentor={isMentor} />
       ) : (
         <>
           {/* Narrativa semântica (não despeja campos técnicos) — o aluno lê o que aconteceu. */}
           <p className="text-xs text-zinc-300 mt-1 leading-relaxed">{narrativeFor({ ...family, currency })}</p>
-          {expanded && family.evidence && Object.keys(family.evidence).length > 0 && (
+          {/* Evidência técnica crua é mentor-only (#315): campos do schema do motor não têm leitura pro aluno. */}
+          {isMentor && expanded && family.evidence && Object.keys(family.evidence).length > 0 && (
             <div className="mt-3 pt-2 border-t border-white/10">
               <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Evidência técnica</p>
               <div className="grid grid-cols-2 gap-1">
