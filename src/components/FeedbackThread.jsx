@@ -23,7 +23,8 @@ const TRADE_STATUS = {
   OPEN: 'OPEN',
   REVIEWED: 'REVIEWED',
   QUESTION: 'QUESTION',
-  CLOSED: 'CLOSED'
+  CLOSED: 'CLOSED',
+  DISCUSSED: 'DISCUSSED'   // #269 v2 — terminal: discutido na revisão (read-only, igual CLOSED)
 };
 
 const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor = false, currency = 'BRL' }) => {
@@ -45,7 +46,7 @@ const FeedbackThread = ({ trade, onAddComment, onCloseTrade, loading, isMentor =
     setIsQuestion(false);
   };
 
-  const canComment = trade.status !== TRADE_STATUS.CLOSED;
+  const canComment = trade.status !== TRADE_STATUS.CLOSED && trade.status !== TRADE_STATUS.DISCUSSED;
   const canClose = trade.status === TRADE_STATUS.REVIEWED && !isMentor;
   const canQuestion = trade.status === TRADE_STATUS.REVIEWED && !isMentor;
   const canReply = isMentor && (trade.status === TRADE_STATUS.OPEN || trade.status === TRADE_STATUS.QUESTION);

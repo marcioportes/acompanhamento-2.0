@@ -83,6 +83,14 @@ export const tierGroup = (bucket) => {
 };
 
 /**
+ * Escopo da Revisão (#269) — só o track Alpha (alpha pago + trial de alpha). Espelho
+ * (pago ou trial), VIP e sem-sub ficam fora. "Filtro matriz": mentor só dá feedback /
+ * Revisão só nasce para quem está na dupla. Paridade com functions/_shared/studentClassify.js.
+ */
+const REVIEW_SCOPE_BUCKETS = new Set(['alpha', 'trial-alpha']);
+export const inReviewScope = (bucket) => REVIEW_SCOPE_BUCKETS.has(bucket);
+
+/**
  * Estado de acesso à plataforma — DEC-AUTO-263-07.
  * Ortogonal ao bucket (Alpha/Espelho/Trial vem da sub; accessStatus vem do
  * ritual de convite + 1º login).

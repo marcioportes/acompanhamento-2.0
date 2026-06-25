@@ -13,14 +13,20 @@
  * FIRESTORE: mentorConfig/{mentorId} (documento único)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useConfirmDialog } from '../components/ConfirmDialog';
 import {
   Settings, Shield, Zap, BarChart3, Bell,
   Save, RotateCcw, CheckCircle, AlertTriangle,
-  Activity, Target, Clock, TrendingDown, Loader2
+  Activity, Target, Clock, TrendingDown, Loader2, Sparkles
 } from 'lucide-react';
 import { useComplianceRules } from '../hooks/useComplianceRules';
+import { db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import { SWOT_STYLE_AXES, SWOT_STYLE_DEFAULT, labelForValue, normalizeSwotStyle } from '../constants/swotStyle';
 import DebugBadge from '../components/DebugBadge';
 
 // ============================================
@@ -107,6 +113,103 @@ const StatusBar = ({ label, emoji, color, value, onChange }) => (
     <NumberInput value={value} onChange={onChange} min={0} max={100} width="w-16" />
   </div>
 );
+
+// ============================================
+// SWOT STYLE (#262) — estilo da SWOT semanal global do mentor
+// ============================================
+
+const SwotSlider = ({ axis, value, onChange, disabled }) => (
+  <div className="py-3 border-b border-slate-800/40 last:border-0">
+    <div className="flex items-center justify-between mb-1.5">
+      <span className="text-sm text-slate-300">{axis.label}</span>
+      <span className="text-xs text-emerald-400 font-medium">{labelForValue(axis, value)}</span>
+    </div>
+    <input
+      type="range"
+      min={1}
+      max={3}
+      step={1}
+      value={value}
+      onChange={(e) => onChange(parseInt(e.target.value, 10))}
+      disabled={disabled}
+      className="w-full accent-emerald-500 cursor-pointer disabled:opacity-50"
+    />
+    <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+      <span>{axis.low}</span><span>{axis.mid}</span><span>{axis.high}</span>
+    </div>
+    <p className="text-[11px] text-slate-500 mt-1">{axis.help}</p>
+  </div>
+);
+
+const SwotStyleSection = () => {
+  const { user, isMentor } = useAuth();
+  const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
+  const { success, error: toastError } = useToast();
+  const functions = useMemo(() => getFunctions(), []);
+  const [saved, setSaved] = useState(SWOT_STYLE_DEFAULT);
+  const [form, setForm] = useState(SWOT_STYLE_DEFAULT);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    const unsub = onSnapshot(doc(db, 'mentorConfig', user.uid), (snap) => {
+      const style = normalizeSwotStyle(snap.exists() ? snap.data().swotStyle : null);
+      setSaved(style);
+      setForm(style);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  const dirty = SWOT_STYLE_AXES.some((a) => form[a.key] !== saved[a.key]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const cf = httpsCallable(functions, 'setMentorSwotStyle');
+      await cf(form);
+      success('Estilo da SWOT salvo');
+    } catch (e) {
+      toastError(e.message || 'Falha ao salvar estilo da SWOT');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!mentor) return null;
+
+  return (
+    <SectionCard
+      icon={Sparkles}
+      title="Estilo da SWOT semanal"
+      description="Tom, foco e profundidade da análise gerada por IA (vale para todos os alunos)"
+      accentColor="blue"
+    >
+      <div className="space-y-0">
+        {SWOT_STYLE_AXES.map((axis) => (
+          <SwotSlider
+            key={axis.key}
+            axis={axis}
+            value={form[axis.key]}
+            disabled={saving}
+            onChange={(v) => setForm((prev) => ({ ...prev, [axis.key]: v }))}
+          />
+        ))}
+      </div>
+      <div className="flex justify-end mt-3">
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+            dirty ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+          }`}
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Salvando...' : 'Salvar estilo'}
+        </button>
+      </div>
+    </SectionCard>
+  );
+};
 
 // ============================================
 // MAIN COMPONENT
@@ -416,6 +519,9 @@ const ComplianceConfigPage = ({ embedded = false }) => {
             </FieldRow>
           </div>
         </SectionCard>
+
+        {/* ==================== ESTILO DA SWOT (#262) ==================== */}
+        <SwotStyleSection />
 
       </div>
 

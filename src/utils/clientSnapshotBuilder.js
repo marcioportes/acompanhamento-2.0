@@ -181,9 +181,9 @@ const freezeMaturity = (maturity) => {
 /**
  * @param {Object}  params
  * @param {Object}  params.plan         — {id, adjustmentCycle, pl, riskPerOperation, rrTarget, ...}
- * @param {Array}   params.trades       — trades filtrados pelo período da revisão
- * @param {Array}   [params.extraTrades] — trades incluídos manualmente (`review.includedTradeIds`),
- *                  pode estar fora do período. Mesclado e deduplicado por id com `trades`.
+ * @param {Array}   params.trades       — membros da revisão (trades com reviewId === review.id)
+ * @param {Array}   [params.extraTrades] — legado (#269 v2: sempre []); mantido por compat.
+ *                  Mesclado e deduplicado por id com `trades`.
  * @param {string}  [params.cycleKey]   — chave do ciclo ativo (ex: '2026-04')
  * @param {string}  [params.cycleStart] — ISO `YYYY-MM-DD` (inclusive). Quando presente
  *                  com `cycleEnd`, popula `kpis.cvNormalized` via computeCVNormalized

@@ -414,8 +414,8 @@ const Section = ({ num, title, children, stage }) => (
 // Reconstrói snapshot live a partir das trades atuais do plano + período + inclusões.
 // Usado em DRAFTs (rascunhos abertos atualizam KPIs/trades em tempo real).
 //
-// Stage 2.5: além das trades no período [weekStart, weekEnd], mescla trades cujos ids
-// estão em `review.includedTradeIds` (pinados pelo mentor via FeedbackPage). Dedup por id.
+// #269 v2: o conjunto da revisão = trades ancorados nela (reviewId === review.id). A FK
+// é carimbada quando o mentor dá feedback (OPEN→REVIEWED). Sem janela ISO, sem includedTradeIds.
 //
 // Parâmetro opcional `maturity` (task 21 — H2): quando fornecido, é congelado em
 // `maturitySnapshot` via buildClientSnapshot. O caller pode ter recomputado antes
@@ -429,16 +429,11 @@ const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) =
   const tradesQ = query(collection(db, 'trades'), where('planId', '==', planId));
   const tradesSnap = await getDocs(tradesQ);
   const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const weekTrades = allTrades.filter(t => {
-    const td = t.date || (t.entryTime ? t.entryTime.slice(0, 10) : null);
-    if (!td) return false;
-    return td >= review.weekStart && td <= review.weekEnd;
-  });
-  // Trades explicitamente incluídos (podem estar fora do período).
-  const includedIds = new Set(review?.includedTradeIds || []);
-  const extraTrades = includedIds.size > 0
-    ? allTrades.filter(t => includedIds.has(t.id) && !weekTrades.some(w => w.id === t.id))
-    : [];
+  // #269 v2 — conjunto da revisão = trades ancorados nela (reviewId === review.id).
+  // A FK é carimbada no 1º feedback do mentor (OPEN→REVIEWED). Mata o bug original
+  // (SWOT rodava sobre a janela ISO, ignorando a curadoria).
+  const draftTrades = allTrades.filter(t => t.reviewId === review.id);
+  const extraTrades = [];
 
   // Fetch defensivo de maturity/current — usado em DRAFTs para preview live do
   // comparativo N vs N-1. No publish (handlePublish) o caller força recompute
@@ -463,7 +458,7 @@ const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) =
 
   return buildClientSnapshot({
     plan,
-    trades: weekTrades,
+    trades: draftTrades,
     extraTrades,
     cycleKey: review.cycleKey || null,
     cycleStart: cycleRange ? toIso(cycleRange.start) : null,
@@ -735,12 +730,18 @@ const WeeklyReviewPage = ({
     const parts = [];
     if (plan?.name) parts.push(`Plano ${plan.name}`);
     if (cycleKey) parts.push(`Ciclo ${cycleKey}`);
-    if (review?.weekStart && review?.weekEnd) {
-      parts.push(`${review.weekStart} – ${review.weekEnd}`);
-    }
-    if (review?.periodKey) parts.push(review.periodKey);
+    // #269 — período do backlog (periodStart/End), com fallback p/ aliases legados.
+    const pStart = review?.periodStart || review?.weekStart;
+    const pEnd = review?.periodEnd || review?.weekEnd;
+    if (pStart && pEnd) parts.push(`${pStart} – ${pEnd}`);
     return parts.join(' · ') || '—';
-  }, [plan?.name, cycleKey, review?.weekStart, review?.weekEnd, review?.periodKey]);
+  }, [plan?.name, cycleKey, review?.periodStart, review?.periodEnd, review?.weekStart, review?.weekEnd]);
+
+  // Título: "Revisão #N" quando publicada (sequenceNumber), senão "Revisão (rascunho)".
+  const reviewTitle = useMemo(() => {
+    if (typeof review?.sequenceNumber === 'number') return `Revisão #${review.sequenceNumber}`;
+    return review?.status === 'DRAFT' ? 'Revisão (rascunho)' : 'Revisão';
+  }, [review?.sequenceNumber, review?.status]);
 
   return (
     <div className="min-h-screen bg-slate-950 py-6">
@@ -772,7 +773,7 @@ const WeeklyReviewPage = ({
               <div>
                 <div className="text-lg font-medium text-white flex items-center gap-2">
                   <FileText className="w-4 h-4 text-slate-300" />
-                  Revisão semanal — {student?.name || student?.email || 'Aluno'}
+                  {reviewTitle} — {student?.name || student?.email || 'Aluno'}
                 </div>
                 <div className="text-xs text-slate-300 mt-1">{headerMeta}</div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Fundação: PlanLedgerExtract (modo revisão)</div>
@@ -805,6 +806,7 @@ const WeeklyReviewPage = ({
                 weekStart={review.weekStart}
                 weekEnd={review.weekEnd}
                 onNavigateToFeedback={onNavigateToFeedback}
+                showSelfReview
               />
             </Section>
 
@@ -939,10 +941,7 @@ const WeeklyReviewPage = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500">
-                      Rascunho em preparação — indicadores vão congelar ao publicar.
-                    </span>
+                  <div className="flex items-center justify-end">
                     <button
                       onClick={() => setConfirmPublish(true)}
                       disabled={actionLoading}

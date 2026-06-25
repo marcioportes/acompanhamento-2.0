@@ -18,7 +18,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import {
   Loader2, Sparkles, AlertTriangle,
-  TrendingUp, TrendingDown, Archive, FileText, Video, GitCompare, Trash2,
+  TrendingUp, TrendingDown, Archive, FileText, Video, GitCompare,
   ChevronDown, ChevronRight, Save, StickyNote,
 } from 'lucide-react';
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
@@ -128,7 +128,7 @@ const ReviewToolsPanel = ({
   onClose,
 }) => {
   const {
-    generateSwot, archiveReview, deleteReview, saveDraftFields, updateMeetingLinks,
+    generateSwot, archiveReview, saveDraftFields, updateMeetingLinks,
     addTakeawayItem, toggleTakeawayDone, removeTakeawayItem,
     actionLoading, error,
   } = useWeeklyReviews(studentId);
@@ -153,7 +153,6 @@ const ReviewToolsPanel = ({
   const [meetingLink, setMeetingLink] = useState(review?.meetingLink || '');
   const [videoLink, setVideoLink] = useState(review?.videoLink || '');
   const [confirmRegen, setConfirmRegen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setSessionNotes(review?.sessionNotes || '');
@@ -167,7 +166,6 @@ const ReviewToolsPanel = ({
   const canEdit = mentor && review?.status !== 'ARCHIVED';
   const canGenerateSwot = canEdit && isDraft;
   const canArchive = canEdit && review?.status === 'CLOSED';
-  const canDelete = mentor && review?.status !== 'ARCHIVED';
 
   const meetingLinkValidation = useMemo(() => validateReviewUrl(meetingLink), [meetingLink]);
   const videoLinkValidation = useMemo(() => validateReviewUrl(videoLink), [videoLink]);
@@ -218,15 +216,6 @@ const ReviewToolsPanel = ({
     try { await archiveReview(review.id); } catch { /* */ }
   }, [canArchive, archiveReview, review?.id]);
 
-  const handleDelete = useCallback(async () => {
-    if (!canDelete) return;
-    if (!confirmDelete) { setConfirmDelete(true); return; }
-    try {
-      await deleteReview(review.id);
-      onClose?.();
-    } catch { /* */ }
-    setConfirmDelete(false);
-  }, [canDelete, confirmDelete, deleteReview, review?.id, onClose]);
 
   if (!review) {
     return (
@@ -429,25 +418,6 @@ const ReviewToolsPanel = ({
               {actionLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
               Arquivar
             </button>
-          )}
-          {canDelete && (
-            confirmDelete ? (
-              <>
-                <button onClick={() => setConfirmDelete(false)} disabled={actionLoading} className="px-2 py-1 text-[10px] text-slate-400 hover:text-white disabled:opacity-40">Não</button>
-                <button onClick={handleDelete} disabled={actionLoading} className="px-2 py-1 text-[10px] font-medium bg-red-500/20 border border-red-500/40 text-red-300 rounded hover:bg-red-500/30 disabled:opacity-40">
-                  {actionLoading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Apagar?'}
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={handleDelete}
-                disabled={actionLoading}
-                className="px-2 py-1.5 text-[10px] text-red-400 hover:text-red-300 border border-transparent hover:border-red-500/30 hover:bg-red-500/10 rounded inline-flex items-center gap-1 disabled:opacity-40"
-                title="Apagar revisão"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            )
           )}
         </div>
       </div>

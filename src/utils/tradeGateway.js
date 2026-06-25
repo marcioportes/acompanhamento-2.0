@@ -242,9 +242,16 @@ export async function createTrade(tradeData, userContext) {
     }
   }
 
+  // === 4.1. REVIEW (#269 v2) ===
+  // Trade nasce no BACKLOG (reviewId=null): o aluno acabou de registrar, o mentor ainda
+  // não revisou. A FK `reviewId` é carimbada SÓ no 1º feedback do mentor (transição
+  // OPEN→REVIEWED), pelo trigger onTradeUpdated → getOrCreateOpenReview. `null` explícito:
+  // a query de backlog (`where reviewId == null`) não retorna docs sem o campo.
+
   // === 5. MONTAGEM DO DOCUMENTO ===
   const newTrade = {
     ...tradeData,
+    reviewId: null,
     date: legacyDate, entryTime, exitTime, duration,
     ticker: tradeData.ticker?.toUpperCase() || '',
     entry, exit, qty,
@@ -773,7 +780,7 @@ export async function toggleViolationClearedAsMentor(tradeId, violationKey, user
  * NÃO mexe no score 4D — é instrumento de consciência/reflexão. Classificação e
  * confronto declarado×detectado são DERIVADOS em display-time, não persistidos.
  *
- * Imutável após `reviewState === 'DISCUSSED'` (#269). Só o autor do trade revisa.
+ * Imutável após `status === 'DISCUSSED'` (#269 v2 — terminal do ciclo). Só o autor revisa.
  * Reenvio sobrescreve a auto-revisão anterior (idempotente por trade).
  *
  * @param {string} tradeId
@@ -803,7 +810,7 @@ export async function submitTradeReview(tradeId, input, userContext, deps = {}) 
   if (before.studentId && before.studentId !== userContext.uid) {
     throw new Error('Apenas o autor do trade pode revisá-lo');
   }
-  if (before.reviewState === 'DISCUSSED') {
+  if (before.status === 'DISCUSSED') {
     throw new Error('Trade já discutido em revisão — auto-revisão imutável');
   }
 

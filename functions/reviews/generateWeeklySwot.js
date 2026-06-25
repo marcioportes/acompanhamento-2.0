@@ -26,6 +26,7 @@ const {
   MODEL, MAX_TOKENS, TEMPERATURE, PROMPT_VERSION,
   SYSTEM_PROMPT, buildUserPrompt, parseAndValidateSwot, buildFallbackSwot,
 } = require('./prompt');
+const { buildStyledSystemPrompt } = require('../_shared/swotPromptBuilder');
 
 const { isMentor } = require('./validators');
 
@@ -33,7 +34,7 @@ const MAX_VALIDATION_RETRIES = 3;
 
 const client = new Anthropic();
 
-const callClaudeWithRetry = async ({ currentSnapshot, previousSnapshot, periodLabel }) => {
+const callClaudeWithRetry = async ({ currentSnapshot, previousSnapshot, periodLabel, systemPrompt }) => {
   let lastError = null;
   const errorsAccum = [];
   for (let attempt = 1; attempt <= MAX_VALIDATION_RETRIES; attempt++) {
@@ -44,7 +45,7 @@ const callClaudeWithRetry = async ({ currentSnapshot, previousSnapshot, periodLa
         model: MODEL,
         max_tokens: MAX_TOKENS,
         temperature: TEMPERATURE,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt || SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
       });
       const text = response?.content?.[0]?.text || '';
@@ -116,6 +117,16 @@ module.exports = onCall(
       ? `${review.customPeriod.start} → ${review.customPeriod.end} (custom)`
       : `${review.weekStart} → ${review.weekEnd} (${review.periodKey})`;
 
+    // #262 — estilo da SWOT global do mentor (mentorConfig/{mentorUid}.swotStyle).
+    // Modula tom/foco/profundidade do SYSTEM prompt. Ausente → neutro (prompt base).
+    let styledSystemPrompt = SYSTEM_PROMPT;
+    try {
+      const cfgSnap = await db.collection('mentorConfig').doc(request.auth.uid).get();
+      styledSystemPrompt = buildStyledSystemPrompt(SYSTEM_PROMPT, cfgSnap.exists ? cfgSnap.data().swotStyle : null);
+    } catch (cfgErr) {
+      console.warn('[generateWeeklySwot] swotStyle indisponível, usando prompt base:', cfgErr?.message || cfgErr);
+    }
+
     const prevGenerationCount = Number(review.swot?.generationCount) || 0;
     let swotPayload;
     let aiUnavailable = false;
@@ -125,6 +136,7 @@ module.exports = onCall(
         currentSnapshot: review.frozenSnapshot,
         previousSnapshot,
         periodLabel,
+        systemPrompt: styledSystemPrompt,
       });
       swotPayload = {
         ...swot,

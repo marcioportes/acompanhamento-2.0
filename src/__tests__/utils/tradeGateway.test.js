@@ -488,3 +488,31 @@ describe('createTrade — currency da conta', () => {
     expect(result.currency).toBe('BRL');
   });
 });
+
+describe('createTrade — review (#269 v2)', () => {
+  it('nasce no backlog (reviewId=null) — mentor ainda não revisou', async () => {
+    setupDefaultMocks({ planData: {} });
+
+    const result = await createTrade(baseTradeData, USER_CONTEXT);
+    expect(result.reviewId).toBeNull();
+  });
+
+  it('nasce reviewId=null mesmo com revisão aberta no plano (FK só no 1º feedback)', async () => {
+    // O ponteiro activeDraftReviewId não afeta mais a criação: o trade entra na
+    // revisão pelo trigger OPEN→REVIEWED, não ao nascer.
+    setupDefaultMocks({ planData: { activeDraftReviewId: '2026-W16-1234' } });
+
+    const result = await createTrade(baseTradeData, USER_CONTEXT);
+    expect(result.reviewId).toBeNull();
+  });
+
+  it('persiste reviewId=null explícito no documento gravado (addDoc)', async () => {
+    setupDefaultMocks({ planData: { activeDraftReviewId: 'R-abc' } });
+
+    await createTrade(baseTradeData, USER_CONTEXT);
+    const written = mockAddDoc.mock.calls[0][1];
+    expect(written.reviewId).toBeNull();
+    expect('reviewState' in written).toBe(false);
+    expect('draftReviewId' in written).toBe(false);
+  });
+});

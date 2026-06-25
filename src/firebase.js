@@ -85,11 +85,4 @@ export const ACCOUNT_TYPES = ['REAL', 'DEMO', 'PROP'];
 // Tipos de movimentação
 export const MOVEMENT_TYPES = ['DEPOSIT', 'WITHDRAWAL'];
 
-// Status do trade
-export const TRADE_STATUS = {
-  PENDING_REVIEW: 'PENDING_REVIEW',
-  REVIEWED: 'REVIEWED',
-  IN_REVISION: 'IN_REVISION'
-};
-
 export default app;

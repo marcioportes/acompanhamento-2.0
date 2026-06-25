@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, query, where, orderBy, onSnapshot, getDocs,
-  doc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, arrayRemove,
+  doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
@@ -131,6 +131,10 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [functions, carryOverTakeaways]);
 
+  // #269 v2 — não há mais criação manual de rascunho nem inclusão explícita de trade.
+  // A revisão semanal nasce sob demanda no 1º feedback do mentor (trigger onTradeUpdated
+  // → getOrCreateOpenReview, server-side) e os trades entram ao virarem REVIEWED.
+
   const generateSwot = useCallback(async ({ reviewId }) => {
     setActionLoading(true);
     setError(null);
@@ -146,30 +150,36 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [functions, studentId]);
 
-  // closeReview publica o rascunho. Se frozenSnapshot for fornecido, sobrescreve
-  // o snapshot atual (recomputado no momento do publish — indicadores congelam aqui,
-  // não no create). Campos meetingLink/videoLink são opcionais: só vão ao payload se
-  // EXPLICITAMENTE passados (undefined preserva o valor atual do doc).
+  // closeReview publica o rascunho (#269: via callable publishReview). A callable
+  // faz a transição atômica DRAFT→CLOSED, flipa os trades empenhados para DISCUSSED,
+  // atribui sequenceNumber e limpa o ponteiro plan.activeDraftReviewId. frozenSnapshot
+  // (recomputado no publish) é passthrough. Links meeting/video são persistidos antes
+  // via updateDoc direto (campos do doc da review, permitidos ao mentor em DRAFT).
   const closeReview = useCallback(async (reviewId, opts = {}) => {
     setActionLoading(true);
     setError(null);
     try {
       const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const payload = {
-        status: 'CLOSED',
-        closedAt: serverTimestamp(),
-      };
-      if (opts.meetingLink !== undefined) payload.meetingLink = opts.meetingLink;
-      if (opts.videoLink !== undefined) payload.videoLink = opts.videoLink;
-      if (opts.frozenSnapshot) payload.frozenSnapshot = opts.frozenSnapshot;
-      await updateDoc(ref, payload);
+      const pre = {};
+      if (opts.meetingLink !== undefined) pre.meetingLink = opts.meetingLink;
+      if (opts.videoLink !== undefined) pre.videoLink = opts.videoLink;
+      if (Object.keys(pre).length > 0) await updateDoc(ref, pre);
+
+      const cf = httpsCallable(functions, 'publishReview');
+      const res = await cf({
+        studentId,
+        reviewId,
+        frozenSnapshot: opts.frozenSnapshot ?? null,
+        swot: opts.swot ?? null,
+      });
+      return res.data;
     } catch (err) {
-      setError(err.message || 'Erro ao fechar revisão');
+      setError(err.message || 'Erro ao publicar revisão');
       throw err;
     } finally {
       setActionLoading(false);
     }
-  }, [studentId]);
+  }, [functions, studentId]);
 
   const archiveReview = useCallback(async (reviewId) => {
     setActionLoading(true);
@@ -188,20 +198,8 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Deletar revisão (mentor-only, bloqueado em ARCHIVED via rules).
-  const deleteReview = useCallback(async (reviewId) => {
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      await deleteDoc(ref);
-    } catch (err) {
-      setError(err.message || 'Erro ao deletar revisão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId]);
+  // #269 v2 — "descartar rascunho" não existe: a revisão é o balaio dos trades que o
+  // mentor revisou. Não quer fazer a reunião agora → não publica; a revisão aberta espera.
 
   // Salva campos editáveis do rascunho (sessionNotes, meetingLink, videoLink) SEM mudar
   // o status. Usado pelo ReviewToolsPanel/WeeklyReviewModal — mentor digita e persiste
@@ -355,46 +353,6 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Adiciona um tradeId ao set explícito `includedTradeIds` da revisão.
-  // Usado pelo PinToReviewButton — permite incluir trade fora do período da revisão
-  // (caso mentor revise trade antigo em rascunho de semana diferente).
-  const addIncludedTrade = useCallback(async (reviewId, tradeId) => {
-    if (!tradeId) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      await updateDoc(ref, { includedTradeIds: arrayUnion(tradeId) });
-    } catch (err) {
-      setError(err.message || 'Erro ao incluir trade na revisão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId]);
-
-  // Pin rápido: anexa uma linha ao campo sessionNotes de uma revisão (DRAFT).
-  // Usado pelo PinToReviewButton — pontos observados no Feedback Trade são
-  // notas de sessão, não takeaways (takeaways = ação/item estruturado).
-  const appendSessionNotes = useCallback(async (reviewId, line) => {
-    if (!line || !String(line).trim()) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const current = reviews.find(r => r.id === reviewId);
-      const existing = typeof current?.sessionNotes === 'string' ? current.sessionNotes : '';
-      const sep = existing && !existing.endsWith('\n') ? '\n' : '';
-      const next = existing + sep + String(line).trim();
-      await updateDoc(ref, { sessionNotes: next });
-    } catch (err) {
-      setError(err.message || 'Erro ao anotar nota da sessão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId, reviews]);
-
   return {
     reviews,
     isLoading,
@@ -404,9 +362,6 @@ export const useWeeklyReviews = (studentId) => {
     generateSwot,
     closeReview,
     archiveReview,
-    deleteReview,
-    appendSessionNotes,
-    addIncludedTrade,
     updateSessionNotes,
     saveDraftFields,
     updateMeetingLinks,

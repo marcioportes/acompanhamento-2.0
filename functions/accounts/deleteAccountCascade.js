@@ -9,11 +9,11 @@
  *
  * Permission: mentor OU dono da conta (owner = `account.studentId`).
  *
- * Ordem de delete: movements → trades → orders → cycleClosures → plans → account.
+ * Ordem de delete: movements → trades → orders → cycleClosures → reviews → plans → account.
  * Cada coleção em batches de 400 (limite Firestore: 500/batch, margem de segurança).
  *
  * Input:  { accountId: string }
- * Output: { deleted: { movements, trades, orders, cycleClosures, plans, account }, total: number }
+ * Output: { deleted: { movements, trades, orders, cycleClosures, reviews, plans, account }, total: number }
  *
  * Issue #259 fast-follow — substitui cascade quebrado de 92d28022.
  */
@@ -92,11 +92,26 @@ module.exports = onCall(
       ordersSnap.docs.forEach((d) => orderRefs.push(d.ref));
     }
 
+    // #269 v2 — reviews semanais (students/{studentId}/reviews, FK planId) de todos os
+    // planos da conta. studentIds vêm dos próprios planos (em geral 1 = account.studentId).
+    const studentIds = [...new Set(plansSnap.docs.map((d) => d.data().studentId).filter(Boolean))];
+    const reviewRefs = [];
+    for (const sid of studentIds) {
+      for (let i = 0; i < planIds.length; i += 10) {
+        const chunk = planIds.slice(i, i + 10);
+        const reviewsSnap = await db
+          .collection('students').doc(sid).collection('reviews')
+          .where('planId', 'in', chunk).get();
+        reviewsSnap.docs.forEach((d) => reviewRefs.push(d.ref));
+      }
+    }
+
     const counts = {
       movements:     await deleteDocsInBatches(db, movementRefs),
       trades:        await deleteDocsInBatches(db, tradeRefs),
       orders:        await deleteDocsInBatches(db, orderRefs),
       cycleClosures: await deleteDocsInBatches(db, closureRefs),
+      reviews:       await deleteDocsInBatches(db, reviewRefs),
       plans:         await deleteDocsInBatches(db, planRefs),
       account:       0,
     };

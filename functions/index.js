@@ -1354,11 +1354,41 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
   const after = change.after.data();
   
   try {
+    // #269 v2 — carimba a FK reviewId no PRIMEIRO feedback do mentor (OPEN→REVIEWED),
+    // qualquer caminho: addFeedbackComment (individual) OU batch client-side (bulk).
+    // É o único chokepoint da relação trade↔revisão semanal. Roda ANTES do loop guard
+    // (mudança só de status não passaria por ele). Idempotente: o update de reviewId
+    // re-dispara este trigger, mas `enteredReviewed && !after.reviewId` fica falso.
+    const enteredReviewed = before.status !== 'REVIEWED' && after.status === 'REVIEWED';
+    if (enteredReviewed && !after.reviewId && after.studentId && after.planId) {
+      try {
+        // Filtro matriz (#269): Revisão é só do track Alpha (alpha + trial-alpha), definido
+        // pelo PLANO/subscription do aluno. Fora disso (Espelho, VIP, sem-sub) o feedback não
+        // cria revisão — não há dupla. Self-review por IA (futuro) é outro caminho, não ancora aqui.
+        const { studentInReviewScope } = require('./_shared/studentClassify');
+        if (!(await studentInReviewScope(db, after.studentId))) {
+          console.log(`[onTradeUpdated] trade ${context.params.tradeId}: aluno ${after.studentId} fora do escopo de Revisão (não-alpha/trial) — sem ancoragem`);
+        } else {
+          const { getOrCreateOpenReview, carryOverOpenTakeaways } = require('./reviews/openReview');
+          const todayISO = new Date().toISOString().slice(0, 10);
+          const { reviewId, created } = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
+          await change.after.ref.update({ reviewId });
+          if (created) {
+            try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
+            catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
+          }
+          console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
+        }
+      } catch (anchorErr) {
+        console.error('[onTradeUpdated] getOrCreateOpenReview falhou:', anchorErr);
+      }
+    }
+
     const oldResult = before.result || 0;
     const newResult = after.result || 0;
     const planChanged = before.planId !== after.planId;
     const resultChanged = Math.abs(newResult - oldResult) > 0.01;
-    
+
     // Detectar mudanças em qualquer campo que afeta compliance.
     // `emotionEntry` adicionado em v1.45.0 (#188 Fase E): mentor pode editar emoção
     // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
@@ -1877,6 +1907,14 @@ exports.generatePropFirmApproachPlan = require("./propFirm/generatePropFirmAppro
 // ============================================
 exports.createWeeklyReview = require("./reviews/createWeeklyReview");
 exports.generateWeeklySwot = require("./reviews/generateWeeklySwot");
+// #269 v2 — Revisão semanal: FK única trade.reviewId + ciclo único status→DISCUSSED.
+// A revisão aberta nasce sob demanda no 1º feedback (trigger onTradeUpdated → openReview.js);
+// publishReview fecha e marca os membros DISCUSSED. (createReviewDraft/deleteReviewDraft mortos.)
+exports.publishReview = require("./reviews/publishReview");
+// #269 v2 — migration retroativa: escreve trade.reviewId (+status=DISCUSSED) das reviews legadas
+exports.migrateReviewStateBackfill = require("./reviews/migrateReviewStateBackfill");
+// #262 — estilo customizável da SWOT semanal (tom/foco/profundidade, global por mentor)
+exports.setMentorSwotStyle = require("./reviews/setMentorSwotStyle");
 
 // ============================================
 // MARKET DATA — MEP/MEN enrichment via Yahoo Finance (issue #187)
