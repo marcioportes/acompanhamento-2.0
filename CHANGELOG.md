@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.76.0] - 24/06/2026 · #269 · PR #312
+
+**feat:** Revisão por backlog (FK reviewId) + SWOT customizável + filtro matriz Alpha/Tr
+
+- `trade.reviewId: string|null` — FK imortal para a revisão semanal. Carimbada no 1º feedback do mentor (`OPEN→REVIEWED`), nunca apagada.
+- `trade.status` ganha terminal `DISCUSSED` (publicação trava o trade).
+- Pertencimento = `trades WHERE reviewId == id` (morre `includedTradeIds`/`reviewState`/`draftReviewId`).
+- Rascunho aberto nasce sob demanda (`getOrCreateOpenReview`), publicado em `publishReview`.
+- Definição pelo plano/subscription (`classifyStudent`), sem campo novo.
+- `onTradeUpdated` não ancora `reviewId` fora de escopo; `useTrades` bloqueia feedback do mentor (individual+bulk); migração pula fora-de-escopo.
+- `migrateReviewStateBackfill`: 584 mudanças, 241 órfãos-com-feedback ancorados no rascunho vigente, 13 rascunhos provisionados. Safeguard D8.
+- Correção retroativa filtro matriz: 60 trades un-anchorados + 7 drafts removidos (alunos fora de escopo hoje).
+
+
 ## [1.75.0] - 10/06/2026 · #308 · PR #311
 
 **feat:** Espelho (auto-revisão de trade) + fixes de import + email
