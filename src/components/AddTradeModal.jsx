@@ -840,6 +840,7 @@ const AddTradeModal = ({
             <TradeReviewSection
               trade={reviewTrade}
               canReview={true}
+              startOpen={true}
               onSubmit={async (reviewPayload) => { await onSubmitReview(reviewTrade.id, reviewPayload); closeAll(); }}
             />
           </div>

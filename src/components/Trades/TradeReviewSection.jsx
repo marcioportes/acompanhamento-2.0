@@ -48,9 +48,10 @@ const DimBadge = ({ dimension }) => {
   );
 };
 
-const TradeReviewSection = ({ trade, canReview = false, onSubmit }) => {
+const TradeReviewSection = ({ trade, canReview = false, onSubmit, startOpen = false }) => {
   const existing = trade?.selfReview || null;
-  const [editing, setEditing] = useState(false);
+  // #313 — no fluxo de registro o Espelho já abre nas perguntas (pula o nudge "Olhar no espelho").
+  const [editing, setEditing] = useState(startOpen);
   const [wouldRepeat, setWouldRepeat] = useState(null);
   const [answers, setAnswers] = useState({});
   const [saving, setSaving] = useState(false);
