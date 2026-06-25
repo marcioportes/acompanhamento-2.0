@@ -152,6 +152,7 @@ const ReviewDetail = ({
           currency={currency}
           weekStart={review.weekStart}
           weekEnd={review.weekEnd}
+          showSelfReview
           onNavigateToFeedback={onNavigateToFeedback}
         />
       </section>

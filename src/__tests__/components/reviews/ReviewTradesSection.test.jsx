@@ -24,6 +24,22 @@ describe('<ReviewTradesSection />', () => {
     expect(screen.getByText(/Sem trades no período/i)).toBeInTheDocument();
   });
 
+  it('#315 C — showSelfReview + selfReview: mostra o botão da reflexão e expande', () => {
+    const trades = [makeTrade({ selfReview: { wouldRepeat: true, answers: {} } })];
+    render(<ReviewTradesSection trades={trades} showSelfReview />);
+    const btn = screen.getByTitle('Ver a reflexão do aluno');
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(screen.getByText('Reflexão')).toBeInTheDocument();
+    expect(screen.getByText(/Faria de novo: Sim/)).toBeInTheDocument();
+  });
+
+  it('#315 C — sem showSelfReview, não mostra o botão da reflexão mesmo com selfReview', () => {
+    const trades = [makeTrade({ selfReview: { wouldRepeat: true, answers: {} } })];
+    render(<ReviewTradesSection trades={trades} />);
+    expect(screen.queryByTitle('Ver a reflexão do aluno')).not.toBeInTheDocument();
+  });
+
   it('renderiza trades flat quando ≤2 por dia', () => {
     const trades = [
       makeTrade({ tradeId: 't1', pnl: 10 }),

@@ -736,11 +736,8 @@ const AddTradeModal = ({
         ? 'Corrija os valores de horário das parciais' 
         : 'Preencha data e horário de todas as parciais';
     }
-    
-    if (!editTrade) {
-      if (!htfFile && !htfPreview) newErrors.htf = 'Imagem HTF é obrigatória';
-      if (!ltfFile && !ltfPreview) newErrors.ltf = 'Imagem LTF é obrigatória';
-    }
+
+    // #315 B — imagens HTF/LTF são opcionais no registro (antes obrigatórias na criação).
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) console.warn('[MODAL] Erros de validação:', newErrors);
     return Object.keys(newErrors).length === 0;
@@ -1187,7 +1184,7 @@ const AddTradeModal = ({
             <div className="grid grid-cols-2 gap-4">
                {['htf', 'ltf'].map(type => (
                  <div key={type} onPaste={(e) => handlePasteImage(e, type)} tabIndex={0} className="outline-none focus:ring-1 focus:ring-blue-500/30 rounded-lg">
-                   <label className="input-label mb-2 uppercase flex items-center gap-1">{type} Image <span className="text-red-400">*</span></label>
+                   <label className="input-label mb-2 uppercase flex items-center gap-1">{type} Image <span className="text-slate-600 normal-case text-[10px]">(opcional)</span></label>
                    {(type === 'htf' ? htfPreview : ltfPreview) ? (
                      <div className="relative group h-24 rounded-lg overflow-hidden border border-slate-700"><img src={type === 'htf' ? htfPreview : ltfPreview} className="w-full h-full object-cover" /><button type="button" onClick={() => removeImage(type)} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white"><X/></button></div>
                    ) : (
