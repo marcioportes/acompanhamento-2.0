@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.77.0: #313 feat Reflexão na entrada do trade + copy de auto-análise (PR #314, 25/06/2026)
  * - 1.76.0: #269 feat Revisão por backlog (FK reviewId) + SWOT customizável + filtro matriz Alpha/Tr (PR #312, 24/06/2026)
  * - 1.75.0: #308 feat Espelho (auto-revisão de trade) + fixes import (coverage gap, timezone) + email Espelho/app.marcioportes (PR #311, 10/06/2026)
  * - 1.74.1: #309 fix deleteStudent limpa movements/cycleClosures/Storage órfãos (#309) (PR #310, 10/06/2026)
@@ -371,10 +372,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.76.0',
-  build: '20260624',
-  display: 'v1.76.0',
-  full: '1.76.0+20260624',
+  version: '1.77.0',
+  build: '20260625',
+  display: 'v1.77.0',
+  full: '1.77.0+20260625',
 };
 export default VERSION;
 export { VERSION };

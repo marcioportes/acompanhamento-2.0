@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.77.0] - 25/06/2026 · #313 · PR #314
+
+**feat:** Reflexão na entrada do trade + copy de auto-análise
+
+- `AddTradeModal`: pós-create (trade novo, com result, `onSubmitReview` presente) abre o passo de Reflexão do trade recém-criado em vez de fechar; botão "Pular por agora". Edição segue fechando direto.
+- `TradeReviewSection`: prop `startOpen` abre direto nas perguntas (pula o nudge) no fluxo de registro. Copy reescrita (Reflexão / auto-análise / "Análise ·"); **não** toca o nome do produto/plano "Espelho".
+- `TradesJournal`/`StudentDashboard`: `handleAddTrade` retorna o trade criado; fechamento passa a ser do `onClose`. View-as do mentor não dispara reflexão.
+
+
 ## [1.76.0] - 24/06/2026 · #269 · PR #312
 
 **feat:** Revisão por backlog (FK reviewId) + SWOT customizável + filtro matriz Alpha/Tr
