@@ -5,4 +5,6 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-11 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | humanizar Evidência técnica do BehaviorPanel |
+| CHUNK-11 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | evidência técnica mentor-only no BehaviorPanel |
+| CHUNK-04 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | imagens HTF/LTF opcionais no registro de trade |
+| CHUNK-08 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | reflexão do aluno visível na composição de feedback |
