@@ -55,3 +55,4 @@
 | 1.77.0 | #313 | `feat/issue-313-espelho-na-entrada` | 24/06/2026 | consumida (PR #314 squash `238882f9`) |
 | 1.78.0 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | reservada |
 | 1.77.1 | #316 | `fix/issue-316-feedback-classify-args` | 01/07/2026 | consumida (PR #317 squash `c7cd7cad`) |
+| 1.79.0 | #318 | `feat/issue-318-review-note-from-trade` | 01/07/2026 | reservada — feat (minor) sobre última consumida 1.77.1; 1.78.0 é reserva pendente do #315, pulada |
