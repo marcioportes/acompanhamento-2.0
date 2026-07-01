@@ -53,7 +53,7 @@
 | 1.75.0 | #308 | `feat/issue-308-trade-self-review` | 10/06/2026 | consumida (PR #311 squash `6602b815`) |
 | 1.76.0 | #269 | `feat/issue-269-262-revisao-swot` | 16/06/2026 | consumida (PR #312 squash `7bc7eb57`) |
 | 1.77.0 | #313 | `feat/issue-313-espelho-na-entrada` | 24/06/2026 | consumida (PR #314 squash `238882f9`) |
-| 1.78.0 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | reservada |
+| 1.80.0 | #315 | `feat/issue-315-humanize-evidence` | 01/07/2026 | reservada |
 | 1.77.1 | #316 | `fix/issue-316-feedback-classify-args` | 01/07/2026 | consumida (PR #317 squash `c7cd7cad`) |
 | 1.79.0 | #318 | `feat/issue-318-review-note-from-trade` | 01/07/2026 | consumida (PR #319 squash `f148f9ac`) |
 | 1.79.1 | #320 | `fix/issue-320-review-note-fullpage-layout` | 01/07/2026 | consumida (PR #321 squash `2dc80757`) |
