@@ -31,7 +31,7 @@ import {
   ChevronLeft, Send, HelpCircle, Lock, User, GraduationCap,
   Calendar, TrendingUp, TrendingDown, Clock, AlertCircle, AlertTriangle,
   BarChart3, Brain, Maximize2, X, CheckCircle, MessageSquare, Loader2,
-  Layers, ArrowDownRight, ArrowUpRight, ImageIcon, Activity
+  Layers, ArrowDownRight, ArrowUpRight, ImageIcon, Activity, ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DebugBadge from '../components/DebugBadge';
@@ -39,6 +39,7 @@ import TradeStatusBadges from '../components/TradeStatusBadges';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradeLockBadge from '../components/TradeLockBadge';
 import BehaviorPanel from '../components/Trades/BehaviorPanel';
+import TradeReviewSection from '../components/Trades/TradeReviewSection';
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
 import AddReviewNoteButton from '../components/reviews/AddReviewNoteButton';
@@ -673,6 +674,16 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 <MentorClassificationPanel trade={trade} readOnly />
               )}
             />
+            {/* #315 C — reflexão do aluno (selfReview) read-only ao compor feedback.
+                O mentor cruza o julgamento do aluno ("faria de novo?") com o comportamento detectado. */}
+            {trade.selfReview ? (
+              <TradeReviewSection trade={trade} />
+            ) : (
+              <div className="mt-4 border border-white/10 rounded-xl p-4 bg-white/5 flex items-center gap-2">
+                <ClipboardCheck className="w-4 h-4 text-slate-500" />
+                <span className="text-sm text-slate-400">O aluno ainda não fez a auto-análise deste trade.</span>
+              </div>
+            )}
           </div>
 
           {/* Coluna Direita - Chat */}

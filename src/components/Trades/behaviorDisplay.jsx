@@ -220,8 +220,9 @@ export const UndersizedEducational = ({ scenario, evidence, currency }) => {
   );
 };
 
-/** Corpo do card de SUB_SIZING (evidência rica). Recebe `evidence` direto da família. */
-export const UndersizedBody = ({ evidence = {}, currency, expanded }) => {
+/** Corpo do card de SUB_SIZING (evidência rica). Recebe `evidence` direto da família.
+ *  O accordion "Evidência técnica" cru é mentor-only (#315) — aluno fica com o texto educacional. */
+export const UndersizedBody = ({ evidence = {}, currency, expanded, isMentor = false }) => {
   const { scenario, planRrTarget, utilizationPct } = evidence;
   const hasAmounts = evidence.planRoAmount != null;
   const keySentence = UNDERSIZED_KEY_SENTENCE(scenario, planRrTarget);
@@ -233,7 +234,7 @@ export const UndersizedBody = ({ evidence = {}, currency, expanded }) => {
         <p className="text-sm font-medium text-zinc-100 mt-2">Você utilizou {utilizationPct}% do RO contratado. {keySentence}</p>
       )}
       {hasAmounts && <UndersizedEducational scenario={scenario} evidence={evidence} currency={currency} />}
-      {expanded && (
+      {isMentor && expanded && (
         <div className="mt-3 pt-2 border-t border-white/10">
           <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1">Evidência técnica</p>
           <div className="grid grid-cols-2 gap-1">
