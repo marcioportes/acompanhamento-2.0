@@ -8,6 +8,21 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.79.0] - 01/07/2026 · #318 · PR #319
+
+**feat:** anotar ponto pra Revisão (Notas da Sessão) direto do trade
+
+- `useWeeklyReviews.appendSessionNote(reviewId, text)` — read-modify-write (`getDoc` → append `
+` → `updateDoc`); **não** sobrescreve o blob (≠ `updateSessionNotes`).
+- `utils/reviewNotePrefix.fmtTradePrefix` — âncora `[DD/MM HH:MM SÍMBOLO ±RESULT]` (restore do helper antigo).
+- `components/reviews/AddReviewNoteButton` (mentor-only) — acha o DRAFT aberto de `trade.planId`; se não existe ainda, **desabilitado** ("disponível após o 1º feedback — a revisão nasce aí"). **Não cria revisão no cliente** → evita rascunho duplicado (bug do hotfix `14cca576`).
+- Wire na FeedbackPage (linha de ações do mentor).
+- Sem collection/campo novo (`sessionNotes` já existe) → INV-15 não dispara.
+- Sem mudança de rules (mentor já edita DRAFT via cliente).
+- Sem novo CF / sem deploy.
+- `reviewNotePrefix` (7) + `appendSessionNote` (5: append preserva prévio, no-op vazio, trim, error).
+
+
 ## [1.77.1] - 01/07/2026 · #316 · PR #317
 
 **fix:** mentor não consegue dar feedback — classifyStudent com args trocados
