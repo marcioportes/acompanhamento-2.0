@@ -43,7 +43,10 @@ import { classifyStudent, inReviewScope } from '../utils/studentClassify';
 async function assertStudentInReviewScope(studentId) {
   if (!studentId) throw new Error('Trade sem studentId — feedback bloqueado');
   const subsSnap = await getDocs(collection(db, 'students', studentId, 'subscriptions'));
-  if (!inReviewScope(classifyStudent(subsSnap.docs.map((d) => d.data())))) {
+  // classifyStudent do FRONT tem assinatura (_student, subs) — subs é o 2º arg.
+  // (a versão do backend em functions/_shared é (subs); não confundir — #316)
+  const subs = subsSnap.docs.map((d) => d.data());
+  if (!inReviewScope(classifyStudent(null, subs))) {
     throw new Error('Feedback disponível apenas para alunos Alpha ou Trial-Alpha (em dupla com o mentor).');
   }
 }
