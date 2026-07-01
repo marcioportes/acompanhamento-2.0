@@ -62,8 +62,14 @@ echo "[0/8] Pré-checks…"
 CURR_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 [ "$CURR_BRANCH" = "main" ] || abort "cwd não está em main (atual: $CURR_BRANCH). Saia do worktree antes."
 
-PR=$(gh pr list --state merged --search "Closes #${ISSUE}" --json number --limit 1 --jq '.[0].number' 2>/dev/null)
-[ -n "$PR" ] || abort "PR mergeado para #${ISSUE} não encontrado (procurei por 'Closes #${ISSUE}' no body)"
+# Busca por número é fuzzy no gh (full-text): um PR de OUTRO issue que mencione
+# "#${ISSUE}" em prosa (ex.: #317 citou #315 como sessão paralela) casa e, com
+# --limit 1, pode ser retornado no lugar do PR correto. Discriminador robusto:
+# filtrar pelo keyword de fechamento real (Closes/Fixes/Resolves #NNN) no corpo,
+# ignorando menções em prosa. Ref negativa: encerramento #315.
+PR=$(gh pr list --state merged --search "#${ISSUE}" --json number,body --limit 30 \
+  --jq '[ .[] | select(.body | test("(?i)\\b(clos(e|es|ed)|fix(es|ed)?|resolv(e|es|ed))[: ]*#'"${ISSUE}"'([^0-9]|$)")) | .number ] | first // empty' 2>/dev/null)
+[ -n "$PR" ] || abort "PR mergeado que fecha #${ISSUE} não encontrado (procurei 'Closes/Fixes/Resolves #${ISSUE}' no body)"
 
 ISSUE_STATE=$(gh issue view "$ISSUE" --json state --jq .state 2>/dev/null || echo "")
 [ "$ISSUE_STATE" = "CLOSED" ] || abort "Issue #${ISSUE} state=$ISSUE_STATE (esperado CLOSED)"
