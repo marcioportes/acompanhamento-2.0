@@ -4,7 +4,7 @@
  *
  * CHANGELOG:
  * - 1.78.0: #315 feat (RESERVA) evidência técnica mentor-only + imagens HTF/LTF opcionais no registro + reflexão do aluno na composição de feedback
- * - 1.77.1: #316 fix HOTFIX gate de feedback — classifyStudent (front) chamado com args trocados (regressão #269); mentor não dava feedback a ninguém (01/07/2026)
+ * - 1.77.1: #316 fix mentor não consegue dar feedback — classifyStudent com args trocados (PR #317, 01/07/2026)
  * - 1.77.0: #313 feat Reflexão na entrada do trade + copy de auto-análise (PR #314, 25/06/2026)
  * - 1.76.0: #269 feat Revisão por backlog (FK reviewId) + SWOT customizável + filtro matriz Alpha/Tr (PR #312, 24/06/2026)
  * - 1.75.0: #308 feat Espelho (auto-revisão de trade) + fixes import (coverage gap, timezone) + email Espelho/app.marcioportes (PR #311, 10/06/2026)

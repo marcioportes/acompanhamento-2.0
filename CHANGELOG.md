@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.77.1] - 01/07/2026 · #316 · PR #317
+
+**fix:** mentor não consegue dar feedback — classifyStudent com args trocados
+
+- Backend `functions/_shared/studentClassify.js`: `classifyStudent(subs)` — 1 arg
+- Frontend `src/utils/studentClassify.js`: `classifyStudent(_student, subs)` — subs é o **2º** arg
+- **`useTrades.reviewScope.test.js` (novo):** exercita o gate com o `classifyStudent` **real** (sem mock) — alpha/trial-alpha passam, espelho/sem-sub bloqueiam. Validado que fica **vermelho sem o fix** (3 falhas).
+- **`useTrades.test.js`:** trazido pro commit (coverage da #269 que ficou untracked no working tree).
+- Suite completa: **3487 passed / 223 files**. Build verde.
+
+
 ## [1.77.0] - 25/06/2026 · #313 · PR #314
 
 **feat:** Reflexão na entrada do trade + copy de auto-análise
