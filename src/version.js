@@ -4,6 +4,7 @@
  *
  * CHANGELOG:
  * - 1.78.0: #315 feat (RESERVA) evidência técnica mentor-only + imagens HTF/LTF opcionais no registro + reflexão do aluno na composição de feedback
+ * - 1.79.1: #320 fix botão 'Anotar ponto pra revisão' faltava no layout full-page da FeedbackPage (regressão #318) (01/07/2026)
  * - 1.79.0: #318 feat anotar ponto pra Revisão (Notas da Sessão) direto do trade (PR #319, 01/07/2026)
  * - 1.77.1: #316 fix mentor não consegue dar feedback — classifyStudent com args trocados (PR #317, 01/07/2026)
  * - 1.77.0: #313 feat Reflexão na entrada do trade + copy de auto-análise (PR #314, 25/06/2026)
@@ -375,10 +376,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.79.0',
+  version: '1.79.1',
   build: '20260701',
-  display: 'v1.79.0',
-  full: '1.79.0+20260701',
+  display: 'v1.79.1',
+  full: '1.79.1+20260701',
 };
 export default VERSION;
 export { VERSION };

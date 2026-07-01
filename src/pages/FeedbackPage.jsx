@@ -828,6 +828,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
                   {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
+                <AddReviewNoteButton trade={trade} />
               </>
             )}
             <StatusBadge status={status} />
