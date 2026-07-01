@@ -41,6 +41,7 @@ import TradeLockBadge from '../components/TradeLockBadge';
 import BehaviorPanel from '../components/Trades/BehaviorPanel';
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
+import AddReviewNoteButton from '../components/reviews/AddReviewNoteButton';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import MentorClassificationPanel from '../components/feedback/MentorClassificationPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -645,6 +646,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
                   {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
+                <AddReviewNoteButton trade={trade} />
                 {shadowMessage && (
                   <div className={`w-full text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
                     {shadowMessage.text}
