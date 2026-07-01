@@ -56,4 +56,4 @@
 | 1.78.0 | #315 | `feat/issue-315-humanize-evidence` | 25/06/2026 | reservada |
 | 1.77.1 | #316 | `fix/issue-316-feedback-classify-args` | 01/07/2026 | consumida (PR #317 squash `c7cd7cad`) |
 | 1.79.0 | #318 | `feat/issue-318-review-note-from-trade` | 01/07/2026 | consumida (PR #319 squash `f148f9ac`) |
-| 1.79.1 | #320 | `fix/issue-320-review-note-fullpage-layout` | 01/07/2026 | reservada — patch (botão faltando no layout full-page, regressão #318) |
+| 1.79.1 | #320 | `fix/issue-320-review-note-fullpage-layout` | 01/07/2026 | consumida (PR #321 squash `2dc80757`) |

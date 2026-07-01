@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.79.1] - 01/07/2026 · #320 · PR #321
+
+**fix:** botão 'Anotar ponto pra revisão' faltava no layout full-page da FeedbackPage
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.79.0] - 01/07/2026 · #318 · PR #319
 
 **feat:** anotar ponto pra Revisão (Notas da Sessão) direto do trade
