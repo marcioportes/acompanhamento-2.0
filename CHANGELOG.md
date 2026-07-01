@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.80.0] - 01/07/2026 · #315 · PR #322
+
+**feat:** evidência mentor-only + imagens HTF/LTF opcionais + reflexão do aluno no feedb
+
+- `BehaviorPanel.jsx` + `UndersizedBody` (`behaviorDisplay.jsx`): gate `isMentor`.
+- Removida a validação `newErrors.htf/ltf` + asterisco dos labels. Edição inalterada.
+- `FeedbackPage`: renderiza `<TradeReviewSection trade={trade} />` read-only perto do `BehaviorPanel`.
+- `StudentReviewsPage`: passa `showSelfReview` ao `ReviewTradesSection` (paridade com `WeeklyReviewPage`).
+- Estado explícito "o aluno ainda não fez a auto-análise deste trade" quando não há `selfReview`.
+- `BehaviorPanel.test.jsx` (21) + `ReviewTradesSection.test.jsx` (11) — 32 passando. Build verde.
+- Versão (bump v1.80.0) + CHANGELOG + liberação de locks ficam pro encerramento (`cc-close-issue.sh`). A reserva original de v1.78.0 ficou obsoleta — main avançou pra 1.79.1 (#318/#320) enquanto a issue estava aberta.
+
+
 ## [1.79.1] - 01/07/2026 · #320 · PR #321
 
 **fix:** botão 'Anotar ponto pra revisão' faltava no layout full-page da FeedbackPage
