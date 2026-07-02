@@ -57,3 +57,4 @@
 | 1.77.1 | #316 | `fix/issue-316-feedback-classify-args` | 01/07/2026 | consumida (PR #317 squash `c7cd7cad`) |
 | 1.79.0 | #318 | `feat/issue-318-review-note-from-trade` | 01/07/2026 | consumida (PR #319 squash `f148f9ac`) |
 | 1.79.1 | #320 | `fix/issue-320-review-note-fullpage-layout` | 01/07/2026 | consumida (PR #321 squash `2dc80757`) |
+| 1.80.1 | #323 | `fix/issue-323-reflection-feedback-fullpage-warn` | 01/07/2026 | reservada — patch (reflexão no full-page + aviso ao mentor, regressão #315) |
