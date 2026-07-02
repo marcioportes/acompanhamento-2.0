@@ -60,4 +60,4 @@
 | 1.80.1 | #323 | `fix/issue-323-reflection-feedback-fullpage-warn` | 01/07/2026 | consumida (PR #324 squash `b57469d2`) |
 | 1.81.0 | #325 | `feat/issue-325-review-note-in-composer` | 01/07/2026 | consumida (PR #326 squash `f45fc90a`) |
 | 1.82.0 | #327 | `feat/issue-327-pending-reflections-queue` | 01/07/2026 | consumida (PR #328 squash `28e4ce8d`) |
-| 1.82.1 | #329 | `feat/issue-329-pending-reflections-collapse` | 02/07/2026 | reservada |
+| 1.82.1 | #329 | `feat/issue-329-pending-reflections-collapse` | 02/07/2026 | consumida (PR #330 squash `07a5f8b9`) |

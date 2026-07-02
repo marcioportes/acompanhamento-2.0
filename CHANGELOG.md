@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.1] - 02/07/2026 · #329 · PR #330
+
+**feat:** colapso na fila 'trades a refletir' quando há muitos pendentes
+
+- Card **colapsável**: header (Eye + título + contador + chevron) sempre visível; clique recolhe/expande.
+- **Default colapsado quando `pending > 8`**; poucos → expandido. Toggle do usuário sobrepõe.
+- Corpo expandido com `max-h-72 overflow-y-auto` (não empurra a página).
+- **Sem** ação de 'dispensar'/rastreio de 'não vou refletir' (aluno carrega a responsabilidade) — o contador segue cobrando mesmo colapsado.
+
+
 ## [1.82.0] - 02/07/2026 · #327 · PR #328
 
 **feat:** fila 'trades a refletir' — cobra reflexão de fechados sem selfReview
