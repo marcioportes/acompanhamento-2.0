@@ -93,4 +93,24 @@ async function carryOverOpenTakeaways(db, studentId, planId, newReviewId) {
   return carried.length;
 }
 
-module.exports = { getOrCreateOpenReview, buildOpenReviewDoc, carryOverOpenTakeaways };
+/**
+ * Acrescenta (append) um ponto às Notas da Sessão (sessionNotes) de um rascunho — #325.
+ * Transacional pra preservar notas concorrentes. Ponto pré-prefixado com dados do trade
+ * pelo cliente. No-op se texto vazio.
+ * @returns {Promise<boolean>} true se anexou.
+ */
+async function appendReviewSessionNote(db, studentId, reviewId, text) {
+  const addition = (typeof text === 'string' ? text : '').trim();
+  if (!addition) return false;
+  const reviewRef = db.collection('students').doc(studentId).collection('reviews').doc(reviewId);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(reviewRef);
+    if (!snap.exists) throw new Error(`Revisão ${reviewId} não encontrada`);
+    const current = typeof snap.data().sessionNotes === 'string' ? snap.data().sessionNotes : '';
+    const next = current ? `${current}\n${addition}` : addition;
+    tx.update(reviewRef, { sessionNotes: next });
+  });
+  return true;
+}
+
+module.exports = { getOrCreateOpenReview, buildOpenReviewDoc, carryOverOpenTakeaways, appendReviewSessionNote };

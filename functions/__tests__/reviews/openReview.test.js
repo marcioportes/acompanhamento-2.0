@@ -9,7 +9,20 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { getOrCreateOpenReview, buildOpenReviewDoc } = require('../../reviews/openReview');
+const { getOrCreateOpenReview, buildOpenReviewDoc, appendReviewSessionNote } = require('../../reviews/openReview');
+
+function makeReviewDb(reviewData) {
+  const updateCalls = [];
+  const reviewRef = { _kind: 'review' };
+  const db = {
+    collection: () => ({ doc: () => ({ collection: () => ({ doc: () => reviewRef }) }) }),
+    runTransaction: async (cb) => cb({
+      get: async () => ({ exists: reviewData !== null, data: () => reviewData }),
+      update: (ref, data) => updateCalls.push({ ref, data }),
+    }),
+  };
+  return { db, updateCalls };
+}
 
 function makeDb(planData) {
   const setCalls = [];
@@ -78,5 +91,39 @@ describe('getOrCreateOpenReview', () => {
   it('rejeita plano inexistente', async () => {
     const { db } = makeDb(null);
     await expect(getOrCreateOpenReview(db, 's1', 'p1', '2026-06-19')).rejects.toThrow(/não encontrado/i);
+  });
+});
+
+describe('appendReviewSessionNote (#325)', () => {
+  it('acrescenta ao sessionNotes existente sem sobrescrever', async () => {
+    const { db, updateCalls } = makeReviewDb({ sessionNotes: 'nota anterior' });
+    const ok = await appendReviewSessionNote(db, 's1', 'r1', '[15/06 WIN +10.00] rever stop');
+    expect(ok).toBe(true);
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0].data.sessionNotes).toBe('nota anterior\n[15/06 WIN +10.00] rever stop');
+  });
+
+  it('parte de vazio quando não há sessionNotes prévio', async () => {
+    const { db, updateCalls } = makeReviewDb({});
+    await appendReviewSessionNote(db, 's1', 'r1', 'primeiro ponto');
+    expect(updateCalls[0].data.sessionNotes).toBe('primeiro ponto');
+  });
+
+  it('texto vazio/whitespace é no-op (não escreve, retorna false)', async () => {
+    const { db, updateCalls } = makeReviewDb({ sessionNotes: 'X' });
+    const ok = await appendReviewSessionNote(db, 's1', 'r1', '   ');
+    expect(ok).toBe(false);
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it('faz trim do acréscimo', async () => {
+    const { db, updateCalls } = makeReviewDb({ sessionNotes: 'A' });
+    await appendReviewSessionNote(db, 's1', 'r1', '  B  ');
+    expect(updateCalls[0].data.sessionNotes).toBe('A\nB');
+  });
+
+  it('rejeita revisão inexistente', async () => {
+    const { db } = makeReviewDb(null);
+    await expect(appendReviewSessionNote(db, 's1', 'r1', 'x')).rejects.toThrow(/não encontrada/i);
   });
 });

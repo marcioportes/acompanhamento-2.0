@@ -1360,7 +1360,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     // (mudança só de status não passaria por ele). Idempotente: o update de reviewId
     // re-dispara este trigger, mas `enteredReviewed && !after.reviewId` fica falso.
     const enteredReviewed = before.status !== 'REVIEWED' && after.status === 'REVIEWED';
-    if (enteredReviewed && !after.reviewId && after.studentId && after.planId) {
+    if (enteredReviewed && after.studentId && after.planId) {
       try {
         // Filtro matriz (#269): Revisão é só do track Alpha (alpha + trial-alpha), definido
         // pelo PLANO/subscription do aluno. Fora disso (Espelho, VIP, sem-sub) o feedback não
@@ -1369,18 +1369,35 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         if (!(await studentInReviewScope(db, after.studentId))) {
           console.log(`[onTradeUpdated] trade ${context.params.tradeId}: aluno ${after.studentId} fora do escopo de Revisão (não-alpha/trial) — sem ancoragem`);
         } else {
-          const { getOrCreateOpenReview, carryOverOpenTakeaways } = require('./reviews/openReview');
-          const todayISO = new Date().toISOString().slice(0, 10);
-          const { reviewId, created } = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
-          await change.after.ref.update({ reviewId });
-          if (created) {
-            try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
-            catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
+          const { getOrCreateOpenReview, carryOverOpenTakeaways, appendReviewSessionNote } = require('./reviews/openReview');
+          // reviewId já existe (QUESTION→REVIEWED) ou nasce agora (OPEN→REVIEWED).
+          let reviewId = after.reviewId || null;
+          if (!reviewId) {
+            const todayISO = new Date().toISOString().slice(0, 10);
+            const res = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
+            reviewId = res.reviewId;
+            await change.after.ref.update({ reviewId });
+            if (res.created) {
+              try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
+              catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
+            }
+            console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
           }
-          console.log(`[onTradeUpdated] trade ${context.params.tradeId} ancorado na revisão ${reviewId}`);
+          // #325 — nota de sessão escrita junto do feedback: persiste no rascunho (que agora
+          // contém o trade REVIEWED) e limpa o campo transiente. Só na transição de estado —
+          // respeita a regra de constituição do rascunho (nada de trade OPEN).
+          if (after._pendingReviewNote && reviewId) {
+            try {
+              await appendReviewSessionNote(db, after.studentId, reviewId, after._pendingReviewNote);
+              await change.after.ref.update({ _pendingReviewNote: admin.firestore.FieldValue.delete() });
+              console.log(`[onTradeUpdated] nota de sessão do trade ${context.params.tradeId} anexada à revisão ${reviewId}`);
+            } catch (noteErr) {
+              console.warn('[onTradeUpdated] append nota de sessão falhou:', noteErr);
+            }
+          }
         }
       } catch (anchorErr) {
-        console.error('[onTradeUpdated] getOrCreateOpenReview falhou:', anchorErr);
+        console.error('[onTradeUpdated] ancoragem/nota de revisão falhou:', anchorErr);
       }
     }
 

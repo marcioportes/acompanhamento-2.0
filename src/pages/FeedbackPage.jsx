@@ -42,7 +42,8 @@ import BehaviorPanel from '../components/Trades/BehaviorPanel';
 import StudentReflectionPanel from '../components/reviews/StudentReflectionPanel';
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
-import AddReviewNoteButton from '../components/reviews/AddReviewNoteButton';
+import { fmtTradePrefix } from '../utils/reviewNotePrefix';
+import ReviewNoteField from '../components/reviews/ReviewNoteField';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import MentorClassificationPanel from '../components/feedback/MentorClassificationPanel';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
@@ -360,6 +361,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   const toast = useToast();
   const { user, isMentor } = useAuth();
   const [comment, setComment] = useState('');
+  const [reviewNote, setReviewNote] = useState(''); // #325 — ponto pra revisão, viaja com o feedback
   const [fullscreenImage, setFullscreenImage] = useState(null);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef(null);
@@ -545,8 +547,13 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           return;
         }
       }
-      await onAddComment(trade.id, comment || '', false, imageUrl);
+      // #325 — ponto pra revisão (opcional): prefixa com dados do trade e envia junto.
+      // O servidor persiste no rascunho quando o trade entra em REVIEWED. Se não houver
+      // transição de estado, a nota se perde (não cria rascunho com trade fora de escopo).
+      const note = reviewNote.trim() ? `${fmtTradePrefix(trade)}${reviewNote.trim()}` : null;
+      await onAddComment(trade.id, comment || '', false, imageUrl, note);
       setComment('');
+      setReviewNote('');
       handleRemoveImage();
     } catch (err) {
       console.error('[FeedbackPage] Send error:', err);
@@ -647,7 +654,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
                   {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
-                <AddReviewNoteButton trade={trade} />
                 {shadowMessage && (
                   <div className={`w-full text-xs px-2 py-1 rounded ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
                     {shadowMessage.text}
@@ -742,17 +748,20 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 />
                 
                 {canMentorComment && (
-                  <div className="flex justify-end">
-                    <button 
-                      onClick={handleMentorSend}
-                      disabled={(!comment.trim() && !pastedImage?.file) || sending}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
-                    >
-                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                      {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder'}
-                      {pastedImage && ' + Img'}
-                    </button>
-                  </div>
+                  <>
+                    <ReviewNoteField value={reviewNote} onChange={setReviewNote} disabled={sending} />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleMentorSend}
+                        disabled={(!comment.trim() && !pastedImage?.file) || sending}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2 text-sm"
+                      >
+                        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                        {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder'}
+                        {pastedImage && ' + Img'}
+                      </button>
+                    </div>
+                  </>
                 )}
                 
                 {canStudentAct && (
@@ -832,7 +841,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                   {shadowLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
                   {shadowLoading ? 'Recalculando...' : 'Recalcular Comportamento'}
                 </button>
-                <AddReviewNoteButton trade={trade} />
               </>
             )}
             <StatusBadge status={status} />
@@ -940,19 +948,22 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none disabled:opacity-50 mb-3"
               />
               
-              {/* MENTOR: botão de enviar */}
+              {/* MENTOR: ponto pra revisão (opcional) + botão de enviar */}
               {canMentorComment && (
-                <div className="flex justify-end">
-                  <button 
-                    onClick={handleMentorSend}
-                    disabled={(!comment.trim() && !pastedImage?.file) || sending}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                    {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder Dúvida'}
-                    {pastedImage && ' + Imagem'}
-                  </button>
-                </div>
+                <>
+                  <ReviewNoteField value={reviewNote} onChange={setReviewNote} disabled={sending} />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleMentorSend}
+                      disabled={(!comment.trim() && !pastedImage?.file) || sending}
+                      className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
+                    >
+                      {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : pastedImage ? <ImageIcon className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                      {status === STATUS.OPEN ? 'Enviar Feedback' : 'Responder Dúvida'}
+                      {pastedImage && ' + Imagem'}
+                    </button>
+                  </div>
+                </>
               )}
               
               {/* ALUNO em REVIEWED: 2 botões lado a lado */}

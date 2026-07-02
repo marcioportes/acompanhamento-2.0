@@ -290,6 +290,53 @@ describe('useTrades — addFeedbackComment (máquina de estados)', () => {
     const { result } = renderHook(() => useTrades(null));
     await expect(result.current.addFeedbackComment('tX', 'x')).rejects.toThrow('não encontrado');
   });
+
+  // #325 — ponto pra revisão viaja com o feedback quando o trade entra em REVIEWED.
+  it('mentor OPEN→REVIEWED com reviewNote: grava _pendingReviewNote', async () => {
+    mockAuthState = { user: MENTOR, isMentor: () => true };
+    mockGetDocImpl = () => ({ exists: () => true, data: () => ({ studentId: 'sa', status: 'OPEN' }) });
+    const { result } = renderHook(() => useTrades(null));
+    await act(async () => {
+      await result.current.addFeedbackComment('t1', 'feedback', false, null, '[15/06 WIN +10] rever stop');
+    });
+    const payload = mockUpdateDoc.mock.calls[0][1];
+    expect(payload.status).toBe('REVIEWED');
+    expect(payload._pendingReviewNote).toBe('[15/06 WIN +10] rever stop');
+  });
+
+  it('mentor QUESTION→REVIEWED com reviewNote: grava _pendingReviewNote', async () => {
+    mockAuthState = { user: MENTOR, isMentor: () => true };
+    mockGetDocImpl = () => ({ exists: () => true, data: () => ({ studentId: 'sa', status: 'QUESTION' }) });
+    const { result } = renderHook(() => useTrades(null));
+    await act(async () => {
+      await result.current.addFeedbackComment('t1', 'resposta', false, null, 'ponto x');
+    });
+    const payload = mockUpdateDoc.mock.calls[0][1];
+    expect(payload.status).toBe('REVIEWED');
+    expect(payload._pendingReviewNote).toBe('ponto x');
+  });
+
+  it('sem reviewNote: NÃO grava _pendingReviewNote', async () => {
+    mockAuthState = { user: MENTOR, isMentor: () => true };
+    mockGetDocImpl = () => ({ exists: () => true, data: () => ({ studentId: 'sa', status: 'OPEN' }) });
+    const { result } = renderHook(() => useTrades(null));
+    await act(async () => {
+      await result.current.addFeedbackComment('t1', 'feedback');
+    });
+    const payload = mockUpdateDoc.mock.calls[0][1];
+    expect('_pendingReviewNote' in payload).toBe(false);
+  });
+
+  it('reviewNote só de espaços: NÃO grava _pendingReviewNote', async () => {
+    mockAuthState = { user: MENTOR, isMentor: () => true };
+    mockGetDocImpl = () => ({ exists: () => true, data: () => ({ studentId: 'sa', status: 'OPEN' }) });
+    const { result } = renderHook(() => useTrades(null));
+    await act(async () => {
+      await result.current.addFeedbackComment('t1', 'feedback', false, null, '   ');
+    });
+    const payload = mockUpdateDoc.mock.calls[0][1];
+    expect('_pendingReviewNote' in payload).toBe(false);
+  });
 });
 
 describe('useTrades — addBulkFeedback', () => {
