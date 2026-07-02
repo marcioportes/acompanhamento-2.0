@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.0] - 02/07/2026 · #327 · PR #328
+
+**feat:** fila 'trades a refletir' — cobra reflexão de fechados sem selfReview
+
+- `PendingReflections` (9): filtro fechado/refletido/aberto/breakeven, planId, contador sing/plural, clique.
+- `TradeDetailModal` gate (4): aluno vê nudge; mentor não; sem onSubmitReview não; aberto não.
+- Frontend **3519 passed / 226 files**. Build verde.
+
+
 ## [1.81.0] - 01/07/2026 · #325 · PR #326
 
 **feat:** anotação de sessão no compositor de feedback (nasce com REVIEWED)

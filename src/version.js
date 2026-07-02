@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.82.0: #327 feat fila 'trades a refletir' — cobra reflexão de fechados sem selfReview (PR #328, 02/07/2026)
  * - 1.81.0: #325 feat anotação de sessão no compositor de feedback (nasce com REVIEWED) (PR #326, 01/07/2026)
  * - 1.80.1: #323 fix reflexão do aluno no feedback — full-page + aviso ao mentor quando ausente (PR #324, 01/07/2026)
  * - 1.80.0: #315 feat evidência mentor-only + imagens HTF/LTF opcionais + reflexão do aluno no feedb (PR #322, 01/07/2026)
@@ -380,9 +381,9 @@
  */
 const VERSION = {
   version: '1.82.0',
-  build: '20260701',
+  build: '20260702',
   display: 'v1.82.0',
-  full: '1.82.0+20260701',
+  full: '1.82.0+20260702',
 };
 export default VERSION;
 export { VERSION };
