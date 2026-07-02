@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.81.0: #325 feat anotação de sessão no compositor de feedback — nasce com a transição do trade pra REVIEWED (CF); remove botão solto #318/#320 (01/07/2026)
+ * - 1.81.0: #325 feat anotação de sessão no compositor de feedback (nasce com REVIEWED) (PR #326, 01/07/2026)
  * - 1.80.1: #323 fix reflexão do aluno no feedback — full-page + aviso ao mentor quando ausente (PR #324, 01/07/2026)
  * - 1.80.0: #315 feat evidência mentor-only + imagens HTF/LTF opcionais + reflexão do aluno no feedb (PR #322, 01/07/2026)
  * - 1.78.0: #315 feat (RESERVA) evidência técnica mentor-only + imagens HTF/LTF opcionais no registro + reflexão do aluno na composição de feedback

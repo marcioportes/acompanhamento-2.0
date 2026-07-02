@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.81.0] - 01/07/2026 · #325 · PR #326
+
+**feat:** anotação de sessão no compositor de feedback (nasce com REVIEWED)
+
+- Campo 'ponto pra revisão (opcional)' **no compositor** de feedback (mentor-only), nos dois layouts.
+- Ao **enviar feedback** (OPEN→REVIEWED ou QUESTION→REVIEWED), a nota (prefixada com dados do trade) vai como `_pendingReviewNote` no mesmo write.
+- O trigger `onTradeUpdated` persiste a nota no `sessionNotes` do rascunho **na transição** e limpa o campo. Como enviar feedback leva o trade a REVIEWED, a nota **sempre** cai num rascunho que contém o trade.
+- Se o mentor escreve a nota e **não envia** → descartada (nenhum rascunho órfão / trade OPEN no rascunho).
+- `appendReviewSessionNote` (5), `addFeedbackComment` _pendingReviewNote (4).
+- Frontend **3506 passed / 225 files** + functions **198 passed**. Build verde.
+
+
 ## [1.80.1] - 01/07/2026 · #323 · PR #324
 
 **fix:** reflexão do aluno no feedback — full-page + aviso ao mentor quando ausente
