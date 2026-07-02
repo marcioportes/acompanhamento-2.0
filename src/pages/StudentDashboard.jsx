@@ -28,6 +28,7 @@ import DashboardHeader from '../components/dashboard/DashboardHeader';
 import PlanCardGrid from '../components/dashboard/PlanCardGrid';
 import MetricsCards from '../components/dashboard/MetricsCards';
 import PendingTakeaways from '../components/reviews/PendingTakeaways';
+import PendingReflections from '../components/reviews/PendingReflections';
 
 // Componentes existentes
 import TradingCalendar from '../components/TradingCalendar';
@@ -604,6 +605,16 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onNavigateToFeedback={onNavigateToFeedback}
       />
 
+      {/* #327 — fila "trades a refletir": cobra auto-análise de fechados sem selfReview
+          (importados/pulados). Suprimido em View-As (mentor não reflete pelo aluno). */}
+      {!overrideStudentId && (
+        <PendingReflections
+          trades={trades}
+          planId={studentCtx.planId || null}
+          onOpenTrade={setViewingTrade}
+        />
+      )}
+
       {/* Cards de Planos */}
       <PlanCardGrid
         availablePlans={availablePlans}
@@ -809,7 +820,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       {/* Modais */}
       <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} />
-      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} getPartials={getPartials} />
+      <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} getPartials={getPartials} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
       {/* PlanLedgerExtract: ledger agora é currentView no App.jsx (#102 Fase 0), não modal aqui */}

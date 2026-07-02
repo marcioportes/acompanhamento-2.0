@@ -84,3 +84,35 @@ describe('TradeDetailModal — tradeId muted no header', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+// #327 — Espelho editável no detalhe pro próprio aluno (fila "trades a refletir").
+describe('TradeDetailModal — reflexão editável (#327)', () => {
+  const closedNoReview = { ...baseTrade, result: 60, selfReview: undefined };
+
+  it('aluno + onSubmitReview + fechado sem selfReview → mostra nudge de auto-análise', () => {
+    render(
+      <TradeDetailModal isOpen onClose={() => {}} trade={closedNoReview} onSubmitReview={vi.fn()} />
+    );
+    expect(screen.getByText(/ainda não tem sua auto-análise/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar o trade/i })).toBeInTheDocument();
+  });
+
+  it('mentor (isMentor) NÃO vê o nudge de reflexão', () => {
+    render(
+      <TradeDetailModal isOpen onClose={() => {}} trade={closedNoReview} isMentor onSubmitReview={vi.fn()} />
+    );
+    expect(screen.queryByText(/ainda não tem sua auto-análise/i)).not.toBeInTheDocument();
+  });
+
+  it('sem onSubmitReview NÃO mostra o nudge (read-only)', () => {
+    render(<TradeDetailModal isOpen onClose={() => {}} trade={closedNoReview} />);
+    expect(screen.queryByText(/ainda não tem sua auto-análise/i)).not.toBeInTheDocument();
+  });
+
+  it('trade sem resultado (aberto) NÃO mostra o nudge', () => {
+    render(
+      <TradeDetailModal isOpen onClose={() => {}} trade={{ ...baseTrade, result: null }} onSubmitReview={vi.fn()} />
+    );
+    expect(screen.queryByText(/ainda não tem sua auto-análise/i)).not.toBeInTheDocument();
+  });
+});

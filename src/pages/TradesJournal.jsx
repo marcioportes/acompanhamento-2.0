@@ -268,6 +268,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
         orders={orders}
         onViewFeedbackHistory={handleViewFeedbackHistory}
         getPartials={getPartials}
+        onSubmitReview={handleSubmitReview}
       />
 
       {/* CSV Import Modais */}
