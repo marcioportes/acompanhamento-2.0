@@ -460,9 +460,15 @@ const TradeDetailModal = ({
                 Substitui ExecutionPatternsPanel + ShadowBehaviorPanel. Aluno vê os dados. */}
             <BehaviorPanel trade={trade} isMentor={isMentor} embedded />
 
-            {/* #308 — Espelho do trade (read-only aqui). Escrita mora no fluxo de edição (lápis);
-                o olho só exibe o espelho já preenchido como contexto. */}
-            <TradeReviewSection trade={trade} />
+            {/* #308 — Espelho do trade. Read-only por padrão (mentor/View-As, ou trade sem resultado).
+                #327 — pro próprio aluno, num trade fechado ainda não refletido, o Espelho fica
+                EDITÁVEL aqui (fila "trades a refletir" cobra importados/pulados). Já refletido →
+                TradeReviewSection cai no branch read-only sozinho. */}
+            <TradeReviewSection
+              trade={trade}
+              canReview={!isMentor && typeof onSubmitReview === 'function' && trade?.result != null}
+              onSubmit={onSubmitReview ? (payload) => onSubmitReview(trade.id, payload) : undefined}
+            />
 
             {/* Observações do Aluno */}
             {notes && (
