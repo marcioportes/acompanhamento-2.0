@@ -5,3 +5,5 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-02 | #327 | `feat/issue-327-pending-reflections-queue` | 01/07/2026 | fila trades a refletir |
+| CHUNK-04 | #327 | `feat/issue-327-pending-reflections-queue` | 01/07/2026 | fila trades a refletir |
