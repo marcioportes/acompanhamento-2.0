@@ -98,4 +98,32 @@ describe('<PendingReflections />', () => {
     fireEvent.click(screen.getByText('WINFUT'));
     expect(onOpenTrade).toHaveBeenCalledWith(trade);
   });
+
+  // #329 — colapso quando há muitos pendentes.
+  const manyTrades = (n) =>
+    Array.from({ length: n }, (_, i) => makeTrade({ id: `t${i}`, symbol: `SYM${i}` }));
+
+  it('poucos trades (≤8): nasce expandido — itens visíveis', () => {
+    render(<PendingReflections trades={manyTrades(3)} />);
+    expect(screen.getByText('SYM0')).toBeInTheDocument();
+  });
+
+  it('muitos trades (>8): nasce colapsado — contador visível, itens ocultos', () => {
+    render(<PendingReflections trades={manyTrades(12)} />);
+    expect(screen.getByText('12 trades')).toBeInTheDocument();
+    expect(screen.queryByText('SYM0')).not.toBeInTheDocument();
+  });
+
+  it('clicar no header expande a lista colapsada', () => {
+    render(<PendingReflections trades={manyTrades(12)} />);
+    fireEvent.click(screen.getByText('Trades a refletir'));
+    expect(screen.getByText('SYM0')).toBeInTheDocument();
+  });
+
+  it('clicar no header colapsa a lista expandida (poucos)', () => {
+    render(<PendingReflections trades={manyTrades(3)} />);
+    expect(screen.getByText('SYM0')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Trades a refletir'));
+    expect(screen.queryByText('SYM0')).not.toBeInTheDocument();
+  });
 });
