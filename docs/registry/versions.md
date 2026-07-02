@@ -58,3 +58,4 @@
 | 1.79.0 | #318 | `feat/issue-318-review-note-from-trade` | 01/07/2026 | consumida (PR #319 squash `f148f9ac`) |
 | 1.79.1 | #320 | `fix/issue-320-review-note-fullpage-layout` | 01/07/2026 | consumida (PR #321 squash `2dc80757`) |
 | 1.80.1 | #323 | `fix/issue-323-reflection-feedback-fullpage-warn` | 01/07/2026 | consumida (PR #324 squash `b57469d2`) |
+| 1.81.0 | #325 | `feat/issue-325-review-note-in-composer` | 01/07/2026 | reservada — feat (nota no compositor + CF), substitui abordagem #318/#320 |
