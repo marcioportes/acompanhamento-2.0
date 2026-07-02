@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.82.1: #329 feat colapso na fila 'trades a refletir' quando há muitos pendentes (02/07/2026)
  * - 1.82.0: #327 feat fila 'trades a refletir' — cobra reflexão de fechados sem selfReview (PR #328, 02/07/2026)
  * - 1.81.0: #325 feat anotação de sessão no compositor de feedback (nasce com REVIEWED) (PR #326, 01/07/2026)
  * - 1.80.1: #323 fix reflexão do aluno no feedback — full-page + aviso ao mentor quando ausente (PR #324, 01/07/2026)
@@ -380,10 +381,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.82.0',
+  version: '1.82.1',
   build: '20260702',
-  display: 'v1.82.0',
-  full: '1.82.0+20260702',
+  display: 'v1.82.1',
+  full: '1.82.1+20260702',
 };
 export default VERSION;
 export { VERSION };
