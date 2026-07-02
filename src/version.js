@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.80.1: #323 fix reflexão do aluno no feedback também no full-page + aviso âmbar ao mentor quando ausente (regressão #315) (01/07/2026)
  * - 1.80.0: #315 feat evidência mentor-only + imagens HTF/LTF opcionais + reflexão do aluno no feedb (PR #322, 01/07/2026)
  * - 1.78.0: #315 feat (RESERVA) evidência técnica mentor-only + imagens HTF/LTF opcionais no registro + reflexão do aluno na composição de feedback
  * - 1.79.1: #320 fix botão 'Anotar ponto pra revisão' faltava no layout full-page da FeedbackPage (PR #321, 01/07/2026)
@@ -377,10 +378,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.80.0',
+  version: '1.80.1',
   build: '20260701',
-  display: 'v1.80.0',
-  full: '1.80.0+20260701',
+  display: 'v1.80.1',
+  full: '1.80.1+20260701',
 };
 export default VERSION;
 export { VERSION };
