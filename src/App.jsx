@@ -281,8 +281,8 @@ const AppContent = () => {
   };
 
   // Handler para adicionar comentário no FeedbackPage
-  const handleAddFeedbackComment = async (tradeId, content, isQuestion, imageUrl = null) => {
-    const updatedTrade = await addFeedbackComment(tradeId, content, isQuestion, imageUrl);
+  const handleAddFeedbackComment = async (tradeId, content, isQuestion, imageUrl = null, reviewNote = null) => {
+    const updatedTrade = await addFeedbackComment(tradeId, content, isQuestion, imageUrl, reviewNote);
     // Atualiza o trade local para refletir mudanças imediatas
     setFeedbackTrade(prev => ({
       ...prev,

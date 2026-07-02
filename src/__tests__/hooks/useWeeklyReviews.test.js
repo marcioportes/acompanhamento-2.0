@@ -8,8 +8,6 @@ const mockServerTimestamp = vi.fn(() => ({ __type: 'serverTimestamp' }));
 // getDocs default: snapshot vazio (nenhuma revisão anterior para carry-over).
 // Cada teste que precisar pode sobrescrever via mockGetDocs.mockResolvedValueOnce(...).
 const mockGetDocs = vi.fn(() => Promise.resolve({ docs: [], empty: true }));
-// getDoc default: doc sem sessionNotes prévio (append parte de vazio).
-const mockGetDoc = vi.fn(() => Promise.resolve({ exists: () => true, data: () => ({}) }));
 const mockDeleteDoc = vi.fn(() => Promise.resolve());
 const mockArrayUnion = vi.fn((...items) => ({ __type: 'arrayUnion', items }));
 const mockArrayRemove = vi.fn((...items) => ({ __type: 'arrayRemove', items }));
@@ -32,7 +30,6 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
   getDocs: (...args) => mockGetDocs(...args),
-  getDoc: (...args) => mockGetDoc(...args),
   serverTimestamp: () => mockServerTimestamp(),
   arrayUnion: (...items) => mockArrayUnion(...items),
   arrayRemove: (...items) => mockArrayRemove(...items),
@@ -56,8 +53,6 @@ describe('useWeeklyReviews', () => {
     mockOnSnapshot.mockClear();
     mockGetDocs.mockClear();
     mockGetDocs.mockImplementation(() => Promise.resolve({ docs: [], empty: true }));
-    mockGetDoc.mockClear();
-    mockGetDoc.mockImplementation(() => Promise.resolve({ exists: () => true, data: () => ({}) }));
     mockDeleteDoc.mockClear();
     mockArrayUnion.mockClear();
     mockArrayRemove.mockClear();
@@ -357,59 +352,6 @@ describe('useWeeklyReviews', () => {
           meetingLink: 'https://zoom.us/j/123',
           videoLink: '',
         })).rejects.toThrow('rules denied');
-      });
-      expect(result.current.error).toBe('rules denied');
-    });
-  });
-
-  describe('appendSessionNote (#318)', () => {
-    it('acrescenta ao conteúdo existente sem sobrescrever', async () => {
-      mockGetDoc.mockImplementationOnce(() =>
-        Promise.resolve({ exists: () => true, data: () => ({ sessionNotes: 'nota anterior' }) }));
-      const { result } = renderHook(() => useWeeklyReviews('student-1'));
-      await act(async () => {
-        await result.current.appendSessionNote('r1', '[15/06 WIN +10.00] rever stop');
-      });
-      expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
-      const [, payload] = mockUpdateDoc.mock.calls[0];
-      expect(payload.sessionNotes).toBe('nota anterior\n[15/06 WIN +10.00] rever stop');
-    });
-
-    it('parte de vazio quando não há sessionNotes prévio', async () => {
-      mockGetDoc.mockImplementationOnce(() =>
-        Promise.resolve({ exists: () => true, data: () => ({}) }));
-      const { result } = renderHook(() => useWeeklyReviews('student-1'));
-      await act(async () => {
-        await result.current.appendSessionNote('r1', 'primeiro ponto');
-      });
-      const [, payload] = mockUpdateDoc.mock.calls[0];
-      expect(payload.sessionNotes).toBe('primeiro ponto');
-    });
-
-    it('texto vazio/whitespace é no-op (não escreve)', async () => {
-      const { result } = renderHook(() => useWeeklyReviews('student-1'));
-      await act(async () => {
-        await result.current.appendSessionNote('r1', '   ');
-      });
-      expect(mockUpdateDoc).not.toHaveBeenCalled();
-    });
-
-    it('faz trim do acréscimo antes de anexar', async () => {
-      mockGetDoc.mockImplementationOnce(() =>
-        Promise.resolve({ exists: () => true, data: () => ({ sessionNotes: 'A' }) }));
-      const { result } = renderHook(() => useWeeklyReviews('student-1'));
-      await act(async () => {
-        await result.current.appendSessionNote('r1', '  B  ');
-      });
-      const [, payload] = mockUpdateDoc.mock.calls[0];
-      expect(payload.sessionNotes).toBe('A\nB');
-    });
-
-    it('expõe error quando updateDoc rejeita', async () => {
-      mockUpdateDoc.mockRejectedValueOnce(new Error('rules denied'));
-      const { result } = renderHook(() => useWeeklyReviews('student-1'));
-      await act(async () => {
-        await expect(result.current.appendSessionNote('r1', 'x')).rejects.toThrow('rules denied');
       });
       expect(result.current.error).toBe('rules denied');
     });

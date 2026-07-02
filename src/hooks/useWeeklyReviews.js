@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  collection, query, where, orderBy, onSnapshot, getDocs, getDoc,
+  collection, query, where, orderBy, onSnapshot, getDocs,
   doc, updateDoc, serverTimestamp, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -272,30 +272,6 @@ export const useWeeklyReviews = (studentId) => {
     }
   }, [studentId]);
 
-  // Acrescenta (append) um ponto às Notas da Sessão sem sobrescrever o conteúdo
-  // existente — restore do fluxo do PinToReviewButton (#318). Read-modify-write
-  // via getDoc pra preservar notas anteriores (mentor único, baixa concorrência).
-  const appendSessionNote = useCallback(async (reviewId, text) => {
-    const addition = typeof text === 'string' ? text.trim() : '';
-    if (!addition) return;
-    setActionLoading(true);
-    setError(null);
-    try {
-      const ref = doc(db, 'students', studentId, 'reviews', reviewId);
-      const snap = await getDoc(ref);
-      const current = snap.exists() && typeof snap.data().sessionNotes === 'string'
-        ? snap.data().sessionNotes
-        : '';
-      const next = current ? `${current}\n${addition}` : addition;
-      await updateDoc(ref, { sessionNotes: next });
-    } catch (err) {
-      setError(err.message || 'Erro ao anexar nota da sessão');
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
-  }, [studentId]);
-
   // ===== Takeaways checklist (Stage 4) =====
   // Schema: review.takeawayItems: [{id, text, done, createdAt, sourceTradeId?}]
   // Adição via arrayUnion (race-safe). Toggle/remove via read-modify-write.
@@ -387,7 +363,6 @@ export const useWeeklyReviews = (studentId) => {
     closeReview,
     archiveReview,
     updateSessionNotes,
-    appendSessionNote,
     saveDraftFields,
     updateMeetingLinks,
     addTakeawayItem,

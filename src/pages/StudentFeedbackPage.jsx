@@ -263,8 +263,8 @@ const StudentFeedbackPage = () => {
     setStatusFilter(prev => prev === statusKey ? 'all' : statusKey);
   };
 
-  const handleAddComment = async (tradeId, content, isQuestion) => {
-    const updated = await addFeedbackComment(tradeId, content, isQuestion);
+  const handleAddComment = async (tradeId, content, isQuestion, imageUrl = null, reviewNote = null) => {
+    const updated = await addFeedbackComment(tradeId, content, isQuestion, imageUrl, reviewNote);
     setSelectedTrade(prev => prev ? { ...prev, ...updated, feedbackHistory: updated.feedbackHistory, status: updated.status } : prev);
   };
 

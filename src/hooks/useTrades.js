@@ -470,7 +470,7 @@ export const useTrades = (overrideStudentId = null) => {
   /**
    * Adiciona comentário ao histórico com transição de status automática
    */
-  const addFeedbackComment = useCallback(async (tradeId, content, isQuestion = false, imageUrl = null) => {
+  const addFeedbackComment = useCallback(async (tradeId, content, isQuestion = false, imageUrl = null, reviewNote = null) => {
     if (!user) throw new Error('Auth required');
     
     const tradeRef = doc(db, 'trades', tradeId);
@@ -523,7 +523,14 @@ export const useTrades = (overrideStudentId = null) => {
       updateData.mentorFeedback = content.trim();
       updateData.feedbackDate = new Date().toISOString();
     }
-    
+
+    // #325 — ponto pra revisão escrito no compositor: viaja como campo transiente e é
+    // persistido no sessionNotes do rascunho pelo trigger onTradeUpdated, na transição
+    // pra REVIEWED. Só quando o mentor de fato leva o trade a REVIEWED (nasce/entra no rascunho).
+    if (userIsMentor && typeof reviewNote === 'string' && reviewNote.trim() && newStatus === STATUS.REVIEWED) {
+      updateData._pendingReviewNote = reviewNote.trim();
+    }
+
     await updateDoc(tradeRef, updateData);
     console.log(`[useTrades] Feedback: ${trade.status} → ${newStatus}${imageUrl ? ' (com imagem)' : ''}`);
     
