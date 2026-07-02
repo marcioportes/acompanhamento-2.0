@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.80.1] - 01/07/2026 · #323 · PR #324
+
+**fix:** reflexão do aluno no feedback — full-page + aviso ao mentor quando ausente
+
+- Reflexão feita → `TradeReviewSection` read-only.
+- Ausente + mentor → **alerta âmbar** ('aluno não fez a auto-análise — cobre no feedback').
+- Ausente + não-mentor → nada.
+
+
 ## [1.80.0] - 01/07/2026 · #315 · PR #322
 
 **feat:** evidência mentor-only + imagens HTF/LTF opcionais + reflexão do aluno no feedb
