@@ -5,5 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-04 | #331 | `fix/issue-331-swot-draft-snapshot` | 03/07/2026 | swot-draft |
-| CHUNK-08 | #331 | `fix/issue-331-swot-draft-snapshot` | 03/07/2026 | swot-draft |

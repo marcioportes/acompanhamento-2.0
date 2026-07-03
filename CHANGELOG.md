@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.2] - 03/07/2026 · #331 · PR #332
+
+**fix:** SWOT em revisão DRAFT — CF aceita snapshot do cliente
+
+- **CF** `generateWeeklySwot`: aceita `data.snapshot` opcional; `resolveSwotSnapshot(clientSnapshot, review)` → snapshot do cliente (DRAFT) ou `frozenSnapshot` (publicada); **400 só quando ambos ausentes**. planId/prompt/fallback usam o snapshot resolvido.
+- **Hook** `generateSwot({ reviewId, snapshot })` repassa à CF.
+- **Surfaces** `WeeklyReviewPage` e `ReviewToolsPanel` montam e passam o snapshot em DRAFT. (`WeeklyReviewModal` é legado/não montado — intocado.)
+- **Refactor**: builder extraído para `src/utils/rebuildReviewSnapshot.js` (fonte única, DRAFT-correta — planId de `review.planId`, membros por `reviewId`); elimina duplicação.
+- `generateWeeklySwot.test.js` (novo): `resolveSwotSnapshot` — 5 casos (DRAFT usa cliente / publicada cai no frozen / prioridade / null→400 / defensivo não-objeto).
+- `useWeeklyReviews.test.js`: pass-through do snapshot (2).
+- Suítes completas verdes: **src 3524**, **functions 203**; build ok.
+
+
 ## [1.82.1] - 02/07/2026 · #329 · PR #330
 
 **feat:** colapso na fila 'trades a refletir' quando há muitos pendentes
