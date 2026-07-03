@@ -20,7 +20,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  doc, onSnapshot, collection, query, where, orderBy, limit, getDoc, getDocs,
+  doc, onSnapshot, collection, query, orderBy, limit,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
@@ -34,8 +34,7 @@ import MaturityComparisonSection from '../components/reviews/MaturityComparisonS
 import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
 import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import TakeawaysSection from '../components/reviews/TakeawaysSection';
-import { buildClientSnapshot } from '../utils/clientSnapshotBuilder';
-import { resolveCycle } from '../utils/cycleResolver';
+import { rebuildReviewSnapshot } from '../utils/rebuildReviewSnapshot';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateNotesText, validateReviewUrl, MAX_NOTES_LENGTH } from '../utils/reviewUrlValidator';
@@ -416,57 +415,9 @@ const Section = ({ num, title, children, stage }) => (
 //
 // #269 v2: o conjunto da revisão = trades ancorados nela (reviewId === review.id). A FK
 // é carimbada quando o mentor dá feedback (OPEN→REVIEWED). Sem janela ISO, sem includedTradeIds.
-//
-// Parâmetro opcional `maturity` (task 21 — H2): quando fornecido, é congelado em
-// `maturitySnapshot` via buildClientSnapshot. O caller pode ter recomputado antes
-// via `recomputeAndReadMaturity` — se ausente, snapshot segue sem maturitySnapshot.
-const rebuildSnapshotFromFirestore = async (review, { studentId = null } = {}) => {
-  const planId = review?.planId || review?.frozenSnapshot?.planContext?.planId;
-  if (!planId) return null;
-  const planSnap = await getDoc(doc(db, 'plans', planId));
-  if (!planSnap.exists()) return null;
-  const plan = { id: planSnap.id, ...planSnap.data() };
-  const tradesQ = query(collection(db, 'trades'), where('planId', '==', planId));
-  const tradesSnap = await getDocs(tradesQ);
-  const allTrades = tradesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  // #269 v2 — conjunto da revisão = trades ancorados nela (reviewId === review.id).
-  // A FK é carimbada no 1º feedback do mentor (OPEN→REVIEWED). Mata o bug original
-  // (SWOT rodava sobre a janela ISO, ignorando a curadoria).
-  const draftTrades = allTrades.filter(t => t.reviewId === review.id);
-  const extraTrades = [];
-
-  // Fetch defensivo de maturity/current — usado em DRAFTs para preview live do
-  // comparativo N vs N-1. No publish (handlePublish) o caller força recompute
-  // antes e passa via closeReviewMaturityPipeline.
-  let maturity = null;
-  try {
-    if (studentId) {
-      const matSnap = await getDoc(doc(db, 'students', studentId, 'maturity', 'current'));
-      maturity = matSnap.exists() ? { id: matSnap.id, ...matSnap.data() } : null;
-    }
-  } catch (err) {
-    console.warn('[rebuildSnapshotFromFirestore] maturity fetch failed:', err?.message || err);
-  }
-
-  // CV normalizado per-ciclo (issue #235 F3.1) usa janela do CICLO, não da semana —
-  // mantém alinhamento com CycleConsistencyCard do dashboard.
-  const cycleRange = resolveCycle(review.cycleKey, plan);
-  const toIso = (d) =>
-    d instanceof Date && !Number.isNaN(d.getTime())
-      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      : null;
-
-  return buildClientSnapshot({
-    plan,
-    trades: draftTrades,
-    extraTrades,
-    cycleKey: review.cycleKey || null,
-    cycleStart: cycleRange ? toIso(cycleRange.start) : null,
-    cycleEnd: cycleRange ? toIso(cycleRange.end) : null,
-    emotionalMetrics: null,
-    maturity,
-  });
-};
+// #331 — extraído para src/utils/rebuildReviewSnapshot.js (fonte única, compartilhada com
+// ReviewToolsPanel). Alias local preservado para os call sites existentes.
+const rebuildSnapshotFromFirestore = rebuildReviewSnapshot;
 
 const WeeklyReviewPage = ({
   studentId,
@@ -635,7 +586,10 @@ const WeeklyReviewPage = ({
   const handleGenerateSwot = async () => {
     if (!canEdit || !isDraft) return;
     try {
-      await generateSwot({ reviewId: review.id });
+      // #331 — em DRAFT o frozenSnapshot ainda é null; passa o snapshot montado no cliente
+      // (liveSnapshot já recomputado ao montar; rebuild defensivo se ainda não pronto).
+      const snapshot = liveSnapshot || await rebuildReviewSnapshot(review, { studentId });
+      await generateSwot({ reviewId: review.id, snapshot });
       setConfirmRegen(false);
     } catch { /* error surfaced by hook */ }
   };

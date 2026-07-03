@@ -135,12 +135,14 @@ export const useWeeklyReviews = (studentId) => {
   // A revisão semanal nasce sob demanda no 1º feedback do mentor (trigger onTradeUpdated
   // → getOrCreateOpenReview, server-side) e os trades entram ao virarem REVIEWED.
 
-  const generateSwot = useCallback(async ({ reviewId }) => {
+  // #331 — `snapshot` (montado no cliente via buildClientSnapshot) é passado para a CF quando
+  // a revisão está DRAFT (frozenSnapshot ainda null). Ausente → a CF cai no frozenSnapshot.
+  const generateSwot = useCallback(async ({ reviewId, snapshot = null }) => {
     setActionLoading(true);
     setError(null);
     try {
       const cf = httpsCallable(functions, 'generateWeeklySwot');
-      const res = await cf({ studentId, reviewId });
+      const res = await cf({ studentId, reviewId, snapshot });
       return res.data;
     } catch (err) {
       setError(err.message || 'Erro ao gerar SWOT');

@@ -119,13 +119,23 @@ describe('useWeeklyReviews', () => {
     expect(returned).toEqual({ reviewId: 'x-1', status: 'DRAFT' });
   });
 
-  it('generateSwot injects studentId + reviewId in payload', async () => {
+  it('generateSwot injects studentId + reviewId in payload (snapshot omitido → null)', async () => {
     mockCallable.mockResolvedValueOnce({ data: { swot: { strengths: [] }, aiUnavailable: false } });
     const { result } = renderHook(() => useWeeklyReviews('student-1'));
     await act(async () => {
       await result.current.generateSwot({ reviewId: 'r1' });
     });
-    expect(mockCallable).toHaveBeenCalledWith({ studentId: 'student-1', reviewId: 'r1' });
+    expect(mockCallable).toHaveBeenCalledWith({ studentId: 'student-1', reviewId: 'r1', snapshot: null });
+  });
+
+  it('generateSwot repassa o snapshot do cliente à CF (#331 — DRAFT sem frozenSnapshot)', async () => {
+    mockCallable.mockResolvedValueOnce({ data: { swot: { strengths: [] }, aiUnavailable: false } });
+    const { result } = renderHook(() => useWeeklyReviews('student-1'));
+    const snapshot = { planContext: { planId: 'p1' }, kpis: { pl: 100 } };
+    await act(async () => {
+      await result.current.generateSwot({ reviewId: 'r1', snapshot });
+    });
+    expect(mockCallable).toHaveBeenCalledWith({ studentId: 'student-1', reviewId: 'r1', snapshot });
   });
 
   it('closeReview publica via callable publishReview e persiste links via updateDoc (#269 Fase D)', async () => {
