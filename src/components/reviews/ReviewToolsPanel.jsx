@@ -24,6 +24,7 @@ import {
 import { useWeeklyReviews } from '../../hooks/useWeeklyReviews';
 import { useAuth } from '../../contexts/AuthContext';
 import { validateReviewUrl } from '../../utils/reviewUrlValidator';
+import { rebuildReviewSnapshot } from '../../utils/rebuildReviewSnapshot';
 import TakeawaysSection from './TakeawaysSection';
 
 
@@ -175,8 +176,13 @@ const ReviewToolsPanel = ({
   const handleGenerateSwot = useCallback(async () => {
     if (swot && !confirmRegen) { setConfirmRegen(true); return; }
     setConfirmRegen(false);
-    try { await generateSwot({ reviewId: review.id }); } catch { /* */ }
-  }, [swot, confirmRegen, generateSwot, review?.id]);
+    try {
+      // #331 — em DRAFT o frozenSnapshot ainda é null; monta o snapshot no cliente e passa à CF.
+      // Revisões já publicadas têm frozenSnapshot → snapshot null e a CF cai nele.
+      const snapshot = isDraft ? await rebuildReviewSnapshot(review, { studentId }) : null;
+      await generateSwot({ reviewId: review.id, snapshot });
+    } catch { /* */ }
+  }, [swot, confirmRegen, generateSwot, review, studentId, isDraft]);
 
   // Salvar SEM publicar — persiste sessionNotes/links no DRAFT.
   // Takeaways são gerenciados via TakeawaysSection (mutações imediatas, sem botão Salvar).

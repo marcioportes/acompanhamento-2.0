@@ -3,7 +3,8 @@
  *
  * Gera SWOT (Sonnet 4.6) a partir do frozenSnapshot da revisão.
  *
- * Input:  { studentId, reviewId }
+ * Input:  { studentId, reviewId, snapshot? } — snapshot montado no cliente (#331); usado quando
+ *          a revisão ainda está DRAFT (frozenSnapshot null). Ausente → cai no frozenSnapshot.
  * Output: { swot: {strengths, weaknesses, opportunities, threats, ...meta}, aiUnavailable }
  *
  * Fluxo:
@@ -31,6 +32,14 @@ const { buildStyledSystemPrompt } = require('../_shared/swotPromptBuilder');
 const { isMentor } = require('./validators');
 
 const MAX_VALIDATION_RETRIES = 3;
+
+// #331 — fonte do snapshot do SWOT. Em DRAFT a revisão ainda tem frozenSnapshot: null
+// (congela só no publish), então o cliente (mentor trusted) monta e envia o snapshot.
+// Revisões já publicadas caem no frozenSnapshot persistido. Null quando ambos ausentes.
+const resolveSwotSnapshot = (clientSnapshot, review) =>
+  (clientSnapshot && typeof clientSnapshot === 'object')
+    ? clientSnapshot
+    : (review?.frozenSnapshot || null);
 
 const client = new Anthropic();
 
@@ -71,7 +80,7 @@ module.exports = onCall(
       throw new HttpsError('permission-denied', 'Apenas mentor pode gerar SWOT');
     }
 
-    const { studentId, reviewId } = request.data || {};
+    const { studentId, reviewId, snapshot: clientSnapshot = null } = request.data || {};
     if (!studentId || typeof studentId !== 'string') {
       throw new HttpsError('invalid-argument', 'studentId é obrigatório');
     }
@@ -90,11 +99,13 @@ module.exports = onCall(
     if (review.status === 'ARCHIVED') {
       throw new HttpsError('failed-precondition', 'Review arquivada não pode receber novo SWOT');
     }
-    if (!review.frozenSnapshot) {
-      throw new HttpsError('failed-precondition', 'Review sem frozenSnapshot — não é possível gerar SWOT');
+    // #331 — snapshot do cliente (DRAFT) ou frozenSnapshot persistido (publicada). 400 só se ambos ausentes.
+    const snapshot = resolveSwotSnapshot(clientSnapshot, review);
+    if (!snapshot) {
+      throw new HttpsError('failed-precondition', 'Review sem snapshot — não é possível gerar SWOT');
     }
 
-    const planId = review.frozenSnapshot?.planContext?.planId;
+    const planId = snapshot?.planContext?.planId;
 
     // Busca revisão anterior do mesmo plano para comparação
     let previousSnapshot = null;
@@ -133,7 +144,7 @@ module.exports = onCall(
 
     try {
       const { swot } = await callClaudeWithRetry({
-        currentSnapshot: review.frozenSnapshot,
+        currentSnapshot: snapshot,
         previousSnapshot,
         periodLabel,
         systemPrompt: styledSystemPrompt,
@@ -148,7 +159,7 @@ module.exports = onCall(
       };
     } catch (e) {
       console.warn('[generateWeeklySwot] Fallback determinístico:', e.message);
-      const fallback = buildFallbackSwot(review.frozenSnapshot);
+      const fallback = buildFallbackSwot(snapshot);
       swotPayload = {
         ...fallback,
         generatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -166,3 +177,6 @@ module.exports = onCall(
     return { swot: swotPayload, aiUnavailable };
   }
 );
+
+// #331 — exposto para teste unitário da seleção de snapshot (DRAFT vs publicada).
+module.exports.resolveSwotSnapshot = resolveSwotSnapshot;
