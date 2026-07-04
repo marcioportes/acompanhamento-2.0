@@ -19,8 +19,7 @@ import {
 } from '../../../utils/cycleClosure/cycleMetrics';
 import {
   computeTPS,
-  computeWinRateConsistency,
-  TPS_WEIGHTS,
+  cvToConsistencyNorm,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
 import {
   MetricTile,
@@ -60,7 +59,10 @@ function tpsComponentTone(filled) {
   return 'emerald';
 }
 
-function TPSComponentCard({ label, rawValue, ptsGot, ptsMax, filled, hint, missing }) {
+// #337 — o card mostra só a CONTRIBUIÇÃO do fator (pts ganhos / pts do peso efetivo) + barra de
+// preenchimento; o valor bruto da métrica NÃO é repetido aqui (já aparece no tile de Performance
+// / Consistência Operacional acima). Isto é o "porquê da nota", não uma segunda cópia dos números.
+function TPSComponentCard({ label, ptsGot, ptsMax, filled, hint, missing }) {
   const tone = missing ? 'slate' : tpsComponentTone(filled);
   const toneMap = {
     red:     { border: 'border-red-500/30',     bar: 'bg-red-500',     text: 'text-red-300' },
@@ -69,31 +71,36 @@ function TPSComponentCard({ label, rawValue, ptsGot, ptsMax, filled, hint, missi
     slate:   { border: 'border-slate-700/40',   bar: 'bg-slate-600',   text: 'text-slate-400' },
   };
   const c = toneMap[tone];
-  const pct = missing ? 0 : Math.round(filled * 100);
+  const pct = missing ? 0 : Math.round(clamp01Pct(filled) * 100);
 
   return (
     <div className={`bg-slate-800/30 rounded-xl p-3 border ${c.border}`}>
-      <div className="flex items-baseline justify-between gap-2 mb-1">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
         <p className="text-[11px] text-slate-400 leading-tight">{label}</p>
         <p className={`text-[11px] mono font-semibold ${c.text}`}>
-          {missing ? 'sem dado' : `${ptsGot.toFixed(1)}/${ptsMax} pts`}
+          {missing ? 'sem dado' : `${ptsGot.toFixed(1)}/${ptsMax.toFixed(0)} pts`}
         </p>
       </div>
-      <p className="text-base font-bold text-slate-100 mono mb-2">
-        {missing ? '—' : rawValue}
-      </p>
       <div className="h-1.5 bg-slate-900/60 rounded-full overflow-hidden">
         <div
           className={`h-full ${c.bar} transition-all`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      {!missing && hint && filled < 0.5 && (
-        <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">{hint}</p>
+      {missing ? (
+        <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+          sem dados suficientes — peso redistribuído nos demais fatores
+        </p>
+      ) : (
+        hint && filled < 0.5 && (
+          <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">{hint}</p>
+        )
       )}
     </div>
   );
 }
+
+const clamp01Pct = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
 export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onSnapshot, onMetrics }) {
   const { trades = [], loading: tradesLoading } = useTrades(studentId);
@@ -159,13 +166,15 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   }, [cycleTrades, plan]);
 
   // TPS
+  // #337 — consistência vem do CV normalizado do ciclo (mesma SSoT do tile "CV norm." acima),
+  // não mais do placeholder 0,7. CV null (ciclo curto/sem RR alvo) → fator missing → TPS renormaliza.
   const tpsInput = useMemo(() => ({
     profitFactor: metrics.profitFactor,
     maxDDPercent: Math.abs(maxDD.percent),
     expectancy_R: metrics.expectancy_R,
-    winRateConsistency: 0.7,    // placeholder — TODO A5.x: bucketize cycleTrades por semana
+    winRateConsistency: cvToConsistencyNorm(consistency.cvNormalized?.value ?? null),
     ruleAdherenceRate,
-  }), [metrics, maxDD, ruleAdherenceRate]);
+  }), [metrics, maxDD, ruleAdherenceRate, consistency.cvNormalized]);
 
   const tps = useMemo(() => computeTPS(tpsInput), [tpsInput]);
 
@@ -349,7 +358,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
           <div>
             <h4 className="text-sm font-semibold text-slate-200">Nota geral do ciclo</h4>
             <p className="text-[11px] text-slate-500">
-              de 0 a 100 · combina lucro÷prejuízo, queda do capital, ganho médio, taxa de acerto e disciplina
+              de 0 a 100 · combina lucro÷prejuízo, queda do capital, ganho médio (R), consistência dos retornos e disciplina
             </p>
           </div>
           <p className="text-3xl font-bold gradient-text mono">
@@ -377,55 +386,36 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
               Ver composição (peso de cada fator no total de 100)
             </summary>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
-              <TPSComponentCard
-                label="Profit Factor"
-                rawValue={metrics.profitFactor != null ? metrics.profitFactor.toFixed(2) : '—'}
-                ptsGot={tps.breakdown.pf * 100}
-                ptsMax={TPS_WEIGHTS.profitFactor * 100}
-                filled={tps.breakdown.pf / TPS_WEIGHTS.profitFactor}
-                missing={tps.missing.includes('profitFactor')}
-                hint="ganhos médios menores que perdas — alvo escalonado ou alvo maior"
-              />
-              <TPSComponentCard
-                label="Max Drawdown"
-                rawValue={`${(Math.abs(maxDD.percent) * 100).toFixed(1)}%`}
-                ptsGot={tps.breakdown.dd * 100}
-                ptsMax={TPS_WEIGHTS.drawdown * 100}
-                filled={tps.breakdown.dd / TPS_WEIGHTS.drawdown}
-                missing={tps.missing.includes('maxDDPercent')}
-                hint="ficou perto/passou do stop — reduzir size ou parar antes"
-              />
-              <TPSComponentCard
-                label="Expectancy (R)"
-                rawValue={metrics.expectancy_R != null ? `${metrics.expectancy_R >= 0 ? '+' : ''}${metrics.expectancy_R.toFixed(2)}R` : '—'}
-                ptsGot={tps.breakdown.exp * 100}
-                ptsMax={TPS_WEIGHTS.expectancy * 100}
-                filled={tps.breakdown.exp / TPS_WEIGHTS.expectancy}
-                missing={tps.missing.includes('expectancy_R')}
-                hint="< 0,5R por trade — saiu cedo dos vencedores"
-              />
-              <TPSComponentCard
-                label="Consistência semanal"
-                rawValue={`${tpsInput.winRateConsistency.toFixed(2)} (placeholder)`}
-                ptsGot={tps.breakdown.consistency * 100}
-                ptsMax={TPS_WEIGHTS.consistency * 100}
-                filled={tps.breakdown.consistency / TPS_WEIGHTS.consistency}
-                missing={tps.missing.includes('winRateConsistency')}
-                hint="winrate semanal oscila muito — buscar regime estável"
-              />
-              <TPSComponentCard
-                label="Aderência"
-                rawValue={ruleAdherenceRate != null ? `${(ruleAdherenceRate * 100).toFixed(1)}%` : '—'}
-                ptsGot={tps.breakdown.rule * 100}
-                ptsMax={TPS_WEIGHTS.rule * 100}
-                filled={tps.breakdown.rule / TPS_WEIGHTS.rule}
-                missing={tps.missing.includes('ruleAdherenceRate')}
-                hint="violações de RO/RR — gate na entrada antes do envio"
-              />
+              {[
+                { key: 'pf', label: 'Profit Factor', missKey: 'profitFactor',
+                  hint: 'ganhos médios menores que perdas — alvo escalonado ou alvo maior' },
+                { key: 'dd', label: 'Max Drawdown', missKey: 'maxDDPercent',
+                  hint: 'ficou perto/passou do stop — reduzir size ou parar antes' },
+                { key: 'exp', label: 'Expectancy (R)', missKey: 'expectancy_R',
+                  hint: '< 0,5R por trade — saiu cedo dos vencedores' },
+                { key: 'consistency', label: 'Consistência', missKey: 'winRateConsistency',
+                  hint: 'retornos oscilando além do plano — buscar regime mais estável' },
+                { key: 'rule', label: 'Aderência', missKey: 'ruleAdherenceRate',
+                  hint: 'violações de RO/RR — gate na entrada antes do envio' },
+              ].map(({ key, label, missKey, hint }) => {
+                const w = tps.weights?.[key] ?? 0;
+                return (
+                  <TPSComponentCard
+                    key={key}
+                    label={label}
+                    ptsGot={tps.breakdown[key] * 100}
+                    ptsMax={w * 100}
+                    filled={w > 0 ? tps.breakdown[key] / w : 0}
+                    missing={tps.missing.includes(missKey)}
+                    hint={hint}
+                  />
+                );
+              })}
             </div>
             <p className="text-[10px] text-slate-600 mt-2 leading-relaxed">
-              Cards em vermelho puxam a nota pra baixo; em verde, sustentam.
-              Soma das contribuições = nota final.
+              Cada card é a contribuição do fator (pts ganhos / peso). Vermelho puxa a nota pra baixo;
+              verde sustenta. Soma das contribuições = nota final. Fator sem dado tem o peso
+              redistribuído nos demais.
             </p>
           </details>
         )}
