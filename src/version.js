@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.82.4: #335 fix DISCUSSED restante — StudentFeedbackPage (badge/contador/pill) + card do mentor subcontava revisados (PR #TBD, 03/07/2026)
+ * - 1.82.4: #335 fix DISCUSSED restante — StudentFeedbackPage (badge/contador/pill) + card do mentor subcontava revisados (PR #336, 03/07/2026)
  * - 1.82.3: #333 fix trade DISCUSSED aparecia como "Pendente"/"Aguardando Revisão" — 4 badges de status (PR #334, 03/07/2026)
  * - 1.82.2: #331 fix SWOT em revisão DRAFT — CF aceita snapshot do cliente (PR #332, 03/07/2026)
  * - 1.82.1: #329 feat colapso na fila 'trades a refletir' quando há muitos pendentes (PR #330, 02/07/2026)

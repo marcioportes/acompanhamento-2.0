@@ -8,7 +8,7 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.82.4] - 03/07/2026 · #335 · PR #TBD
+## [1.82.4] - 03/07/2026 · #335 · PR #336
 
 **fix:** DISCUSSED restante — seção Feedback do aluno + subcontagem no card do mentor (follow-up #333)
 
