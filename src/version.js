@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.82.3: #333 fix trade DISCUSSED aparecia como "Pendente"/"Aguardando Revisão" — 4 badges de status (PR #TBD, 03/07/2026)
  * - 1.82.2: #331 fix SWOT em revisão DRAFT — CF aceita snapshot do cliente (PR #332, 03/07/2026)
  * - 1.82.1: #329 feat colapso na fila 'trades a refletir' quando há muitos pendentes (PR #330, 02/07/2026)
  * - 1.82.0: #327 feat fila 'trades a refletir' — cobra reflexão de fechados sem selfReview (PR #328, 02/07/2026)
@@ -382,10 +383,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.82.2',
+  version: '1.82.3',
   build: '20260703',
-  display: 'v1.82.2',
-  full: '1.82.2+20260703',
+  display: 'v1.82.3',
+  full: '1.82.3+20260703',
 };
 export default VERSION;
 export { VERSION };

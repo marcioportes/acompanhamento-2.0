@@ -88,18 +88,22 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
   return events;
 };
 
-/** Badge de status do feedback do trade. */
-const getFeedbackStatusConfig = (status) => {
+/** Badge de status do feedback do trade. Exportado p/ teste de regressão (#333). */
+export const getFeedbackStatusConfig = (status) => {
   switch (status) {
     case 'REVIEWED':
       return { icon: CheckCircle2, color: 'text-emerald-400', label: 'Revisado', bg: 'bg-emerald-500/10' };
     case 'QUESTION':
       return { icon: HelpCircle, color: 'text-amber-400', label: 'Dúvida', bg: 'bg-amber-500/10' };
+    case 'DISCUSSED':
+      // #333 — status terminal do #269 v2 (revisado + discutido em revisão publicada).
+      // Espelha o TradeStatusBadge (índigo, "Discutido"). Antes caía no default → "Pendente".
+      return { icon: CheckCircle2, color: 'text-indigo-300', label: 'Discutido', bg: 'bg-indigo-500/10' };
     case 'CLOSED':
-      return { icon: CheckCheck, color: 'text-slate-500', label: 'Fechado', bg: 'bg-slate-500/10' };
+      return { icon: CheckCheck, color: 'text-purple-400', label: 'Fechado', bg: 'bg-purple-500/10' };
     case 'OPEN':
     default:
-      return { icon: CircleDot, color: 'text-slate-500', label: 'Pendente', bg: 'bg-slate-500/5' };
+      return { icon: CircleDot, color: 'text-slate-400', label: 'Pendente', bg: 'bg-slate-500/10' };
   }
 };
 

@@ -49,6 +49,7 @@ const StatusBadge = ({ status }) => {
     OPEN: { label: 'Aguardando', icon: Clock, bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30' },
     REVIEWED: { label: 'Revisado', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' },
     QUESTION: { label: 'Dúvida', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', animate: true },
+    DISCUSSED: { label: 'Discutido', icon: CheckCircle, bg: 'bg-indigo-500/20', text: 'text-indigo-300', border: 'border-indigo-500/30' }, // #333 — terminal #269 v2
     CLOSED: { label: 'Encerrado', icon: Lock, bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' }
   };
 
