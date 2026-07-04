@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.4] - 03/07/2026 · #335 · PR #336
+
+**fix:** DISCUSSED restante — seção Feedback do aluno + subcontagem no card do mentor (follow-up #333)
+
+- **`StudentFeedbackPage.jsx`** (seção Feedback do sidebar do aluno): `STATUS_CONFIG` não tratava `DISCUSSED` → badge caía no fallback OPEN e mostrava **"Pendente"**; contador e pills de filtro também o ignoravam. Agora config própria "Discutido" (índigo, ícone MessageSquare) + bucket no contador + pill de filtro.
+- **`MentorDashboard.jsx`** (`studentsWithPending`): `counts.reviewed` só somava `REVIEWED`; um trade `DISCUSSED` sumia do resumo "revisados" do card do mentor (`StudentFeedbackCard`). Agora DISCUSSED conta como revisado.
+- **`useTrades.js`** (`getStudentFeedbackCounts`): mesmo ajuste no bucket `reviewed`; enum `STATUS` local ganhou `DISCUSSED`.
+- Auditoria completa de todos os consumidores de `trade.status` — demais pontos (guards de pendência, awaiting-feedback, transições, badges de review) tratam DISCUSSED corretamente ou não devem incluí-lo.
+- `useTrades.test.js` +1: `getStudentFeedbackCounts` conta DISCUSSED como revisado.
+- Display/contagem puro — **sem CF, sem Firestore, sem migração**.
+
+
 ## [1.82.3] - 03/07/2026 · #333 · PR #334
 
 **fix:** trade DISCUSSED aparecia como "Pendente" / "Aguardando Revisão"

@@ -157,6 +157,18 @@ describe('useTrades — selectors sobre allTrades', () => {
     });
   });
 
+  it('getStudentFeedbackCounts conta DISCUSSED como revisado (#333)', () => {
+    const { result } = renderMentorWith([
+      { id: 'd1', studentEmail: 'c@x.com', studentId: 'sc', status: 'REVIEWED' },
+      { id: 'd2', studentEmail: 'c@x.com', studentId: 'sc', status: 'DISCUSSED' },
+      { id: 'd3', studentEmail: 'c@x.com', studentId: 'sc', status: 'DISCUSSED' },
+    ]);
+    // DISCUSSED (terminal revisado+discutido) entra no bucket "reviewed", não some da contagem.
+    expect(result.current.getStudentFeedbackCounts('c@x.com')).toEqual({
+      open: 0, question: 0, reviewed: 3, closed: 0, total: 3,
+    });
+  });
+
   it('getTradesByStudentAndStatus cruza email + status', () => {
     const { result } = renderMentorWith(FIXTURE);
     expect(result.current.getTradesByStudentAndStatus('a@x.com', 'REVIEWED').map((t) => t.id)).toEqual(['t2']);

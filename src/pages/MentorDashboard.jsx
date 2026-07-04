@@ -119,7 +119,9 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     allTrades.forEach(trade => {
       const email = trade.studentEmail;
       if (studentMap[email]) {
-        if (trade.status === 'REVIEWED') studentMap[email].counts.reviewed++;
+        // #333 — DISCUSSED (revisado + discutido em revisão publicada) conta como revisado;
+        // antes sumia do resumo "revisados" do card do mentor.
+        if (trade.status === 'REVIEWED' || trade.status === 'DISCUSSED') studentMap[email].counts.reviewed++;
         if (trade.status === 'CLOSED') studentMap[email].counts.closed++;
       }
     });
