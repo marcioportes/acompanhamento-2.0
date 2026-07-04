@@ -64,3 +64,4 @@
 | 1.82.2 | #331 | `fix/issue-331-swot-draft-snapshot` | 03/07/2026 | consumida (PR #332 squash `ee70704f`) |
 | 1.82.3 | #333 | `fix/issue-333-discussed-status-badge` | 03/07/2026 | consumida (PR #334 squash `54a065f1`) |
 | 1.82.4 | #335 | `fix/issue-335-discussed-status-remaining` | 03/07/2026 | consumida (PR #336 squash `3523dd95`) |
+| 1.82.5 | #337 | `fix/issue-337-tps-consistency-real` | 03/07/2026 | reservada |
