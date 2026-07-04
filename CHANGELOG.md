@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.5] - 04/07/2026 · #337 · PR #338
+
+**fix:** TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70
+
+- **Consistência real:** `cvToConsistencyNorm(cvValue)` mapeia o **CV normalizado do ciclo** (SSoT `useCycleConsistency`, mesma fonte do tile 'CV norm.') para 0..1 — `clamp01((2 - value)/1)`: value ≤ 1 (no plano/mais suave) → 1,0; = 1,5 → 0,5; ≥ 2,0 (muito errático) → 0. O 2,0 é a fronteira 'muito errático' já existente nas bandas de `cvTheme`. Mata o placeholder **e** a duplicação de conceito (uma consistência só).
+- **Renormalização:** quando um fator não-crítico não tem dado (ex.: CV null em ciclo curto), `computeTPS` **redistribui o peso** proporcionalmente sobre os presentes — nada de crédito 0,70 fantasma nem zero injusto. Caso completo mantém peso nominal bit-exato. PF + Aderência seguem obrigatórios.
+- **Composição enxuta:** os 5 cards param de reimprimir o valor bruto (já está no tile acima) — mostram só **contribuição em pts / peso efetivo** ('por que a nota'). Fator sem dado → 'sem dado' + aviso de redistribuição.
+
+
 ## [1.82.4] - 03/07/2026 · #335 · PR #336
 
 **fix:** DISCUSSED restante — seção Feedback do aluno + subcontagem no card do mentor (follow-up #333)

@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-05 | #337 | `fix/issue-337-tps-consistency-real` | 03/07/2026 | tps-consist |

@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.82.5: #337 fix TPS — fator Consistência real (CV normalizado) substitui placeholder 0,70 + renormalização + composição sem duplicar tiles (03/07/2026)
+ * - 1.82.5: #337 fix TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70 (PR #338, 04/07/2026)
  * - 1.82.4: #335 fix DISCUSSED restante — StudentFeedbackPage (badge/contador/pill) + card do mentor subcontava revisados (PR #336, 03/07/2026)
  * - 1.82.3: #333 fix trade DISCUSSED aparecia como "Pendente"/"Aguardando Revisão" — 4 badges de status (PR #334, 03/07/2026)
  * - 1.82.2: #331 fix SWOT em revisão DRAFT — CF aceita snapshot do cliente (PR #332, 03/07/2026)
@@ -386,9 +386,9 @@
  */
 const VERSION = {
   version: '1.82.5',
-  build: '20260703',
+  build: '20260704',
   display: 'v1.82.5',
-  full: '1.82.5+20260703',
+  full: '1.82.5+20260704',
 };
 export default VERSION;
 export { VERSION };
