@@ -63,4 +63,4 @@
 | 1.82.1 | #329 | `feat/issue-329-pending-reflections-collapse` | 02/07/2026 | consumida (PR #330 squash `07a5f8b9`) |
 | 1.82.2 | #331 | `fix/issue-331-swot-draft-snapshot` | 03/07/2026 | consumida (PR #332 squash `ee70704f`) |
 | 1.82.3 | #333 | `fix/issue-333-discussed-status-badge` | 03/07/2026 | consumida (PR #334 squash `54a065f1`) |
-| 1.82.4 | #335 | `fix/issue-335-discussed-status-remaining` | 03/07/2026 | reservada |
+| 1.82.4 | #335 | `fix/issue-335-discussed-status-remaining` | 03/07/2026 | consumida (PR #336 squash `3523dd95`) |
