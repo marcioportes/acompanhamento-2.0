@@ -56,7 +56,8 @@ const STATUS = {
   OPEN: 'OPEN',
   REVIEWED: 'REVIEWED',
   QUESTION: 'QUESTION',
-  CLOSED: 'CLOSED'
+  CLOSED: 'CLOSED',
+  DISCUSSED: 'DISCUSSED' // #269 v2 — terminal: revisado + discutido em revisão publicada
 };
 
 const DEFAULT_STATUS = STATUS.OPEN;
@@ -729,7 +730,8 @@ export const useTrades = (overrideStudentId = null) => {
     return {
       open: studentTrades.filter(t => t.status === STATUS.OPEN).length,
       question: studentTrades.filter(t => t.status === STATUS.QUESTION).length,
-      reviewed: studentTrades.filter(t => t.status === STATUS.REVIEWED).length,
+      // #333 — DISCUSSED conta como revisado (terminal revisado+discutido); antes subcontava.
+      reviewed: studentTrades.filter(t => t.status === STATUS.REVIEWED || t.status === STATUS.DISCUSSED).length,
       closed: studentTrades.filter(t => t.status === STATUS.CLOSED).length,
       total: studentTrades.length
     };

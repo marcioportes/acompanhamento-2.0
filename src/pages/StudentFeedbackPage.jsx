@@ -39,8 +39,10 @@ import ExcursionDisplay from '../components/ExcursionDisplay';
 const STATUS_CONFIG = {
   QUESTION: { label: 'Dúvida', shortLabel: 'Dúvidas', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', ring: 'ring-amber-500/50', priority: 1 },
   REVIEWED: { label: 'Revisado', shortLabel: 'Revisados', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400', ring: 'ring-emerald-500/50', priority: 2 },
-  OPEN: { label: 'Pendente', shortLabel: 'Pendentes', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', ring: 'ring-blue-500/50', priority: 3 },
-  CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, bg: 'bg-slate-500/20', text: 'text-slate-400', ring: 'ring-slate-500/50', priority: 4 }
+  // #333 — status terminal do #269 v2 (revisado + discutido em revisão publicada). Antes caía no fallback OPEN → "Pendente".
+  DISCUSSED: { label: 'Discutido', shortLabel: 'Discutidos', icon: MessageSquare, bg: 'bg-indigo-500/20', text: 'text-indigo-300', ring: 'ring-indigo-500/50', priority: 3 },
+  OPEN: { label: 'Pendente', shortLabel: 'Pendentes', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', ring: 'ring-blue-500/50', priority: 4 },
+  CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, bg: 'bg-slate-500/20', text: 'text-slate-400', ring: 'ring-slate-500/50', priority: 5 }
 };
 
 const PERIOD_OPTIONS = [
@@ -211,7 +213,7 @@ const StudentFeedbackPage = () => {
         t.mentorFeedback?.toLowerCase().includes(term)
       );
     }
-    const c = { all: base.length, QUESTION: 0, REVIEWED: 0, OPEN: 0, CLOSED: 0 };
+    const c = { all: base.length, QUESTION: 0, REVIEWED: 0, DISCUSSED: 0, OPEN: 0, CLOSED: 0 };
     base.forEach(t => {
       const s = t.status || 'OPEN';
       if (c[s] !== undefined) c[s]++;
@@ -288,7 +290,7 @@ const StudentFeedbackPage = () => {
             Meus Feedbacks
           </h1>
           <div className="flex items-center gap-1.5 ml-2">
-            {(['QUESTION', 'REVIEWED', 'OPEN', 'CLOSED']).map(key => (
+            {(['QUESTION', 'REVIEWED', 'DISCUSSED', 'OPEN', 'CLOSED']).map(key => (
               <StatusPill
                 key={key}
                 statusKey={key}
