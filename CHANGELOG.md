@@ -8,7 +8,7 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.82.3] - 03/07/2026 · #333 · PR #TBD
+## [1.82.3] - 03/07/2026 · #333 · PR #334
 
 **fix:** trade DISCUSSED aparecia como "Pendente" / "Aguardando Revisão"
 
