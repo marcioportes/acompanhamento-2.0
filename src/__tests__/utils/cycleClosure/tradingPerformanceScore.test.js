@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computeTPS,
   computeWinRateConsistency,
+  cvToConsistencyNorm,
   TPS_WEIGHTS,
   TPS_MAX_ACCEPTABLE_DD,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
@@ -139,6 +140,80 @@ describe('computeTPS — missing fields', () => {
     });
     expect(tps.score).toBeNull();
     expect(tps.missing).toHaveLength(5);
+  });
+});
+
+describe('cvToConsistencyNorm — #337 (CV normalizado → score 0..1)', () => {
+  it('value ≤ 1,0 (no plano ou mais suave) → 1,0', () => {
+    expect(cvToConsistencyNorm(1.0)).toBe(1);
+    expect(cvToConsistencyNorm(0.5)).toBe(1);   // "suspeito" não é punido
+    expect(cvToConsistencyNorm(0.0)).toBe(1);
+  });
+  it('meio da faixa errática → parcial', () => {
+    expect(cvToConsistencyNorm(1.5)).toBeCloseTo(0.5, 6);
+    expect(cvToConsistencyNorm(1.25)).toBeCloseTo(0.75, 6);
+  });
+  it('value ≥ 2,0 (muito errático) → 0', () => {
+    expect(cvToConsistencyNorm(2.0)).toBe(0);
+    expect(cvToConsistencyNorm(3.0)).toBe(0);   // clamp
+  });
+  it('null/NaN/inválido → null (fator vira missing)', () => {
+    expect(cvToConsistencyNorm(null)).toBeNull();
+    expect(cvToConsistencyNorm(undefined)).toBeNull();
+    expect(cvToConsistencyNorm(NaN)).toBeNull();
+    expect(cvToConsistencyNorm('1.0')).toBeNull();
+  });
+});
+
+describe('computeTPS — renormalização de pesos (#337)', () => {
+  it('nada faltando → pesos efetivos = nominais (bit-exato)', () => {
+    const tps = computeTPS({
+      profitFactor: 3, maxDDPercent: 0, expectancy_R: 0.5,
+      winRateConsistency: 1, ruleAdherenceRate: 1,
+    });
+    expect(tps.weights.pf).toBe(TPS_WEIGHTS.profitFactor);
+    expect(tps.weights.dd).toBe(TPS_WEIGHTS.drawdown);
+    expect(tps.weights.consistency).toBe(TPS_WEIGHTS.consistency);
+    expect(tps.score).toBe(100);           // todos os fatores no máximo
+  });
+
+  it('consistência ausente → peso 0,15 redistribuído; sem crédito fantasma nem zero injusto', () => {
+    const tps = computeTPS({
+      profitFactor: 3, maxDDPercent: 0, expectancy_R: 0.5,
+      winRateConsistency: null, ruleAdherenceRate: 1,
+    });
+    // demais fatores no máximo → nota 100 mesmo sem consistência (renormaliza sobre 0,85)
+    expect(tps.score).toBeCloseTo(100, 6);
+    expect(tps.weights.consistency).toBe(0);
+    expect(tps.breakdown.consistency).toBe(0);
+    expect(tps.missing).toContain('winRateConsistency');
+    // peso efetivo do PF sobe de 0,20 → 0,20/0,85
+    expect(tps.weights.pf).toBeCloseTo(0.20 / 0.85, 6);
+    // soma dos pesos efetivos = 1
+    const sumW = Object.values(tps.weights).reduce((s, v) => s + v, 0);
+    expect(sumW).toBeCloseTo(1.0, 6);
+  });
+
+  it('renormalização mantém breakdown somando = score/100', () => {
+    const tps = computeTPS({
+      profitFactor: 1.5, maxDDPercent: 0.02, expectancy_R: 0.3,
+      winRateConsistency: null, ruleAdherenceRate: 0.8,
+    });
+    const total = Object.values(tps.breakdown).reduce((s, v) => s + v, 0);
+    expect(total * 100).toBeCloseTo(tps.score, 6);
+  });
+
+  it('placeholder morto: consistência null não injeta mais 0,70 fixo', () => {
+    // Com consistência ruim explícita (0) a nota é MENOR do que quando o fator é ignorado (null).
+    const comConsistenciaRuim = computeTPS({
+      profitFactor: 3, maxDDPercent: 0, expectancy_R: 0.5,
+      winRateConsistency: 0, ruleAdherenceRate: 1,
+    });
+    const semDado = computeTPS({
+      profitFactor: 3, maxDDPercent: 0, expectancy_R: 0.5,
+      winRateConsistency: null, ruleAdherenceRate: 1,
+    });
+    expect(comConsistenciaRuim.score).toBeLessThan(semDado.score);
   });
 });
 
