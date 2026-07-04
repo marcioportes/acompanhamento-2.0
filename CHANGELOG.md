@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.82.3] - 03/07/2026 · #333 · PR #334
+
+**fix:** trade DISCUSSED aparecia como "Pendente" / "Aguardando Revisão"
+
+- **Causa-raiz:** o #269 v2 introduziu o status terminal `DISCUSSED` (revisado + discutido numa revisão semanal publicada, setado por `publishReview.js`), mas 4 mapeamentos de badge de status não o tratavam e caíam no fallback — dando a impressão de que a revisão nunca fora feita.
+- `ExtractTable.jsx` (coluna Status do extrato): `DISCUSSED` mostrava **"Pendente"**; agora → **"Discutido"** (índigo, espelhando o `TradeStatusBadge`). `getFeedbackStatusConfig` exportado p/ teste.
+- `FeedbackPage.jsx`: `DISCUSSED` caía no fallback `config.OPEN` → **"Aguardando Revisão"**; agora config própria "Discutido".
+- `TradesList.jsx` e `TradeDetailModal.jsx`: idem, config `DISCUSSED` adicionada.
+- **Recolor** no extrato: "Fechado" (CLOSED) de cinza → roxo (paridade com "Encerrado"); "Pendente" ganhou contraste (`slate-400`) — Pendente e Fechado deixam de compartilhar a mesma cor.
+- `feedbackStatusConfig.test.js` (novo): trava DISCUSSED → "Discutido" (nunca "Pendente"), cores distintas por status, fallback preservado (6 testes).
+- Display puro — **sem CF, sem Firestore, sem migração**.
+
+
 ## [1.82.2] - 03/07/2026 · #331 · PR #332
 
 **fix:** SWOT em revisão DRAFT — CF aceita snapshot do cliente
