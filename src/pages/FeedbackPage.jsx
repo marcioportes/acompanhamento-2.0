@@ -43,6 +43,7 @@ import StudentReflectionPanel from '../components/reviews/StudentReflectionPanel
 import TradeOrdersPanel from '../components/OrderImport/TradeOrdersPanel';
 import PlanSummaryCard from '../components/PlanSummaryCard';
 import { fmtTradePrefix } from '../utils/reviewNotePrefix';
+import { fmtTradeDateTime } from '../utils/tradeTimezone';
 import ReviewNoteField from '../components/reviews/ReviewNoteField';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import MentorClassificationPanel from '../components/feedback/MentorClassificationPanel';
@@ -272,7 +273,7 @@ const TradeInfoCard = ({ trade, onImageClick, userIsMentor = false, onToggleViol
                   <span className="text-white font-mono text-xs">{p.price}</span>
                   <span className="text-white font-mono text-xs">{p.qty}</span>
                   <span className="text-slate-400 text-[10px] font-mono">
-                    {p.dateTime ? (() => { try { const [d, t] = p.dateTime.split('T'); const [y, m, dd] = d.split('-'); return `${dd}/${m}/${y} ${(t||'').substring(0,5)}`; } catch { return '-'; } })() : '-'}
+                    {p.dateTime ? fmtTradeDateTime(p.dateTime) : '-'}
                   </span>
                 </div>
               );

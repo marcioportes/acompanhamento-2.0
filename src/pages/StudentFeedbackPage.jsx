@@ -31,6 +31,7 @@ import FeedbackPage from './FeedbackPage';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import ExcursionDisplay from '../components/ExcursionDisplay';
+import { fmtTradeTime } from '../utils/tradeTimezone';
 
 // ============================================
 // CONSTANTS
@@ -149,7 +150,7 @@ const TradeListItem = ({ trade, isSelected, onClick }) => {
           <span>{formatDateShort(trade.date)}</span>
           {trade.entryTime && (
             <span className="font-mono text-slate-600">
-              {(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5) || ''; } catch { return ''; } })()}
+              {fmtTradeTime(trade.entryTime)}
             </span>
           )}
           <span>•</span>

@@ -58,6 +58,7 @@ import {
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { filterSetupsForStudent } from '../utils/setupsFilter';
+import { fmtTradeTime } from '../utils/tradeTimezone';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -500,7 +501,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                         </div>
                         <p className="text-sm text-slate-500">
                           {trade.date?.split('-').reverse().join('/')}
-                          {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{(() => { try { return trade.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
+                          {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{fmtTradeTime(trade.entryTime)}</span>}
                           {' • '}{trade.setup || 'Sem setup'}
                         </p>
                         <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
@@ -551,7 +552,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                               <span className="text-slate-300">
                                 {t.ticker}
                                 {' '}<span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span>
-                                {t.entryTime && <span className="text-slate-600 font-mono ml-1">{(() => { try { return t.entryTime.split('T')[1]?.substring(0, 5); } catch { return ''; } })()}</span>}
+                                {t.entryTime && <span className="text-slate-600 font-mono ml-1">{fmtTradeTime(t.entryTime)}</span>}
                               </span>
                               <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrencyDynamic(t.result, t.currency)}</span>
                             </div>
