@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.0: #339 feat exibir timezone do horário de entrada em todas as telas de trade (16:23 ET) — RESERVADA
  * - 1.82.5: #337 fix TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70 (PR #338, 04/07/2026)
  * - 1.82.4: #335 fix DISCUSSED restante — StudentFeedbackPage (badge/contador/pill) + card do mentor subcontava revisados (PR #336, 03/07/2026)
  * - 1.82.3: #333 fix trade DISCUSSED aparecia como "Pendente"/"Aguardando Revisão" — 4 badges de status (PR #334, 03/07/2026)
@@ -385,10 +386,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.82.5',
-  build: '20260704',
-  display: 'v1.82.5',
-  full: '1.82.5+20260704',
+  version: '1.83.0',
+  build: '20260715',
+  display: 'v1.83.0',
+  full: '1.83.0+20260715',
 };
 export default VERSION;
 export { VERSION };

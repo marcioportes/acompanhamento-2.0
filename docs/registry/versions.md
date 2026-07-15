@@ -65,3 +65,4 @@
 | 1.82.3 | #333 | `fix/issue-333-discussed-status-badge` | 03/07/2026 | consumida (PR #334 squash `54a065f1`) |
 | 1.82.4 | #335 | `fix/issue-335-discussed-status-remaining` | 03/07/2026 | consumida (PR #336 squash `3523dd95`) |
 | 1.82.5 | #337 | `fix/issue-337-tps-consistency-real` | 03/07/2026 | consumida (PR #338 squash `16ec5604`) |
+| 1.83.0 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | reservada |
