@@ -13,9 +13,9 @@
  */
 
 export const TIMEZONES = {
-  ET:  { id: 'America/New_York',  label: 'Nova York (ET)' },
-  CT:  { id: 'America/Chicago',   label: 'Chicago (CT)' },
-  BRT: { id: 'America/Sao_Paulo', label: 'Brasília (BRT)' },
+  ET:  { id: 'America/New_York',  label: 'Nova York (ET)', short: 'ET'  },
+  CT:  { id: 'America/Chicago',   label: 'Chicago (CT)',   short: 'CT'  },
+  BRT: { id: 'America/Sao_Paulo', label: 'Brasília (BRT)', short: 'BRT' },
 };
 
 export const TIMEZONE_LIST = [TIMEZONES.ET, TIMEZONES.CT, TIMEZONES.BRT];
@@ -169,4 +169,63 @@ export function toBrasiliaDisplay(isoWithOffset) {
   const hh = String(brt.getUTCHours()).padStart(2, '0');
   const mm = String(brt.getUTCMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+// IANA id → label curto (ET/CT/BRT). Deriva de TIMEZONE_LIST (SSoT do `short`).
+const SHORT_BY_IANA = Object.fromEntries(TIMEZONE_LIST.map((tz) => [tz.id, tz.short]));
+
+/**
+ * Label curto do fuso (`'ET'|'CT'|'BRT'`) a partir de um ISO gravado (#339).
+ * Reidrata o IANA via `tzFromStoredIso` (offset cru é ambíguo: -05:00 = ET-inverno
+ * ou CT-verão) e mapeia p/ o código curto. Naive/legado/desconhecido → `''`.
+ *
+ * @param {string|null} iso — ex.: '2026-05-27T16:23:00-04:00'
+ * @returns {string} 'ET' | 'CT' | 'BRT' | ''
+ */
+export function shortTzLabelFromIso(iso) {
+  const iana = tzFromStoredIso(iso);
+  return (iana && SHORT_BY_IANA[iana]) || '';
+}
+
+/** Extrai o relógio de parede (`'HH:MM'` ou `'HH:MM:SS'`) do ISO, sem reconverter fuso. */
+function wallClock(iso, withSeconds) {
+  if (!iso || typeof iso !== 'string') return '';
+  const timePart = iso.split('T')[1];
+  if (!timePart) return '';
+  const hm = timePart.slice(0, withSeconds ? 8 : 5);
+  return /^\d{2}:\d{2}/.test(hm) ? hm : '';
+}
+
+/**
+ * Horário do trade com fuso (#339): `'16:23 ET'`. Usa o relógio de parede do
+ * trade (o instante que o trader operou), NÃO o fuso do navegador. ISO legado
+ * sem offset → só a hora, sem label. SSoT de exibição de horário de trade.
+ *
+ * @param {string|null} iso — `entryTime`/`exitTime`/`p.dateTime`
+ * @param {{ withSeconds?: boolean }} [opts]
+ * @returns {string}
+ */
+export function fmtTradeTime(iso, { withSeconds = false } = {}) {
+  const time = wallClock(iso, withSeconds);
+  if (!time) return '';
+  const label = shortTzLabelFromIso(iso);
+  return label ? `${time} ${label}` : time;
+}
+
+/**
+ * Data + horário do trade com fuso (#339): `'27/05/2026 16:23 ET'`.
+ * ISO inválido → `'-'`. ISO legado sem offset → data + hora sem label.
+ *
+ * @param {string|null} iso
+ * @param {{ withSeconds?: boolean }} [opts]
+ * @returns {string}
+ */
+export function fmtTradeDateTime(iso, { withSeconds = false } = {}) {
+  if (!iso || typeof iso !== 'string') return '-';
+  const datePart = iso.split('T')[0];
+  const m = datePart && datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '-';
+  const time = fmtTradeTime(iso, { withSeconds });
+  const dateBr = `${m[3]}/${m[2]}/${m[1]}`;
+  return time ? `${dateBr} ${time}` : dateBr;
 }
