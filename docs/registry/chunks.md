@@ -5,6 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-04 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | tz display |
-| CHUNK-08 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | tz display |
-| CHUNK-16 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | tz display |

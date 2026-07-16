@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.0] - 16/07/2026 · #339 · PR #340
+
+**feat:** exibir timezone do horário de entrada em todas as telas de trade
+
+- **Helper** `shortTzLabelFromIso(iso)` → `ET|CT|BRT` (reidrata IANA via `tzFromStoredIso` — offset cru é ambíguo: -05:00 = ET-inverno ou CT-verão).
+- **SSoT de exibição** `fmtTradeTime` / `fmtTradeDateTime` em `tradeTimezone.js` — usa o **relógio de parede do trade**, não o fuso do navegador.
+- **Grupo A** (mostravam wall-clock sem label): FeedbackPage, MentorDashboard ×2, StudentFeedbackPage, TradesList, TradeDetailModal.
+- **Grupo B** (mostravam no fuso do navegador → mesma operação divergia por quem abria): `reviewFormatters.fmtTime` passa a delegar ao SSoT (corrige ReviewTradesSection), OrderStagingReview, ConversationalOpCard.
+- ISO legado sem offset → só a hora, sem label (fallback defensivo, não quebra).
+- Grupo B agora mostra o horário que o trader operou, não o do navegador (correção de inconsistência — DEC-AUTO-339-02).
+
+
 ## [1.82.5] - 04/07/2026 · #337 · PR #338
 
 **fix:** TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70
