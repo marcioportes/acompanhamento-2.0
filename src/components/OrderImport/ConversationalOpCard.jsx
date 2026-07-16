@@ -28,23 +28,17 @@ import {
 import DebugBadge from '../DebugBadge';
 import AutoLiqBadge from './AutoLiqBadge';
 import { CLASSIFICATION } from '../../utils/orderTradeCreation';
+import { fmtTradeDateTime } from '../../utils/tradeTimezone';
 
 // ============================================
 // HELPERS
 // ============================================
 
+// #339 — wall-clock do trade + fuso (`'27/05/2026 16:23 ET'`), via SSoT.
 const formatDateTime = (iso) => {
   if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '—';
-    return d.toLocaleString('pt-BR', {
-      day: '2-digit', month: '2-digit', year: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch {
-    return '—';
-  }
+  const s = fmtTradeDateTime(iso);
+  return s === '-' ? '—' : s;
 };
 
 const formatScore = (score) => {

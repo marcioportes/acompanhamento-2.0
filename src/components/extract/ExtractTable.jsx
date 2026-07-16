@@ -21,13 +21,11 @@ import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilt
 import TradeStatusBadges from '../TradeStatusBadges';
 import ExcursionDisplay from '../ExcursionDisplay';
 import { Lock } from 'lucide-react';
+import { fmtTradeTime } from '../../utils/tradeTimezone';
 
 const fmtDate = (d) => { if (!d) return '-'; const [y, m, dd] = d.split('-'); return `${dd}/${m}`; };
-const fmtTime = (iso) => {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
-  catch { return ''; }
-};
+// #339 — wall-clock do trade + fuso (`'16:23 ET'`), via SSoT.
+const fmtTime = (iso) => fmtTradeTime(iso);
 
 const getEmotionColor = (category) => {
   switch (category) {

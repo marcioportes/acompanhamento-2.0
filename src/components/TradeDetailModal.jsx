@@ -36,7 +36,7 @@ import TradeStatusBadges from './TradeStatusBadges';
 import BehaviorPanel from './Trades/BehaviorPanel';
 import TradeReviewSection from './Trades/TradeReviewSection';
 import ExcursionDisplay from './ExcursionDisplay';
-import { isCMEFutureTicker } from '../utils/tradeTimezone';
+import { isCMEFutureTicker, fmtTradeDateTime } from '../utils/tradeTimezone';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -84,22 +84,6 @@ const formatDate = (dateInput) => {
       return dateInput;
     }
     return String(dateInput);
-  } catch {
-    return '-';
-  }
-};
-
-/** Formata ISO datetime para DD/MM/AAAA HH:MM */
-const formatDateTime = (dateInput) => {
-  if (!dateInput) return '-';
-  try {
-    if (typeof dateInput === 'string' && dateInput.includes('T')) {
-      const [datePart, timePart] = dateInput.split('T');
-      const [year, month, day] = datePart.split('-');
-      const time = timePart?.substring(0, 5) || '';
-      return `${day}/${month}/${year} ${time}`;
-    }
-    return formatDate(dateInput);
   } catch {
     return '-';
   }
@@ -430,7 +414,7 @@ const TradeDetailModal = ({
                         </span>
                         <span className="text-white font-mono text-sm">{p.price}</span>
                         <span className="text-white font-mono text-sm">{p.qty}</span>
-                        <span className="text-slate-400 text-xs font-mono">{formatDateTime(p.dateTime)}</span>
+                        <span className="text-slate-400 text-xs font-mono">{fmtTradeDateTime(p.dateTime)}</span>
                       </div>
                     ))}
                     {/* Summary row */}

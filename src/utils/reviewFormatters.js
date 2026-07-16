@@ -8,6 +8,8 @@
  * reuso read-only pelo aluno sem duplicação (AP-02/AP-03).
  */
 
+import { fmtTradeTime } from './tradeTimezone';
+
 // ============================================
 // Formatadores — BR (INV-06)
 // ============================================
@@ -34,14 +36,9 @@ export const fmtNum = (v, digits = 2) => {
   return n.toFixed(digits);
 };
 
-export const fmtTime = (iso) => {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-};
+// #339 — wall-clock do trade + fuso (`'16:23 ET'`), não o fuso do navegador.
+// Delega ao SSoT em tradeTimezone.js.
+export const fmtTime = (iso) => fmtTradeTime(iso);
 
 export const fmtDateBR = (iso) => {
   if (!iso || typeof iso !== 'string') return '—';

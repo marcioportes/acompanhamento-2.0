@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { makeOrderKey } from '../../utils/orderKey';
+import { fmtTradeDateTime } from '../../utils/tradeTimezone';
 
 // ============================================
 // SUB-COMPONENTS
@@ -152,9 +153,9 @@ const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observati
 
         {/* Entry → Exit times */}
         <span className="text-[10px] text-slate-500 ml-1">
-          {operation.entryTime ? new Date(operation.entryTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.entryTime ? fmtTradeDateTime(operation.entryTime, { withSeconds: true }) : '?'}
           {' → '}
-          {operation.exitTime ? new Date(operation.exitTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}
+          {operation.exitTime ? fmtTradeDateTime(operation.exitTime, { withSeconds: true }) : '?'}
         </span>
 
         {operation.duration && (

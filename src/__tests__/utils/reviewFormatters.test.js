@@ -38,9 +38,10 @@ describe('reviewFormatters — formatadores', () => {
     expect(fmtNum(1.2345, 4)).toBe('1.2345');
     expect(fmtNum('x')).toBe('—');
   });
-  it('fmtTime formata HH:MM BR', () => {
-    // 2026-04-24T09:05:00-03:00 → 09:05
-    expect(fmtTime('2026-04-24T09:05:00-03:00')).toMatch(/^\d{2}:\d{2}$/);
+  it('fmtTime — wall-clock do trade + fuso (#339)', () => {
+    // 2026-04-24T09:05:00-03:00 → 09:05 BRT (não o fuso do navegador)
+    expect(fmtTime('2026-04-24T09:05:00-03:00')).toBe('09:05 BRT');
+    expect(fmtTime('2026-05-27T16:23:00-04:00')).toBe('16:23 ET');
     expect(fmtTime(null)).toBe('');
     expect(fmtTime('')).toBe('');
   });

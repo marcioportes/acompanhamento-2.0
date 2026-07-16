@@ -30,6 +30,7 @@ import {
 import { formatCurrencyDynamic } from '../utils/currency';
 import TradeStatusBadges from './TradeStatusBadges';
 import ExcursionDisplay from './ExcursionDisplay';
+import { fmtTradeTime } from '../utils/tradeTimezone';
 
 /**
  * Formatadores Visuais (Helpers)
@@ -158,7 +159,7 @@ const TradesList = ({
                   <div>{trade.date ? trade.date.split('-').reverse().join('/') : '-'}</div>
                   {trade.entryTime && (
                     <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      {(() => { try { const t = trade.entryTime.split('T')[1]; return t ? t.substring(0, 5) : ''; } catch { return ''; } })()}
+                      {fmtTradeTime(trade.entryTime)}
                     </div>
                   )}
                 </td>

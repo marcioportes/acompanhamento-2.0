@@ -18,6 +18,9 @@ import {
   combineDateTimeWithTz,
   toBrasiliaDisplay,
   tzFromStoredIso,
+  shortTzLabelFromIso,
+  fmtTradeTime,
+  fmtTradeDateTime,
   TIMEZONES,
 } from '../../utils/tradeTimezone';
 
@@ -193,5 +196,58 @@ describe('tzFromStoredIso — deriva fuso do ISO gravado (consulta/edição)', (
     expect(tzFromStoredIso(null)).toBe(null);
     expect(tzFromStoredIso('')).toBe(null);
     expect(tzFromStoredIso('lixo')).toBe(null);
+  });
+});
+
+describe('shortTzLabelFromIso — label curto do fuso (#339)', () => {
+  it('BRT (-03:00) → BRT', () => {
+    expect(shortTzLabelFromIso('2026-06-03T10:21:57-03:00')).toBe('BRT');
+  });
+  it('ET verão (-04:00) → ET', () => {
+    expect(shortTzLabelFromIso('2026-06-03T16:23:00-04:00')).toBe('ET');
+  });
+  it('CT inverno (-06:00) → CT', () => {
+    expect(shortTzLabelFromIso('2026-12-25T10:00:00-06:00')).toBe('CT');
+  });
+  it('naive/legado (sem offset) → string vazia', () => {
+    expect(shortTzLabelFromIso('2026-06-03T10:21:57')).toBe('');
+  });
+  it('entrada inválida → string vazia', () => {
+    expect(shortTzLabelFromIso(null)).toBe('');
+    expect(shortTzLabelFromIso('')).toBe('');
+    expect(shortTzLabelFromIso('lixo')).toBe('');
+  });
+});
+
+describe('fmtTradeTime — horário do trade com fuso (#339)', () => {
+  it('wall-clock do trade + label (não do navegador)', () => {
+    expect(fmtTradeTime('2026-05-27T16:23:00-04:00')).toBe('16:23 ET');
+    expect(fmtTradeTime('2026-05-27T09:15:00-03:00')).toBe('09:15 BRT');
+  });
+  it('withSeconds inclui segundos', () => {
+    expect(fmtTradeTime('2026-05-27T16:23:45-04:00', { withSeconds: true })).toBe('16:23:45 ET');
+  });
+  it('naive/legado → hora sem label', () => {
+    expect(fmtTradeTime('2026-05-27T16:23:00')).toBe('16:23');
+  });
+  it('vazio/inválido → string vazia', () => {
+    expect(fmtTradeTime(null)).toBe('');
+    expect(fmtTradeTime('2026-05-27')).toBe('');
+  });
+});
+
+describe('fmtTradeDateTime — data + horário do trade com fuso (#339)', () => {
+  it('data BR + hora + label', () => {
+    expect(fmtTradeDateTime('2026-05-27T16:23:00-04:00')).toBe('27/05/2026 16:23 ET');
+  });
+  it('naive/legado → data + hora sem label', () => {
+    expect(fmtTradeDateTime('2026-05-27T16:23:00')).toBe('27/05/2026 16:23');
+  });
+  it('só data (sem hora) → data BR', () => {
+    expect(fmtTradeDateTime('2026-05-27')).toBe('27/05/2026');
+  });
+  it('inválido → traço', () => {
+    expect(fmtTradeDateTime(null)).toBe('-');
+    expect(fmtTradeDateTime('lixo')).toBe('-');
   });
 });
