@@ -89,8 +89,6 @@ const formatDate = (dateInput) => {
   }
 };
 
-/** Formata ISO datetime para DD/MM/AAAA HH:MM */
-
 const StatusBadge = ({ status }) => {
   const config = {
     OPEN: { label: 'Aguardando', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400' },
