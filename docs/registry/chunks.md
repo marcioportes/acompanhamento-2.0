@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-16 | #341 | `fix/issue-341-contas-assinatura-ativa` | 19/07/2026 | interativo |
