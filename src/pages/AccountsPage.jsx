@@ -22,6 +22,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePlans } from '../hooks/usePlans';
 import { useTrades } from '../hooks/useTrades';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
+import { useStudents } from '../hooks/useStudents';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { visibleStudentIds } from '../utils/mentorAccountsVisibility';
 import {
   PROP_FIRM_LABELS,
   PROP_FIRM_PHASES,
@@ -640,7 +643,17 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       </div>
 
       {isMentor() ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{Object.entries(filteredGroups).map(([studentId, data]) => (<StudentAccountGroup key={studentId} studentName={data.studentName} studentEmail={data.studentEmail} accounts={data.accounts} plans={plans} trades={trades} balancesByAccountId={balancesByAccountId} onAccountClick={setSelectedAccount} onEditAccount={openModal} onEditPlan={handleOpenEditPlan} getAccountBadge={getAccountBadge} formatCurrency={formatCurrency} />))}</div>
+        <MentorAccountsGrid
+          groups={filteredGroups}
+          plans={plans}
+          trades={trades}
+          balancesByAccountId={balancesByAccountId}
+          onAccountClick={setSelectedAccount}
+          onEditAccount={openModal}
+          onEditPlan={handleOpenEditPlan}
+          getAccountBadge={getAccountBadge}
+          formatCurrency={formatCurrency}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {accounts.map(acc => {
@@ -1024,6 +1037,60 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       )}
       <DebugBadge component="AccountsPage" />
       {confirmDialog}
+    </div>
+  );
+};
+
+/**
+ * MentorAccountsGrid — grid de contas por aluno (visão do mentor).
+ * Monta useStudents/useSubscriptions APENAS aqui (renderizado só quando isMentor()),
+ * para o caminho do aluno nunca disparar listeners em /students ou collectionGroup.
+ * Aplica o filtro de visibilidade (#341): esconde grupos sem assinatura ativa.
+ */
+const MentorAccountsGrid = ({
+  groups,
+  plans,
+  trades,
+  balancesByAccountId,
+  onAccountClick,
+  onEditAccount,
+  onEditPlan,
+  getAccountBadge,
+  formatCurrency,
+}) => {
+  const { students } = useStudents();
+  const { subscriptions } = useSubscriptions();
+
+  // #341 — só grupos cujo aluno tem sub ativa Alpha/Espelho/Trial (classifyStudent !== null).
+  // Paridade com Acompanhamento; grupo "unknown" (conta órfã) some por não ter doc de aluno.
+  const visibleIds = useMemo(
+    () => visibleStudentIds(students, subscriptions),
+    [students, subscriptions],
+  );
+
+  const visibleGroups = useMemo(
+    () => Object.entries(groups).filter(([studentId]) => visibleIds.has(studentId)),
+    [groups, visibleIds],
+  );
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {visibleGroups.map(([studentId, data]) => (
+        <StudentAccountGroup
+          key={studentId}
+          studentName={data.studentName}
+          studentEmail={data.studentEmail}
+          accounts={data.accounts}
+          plans={plans}
+          trades={trades}
+          balancesByAccountId={balancesByAccountId}
+          onAccountClick={onAccountClick}
+          onEditAccount={onEditAccount}
+          onEditPlan={onEditPlan}
+          getAccountBadge={getAccountBadge}
+          formatCurrency={formatCurrency}
+        />
+      ))}
     </div>
   );
 };
