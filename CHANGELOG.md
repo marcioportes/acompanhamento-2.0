@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.1] - 19/07/2026 · #341 · PR #342
+
+**fix:** Contas do mentor esconde alunos sem assinatura ativa
+
+- Util puro `visibleStudentIds` — mesma montagem de `subsByStudent` do `StudentsManagement` (ref. negativa #316, assinaturas divergentes de `classifyStudent`).
+- Grid do mentor extraído em `MentorAccountsGrid`, que monta `useStudents`/`useSubscriptions` **só quando renderizado (mentor)** — o caminho do aluno nunca dispara listener em `/students` ou collectionGroup.
+- Só `src/pages/AccountsPage.jsx` + 1 util novo. Sem Firestore novo, sem CF, **sem deploy**.
+- `mentorAccountsVisibility.test.js` — 9 casos (alpha/espelho/trial visíveis; VIP/sem-sub/expired/cancelled/órfão escondidos; overdue mantido; resiliência a nulos).
+- Suíte **3561/3561** + build verdes.
+
+
 ## [1.83.0] - 16/07/2026 · #339 · PR #340
 
 **feat:** exibir timezone do horário de entrada em todas as telas de trade

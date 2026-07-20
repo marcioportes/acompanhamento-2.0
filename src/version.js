@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.1: #341 fix Contas do mentor esconde alunos sem assinatura ativa (PR #342, 19/07/2026)
  * - 1.83.0: #339 feat exibir timezone do horário de entrada em todas as telas de trade (PR #340, 16/07/2026)
  * - 1.82.5: #337 fix TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70 (PR #338, 04/07/2026)
  * - 1.82.4: #335 fix DISCUSSED restante — StudentFeedbackPage (badge/contador/pill) + card do mentor subcontava revisados (PR #336, 03/07/2026)
