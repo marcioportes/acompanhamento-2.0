@@ -67,3 +67,4 @@
 | 1.82.5 | #337 | `fix/issue-337-tps-consistency-real` | 03/07/2026 | consumida (PR #338 squash `16ec5604`) |
 | 1.83.0 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | consumida (PR #340 squash `9bd68442`) |
 | 1.83.1 | #341 | `fix/issue-341-contas-assinatura-ativa` | 19/07/2026 | consumida (PR #342 squash `67f26de3`) |
+| 1.84.0 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | reservada |
