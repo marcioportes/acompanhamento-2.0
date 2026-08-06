@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.2] - 06/08/2026 · #343 · PR #344
+
+**fix:** assessment travado — modelo Claude aposentado derruba 5 CFs
+
+- Suíte 3568/3568 (230 arquivos; baseline 3561 + 7 testes novos)
+- Build verde
+- Red-green confirmado revertendo C1: o teste de preservação falha sem o fix
+- Verificação real do modelo contra a API só é possível pós-deploy
+
+
 ## [1.83.1] - 19/07/2026 · #341 · PR #342
 
 **fix:** Contas do mentor esconde alunos sem assinatura ativa

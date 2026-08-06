@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.2: #343 fix (RESERVA) modelo Claude aposentado derruba 5 CFs — assessment travado no Finalizar
+ * - 1.83.2: #343 fix assessment travado — modelo Claude aposentado derruba 5 CFs (PR #344, 06/08/2026)
  * - 1.83.1: #341 fix Contas do mentor esconde alunos sem assinatura ativa (PR #342, 19/07/2026)
  * - 1.83.0: #339 feat exibir timezone do horário de entrada em todas as telas de trade (PR #340, 16/07/2026)
  * - 1.82.5: #337 fix TPS fator Consistência real (CV normalizado) + fim do placeholder 0,70 (PR #338, 04/07/2026)
@@ -388,10 +388,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.84.0',
-  build: '20260727',
-  display: 'v1.84.0',
-  full: '1.84.0+20260727',
+  version: '1.83.2',
+  build: '20260806',
+  display: 'v1.83.2',
+  full: '1.83.2+20260806',
 };
 export default VERSION;
 export { VERSION };
