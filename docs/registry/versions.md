@@ -68,3 +68,4 @@
 | 1.83.0 | #339 | `feat/issue-339-trade-tz-display` | 15/07/2026 | consumida (PR #340 squash `9bd68442`) |
 | 1.83.1 | #341 | `fix/issue-341-contas-assinatura-ativa` | 19/07/2026 | consumida (PR #342 squash `67f26de3`) |
 | 1.84.0 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | reservada |
+| 1.83.2 | #343 | `fix/issue-343-assessment-model-retired` | 06/08/2026 | reservada (patch sobre a consumida 1.83.1; v1.84.0 reservada por #101, pendente — constante `VERSION` em `src/version.js` não tocada) |
