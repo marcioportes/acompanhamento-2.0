@@ -147,18 +147,40 @@ export function useAssessment(studentId) {
 
   // ── Questionnaire Actions ─────────────────────────────────
 
+  /**
+   * Abre (ou reabre) o questionário.
+   *
+   * DEC-026 garante que o reset do mentor preserva o histórico no Firestore.
+   * O `setDoc` original sobrescrevia `responses: []` sem merge, então reativar
+   * o assessment de um aluno resetado apagava tudo em silêncio — a promessa de
+   * preservação só valia até a reativação (#343).
+   *
+   * Com respostas já gravadas, reabre limpando apenas o estado de conclusão e
+   * mantém `responses` intacto: o aluno retoma de onde parou.
+   */
   const startQuestionnaire = useCallback(async () => {
     if (!studentId) return;
     const qRef = doc(db, 'students', studentId, 'assessment', 'questionnaire');
-    await setDoc(qRef, {
-      startedAt: serverTimestamp(),
-      completedAt: null,
-      responses: [],
-      incongruenceFlags: [],
-      gamingSuspect: false,
-      aiProcessedAt: null,
-      aiModelVersion: null,
-    });
+    const snap = await getDoc(qRef);
+    const hasResponses = snap.exists() && (snap.data().responses || []).length > 0;
+
+    if (hasResponses) {
+      await updateDoc(qRef, {
+        completedAt: null,
+        aiProcessedAt: null,
+        aiModelVersion: null,
+      });
+    } else {
+      await setDoc(qRef, {
+        startedAt: serverTimestamp(),
+        completedAt: null,
+        responses: [],
+        incongruenceFlags: [],
+        gamingSuspect: false,
+        aiProcessedAt: null,
+        aiModelVersion: null,
+      });
+    }
     await updateOnboardingStatus('pre_assessment');
   }, [studentId, updateOnboardingStatus]);
 
@@ -190,7 +212,9 @@ export function useAssessment(studentId) {
       incongruenceFlags: processedData.incongruenceFlags || [],
       gamingSuspect: processedData.gamingSuspect || false,
       aiProcessedAt: serverTimestamp(),
-      aiModelVersion: processedData.aiModelVersion || 'claude-sonnet-4-20250514',
+      // Sem fallback hardcoded: gravar um ID de modelo que não foi o usado é pior
+      // que gravar nada — foi o que mascarou a aposentadoria do modelo em #343.
+      aiModelVersion: processedData.aiModelVersion || null,
     });
     await updateOnboardingStatus('ai_assessed');
   }, [studentId, updateOnboardingStatus]);

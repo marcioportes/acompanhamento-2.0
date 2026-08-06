@@ -34,7 +34,9 @@ export default function ProbingQuestionsFlow({
     setCompleteError(null);
     try {
       await completeAllProbing();
-      if (onComplete) onComplete();
+      // `await` obrigatório: sem ele a promise de onComplete flutua e uma falha
+      // na geração do relatório nunca chega neste catch (#343).
+      if (onComplete) await onComplete();
     } catch (err) {
       setCompleteError('Erro ao finalizar. Tente novamente.');
     } finally {

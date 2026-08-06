@@ -9,13 +9,16 @@
  * Input: { studentId, responses, incongruenceFlags, probingData, stagePayload }
  * Output: { scores, classifications, stageDigagnosis, reportSummary, developmentPriorities }
  * 
- * @version 1.0.0 — CHUNK-09 Fase A
+ * Modelo: claude-sonnet-4-6
+ *
+ * @version 1.0.1 — modelo migrado de claude-sonnet-4-20250514 (aposentado, 404)
+ *                  para claude-sonnet-4-6 (DEC-AUTO-343-01, issue #343)
  */
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const Anthropic = require('@anthropic-ai/sdk').default;
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 2048;
 
 const client = new Anthropic();
