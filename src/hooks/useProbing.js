@@ -65,7 +65,9 @@ export function useProbing({ onSaveProbing, onCompleteProbingQuestion, onComplet
         await onSaveProbing({
           triggeredBy: probingPayload.triggers || [],
           questions: generatedQuestions,
-          aiModelVersion: 'claude-sonnet-4-20250514',
+          // O modelo é decidido pela CF; o front registra o que ela devolveu em vez
+          // de manter um ID hardcoded que dessincroniza silenciosamente (#343).
+          aiModelVersion: result.data.aiModelVersion || null,
         });
       }
 

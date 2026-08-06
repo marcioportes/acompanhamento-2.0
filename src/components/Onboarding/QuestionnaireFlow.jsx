@@ -43,6 +43,8 @@ const SUB_DIMENSION_LABELS = {
 export default function QuestionnaireFlow({
   questionnaire,
   onComplete,
+  submitting = false,
+  submitError = null,
 }) {
   const {
     currentQuestion,
@@ -147,9 +149,19 @@ export default function QuestionnaireFlow({
           {isComplete && (
             <button
               onClick={() => onComplete && onComplete()}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-all"
+              disabled={submitting}
+              className={`
+                flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all
+                ${submitting
+                  ? 'bg-emerald-600/40 text-white/70 cursor-wait'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }
+              `}
             >
-              Finalizar questionário
+              {submitting && (
+                <div className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+              )}
+              {submitting ? 'Finalizando...' : 'Finalizar questionário'}
             </button>
           )}
 
@@ -171,6 +183,13 @@ export default function QuestionnaireFlow({
           )}
         </div>
       </div>
+
+      {/* Erro ao finalizar — sem isto a falha some no console (#343) */}
+      {submitError && (
+        <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+          <p className="text-xs text-red-400">{submitError}</p>
+        </div>
+      )}
 
       {/* Missing questions indicator */}
       {isLastQuestion && !isComplete && (

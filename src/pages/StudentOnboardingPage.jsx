@@ -61,6 +61,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
   const params = useParams();
   const studentId = studentIdProp || params?.studentId;
   const [processing, setProcessing] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState(null); // null = auto from status
   const [assessmentScores, setAssessmentScores] = useState(null);
@@ -175,13 +176,16 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
   }, [startQuestionnaire]);
 
   const handleQuestionnaireComplete = useCallback(async () => {
+    if (processing) return; // guard de duplo clique
     setProcessing(true);
+    setActionError(null);
     try {
       const allResponses = questionnaire.getAllResponses();
 
       // 1. Classify open responses via CF
       const classifyCF = httpsCallable(functions, 'classifyOpenResponse');
       const openResponses = allResponses.filter((r) => r.type === 'open');
+      let aiModelVersion = null;
 
       for (const resp of openResponses) {
         const question = QUESTION_MAP[resp.questionId];
@@ -211,6 +215,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
         resp.aiClassification = result.data.aiClassification;
         resp.aiJustification = result.data.aiJustification;
         resp.aiConfidence = result.data.aiConfidence;
+        aiModelVersion = result.data.aiModelVersion || aiModelVersion;
 
         // Persist enriched response
         await saveResponse(resp);
@@ -224,7 +229,7 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
       await completeQuestionnaire({
         incongruenceFlags: [...incongruences.intraFlags, ...incongruences.interFlags],
         gamingSuspect: incongruences.gamingSuspect,
-        aiModelVersion: 'claude-sonnet-4-20250514',
+        aiModelVersion,
       });
 
       // 4. Prepare probing payload
@@ -246,10 +251,14 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
 
     } catch (err) {
       console.error('Questionnaire completion error:', err);
+      setActionError(
+        'Não foi possível finalizar o questionário. Suas respostas estão salvas — '
+        + 'tente novamente em alguns instantes. Se persistir, avise seu mentor.'
+      );
     } finally {
       setProcessing(false);
     }
-  }, [questionnaire, saveResponse, completeQuestionnaire, probing]);
+  }, [processing, questionnaire, saveResponse, completeQuestionnaire, probing]);
 
   const handleProbingStart = useCallback(async () => {
     const allResponses = questionnaire.getAllResponses();
@@ -423,6 +432,9 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
 
     } catch (err) {
       console.error('Report generation error:', err);
+      // Re-lança: o ProbingQuestionsFlow tem tratamento próprio de erro no botão
+      // Finalizar (#166). Engolir aqui neutralizava aquele fix (#343).
+      throw err;
     } finally {
       setProcessing(false);
     }
@@ -644,6 +656,8 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
         <QuestionnaireFlow
           questionnaire={questionnaire}
           onComplete={handleQuestionnaireComplete}
+          submitting={processing}
+          submitError={actionError}
         />
       )}
 
