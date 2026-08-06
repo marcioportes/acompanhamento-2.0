@@ -7,19 +7,21 @@
  * Input:  { questionId, questionText, responseText, rubric, closedResponses, dimension, subDimension }
  * Output: { aiScore, aiClassification, aiJustification, aiFinding, aiFlags, aiConfidence }
  *
- * Modelo: claude-sonnet-4-20250514
+ * Modelo: claude-sonnet-4-6
  *
  * v1.1.0 — prompt reescrito com framework completo, âncoras numéricas por dimensão,
  *           constructos teóricos (Kahneman/Tversky, Prospect Theory, TPI), e output
  *           enriquecido com campo `finding` separado de `justification`.
+ * v1.1.1 — modelo migrado de claude-sonnet-4-20250514 (aposentado, 404) para
+ *           claude-sonnet-4-6 (DEC-AUTO-343-01, issue #343).
  *
- * @version 1.1.0 — framework-aligned prompt (DEC-027)
+ * @version 1.1.1 — migração de modelo (DEC-AUTO-343-01)
  */
 
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const Anthropic = require('@anthropic-ai/sdk').default;
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 1500;
 
 const client = new Anthropic();

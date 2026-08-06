@@ -14,9 +14,13 @@
  *
  * @version 1.1
  * @since issue #133
+ *
+ * Modelo: claude-sonnet-4-6 — migrado de claude-sonnet-4-20250514 (aposentado, 404)
+ *         em #343 (DEC-AUTO-343-01). O header deste arquivo já dizia "Sonnet 4.6"
+ *         desde a v1.1; a constante é que estava desalinhada.
  */
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4000;
 const TEMPERATURE = 0;
 const PROMPT_VERSION = '1.1';
@@ -349,8 +353,8 @@ const RESPONSE_SCHEMA = {
     },
   ],
   metadata: {
-    model: 'claude-sonnet-4-20250514',
-    promptVersion: '1.1',
+    model: MODEL,
+    promptVersion: PROMPT_VERSION,
     dataSource: '4d_full|indicators|defaults',
     generatedAt: 'ISO timestamp',
   },

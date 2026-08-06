@@ -67,7 +67,7 @@ function baseValidPlan() {
       personalWarnings: [],
     },
     milestones: [{ day: 1, targetBalance: 500, description: 'x' }],
-    metadata: { model: 'claude-sonnet-4-20250514', promptVersion: '1.1', dataSource: '4d_full', generatedAt: '2026-04-14T00:00:00Z' },
+    metadata: { model: 'claude-sonnet-4-6', promptVersion: '1.1', dataSource: '4d_full', generatedAt: '2026-04-14T00:00:00Z' },
   };
 }
 
