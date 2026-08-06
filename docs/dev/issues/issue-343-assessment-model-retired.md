@@ -34,7 +34,16 @@ Ver issue body no GitHub: #343.
 
 ## Sessions
 
-_(1 linha por task)_
+- `A1+A2 [migrar-modelo] commit 9ed030ab ok` — 4 CFs assessment + propFirm (2 sites) → `claude-sonnet-4-6`; `RESPONSE_SCHEMA` passa a referenciar `MODEL`/`PROMPT_VERSION`
+- `B1 [superficie-erro] commit 114b80a3 ok` — submitting/submitError no QuestionnaireFlow, guard de duplo clique, `handleProbingComplete` re-lança, `await onComplete()` no ProbingQuestionsFlow, `aiModelVersion` vindo da CF
+- `C1 [preservar-respostas] commit 129e639f ok` — `startQuestionnaire` não sobrescreve `responses`; fallback hardcoded de `aiModelVersion` removido
+- `V1 [validacao] ok` — suíte 3568/3568 (230 arquivos; baseline 3561 + 7 novos), build verde; red-green confirmado revertendo C1
+
+## Verificação pendente (pós-deploy)
+
+O modelo alvo só pode ser exercitado de verdade contra a API depois do
+`firebase deploy --only functions`. Validar com a Sandra: Finalizar → aprofundamento
+→ relatório IA. Enquanto não deployar, as CFs em produção seguem no modelo morto.
 
 ## Shared Deltas
 
