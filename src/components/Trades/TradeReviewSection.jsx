@@ -10,14 +10,16 @@
  *
  * Estados: (A) nudge "Revisar agora/depois" → (B) escolher SIM/NÃO + perguntas →
  * (C) leitura + banner do confronto. Imutável após DISCUSSED (#269).
+ * (D) #345 — janela fechada: discutido SEM reflexão. Read-only, sem promessa de gravação.
  */
-import React, { useMemo, useState } from 'react';
-import { ClipboardCheck, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { ClipboardCheck, RefreshCw, Lock, AlertTriangle } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { CONFRONT_TONE_STYLES } from './behaviorDisplay';
 import { classifyTrade, reviewVerdict, REVIEW_VERDICT } from '../../utils/tradeReviewConfront';
 import {
   WOULD_REPEAT_PROMPT, TRADE_REVIEW_QUESTIONS, questionsForQuadrant, REVIEW_DIMENSIONS,
+  isReflectionWindowClosed,
 } from '../../constants/tradeReviewFramework';
 
 /** verdict + declaração → {tone, text} para o banner do espelho (ou null). */
@@ -55,6 +57,9 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit, startOpen = fa
   const [wouldRepeat, setWouldRepeat] = useState(null);
   const [answers, setAnswers] = useState({});
   const [saving, setSaving] = useState(false);
+  // #345 — falha de write era engolida em console.error: o aluno clicava Salvar e "nada
+  // acontecia". A mensagem técnica vai visível de propósito (evita o chamado invisível).
+  const [submitError, setSubmitError] = useState(null);
 
   const families = trade?.behaviorProfile?.families;
 
@@ -98,21 +103,48 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit, startOpen = fa
   }
 
   // Mentor (ou quem não pode revisar) e sem auto-revisão: nada a mostrar.
+  // O mentor tem o alerta próprio na composição de feedback (StudentReflectionPanel, #323).
   if (!canReview || typeof onSubmit !== 'function') return null;
+
+  // ── Estado D: janela fechada (#345) ──
+  // Discutido em revisão publicada SEM reflexão. Rules e gateway negam o write; oferecer o
+  // formulário aqui era o bug. Read-only e sem botão — não promete o que não grava.
+  if (isReflectionWindowClosed(trade)) {
+    return (
+      <div className="relative border border-white/10 rounded-xl p-4 bg-white/5 mt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Lock className="w-4 h-4 text-zinc-400" />
+          <span className="text-sm font-medium text-zinc-200">Reflexão</span>
+          <span className="text-xs px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-300">
+            Janela fechada
+          </span>
+        </div>
+        <p className="text-sm text-zinc-400">
+          Este trade foi discutido na revisão sem a sua auto-análise. A reflexão vale antes da
+          revisão — depois de conversar com o mentor ela já não mede o que você pensava na hora
+          do trade.
+        </p>
+        <DebugBadge component="TradeReviewSection" />
+      </div>
+    );
+  }
 
   const quadrant = wouldRepeat === null ? null : classifyTrade(trade.result, wouldRepeat);
   const questions = quadrant ? questionsForQuadrant(quadrant) : [];
 
-  const reset = () => { setEditing(false); setWouldRepeat(null); setAnswers({}); };
+  const reset = () => { setEditing(false); setWouldRepeat(null); setAnswers({}); setSubmitError(null); };
 
   const handleSave = async () => {
-    if (wouldRepeat === null) return;
+    if (wouldRepeat === null || saving) return;
     setSaving(true);
+    setSubmitError(null);
     try {
       await onSubmit({ wouldRepeat, answers });
       reset();
     } catch (err) {
+      // Falha NÃO reseta o formulário: as respostas digitadas ficam pra nova tentativa.
       console.error('[TradeReviewSection] erro ao salvar auto-revisão:', err);
+      setSubmitError(err?.message || 'erro desconhecido');
     } finally {
       setSaving(false);
     }
@@ -188,6 +220,16 @@ const TradeReviewSection = ({ trade, canReview = false, onSubmit, startOpen = fa
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {submitError && (
+        <div className="mb-3 text-xs rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <div>
+            <div>Não foi possível salvar sua reflexão. Tente de novo.</div>
+            <div className="text-[11px] text-red-300/70 mt-0.5">{submitError}</div>
+          </div>
         </div>
       )}
 
