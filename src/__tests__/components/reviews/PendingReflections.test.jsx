@@ -63,6 +63,44 @@ describe('<PendingReflections />', () => {
     expect(screen.getByText('ZERADO')).toBeInTheDocument();
   });
 
+  // #345 — janela fechada: trade discutido em revisão não pode mais ser refletido
+  // (rules + gateway negam o write), então não faz sentido cobrar na fila.
+  it('exclui trade DISCUSSED sem selfReview (janela de reflexão fechada)', () => {
+    render(
+      <PendingReflections
+        trades={[
+          makeTrade({ id: 't1', symbol: 'WINFUT' }),
+          makeTrade({ id: 't2', symbol: 'DISCUTIDO', status: 'DISCUSSED' }),
+        ]}
+      />
+    );
+    expect(screen.getByText('WINFUT')).toBeInTheDocument();
+    expect(screen.queryByText('DISCUTIDO')).not.toBeInTheDocument();
+    expect(screen.getByText('1 trade')).toBeInTheDocument();
+  });
+
+  it('fila só de DISCUSSED não renderiza o card', () => {
+    const { container } = render(
+      <PendingReflections trades={[makeTrade({ status: 'DISCUSSED' })]} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('mantém na fila os outros status (REVIEWED, CLOSED, sem status)', () => {
+    render(
+      <PendingReflections
+        trades={[
+          makeTrade({ id: 't1', symbol: 'REVISADO', status: 'REVIEWED' }),
+          makeTrade({ id: 't2', symbol: 'FECHADO', status: 'CLOSED' }),
+          makeTrade({ id: 't3', symbol: 'LEGADO' }),
+        ]}
+      />
+    );
+    expect(screen.getByText('REVISADO')).toBeInTheDocument();
+    expect(screen.getByText('FECHADO')).toBeInTheDocument();
+    expect(screen.getByText('LEGADO')).toBeInTheDocument();
+  });
+
   it('respeita o filtro de plano (planId)', () => {
     render(
       <PendingReflections

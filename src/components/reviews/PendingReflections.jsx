@@ -6,6 +6,9 @@
  *
  * Regras de visibilidade:
  *   - Item = trade com `result != null` (fechado) e SEM `selfReview`.
+ *   - #345 — trade já discutido em revisão (`status: 'DISCUSSED'`) NÃO entra: a janela de
+ *     reflexão fechou e o write é negado por rules + gateway. Cobrar era cobrar o impossível
+ *     (o item nunca saía da fila e o Salvar não gravava).
  *   - Respeita o filtro de plano da ContextBar (planId) quando definido.
  *   - Sem pendência → retorna null. Suprimido em View-As (mentor não reflete pelo aluno).
  *   - Clicar num item abre o TradeDetailModal (onOpenTrade), onde o Espelho fica editável.
@@ -14,6 +17,7 @@
 import { useMemo, useState } from 'react';
 import { Eye, ChevronRight, ChevronDown } from 'lucide-react';
 import { formatCurrency } from '../../utils/calculations';
+import { isReflectionWindowClosed } from '../../constants/tradeReviewFramework';
 
 const fmtDateBR = (date) => (date ? String(date).split('-').reverse().join('/') : '-');
 
@@ -26,6 +30,7 @@ const PendingReflections = ({ trades = [], planId = null, onOpenTrade = null }) 
     const list = Array.isArray(trades) ? trades : [];
     return list
       .filter((t) => t && t.result != null && !t.selfReview)
+      .filter((t) => !isReflectionWindowClosed(t))
       .filter((t) => !planId || t.planId === planId)
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   }, [trades, planId]);

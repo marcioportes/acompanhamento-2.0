@@ -21,6 +21,22 @@ export const REVIEW_DIMENSIONS = Object.freeze({
 export const WOULD_REPEAT_PROMPT = 'Faria de novo sem saber o resultado?';
 
 /**
+ * Janela de reflexão (#345). `status: 'DISCUSSED'` é o terminal do #269 v2: o trade foi
+ * discutido numa revisão publicada e vira imutável a writes de cliente — as rules negam
+ * (firestore.rules, duas cláusulas) e `submitTradeReview` lança. Quem oferece a edição
+ * consulta este predicado; sem ele a UI convida um write que o backend recusa (era o bug
+ * do #345: a fila do #327 cobrava trade discutido e o Salvar não gravava).
+ *
+ * Reflexão pós-discussão também não teria valor: o aluno já ouviu o mentor, então
+ * "faria de novo sem saber o resultado?" deixa de medir o que ele pensava na hora do trade.
+ */
+export const REFLECTION_CLOSING_STATUS = 'DISCUSSED';
+
+/** @returns {boolean} true quando o trade já foi discutido — janela de reflexão fechada. */
+export const isReflectionWindowClosed = (trade) =>
+  trade?.status === REFLECTION_CLOSING_STATUS;
+
+/**
  * Perguntas por quadrante. id = chave estável em trade.selfReview.answers.
  * @type {Record<'good_win'|'bad_win'|'good_loss'|'bad_loss', {label:string, questions:Array<{id:string,dimension:string,text:string}>}>}
  */
