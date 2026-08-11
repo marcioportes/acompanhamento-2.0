@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.3] - 11/08/2026 · #345 · PR #346
+
+**fix:** reflexão não grava vindo do aviso do dashboard — janela fecha em DISCUSSED
+
+- `tradeReviewFramework`: predicado SSoT `isReflectionWindowClosed(trade)` no módulo que o gateway já importa
+- `PendingReflections`: DISCUSSED sai da fila e do contador
+- `TradeReviewSection`: estado "Janela fechada" (read-only, sem botão, só pro aluno) + `submitError` visível com motivo técnico + guard de duplo clique; falha preserva as respostas digitadas
+- 13 testes novos (`TradeReviewSection.test.jsx` +10, `PendingReflections.test.jsx` +3)
+- Suíte **3581/3581**, lint 0 erros / 0 warnings nos arquivos tocados, build verde
+- Regressão: `tradeGatewaySelfReview.test.js` (imutabilidade DISCUSSED) verde sem alteração
+
+
 ## [1.83.2] - 06/08/2026 · #343 · PR #344
 
 **fix:** assessment travado — modelo Claude aposentado derruba 5 CFs
