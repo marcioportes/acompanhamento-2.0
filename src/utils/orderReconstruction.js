@@ -204,7 +204,6 @@ export const reconstructOperations = (orders, opts = {}) => {
           hasStopProtection: false,   // preenchido em associateNonFilledOrders
           stopExecuted: false,        // preenchido em associateNonFilledOrders
           stopMovements: [],          // preenchido em stopMovementAnalysis
-          autoObservation: null,      // preenchido em stopMovementAnalysis
           hasPriorGap: pendingGap,    // Fase D: gap temporal antes desta op
         });
 
@@ -243,7 +242,8 @@ export const reconstructOperations = (orders, opts = {}) => {
         hasStopProtection: false,
         stopExecuted: false,
         stopMovements: [],
-        autoObservation: 'POSIÇÃO ABERTA — operação incompleta no período importado',
+        // #347 — `autoObservation` removido (ver nota em stopMovementAnalysis). A posição aberta
+        // já é sinalizada por `_isOpen` + `resultPoints: null`, que é o que a UI consome.
         hasPriorGap: pendingGap,
         _isOpen: true,
       });

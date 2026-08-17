@@ -400,6 +400,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   };
 
   // #308 — Espelho do trade; update otimista do trade aberto/em edição p/ leitura imediata.
+  // #347 — o `setEditingTrade` abaixo recria o objeto e ERA o gatilho da perda de dados: o
+  // AddTradeModal re-hidratava o formulário e descartava o que o aluno tinha digitado. Ele precisa
+  // continuar existindo — é o que tira o TradeReviewSection do nudge e mostra a reflexão recém
+  // salva (`editingTrade` é state congelado, não acompanha o onSnapshot). Ficou seguro porque a
+  // hidratação do modal passou a ser chaveada por `editTrade?.id`, não pela identidade do objeto.
   const handleSubmitReview = async (tradeId, payload) => {
     const res = await submitTradeReview(tradeId, payload, { uid: user?.uid, email: user?.email });
     setViewingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));
