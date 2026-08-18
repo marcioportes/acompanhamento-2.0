@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.4] - 17/08/2026 · #347 · PR #348
+
+**fix:** modal de edição descarta entrada do aluno ao salvar a reflexão
+
+- `AddTradeModalHydration.test.jsx` — texto e stop preservados quando o pai recria `editTrade` (update otimista) e quando `plans` troca de identidade; re-hidrata ao abrir outro trade (id diferente) e ao reabrir o modal.
+- `OrderStagingReviewObservation.test.jsx` — card expandido não renderiza o campo; `onConfirm` entrega payload sem a chave `observations`.
+
+
 ## [1.83.3] - 11/08/2026 · #345 · PR #346
 
 **fix:** reflexão não grava vindo do aviso do dashboard — janela fecha em DISCUSSED

@@ -70,4 +70,4 @@
 | 1.84.0 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | reservada |
 | 1.83.2 | #343 | `fix/issue-343-assessment-model-retired` | 06/08/2026 | consumida (PR #344 squash `5ad539fb`) |
 | 1.83.3 | #345 | `fix/issue-345-reflection-discussed-window` | 09/08/2026 | consumida (PR #346 squash `e036ec95`) |
-| 1.83.4 | #347 | `fix/issue-347-edit-modal-discards-input` | 17/08/2026 | reservada |
+| 1.83.4 | #347 | `fix/issue-347-edit-modal-discards-input` | 17/08/2026 | consumida (PR #348 squash `e573473a`) |

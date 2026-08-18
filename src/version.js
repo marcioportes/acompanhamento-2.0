@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.4: #347 fix (RESERVA) modal de edição descarta o que o aluno digitou ao salvar a reflexão + observação do import não persiste
+ * - 1.83.4: #347 fix modal de edição descarta entrada do aluno ao salvar a reflexão (PR #348, 17/08/2026)
  * - 1.83.3: #345 fix reflexão não grava vindo do aviso do dashboard — janela fecha em DISCUSSED (PR #346, 11/08/2026)
  * - 1.83.2: #343 fix assessment travado — modelo Claude aposentado derruba 5 CFs (PR #344, 06/08/2026)
  * - 1.83.1: #341 fix Contas do mentor esconde alunos sem assinatura ativa (PR #342, 19/07/2026)
@@ -390,10 +390,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.3',
-  build: '20260811',
-  display: 'v1.83.3',
-  full: '1.83.3+20260811',
+  version: '1.83.4',
+  build: '20260817',
+  display: 'v1.83.4',
+  full: '1.83.4+20260817',
 };
 export default VERSION;
 export { VERSION };
