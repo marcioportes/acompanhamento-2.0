@@ -6,7 +6,7 @@
 
 | Function | Trigger | Responsabilidade |
 |----------|---------|-----------------|
-| `onTradeCreated` | `trades` onCreate | Atualiza PL do plano + compliance stats + emotional scoring. **Debt crítico:** dispara em trades `IMPORTED`, corrompendo PL. |
+| `onTradeCreated` | `trades` onCreate | Atualiza PL do plano + compliance stats + emotional scoring. **#351 (v1.83.5):** etapa 7 liga os docs de `orders` do batch ao trade recém-criado quando `source: 'order_import'` (`orders/linkOrdersToCreatedTrade.js`) — o cliente não pode fazê-lo (`firestore.rules` tem `allow update: if false` em `/orders`), e sem isso todo trade nascido do import ficava com 100% das ordens órfãs. **Debt crítico:** dispara em trades `IMPORTED`, corrompendo PL. |
 | `onTradeUpdated` | `trades` onUpdate | Recalcula PL, compliance, maturity (v1.43.0). **#269 v2:** na 1ª transição `OPEN→REVIEWED` ancora `trade.reviewId` (`getOrCreateOpenReview`) — **único chokepoint** da relação trade↔revisão semanal. **Filtro matriz:** só ancora se o aluno está no escopo da Revisão (`studentInReviewScope` = bucket `{alpha, trial-alpha}`); fora disso pula. |
 | `onTradeDeleted` | `trades` onDelete | Reverte PL + recalcula compliance. |
 

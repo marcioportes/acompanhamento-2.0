@@ -10,9 +10,16 @@ Version source of truth: `src/version.js`.
 
 ## [1.83.5] - 18/08/2026 · #351 · PR #352
 
-**fix:** correlação de ordens — fill no meio da operação + trade criado pelo import
+**fix:** correlação de ordens — fill no meio da operação + trade criado pelo import nasce sem ordens
 
-- _(decisões/testes/files — ajustar antes do commit)_
+Ordem executada no meio de uma operação (aumento de posição ou parcial de saída) sumia do painel de ordens do trade e do sensor comportamental de execução. Diagnóstico sobre importação real de 18/08/2026 (WINV26, +R$ 521,00): a compra de 3 contratos das 14:46:17 ficava a 47min46s da abertura e 28min31s do fechamento — fora da janela de 5 min nas duas pontas.
+
+- **A — correlação por contenção no intervalo.** `correlateOrders` media distância às pontas (`entryTime`/`exitTime`) e nunca testava pertencimento ao intervalo. Assimetria que fechou o diagnóstico: o stop cancelado do mesmo instante *era* correlacionado (`correlateCancelledOrders` usa sobreposição de intervalo); o fill real não. Nova branch com contenção estrita, role derivado do side (num LONG, C no meio = `entry`, V no meio = `exit`) e score fixo 0,55 — perde para pontas a menos de 75s, ganha das mais distantes. Ganho colateral: parcial de saída logo após a abertura deixa de casar como `entry` com side incompatível.
+- **D — trade criado pelo próprio import nascia com 100% das ordens órfãs.** Descoberto ao medir o passivo: dos 198 fills órfãos corrigíveis em produção, 194 casavam pela regra de ponta que já existia — nunca foram problema de janela, estavam órfãos porque o trade não existia quando a correlação rodou. `correlateOrders`/`ingestBatch` rodam no cliente contra os trades existentes; operação `new` só vira trade depois, em `createTradesBatch`, e nada voltava para ligar. Corrigido server-side em `onTradeCreated` (`functions/orders/linkOrdersToCreatedTrade.js`), porque `firestore.rules` tem `allow update: if false` em `/orders`. Casamento por fingerprint `instrument|side|filledAt|qty` derivado das `_partials`; nunca sobrescreve correlação existente.
+- **C — scripts de backfill** (`issue-351-backfill-dryrun.mjs` / `-apply.mjs`) reusando `correlateOrders` do runtime. Dry-run em produção: 782 orders, 473 fills órfãos, 198 corrigíveis, 275 restantes (273 em plano sem trade). **Apply não executado** — pendente de decisão.
+- **Achado fora de escopo:** `persistDiscardedOrders` (`OrderImportPage.jsx:97`, #156 Fase E) também faz `update` em `/orders` pelo cliente dentro de `try/catch` com `console.warn` — falha silenciosamente em toda importação sob a regra atual. Issue própria pendente.
+
+Testes: 6 unitários em `orderCorrelation.test.js` (4 falham sem o fix; 2 são guardas de não-regressão), 3 de integração com recorte do CSV real do ProfitChart-Pro, 9 em `functions/__tests__/orders/`. 3597 verdes no front, 212 em functions.
 
 
 ## [1.83.4] - 17/08/2026 · #347 · PR #348
