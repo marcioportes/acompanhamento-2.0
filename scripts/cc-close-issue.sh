@@ -230,16 +230,24 @@ if [ -n "$VER" ] && grep -qE "^\| Versão \| Issue/PR \|" "$REPO/docs/PROJECT.md
       { print }
     ' "$REPO/docs/PROJECT.md" > "$REPO/docs/PROJECT.md.tmp" && mv "$REPO/docs/PROJECT.md.tmp" "$REPO/docs/PROJECT.md"
   fi
-else
+elif [ -n "$VER" ]; then
   # #349 (D) — era `[skip]` silencioso no meio do log: o bump do PROJECT.md nunca
   # acontecia e virava commit manual pós-encerramento (#343, #345, #347 têm um
   # "bump PROJECT.md — gap do cc-close-issue.sh" cada). O script não escreve o
   # parágrafo de encerramento (é prosa densa e específica), mas para de fingir que
   # tratou: a pendência é repetida nas verificações finais do passo 7.
+  #
+  # Correção pós-#349: o `else` cru cobria dois casos distintos — "não achou a
+  # tabela" e "não tem versão de produto" — e cobrava PROJECT.md em encerramento
+  # de tooling, onde não há o que registrar. O PROJECT.md rastreia versão de
+  # PRODUTO; issues de tooling (#227, #233, #286) não constam nele por decisão,
+  # não por esquecimento. Aviso que dispara em caso legítimo vira aviso ignorado.
   PROJECT_MD_PENDING=true
   echo "  [PENDENTE] PROJECT.md não é atualizado pelo script — o bump de versão e o"
   echo "             parágrafo de encerramento continuam manuais (formato blockquote"
   echo "             '> **Última atualização:**', não a tabela | Versão | Issue/PR |)."
+else
+  echo "  [skip] PROJECT.md — encerramento sem versão de produto (nada a registrar)"
 fi
 
 # 3b. CHANGELOG.md — nova entrada ≤8 linhas (formato Fase 2)
