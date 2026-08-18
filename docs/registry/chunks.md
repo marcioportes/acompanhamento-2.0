@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
+| CHUNK-10 | #351 | `fix/issue-351-order-correlation-mid-operation` | 18/08/2026 | Correlação perde fill no meio da operação (fix + backfill) |
