@@ -132,7 +132,7 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
   // C3 #259 — PL(0) histórico do ciclo: ler do closure quando o ciclo já foi
   // fechado. Sem isso, qualquer ciclo passado renderiza com plan.pl corrente
   // (que é o PL do próximo ciclo após o close), gerando bug visual no extrato.
-  const { closures: planClosures } = usePlanClosures(plan?.id || null);
+  const { closures: planClosures } = usePlanClosures(plan?.id || null, plan?.studentId || null);
   const matchedClosure = useMemo(() => {
     if (!selectedCycleRange || !planClosures || planClosures.length === 0) return null;
     const s = selectedCycleRange.start;
