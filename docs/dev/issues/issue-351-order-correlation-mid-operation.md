@@ -124,11 +124,15 @@ resultado  : tradeId = T3, role = 'entry'   (hoje: ghost)
   distribuição por aluno/plano. **Não escreve.** ✅ rodado 18/08/2026
 - C2 — `scripts/issue-351-backfill-apply.mjs` — escrito e validado em modo seguro (sem `--yes`
   não escreve). **Bloqueado no gate humano** — aguarda decisão sobre o achado do dry-run
+- D — `functions/orders/linkOrdersToCreatedTrade.js` + wire em `onTradeCreated`: liga as ordens do
+  batch ao trade que o próprio import cria (escopo adicionado 18/08/2026 a partir do achado de C1;
+  server-side porque `firestore.rules:321` proíbe update de `/orders` pelo cliente)
 
 ## Sessions
 
 - `task 01 [A+T] commit 51276ce8 ok — branch de containment + 6 testes unitários (4 falham sem o fix) + 3 de integração com recorte do CSV real; 3597 verdes, lint sem erro novo`
 - `task 02 [C1] dry-run rodado em produção (READ-ONLY) — ver achado abaixo`
+- `task 03 [D] commit 3f5290f1 ok — CF linkOrdersToCreatedTrade + wire em onTradeCreated; 9 testes novos, 212 verdes em functions`
 
 ### Achado do dry-run (18/08/2026) — o backfill é maior que o #351
 
@@ -164,6 +168,8 @@ forward (ligar as ordens ao trade criado pelo import) precisa de issue próprio,
 - `docs/registry/chunks.md` — liberar CHUNK-10
 - `CHANGELOG.md` — nova entrada `[1.83.5] - DD/08/2026`
 - `docs/PROJECT.md` — bump + parágrafo de encerramento
+- `docs/cloud-functions.md` — registrar `linkOrdersToCreatedTrade` como etapa 7 de `onTradeCreated`
+- **Deploy de CF obrigatório pós-merge** (`firebase deploy --only functions:onTradeCreated`)
 
 ## Decisions
 
