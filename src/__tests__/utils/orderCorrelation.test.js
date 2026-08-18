@@ -373,3 +373,111 @@ describe('correlateOrder — wall-clock tz-neutro (#296)', () => {
     expect(correlations.filter(c => c.tradeId).length).toBe(2);
   });
 });
+
+// ============================================
+// Fill no meio da operação (#351)
+// ============================================
+describe('correlateOrders — fill no meio da operação (#351)', () => {
+  // Caso real: WINV26 18/08/2026, operação de +R$521,00.
+  // Compra de 5 na abertura, compra de 3 no meio (aumento de posição),
+  // saída de 8 no fechamento. O fill do meio fica a 47min46s da abertura
+  // e 28min31s do fechamento — fora da janela de 5min nas DUAS pontas.
+  const win = (overrides = {}) => makeOrder({ instrument: 'WINV26', ...overrides });
+
+  const tradeWin = makeTrade({
+    id: 'tradeWIN',
+    ticker: 'WINV26',
+    side: 'LONG',
+    qty: 8,
+    entryTime: '2026-08-18T13:58:31-03:00',
+    exitTime: '2026-08-18T15:14:48-03:00',
+  });
+
+  const ordersWin = [
+    win({ _rowIndex: 13, externalOrderId: 'B5', side: 'BUY', quantity: 5, filledQuantity: 5,
+      filledPrice: 169760, submittedAt: '2026-08-18T13:58:30', filledAt: '2026-08-18T13:58:31' }),
+    win({ _rowIndex: 11, externalOrderId: 'B3', side: 'BUY', quantity: 3, filledQuantity: 3,
+      filledPrice: 169945, submittedAt: '2026-08-18T13:59:00', filledAt: '2026-08-18T14:46:17' }),
+    win({ _rowIndex: 7, externalOrderId: 'S5', side: 'SELL', quantity: 5, filledQuantity: 5,
+      filledPrice: 170155, submittedAt: '2026-08-18T13:58:31', filledAt: '2026-08-18T15:14:48' }),
+    win({ _rowIndex: 9, externalOrderId: 'S3', side: 'SELL', quantity: 3, filledQuantity: 3,
+      filledPrice: 170155, submittedAt: '2026-08-18T14:46:17', filledAt: '2026-08-18T15:14:48' }),
+  ];
+
+  it('aumento de posição no meio correlaciona com o trade como entry', () => {
+    const { correlations } = correlateOrders(ordersWin, [tradeWin]);
+    const meio = correlations.find(c => c.externalOrderId === 'B3');
+
+    expect(meio.tradeId).toBe('tradeWIN');
+    expect(meio.role).toBe('entry');
+    expect(meio.matchType).toBe('exact');
+    expect(meio.details).toContain('dentro da operação');
+  });
+
+  it('lote inteiro sem órfãos — orphanFills zera', () => {
+    const { correlations, stats } = correlateOrders(ordersWin, [tradeWin]);
+
+    expect(correlations.every(c => c.tradeId === 'tradeWIN')).toBe(true);
+    expect(stats.ghost).toBe(0);
+    expect(stats.orphanFills).toBe(0);
+    expect(stats.tradesWithFullCoverage).toBe(1);
+  });
+
+  it('parcial de saída no meio de um LONG correlaciona como exit', () => {
+    const parcial = win({ _rowIndex: 20, externalOrderId: 'P1', side: 'SELL', quantity: 2,
+      filledQuantity: 2, submittedAt: '2026-08-18T14:30:00', filledAt: '2026-08-18T14:30:00' });
+
+    const { correlations } = correlateOrders([parcial], [tradeWin]);
+
+    expect(correlations[0].tradeId).toBe('tradeWIN');
+    expect(correlations[0].role).toBe('exit');
+  });
+
+  it('match de ponta vence containment quando ambos se aplicam', () => {
+    // Fill 60s após a abertura: está dentro do intervalo E dentro da janela da ponta.
+    // Score de ponta = (1 - 60/300)*0.6 + 0.4 = 0.88 > 0.55 → ponta prevalece.
+    const naPonta = win({ _rowIndex: 21, externalOrderId: 'E1', side: 'BUY', quantity: 1,
+      filledQuantity: 1, submittedAt: '2026-08-18T13:59:31', filledAt: '2026-08-18T13:59:31' });
+
+    const { correlations } = correlateOrders([naPonta], [tradeWin]);
+
+    expect(correlations[0].role).toBe('entry');
+    expect(correlations[0].details).toContain('delta: 60s');
+    expect(correlations[0].confidence).toBeGreaterThan(0.55);
+  });
+
+  it('trade sem exitTime não regride — só pontas, como antes', () => {
+    const aberto = makeTrade({
+      id: 'tradeAberto', ticker: 'WINV26', side: 'LONG',
+      entryTime: '2026-08-18T13:58:31-03:00', exitTime: null,
+    });
+
+    const { correlations } = correlateOrders(ordersWin, [aberto]);
+    const meio = correlations.find(c => c.externalOrderId === 'B3');
+
+    expect(meio.tradeId).toBeNull();
+    expect(meio.matchType).toBe('ghost');
+  });
+
+  it('containment não rouba o fill do meio para trade sobreposto — pontas mandam', () => {
+    // Guarda de ambiguidade: um trade manual sobreposto do mesmo instrumento não pode
+    // capturar o fill do meio e promover a operação a `ambiguous` em categorizeConfirmedOps.
+    // O sobreposto contém o fill mas o trade real também — desempate por score de ponta
+    // não existe aqui (ambos containment), então basta que o fill não migre de trade
+    // quando o trade real é o mais justo.
+    const sobreposto = makeTrade({
+      id: 'tradeOutro', ticker: 'WINV26', side: 'LONG', qty: 1,
+      entryTime: '2026-08-18T14:40:00-03:00', exitTime: '2026-08-18T14:50:00-03:00',
+    });
+
+    const { correlations } = correlateOrders(ordersWin, [tradeWin, sobreposto]);
+    const meio = correlations.find(c => c.externalOrderId === 'B3');
+
+    // Ambos contêm o fill. O primeiro a pontuar vence (score idêntico, `>` estrito),
+    // e a ordem de iteração segue o array de trades — o trade real vem primeiro.
+    // O que este teste protege: o fill NÃO fica ghost e as pontas seguem no trade real.
+    expect(meio.tradeId).toBe('tradeWIN');
+    expect(correlations.find(c => c.externalOrderId === 'B5').tradeId).toBe('tradeWIN');
+    expect(correlations.find(c => c.externalOrderId === 'S5').tradeId).toBe('tradeWIN');
+  });
+});

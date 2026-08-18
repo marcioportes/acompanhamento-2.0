@@ -1344,6 +1344,21 @@ exports.onTradeCreated = functions.firestore
         console.error('[onTradeCreated] Erro maturity engine:', matErr);
       }
 
+      // === 7. LIGAR ORDENS DO IMPORT AO TRADE CRIADO (#351) ===
+      // Trade nascido do Order Import ficava com 100% das ordens órfãs: a correlação roda
+      // no cliente ANTES da criação (contra os trades que já existiam) e nada voltava para
+      // ligar. Feito aqui porque firestore.rules tem `allow update: if false` em /orders —
+      // o cliente não pode atualizar esses docs. Isolamento total (INV-03).
+      try {
+        const { linkOrdersToCreatedTrade } = require('./orders/linkOrdersToCreatedTrade');
+        const linkResult = await linkOrdersToCreatedTrade(db, { tradeId, trade });
+        if (!linkResult.skipped) {
+          console.log(`[onTradeCreated] Ordens ligadas ao trade ${tradeId}: ${linkResult.linked}`);
+        }
+      } catch (linkErr) {
+        console.error('[onTradeCreated] Erro ao ligar ordens do import:', linkErr);
+      }
+
     } catch (e) { console.error('[onTradeCreated]', e); }
     
     return null;

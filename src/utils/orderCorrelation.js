@@ -34,6 +34,18 @@ export const CORRELATION_WINDOW_DAY_MS = 24 * 60 * 60 * 1000;
 /** Tolerância de quantidade (±10%) */
 const QTY_TOLERANCE = 0.10;
 
+/**
+ * Score fixo do match por contenção no intervalo do trade (#351) — fill executado
+ * no MEIO da operação (aumento de posição / parcial de saída), longe das duas pontas.
+ * Não tem componente temporal: o fill ou está dentro do intervalo ou não está.
+ *
+ * O piso do match de ponta com side compatível é 0.4 (`timeScore×0.6 + 1.0×0.4` com
+ * `timeScore → 0⁺`), não 0.6 — então 0.55 NÃO fica abaixo de todo match de ponta.
+ * O corte fica em `delta = 0.25 × window` (75s na janela de 5min): mais perto que
+ * isso a ponta vence; mais longe, containment vence. É o desempate desejado.
+ */
+const CONTAINMENT_SCORE = 0.55;
+
 // ============================================
 // HELPERS
 // ============================================
@@ -387,6 +399,33 @@ export const correlateOrders = (orders, trades) => {
           }
         }
       }
+
+      // Fill NO MEIO da operação — aumento de posição ou parcial de saída (#351).
+      // As duas branches acima medem distância às PONTAS; um fill executado no meio
+      // fica fora da janela nas duas e virava ghost, sumindo do painel de ordens do
+      // trade e do sensor comportamental. Aqui a chave é contenção no intervalo, a
+      // mesma semântica que correlateCancelledOrders e associateNonFilledOrders já
+      // usam — sem ela, a ordem cancelada das 14:46 casava com o trade e o fill real
+      // do mesmo instante não (caso de referência: WINV26 18/08/2026).
+      //
+      // Score constante 0.55: perde para ponta com side compatível e delta < 75s
+      // (0.25 × window), ganha das mais distantes. Um fill a 4min de uma ponta E
+      // dentro do intervalo é melhor descrito como "dentro da operação". Comparação
+      // estrita — orderTs sobre a ponta já casa acima com delta 0 e score 1.0.
+      if (tradeEntryTs && tradeExitTs && orderTs > tradeEntryTs && orderTs < tradeExitTs) {
+        const isEntry = isSideCompatibleForRole(order.side, trade.side, 'entry');
+        const score = CONTAINMENT_SCORE;
+        if (!best || score > best.score) {
+          best = {
+            tradeId: trade.id,
+            role: isEntry ? 'entry' : 'exit',
+            score,
+            delta: 0,
+            sideOk: true,
+            inside: true,
+          };
+        }
+      }
     }
 
     if (best) {
@@ -402,7 +441,9 @@ export const correlateOrders = (orders, trades) => {
         role: best.role,
         confidence,
         matchType: 'exact',
-        details: `Match ${best.role} (delta: ${Math.round(best.delta / 1000)}s${best.sideOk ? '' : ', side mismatch'})`,
+        details: best.inside
+          ? `Match ${best.role} (dentro da operação)`
+          : `Match ${best.role} (delta: ${Math.round(best.delta / 1000)}s${best.sideOk ? '' : ', side mismatch'})`,
       });
     } else {
       correlations.push({
