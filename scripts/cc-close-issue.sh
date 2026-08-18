@@ -38,6 +38,7 @@ DRY_RUN=false
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 WORKTREE="$HOME/projects/issue-${ISSUE}"
 SNAPSHOT_DIR="$REPO/.archive-snapshots"
+PROJECT_MD_PENDING=false
 TODAY=$(date +%d/%m/%Y)
 TODAY_BUILD=$(date +%Y%m%d)
 
@@ -149,6 +150,65 @@ run "mkdir -p '$SNAPSHOT_DIR'"
 run "gh issue view ${ISSUE} --json number,title,body,state,closedAt,labels > '$SNAPSHOT_DIR/issue-${ISSUE}.json'"
 run "gh pr view ${PR} --json number,title,body,state,mergedAt,mergeCommit >> '$SNAPSHOT_DIR/issue-${ISSUE}.json'"
 
+# ---------- 2b. Cross-check anti-órfão de DEC ----------
+# Bug histórico (issue #225, sessão #221): comportamento opt-in com skip
+# silencioso permitiu DEC-AUTO-221-01..03 ficarem órfãs em CHANGELOG/PR body
+# sem propagar para docs/decisions.md (SSoT canônico). Extrai menções
+# `DEC-AUTO-${ISSUE}-NN` do PR body, issue body (via snapshot 2.) e CHANGELOG.md;
+# compara com decisions.md + .deccs-${ISSUE}.md; aborta se houver órfã.
+#
+# Justificativa para abort em vez de auto-stub: placeholder em decisions.md
+# tem discoverability zero meses depois — falha alta força preenchimento com
+# contexto fresco (custo 1 minuto vs drift silencioso permanente).
+#
+# #349 (A) — este cross-check era o passo 3f, ÚLTIMO da etapa 3: abortava depois
+# de 3a-3e já terem escrito em disco, e como o commit só acontece no passo 5 a
+# árvore ficava suja pela metade. Aí o passo 1 (`git pull --rebase`) recusava a
+# re-execução com "cannot pull with rebase: You have unstaged changes" até
+# alguém reverter na mão (encerramento #347). Validação roda antes de delta.
+# Ler o CHANGELOG aqui (antes do 3b inserir a entrada nova) não perde cobertura:
+# as DECs do bloco novo saem do corpo do PR, que já está no snapshot do passo 2.
+echo "[2b/8] Cross-check anti-órfão de DEC…"
+DECCS_FILE="$REPO/.deccs-${ISSUE}.md"
+
+MENTIONED_IDS=$(
+  {
+    cat "$SNAPSHOT_DIR/issue-${ISSUE}.json" 2>/dev/null || true
+    cat "$REPO/CHANGELOG.md" 2>/dev/null || true
+  } | grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" | sort -u || true
+)
+
+if [ -n "$MENTIONED_IDS" ]; then
+  PRESENT_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$REPO/docs/decisions.md" 2>/dev/null | sort -u || true)
+  COVERED_IDS=""
+  if [ -f "$DECCS_FILE" ]; then
+    COVERED_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$DECCS_FILE" 2>/dev/null | sort -u || true)
+  fi
+
+  ORPHANS=""
+  for id in $MENTIONED_IDS; do
+    if ! printf '%s\n%s\n' "$PRESENT_IDS" "$COVERED_IDS" | grep -qx "$id"; then
+      ORPHANS="${ORPHANS}${id}
+"
+    fi
+  done
+  ORPHANS=$(printf '%s' "$ORPHANS" | sed '/^$/d' | sort -u)
+
+  if [ -n "$ORPHANS" ]; then
+    echo >&2
+    echo "❌ DECs órfãs — mencionadas em PR/issue body ou CHANGELOG mas ausentes de docs/decisions.md:" >&2
+    echo "$ORPHANS" | sed 's/^/    /' >&2
+    echo >&2
+    echo "Crie $DECCS_FILE com 1 linha por DEC no formato esperado por docs/decisions.md:" >&2
+    echo "    - **DEC-AUTO-${ISSUE}-XX** (${TODAY}): <texto da decisão>." >&2
+    echo >&2
+    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
+    abort "DEC órfã — abortando para preservar SSoT canônico de decisões (R3)"
+  fi
+fi
+
+echo "  [ok] nenhuma DEC órfã"
+
 # ---------- 3. Deltas curtos ----------
 echo "[3/8] Aplicando deltas (formato Fase 2)…"
 
@@ -171,15 +231,45 @@ if [ -n "$VER" ] && grep -qE "^\| Versão \| Issue/PR \|" "$REPO/docs/PROJECT.md
     ' "$REPO/docs/PROJECT.md" > "$REPO/docs/PROJECT.md.tmp" && mv "$REPO/docs/PROJECT.md.tmp" "$REPO/docs/PROJECT.md"
   fi
 else
-  echo "  [skip] PROJECT.md sem tabela | Versão | Issue/PR | (semântica de produto não casa com tabela de docs)"
+  # #349 (D) — era `[skip]` silencioso no meio do log: o bump do PROJECT.md nunca
+  # acontecia e virava commit manual pós-encerramento (#343, #345, #347 têm um
+  # "bump PROJECT.md — gap do cc-close-issue.sh" cada). O script não escreve o
+  # parágrafo de encerramento (é prosa densa e específica), mas para de fingir que
+  # tratou: a pendência é repetida nas verificações finais do passo 7.
+  PROJECT_MD_PENDING=true
+  echo "  [PENDENTE] PROJECT.md não é atualizado pelo script — o bump de versão e o"
+  echo "             parágrafo de encerramento continuam manuais (formato blockquote"
+  echo "             '> **Última atualização:**', não a tabela | Versão | Issue/PR |)."
 fi
 
 # 3b. CHANGELOG.md — nova entrada ≤8 linhas (formato Fase 2)
-if [ -n "$VER" ]; then
+# #349 (B) — guarda de idempotência: era o único delta da etapa 3 sem ela (3c dedupa
+# via grep da linha da versão, 3e só age se achar os locks, 3d é sed idempotente), então
+# re-execução após abort duplicava a entrada em silêncio.
+if [ -n "$VER" ] && grep -qE "^## \[${VER}\]" "$REPO/CHANGELOG.md" 2>/dev/null; then
+  echo "  [skip] CHANGELOG.md já tem entrada ## [${VER}] — nada a inserir"
+elif [ -n "$VER" ]; then
   # Resumo: bullets de 1º nível ("- …") do corpo do PR (#286). Exclui o próprio
   # placeholder. Fallback pro placeholder se o PR não tiver bullets (back-compat).
+  #
+  # #349 (C) — antes era `grep -E '^- ' | head -8` cru: pegava as 8 primeiras bullets
+  # do corpo, sem saber de que seção vinham. No PR #348 a seção de mudanças usava
+  # parágrafos em negrito e as únicas bullets de 1º nível eram as da seção "Testes" —
+  # o CHANGELOG saiu descrevendo arquivos de teste em vez do fix. Agora as seções de
+  # teste/verificação são puladas; se sobrar zero bullet, cai no placeholder de sempre.
+  # Match por PREFIXO ("Verifica"/"Valida"), não pelo nome acentuado completo: `.` em awk
+  # casa byte, não caractere, fora de locale UTF-8 — regex com ç/ã falharia conforme o
+  # ambiente. Pega junto "Testes manuais", "Validação de escopo" etc., o que é desejado.
   PR_BULLETS=$(gh pr view "$PR" --json body --jq '.body' 2>/dev/null \
-    | grep -E '^- ' | grep -vE '^- _\(' | head -8 || true)
+    | awk '
+        /^#+[[:space:]]/ {
+          match($0, /^#+/); lvl = RLENGTH
+          if ($0 ~ /^#+[[:space:]]*(Testes?|Tests?|Testing|Verifica|Valida)/) { skip = 1; skip_lvl = lvl }
+          else if (skip && lvl <= skip_lvl) { skip = 0 }
+          next
+        }
+        !skip && /^- / { print }
+      ' | grep -vE '^- _\(' | head -8 || true)
   [ -n "$PR_BULLETS" ] || PR_BULLETS="- _(decisões/testes/files — ajustar antes do commit)_"
   CHANGELOG_BLOCK=$(cat <<EOF
 ## [${VER}] - ${TODAY} · #${ISSUE} · PR #${PR}
@@ -308,55 +398,8 @@ if [ -n "$LOCK_LINES" ]; then
   fi
 fi
 
-# 3f. decisions.md — append de DECs com cross-check anti-órfão.
-#
-# Bug histórico (issue #225, sessão #221): comportamento opt-in com skip
-# silencioso permitiu DEC-AUTO-221-01..03 ficarem órfãs em CHANGELOG/PR body
-# sem propagar para docs/decisions.md (SSoT canônico). Fix: extrai menções
-# `DEC-AUTO-${ISSUE}-NN` do PR body, issue body (via snapshot 3.) e CHANGELOG.md;
-# compara com decisions.md + .deccs-${ISSUE}.md; aborta se houver órfã.
-#
-# Justificativa para abort em vez de auto-stub: placeholder em decisions.md
-# tem discoverability zero meses depois — falha alta força preenchimento com
-# contexto fresco (custo 1 minuto vs drift silencioso permanente).
-DECCS_FILE="$REPO/.deccs-${ISSUE}.md"
-
-MENTIONED_IDS=$(
-  {
-    cat "$SNAPSHOT_DIR/issue-${ISSUE}.json" 2>/dev/null || true
-    cat "$REPO/CHANGELOG.md" 2>/dev/null || true
-  } | grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" | sort -u || true
-)
-
-if [ -n "$MENTIONED_IDS" ]; then
-  PRESENT_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$REPO/docs/decisions.md" 2>/dev/null | sort -u || true)
-  COVERED_IDS=""
-  if [ -f "$DECCS_FILE" ]; then
-    COVERED_IDS=$(grep -oE "DEC-AUTO-${ISSUE}-[0-9]+" "$DECCS_FILE" 2>/dev/null | sort -u || true)
-  fi
-
-  ORPHANS=""
-  for id in $MENTIONED_IDS; do
-    if ! printf '%s\n%s\n' "$PRESENT_IDS" "$COVERED_IDS" | grep -qx "$id"; then
-      ORPHANS="${ORPHANS}${id}
-"
-    fi
-  done
-  ORPHANS=$(printf '%s' "$ORPHANS" | sed '/^$/d' | sort -u)
-
-  if [ -n "$ORPHANS" ]; then
-    echo >&2
-    echo "❌ DECs órfãs — mencionadas em PR/issue body ou CHANGELOG mas ausentes de docs/decisions.md:" >&2
-    echo "$ORPHANS" | sed 's/^/    /' >&2
-    echo >&2
-    echo "Crie $DECCS_FILE com 1 linha por DEC no formato esperado por docs/decisions.md:" >&2
-    echo "    - **DEC-AUTO-${ISSUE}-XX** (${TODAY}): <texto da decisão>." >&2
-    echo >&2
-    echo "Depois rode novamente: scripts/cc-close-issue.sh ${ISSUE}" >&2
-    abort "DEC órfã — abortando para preservar SSoT canônico de decisões (R3)"
-  fi
-fi
-
+# 3f. decisions.md — append das DECs (o cross-check anti-órfão roda no passo 2b,
+# antes de qualquer delta; ver nota lá).
 if [ -f "$DECCS_FILE" ]; then
   if $DRY_RUN; then
     echo "  [dry-run] decisions.md ← append de $(wc -l < "$DECCS_FILE") linha(s) de $DECCS_FILE"
@@ -430,9 +473,13 @@ if [ ${#RESIDUE[@]} -gt 0 ]; then
   abort "verificações falharam — investigar antes de marcar como concluído"
 fi
 echo "  [ok] zero resíduo"
+if $PROJECT_MD_PENDING; then
+  echo "  [PENDENTE] docs/PROJECT.md — bump de versão + parágrafo de encerramento do #${ISSUE}"
+  echo "             seguem manuais. Encerramento NÃO está completo sem isso."
+fi
 
 # ---------- 8. Branch local ----------
-echo "[8/8] Removendo branch local…"
+echo "[8/8] Removendo branch local e remota…"
 LOCAL_BRANCHES=$(git branch --list "*issue-${ISSUE}-*" "*/issue-${ISSUE}-*" 2>/dev/null | sed 's/^[* ]*//')
 if [ -n "$LOCAL_BRANCHES" ]; then
   for b in $LOCAL_BRANCHES; do
@@ -440,6 +487,19 @@ if [ -n "$LOCAL_BRANCHES" ]; then
   done
 else
   echo "  [skip] nenhuma branch local issue-${ISSUE}-*"
+fi
+
+# #349 (E) — a remota sobrava em origin depois do encerramento "completo" (#294,
+# #296, #347): o passo só apagava a local. `--delete` em branch já removida pelo
+# merge (delete_branch_on_merge) sai com erro benigno — tolerado.
+REMOTE_BRANCHES=$(git ls-remote --heads origin 2>/dev/null \
+  | sed 's#.*refs/heads/##' | grep -E "(^|/)issue-${ISSUE}-" || true)
+if [ -n "$REMOTE_BRANCHES" ]; then
+  for b in $REMOTE_BRANCHES; do
+    run "git push origin --delete '$b' || echo '  [warn] falha ao apagar remota $b — apagar na mão'"
+  done
+else
+  echo "  [skip] nenhuma branch remota issue-${ISSUE}-*"
 fi
 
 echo
