@@ -121,12 +121,41 @@ resultado  : tradeId = T3, role = 'entry'   (hoje: ghost)
 - T — testes em `src/__tests__/utils/orderCorrelation.test.js` (5 casos do issue body) +
   integração em `src/__tests__/utils/orderImportIntegration.test.js`
 - C1 — `scripts/issue-351-backfill-dryrun.mjs` — conta órfãos, quantos passam a correlacionar,
-  distribuição por aluno/plano. **Não escreve.**
-- C2 — `scripts/issue-351-backfill-apply.mjs` — só após gate humano sobre o resultado do C1
+  distribuição por aluno/plano. **Não escreve.** ✅ rodado 18/08/2026
+- C2 — `scripts/issue-351-backfill-apply.mjs` — escrito e validado em modo seguro (sem `--yes`
+  não escreve). **Bloqueado no gate humano** — aguarda decisão sobre o achado do dry-run
 
 ## Sessions
 
-_(1 linha por task)_
+- `task 01 [A+T] commit 51276ce8 ok — branch de containment + 6 testes unitários (4 falham sem o fix) + 3 de integração com recorte do CSV real; 3597 verdes, lint sem erro novo`
+- `task 02 [C1] dry-run rodado em produção (READ-ONLY) — ver achado abaixo`
+
+### Achado do dry-run (18/08/2026) — o backfill é maior que o #351
+
+Resultado sobre 782 docs de `orders` em produção:
+
+| Métrica | Valor |
+|---|---|
+| Fills órfãos (`correlatedTradeId: null`) | 473 |
+| Passariam a correlacionar | **198** |
+| · por contenção no intervalo (regra nova do #351) | **4** |
+| · por proximidade de ponta (regra que **já existia**) | **194** |
+| Seguem órfãos | 275 (273 deles em plano sem nenhum trade) |
+
+**194 dos 198 casam com `delta: 0s` — pela regra de ponta que já existia antes deste
+issue.** Se a regra antiga os resolve, eles nunca foram um problema de janela: estavam
+órfãos porque **o trade não existia no instante em que a correlação rodou**.
+
+Causa: em `OrderImportPage.handleStagingConfirm` a correlação (passo 1) e o `ingestBatch`
+(passo 3) rodam contra os trades que existem naquele momento. Operações classificadas como
+`new` só viram trade depois, em `createTradesBatch` (`handleConversationalConfirm`), e
+**nada volta para ligar as ordens ao trade recém-criado**. Ou seja: todo trade criado pelo
+próprio Order Import nasce com 100% das suas ordens órfãs.
+
+Isso é bug distinto do #351 e **não está no escopo deste issue** — o fix aqui é a regra de
+correlação; o backfill corrige o passivo dos dois casos porque é a mesma mecânica. O fix
+forward (ligar as ordens ao trade criado pelo import) precisa de issue próprio, senão os
+órfãos voltam a ser gerados a cada importação.
 
 ## Shared Deltas
 
