@@ -12,9 +12,10 @@ Version source of truth: `src/version.js`.
 
 **fix:** modal de edição descarta entrada do aluno ao salvar a reflexão
 
-- `AddTradeModalHydration.test.jsx` — texto e stop preservados quando o pai recria `editTrade` (update otimista) e quando `plans` troca de identidade; re-hidrata ao abrir outro trade (id diferente) e ao reabrir o modal.
-- `OrderStagingReviewObservation.test.jsx` — card expandido não renderiza o campo; `onConfirm` entrega payload sem a chave `observations`.
-
+- Hidratação do `AddTradeModal` passa a ser chaveada por `editTrade?.id` + ref de idempotência. Antes, as deps `[editTrade, isOpen, plans, exchanges, setups, emotions]` faziam qualquer troca de identidade (update otimista de `setEditingTrade` ao salvar a reflexão, ou `onSnapshot` em plans/setups/emotions) sobrescrever o formulário com o trade congelado no clique do lápis — perda silenciosa de texto escrito pelo aluno, em produção.
+- Defaults de trade novo viram efeito aditivo separado: só preenchem campo ainda vazio e só com o formulário limpo (`isDirtyRef`).
+- Update otimista `setEditingTrade` mantido e documentado — removê-lo regride o #308 (o painel de reflexão volta ao nudge após salvar).
+- Campo "Observação" por operação removido do Order Import: era coletado em `onConfirm` e descartado por `handleStagingConfirm`, sem persistir em lugar nenhum.
 
 ## [1.83.3] - 11/08/2026 · #345 · PR #346
 
