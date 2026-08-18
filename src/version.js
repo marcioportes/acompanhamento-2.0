@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.5: #351 fix (RESERVA) correlação de ordens perde fill no meio da operação — aumento de posição vira ghost e some do trade e do sensor comportamental
+ * - 1.83.5: #351 fix correlação de ordens — fill no meio da operação + trade criado pelo import (PR #352, 18/08/2026)
  * - 1.83.4: #347 fix modal de edição descarta entrada do aluno ao salvar a reflexão (PR #348, 17/08/2026)
  * - 1.83.3: #345 fix reflexão não grava vindo do aviso do dashboard — janela fecha em DISCUSSED (PR #346, 11/08/2026)
  * - 1.83.2: #343 fix assessment travado — modelo Claude aposentado derruba 5 CFs (PR #344, 06/08/2026)
@@ -391,10 +391,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.4',
-  build: '20260817',
-  display: 'v1.83.4',
-  full: '1.83.4+20260817',
+  version: '1.83.5',
+  build: '20260818',
+  display: 'v1.83.5',
+  full: '1.83.5+20260818',
 };
 export default VERSION;
 export { VERSION };

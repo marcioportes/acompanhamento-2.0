@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.5] - 18/08/2026 · #351 · PR #352
+
+**fix:** correlação de ordens — fill no meio da operação + trade criado pelo import
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.4] - 17/08/2026 · #347 · PR #348
 
 **fix:** modal de edição descarta entrada do aluno ao salvar a reflexão

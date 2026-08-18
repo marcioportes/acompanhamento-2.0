@@ -71,4 +71,4 @@
 | 1.83.2 | #343 | `fix/issue-343-assessment-model-retired` | 06/08/2026 | consumida (PR #344 squash `5ad539fb`) |
 | 1.83.3 | #345 | `fix/issue-345-reflection-discussed-window` | 09/08/2026 | consumida (PR #346 squash `e036ec95`) |
 | 1.83.4 | #347 | `fix/issue-347-edit-modal-discards-input` | 17/08/2026 | consumida (PR #348 squash `e573473a`) |
-| 1.83.5 | #351 | `fix/issue-351-order-correlation-mid-operation` | 18/08/2026 | reservada |
+| 1.83.5 | #351 | `fix/issue-351-order-correlation-mid-operation` | 18/08/2026 | consumida (PR #352 squash `1b868910`) |
