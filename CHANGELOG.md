@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.6] - 18/08/2026
+
+**fix:** extrato do plano lia `cycleClosures` com query que a rule sempre rejeitava para aluno
+
+`usePlanClosures` consultava `where('planId','==',planId)`. A rule de `cycleClosures` é por documento (`isMentor() || isOwner(resource.data.studentId)`), e numa query o Firestore só libera se as restrições da própria query garantirem a condição — filtrando só por `planId`, nada garante `studentId == uid`, e o lote inteiro voltava `Missing or insufficient permissions`. Passava apenas para o mentor, porque `isMentor()` independe de documento; por isso ficou invisível.
+
+Como o `onSnapshot` só fazia `console.error`, `closures` ficava `[]` em silêncio e o `PlanLedgerExtract` calculava o saldo de abertura sem os fechamentos — **carry-over de patrimônio (#267) errado para todo aluno**.
+
+Passa a consultar por `studentId` (o predicado que a rule sabe validar, mesmo padrão de `useStudentClosures` e `useCycleExpiredQueue`) e resolver o `planId` em memória. São unidades de closures por aluno, então não exige composite index novo. O hook agora recebe `studentId` e não consulta sem ele.
+
+4 testes de regressão em `src/__tests__/hooks/usePlanClosures.test.js`.
+
+
 ## [1.83.5] - 18/08/2026 · #351 · PR #352
 
 **fix:** correlação de ordens — fill no meio da operação + trade criado pelo import nasce sem ordens
