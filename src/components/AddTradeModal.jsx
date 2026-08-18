@@ -114,6 +114,12 @@ const AddTradeModal = ({
   // depende do instante). Edição: derivado do que está gravado no banco (tzFromStoredIso).
   const [selectedTz, setSelectedTz] = useState('');
 
+  // #347 — controle de hidratação. `hydratedKeyRef` guarda qual trade já foi carregado no
+  // formulário (id, ou '__new__'); `isDirtyRef` marca que o usuário digitou algo ainda não salvo.
+  // Juntos garantem que nenhum re-render pode descartar entrada do aluno.
+  const hydratedKeyRef = useRef(null);
+  const isDirtyRef = useRef(false);
+
   const htfInputRef = useRef(null);
   const ltfInputRef = useRef(null);
   const planDropdownRef = useRef(null);
@@ -261,9 +267,24 @@ const AddTradeModal = ({
 
   // --- EFEITOS ---
 
+  // #347 — hidratar é evento de ABRIR/TROCAR de trade, não "algum snapshot passou perto".
+  // Antes as deps eram [editTrade, isOpen, plans, exchanges, setups, emotions]: qualquer troca de
+  // identidade (o update otimista de `setEditingTrade` ao salvar a reflexão, ou um onSnapshot em
+  // plans/setups/emotions/exchanges) re-rodava este efeito e sobrescrevia o formulário com o trade
+  // congelado no clique do lápis — o aluno perdia, sem aviso, tudo que tinha digitado e não salvo.
+  // A chave é a IDENTIDADE do trade; o ref garante idempotência mesmo se as deps mudarem.
   useEffect(() => {
-    if (!isOpen) return;
-    
+    if (!isOpen) {
+      hydratedKeyRef.current = null;
+      isDirtyRef.current = false;
+      return;
+    }
+
+    const hydrationKey = editTrade?.id ?? '__new__';
+    if (hydratedKeyRef.current === hydrationKey) return;
+    hydratedKeyRef.current = hydrationKey;
+    isDirtyRef.current = false;
+
     if (editTrade) {
       const eDate = editTrade.entryTime ? editTrade.entryTime.split('T')[0] : editTrade.date;
       const eTime = editTrade.entryTime ? editTrade.entryTime.split('T')[1]?.substring(0,5) : '09:00';
@@ -361,7 +382,45 @@ const AddTradeModal = ({
       setSelectedTz('');
     }
     setErrors({});
-  }, [editTrade, isOpen, plans, exchanges, setups, emotions]); 
+  }, [editTrade?.id, isOpen]);
+
+  // #347 — os defaults de trade novo (bolsa/setup/emoção/plano) dependem de master data que chega
+  // por listener, quase sempre DEPOIS da montagem. Antes isso vinha de graça porque o efeito de
+  // hidratação re-rodava a cada snapshot — e era exatamente esse re-run que apagava o formulário.
+  // Aqui o preenchimento é aditivo: só toca campo AINDA VAZIO e só enquanto o form está limpo.
+  // Nunca sobrescreve entrada do usuário, inclusive quando ele esvazia um select de propósito.
+  useEffect(() => {
+    if (!isOpen || isDirtyRef.current) return;
+
+    setFormData(prev => {
+      const next = { ...prev };
+      let changed = false;
+
+      if (!prev.exchange && exchanges.length > 0) {
+        next.exchange = exchanges[0].code;
+        changed = true;
+      }
+
+      // Em edição os demais campos vêm do próprio trade — default só faz sentido em trade novo.
+      if (!editTrade) {
+        if (!prev.setup && setups.length > 0) {
+          next.setup = setups[0].name;
+          changed = true;
+        }
+        const defaultEmotion = emotions.length > 0
+          ? (emotions.find(e => e.category === 'neutral')?.name || emotions[0].name)
+          : '';
+        if (!prev.emotionEntry && defaultEmotion) { next.emotionEntry = defaultEmotion; changed = true; }
+        if (!prev.emotionExit && defaultEmotion) { next.emotionExit = defaultEmotion; changed = true; }
+        if (!prev.planId && plans.length > 0) {
+          next.planId = plans[0].id;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [isOpen, editTrade, plans, exchanges, setups, emotions]);
 
   // Recálculo de P&L quando parciais mudam
   useEffect(() => {
@@ -504,11 +563,13 @@ const AddTradeModal = ({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    isDirtyRef.current = true;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
   };
 
   const handlePlanSelect = (planId) => {
+    isDirtyRef.current = true;
     setFormData(prev => ({ ...prev, planId }));
     setShowPlanDropdown(false);
     if (errors[planId]) setErrors(prev => ({ ...prev, planId: null }));

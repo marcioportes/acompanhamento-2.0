@@ -155,9 +155,9 @@ export const enrichOperationsWithStopAnalysis = (operations) => {
     const analysis = analyzeStopMovements(op);
     op.stopMovements = analysis.movements;
     op.stopFlags = analysis.flags;
-    if (analysis.observation) {
-      op.autoObservation = analysis.observation;
-    }
+    // #347 — `op.autoObservation` saiu: alimentava só o textarea "Observação" do
+    // OrderStagingReview, que era descartado no confirm. `analysis.observation` continua
+    // no contrato de analyzeStopMovements (tem teste) — o que morreu foi o caminho até a tela.
   }
   return operations;
 };

@@ -67,6 +67,9 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
   const { user } = useAuth();
 
   // #308 — Espelho do trade; update otimista do trade aberto/em edição p/ leitura imediata.
+  // #347 — ver nota em StudentDashboard.handleSubmitReview: o `setEditingTrade` recria o objeto e
+  // era o gatilho da perda de dados no AddTradeModal; segue necessário (estado da reflexão salva)
+  // e ficou seguro com a hidratação chaveada por `editTrade?.id`.
   const handleSubmitReview = async (tradeId, payload) => {
     const res = await submitTradeReview(tradeId, payload, { uid: user?.uid, email: user?.email });
     setViewingTrade((t) => (t && t.id === tradeId ? { ...t, selfReview: res.after.selfReview } : t));

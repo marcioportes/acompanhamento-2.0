@@ -125,7 +125,7 @@ const OrderRow = ({ order, role }) => {
 };
 
 /** Expandable operation card */
-const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observation, onObservationChange }) => {
+const OperationCard = ({ operation, index, confirmed, onToggleConfirm }) => {
   const [expanded, setExpanded] = useState(false);
   const isWin = operation.resultPoints != null && operation.resultPoints > 0;
   const isLoss = operation.resultPoints != null && operation.resultPoints < 0;
@@ -224,19 +224,10 @@ const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observati
             </div>
           )}
 
-          {/* Auto-observation (editable) */}
-          {(operation.autoObservation || observation) && (
-            <div className="px-3 py-1.5">
-              <label className="text-[10px] text-slate-500 block mb-1">Observação:</label>
-              <textarea
-                value={observation ?? operation.autoObservation ?? ''}
-                onChange={(e) => onObservationChange(e.target.value)}
-                rows={2}
-                className="w-full text-[11px] bg-slate-800/50 border border-slate-700/50 rounded px-2 py-1.5 text-slate-300 resize-none focus:outline-none focus:border-blue-500/50"
-                placeholder="Observação sobre esta operação..."
-              />
-            </div>
-          )}
+          {/* #347 — o campo "Observação" saiu daqui. Era textarea editável cujo conteúdo o
+              handleStagingConfirm descartava: não persistia em lugar nenhum. Campo que promete
+              gravar e não grava é perda de dados silenciosa. A observação do trade se escreve no
+              registro (AddTradeModal → Observações), não na conferência do staging. */}
         </div>
       )}
     </div>
@@ -250,20 +241,15 @@ const OperationCard = ({ operation, index, confirmed, onToggleConfirm, observati
 /**
  * @param {Object} props
  * @param {Object[]} props.operations — output de reconstructOperations + associateNonFilledOrders + enrichOperationsWithStopAnalysis
- * @param {Function} props.onConfirm — chamado com { operations, observations } quando aluno confirma
+ * @param {Function} props.onConfirm — chamado com { operations, confirmedOrderKeys } quando aluno confirma
  * @param {Function} props.onBack — voltar para step anterior
  * @param {boolean} props.loading — se true, mostra spinner no botão
  */
 const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) => {
   const [confirmed, setConfirmed] = useState({});
-  const [observations, setObservations] = useState({});
 
   const toggleConfirm = (opId) => {
     setConfirmed(prev => ({ ...prev, [opId]: !prev[opId] }));
-  };
-
-  const setObservation = (opId, text) => {
-    setObservations(prev => ({ ...prev, [opId]: text }));
   };
 
   // Stats
@@ -301,10 +287,6 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
   const handleSubmit = () => {
     // Filtrar apenas operações confirmadas (marcadas) — desmarcadas são excluídas da importação
     const selectedOps = operations.filter(op => confirmed[op.operationId]);
-    const selectedObservations = {};
-    selectedOps.forEach(op => {
-      if (observations[op.operationId]) selectedObservations[op.operationId] = observations[op.operationId];
-    });
 
     // Coletar chaves das ordens das operações confirmadas (V1.1 issue #93)
     // Inclui entry/exit/stop/cancelled — TODAS as ordens da operação.
@@ -329,7 +311,7 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
       }
     }
 
-    onConfirm({ operations: selectedOps, observations: selectedObservations, confirmedOrderKeys });
+    onConfirm({ operations: selectedOps, confirmedOrderKeys });
   };
 
   return (
@@ -370,8 +352,6 @@ const OrderStagingReview = ({ operations, onConfirm, onBack, loading = false }) 
             index={i}
             confirmed={!!confirmed[op.operationId]}
             onToggleConfirm={() => toggleConfirm(op.operationId)}
-            observation={observations[op.operationId]}
-            onObservationChange={(text) => setObservation(op.operationId, text)}
           />
         ))}
       </div>
