@@ -26,7 +26,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { makeOrderKey } from '../utils/orderKey';
+import { makeOrderKey, makeOrderDocId } from '../utils/orderKey';
 
 const STAGING_COLLECTION = 'ordersStagingArea';
 const ORDERS_COLLECTION = 'orders';
@@ -286,12 +286,25 @@ const useOrderStaging = (overrideStudentId = null) => {
           if (isConfirmed) {
             // Ingere para `orders` + remove do staging (mesma transação)
             const correlation = correlations[stagingOrder.id] || {};
-            const orderRef = doc(collection(db, ORDERS_COLLECTION));
 
-            writeBatchRef.set(orderRef, {
+            // #362 — id DETERMINÍSTICO derivado da identidade da ordem. Antes era
+            // `doc(collection(...))` (id automático) e o payload nem guardava o
+            // `externalOrderId`: sem chave natural, reimportar o mesmo arquivo criava
+            // um conjunto novo de docs a cada vez. Em produção a mesma perna de stop
+            // apareceu em 3 batches e a limpeza de 19/08 apagou 154 documentos.
+            // Com id previsível, reimportar sobrescreve o MESMO doc.
+            const docId = makeOrderDocId(stagingOrder, stagingOrder.studentId);
+            const orderRef = docId
+              ? doc(db, ORDERS_COLLECTION, docId)
+              : doc(collection(db, ORDERS_COLLECTION));   // sem studentId: comportamento antigo
+
+            const payload = {
               studentId: stagingOrder.studentId,
               planId: stagingOrder.planId,
               batchId,
+              // Chave única da corretora — é o que torna a ingestão idempotente e o que
+              // permite auditar a ordem de volta no extrato do broker.
+              externalOrderId: stagingOrder.externalOrderId ?? null,
               instrument: stagingOrder.instrument,
               orderType: stagingOrder.orderType,
               side: stagingOrder.side,
@@ -306,12 +319,23 @@ const useOrderStaging = (overrideStudentId = null) => {
               filledAt: stagingOrder.filledAt,
               cancelledAt: stagingOrder.cancelledAt,
               modifications: stagingOrder.modifications || [],
-              correlatedTradeId: correlation.tradeId || null,
-              correlationConfidence: correlation.confidence || 0,
               isStopOrder: stagingOrder.isStopOrder || false,
               importedAt: serverTimestamp(),
               sourceFormat: stagingOrder.sourceFormat,
-            });
+            };
+
+            // Correlação só entra quando existe. Numa reimportação a correlação nova
+            // costuma vir vazia (o trade já existia e a operação não recorrelaciona),
+            // e escrever `null` por cima apagaria o vínculo que a CF do #351 fase D ou
+            // o backfill já haviam estabelecido — devolvendo a ordem ao estado órfão.
+            if (correlation.tradeId) {
+              payload.correlatedTradeId = correlation.tradeId;
+              payload.correlationConfidence = correlation.confidence || 0;
+            }
+
+            // merge: preserva campos gravados server-side (correlatedTradeId da CF,
+            // userDecision) que não fazem parte do payload de importação.
+            writeBatchRef.set(orderRef, payload, { merge: true });
 
             writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
             success.push(stagingOrder.id);
