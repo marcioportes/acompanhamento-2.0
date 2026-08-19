@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeOrderKey } from '../../utils/orderKey';
+import { makeOrderKey, makeOrderDocId } from '../../utils/orderKey';
 
 describe('makeOrderKey', () => {
   describe('externalOrderId presente', () => {
@@ -168,5 +168,57 @@ describe('makeOrderKey', () => {
       const filtered = allOrders.filter(o => new Set().has(makeOrderKey(o)));
       expect(filtered).toHaveLength(0);
     });
+  });
+});
+
+// ============================================
+// makeOrderDocId (#362)
+// ============================================
+describe('makeOrderDocId — id determinístico do doc em orders', () => {
+  const order = {
+    externalOrderId: 'NELO.3200520260818135831126523',
+    instrument: 'WINV26', side: 'SELL', quantity: 5,
+    submittedAt: '2026-08-18T13:58:31', filledAt: null,
+  };
+
+  it('é estável: mesma ordem e mesmo aluno → mesmo id', () => {
+    expect(makeOrderDocId(order, 'S1')).toBe(makeOrderDocId({ ...order }, 'S1'));
+  });
+
+  it('reimportação do mesmo arquivo colide no MESMO doc', () => {
+    // É o ponto do issue: sem isto, cada importação criava um doc novo.
+    const primeira = makeOrderDocId(order, 'S1');
+    const segunda = makeOrderDocId({ ...order }, 'S1');
+    expect(segunda).toBe(primeira);
+  });
+
+  it('separa por aluno — mesmo ClOrdID em contas diferentes não colide', () => {
+    expect(makeOrderDocId(order, 'S1')).not.toBe(makeOrderDocId(order, 'S2'));
+  });
+
+  it('usa o fingerprint composto quando não há externalOrderId', () => {
+    const sem = { ...order, externalOrderId: null };
+    const id = makeOrderDocId(sem, 'S1');
+    expect(id).toContain('comp');
+    expect(id).toBe(makeOrderDocId({ ...sem }, 'S1'));
+  });
+
+  it('ordens diferentes sem externalOrderId geram ids diferentes', () => {
+    const a = { ...order, externalOrderId: null, quantity: 5 };
+    const b = { ...order, externalOrderId: null, quantity: 3 };
+    expect(makeOrderDocId(a, 'S1')).not.toBe(makeOrderDocId(b, 'S1'));
+  });
+
+  it('respeita as restrições de id do Firestore', () => {
+    const id = makeOrderDocId(order, 'S1');
+    expect(id).not.toContain('/');
+    expect(id).not.toBe('.');
+    expect(id).not.toBe('..');
+    expect(/^__.*__$/.test(id)).toBe(false);
+    expect(Buffer.byteLength(id, 'utf8')).toBeLessThan(1500);
+  });
+
+  it('sem studentId devolve null — caller decide o fallback', () => {
+    expect(makeOrderDocId(order, null)).toBeNull();
   });
 });

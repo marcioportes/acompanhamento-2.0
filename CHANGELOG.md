@@ -8,6 +8,23 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.13] - 19/08/2026 · #362
+
+**fix:** reimportar o mesmo arquivo de ordens criava cópias em `orders`
+
+`ingestBatch` gravava com `doc(collection(db,'orders'))` — id automático — e o payload **descartava o `externalOrderId`**, o `ClOrdID` da corretora. A chave é lida pelo parser e usada pelo staging (`stagingByExternalId`), mas sumia exatamente no `set` que a tornaria idempotente. Sem chave natural nem id previsível, não havia como reconhecer ordem já ingerida: cada importação adicionava um conjunto novo.
+
+Medido em produção: a mesma perna de stop em **3 batches distintos** num trade de 1 contrato; a limpeza de 19/08 apagou **154 documentos** nascidos assim. Antes do fix de deduplicação do detector (v1.83.10), essas cópias inflavam o risco calculado e geravam alerta de estouro de RO inexistente.
+
+O id passa a ser derivado da identidade da ordem — `sanitize(studentId)_sanitize(makeOrderKey(order))` via `makeOrderDocId`, reusando a chave canônica que o #93 já definiu para os 3 consumidores do pipeline. Reimportar sobrescreve o mesmo doc, idempotente por construção, sem consulta prévia. O escopo por aluno evita colisão entre contas que operam na mesma corretora.
+
+Dois cuidados na escrita: `set` com `merge: true`, para não apagar campos gravados server-side (`correlatedTradeId` da CF do #351 fase D, `userDecision`, marcas de backfill); e a correlação só entra no payload quando existe — escrever `null` numa reimportação devolveria a ordem ao estado órfão, que é o passivo que o #351 acabou de resolver.
+
+`externalOrderId` passa a ser gravado: é o que permite auditar a ordem de volta no extrato do broker.
+
+12 testes (7 de `makeOrderDocId`, 5 de idempotência do ingest) — 4 falham contra o código antigo. 3632 verdes.
+
+
 ## [1.83.12] - 19/08/2026 · #351 fase D
 
 **fix:** trade criado pelo próprio Order Import nascia com 100% das ordens órfãs

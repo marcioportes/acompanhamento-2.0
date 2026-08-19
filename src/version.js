@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.13: #362 fix (RESERVA) ingestBatch não deduplica — externalOrderId gravado + id determinístico em orders
+ * - 1.83.13: #362 fix ingestBatch não deduplica — externalOrderId gravado + id determinístico em orders (PR #364, 19/08/2026)
  * - 1.83.12: #351 fase D reaplicada — onTradeCreated liga as ordens ao trade que o próprio import cria
  * - 1.83.11: fix fingerprint do behaviorProfile ignorava a evidência — correção de número não era gravada
  * - 1.83.10: fix cobertura de stop ignorava bracket OCO LIMIT e somava ordens duplicadas — acusava falta de proteção em posição protegida
@@ -399,10 +399,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.12',
+  version: '1.83.13',
   build: '20260819',
-  display: 'v1.83.12',
-  full: '1.83.12+20260819',
+  display: 'v1.83.13',
+  full: '1.83.13+20260819',
 };
 export default VERSION;
 export { VERSION };
