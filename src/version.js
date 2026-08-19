@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.10: fix cobertura de stop ignorava bracket OCO LIMIT e somava ordens duplicadas — acusava falta de proteção em posição protegida
  * - 1.83.9: #357 fix alerta de stop vira risco financeiro vs RO + cobertura de posição (PR #358, 19/08/2026)
  * - 1.83.8: fix CsvImportManager — exclusão sem confirmação + dialog fantasma engolindo cliques; estado travado sobrevivia ao fechar o modal
  * - 1.83.7: reaplica o fix de correlação por contenção no intervalo (#351) — revertido no #354 por suspeita afastada
@@ -395,10 +396,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.9',
+  version: '1.83.10',
   build: '20260819',
-  display: 'v1.83.9',
-  full: '1.83.9+20260819',
+  display: 'v1.83.10',
+  full: '1.83.10+20260819',
 };
 export default VERSION;
 export { VERSION };

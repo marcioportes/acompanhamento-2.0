@@ -11,6 +11,7 @@ const trade = {
   ticker: 'WINM26',
   side: 'LONG',
   qty: 2,
+  entry: '100000',
   entryTime: '2026-04-22T10:00:00Z',
   exitTime: '2026-04-22T10:30:00Z',
 };
@@ -39,6 +40,10 @@ describe('ExecutionPatternsPanel', () => {
 
   it('renderiza badge HIGH para UNPROTECTED_SIZE com fonte literária', () => {
     const orders = [
+      { externalOrderId: 'E0', instrument: 'WINM26', side: 'BUY', type: 'LIMIT',
+        status: 'FILLED', quantity: 2, limitPrice: 100000, filledPrice: 100000,
+        submittedAt: '2026-04-22T10:00:00Z', filledAt: '2026-04-22T10:00:01Z',
+        isStopOrder: false, correlatedTradeId: 'T1' },
       { externalOrderId: 'NLGC439492', instrument: 'WINM26', side: 'SELL', type: 'STOP',
         status: 'CANCELLED', quantity: 1, stopPrice: 99500,
         submittedAt: '2026-04-22T10:00:30Z', cancelledAt: '2026-04-22T10:30:00Z',
@@ -47,7 +52,7 @@ describe('ExecutionPatternsPanel', () => {
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
     expect(screen.getByText(/Padrões de execução/)).toBeInTheDocument();
     expect(screen.getByText(/1 detectado/)).toBeInTheDocument();
-    expect(screen.getByText(/analisadas 1 ordem/)).toBeInTheDocument();
+    expect(screen.getByText(/analisadas 2 ordens/)).toBeInTheDocument();
     expect(screen.getByText('HIGH')).toBeInTheDocument();
     expect(screen.getByText(/Posição sem proteção/)).toBeInTheDocument();
     expect(screen.getByText(/Shefrin & Statman/)).toBeInTheDocument();
@@ -68,10 +73,10 @@ describe('ExecutionPatternsPanel', () => {
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    // Trade qty=2; stops cobrem 3 ≥ 2 → sem UNPROTECTED_SIZE. Sem planRoPct/planPl →
-    // sem baseline para avaliar risco. Resultado correto: nenhum padrão.
-    expect(screen.getByText(/nenhum detectado/i)).toBeInTheDocument();
+    // O alargamento em si não é mais evento. Mas o stop de 2 contratos foi substituído
+    // por um de 1: no fim da operação sobrou 1 contrato descoberto — isso sim é sinal.
     expect(screen.queryByText(/Stop reemitido para mais largo/)).toBeNull();
+    expect(screen.getByText(/Posição sem proteção/)).toBeInTheDocument();
   });
 
   it('orders de outro trade são ignoradas', () => {

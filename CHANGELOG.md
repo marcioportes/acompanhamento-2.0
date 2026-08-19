@@ -8,6 +8,23 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.10] - 19/08/2026
+
+**fix:** detector de cobertura ignorava a proteção do bracket OCO LIMIT e multiplicava ordens duplicadas
+
+Correção de defeito introduzido no #357. Auditando os 9 alertas novos contra dados reais, 5 eram falsos:
+
+**Proteção que não é `isStopOrder`.** O parser marca `isStopOrder` pelo *Tipo de Ordem*, e o bracket OCO da Clear/ProfitChart emite a perna de proteção como **Limite** com `Preço Stop` vazio — o que o #242 já havia documentado. Nos trades de 18/08 das 10:57 e 12:06 toda a proteção estava em ordens LIMIT abaixo da entrada, e o detector acusou `UNPROTECTED_SIZE` numa posição protegida. Passa a reconhecer como proteção qualquer ordem do lado oposto com preço adverso à entrada, medido contra o **limite original** da primeira entrada (DEC-AUTO-242-01 — slippage não muda intenção).
+
+**Stop de verdade acima da entrada é proteção.** Num LONG, stop acima da entrada é trail/breakeven: limita a perda a zero ou lucro. Contava como ausência de proteção; agora conta como cobertura e contribui risco zero, porque só distância **adversa** vira risco.
+
+**Cópias de reimportação multiplicavam risco e cobertura.** `orders` não guarda `externalOrderId` e reimportar cria docs repetidos. Num trade de 1 contrato da Elza a mesma perna aparecia em 3 batches, e o risco calculado saiu R$ 1.359 no lugar de R$ 453 — acusação de estouro de RO que não existia. Deduplicação por instrumento/lado/preço/quantidade/horário, mais um teto de sanidade: cobertura não pode exceder a posição.
+
+Auditoria contra produção depois do fix: `RISK_OVER_RO` 1 → 7 (os novos são reais: stop de 400 pts com 5 contratos = R$ 400 contra RO de R$ 252), `UNPROTECTED_SIZE` 8 → 2. Os 2 restantes são trades cujas ordens de stop existem mas estão órfãs de correlação — passivo do #351, não do detector.
+
+6 testes de regressão novos. 3619 verdes no front, 206 em functions.
+
+
 ## [1.83.9] - 19/08/2026 · #357
 
 **fix:** alerta de stop deixa de ser movimento de preço e passa a ser risco financeiro contra o RO

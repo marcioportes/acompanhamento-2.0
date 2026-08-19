@@ -183,10 +183,13 @@ const stopRiskBreakdown = (trade, stops) => {
 
   const legs = [];
   for (const s of stops) {
-    const price = s.stopPrice ?? s.price ?? null;
+    const price = s._price ?? s.stopPrice ?? s.price ?? null;
     const qty = Number(s.quantity ?? s.qty ?? 0);
     if (price == null || !Number.isFinite(qty) || qty <= 0) continue;
-    const distance = Math.abs(entry - Number(price));
+    // Só distância ADVERSA vira risco. Stop acima da entrada num LONG (trail) trava
+    // lucro — contribui zero, não risco negativo nem positivo.
+    const adverse = trade.side === 'LONG' ? entry - Number(price) : Number(price) - entry;
+    const distance = adverse > 0 ? adverse : 0;
     legs.push({
       stopPrice: Number(price),
       qty,
@@ -219,17 +222,75 @@ const liveStopsAt = (trade, stops) => {
   return stops.filter(o => o._cancelTs == null || o._cancelTs >= refTs - OCO_TOLERANCE_MS);
 };
 
-/** Stops de um trade, normalizados e ordenados cronologicamente. */
-const stopOrdersOf = (trade, orders) => ordersForTrade(orders, trade.id)
-  .filter(o => o.isStopOrder === true)
-  .map(o => ({
-    ...o,
-    _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
-    _cancelTs: toMs(o.cancelledAt),
-    _price: o.stopPrice ?? o.price ?? null,
-  }))
-  .filter(o => o._price != null)
-  .sort((a, b) => (a._ts ?? 0) - (b._ts ?? 0));
+/**
+ * Preço de referência da entrada — o LIMITE original da primeira entrada, não o
+ * preço executado. Slippage não muda intenção de proteção (DEC-AUTO-242-01).
+ */
+const entryRefOf = (trade, orders) => {
+  const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const first = ordersForTrade(orders, trade.id)
+    .filter(o => o.side === wanted && o.isStopOrder !== true)
+    .map(o => ({ o, ts: toMs(o.filledAt) ?? toMs(o.submittedAt) ?? 0 }))
+    .sort((a, b) => a.ts - b.ts)[0];
+  // Preferência: limite original > preço > preço executado (DEC-AUTO-242-01 prefere
+  // o limite, mas sem ele a fill é melhor referência que nenhuma).
+  const lim = first ? (first.o.limitPrice ?? first.o.price ?? first.o.filledPrice ?? null) : null;
+  const ref = lim != null ? parseFloat(lim) : parseFloat(trade.entry);
+  return Number.isFinite(ref) && ref > 0 ? ref : null;
+};
+
+/**
+ * Pernas de PROTEÇÃO da posição — o que efetivamente segura a perda.
+ *
+ * Não basta `isStopOrder`: o parser marca isso pelo `Tipo de Ordem`, e o bracket OCO
+ * da Clear/ProfitChart emite a perna de proteção como **Limite** com `Preço Stop`
+ * vazio (#242). Nos trades de 18/08/2026 das 10:57 e 12:06, toda a proteção estava
+ * em ordens LIMIT abaixo da entrada — contá-las como "sem stop" acusava falta de
+ * proteção em posição protegida.
+ *
+ * Critério (extensão de classifyStopSemantic para quando não há `Preço Stop`):
+ * ordem do lado OPOSTO à posição, com preço ADVERSO à entrada — abaixo dela num
+ * LONG, acima num SHORT. Preço favorável é alvo, não proteção.
+ *
+ * Deduplica cópias: `orders` não guarda `externalOrderId` e a reimportação cria
+ * docs repetidos (medido em produção: a mesma ordem em 3 batches). Sem isso o
+ * risco e a cobertura são multiplicados pelo número de importações.
+ */
+const protectiveLegsOf = (trade, orders) => {
+  const entryRef = entryRefOf(trade, orders);
+  if (entryRef == null || !trade.side) return [];
+  const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
+
+  const legs = ordersForTrade(orders, trade.id)
+    .filter(o => o.side === opposite)
+    .map(o => ({
+      ...o,
+      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _cancelTs: toMs(o.cancelledAt),
+      _isRealStop: o.isStopOrder === true || o.stopPrice != null,
+      _price: parseFloat(o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
+    }))
+    .filter(o => Number.isFinite(o._price))
+    // Ordem de stop de verdade protege em qualquer preço: acima da entrada num LONG
+    // ela é trail/breakeven, que limita a perda a zero ou lucro — proteção melhor,
+    // não ausência dela. Já uma LIMITE pura só é a perna de proteção do OCO quando
+    // está do lado adverso; do lado favorável é alvo.
+    .filter(o => o._isRealStop
+      || (trade.side === 'LONG' ? o._price < entryRef : o._price > entryRef));
+
+  const seen = new Set();
+  return legs
+    .filter((o) => {
+      const key = `${o.side}|${o._price}|${o.quantity ?? o.qty}|${o.submittedAt}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => (a._ts ?? 0) - (b._ts ?? 0));
+};
+
+/** Compat: mantém o nome usado pelos detectores. */
+const stopOrdersOf = (trade, orders) => protectiveLegsOf(trade, orders);
 
 // ============================================
 // DETECTORS
@@ -341,8 +402,11 @@ const detectUnprotectedSize = (trade, orders) => {
   const all = ordersForTrade(orders, trade.id);
   if (!all.length) return [];   // sem ordens correlacionadas não há resolução p/ afirmar
 
-  const stops = all.filter(o => o.isStopOrder === true);
-  const coveredQty = stops.reduce((acc, s) => acc + Number(s.quantity ?? s.qty ?? 0), 0);
+  const stops = liveStopsAt(trade, protectiveLegsOf(trade, orders));
+  // Cap de sanidade: cobertura não pode exceder a posição. Se exceder, sobraram
+  // cópias que o dedup não pegou — melhor subestimar cobertura do que inventar.
+  const rawCovered = stops.reduce((acc, s) => acc + Number(s.quantity ?? s.qty ?? 0), 0);
+  const coveredQty = Math.min(rawCovered, tradeQty);
   const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
   if (uncoveredQty <= 0) return [];
 
@@ -357,6 +421,7 @@ const detectUnprotectedSize = (trade, orders) => {
       coveredQty,
       uncoveredQty,
       hasAnyStop: stops.length > 0,
+      rawCoveredQty: rawCovered,
       ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
     },
     source: 'literature',
