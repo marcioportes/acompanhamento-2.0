@@ -60,6 +60,10 @@
 
 ### `orders` (staging de ordens brutas)
 - Parse ProfitChart-Pro, cross-check (CHUNK-10, `tradeGateway`)
+- **ID do documento é DETERMINÍSTICO (#362, v1.83.13):** `sanitize(studentId)_sanitize(makeOrderKey(order))`, via `makeOrderDocId` (`src/utils/orderKey.js`). Reimportar o mesmo arquivo passa a sobrescrever o MESMO doc em vez de criar cópias. Antes o id era automático e cada importação duplicava tudo — 154 docs apagados na limpeza de 19/08/2026.
+- **`externalOrderId: string | null`** (#362): `ClOrdID` da corretora. É a chave que torna a ingestão idempotente e permite auditar a ordem de volta no extrato do broker. O parser sempre leu; até v1.83.12 o campo era descartado no `ingestBatch`.
+- Escrita via `useOrderStaging.ingestBatch` com `set(..., { merge: true })` — preserva campos gravados server-side (`correlatedTradeId` da CF `linkOrdersToCreatedTrade`, `userDecision`, marcas de backfill) que não fazem parte do payload de importação.
+- `allow update: if false` e `allow delete: if false` em `firestore.rules` — correção e limpeza exigem admin SDK (CF ou script).
 
 ### `reviews` (`students/{uid}/reviews/{id}`)
 - Evento persistido (DEC-045) com `maturitySnapshot` congelado no fechamento (v1.43.0)
