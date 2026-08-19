@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.9: #357 fix (RESERVA) STOP_PANIC acusa pânico em operação dentro do risco — regra vira valor financeiro vs RO + detector de cobertura de stop
  * - 1.83.8: fix CsvImportManager — exclusão sem confirmação + dialog fantasma engolindo cliques; estado travado sobrevivia ao fechar o modal
  * - 1.83.7: reaplica o fix de correlação por contenção no intervalo (#351) — revertido no #354 por suspeita afastada
  * - 1.83.6: fix usePlanClosures consultava cycleClosures por planId — rule por documento rejeitava a query inteira para aluno (permission-denied silencioso, carry-over do extrato zerado)

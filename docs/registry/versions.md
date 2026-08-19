@@ -72,3 +72,7 @@
 | 1.83.3 | #345 | `fix/issue-345-reflection-discussed-window` | 09/08/2026 | consumida (PR #346 squash `e036ec95`) |
 | 1.83.4 | #347 | `fix/issue-347-edit-modal-discards-input` | 17/08/2026 | consumida (PR #348 squash `e573473a`) |
 | 1.83.5 | #351 | `fix/issue-351-order-correlation-mid-operation` | 18/08/2026 | consumida (PR #352 squash `1b868910`) |
+| 1.83.6 | — | `fix/plan-closures-student-query` | 18/08/2026 | consumida (PR #353 squash `5236a785`) — sem issue (fix direto autorizado) |
+| 1.83.7 | #351 | `fix/reapply-containment` | 19/08/2026 | consumida (PR #355 squash `9321768f`) — reaplicação após revert #354 |
+| 1.83.8 | — | `fix/csv-manager-confirm-and-stuck-state` | 19/08/2026 | consumida (PR #356 squash `f88a1e91`) — sem issue (fix direto autorizado) |
+| 1.83.9 | #357 | `fix/issue-357-stop-risk-vs-ro` | 19/08/2026 | reservada |
