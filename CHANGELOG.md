@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.8] - 19/08/2026
+
+**fix:** dois defeitos no `CsvImportManager` que produziam "clico e nada acontece, sem erro"
+
+**A — exclusão sem confirmação + dialog fantasma.** `handleDeleteSelected` fazia `if (!confirm(\`string\`)) return`. O `confirm` do `useConfirmDialog` retorna **Promise** (sempre truthy) e espera um **objeto** de opções: a guarda nunca bloqueava — os trades eram excluídos do staging sem nenhuma confirmação — e a string espalhada como `opts` abria o `ConfirmDialog` (`fixed inset-0 z-[90]`) com título e corpo `undefined`, por cima do manager e do modal de completar, **engolindo todo clique da tela sem log nem toast**. Passa a `await confirm({ title, body, confirmLabel, tone })`, no mesmo formato do `handleDeleteBatch` ao lado.
+
+**B — estado travado sobrevivia ao fechar o modal.** O componente nunca desmonta: os pais o renderizam sempre passando `isOpen`, e o `return null` fica depois dos hooks. Quando um `await updateDoc` fica pendurado — a promise do SDK do Firestore não resolve nem rejeita se a conexão cai —, o `finally` nunca roda e `processing` fica `true` para o resto da sessão, com todo botão de ação virando no-op. Agora fechar o modal reseta seleção, modal de completar, formulário, `processing` e progresso. Os botões da barra ganharam `disabled:opacity-30` (antes ficavam com aparência normal enquanto desabilitados) e o "Aplicar" passa a checar `selectedIds.size`, fechando o retorno silencioso com seleção vazia.
+
+5 testes em `src/__tests__/components/CsvImportManagerGuards.test.jsx`: 4 falham contra o código antigo.
+
+
 ## [1.83.7] - 19/08/2026
 
 **fix:** reaplica a correlação por contenção no intervalo do trade (revertida no #354)

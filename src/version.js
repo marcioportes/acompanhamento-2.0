@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.8: fix CsvImportManager — exclusão sem confirmação + dialog fantasma engolindo cliques; estado travado sobrevivia ao fechar o modal
  * - 1.83.7: reaplica o fix de correlação por contenção no intervalo (#351) — revertido no #354 por suspeita afastada
  * - 1.83.6: fix usePlanClosures consultava cycleClosures por planId — rule por documento rejeitava a query inteira para aluno (permission-denied silencioso, carry-over do extrato zerado)
  * - 1.83.5: #351 fix correlação de ordens — fill no meio da operação + trade criado pelo import (PR #352, 18/08/2026)
@@ -393,10 +394,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.7',
+  version: '1.83.8',
   build: '20260819',
-  display: 'v1.83.7',
-  full: '1.83.7+20260819',
+  display: 'v1.83.8',
+  full: '1.83.8+20260819',
 };
 export default VERSION;
 export { VERSION };
