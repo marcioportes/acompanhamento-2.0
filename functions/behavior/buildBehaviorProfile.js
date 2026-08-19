@@ -42,11 +42,17 @@ const groupBy = (arr, keyFn) => {
 /**
  * Fingerprint estável do conteúdo semântico (exclui computedAt/computedBy, que sempre
  * mudam). Mesmo conteúdo → mesmo hash → caller pula write redundante (anti-loop/custo).
+ *
+ * A `evidence` entra no hash: ela É conteúdo — é o que o painel exibe ao aluno (valor do
+ * risco, RO, pernas, quantidade descoberta). Ficou de fora até 19/08/2026 e isso escondeu
+ * uma correção real: depois do fix de duplicatas, um trade manteve as mesmas famílias mas
+ * a evidência caiu de R$ 1.359 para R$ 453 de risco — como só famílias/severidade/fonte
+ * entravam no hash, o recompute considerou "sem mudança" e o número errado ficou no doc.
  */
 const behaviorFingerprint = (profile) => {
   const canonical = {
     f: (profile.families || [])
-      .map((x) => [x.family, x.canonicalCode, x.severity, x.source])
+      .map((x) => [x.family, x.canonicalCode, x.severity, x.source, JSON.stringify(x.evidence ?? null)])
       .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)),
     g: [...(profile.gateInputs || [])].sort(),
     s: profile.scoreContribution || {},

@@ -75,3 +75,19 @@ describe('buildBehaviorProfile — reconciliação do CLEAN_EXECUTION (#357)', (
     expect(a.get('T1').fingerprint).not.toBe(b.get('T1').fingerprint);
   });
 });
+
+describe('buildBehaviorProfile — fingerprint cobre a evidência', () => {
+  it('mudança só na evidência altera o fingerprint', () => {
+    // Regressão 19/08/2026: o hash levava família/severidade/fonte, mas não a evidência.
+    // Depois do fix de duplicatas um trade manteve a mesma família com risco corrigido de
+    // R$ 1.359 para R$ 453, e o recompute pulou o write — o número errado ficou no doc.
+    // Cobertura completa nos dois, risco diferente: mesmas famílias, evidência distinta.
+    const a = run(baseTrade(), [stop('S1', 169780, 5), stop('S2', 169700, 3)]).get('T1');
+    const b = run(baseTrade(), [stop('S1', 169790, 5), stop('S2', 169710, 3)]).get('T1');
+
+    const famA = a.families.map(f => f.canonicalCode).sort();
+    const famB = b.families.map(f => f.canonicalCode).sort();
+    expect(famA).toEqual(famB);                 // mesmas famílias
+    expect(a.fingerprint).not.toBe(b.fingerprint); // evidência diferente → hash diferente
+  });
+});

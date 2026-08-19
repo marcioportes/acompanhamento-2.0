@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.11] - 19/08/2026
+
+**fix:** o fingerprint do `behaviorProfile` não cobria a `evidence`, e correções de número não eram gravadas
+
+O hash de idempotência levava família, código canônico, severidade e fonte — mas não a evidência. Como o recompute só grava quando o fingerprint muda, uma correção que altera **apenas o número** era considerada "sem mudança" e ficava fora do banco.
+
+Apareceu logo depois do fix de duplicatas (v1.83.10): um trade manteve a mesma família `RISK_OVER_RO`, mas o risco caiu de R$ 1.359 para R$ 447 ao deduplicar as três cópias da mesma perna. O painel continuaria exibindo o excesso antigo — o número errado é exatamente o que o aluno lê.
+
+A evidência é conteúdo: valor do risco, RO, composição por perna, quantidade descoberta. Passa a entrar no hash.
+
+
 ## [1.83.10] - 19/08/2026
 
 **fix:** detector de cobertura ignorava a proteção do bracket OCO LIMIT e multiplicava ordens duplicadas
