@@ -47,7 +47,9 @@ describe('preComputeShapes — execution events (Option C)', () => {
     const out = preComputeShapes({ trades, plans: [], now: new Date('2026-04-25'), orders });
     expect(out.tradesWithOrderData).toBe(1);
     expect(out.executionEvents.length).toBe(1);
-    expect(out.executionEvents[0].type).toBe('STOP_PARTIAL_SIZING');
+    // #357 — STOP_PARTIAL_SIZING virou UNPROTECTED_SIZE (família própria; cobertura
+    // parcial não é subdimensionamento, e o caso de zero stops passou a ser coberto).
+    expect(out.executionEvents[0].type).toBe('UNPROTECTED_SIZE');
   });
 
   it('orders sem correlatedTradeId NÃO contam para coverage', () => {

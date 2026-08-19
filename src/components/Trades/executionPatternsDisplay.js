@@ -18,6 +18,10 @@ export const SEVERITY_DOT = {
 };
 
 export const EVENT_LABELS = {
+  RISK_OVER_RO: 'Risco acima do RO',
+  UNPROTECTED_SIZE: 'Posição sem proteção',
+  SIZING_DISCIPLINE: 'Condução de sizing',
+  // Legado (#357): não são mais emitidos — mantidos para não quebrar leitura de histórico.
   STOP_TAMPERING: 'Stop reemitido para mais largo',
   STOP_PARTIAL_SIZING: 'Stop dimensionado para meio lote',
   RAPID_REENTRY_POST_STOP: 'Reentrada rápida após stop',
@@ -28,6 +32,12 @@ export const EVENT_LABELS = {
 };
 
 export const EVENT_DESCRIPTIONS = {
+  RISK_OVER_RO:
+    'O valor financeiro do stop passou do RO do plano vigente. Distância × contratos × valor do ponto, somado por perna — a distância não acompanhou o aumento da posição.',
+  UNPROTECTED_SIZE:
+    'Contratos abertos sem ordem de stop cobrindo. Cisne branco fecha no alvo; cisne negro encontra a posição sem barreira.',
+  SIZING_DISCIPLINE:
+    'Aumentou a posição e ajustou a proteção junto — o risco financeiro continuou dentro do RO do plano.',
   STOP_TAMPERING:
     'Stop foi cancelado e reemitido em preço pior durante a vida do trade. Sinal de loss aversion: aceitar mais risco para evitar materializar perda menor.',
   STOP_PARTIAL_SIZING:

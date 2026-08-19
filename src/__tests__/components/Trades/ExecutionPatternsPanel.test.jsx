@@ -37,7 +37,7 @@ describe('ExecutionPatternsPanel', () => {
     expect(screen.getByText(/Nenhum dos 7 padrões/i)).toBeInTheDocument();
   });
 
-  it('renderiza badge HIGH para STOP_PARTIAL_SIZING com fonte literária', () => {
+  it('renderiza badge HIGH para UNPROTECTED_SIZE com fonte literária', () => {
     const orders = [
       { externalOrderId: 'NLGC439492', instrument: 'WINM26', side: 'SELL', type: 'STOP',
         status: 'CANCELLED', quantity: 1, stopPrice: 99500,
@@ -49,14 +49,15 @@ describe('ExecutionPatternsPanel', () => {
     expect(screen.getByText(/1 detectado/)).toBeInTheDocument();
     expect(screen.getByText(/analisadas 1 ordem/)).toBeInTheDocument();
     expect(screen.getByText('HIGH')).toBeInTheDocument();
-    expect(screen.getByText(/Stop dimensionado para meio lote/)).toBeInTheDocument();
+    expect(screen.getByText(/Posição sem proteção/)).toBeInTheDocument();
     expect(screen.getByText(/Shefrin & Statman/)).toBeInTheDocument();
     expect(screen.getByText(/NLGC439492/)).toBeInTheDocument();
   });
 
-  it('renderiza múltiplos eventos com pluralização correta', () => {
+  it('stop reemitido para mais largo NÃO é mais evento por si só (#357)', () => {
     const orders = [
-      // STOP_TAMPERING — 2 stops, primeiro mais apertado, segundo mais largo
+      // Antes disparava STOP_TAMPERING. Mover o stop deixou de ser sinal: o que conta é
+      // o risco financeiro contra o RO, e este trade não tem baseline de plano.
       { externalOrderId: 'S1', instrument: 'WINM26', side: 'SELL', type: 'STOP',
         status: 'CANCELLED', quantity: 2, stopPrice: 99500,
         submittedAt: '2026-04-22T10:00:30Z', cancelledAt: '2026-04-22T10:05:00Z',
@@ -67,9 +68,10 @@ describe('ExecutionPatternsPanel', () => {
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);
-    // Trade qty=2; stop qtys = [2, 1] = soma 3 ≥ 2 → não dispara partial. Apenas STOP_TAMPERING.
-    expect(screen.getByText(/1 detectado/)).toBeInTheDocument();
-    expect(screen.getByText(/Stop reemitido para mais largo/)).toBeInTheDocument();
+    // Trade qty=2; stops cobrem 3 ≥ 2 → sem UNPROTECTED_SIZE. Sem planRoPct/planPl →
+    // sem baseline para avaliar risco. Resultado correto: nenhum padrão.
+    expect(screen.getByText(/nenhum detectado/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Stop reemitido para mais largo/)).toBeNull();
   });
 
   it('orders de outro trade são ignoradas', () => {
