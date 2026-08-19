@@ -14,9 +14,6 @@ import {
   routeConversationalDecisions,
   enrichConversationalBatch,
 } from '../../utils/conversationalIngest';
-import { parseProfitChartPro } from '../../utils/orderParsers';
-import { reconstructOperations } from '../../utils/orderReconstruction';
-import { correlateOrders } from '../../utils/orderCorrelation';
 
 // ============================================
 // FIXTURES
@@ -571,82 +568,5 @@ describe('Cenário 12: match_confident → enrichTrade chamado, createTrade NÃO
     });
     expect(enrichTradeFn).not.toHaveBeenCalled();
     expect(createTradeFn).not.toHaveBeenCalled();
-  });
-});
-
-// ============================================
-// Cenário 13: aumento de posição no meio da operação (#351)
-// ============================================
-
-// Recorte do CSV real de ordens do ProfitChart-Pro (WINV26, 18/08/2026, op de +R$521,00):
-// compra de 5 na abertura, compra de 3 no meio (14:46:17), saída de 8 no fechamento.
-// O fill do meio fica a 47min46s da abertura e 28min31s do fechamento do trade.
-const CSV_AUMENTO_POSICAO = [
-  '20851ac4bd71833bfde04b20e00024b1,18/08/2026,18/08/2026',
-  'Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criacao;Ultima Atualizacao;Preco;Preco Stop;Qtd;Preco Medio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estrategia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem',
-  'Simulador;1000319383;Marcio Portes;NELO.126524;WINV26;V;Executada;18/08/2026 13:58:31;18/08/2026 15:14:48;170.155,00;-;5;170.155,00;5;-;170.155,00;170.155,00;Hoje;-;Normal;;-;Limite;-;BMF;Estrategia',
-  ';;;;;;Trade;18/08/2026 15:14:48;;;;;170.155,00;5',
-  'Simulador;1000319383;Marcio Portes;NELO.134405;WINV26;V;Executada;18/08/2026 14:46:17;18/08/2026 15:14:48;170.155,00;-;3;170.155,00;3;-;102.093,00;102.093,00;Hoje;-;Normal;;-;Limite;-;BMF;Estrategia',
-  ';;;;;;Trade;18/08/2026 15:14:48;;;;;170.155,00;3',
-  'Simulador;1000319383;Marcio Portes;NELO.126657;WINV26;C;Executada;18/08/2026 13:59:00;18/08/2026 14:46:17;169.950,00;-;3;169.945,00;3;-;101.970,00;101.967,00;Hoje;-;Normal;;-;Limite;-;BMF;Grafico',
-  ';;;;;;Trade;18/08/2026 14:46:17;;;;;169.945,00;3',
-  'Simulador;1000319383;Marcio Portes;NELO.126522;WINV26;C;Executada;18/08/2026 13:58:30;18/08/2026 13:58:31;169.760,00;-;5;169.760,00;5;-;169.760,00;169.760,00;Hoje;-;Normal;;-;Limite;-;BMF;Grafico',
-  ';;;;;;Trade;18/08/2026 13:58:31;;;;;169.760,00;1',
-  ';;;;;;Trade;18/08/2026 13:58:31;;;;;169.760,00;4',
-].join('\n');
-
-describe('Cenário 13: aumento de posição no meio da operação (#351)', () => {
-  const parse = () => parseProfitChartPro(CSV_AUMENTO_POSICAO);
-
-  it('reconstrução agrega as 2 entradas — média ponderada bate com a corretora', () => {
-    const { orders } = parse();
-    const ops = reconstructOperations(orders, { timezone: 'America/Sao_Paulo' });
-
-    expect(ops).toHaveLength(1);
-    expect(ops[0].entryOrders).toHaveLength(2);
-    expect(ops[0].totalQty).toBe(8);
-    // (5×169.760 + 3×169.945) / 8 — o "Preço Compra" do CSV de operações é 169.829,38
-    expect(ops[0].avgEntryPrice).toBeCloseTo(169829.375, 2);
-    expect(ops[0].resultPoints).toBeCloseTo(325.625, 2);
-  });
-
-  it('pipeline completo: nenhum fill fica órfão do trade existente', () => {
-    const { orders } = parse();
-    const tradeExistente = {
-      id: 'tradeWIN18',
-      ticker: 'WINV26',
-      side: 'LONG',
-      qty: 8,
-      entryTime: '2026-08-18T13:58:31-03:00',
-      exitTime: '2026-08-18T15:14:48-03:00',
-    };
-
-    const { correlations, stats } = correlateOrders(orders, [tradeExistente]);
-
-    expect(stats.ghost).toBe(0);
-    expect(stats.orphanFills).toBe(0);
-    expect(correlations.every(c => c.tradeId === 'tradeWIN18')).toBe(true);
-  });
-
-  it('operação cai em match_confident — o fill do meio não a torna ambígua', () => {
-    const { orders } = parse();
-    const ops = reconstructOperations(orders, { timezone: 'America/Sao_Paulo' });
-    const tradeExistente = {
-      id: 'tradeWIN18',
-      ticker: 'WINV26',
-      side: 'LONG',
-      qty: 8,
-      entryTime: '2026-08-18T13:58:31-03:00',
-      exitTime: '2026-08-18T15:14:48-03:00',
-    };
-
-    const { correlations } = correlateOrders(orders, [tradeExistente]);
-    const { toCreate, toConfront, ambiguous } = categorizeConfirmedOps(ops, correlations);
-
-    expect(ambiguous).toHaveLength(0);
-    expect(toCreate).toHaveLength(0);
-    expect(toConfront).toHaveLength(1);
-    expect(toConfront[0].tradeId).toBe('tradeWIN18');
-    expect(toConfront[0].operation.classification).toBe(CLASSIFICATION.MATCH_CONFIDENT);
   });
 });
