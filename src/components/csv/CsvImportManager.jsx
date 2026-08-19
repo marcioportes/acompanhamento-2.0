@@ -13,7 +13,7 @@
  * - 2.0.0: Versão v1 (descartada)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { useConfirmDialog } from '../ConfirmDialog';
 import {
@@ -69,6 +69,21 @@ const CsvImportManager = ({
     return [];
   }, [getBatches, stagingTrades]);
 
+  // O componente NUNCA desmonta: os pais o renderizam sempre, passando `isOpen`, e o
+  // `return null` abaixo fica depois dos hooks. Sem este reset, qualquer estado ruim
+  // vira permanente na sessão — em particular `processing`, que trava em `true` quando
+  // um `await updateDoc` fica pendurado (a promise do SDK não resolve nem rejeita se a
+  // conexão cai). Com `processing` travado, todo botão de ação vira no-op silencioso e
+  // fechar/reabrir o modal não recupera. Fechar agora zera a sessão de trabalho.
+  useEffect(() => {
+    if (isOpen) return;
+    setSelectedIds(new Set());
+    setShowCompleteModal(false);
+    setCompleteData({ emotionEntry: '', emotionExit: '', setup: '' });
+    setProcessing(false);
+    setProgress({ current: 0, total: 0, label: '' });
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // === HANDLERS ===
@@ -93,7 +108,19 @@ const CsvImportManager = ({
 
   const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Excluir ${selectedIds.size} trade(s) do staging?`)) return;
+    // `confirm` do useConfirmDialog retorna Promise e espera um OBJETO de opções.
+    // Sem o await, `!promise` é sempre false — a guarda não bloqueava nada e a
+    // exclusão acontecia sem confirmação. Pior: a string espalhada como opts abria
+    // o dialog (fixed inset-0 z-[90]) com título/corpo undefined, por cima de tudo,
+    // engolindo todo clique da tela sem log nem toast. Mesmo formato do irmão
+    // handleDeleteBatch logo abaixo.
+    const ok = await confirm({
+      title: 'Excluir trades do staging?',
+      body: `${selectedIds.size} trade(s) selecionado(s) serão removidos.`,
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setProcessing(true);
     const ids = [...selectedIds];
     setProgress({ current: 0, total: ids.length, label: 'Excluindo...' });
@@ -242,15 +269,15 @@ const CsvImportManager = ({
           <div className="px-5 py-2 bg-blue-500/10 border-b border-blue-500/20 flex items-center justify-between">
             <span className="text-xs text-blue-400 font-bold">{selectedIds.size} selecionado(s)</span>
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowCompleteModal(true)} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/10 rounded border border-blue-500/20">
+              <button onClick={() => setShowCompleteModal(true)} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-blue-400 hover:bg-blue-500/10 rounded border border-blue-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                 <Edit3 className="w-3 h-3" /> Completar
               </button>
               {selectedReadyCount > 0 && (
-                <button onClick={handleActivateSelected} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/10 rounded border border-emerald-500/20 font-bold">
+                <button onClick={handleActivateSelected} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/10 rounded border border-emerald-500/20 font-bold disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                   <Zap className="w-3 h-3" /> Ativar ({selectedReadyCount})
                 </button>
               )}
-              <button onClick={handleDeleteSelected} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded border border-red-500/20">
+              <button onClick={handleDeleteSelected} disabled={processing} className="flex items-center gap-1 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded border border-red-500/20 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                 <Trash2 className="w-3 h-3" /> Excluir
               </button>
             </div>
@@ -389,7 +416,7 @@ const CsvImportManager = ({
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setShowCompleteModal(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-white">Cancelar</button>
-              <button onClick={handleCompleteSelected} disabled={processing || (!completeData.emotionEntry && !completeData.emotionExit && !completeData.setup)} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 disabled:opacity-30">
+              <button onClick={handleCompleteSelected} disabled={processing || selectedIds.size === 0 || (!completeData.emotionEntry && !completeData.emotionExit && !completeData.setup)} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 disabled:opacity-30">
                 {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit3 className="w-4 h-4" />}
                 Aplicar
               </button>
