@@ -79,4 +79,4 @@
 | 1.83.10 | — | `fix/stop-coverage-oco-limit` | 19/08/2026 | consumida (PR #359 squash `84b547e0`) — fix direto autorizado |
 | 1.83.11 | — | `fix/behavior-fingerprint-evidence` | 19/08/2026 | consumida (PR #360 squash `ce97d5a1`) — fix direto autorizado |
 | 1.83.12 | #351 | `fix/351-fase-d-link-orders` | 19/08/2026 | consumida (PR #361 squash `a4fc2934`) — reaplicação da fase D |
-| 1.83.13 | #362 | `fix/issue-362-ingest-dedup` | 19/08/2026 | reservada |
+| 1.83.13 | #362 | `fix/issue-362-ingest-dedup` | 19/08/2026 | consumida (PR #364 squash `f59efb06`) |
