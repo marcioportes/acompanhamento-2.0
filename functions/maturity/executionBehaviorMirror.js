@@ -139,18 +139,66 @@ function liveStopsAt(trade, stops) {
   });
 }
 
-function stopOrdersOf(trade, orders) {
-  return ordersForTrade(orders, trade.id)
-    .filter(function (o) { return o.isStopOrder === true; })
+/** Referência de entrada: LIMITE original da 1ª entrada (DEC-AUTO-242-01). */
+function entryRefOf(trade, orders) {
+  const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const cand = ordersForTrade(orders, trade.id)
+    .filter(function (o) { return o.side === wanted && o.isStopOrder !== true; })
     .map(function (o) {
+      const ts = toMs(o.filledAt) != null ? toMs(o.filledAt) : (toMs(o.submittedAt) != null ? toMs(o.submittedAt) : 0);
+      return { o: o, ts: ts };
+    })
+    .sort(function (a, b) { return a.ts - b.ts; })[0];
+  const lim = cand
+    ? (cand.o.limitPrice != null ? cand.o.limitPrice
+      : (cand.o.price != null ? cand.o.price
+        : (cand.o.filledPrice != null ? cand.o.filledPrice : null)))
+    : null;
+  const ref = lim != null ? parseFloat(lim) : parseFloat(trade.entry);
+  return isFinite(ref) && ref > 0 ? ref : null;
+}
+
+/**
+ * Pernas de PROTEÇÃO (paridade com o ESM). `isStopOrder` não basta: o bracket OCO
+ * da Clear emite a proteção como Limite com `Preço Stop` vazio (#242). Critério:
+ * lado oposto à posição + preço adverso à entrada. Deduplica cópias de reimportação.
+ */
+function protectiveLegsOf(trade, orders) {
+  const entryRef = entryRefOf(trade, orders);
+  if (entryRef == null || !trade.side) return [];
+  const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
+
+  const legs = ordersForTrade(orders, trade.id)
+    .filter(function (o) { return o.side === opposite; })
+    .map(function (o) {
+      const raw = o.stopPrice != null ? o.stopPrice : (o.limitPrice != null ? o.limitPrice : o.price);
       return Object.assign({}, o, {
         _ts: toMs(o.submittedAt) != null ? toMs(o.submittedAt) : (toMs(o.cancelledAt) != null ? toMs(o.cancelledAt) : toMs(o.filledAt)),
         _cancelTs: toMs(o.cancelledAt),
-        _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
+        _isRealStop: o.isStopOrder === true || o.stopPrice != null,
+        _price: parseFloat(raw),
       });
     })
-    .filter(function (o) { return o._price != null; })
-    .sort(function (a, b) { return (a._ts || 0) - (b._ts || 0); });
+    .filter(function (o) { return isFinite(o._price); })
+    .filter(function (o) {
+      if (o._isRealStop) return true;
+      return trade.side === 'LONG' ? o._price < entryRef : o._price > entryRef;
+    });
+
+  const seen = {};
+  const out = [];
+  for (let i = 0; i < legs.length; i++) {
+    const o = legs[i];
+    const key = o.side + '|' + o._price + '|' + (o.quantity != null ? o.quantity : o.qty) + '|' + o.submittedAt;
+    if (seen[key]) continue;
+    seen[key] = true;
+    out.push(o);
+  }
+  return out.sort(function (a, b) { return (a._ts || 0) - (b._ts || 0); });
+}
+
+function stopOrdersOf(trade, orders) {
+  return protectiveLegsOf(trade, orders);
 }
 
 /** Risco dos stops composto POR PERNA — cada entrada pode trazer OCO próprio. */
@@ -163,10 +211,11 @@ function stopRiskBreakdown(trade, stops) {
   const legs = [];
   for (let i = 0; i < stops.length; i++) {
     const st = stops[i];
-    const price = st.stopPrice != null ? st.stopPrice : (st.price != null ? st.price : null);
+    const price = st._price != null ? st._price : (st.stopPrice != null ? st.stopPrice : (st.price != null ? st.price : null));
     const qty = Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
     if (price == null || !isFinite(qty) || qty <= 0) continue;
-    const distance = Math.abs(entry - Number(price));
+    const adverse = trade.side === 'LONG' ? entry - Number(price) : Number(price) - entry;
+    const distance = adverse > 0 ? adverse : 0;
     legs.push({
       stopPrice: Number(price),
       qty: qty,
@@ -256,12 +305,13 @@ function detectUnprotectedSize(trade, orders) {
   const all = ordersForTrade(orders, trade.id);
   if (!all.length) return [];
 
-  const stops = all.filter(function (o) { return o.isStopOrder === true; });
-  let coveredQty = 0;
+  const stops = liveStopsAt(trade, protectiveLegsOf(trade, orders));
+  let rawCovered = 0;
   for (let i = 0; i < stops.length; i++) {
     const st = stops[i];
-    coveredQty += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
+    rawCovered += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
   }
+  const coveredQty = Math.min(rawCovered, tradeQty);
   const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
   if (uncoveredQty <= 0) return [];
 
@@ -276,6 +326,7 @@ function detectUnprotectedSize(trade, orders) {
       coveredQty: coveredQty,
       uncoveredQty: uncoveredQty,
       hasAnyStop: stops.length > 0,
+      rawCoveredQty: rawCovered,
       ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
     },
     source: 'literature',

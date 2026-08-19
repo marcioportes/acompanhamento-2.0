@@ -55,8 +55,9 @@ const makeOrder = (overrides = {}) => ({
 // ============================================
 describe('detectExecutionEvents — RISK_OVER_RO', () => {
   // RO = R$ 252. Ponto = R$ 0,20.
+  // Proteção de um LONG é ordem de VENDA abaixo da entrada.
   const stop = (id, price, qty, at) => makeOrder({
-    externalOrderId: id, isStopOrder: true, type: 'STOP', status: 'CANCELLED',
+    externalOrderId: id, side: 'SELL', isStopOrder: true, type: 'STOP', status: 'CANCELLED',
     stopPrice: price, quantity: qty, submittedAt: at,
   });
 
@@ -85,7 +86,7 @@ describe('detectExecutionEvents — RISK_OVER_RO', () => {
       orders: [
         // S1 é SUBSTITUÍDO por S2 (cancelado antes do novo nascer) — não soma junto,
         // senão o mesmo risco seria contado duas vezes.
-        makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
+        makeOrder({ externalOrderId: 'S1', side: 'SELL', isStopOrder: true, status: 'CANCELLED',
           stopPrice: 99900, quantity: 5,
           submittedAt: '2026-04-22T10:30:30Z', cancelledAt: '2026-04-22T10:34:00Z' }),
         stop('S2', 99800, 5, '2026-04-22T10:35:00Z'),   // 200 pts × 0,20 × 5 = R$ 200 < 252
@@ -133,7 +134,7 @@ describe('detectExecutionEvents — RISK_OVER_RO', () => {
 // ============================================
 describe('detectExecutionEvents — SIZING_DISCIPLINE', () => {
   const stop = (id, price, qty) => makeOrder({
-    externalOrderId: id, isStopOrder: true, status: 'CANCELLED', stopPrice: price, quantity: qty,
+    externalOrderId: id, side: 'SELL', isStopOrder: true, status: 'CANCELLED', stopPrice: price, quantity: qty,
   });
   const comDuasEntradas = (o = {}) => makeTrade({
     qty: 8, entry: '169829.38',
@@ -184,7 +185,7 @@ describe('detectExecutionEvents — UNPROTECTED_SIZE', () => {
   it('detecta cobertura parcial: stop qty=1 com trade qty=2', () => {
     const trade = makeTrade({ qty: 2 });
     const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
+      makeOrder({ externalOrderId: 'S1', side: 'SELL', isStopOrder: true, status: 'CANCELLED',
         quantity: 1, stopPrice: 99500 }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
@@ -214,8 +215,8 @@ describe('detectExecutionEvents — UNPROTECTED_SIZE', () => {
   it('soma múltiplos stops parciais antes de decidir', () => {
     const trade = makeTrade({ qty: 5 });
     const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, quantity: 2, stopPrice: 99500 }),
-      makeOrder({ externalOrderId: 'S2', isStopOrder: true, quantity: 1, stopPrice: 99400 }),
+      makeOrder({ externalOrderId: 'S1', side: 'SELL', isStopOrder: true, quantity: 2, stopPrice: 99500 }),
+      makeOrder({ externalOrderId: 'S2', side: 'SELL', isStopOrder: true, quantity: 1, stopPrice: 99400 }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
     const un = events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE);
@@ -227,7 +228,7 @@ describe('detectExecutionEvents — UNPROTECTED_SIZE', () => {
   it('NÃO detecta quando a cobertura é completa', () => {
     const trade = makeTrade({ qty: 5 });
     const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, quantity: 5, stopPrice: 99500 }),
+      makeOrder({ externalOrderId: 'S1', side: 'SELL', isStopOrder: true, quantity: 5, stopPrice: 99500 }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
     expect(events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
@@ -496,5 +497,66 @@ describe('detectExecutionEvents — edge cases', () => {
       const tb = new Date(events[i].timestamp).getTime();
       expect(tb).toBeGreaterThanOrEqual(ta);
     }
+  });
+});
+
+// ============================================
+// Cobertura via bracket OCO LIMIT (#242 aplicado ao #357)
+// ============================================
+describe('detectExecutionEvents — proteção que não é isStopOrder', () => {
+  // Caso real WINV26 18/08 12:06: LONG 5x entrada 170.055. Toda a proteção veio como
+  // ordem LIMITE abaixo da entrada — a corretora emite o leg do OCO assim, com
+  // `Preço Stop` vazio. Contar só `isStopOrder` acusava posição protegida de descoberta.
+  const trade = makeTrade({ qty: 5, entry: '170055', side: 'LONG' });
+  const entrada = makeOrder({ externalOrderId: 'E1', side: 'BUY', quantity: 5,
+    limitPrice: 170060, price: 170055, status: 'FILLED', isStopOrder: false });
+
+  it('ordem LIMITE abaixo da entrada conta como proteção', () => {
+    const orders = [entrada, makeOrder({ externalOrderId: 'P1', side: 'SELL', quantity: 5,
+      limitPrice: 169655, price: 169805, status: 'FILLED', isStopOrder: false })];
+    const ev = detectExecutionEvents({ trades: [trade], orders });
+    expect(ev.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
+  });
+
+  it('ordem LIMITE ACIMA da entrada é alvo, não proteção', () => {
+    const orders = [entrada, makeOrder({ externalOrderId: 'A1', side: 'SELL', quantity: 5,
+      limitPrice: 170555, price: 170555, status: 'CANCELLED', isStopOrder: false })];
+    const ev = detectExecutionEvents({ trades: [trade], orders });
+    expect(ev.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(1);
+  });
+
+  it('stop de verdade acima da entrada (trail) protege e não vira risco', () => {
+    // Trava lucro: limita a perda a zero ou positivo. Cobertura sim, risco zero.
+    const orders = [entrada, makeOrder({ externalOrderId: 'T1', side: 'SELL', quantity: 5,
+      stopPrice: 170200, status: 'CANCELLED', isStopOrder: true })];
+    const ev = detectExecutionEvents({ trades: [trade], orders });
+    expect(ev.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
+    expect(ev.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO)).toHaveLength(0);
+  });
+
+  it('cópias da mesma ordem não multiplicam risco nem cobertura', () => {
+    // `orders` não guarda externalOrderId e a reimportação duplica docs: em produção
+    // a mesma perna apareceu em 3 batches, triplicando o risco calculado.
+    const copia = (id) => makeOrder({ externalOrderId: id, side: 'SELL', quantity: 5,
+      stopPrice: 169655, status: 'CANCELLED', isStopOrder: true,
+      submittedAt: '2026-04-22T10:30:00Z' });
+    const ev = detectExecutionEvents({
+      trades: [trade],
+      orders: [entrada, copia('C1'), copia('C2'), copia('C3')],
+    });
+    const over = ev.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO);
+    expect(over).toHaveLength(1);
+    expect(over[0].evidence.legs).toHaveLength(1);           // 3 cópias → 1 perna
+    expect(over[0].evidence.riskAmount).toBe(400);           // não 1200
+  });
+
+  it('cobertura nunca excede a posição', () => {
+    const copia = (id, at) => makeOrder({ externalOrderId: id, side: 'SELL', quantity: 5,
+      stopPrice: 169655, status: 'CANCELLED', isStopOrder: true, submittedAt: at });
+    const ev = detectExecutionEvents({
+      trades: [trade],
+      orders: [entrada, copia('C1', '2026-04-22T10:30:00Z'), copia('C2', '2026-04-22T10:31:00Z')],
+    });
+    expect(ev.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
   });
 });
