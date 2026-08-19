@@ -76,3 +76,7 @@
 | 1.83.7 | #351 | `fix/reapply-containment` | 19/08/2026 | consumida (PR #355 squash `9321768f`) — reaplicação após revert #354 |
 | 1.83.8 | — | `fix/csv-manager-confirm-and-stuck-state` | 19/08/2026 | consumida (PR #356 squash `f88a1e91`) — sem issue (fix direto autorizado) |
 | 1.83.9 | #357 | `fix/issue-357-stop-risk-vs-ro` | 19/08/2026 | consumida (PR #358 squash `3c4551c7`) |
+| 1.83.10 | — | `fix/stop-coverage-oco-limit` | 19/08/2026 | consumida (PR #359 squash `84b547e0`) — fix direto autorizado |
+| 1.83.11 | — | `fix/behavior-fingerprint-evidence` | 19/08/2026 | consumida (PR #360 squash `ce97d5a1`) — fix direto autorizado |
+| 1.83.12 | #351 | `fix/351-fase-d-link-orders` | 19/08/2026 | consumida (PR #361 squash `a4fc2934`) — reaplicação da fase D |
+| 1.83.13 | #362 | `fix/issue-362-ingest-dedup` | 19/08/2026 | reservada |

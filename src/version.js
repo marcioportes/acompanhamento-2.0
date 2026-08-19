@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.13: #362 fix (RESERVA) ingestBatch não deduplica — externalOrderId gravado + id determinístico em orders
  * - 1.83.12: #351 fase D reaplicada — onTradeCreated liga as ordens ao trade que o próprio import cria
  * - 1.83.11: fix fingerprint do behaviorProfile ignorava a evidência — correção de número não era gravada
  * - 1.83.10: fix cobertura de stop ignorava bracket OCO LIMIT e somava ordens duplicadas — acusava falta de proteção em posição protegida
