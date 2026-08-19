@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.7] - 19/08/2026
+
+**fix:** reaplica a correlação por contenção no intervalo do trade (revertida no #354)
+
+Restaura o fix do #351: ordem executada no meio da operação (aumento de posição ou parcial de saída) volta a ser associada ao trade. Caso de referência — WINV26 18/08/2026, operação de +R$ 521,00: a compra de 3 contratos das 14:46:17 está a 47min46s da abertura e 28min31s do fechamento, fora da janela de 5 min nas duas pontas, e ficava órfã.
+
+O fix foi revertido no #354 sob suspeita de ter travado o import de performance. A suspeita foi afastada por análise do grafo de dependências: `correlateOrders` tem dois call sites, ambos no Order Import (`useCrossCheck.js:94`, `OrderImportPage.jsx:335`), e nunca é chamado no fluxo de CSV — de `orderCorrelation.js` esse caminho consome apenas a constante `CORRELATION_WINDOW_MS`, que o fix não altera. O arquivo tem zero imports, então não participa de ciclo de dependência. O rollback resolveu o travamento por efeito colateral (bundle novo + reload), não por remover a causa.
+
+Reaplicado **somente o front-end**. A etapa no `onTradeCreated` que liga ordens ao trade criado pelo próprio import fica fora desta rodada, para superfície mínima.
+
+9 testes (6 unitários + 3 de integração): 54 passam com o fix, 5 falham sem ele.
+
+
 ## [1.83.6] - 18/08/2026
 
 **fix:** extrato do plano lia `cycleClosures` com query que a rule sempre rejeitava para aluno
