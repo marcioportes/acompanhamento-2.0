@@ -8,6 +8,21 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.12] - 19/08/2026 · #351 fase D
+
+**fix:** trade criado pelo próprio Order Import nascia com 100% das ordens órfãs
+
+Reaplicação da fase D do #351, que ficou de fora quando o PR foi revertido no #354 e não voltou na reaplicação do #355.
+
+`correlateOrders` e `ingestBatch` rodam no cliente contra os trades que **já existem**. Operação classificada como `new` só vira trade depois, em `createTradesBatch`, e nada voltava para ligar as ordens ao trade recém-criado. Medição em produção: **194 dos 198 órfãos corrigíveis** vinham por esse caminho.
+
+Não é corrigível no cliente — `firestore.rules:321` tem `allow update: if false` em `/orders`. Vai para `onTradeCreated`, etapa 7: quando o trade nasce com `source: 'order_import'`, casa as `_partials` contra os docs de `orders` do mesmo `batchId` pelo fingerprint `instrument|side|filledAt|qty`. Conservador — só toca doc com `correlatedTradeId` nulo.
+
+Efeito direto no motor comportamental: `UNPROTECTED_SIZE` deixa de acusar posição desprotegida em trade cujo stop existe mas está órfão de correlação.
+
+9 testes. 216 verdes em functions.
+
+
 ## [1.83.11] - 19/08/2026
 
 **fix:** o fingerprint do `behaviorProfile` não cobria a `evidence`, e correções de número não eram gravadas
