@@ -75,4 +75,4 @@
 | 1.83.6 | — | `fix/plan-closures-student-query` | 18/08/2026 | consumida (PR #353 squash `5236a785`) — sem issue (fix direto autorizado) |
 | 1.83.7 | #351 | `fix/reapply-containment` | 19/08/2026 | consumida (PR #355 squash `9321768f`) — reaplicação após revert #354 |
 | 1.83.8 | — | `fix/csv-manager-confirm-and-stuck-state` | 19/08/2026 | consumida (PR #356 squash `f88a1e91`) — sem issue (fix direto autorizado) |
-| 1.83.9 | #357 | `fix/issue-357-stop-risk-vs-ro` | 19/08/2026 | reservada |
+| 1.83.9 | #357 | `fix/issue-357-stop-risk-vs-ro` | 19/08/2026 | consumida (PR #358 squash `3c4551c7`) |
