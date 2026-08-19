@@ -8,6 +8,32 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.9] - 19/08/2026 · #357
+
+**fix:** alerta de stop deixa de ser movimento de preço e passa a ser risco financeiro contra o RO
+
+Um trade que ficou a metade do risco permitido durante toda a operação recebeu `STOP_PANIC / HIGH`, contradizendo a emoção declarada ("Calmo") e travando progressão de estágio — enquanto o mesmo painel exibia "Execução limpa · 90% · nenhum padrão negativo".
+
+**Três causas somadas:**
+
+1. `detectStopTampering` comparava pares consecutivos de stops assumindo que são versões do mesmo stop. Com entrada escalonada, cada incremento traz seu próprio bracket OCO: os stops coexistem, e a comparação inventava um "movimento" que nunca houve. No caso real havia dois stops vivos, nenhum movido.
+2. A premissa estava errada. Abrir com OCO fixa, ajustar stop e alvo pela formação dos candles, aumentar posição e reajustar contra o médio é condução normal — e comparar preço absoluto ignora que, depois de piramidar, um stop mais longe em pontos pode representar risco igual ou menor.
+3. `CLEAN_EXECUTION` decidia "nenhum padrão negativo" olhando só os padrões do próprio shadow, **antes** da fusão com `events`. A premissa do detector ("eu vejo tudo") não se sustentava no lugar onde ele roda.
+
+**Regra nova:** alerta quando `distância × valor_do_ponto × contratos > RO do plano`, composto **por perna** — cada entrada pode trazer OCO próprio. Só entram na conta os stops vigentes no fim da operação; um cancelado bem antes foi substituído, e contá-lo junto duplicaria o mesmo risco.
+
+- **`RISK_OVER_RO`** (Ganância, gate) substitui o gatilho do `STOP_PANIC`
+- **`UNPROTECTED_SIZE`** (gate) substitui `STOP_PARTIAL_SIZING` e passa a cobrir o caso de **zero stops** — o antigo saía em `if (!stops.length) return []`, deixando passar justamente a posição totalmente descoberta
+- **`SIZING_DISCIPLINE`** (positivo) reconhece aumento de posição com o risco mantido dentro do RO
+- `CLEAN_EXECUTION` reavaliado **depois** da fusão, em `buildBehaviorProfile`
+- `STOP_PARTIAL_SIZING` deixa de mapear para `SUB_SIZING` (que é "risco muito ABAIXO do RO" — semântica oposta)
+- Marcação no extrato do plano: `SEM STOP` e `RISCO > RO` inline, para a falta de proteção aparecer na leitura do ciclo
+
+**Recompute do histórico aplicado** (`scripts/issue-357-recompute-behavior.mjs`): 338 trades analisados, 182 perfis gravados — 169 nunca tinham perfil (backfill), 13 mudaram de fato, 1 gate de progressão destravado, 9 alertas novos que antes eram invisíveis.
+
+3615 verdes no front, 206 em functions, paridade ESM↔CJS mantida.
+
+
 ## [1.83.8] - 19/08/2026
 
 **fix:** dois defeitos no `CsvImportManager` que produziam "clico e nada acontece, sem erro"
