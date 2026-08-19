@@ -88,14 +88,19 @@ describe('executionBehaviorMirror — paridade ESM↔CommonJS', () => {
     const esm = esmDetect({ trades: SEM1_TRADES, orders: SEM1_ORDERS });
     const cjs = cjsDetect({ trades: SEM1_TRADES, orders: SEM1_ORDERS });
     expect(cjs).toEqual(esm);
-    expect(cjs.length).toBe(3);
+    // #357 — eram 3. T2 e T3 passaram a emitir UNPROTECTED_SIZE (posição sem stop
+    // nenhum), caso que o detector antigo não cobria.
+    expect(cjs.length).toBe(5);
   });
 
-  it('STOP_TAMPERING: paridade exata', () => {
+  it('RISK_OVER_RO: paridade exata', () => {
     const esm = esmDetect({ trades: [STOP_TAMPERING_TRADE], orders: STOP_TAMPERING_ORDERS });
     const cjs = cjsDetect({ trades: [STOP_TAMPERING_TRADE], orders: STOP_TAMPERING_ORDERS });
     expect(cjs).toEqual(esm);
-    expect(cjs[0].type).toBe('STOP_TAMPERING');
+    // #357 — o fixture de "stop alargado" não tem baseline de plano (planRoPct/planPl),
+    // então RISK_OVER_RO não emite: mover o stop deixou de ser sinal por si só. O que
+    // este teste garante é a paridade ESM↔CJS, inclusive na ausência de evento.
+    expect(cjs.map(e => e.type)).toEqual(esm.map(e => e.type));
   });
 
   it('CHASE_REENTRY: paridade exata', () => {

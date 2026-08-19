@@ -225,7 +225,18 @@ const buildBehaviorProfiles = ({
         evidence: ev.evidence ?? null,
       });
     }
-    families.sort(byDisplayOrder);
+    // #357 — reconciliação pós-fusão. `detectCleanExecution` (shadowDetectors.js:170)
+    // decide "execução limpa" olhando só os padrões do PRÓPRIO shadow: ele não enxerga
+    // as detecções de `events`, que chegam aqui por outro caminho. Resultado observado
+    // em produção: o painel exibia "Execução limpa · 90%" ao lado de "Pânico no stop ·
+    // Alta · gate", no mesmo trade. O dedup por família não resolve — são famílias
+    // distintas, ambas sobrevivem por desenho. A premissa do detector ("eu vejo tudo")
+    // só pode ser verificada DEPOIS do merge, que é aqui.
+    const hasNegative = families.some((f) => f.valence === 'negative');
+    const reconciled = hasNegative
+      ? families.filter((f) => f.canonicalCode !== 'CLEAN_EXECUTION')
+      : families;
+    reconciled.sort(byDisplayOrder);
 
     const profile = {
       version: PROFILE_VERSION,
@@ -234,7 +245,7 @@ const buildBehaviorProfiles = ({
         shadowVersion: SHADOW_VERSION,
         baselineCompatible: engine.meta?.baselineCompatible ?? true,
       },
-      families,
+      families: reconciled,
       gateInputs, // famílias-gate detectadas NESTE trade (subset de GATE_CODES)
       scoreContribution: { // sinal emocional do período (contexto; tilt/revenge não são por-trade)
         tilt: !!(scoreInputs && scoreInputs.tilt && scoreInputs.tilt.detected),
@@ -243,7 +254,7 @@ const buildBehaviorProfiles = ({
       resolution: (shadow && shadow.resolution) || 'LOW',
       orderCount: (shadow && shadow.orderCount) || 0,
       // Confronto emocional: emoção declarada na entrada × emoção que a execução sugere.
-      emotionConfront: computeEmotionConfront(trade, families, getEmotionConfig),
+      emotionConfront: computeEmotionConfront(trade, reconciled, getEmotionConfig),
     };
     profile.fingerprint = behaviorFingerprint(profile);
     profiles.set(trade.id, profile);

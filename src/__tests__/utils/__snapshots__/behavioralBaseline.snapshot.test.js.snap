@@ -22,7 +22,7 @@ exports[`Baseline comportamental (Fase 0) — contrato de não-regressão > exec
   {
     "severity": "HIGH",
     "tradeId": "T1",
-    "type": "STOP_TAMPERING",
+    "type": "RISK_OVER_RO",
   },
 ]
 `;

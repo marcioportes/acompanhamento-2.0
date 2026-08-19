@@ -11,13 +11,17 @@
 // `src/__tests__/functions/maturity/executionBehaviorMirror.parity.test.js`.
 //
 // Detectores espelhados:
-//   STOP_TAMPERING, STOP_PARTIAL_SIZING, RAPID_REENTRY_POST_STOP,
+//   RISK_OVER_RO, UNPROTECTED_SIZE, SIZING_DISCIPLINE (issue #357 — substituem
+//   STOP_TAMPERING e STOP_PARTIAL_SIZING), RAPID_REENTRY_POST_STOP,
 //   HESITATION_PRE_ENTRY, CHASE_REENTRY,
 //   STOP_BREAKEVEN_TOO_EARLY, STOP_HESITATION (issue #229)
 
 const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
   STOP_PARTIAL_SIZING: 'STOP_PARTIAL_SIZING',
+  RISK_OVER_RO: 'RISK_OVER_RO',
+  UNPROTECTED_SIZE: 'UNPROTECTED_SIZE',
+  SIZING_DISCIPLINE: 'SIZING_DISCIPLINE',
   RAPID_REENTRY_POST_STOP: 'RAPID_REENTRY_POST_STOP',
   HESITATION_PRE_ENTRY: 'HESITATION_PRE_ENTRY',
   CHASE_REENTRY: 'CHASE_REENTRY',
@@ -83,12 +87,6 @@ function orderSideMatchesTradeSide(orderSide, tradeSide) {
          (orderSide === 'SELL' && tradeSide === 'SHORT');
 }
 
-function isStopWidened(tradeSide, prevPrice, currPrice) {
-  if (!tradeSide || !prevPrice || !currPrice) return false;
-  if (tradeSide === 'LONG') return currPrice < prevPrice;
-  if (tradeSide === 'SHORT') return currPrice > prevPrice;
-  return false;
-}
 
 function isPriceWorse(orderSide, prevPrice, currPrice) {
   if (!orderSide || !prevPrice || !currPrice) return false;
@@ -106,70 +104,179 @@ function tradeClosedInLoss(trade) {
   return trade && typeof trade.result === 'number' && trade.result < 0;
 }
 
-function detectStopTampering(trade, orders) {
-  const stops = ordersForTrade(orders, trade.id)
+// ── RISCO FINANCEIRO vs RO (#357) ──────────────────────────────────────────
+// Paridade com src/utils/executionBehaviorEngine.js.
+
+function pointValueOf(trade) {
+  const tr = trade && trade.tickerRule;
+  if (!tr) return null;
+  if (tr.tickSize && tr.tickValue) return tr.tickValue / tr.tickSize;
+  return tr.pointValue == null ? null : tr.pointValue;
+}
+
+function roAmountOf(trade) {
+  const pct = Number(trade && trade.planRoPct);
+  const pl = Number(trade && trade.planPl);
+  if (!isFinite(pct) || !isFinite(pl) || pct <= 0 || pl <= 0) return null;
+  return (pct / 100) * pl;
+}
+
+/** Stops VIGENTES no fim da operação — exclui os substituídos (paridade com o ESM). */
+const OCO_TOLERANCE_MS = 2000;
+
+function liveStopsAt(trade, stops) {
+  let refTs = toMs(trade && trade.exitTime);
+  if (refTs == null) {
+    refTs = 0;
+    for (let i = 0; i < stops.length; i++) {
+      const c = stops[i]._cancelTs != null ? stops[i]._cancelTs : (stops[i]._ts || 0);
+      if (c > refTs) refTs = c;
+    }
+  }
+  if (!refTs) return stops;
+  return stops.filter(function (o) {
+    return o._cancelTs == null || o._cancelTs >= refTs - OCO_TOLERANCE_MS;
+  });
+}
+
+function stopOrdersOf(trade, orders) {
+  return ordersForTrade(orders, trade.id)
     .filter(function (o) { return o.isStopOrder === true; })
     .map(function (o) {
       return Object.assign({}, o, {
-        _ts: toMs(o.submittedAt) || toMs(o.cancelledAt) || toMs(o.filledAt),
+        _ts: toMs(o.submittedAt) != null ? toMs(o.submittedAt) : (toMs(o.cancelledAt) != null ? toMs(o.cancelledAt) : toMs(o.filledAt)),
+        _cancelTs: toMs(o.cancelledAt),
         _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
       });
     })
-    .filter(function (o) { return o._ts != null && o._price != null; })
-    .sort(function (a, b) { return a._ts - b._ts; });
-
-  if (stops.length < 2) return [];
-
-  const events = [];
-  for (let i = 1; i < stops.length; i++) {
-    const prev = stops[i - 1];
-    const curr = stops[i];
-    if (prev._price === curr._price) continue;
-    if (!isStopWidened(trade.side, prev._price, curr._price)) continue;
-
-    events.push({
-      type: EVENT_TYPES.STOP_TAMPERING,
-      severity: EVENT_SEVERITY.HIGH,
-      tradeId: trade.id,
-      orderIds: [prev.externalOrderId, curr.externalOrderId].filter(Boolean),
-      timestamp: curr.submittedAt || null,
-      evidence: {
-        from: prev._price,
-        to: curr._price,
-        direction: 'WIDENED',
-        tradeSide: trade.side,
-      },
-      source: 'literature',
-      citation: 'Kahneman & Tversky (1979); Shefrin & Statman (1985)',
-    });
-  }
-  return events;
+    .filter(function (o) { return o._price != null; })
+    .sort(function (a, b) { return (a._ts || 0) - (b._ts || 0); });
 }
 
-function detectPartialSizing(trade, orders) {
-  if (trade.qty == null || trade.qty <= 0) return [];
+/** Risco dos stops composto POR PERNA — cada entrada pode trazer OCO próprio. */
+function stopRiskBreakdown(trade, stops) {
+  const pv = pointValueOf(trade);
+  const entry = parseFloat(trade && trade.entry);
+  if (!isFinite(pv) || pv <= 0 || !isFinite(entry) || entry <= 0) return null;
+  if (!stops.length) return null;
 
-  const stops = ordersForTrade(orders, trade.id).filter(function (o) {
-    return o.isStopOrder === true;
-  });
-  if (!stops.length) return [];
+  const legs = [];
+  for (let i = 0; i < stops.length; i++) {
+    const st = stops[i];
+    const price = st.stopPrice != null ? st.stopPrice : (st.price != null ? st.price : null);
+    const qty = Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
+    if (price == null || !isFinite(qty) || qty <= 0) continue;
+    const distance = Math.abs(entry - Number(price));
+    legs.push({
+      stopPrice: Number(price),
+      qty: qty,
+      distancePoints: Math.round(distance * 100) / 100,
+      riskAmount: Math.round(distance * pv * qty * 100) / 100,
+    });
+  }
+  if (!legs.length) return null;
+  let total = 0;
+  for (let i = 0; i < legs.length; i++) total += legs[i].riskAmount;
+  return { total: Math.round(total * 100) / 100, legs: legs };
+}
 
-  const totalStopQty = stops.reduce(function (sum, s) {
-    return sum + (s.quantity != null ? s.quantity : (s.qty != null ? s.qty : 0));
-  }, 0);
-  if (totalStopQty <= 0) return [];
-  if (totalStopQty >= trade.qty) return [];
+/** RISK_OVER_RO — substitui STOP_TAMPERING (#357). Gatilho financeiro, não de preço. */
+function detectRiskOverRo(trade, orders) {
+  const ro = roAmountOf(trade);
+  if (ro == null) return [];
+  const stops = liveStopsAt(trade, stopOrdersOf(trade, orders));
+  const breakdown = stopRiskBreakdown(trade, stops);
+  if (!breakdown) return [];
+  if (breakdown.total <= ro) return [];
+
+  const pv = pointValueOf(trade);
+  const qty = Number(trade.qty || 0);
+  const maxDist = (pv && qty) ? Math.round((ro / (pv * qty)) * 100) / 100 : null;
 
   return [{
-    type: EVENT_TYPES.STOP_PARTIAL_SIZING,
+    type: EVENT_TYPES.RISK_OVER_RO,
+    severity: EVENT_SEVERITY.HIGH,
+    tradeId: trade.id,
+    orderIds: stops.map(function (o) { return o.externalOrderId; }).filter(Boolean),
+    timestamp: stops.length ? (stops[stops.length - 1].submittedAt || null) : null,
+    evidence: {
+      riskAmount: breakdown.total,
+      roAmount: Math.round(ro * 100) / 100,
+      excessAmount: Math.round((breakdown.total - ro) * 100) / 100,
+      legs: breakdown.legs,
+      maxDistancePoints: maxDist,
+    },
+    source: 'plan',
+    citation: 'RO declarado no plano vigente',
+  }];
+}
+
+/** SIZING_DISCIPLINE — positivo (#357). Aumentou posição e manteve o risco no RO. */
+function detectSizingDiscipline(trade, orders) {
+  const ro = roAmountOf(trade);
+  if (ro == null) return [];
+  const partials = (trade && trade._partials) || [];
+  const entries = partials.filter(function (pp) { return pp && pp.type === 'ENTRY'; });
+  if (entries.length < 2) return [];
+
+  const stops = liveStopsAt(trade, stopOrdersOf(trade, orders));
+  const breakdown = stopRiskBreakdown(trade, stops);
+  if (!breakdown) return [];
+  if (breakdown.total > ro) return [];
+
+  let coveredQty = 0;
+  for (let i = 0; i < stops.length; i++) {
+    const st = stops[i];
+    coveredQty += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
+  }
+  if (!(coveredQty >= Number(trade.qty || 0))) return [];
+
+  return [{
+    type: EVENT_TYPES.SIZING_DISCIPLINE,
+    severity: null,
+    tradeId: trade.id,
+    orderIds: stops.map(function (o) { return o.externalOrderId; }).filter(Boolean),
+    timestamp: trade.exitTime || trade.entryTime || null,
+    evidence: {
+      entryCount: entries.length,
+      riskAmount: breakdown.total,
+      roAmount: Math.round(ro * 100) / 100,
+      legs: breakdown.legs,
+    },
+    source: 'plan',
+    citation: 'RO declarado no plano vigente',
+  }];
+}
+
+/** UNPROTECTED_SIZE — substitui STOP_PARTIAL_SIZING (#357). Cobre o caso de ZERO stops. */
+function detectUnprotectedSize(trade, orders) {
+  const tradeQty = Number((trade && trade.qty) || 0);
+  if (!isFinite(tradeQty) || tradeQty <= 0) return [];
+
+  const all = ordersForTrade(orders, trade.id);
+  if (!all.length) return [];
+
+  const stops = all.filter(function (o) { return o.isStopOrder === true; });
+  let coveredQty = 0;
+  for (let i = 0; i < stops.length; i++) {
+    const st = stops[i];
+    coveredQty += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
+  }
+  const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
+  if (uncoveredQty <= 0) return [];
+
+  return [{
+    type: EVENT_TYPES.UNPROTECTED_SIZE,
     severity: EVENT_SEVERITY.HIGH,
     tradeId: trade.id,
     orderIds: stops.map(function (s) { return s.externalOrderId; }).filter(Boolean),
-    timestamp: stops[0].submittedAt || null,
+    timestamp: (stops.length && stops[0].submittedAt) || trade.entryTime || null,
     evidence: {
-      tradeQty: trade.qty,
-      stopQty: totalStopQty,
-      ratio: Math.round((totalStopQty / trade.qty) * 100) / 100,
+      tradeQty: tradeQty,
+      coveredQty: coveredQty,
+      uncoveredQty: uncoveredQty,
+      hasAnyStop: stops.length > 0,
+      ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
     },
     source: 'literature',
     citation: 'Shefrin & Statman (1985); Odean (1998)',
@@ -428,8 +535,9 @@ function detectExecutionEvents(input) {
 
   for (const trade of trades) {
     if (!trade || !trade.id) continue;
-    events.push.apply(events, detectStopTampering(trade, orders));
-    events.push.apply(events, detectPartialSizing(trade, orders));
+    events.push.apply(events, detectRiskOverRo(trade, orders));
+    events.push.apply(events, detectUnprotectedSize(trade, orders));
+    events.push.apply(events, detectSizingDiscipline(trade, orders));
     events.push.apply(events, detectHesitation(trade, orders, cfg));
     events.push.apply(events, detectChaseReentry(trade, orders));
     events.push.apply(events, detectStopBreakevenTooEarly(trade, orders, cfg));

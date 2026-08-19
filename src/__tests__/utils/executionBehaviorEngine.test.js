@@ -15,13 +15,20 @@ import {
 // FIXTURES
 // ============================================
 
+// #357 — baseline de risco. `planRoPct`/`planPl` são anexados ao trade por
+// buildBehaviorProfile antes do motor rodar; `tickerRule` vem do doc do trade.
+// WIN: tickValue 1 / tickSize 5 = R$ 0,20 por ponto. RO = 0,84% × 30.000 = R$ 252.
 const makeTrade = (overrides = {}) => ({
   id: 'T1',
   ticker: 'WINM26',
   side: 'LONG',
   qty: 2,
+  entry: '100000',
   entryTime: '2026-04-22T10:30:00Z',
   exitTime: '2026-04-22T11:00:00Z',
+  planRoPct: 0.84,
+  planPl: 30000,
+  tickerRule: { tickSize: 5, tickValue: 1, pointValue: null },
   ...overrides,
 });
 
@@ -44,118 +51,192 @@ const makeOrder = (overrides = {}) => ({
 });
 
 // ============================================
-// STOP_TAMPERING
+// RISK_OVER_RO (#357 — substitui STOP_TAMPERING)
 // ============================================
-describe('detectExecutionEvents — STOP_TAMPERING', () => {
-  it('detecta stop reemitido para mais largo (LONG)', () => {
-    const trade = makeTrade({ side: 'LONG' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, type: 'STOP',
-        status: 'CANCELLED', stopPrice: 99500,
-        submittedAt: '2026-04-22T10:30:30Z' }),
-      makeOrder({ externalOrderId: 'S2', isStopOrder: true, type: 'STOP',
-        status: 'FILLED', stopPrice: 99300,
-        submittedAt: '2026-04-22T10:35:00Z' }),
-    ];
-    const events = detectExecutionEvents({ trades: [trade], orders });
-    const tampering = events.filter(e => e.type === EVENT_TYPES.STOP_TAMPERING);
-    expect(tampering).toHaveLength(1);
-    expect(tampering[0].severity).toBe(EVENT_SEVERITY.HIGH);
-    expect(tampering[0].evidence.from).toBe(99500);
-    expect(tampering[0].evidence.to).toBe(99300);
-    expect(tampering[0].evidence.direction).toBe('WIDENED');
-    expect(tampering[0].source).toBe('literature');
+describe('detectExecutionEvents — RISK_OVER_RO', () => {
+  // RO = R$ 252. Ponto = R$ 0,20.
+  const stop = (id, price, qty, at) => makeOrder({
+    externalOrderId: id, isStopOrder: true, type: 'STOP', status: 'CANCELLED',
+    stopPrice: price, quantity: qty, submittedAt: at,
   });
 
-  it('detecta stop reemitido para mais largo (SHORT — preço sobe)', () => {
-    const trade = makeTrade({ side: 'SHORT' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, type: 'STOP',
-        status: 'CANCELLED', stopPrice: 100500, side: 'BUY',
-        submittedAt: '2026-04-22T10:30:30Z' }),
-      makeOrder({ externalOrderId: 'S2', isStopOrder: true, type: 'STOP',
-        status: 'FILLED', stopPrice: 100800, side: 'BUY',
-        submittedAt: '2026-04-22T10:35:00Z' }),
-    ];
-    const events = detectExecutionEvents({ trades: [trade], orders });
-    const tampering = events.filter(e => e.type === EVENT_TYPES.STOP_TAMPERING);
-    expect(tampering).toHaveLength(1);
-    expect(tampering[0].evidence.from).toBe(100500);
-    expect(tampering[0].evidence.to).toBe(100800);
+  it('dispara quando o risco financeiro passa do RO', () => {
+    // 8 contratos a 250 pts = 250 × 0,20 × 8 = R$ 400 > R$ 252
+    const trade = makeTrade({ qty: 8 });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [stop('S1', 99750, 8, '2026-04-22T10:30:30Z')],
+    });
+    const over = events.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO);
+    expect(over).toHaveLength(1);
+    expect(over[0].severity).toBe(EVENT_SEVERITY.HIGH);
+    expect(over[0].evidence.riskAmount).toBe(400);
+    expect(over[0].evidence.roAmount).toBe(252);
+    expect(over[0].evidence.excessAmount).toBe(148);
+    expect(over[0].evidence.maxDistancePoints).toBe(157.5);
+    expect(over[0].source).toBe('plan');
   });
 
-  it('NÃO detecta tampering quando stop foi APERTADO (trailing legítimo)', () => {
-    const trade = makeTrade({ side: 'LONG' });
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
-        stopPrice: 99500, submittedAt: '2026-04-22T10:30:30Z' }),
-      makeOrder({ externalOrderId: 'S2', isStopOrder: true, status: 'FILLED',
-        stopPrice: 99700, submittedAt: '2026-04-22T10:35:00Z' }),
-    ];
-    const events = detectExecutionEvents({ trades: [trade], orders });
-    expect(events.filter(e => e.type === EVENT_TYPES.STOP_TAMPERING)).toHaveLength(0);
+  it('NÃO dispara quando o risco cabe no RO — mesmo com o stop mais longe em pontos', () => {
+    // Regressão do falso positivo: mover o stop para longe não é sinal por si só.
+    const trade = makeTrade({ qty: 5 });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [
+        // S1 é SUBSTITUÍDO por S2 (cancelado antes do novo nascer) — não soma junto,
+        // senão o mesmo risco seria contado duas vezes.
+        makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
+          stopPrice: 99900, quantity: 5,
+          submittedAt: '2026-04-22T10:30:30Z', cancelledAt: '2026-04-22T10:34:00Z' }),
+        stop('S2', 99800, 5, '2026-04-22T10:35:00Z'),   // 200 pts × 0,20 × 5 = R$ 200 < 252
+      ],
+    });
+    expect(events.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO)).toHaveLength(0);
   });
 
-  it('NÃO detecta tampering com stop único', () => {
-    const trade = makeTrade();
-    const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        stopPrice: 99500 }),
-    ];
-    const events = detectExecutionEvents({ trades: [trade], orders });
-    expect(events.filter(e => e.type === EVENT_TYPES.STOP_TAMPERING)).toHaveLength(0);
+  it('compõe POR PERNA — cada stop protege sua própria quantidade', () => {
+    // Caso real WINV26 18/08: 5 ctr @ 49,38 pts + 3 ctr @ 129,38 pts = R$ 127,01.
+    const trade = makeTrade({ qty: 8, entry: '169829.38' });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [
+        stop('S1', 169780, 5, '2026-04-22T10:30:30Z'),
+        stop('S2', 169700, 3, '2026-04-22T10:35:00Z'),
+      ],
+    });
+    // 49,38×0,2×5 = 49,38  +  129,38×0,2×3 = 77,63  →  127,01 < 252
+    expect(events.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO)).toHaveLength(0);
+  });
+
+  it('sem baseline de plano não emite (nem alerta, nem positivo)', () => {
+    const trade = makeTrade({ qty: 8, planRoPct: null, planPl: null });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [stop('S1', 99750, 8, '2026-04-22T10:30:30Z')],
+    });
+    expect(events.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO)).toHaveLength(0);
+    expect(events.filter(e => e.type === EVENT_TYPES.SIZING_DISCIPLINE)).toHaveLength(0);
+  });
+
+  it('sem tickerRule não converte para R$ e não emite', () => {
+    const trade = makeTrade({ qty: 8, tickerRule: null });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [stop('S1', 99750, 8, '2026-04-22T10:30:30Z')],
+    });
+    expect(events.filter(e => e.type === EVENT_TYPES.RISK_OVER_RO)).toHaveLength(0);
   });
 });
 
 // ============================================
-// STOP_PARTIAL_SIZING
+// SIZING_DISCIPLINE (#357 — positivo)
 // ============================================
-describe('detectExecutionEvents — STOP_PARTIAL_SIZING', () => {
-  it('detecta stop qty=1 com trade qty=2', () => {
+describe('detectExecutionEvents — SIZING_DISCIPLINE', () => {
+  const stop = (id, price, qty) => makeOrder({
+    externalOrderId: id, isStopOrder: true, status: 'CANCELLED', stopPrice: price, quantity: qty,
+  });
+  const comDuasEntradas = (o = {}) => makeTrade({
+    qty: 8, entry: '169829.38',
+    _partials: [
+      { type: 'ENTRY', qty: 5, price: 169760 },
+      { type: 'ENTRY', qty: 3, price: 169945 },
+      { type: 'EXIT', qty: 8, price: 170155 },
+    ],
+    ...o,
+  });
+
+  it('reconhece aumento de posição com risco dentro do RO', () => {
+    const events = detectExecutionEvents({
+      trades: [comDuasEntradas()],
+      orders: [stop('S1', 169780, 5), stop('S2', 169700, 3)],
+    });
+    const good = events.filter(e => e.type === EVENT_TYPES.SIZING_DISCIPLINE);
+    expect(good).toHaveLength(1);
+    expect(good[0].severity).toBeNull();
+    expect(good[0].evidence.entryCount).toBe(2);
+    expect(good[0].evidence.riskAmount).toBe(127.01);
+    expect(good[0].evidence.roAmount).toBe(252);
+  });
+
+  it('NÃO reconhece quando parte da posição está descoberta', () => {
+    // Risco baixo por falta de stop não é disciplina.
+    const events = detectExecutionEvents({
+      trades: [comDuasEntradas()],
+      orders: [stop('S1', 169780, 5)],   // só 5 de 8 cobertos
+    });
+    expect(events.filter(e => e.type === EVENT_TYPES.SIZING_DISCIPLINE)).toHaveLength(0);
+  });
+
+  it('NÃO reconhece sem aumento de posição (entrada única)', () => {
+    const trade = comDuasEntradas({ _partials: [{ type: 'ENTRY', qty: 8, price: 169829.38 }] });
+    const events = detectExecutionEvents({
+      trades: [trade],
+      orders: [stop('S1', 169780, 8)],
+    });
+    expect(events.filter(e => e.type === EVENT_TYPES.SIZING_DISCIPLINE)).toHaveLength(0);
+  });
+});
+
+// ============================================
+// UNPROTECTED_SIZE (#357 — substitui STOP_PARTIAL_SIZING)
+// ============================================
+describe('detectExecutionEvents — UNPROTECTED_SIZE', () => {
+  it('detecta cobertura parcial: stop qty=1 com trade qty=2', () => {
     const trade = makeTrade({ qty: 2 });
     const orders = [
       makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
         quantity: 1, stopPrice: 99500 }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
-    const partial = events.filter(e => e.type === EVENT_TYPES.STOP_PARTIAL_SIZING);
-    expect(partial).toHaveLength(1);
-    expect(partial[0].severity).toBe(EVENT_SEVERITY.HIGH);
-    expect(partial[0].evidence.tradeQty).toBe(2);
-    expect(partial[0].evidence.stopQty).toBe(1);
-    expect(partial[0].evidence.ratio).toBe(0.5);
+    const un = events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE);
+    expect(un).toHaveLength(1);
+    expect(un[0].severity).toBe(EVENT_SEVERITY.HIGH);
+    expect(un[0].evidence.uncoveredQty).toBe(1);
+    expect(un[0].evidence.ratio).toBe(0.5);
+    expect(un[0].evidence.hasAnyStop).toBe(true);
   });
 
-  it('NÃO detecta quando stop qty == trade qty', () => {
-    const trade = makeTrade({ qty: 2 });
+  it('detecta posição TOTALMENTE descoberta — o caso que o detector antigo deixava passar', () => {
+    // O antigo saía em `if (!stops.length) return []`: zero stops = nenhum evento.
+    // Era justamente o caso mais grave. Cenário de Marcio: entram 3 contratos sem stop.
+    const trade = makeTrade({ qty: 8 });
     const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'FILLED',
-        quantity: 2, stopPrice: 99500 }),
+      makeOrder({ externalOrderId: 'E1', isStopOrder: false, quantity: 8, status: 'FILLED' }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
-    expect(events.filter(e => e.type === EVENT_TYPES.STOP_PARTIAL_SIZING)).toHaveLength(0);
+    const un = events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE);
+    expect(un).toHaveLength(1);
+    expect(un[0].evidence.uncoveredQty).toBe(8);
+    expect(un[0].evidence.hasAnyStop).toBe(false);
+    expect(un[0].evidence.ratio).toBe(0);
   });
 
-  it('NÃO detecta quando trade não tem stops correlacionados', () => {
-    const trade = makeTrade({ qty: 2 });
-    const orders = [makeOrder({ externalOrderId: 'E1' })];
-    const events = detectExecutionEvents({ trades: [trade], orders });
-    expect(events.filter(e => e.type === EVENT_TYPES.STOP_PARTIAL_SIZING)).toHaveLength(0);
-  });
-
-  it('soma múltiplos stops parciais', () => {
-    const trade = makeTrade({ qty: 4 });
+  it('soma múltiplos stops parciais antes de decidir', () => {
+    const trade = makeTrade({ qty: 5 });
     const orders = [
-      makeOrder({ externalOrderId: 'S1', isStopOrder: true, status: 'CANCELLED',
-        quantity: 1, stopPrice: 99500 }),
-      makeOrder({ externalOrderId: 'S2', isStopOrder: true, status: 'CANCELLED',
-        quantity: 1, stopPrice: 99500 }),
+      makeOrder({ externalOrderId: 'S1', isStopOrder: true, quantity: 2, stopPrice: 99500 }),
+      makeOrder({ externalOrderId: 'S2', isStopOrder: true, quantity: 1, stopPrice: 99400 }),
     ];
     const events = detectExecutionEvents({ trades: [trade], orders });
-    const partial = events.filter(e => e.type === EVENT_TYPES.STOP_PARTIAL_SIZING);
-    expect(partial).toHaveLength(1);
-    expect(partial[0].evidence.stopQty).toBe(2);
-    expect(partial[0].evidence.ratio).toBe(0.5);
+    const un = events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE);
+    expect(un).toHaveLength(1);
+    expect(un[0].evidence.coveredQty).toBe(3);
+    expect(un[0].evidence.uncoveredQty).toBe(2);
+  });
+
+  it('NÃO detecta quando a cobertura é completa', () => {
+    const trade = makeTrade({ qty: 5 });
+    const orders = [
+      makeOrder({ externalOrderId: 'S1', isStopOrder: true, quantity: 5, stopPrice: 99500 }),
+    ];
+    const events = detectExecutionEvents({ trades: [trade], orders });
+    expect(events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
+  });
+
+  it('sem ordens correlacionadas não afirma nada (resolução insuficiente)', () => {
+    const trade = makeTrade({ qty: 5 });
+    const events = detectExecutionEvents({ trades: [trade], orders: [] });
+    expect(events.filter(e => e.type === EVENT_TYPES.UNPROTECTED_SIZE)).toHaveLength(0);
   });
 });
 
@@ -338,21 +419,27 @@ describe('detectExecutionEvents — fixture SEM1 (integração)', () => {
       isStopOrder: false, correlatedTradeId: 'T3' },
   ];
 
-  it('detecta exatamente 3 eventos esperados', () => {
+  it('detecta exatamente 5 eventos esperados', () => {
+    // #357 — eram 3. T2 e T3 passaram a emitir UNPROTECTED_SIZE: nenhum dos dois
+    // tinha ordem de stop (T2 fechou em loss manualmente), e o detector antigo saía
+    // em `if (!stops.length) return []` — posição totalmente descoberta não gerava
+    // nada. Era o caso mais grave e o único não coberto.
     const events = detectExecutionEvents({ trades: [t1, t2, t3], orders });
     const types = events.map(e => e.type).sort();
     expect(types).toEqual([
       EVENT_TYPES.HESITATION_PRE_ENTRY,
       EVENT_TYPES.RAPID_REENTRY_POST_STOP,
-      EVENT_TYPES.STOP_PARTIAL_SIZING,
+      EVENT_TYPES.UNPROTECTED_SIZE,   // T1 — cobertura parcial (1 de 2)
+      EVENT_TYPES.UNPROTECTED_SIZE,   // T2 — sem stop nenhum
+      EVENT_TYPES.UNPROTECTED_SIZE,   // T3 — sem stop nenhum
     ].sort());
   });
 
-  it('STOP_PARTIAL_SIZING aponta T1 com ratio 0.5', () => {
+  it('UNPROTECTED_SIZE aponta T1 com ratio 0.5', () => {
     const events = detectExecutionEvents({ trades: [t1, t2, t3], orders });
-    const e = events.find(x => x.type === EVENT_TYPES.STOP_PARTIAL_SIZING);
-    expect(e.tradeId).toBe('T1');
+    const e = events.find(x => x.type === EVENT_TYPES.UNPROTECTED_SIZE && x.tradeId === 'T1');
     expect(e.evidence.ratio).toBe(0.5);
+    expect(e.evidence.uncoveredQty).toBe(1);
   });
 
   it('HESITATION_PRE_ENTRY aponta T2 com gap ~19min', () => {

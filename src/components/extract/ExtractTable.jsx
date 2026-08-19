@@ -83,6 +83,18 @@ const getTradeInlineEvents = (row, emotionalEvents) => {
     }
   }
 
+  // 3. Comportamento estrutural (#357) — lido do snapshot `behaviorProfile` do trade.
+  //    Canal 2 decidido por Marcio (19/08/2026): a falta de proteção precisa aparecer
+  //    na leitura do ciclo, não só no trade isolado. Cisne negro não avisa.
+  const families = trade?.behaviorProfile?.families || [];
+  for (const f of families) {
+    if (f.canonicalCode === 'UNPROTECTED_SIZE') {
+      events.push({ icon: ShieldOff, color: 'text-red-400', label: 'SEM STOP', small: true });
+    } else if (f.canonicalCode === 'RISK_OVER_RO') {
+      events.push({ icon: ShieldAlert, color: 'text-amber-400', label: 'RISCO > RO', small: true });
+    }
+  }
+
   return events;
 };
 

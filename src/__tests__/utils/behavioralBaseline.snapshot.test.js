@@ -30,13 +30,13 @@ const getEmotionConfig = (name) =>
 
 // ---- Fixtures determinísticas ----
 const TRADES = [
-  { id: 'T1', side: 'LONG', qty: 1, entry: 5100, result: -50, emotionEntry: 'Ansioso',
+  { id: 'T1', side: 'LONG', qty: 1, entry: 5100, planRoPct: 1, planPl: 30000, tickerRule: { tickSize: 0.25, tickValue: 12.5 }, result: -50, emotionEntry: 'Ansioso',
     entryTime: '2026-04-22T10:00:00', exitTime: '2026-04-22T10:05:00' },
-  { id: 'T2', side: 'LONG', qty: 2, entry: 5095, result: -40, emotionEntry: 'Revanche',
+  { id: 'T2', side: 'LONG', qty: 2, entry: 5095, planRoPct: 1, planPl: 30000, tickerRule: { tickSize: 0.25, tickValue: 12.5 }, result: -40, emotionEntry: 'Revanche',
     entryTime: '2026-04-22T10:08:00', exitTime: '2026-04-22T10:12:00' },
-  { id: 'T3', side: 'LONG', qty: 4, entry: 5090, result: -30, emotionEntry: 'Revanche',
+  { id: 'T3', side: 'LONG', qty: 4, entry: 5090, planRoPct: 1, planPl: 30000, tickerRule: { tickSize: 0.25, tickValue: 12.5 }, result: -30, emotionEntry: 'Revanche',
     entryTime: '2026-04-22T10:14:00', exitTime: '2026-04-22T10:18:00' },
-  { id: 'T4', side: 'SHORT', qty: 1, entry: 5080, result: 60, emotionEntry: 'Calmo',
+  { id: 'T4', side: 'SHORT', qty: 1, entry: 5080, planRoPct: 1, planPl: 30000, tickerRule: { tickSize: 0.25, tickValue: 12.5 }, result: 60, emotionEntry: 'Calmo',
     entryTime: '2026-04-22T11:30:00', exitTime: '2026-04-22T11:45:00' },
 ];
 

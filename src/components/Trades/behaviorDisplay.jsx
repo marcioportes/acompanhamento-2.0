@@ -47,6 +47,9 @@ export const BEHAVIOR_LABELS = {
   OVERTRADING: 'Overtrading',
   IMPULSE_CLUSTER: 'Cluster impulsivo',
   DIRECTION_FLIP: 'Virada de mão',
+  RISK_OVER_RO: 'Risco acima do RO',
+  UNPROTECTED_SIZE: 'Posição sem proteção',
+  SIZING_DISCIPLINE: 'Condução de sizing',
   CLEAN_EXECUTION: 'Execução limpa',
   TARGET_HIT: 'Alvo atingido',
 };
@@ -67,6 +70,9 @@ export const BEHAVIOR_DESCRIPTIONS = {
   OVERTRADING: 'Número de trades acima do limite na janela temporal.',
   IMPULSE_CLUSTER: 'Trades executados em sequência muito rápida, sem análise.',
   DIRECTION_FLIP: 'Virou a mão no mesmo instrumento após loss — viés/narrativa quebrada.',
+  RISK_OVER_RO: 'O valor financeiro do stop passou do RO do plano — a distância do stop não acompanhou o aumento da posição.',
+  UNPROTECTED_SIZE: 'Contratos abertos sem ordem de stop cobrindo — exposição sem barreira.',
+  SIZING_DISCIPLINE: 'Aumentou a posição e ajustou a proteção junto: o risco continuou dentro do RO.',
   CLEAN_EXECUTION: 'Trade com stop presente, RR respeitado e sem padrões negativos.',
   TARGET_HIT: 'Saída no alvo planejado — paciência na execução.',
 };

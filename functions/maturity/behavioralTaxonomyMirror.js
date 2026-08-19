@@ -104,6 +104,24 @@ const BEHAVIORAL_PATTERNS = Object.freeze({
     severityDefault: SEVERITY.LOW, emotionMapping: 'CONFUSION',
     resolutionLayer: RESOLUTION.LOW, requires: ['trades'], feedsScore: true, feedsGates: false,
   }),
+  RISK_OVER_RO: P({
+    code: 'RISK_OVER_RO', family: 'RISK_OVER_RO', valence: 'negative', dimensao: ['O'],
+    viesFramework: 'Indisciplina de risco — excede o RO declarado no plano (§5)',
+    severityDefault: SEVERITY.HIGH, emotionMapping: 'GREED',
+    resolutionLayer: RESOLUTION.HIGH, requires: ['trades', 'orders', 'plan'], feedsScore: true, feedsGates: true,
+  }),
+  UNPROTECTED_SIZE: P({
+    code: 'UNPROTECTED_SIZE', family: 'UNPROTECTED_SIZE', valence: 'negative', dimensao: ['O'],
+    viesFramework: 'Ausência de proteção — exposição a cauda (§5)',
+    severityDefault: SEVERITY.HIGH, emotionMapping: null,
+    resolutionLayer: RESOLUTION.HIGH, requires: ['trades', 'orders'], feedsScore: true, feedsGates: true,
+  }),
+  SIZING_DISCIPLINE: P({
+    code: 'SIZING_DISCIPLINE', family: 'SIZING_DISCIPLINE', valence: 'positive', dimensao: ['O'],
+    viesFramework: 'Condução de sizing — aumenta posição mantendo o risco no RO (§5)',
+    severityDefault: null, emotionMapping: 'DISCIPLINE',
+    resolutionLayer: RESOLUTION.HIGH, requires: ['trades', 'orders', 'plan'], feedsScore: true, feedsGates: false,
+  }),
   CLEAN_EXECUTION: P({
     code: 'CLEAN_EXECUTION', family: 'CLEAN_EXECUTION', valence: 'positive', dimensao: ['E'],
     viesFramework: 'Disciplina — perfil SAGE (§2.4)',
@@ -124,7 +142,12 @@ const LEGACY_CODE_ALIAS = Object.freeze({
   STOP_HESITATION: 'HESITATION',
   HESITATION_PRE_ENTRY: 'HESITATION',
   RAPID_REENTRY_POST_STOP: 'LOSS_CHASING',
-  STOP_PARTIAL_SIZING: 'SUB_SIZING',
+  // #357 — cobertura parcial de stop NÃO é subdimensionamento (SUB_SIZING = risco muito
+  // ABAIXO do RO). Passa a ter família própria: contrato aberto sem proteção.
+  STOP_PARTIAL_SIZING: 'UNPROTECTED_SIZE',
+  UNPROTECTED_SIZE: 'UNPROTECTED_SIZE',
+  RISK_OVER_RO: 'RISK_OVER_RO',
+  SIZING_DISCIPLINE: 'SIZING_DISCIPLINE',
   CHASE_REENTRY: 'CHASE_REENTRY',
   REVENGE_CLUSTER: 'LOSS_CHASING',
   UNDERSIZED_TRADE: 'SUB_SIZING',

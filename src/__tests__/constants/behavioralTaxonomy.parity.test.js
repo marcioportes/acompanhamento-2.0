@@ -45,7 +45,9 @@ describe('behavioralTaxonomy — invariantes', () => {
     expect(resolveCanonical('STOP_BREAKEVEN_TOO_EARLY')).toBe('STOP_PANIC');
     expect(resolveCanonical('RAPID_REENTRY_POST_STOP')).toBe('LOSS_CHASING');
     expect(resolveCanonical('REVENGE_CLUSTER')).toBe('LOSS_CHASING');
-    expect(resolveCanonical('STOP_PARTIAL_SIZING')).toBe('SUB_SIZING');
+    // #357 — cobertura parcial de stop ganhou família própria: não é subdimensionamento
+    // (SUB_SIZING = risco muito ABAIXO do RO), é posição sem proteção.
+    expect(resolveCanonical('STOP_PARTIAL_SIZING')).toBe('UNPROTECTED_SIZE');
     expect(resolveCanonical('UNDERSIZED_TRADE')).toBe('SUB_SIZING');
     expect(resolveCanonical('HESITATION_PRE_ENTRY')).toBe('HESITATION');
     expect(resolveCanonical('STOP_HESITATION')).toBe('HESITATION');

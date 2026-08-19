@@ -38,6 +38,9 @@
 export const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
   STOP_PARTIAL_SIZING: 'STOP_PARTIAL_SIZING',
+  RISK_OVER_RO: 'RISK_OVER_RO',
+  UNPROTECTED_SIZE: 'UNPROTECTED_SIZE',
+  SIZING_DISCIPLINE: 'SIZING_DISCIPLINE',
   RAPID_REENTRY_POST_STOP: 'RAPID_REENTRY_POST_STOP',
   HESITATION_PRE_ENTRY: 'HESITATION_PRE_ENTRY',
   CHASE_REENTRY: 'CHASE_REENTRY',
@@ -109,13 +112,6 @@ const orderSideMatchesTradeSide = (orderSide, tradeSide) => {
          (orderSide === 'SELL' && tradeSide === 'SHORT');
 };
 
-/** Determina se o stop foi WIDENED (afastado da entrada → risco maior). */
-const isStopWidened = (tradeSide, prevPrice, currPrice) => {
-  if (!tradeSide || !prevPrice || !currPrice) return false;
-  if (tradeSide === 'LONG') return currPrice < prevPrice;   // stop abaixo da entry; menor = mais distante
-  if (tradeSide === 'SHORT') return currPrice > prevPrice;  // stop acima da entry; maior = mais distante
-  return false;
-};
 
 /** Determina se o preço da nova ordem é "pior" que o anterior (chase). */
 const isPriceWorse = (orderSide, prevPrice, currPrice) => {
@@ -137,77 +133,231 @@ const ordersForTrade = (orders, tradeId) =>
 const tradeClosedInLoss = (trade) =>
   typeof trade?.result === 'number' && trade.result < 0;
 
+
+// ============================================
+// RISCO FINANCEIRO vs RO (#357)
+// ============================================
+
+/**
+ * Valor de 1 ponto em R$ para o instrumento do trade. Mesma conversão de
+ * `calculateFromPartials` (tradeCalculations.js) — tickValue por tick, dividido
+ * pelo tamanho do tick, dá o valor por ponto.
+ */
+const pointValueOf = (trade) => {
+  const tr = trade?.tickerRule;
+  if (!tr) return null;
+  if (tr.tickSize && tr.tickValue) return tr.tickValue / tr.tickSize;
+  return tr.pointValue ?? null;
+};
+
+/**
+ * RO (Risco Operacional) do plano em R$. Mesma fórmula de dashboardMetrics.js:243.
+ * `planRoPct`/`planPl` são anexados ao trade por buildBehaviorProfile antes do motor.
+ */
+const roAmountOf = (trade) => {
+  const pct = Number(trade?.planRoPct);
+  const pl = Number(trade?.planPl);
+  if (!Number.isFinite(pct) || !Number.isFinite(pl) || pct <= 0 || pl <= 0) return null;
+  return (pct / 100) * pl;
+};
+
+/**
+ * Risco financeiro dos stops, composto POR PERNA (DEC-AUTO-357-02).
+ *
+ * Cada entrada pode trazer seu próprio OCO, então stops coexistem — cada um
+ * protege a própria quantidade. Somar `distância × qtd × valorDoPonto` de cada
+ * perna dá o prejuízo real caso todas disparassem. Medir em pontos (o que o
+ * detector antigo fazia) confunde gestão com descontrole: depois de piramidar,
+ * um stop "mais longe em pontos" pode representar risco igual ou menor.
+ *
+ * Âncora da distância: preço médio de entrada do trade — é contra ele que o
+ * risco agregado se realiza.
+ *
+ * @returns {{ total: number, legs: Array }|null} null quando falta baseline.
+ */
+const stopRiskBreakdown = (trade, stops) => {
+  const pv = pointValueOf(trade);
+  const entry = parseFloat(trade?.entry);
+  if (!Number.isFinite(pv) || pv <= 0 || !Number.isFinite(entry) || entry <= 0) return null;
+  if (!stops.length) return null;
+
+  const legs = [];
+  for (const s of stops) {
+    const price = s.stopPrice ?? s.price ?? null;
+    const qty = Number(s.quantity ?? s.qty ?? 0);
+    if (price == null || !Number.isFinite(qty) || qty <= 0) continue;
+    const distance = Math.abs(entry - Number(price));
+    legs.push({
+      stopPrice: Number(price),
+      qty,
+      distancePoints: Math.round(distance * 100) / 100,
+      riskAmount: Math.round(distance * pv * qty * 100) / 100,
+    });
+  }
+  if (!legs.length) return null;
+  const total = Math.round(legs.reduce((acc, l) => acc + l.riskAmount, 0) * 100) / 100;
+  return { total, legs };
+};
+
+/**
+ * Stops VIGENTES — os que ainda protegiam a posição no fim da operação.
+ *
+ * Um stop cancelado bem antes da saída foi **substituído** (cancela e reemite); somá-lo
+ * junto com o substituto contaria o mesmo risco duas vezes. Já num bracket OCO as pernas
+ * são canceladas no instante da saída, porque a perna de limite executou — essas contam,
+ * e são justamente as que compõem o risco por perna.
+ *
+ * Critério: sobrevive quem não tem cancelamento (executado ou ainda ativo) ou quem foi
+ * cancelado a partir da saída, dentro da tolerância de OCO.
+ */
+const OCO_TOLERANCE_MS = 2000;
+
+const liveStopsAt = (trade, stops) => {
+  const refTs = toMs(trade?.exitTime)
+    ?? stops.reduce((mx, o) => Math.max(mx, o._cancelTs ?? o._ts ?? 0), 0);
+  if (!refTs) return stops;
+  return stops.filter(o => o._cancelTs == null || o._cancelTs >= refTs - OCO_TOLERANCE_MS);
+};
+
+/** Stops de um trade, normalizados e ordenados cronologicamente. */
+const stopOrdersOf = (trade, orders) => ordersForTrade(orders, trade.id)
+  .filter(o => o.isStopOrder === true)
+  .map(o => ({
+    ...o,
+    _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+    _cancelTs: toMs(o.cancelledAt),
+    _price: o.stopPrice ?? o.price ?? null,
+  }))
+  .filter(o => o._price != null)
+  .sort((a, b) => (a._ts ?? 0) - (b._ts ?? 0));
+
 // ============================================
 // DETECTORS
 // ============================================
 
 /**
- * STOP_TAMPERING — stop reemitido para mais largo durante vida do trade.
- * Fonte: Kahneman & Tversky 1979 (loss aversion); Shefrin & Statman 1985 (disposition).
+ * RISK_OVER_RO — o valor financeiro do stop excede o RO do plano (#357).
+ *
+ * SUBSTITUI o antigo STOP_TAMPERING, que emitia sempre que um stop aparecia mais
+ * longe que o anterior. Aquilo era incompatível com condução normal de operação:
+ * abrir com OCO fixa, ajustar stop e alvo pela formação dos candles, aumentar
+ * posição, olhar o médio e reajustar. Nesse fluxo o stop se move várias vezes e
+ * quase sempre "para longe" em preço absoluto, porque o médio andou.
+ *
+ * Pior: comparava pares consecutivos assumindo que stops em sequência são versões
+ * do MESMO stop. Com entrada escalonada cada incremento traz seu próprio bracket,
+ * e stops que coexistem viravam "movimento" inventado — foi o falso positivo que
+ * originou este issue (WINV26 18/08/2026: dois stops vivos, nenhum movido, e o
+ * risco real ficou em R$ 127,01 contra um RO de R$ 252,00).
+ *
+ * O gatilho agora é financeiro: soma do risco por perna > RO. Mover o stop não é
+ * sinal por si só; estourar o risco declarado no plano é.
+ *
+ * Fonte: risco declarado no plano do próprio aluno (RO), não literatura.
  */
-const detectStopTampering = (trade, orders) => {
-  const stops = ordersForTrade(orders, trade.id)
-    .filter(o => o.isStopOrder === true)
-    .map(o => ({
-      ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
-      _price: o.stopPrice ?? o.price ?? null,
-    }))
-    .filter(o => o._ts != null && o._price != null)
-    .sort((a, b) => a._ts - b._ts);
+const detectRiskOverRo = (trade, orders) => {
+  const ro = roAmountOf(trade);
+  if (ro == null) return [];
 
-  if (stops.length < 2) return [];
+  const stops = liveStopsAt(trade, stopOrdersOf(trade, orders));
+  const breakdown = stopRiskBreakdown(trade, stops);
+  if (!breakdown) return [];
+  if (breakdown.total <= ro) return [];
 
-  const events = [];
-  for (let i = 1; i < stops.length; i++) {
-    const prev = stops[i - 1];
-    const curr = stops[i];
-    if (prev._price === curr._price) continue;
-    if (!isStopWidened(trade.side, prev._price, curr._price)) continue;
-
-    events.push({
-      type: EVENT_TYPES.STOP_TAMPERING,
-      severity: EVENT_SEVERITY.HIGH,
-      tradeId: trade.id,
-      orderIds: [prev.externalOrderId, curr.externalOrderId].filter(Boolean),
-      timestamp: curr.submittedAt ?? null,
-      evidence: {
-        from: prev._price,
-        to: curr._price,
-        direction: 'WIDENED',
-        tradeSide: trade.side,
-      },
-      source: 'literature',
-      citation: 'Kahneman & Tversky (1979); Shefrin & Statman (1985)',
-    });
-  }
-  return events;
+  return [{
+    type: EVENT_TYPES.RISK_OVER_RO,
+    severity: EVENT_SEVERITY.HIGH,
+    tradeId: trade.id,
+    orderIds: stops.map(o => o.externalOrderId).filter(Boolean),
+    timestamp: stops[stops.length - 1]?.submittedAt ?? null,
+    evidence: {
+      riskAmount: breakdown.total,
+      roAmount: Math.round(ro * 100) / 100,
+      excessAmount: Math.round((breakdown.total - ro) * 100) / 100,
+      legs: breakdown.legs,
+      maxDistancePoints: Math.round((ro / (pointValueOf(trade) * Number(trade.qty || 0))) * 100) / 100 || null,
+    },
+    source: 'plan',
+    citation: 'RO declarado no plano vigente',
+  }];
 };
 
 /**
- * STOP_PARTIAL_SIZING — soma de qty dos stops < trade.qty.
- * Fonte: Shefrin & Statman 1985; Odean 1998.
+ * SIZING_DISCIPLINE — positivo (#357). Aumentou a posição (2+ entradas) e o risco
+ * financeiro final continuou dentro do RO. É o oposto do RISK_OVER_RO e existe para
+ * reconhecer explicitamente boa condução, não apenas deixar de punir.
  */
-const detectPartialSizing = (trade, orders) => {
-  if (trade.qty == null || trade.qty <= 0) return [];
+const detectSizingDiscipline = (trade, orders) => {
+  const ro = roAmountOf(trade);
+  if (ro == null) return [];
 
-  const stops = ordersForTrade(orders, trade.id).filter(o => o.isStopOrder === true);
-  if (!stops.length) return [];
+  const entries = (trade._partials || []).filter(pp => pp.type === 'ENTRY');
+  if (entries.length < 2) return [];   // sem aumento de posição não há o que reconhecer
 
-  const totalStopQty = stops.reduce((sum, s) => sum + (s.quantity ?? s.qty ?? 0), 0);
-  if (totalStopQty <= 0) return [];
-  if (totalStopQty >= trade.qty) return [];
+  const stops = liveStopsAt(trade, stopOrdersOf(trade, orders));
+  const breakdown = stopRiskBreakdown(trade, stops);
+  if (!breakdown) return [];
+  if (breakdown.total > ro) return [];
+
+  // Cobertura completa é pré-requisito: risco baixo por falta de stop não é disciplina.
+  const coveredQty = stops.reduce((acc, o) => acc + Number(o.quantity ?? o.qty ?? 0), 0);
+  if (!(coveredQty >= Number(trade.qty || 0))) return [];
 
   return [{
-    type: EVENT_TYPES.STOP_PARTIAL_SIZING,
+    type: EVENT_TYPES.SIZING_DISCIPLINE,
+    severity: null,
+    tradeId: trade.id,
+    orderIds: stops.map(o => o.externalOrderId).filter(Boolean),
+    timestamp: trade.exitTime ?? trade.entryTime ?? null,
+    evidence: {
+      entryCount: entries.length,
+      riskAmount: breakdown.total,
+      roAmount: Math.round(ro * 100) / 100,
+      legs: breakdown.legs,
+    },
+    source: 'plan',
+    citation: 'RO declarado no plano vigente',
+  }];
+};
+
+/**
+ * UNPROTECTED_SIZE — contratos abertos sem ordem de stop cobrindo (#357).
+ *
+ * SUBSTITUI o antigo STOP_PARTIAL_SIZING, que tinha dois defeitos: mapeava para
+ * SUB_SIZING (família de "risco muito ABAIXO do RO" — semântica oposta) e, pior,
+ * saía com `if (!stops.length) return []` — ou seja, posição **totalmente
+ * descoberta** não emitia nada. O caso mais grave era o único não coberto.
+ *
+ * Cenário de referência (Marcio, 19/08/2026): 5 contratos com stop e TP, entram
+ * mais 3 com saída ajustada, mas sem stop para os 3 novos. Cisne branco fecha no
+ * alvo; cisne negro quebra a conta.
+ *
+ * Fonte: Shefrin & Statman 1985; Odean 1998.
+ */
+const detectUnprotectedSize = (trade, orders) => {
+  const tradeQty = Number(trade?.qty ?? 0);
+  if (!Number.isFinite(tradeQty) || tradeQty <= 0) return [];
+
+  const all = ordersForTrade(orders, trade.id);
+  if (!all.length) return [];   // sem ordens correlacionadas não há resolução p/ afirmar
+
+  const stops = all.filter(o => o.isStopOrder === true);
+  const coveredQty = stops.reduce((acc, s) => acc + Number(s.quantity ?? s.qty ?? 0), 0);
+  const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
+  if (uncoveredQty <= 0) return [];
+
+  return [{
+    type: EVENT_TYPES.UNPROTECTED_SIZE,
     severity: EVENT_SEVERITY.HIGH,
     tradeId: trade.id,
     orderIds: stops.map(s => s.externalOrderId).filter(Boolean),
-    timestamp: stops[0].submittedAt ?? null,
+    timestamp: stops[0]?.submittedAt ?? trade.entryTime ?? null,
     evidence: {
-      tradeQty: trade.qty,
-      stopQty: totalStopQty,
-      ratio: Math.round((totalStopQty / trade.qty) * 100) / 100,
+      tradeQty,
+      coveredQty,
+      uncoveredQty,
+      hasAnyStop: stops.length > 0,
+      ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
     },
     source: 'literature',
     citation: 'Shefrin & Statman (1985); Odean (1998)',
@@ -485,8 +635,11 @@ export const detectExecutionEvents = ({ trades = [], orders = [], config = {} } 
 
   for (const trade of trades) {
     if (!trade?.id) continue;
-    events.push(...detectStopTampering(trade, orders));
-    events.push(...detectPartialSizing(trade, orders));
+    // #357 — o gatilho de alerta de stop é financeiro (risco vs RO), não movimento
+    // de preço. detectStopTampering/detectPartialSizing foram substituídos.
+    events.push(...detectRiskOverRo(trade, orders));
+    events.push(...detectUnprotectedSize(trade, orders));
+    events.push(...detectSizingDiscipline(trade, orders));
     events.push(...detectHesitation(trade, orders, cfg));
     events.push(...detectChaseReentry(trade, orders));
     events.push(...detectStopBreakevenTooEarly(trade, orders, cfg));
