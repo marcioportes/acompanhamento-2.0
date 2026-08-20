@@ -12,6 +12,16 @@ Version source of truth: `src/version.js`.
 
 **fix:** import de ordens grava só o que foi decidido — sem ghosts, sem reimportação
 
+- A gravação em `orders` migrou da Revisão de Operações para o passo final, depois da decisão por operação (`persistImportDecisions`). Descartada e sem-decisão **não chegam mais** em `orders` — antes ficavam gravadas para sempre, porque o cliente não apaga a collection
+- Ordem de escrita virou contrato testado: **ordens confirmadas → trades → enriquecimento**. `linkOrdersToCreatedTrade` desiste se não achar as ordens do batch; inverter reintroduziria o #351 (DEC-AUTO-366-02)
+- `persistDiscardedOrders` removida: era um `update` em `orders`, negado pelas rules e engolido por `console.warn` desde o #156 Fase E — nenhum descarte jamais foi persistido
+- Reimportação destravada sem tocar em `firestore.rules`: o ingest pula o doc que já existe e toda escrita vira `create` (DEC-AUTO-366-01). O `set(merge)` do #362 sobre doc existente era *update* e derrubava o `writeBatch` inteiro — o `Missing or insufficient permissions` da tela
+- Porta de entrada no preview: dedup bi-chave `eid:`+`comp:` escopada por aluno, necessária porque doc pré-#362 não grava `externalOrderId` (DEC-AUTO-366-03). Duplicatas chegam pré-excluídas, com "importar mesmo assim" explícito
+- Sair do wizard não deixa resíduo: confirmação com descarte do rascunho, `beforeunload` para refresh/aba, e X travado durante a gravação
+- Rascunho de importação virou visível e retomável (card + manager no painel, padrão do CSV). `stagingBatches` e `deleteStagingBatch` existiam no hook e não tinham um único leitor
+- `ordersStagingArea.importTimezone` persistido (INV-15, DEC-AUTO-366-04): sem ele a retomada não refaz a reconstrução, e repedir o fuso deixaria reconfirmar fuso diferente do original
+- Gate para operações sem decisão, que antes sumiam em silêncio
+- `scripts/issue-366-cleanup-abandoned-batches.mjs`: dry-run default, `--yes` para aplicar, log com o doc inteiro como caminho de restauração. Medição em produção: 519 ordens abandonadas em 3 lotes, nenhuma ligada a trade vivo
 - `BATCH_SIZE` 450 no ingest com `set` + `delete` por ordem = 900 operações, acima do teto de 500 do Firestore. Bug latente em qualquer lote com mais de 250 ordens.
 - Retry após falha na criação de trades era impossível: o staging já estava vazio e `ingestBatch` lançava.
 - Ordens de operação **enriquecida** nunca eram ligadas ao trade — `enrich` não passa por `onTradeCreated`. Agora o vínculo vem da decisão do aluno.
@@ -19,7 +29,8 @@ Version source of truth: `src/version.js`.
 - Voltar da revisão e reconfirmar criava um segundo lote e abandonava o primeiro.
 - `lowResolution` do parser era descartado no `setParseResult`: o badge nunca aparecia.
 - Em view-as, o staging gravava o UID do mentor como dono do lote.
-- Fills múltiplos do mesmo `externalOrderId` colapsam num doc só (`aggregateFills` × id determinístico) — teste `.skip` documentando.
+- Fills múltiplos do mesmo `externalOrderId` colapsam num doc só (`aggregateFills` × id determinístico) — teste `.skip` documentando (DT-043)
+- Dívidas registradas e não resolvidas: DT-043 (fills múltiplos), DT-044 (`cleanupOrphans` tenta delete em `orders`, caminho morto), DT-045 (`useOrders` sem índice composto, sempre no fallback)
 
 
 ## [1.83.14] - 20/08/2026 · #363 · PR #365

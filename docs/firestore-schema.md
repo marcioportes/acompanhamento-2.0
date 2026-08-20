@@ -64,6 +64,15 @@
 - **`externalOrderId: string | null`** (#362): `ClOrdID` da corretora. É a chave que torna a ingestão idempotente e permite auditar a ordem de volta no extrato do broker. O parser sempre leu; até v1.83.12 o campo era descartado no `ingestBatch`.
 - Escrita via `useOrderStaging.ingestBatch` com `set(..., { merge: true })` — preserva campos gravados server-side (`correlatedTradeId` da CF `linkOrdersToCreatedTrade`, `userDecision`, marcas de backfill) que não fazem parte do payload de importação.
 - `allow update: if false` e `allow delete: if false` em `firestore.rules` — correção e limpeza exigem admin SDK (CF ou script).
+- **Gravação só depois da decisão (#366, v1.83.15):** o wizard grava aqui no passo final, junto com a criação dos trades — nunca na Revisão de Operações. Ordem obrigatória: **ordens confirmadas → depois trades**, porque `linkOrdersToCreatedTrade` (dentro de `onTradeCreated`) faz early-return se `orders where batchId ==` vier vazia. Operação descartada ou sem decisão **não chega nesta collection**.
+- **Reimportação é `create`, nunca `update` (#366):** `ingestBatch` recebe `existingKeys` e pula a ordem cujo doc já existe, removendo-a do staging. O `set(merge)` do #362 sobre doc existente é avaliado como *update* pelas rules e derrubava o `writeBatch` inteiro (atômico) — era o `Missing or insufficient permissions` da tela. A alternativa de abrir `update` foi rejeitada: `allow create` é aberto sem checar `studentId` e o id é derivável do UID (`${studentId}_${orderKey}`).
+- **Dedup de entrada é bi-chave (#366):** doc anterior ao #362 não tem `externalOrderId` e só produz `comp:`, enquanto a ordem entrante produz `eid:` — as chaves nunca colidem. `src/utils/orderDedup.js` indexa as duas por doc, escopado por `studentId` (as queries de `useOrders`/`useOrderStaging` não filtram tenant no dashboard do mentor sem view-as).
+
+### `ordersStagingArea` (staging de ordens — INV-01)
+- Rascunho da importação: isolado de `orders`/`trades`, sem CF observando, e o **cliente pode apagar** (`allow delete: if request.auth != null`). É o que torna o import reversível até o passo final.
+- **`importTimezone: string | null`** (#366, v1.83.15): fuso dos horários do arquivo, decidido pelo aluno no wizard. Sem ele a retomada de um lote não consegue refazer `reconstructOperations` — e repedir o fuso abriria espaço para reconfirmar fuso diferente do original, a regressão que #285/#292 fecharam ao tornar o fuso explícito por lote. Lote anterior ao #366 não tem o campo: a retomada volta à seleção de plano exigindo a escolha.
+- `studentId` é o **dono do lote**, não quem opera a tela: em view-as o hook gravava o UID do mentor, e o rascunho sumia do painel do aluno (corrigido no #366).
+- `_rowIndex` **não** é persistido — é o join da correlação (`orderTradeCreation.js`, lookup sem fallback). A retomada reatribui via `stagingDocsToOrders` (`src/utils/orderImportPipeline.js`); sem isso toda operação já confrontada voltaria como trade novo.
 
 ### `reviews` (`students/{uid}/reviews/{id}`)
 - Evento persistido (DEC-045) com `maturitySnapshot` congelado no fechamento (v1.43.0)
