@@ -86,17 +86,11 @@ trade.ltfUrl)` e a função é `async (tradeId) => {...}` — os dois URLs são 
 desde sempre. Com a cascata server-side por prefixo, a assinatura do cliente deixa de importar:
 remove-se os argumentos mortos da chamada.
 
-## Ponto aberto (precisa de decisão antes da fase C)
+## Reviews — resolvido (fase C matada)
 
-As 10 referências em `reviews` vivem dentro de `frozenSnapshot`, que é **congelado por contrato**
-(#259 — snapshot/restore, PL imutável). "Apagar tudo" e "snapshot é imutável" colidem aqui: remover
-o trade do snapshot reescreve o que a revisão publicada dizia na época.
-
-Três saídas: (a) apagar do array mesmo assim — cumpre a decisão ao pé da letra; (b) deixar o
-snapshot intacto e aceitar que ele é registro histórico, não ponteiro vivo; (c) apagar só em review
-`DRAFT` (ainda não publicada) e preservar em `DISCUSSED`/publicada.
-
-Fases A e B não dependem disso e podem começar.
+As 10 referências em `reviews` vivem dentro de `frozenSnapshot`, congelado por contrato do #259.
+"Apagar tudo" e "snapshot é imutável" colidiam aqui. Marcio decidiu (19/08/2026) pela saída (b): o
+snapshot é registro histórico, não ponteiro vivo — fica intacto. DEC-AUTO-363-04.
 
 ## Review da fase A (code-review high, 19/08/2026)
 
@@ -124,15 +118,18 @@ Em aberto (precisam de decisão):
 ## Phases
 
 - A — cascata no `onTradeDeleted`: movements + orders + notifications (o volume e o dano) — **FEITA**
-- B — Storage `trades/{tradeId}/` + limpeza dos argumentos mortos no `deleteTrade`/`TradesJournal`
-- C — referências em reviews (bloqueada pelo ponto aberto acima)
-- D — script de backfill do passivo histórico: 5.129 notificações + 26 ordens já órfãs hoje. Fora do
-  trigger — one-shot em `scripts/`, no padrão do `issue-351-cleanup-orders.mjs`
+- B — Storage `trades/{tradeId}/` + limpeza dos argumentos mortos no `deleteTrade`/`TradesJournal` — **FEITA**
+- C — **MATADA** por decisão de Marcio (DEC-AUTO-363-04): 10 referências dentro do `frozenSnapshot`,
+  congelado por contrato do #259. Apagá-las reescreveria o que uma revisão publicada dizia na época,
+  em troca de espaço desprezível
+- D — script de backfill do passivo histórico — **FEITO** (`scripts/issue-363-cleanup-orphan-refs.mjs`)
 
 ## Sessions
 
 - `fase A [cascade-scalar-refs] commit d43bf9fa ok` — 9 testes novos, 225 verdes em functions
 - `fase A [review-fixes] ok` — 3 achados do review corrigidos, +3 testes
+- `fase B [storage-prefix] ok` — +4 testes; `TradesJournal` sem os 2 argumentos mortos
+- `fase D [backfill-script] ok` — dry-run em produção: 5.137 notificações órfãs, 0 orders, 0 movements
 
 ## Shared Deltas
 
@@ -147,7 +144,9 @@ Em aberto (precisam de decisão):
 
 - DEC-AUTO-363-01 — apagar, não desvincular (decisão de produto de Marcio)
 - DEC-AUTO-363-02 — cascata mora no `onTradeDeleted`, não no `deleteTrade` do cliente
-- DEC-AUTO-363-03 — _(pendente: frozenSnapshot das reviews)_
+- DEC-AUTO-363-03 — `deleteTrade` do cliente para de apagar `movements` (corrompia saldo em delete negado)
+- DEC-AUTO-363-04 — referências em `reviews` preservadas: `frozenSnapshot` é registro histórico (fase C matada)
+- DEC-AUTO-363-05 — Storage apagado por PREFIXO `trades/{tradeId}/`, não pelos URLs conhecidos pela tela
 
 ## Chunks
 

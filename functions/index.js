@@ -1694,11 +1694,15 @@ exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDele
     // dependem de `trade.result` e não do que está sendo apagado. Isolamento (INV-03).
     try {
       const { cascadeDeleteTradeRefs } = require('./trades/cascadeDeleteTradeRefs');
-      const c = await cascadeDeleteTradeRefs(db, { tradeId: context.params.tradeId });
+      let bucket = null;
+      try { bucket = admin.storage().bucket(); } catch (e) {
+        console.warn('[onTradeDeleted] Storage indisponível, cascata segue sem ele:', e.message);
+      }
+      const c = await cascadeDeleteTradeRefs(db, { tradeId: context.params.tradeId, bucket });
       if (!c.skipped) {
         console.log(
           `[onTradeDeleted] Cascata do trade ${context.params.tradeId}: ` +
-          `mov=${c.movements} orders=${c.orders} notif=${c.notifications}` +
+          `mov=${c.movements} orders=${c.orders} notif=${c.notifications} storage=${c.storage}` +
           (c.errors.length ? ` ERROS=[${c.errors.join('; ')}]` : '')
         );
       }

@@ -159,3 +159,69 @@ describe('cascadeDeleteTradeRefs', () => {
     expect(SCALAR_REFS.map((r) => r.key)).toEqual(['movements', 'orders', 'notifications']);
   });
 });
+
+describe('cascadeDeleteTradeRefs — Storage (fase B)', () => {
+  const makeBucket = ({ fail = false } = {}) => {
+    const prefixes = [];
+    return {
+      prefixes,
+      bucket: {
+        deleteFiles: async ({ prefix }) => {
+          if (fail) throw new Error('storage down');
+          prefixes.push(prefix);
+        },
+      },
+    };
+  };
+
+  it('apaga os prints do trade por PREFIXO, não pelos URLs', async () => {
+    const { db } = makeDb({});
+    const { bucket, prefixes } = makeBucket();
+
+    const r = await cascadeDeleteTradeRefs(db, { tradeId: TRADE_ID, bucket });
+
+    // Por prefixo alcança tudo que o trade guardou — inclusive o que a tela não conhecia.
+    // `deleteTrade(id, htfUrl, ltfUrl)` passava dois URLs para uma função de um argumento.
+    expect(prefixes).toEqual([`trades/${TRADE_ID}/`]);
+    expect(r.storage).toBe(true);
+  });
+
+  it('sem bucket, a cascata do Firestore roda igual', async () => {
+    const { db, deleted } = makeDb({ notifications: ['n1'] });
+    const r = await cascadeDeleteTradeRefs(db, { tradeId: TRADE_ID });
+
+    expect(r.notifications).toBe(1);
+    expect(r.storage).toBe(false);
+    expect(r.errors).toEqual([]); // ausência de bucket não é erro
+    expect(deleted).toEqual(['n1']);
+  });
+
+  it('falha no Storage não desfaz nem impede a limpeza do Firestore', async () => {
+    const { db, deleted } = makeDb({ movements: ['m1'], notifications: ['n1'] });
+    const { bucket } = makeBucket({ fail: true });
+
+    const r = await cascadeDeleteTradeRefs(db, { tradeId: TRADE_ID, bucket });
+
+    expect(deleted).toEqual(['m1', 'n1']);
+    expect(r.storage).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toContain('storage');
+  });
+
+  it('Storage roda por último — é o único alvo irreversível fora do Firestore', async () => {
+    const ordem = [];
+    const { db } = makeDb({ movements: ['m1'] });
+    const origBatch = db.batch;
+    db.batch = () => {
+      const b = origBatch();
+      const origCommit = b.commit;
+      b.commit = async () => { ordem.push('firestore'); return origCommit(); };
+      return b;
+    };
+    const bucket = { deleteFiles: async () => { ordem.push('storage'); } };
+
+    await cascadeDeleteTradeRefs(db, { tradeId: TRADE_ID, bucket });
+
+    expect(ordem).toEqual(['firestore', 'storage']);
+  });
+});

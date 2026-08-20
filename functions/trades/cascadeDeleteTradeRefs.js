@@ -28,11 +28,18 @@
  *   outros — a alternativa (abortar tudo) trocaria lixo parcial por lixo total. Nenhum erro
  *   é silencioso: todos aparecem no retorno e no log do trigger.
  *
+ * STORAGE (fase B):
+ *   Os prints HTF/LTF vivem em `trades/{tradeId}/` e nunca foram apagados. A tela chamava
+ *   `deleteTrade(id, htfUrl, ltfUrl)` contra uma função de um argumento só — os dois URLs
+ *   eram descartados em silêncio, e ninguém soube. Apagar por PREFIXO em vez de por URL
+ *   dispensa a fiação: alcança também o que a tela não conhecia. É o único alvo cujo volume
+ *   em bytes é relevante; os documentos do Firestore são texto.
+ *
  * FORA DE ESCOPO:
  *   o `drawdownHistory` da conta permanece append-only por decisão do #52: é ledger da
- *   conta, não artefato do trade. Reviews (`frozenSnapshot`) ficam para a fase C — o
- *   snapshot é congelado por contrato do #259 e a decisão ainda está aberta. Storage é
- *   fase B.
+ *   conta, não artefato do trade. As referências em `reviews` ficam de fora por decisão de
+ *   Marcio (DEC-AUTO-363-04): vivem dentro do `frozenSnapshot`, congelado por contrato do
+ *   #259 — apagá-las reescreveria o que uma revisão publicada dizia na época, e são 10.
  */
 
 const { deleteDocsInBatches } = require('../_shared/batchDelete');
@@ -44,12 +51,13 @@ const SCALAR_REFS = [
   { key: 'notifications', collection: 'notifications', field: 'tradeId' },
 ];
 
-async function cascadeDeleteTradeRefs(db, { tradeId } = {}) {
+async function cascadeDeleteTradeRefs(db, { tradeId, bucket = null } = {}) {
   const result = {
     skipped: false,
     movements: 0,
     orders: 0,
     notifications: 0,
+    storage: false,
     errors: [],
   };
 
@@ -67,6 +75,17 @@ async function cascadeDeleteTradeRefs(db, { tradeId } = {}) {
       // Falha no meio da paginação: o que já saiu do banco conta (err.deleted).
       result[key] = Number(err && err.deleted) || 0;
       result.errors.push(`${key}: ${err && err.message ? err.message : String(err)}`);
+    }
+  }
+
+  // Storage por último: é o único alvo irreversível fora do Firestore. Best-effort — sem
+  // bucket (ambiente de teste, credencial ausente) não é erro, é ausência de alvo.
+  if (bucket) {
+    try {
+      await bucket.deleteFiles({ prefix: `trades/${tradeId}/` });
+      result.storage = true;
+    } catch (err) {
+      result.errors.push(`storage: ${err && err.message ? err.message : String(err)}`);
     }
   }
 

@@ -244,7 +244,7 @@ const TradesJournal = ({ onNavigateToFeedback }) => {
             setEditingTrade(t); 
             setShowAddModal(true); 
           }} 
-          onDeleteTrade={async (trade) => { try { await deleteTrade(trade.id, trade.htfUrl, trade.ltfUrl); } catch (err) { console.error(err); } }} 
+          onDeleteTrade={async (trade) => { try { await deleteTrade(trade.id); } catch (err) { console.error(err); } }} 
         />
         {filteredTrades.length === 0 && (
           <div className="p-8 text-center text-slate-500">Nenhum trade encontrado.</div>
