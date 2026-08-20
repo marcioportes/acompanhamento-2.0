@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.15: #366 fix import de ordens grava antes da decisão do aluno — ghosts em `orders` e reimportação travada (RESERVADA)
  * - 1.83.14: #363 fix onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo (PR #365, 20/08/2026)
  * - 1.83.13: #362 fix ingestBatch com id determinístico + externalOrderId — reimportação vira ide (PR #364, 19/08/2026)
  * - 1.83.12: #351 fase D reaplicada — onTradeCreated liga as ordens ao trade que o próprio import cria
@@ -400,10 +401,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.14',
+  version: '1.83.15',
   build: '20260820',
-  display: 'v1.83.14',
-  full: '1.83.14+20260820',
+  display: 'v1.83.15',
+  full: '1.83.15+20260820',
 };
 export default VERSION;
 export { VERSION };
