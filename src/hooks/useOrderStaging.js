@@ -138,6 +138,11 @@ const useOrderStaging = (overrideStudentId = null) => {
     const BATCH_SIZE = 450;
     let written = 0;
 
+    // Dono do lote é o aluno, não quem opera a tela. Em view-as o hook gravava o UID
+    // do mentor: o lote sumia do dashboard do aluno e a dedup nunca casava (#366).
+    const ownerId = overrideStudentId ?? user.uid;
+    const isViewAs = !!overrideStudentId && overrideStudentId !== user.uid;
+
     for (let i = 0; i < orders.length; i += BATCH_SIZE) {
       const chunk = orders.slice(i, i + BATCH_SIZE);
       const batch = writeBatch(db);
@@ -173,6 +178,11 @@ const useOrderStaging = (overrideStudentId = null) => {
           planId: meta.planId ?? null,
           sourceFormat: meta.sourceFormat ?? 'generic',
           fileName: meta.fileName ?? null,
+          // Fuso dos horários do arquivo (#366). Sem ele a retomada de um lote não
+          // consegue refazer reconstructOperations, e repedir na retomada deixaria o
+          // aluno reconfirmar fuso diferente do original — a regressão que #285/#292
+          // fecharam ao tornar o fuso explícito por lote.
+          importTimezone: meta.importTimezone ?? null,
 
           // Schema de classificação persistida (issue #156 Fase B)
           classification,
@@ -183,9 +193,9 @@ const useOrderStaging = (overrideStudentId = null) => {
           isAutoLiq: typeof order.isAutoLiq === 'boolean' ? order.isAutoLiq : classification === 'autoliq',
 
           // Controle
-          studentId: user.uid,
-          studentEmail: user.email,
-          studentName: user.displayName || user.email.split('@')[0],
+          studentId: ownerId,
+          studentEmail: isViewAs ? null : user.email,
+          studentName: isViewAs ? null : (user.displayName || user.email.split('@')[0]),
           createdAt: now,
         });
       }
@@ -197,7 +207,7 @@ const useOrderStaging = (overrideStudentId = null) => {
 
     console.log(`[useOrderStaging] Batch ${batchId}: ${written} ordens em staging`);
     return batchId;
-  }, [user]);
+  }, [user, overrideStudentId]);
 
   // ============================================
   // DELETE STAGING BATCH
@@ -246,14 +256,20 @@ const useOrderStaging = (overrideStudentId = null) => {
    * @param {string} batchId
    * @param {Object} correlations - { [stagingOrderId]: { tradeId, confidence } }
    * @param {string[]|null} confirmedOrderKeys - chaves das ordens confirmadas pelo usuário
-   *   na tela de Revisão de Operações (V1.1 issue #93). Format: "eid:<externalOrderId>"
-   *   ou "comp:<instrument>|<side>|<submittedAt>|<quantity>|<filledAt>".
+   *   (#93; a partir do #366 vêm da DECISÃO por operação, não da tela de revisão).
+   *   Format: "eid:<externalOrderId>" ou "comp:<instrument>|<side>|<submittedAt>|<quantity>|<filledAt>".
    *   Se null, ingere todas (backward compatible).
    *   Ordens fora dessa lista são DELETADAS do staging sem ingerir (Opção B).
-   * @returns {Promise<{ success: number, excluded: number, failed: Array }>}
+   * @param {Object} [options]
+   * @param {Set<string>} [options.existingKeys] - chaves já presentes em `orders` (#366).
+   *   A ordem é pulada e removida do staging: toda escrita vira `create` puro, porque
+   *   `set(merge)` sobre doc existente é *update* e `firestore.rules` nega.
+   * @returns {Promise<{ success: number, excluded: number, skipped: number, failed: Array, alreadyIngested?: boolean }>}
    */
-  const ingestBatch = useCallback(async (batchId, correlations = {}, confirmedOrderKeys = null) => {
+  const ingestBatch = useCallback(async (batchId, correlations = {}, confirmedOrderKeys = null, options = {}) => {
     if (!user) throw new Error('Autenticação necessária');
+
+    const existingKeys = options?.existingKeys ?? null;
 
     // Query direta — não depende do listener que pode não ter atualizado ainda
     const q = query(
@@ -262,7 +278,12 @@ const useOrderStaging = (overrideStudentId = null) => {
     );
     const snapshot = await getDocs(q);
 
-    if (snapshot.empty) throw new Error('Batch não encontrado no staging');
+    // Batch já ingerido (retry após falha na criação de trades): o staging está vazio
+    // porque a ingestão anterior concluiu. Lançar aqui matava o retry — as ordens já
+    // estavam gravadas e o aluno não tinha caminho de volta (#366).
+    if (snapshot.empty) {
+      return { success: 0, excluded: 0, skipped: 0, failed: [], alreadyIngested: true };
+    }
 
     const batchOrders = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -272,8 +293,12 @@ const useOrderStaging = (overrideStudentId = null) => {
 
     const success = [];
     const excluded = [];
+    const skipped = [];
     const failed = [];
-    const BATCH_SIZE = 450;
+    // Cada ordem confirmada gera DUAS operações no batch (set em `orders` + delete do
+    // staging). O teto do Firestore é 500 por writeBatch: 450 estourava em silêncio
+    // qualquer lote com mais de 250 ordens (#366).
+    const BATCH_SIZE = 200;
 
     for (let i = 0; i < batchOrders.length; i += BATCH_SIZE) {
       const chunk = batchOrders.slice(i, i + BATCH_SIZE);
@@ -281,11 +306,19 @@ const useOrderStaging = (overrideStudentId = null) => {
 
       for (const stagingOrder of chunk) {
         try {
-          const isConfirmed = confirmedSet === null || confirmedSet.has(makeOrderKey(stagingOrder));
+          const orderKey = makeOrderKey(stagingOrder);
+          const isConfirmed = confirmedSet === null || confirmedSet.has(orderKey);
+          // #366 — ordem que já está em `orders`: pular. `set(merge)` sobre doc
+          // existente é *update* para as rules (`allow update: if false`) e derruba o
+          // writeBatch inteiro — foi o que travou a reimportação em produção. Pulando,
+          // toda escrita vira `create` puro e a idempotência do #362 se mantém.
+          const alreadyInOrders = !!existingKeys && existingKeys.has(orderKey);
 
-          if (isConfirmed) {
-            // Ingere para `orders` + remove do staging (mesma transação)
-            const correlation = correlations[stagingOrder.id] || {};
+          if (isConfirmed && !alreadyInOrders) {
+            // Ingere para `orders` + remove do staging (mesma transação).
+            // Correlação por chave canônica (#366) com fallback para o id de staging,
+            // que é como o pipeline antigo montava o mapa.
+            const correlation = correlations[orderKey] || correlations[stagingOrder.id] || {};
 
             // #362 — id DETERMINÍSTICO derivado da identidade da ordem. Antes era
             // `doc(collection(...))` (id automático) e o payload nem guardava o
@@ -340,9 +373,10 @@ const useOrderStaging = (overrideStudentId = null) => {
             writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
             success.push(stagingOrder.id);
           } else {
-            // Ordem de operação não confirmada → deletar do staging sem ingerir (Opção B)
+            // Não confirmada, ou já presente em `orders`: sai do staging sem ingerir.
+            // Nos dois casos deixar no staging só criaria rascunho preso (Opção B).
             writeBatchRef.delete(doc(db, STAGING_COLLECTION, stagingOrder.id));
-            excluded.push(stagingOrder.id);
+            (alreadyInOrders && isConfirmed ? skipped : excluded).push(stagingOrder.id);
           }
         } catch (err) {
           failed.push({ id: stagingOrder.id, error: err.message });
@@ -352,8 +386,8 @@ const useOrderStaging = (overrideStudentId = null) => {
       await writeBatchRef.commit();
     }
 
-    console.log(`[useOrderStaging] Ingest batch ${batchId}: ${success.length} ingeridas, ${excluded.length} excluídas, ${failed.length} falhas`);
-    return { success: success.length, excluded: excluded.length, failed };
+    console.log(`[useOrderStaging] Ingest batch ${batchId}: ${success.length} ingeridas, ${excluded.length} excluídas, ${skipped.length} já existentes, ${failed.length} falhas`);
+    return { success: success.length, excluded: excluded.length, skipped: skipped.length, failed };
   }, [user]);
 
   // ============================================
@@ -371,6 +405,8 @@ const useOrderStaging = (overrideStudentId = null) => {
           planId: order.planId,
           sourceFormat: order.sourceFormat,
           fileName: order.fileName,
+          importTimezone: order.importTimezone ?? null,
+          studentId: order.studentId ?? null,
           orders: [],
           totalCount: 0,
           createdAt: order.createdAt,
