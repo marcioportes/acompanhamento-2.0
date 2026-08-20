@@ -431,9 +431,11 @@ export const useTrades = (overrideStudentId = null) => {
     // Listener cobre estado pós-delete — não tocar loading global.
 
     try {
-      const qMov = query(collection(db, 'movements'), where('tradeId', '==', tradeId));
-      const snapMov = await getDocs(qMov);
-      try { await Promise.all(snapMov.docs.map(d => deleteDoc(d.ref))); } catch (e) { console.error(e); }
+      // Os movements (e todo o resto que aponta para o trade) são apagados server-side
+      // pela cascata do `onTradeDeleted` (#363, DEC-AUTO-363-02). Apagá-los aqui ANTES do
+      // trade corrompia o saldo quando o delete do trade era negado: em ciclo selado
+      // (#259) os movements sumiam, `onMovementDeleted` estornava o `currentBalance` da
+      // conta, o delete estourava permission-denied e o trade seguia vivo sem o movement.
       await deleteDoc(doc(db, 'trades', tradeId));
       return true;
     } catch(err) {

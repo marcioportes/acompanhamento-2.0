@@ -64,6 +64,8 @@ async function cascadeDeleteTradeRefs(db, { tradeId } = {}) {
       const refs = snap.docs.map((d) => d.ref);
       result[key] = await deleteDocsInBatches(db, refs);
     } catch (err) {
+      // Falha no meio da paginação: o que já saiu do banco conta (err.deleted).
+      result[key] = Number(err && err.deleted) || 0;
       result.errors.push(`${key}: ${err && err.message ? err.message : String(err)}`);
     }
   }

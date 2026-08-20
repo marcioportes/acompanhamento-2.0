@@ -98,6 +98,29 @@ snapshot intacto e aceitar que ele é registro histórico, não ponteiro vivo; (
 
 Fases A e B não dependem disso e podem começar.
 
+## Review da fase A (code-review high, 19/08/2026)
+
+Corrigidos no branch:
+- contagem parcial em `deleteDocsInBatches` — falha no meio da paginação reportava 0 apagados
+  enquanto milhares já tinham saído do banco; o log do trigger é a única evidência da deleção
+- `useTrades.deleteTrade` deixa de apagar `movements` no cliente. Apagá-los ANTES do trade
+  corrompia o saldo quando o delete era negado (ciclo selado #259): movements sumiam,
+  `onMovementDeleted` estornava o `currentBalance`, o delete estourava permission-denied e o
+  trade seguia vivo sem o movement. A cascata server-side cobre o alvo (DEC-AUTO-363-02)
+- `deleteAccountCascade` migrado para `_shared/batchDelete` — era a terceira cópia do mesmo loop
+
+Em aberto (precisam de decisão):
+- **Notificação de alerta do mentor apagada por ação do aluno.** `firestore.rules:303` só deixa
+  mentor apagar `/notifications`; a cascata roda com admin SDK a partir de um delete que o aluno
+  pode disparar. Um `EMOTIONAL_ALERT` CRITICAL sobre o próprio comportamento some junto com o
+  trade. Contra-argumento: o trade — evidência primária — já ia junto de qualquer forma, e a
+  notificação órfã é ponteiro morto. Se virar problema, é escopo de imutabilidade (#184), não desta
+  cascata.
+- **Dead-letter de falha da cascata.** Sem retry possível (etapas 1 e 2 do trigger não são
+  idempotentes: reexecutar estornaria PL em dobro) e sem o doc do trade, uma falha transitória vira
+  órfão permanente até a fase D. Gravar `{tradeId, targets, errors}` numa collection própria exige
+  aprovação INV-15 — não feito.
+
 ## Phases
 
 - A — cascata no `onTradeDeleted`: movements + orders + notifications (o volume e o dano) — **FEITA**
@@ -109,6 +132,7 @@ Fases A e B não dependem disso e podem começar.
 ## Sessions
 
 - `fase A [cascade-scalar-refs] commit d43bf9fa ok` — 9 testes novos, 225 verdes em functions
+- `fase A [review-fixes] ok` — 3 achados do review corrigidos, +3 testes
 
 ## Shared Deltas
 

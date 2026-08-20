@@ -11,6 +11,11 @@
 
 const BATCH_LIMIT = 400;
 
+/**
+ * Se um lote falhar, os anteriores JÁ foram apagados. O erro carrega quantos, em
+ * `err.deleted` — sem isso o chamador reporta 0 apagados enquanto milhares sumiram, e o
+ * log do trigger (única evidência que a deleção deixa) fica invertido em relação ao banco.
+ */
 async function deleteDocsInBatches(db, docRefs) {
   if (docRefs.length === 0) return 0;
   let deleted = 0;
@@ -18,7 +23,12 @@ async function deleteDocsInBatches(db, docRefs) {
     const slice = docRefs.slice(i, i + BATCH_LIMIT);
     const batch = db.batch();
     slice.forEach((ref) => batch.delete(ref));
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (err) {
+      err.deleted = deleted;
+      throw err;
+    }
     deleted += slice.length;
   }
   return deleted;

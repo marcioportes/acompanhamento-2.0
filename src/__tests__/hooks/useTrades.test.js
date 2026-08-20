@@ -62,6 +62,7 @@ vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState,
 }));
 
+import { deleteDoc, getDocs } from 'firebase/firestore';
 import { useTrades } from '../../hooks/useTrades';
 
 const MENTOR = { uid: 'mentor-1', email: 'mentor@espelho.com', displayName: 'Mentor' };
@@ -76,6 +77,8 @@ function updatePayloadMatching(pred) {
 
 beforeEach(() => {
   mockUpdateDoc.mockClear();
+  deleteDoc.mockClear();
+  getDocs.mockClear();
   mockBatchUpdate.mockClear();
   mockBatchCommit.mockClear();
   mockSnapshotDocs = [];
@@ -209,6 +212,34 @@ describe('useTrades — guards', () => {
 // ============================================================
 // Sistema de feedback (máquina de estados)
 // ============================================================
+// ============================================================
+// deleteTrade — a limpeza mora na CF, não no cliente (#363)
+// ============================================================
+describe('useTrades — deleteTrade', () => {
+  it('apaga SÓ o trade: os movements ficam para a cascata do onTradeDeleted', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    const { result } = renderHook(() => useTrades(null));
+
+    await act(async () => {
+      await result.current.deleteTrade('t1');
+    });
+
+    // Apagar movements aqui ANTES do trade corrompia o saldo quando o delete do trade
+    // era negado (ciclo selado, #259): `onMovementDeleted` estornava o saldo da conta e
+    // o trade seguia vivo sem o movement. Nenhuma query de movements deve sair do cliente.
+    expect(getDocs).not.toHaveBeenCalled();
+    expect(deleteDoc).toHaveBeenCalledTimes(1);
+    expect(deleteDoc.mock.calls[0][0].path).toBe('trades/t1');
+  });
+
+  it('sem usuário, recusa', async () => {
+    mockAuthState = { user: null, isMentor: () => false };
+    const { result } = renderHook(() => useTrades(null));
+    await expect(result.current.deleteTrade('t1')).rejects.toThrow('Auth required');
+    expect(deleteDoc).not.toHaveBeenCalled();
+  });
+});
+
 describe('useTrades — addFeedback', () => {
   it('mentor: grava mentorFeedback, status REVIEWED e comentário no histórico', async () => {
     mockAuthState = { user: MENTOR, isMentor: () => true };

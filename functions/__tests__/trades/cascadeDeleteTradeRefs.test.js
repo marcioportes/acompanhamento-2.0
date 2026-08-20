@@ -18,7 +18,7 @@ const docOf = (id) => ({ id, ref: docRef(id) });
  * db falso. `byCollection` mapeia nome da collection → ids retornados pela query.
  * Registra os `where` recebidos e os deletes efetivamente commitados.
  */
-const makeDb = (byCollection, { failOn = null, batchLimitProbe = false } = {}) => {
+const makeDb = (byCollection, { failOn = null, failCommitAfter = null } = {}) => {
   const queries = [];
   const deleted = [];
   const commits = [];
@@ -40,6 +40,9 @@ const makeDb = (byCollection, { failOn = null, batchLimitProbe = false } = {}) =
       return {
         delete: (ref) => pending.push(ref.id),
         commit: async () => {
+          if (failCommitAfter !== null && commits.length >= failCommitAfter) {
+            throw new Error('deadline-exceeded');
+          }
           commits.push(pending.length);
           deleted.push(...pending);
         },
@@ -137,6 +140,19 @@ describe('cascadeDeleteTradeRefs', () => {
     expect(deleted).toHaveLength(5129);
     expect(commits).toEqual([400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 329]);
     expect(Math.max(...commits)).toBeLessThanOrEqual(500); // limite duro do Firestore
+  });
+
+  it('falha no meio da paginação reporta o que JÁ foi apagado, não zero', async () => {
+    const ids = Array.from({ length: 5129 }, (_, i) => `n${i}`);
+    const { db, deleted } = makeDb({ notifications: ids }, { failCommitAfter: 6 });
+
+    const r = await cascadeDeleteTradeRefs(db, { tradeId: TRADE_ID });
+
+    // 6 lotes de 400 saíram do banco antes do estouro; reportar 0 inverteria o log
+    // em relação à realidade — 2.400 apagados, 2.729 ainda órfãos.
+    expect(deleted).toHaveLength(2400);
+    expect(r.notifications).toBe(2400);
+    expect(r.errors[0]).toContain('deadline-exceeded');
   });
 
   it('a ordem de execução é movements → orders → notifications', () => {
