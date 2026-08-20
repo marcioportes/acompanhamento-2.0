@@ -50,14 +50,28 @@ vivo, confirm `Descartar importação em andamento? As N ordens do rascunho ser�
 
 | # | Fase | Estado |
 |---|------|--------|
-| 0 | Testes primeiro (INV-05) | pendente |
-| 1 | Helpers puros — `orderImportPipeline.js` + `orderDedup.js` | pendente |
-| 2 | `ingestBatch` idempotente (skip de existentes, BATCH_SIZE 200, retry-safe, `importTimezone`, tenant) | pendente |
-| 3 | Mover a escrita para depois da decisão (`OrderImportPage`) | pendente |
-| 4 | Dedup no PREVIEW + banner de lote pendente | pendente |
-| 5 | Sair sem resíduo (confirm, X travado, `beforeunload`) | pendente |
-| 6 | Card + manager de lote pendente, com retomada | pendente |
-| 7 | Script de limpeza do passivo (dry-run → apply) | pendente |
+| 0 | Testes primeiro (INV-05) | ok |
+| 1 | Helpers puros — `orderImportPipeline.js` + `orderDedup.js` | ok (`716d7fb2`) |
+| 2 | `ingestBatch` idempotente (skip de existentes, BATCH_SIZE 200, retry-safe, `importTimezone`, tenant) | ok (`a4da6d33`) |
+| 3 | Mover a escrita para depois da decisão (`OrderImportPage`) | ok (`ae3c44b3`) |
+| 4 | Dedup no PREVIEW + banner de lote pendente | ok (`90e5e052`) |
+| 5 | Sair sem resíduo (confirm, X travado, `beforeunload`) | ok (`90e5e052`) |
+| 6 | Card + manager de lote pendente, com retomada | ok (`00b45b0d`) |
+| 7 | Script de limpeza do passivo (dry-run → apply) | dry-run ok — apply pendente (bloqueio de permissão; Marcio roda) |
+
+## Passivo medido (dry-run 20/08/2026)
+
+651 ordens lidas · 348 trades vivos · **519 abandonadas** em 3 lotes:
+
+| Lote | Aluno | Data | Ordens | Composição |
+|---|---|---|---|---|
+| `ord_1787256854597_c6s1yu` | Marcio | 20/08/2026 | 17 | 10 FILLED + 7 CANCELLED — o lote que travou e originou o issue |
+| `ord_1779999250591_psdaxk` | Wagner | 28/05/2026 | 500 | 273 FILLED + 226 CANCELLED + 1 REJECTED (ordens de fev-mar) |
+| `ord_1780083831444_atsyeh` | Elza | 29/05/2026 | 2 | 2 CANCELLED sem correlação |
+
+Wagner tem **zero trades** no sistema: nada a correlacionar, nem por backfill.
+Nenhuma das 519 tem `correlatedTradeId` para trade vivo. Preservadas: 70 (batch gerou
+trade) + 62 (ligadas a trade vivo).
 
 ## Shared Deltas
 
