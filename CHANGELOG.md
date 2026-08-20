@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.15] - 20/08/2026 · #366 · PR #367
+
+**fix:** import de ordens grava só o que foi decidido — sem ghosts, sem reimportação
+
+- `BATCH_SIZE` 450 no ingest com `set` + `delete` por ordem = 900 operações, acima do teto de 500 do Firestore. Bug latente em qualquer lote com mais de 250 ordens.
+- Retry após falha na criação de trades era impossível: o staging já estava vazio e `ingestBatch` lançava.
+- Ordens de operação **enriquecida** nunca eram ligadas ao trade — `enrich` não passa por `onTradeCreated`. Agora o vínculo vem da decisão do aluno.
+- Retomar um lote quebraria a correlação inteira: o join é por `_rowIndex`, que o staging não persiste. `stagingDocsToOrders` reatribui.
+- Voltar da revisão e reconfirmar criava um segundo lote e abandonava o primeiro.
+- `lowResolution` do parser era descartado no `setParseResult`: o badge nunca aparecia.
+- Em view-as, o staging gravava o UID do mentor como dono do lote.
+- Fills múltiplos do mesmo `externalOrderId` colapsam num doc só (`aggregateFills` × id determinístico) — teste `.skip` documentando.
+
+
 ## [1.83.14] - 20/08/2026 · #363 · PR #365
 
 **fix:** onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo

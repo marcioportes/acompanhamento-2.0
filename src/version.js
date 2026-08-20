@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.15: #366 fix import de ordens grava antes da decisão do aluno — ghosts em `orders` e reimportação travada (RESERVADA)
+ * - 1.83.15: #366 fix import de ordens grava só o que foi decidido — sem ghosts, sem reimportação (PR #367, 20/08/2026)
  * - 1.83.14: #363 fix onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo (PR #365, 20/08/2026)
  * - 1.83.13: #362 fix ingestBatch com id determinístico + externalOrderId — reimportação vira ide (PR #364, 19/08/2026)
  * - 1.83.12: #351 fase D reaplicada — onTradeCreated liga as ordens ao trade que o próprio import cria
