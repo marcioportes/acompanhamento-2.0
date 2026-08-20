@@ -19,7 +19,7 @@
  * @requires useOrderStaging, useCrossCheck
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { X, Upload, CheckCircle, AlertTriangle, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import OrderUploader from '../components/OrderImport/OrderUploader';
@@ -248,6 +248,14 @@ const OrderImportPage = ({
       setError(`Arquivo reconhecido como ProfitChart-Pro mas sem ordens importáveis. ${reason}.`);
     }
   }, []);
+
+  // Ordens do arquivo que já estão em `orders` (#366). Enquanto a lista do dashboard
+  // carrega não há resposta: acusar "nenhuma duplicata" contra lista vazia seria pior
+  // que não acusar nada — `useOrders` roda sempre pelo fallback, sem índice.
+  const duplicateIndexes = useMemo(() => {
+    if (ordersLoading || parsedOrders.length === 0) return null;
+    return detectAlreadyImported(parsedOrders, existingOrderIndex).duplicateIndexes;
+  }, [ordersLoading, parsedOrders, existingOrderIndex]);
 
   // ============================================
   // STEP 2: PREVIEW → PLAN SELECT
@@ -662,6 +670,49 @@ const OrderImportPage = ({
   ]);
 
   // ============================================
+  // SAÍDA — o rascunho não pode sobreviver ao fechamento (#366)
+  // ============================================
+  // Enquanto o lote está em staging ele é reversível: a collection é isolada e o
+  // cliente pode apagar. Depois da ingestão não é mais — `orders` não aceita delete —
+  // e por isso o X fica travado durante a gravação em vez de "cancelável".
+  const temRascunhoVivo = !!batchId && step !== STEPS.DONE && ingestedBatchRef.current !== batchId;
+  const gravando = step === STEPS.STAGING_WRITE || step === STEPS.INGESTING;
+
+  const handleRequestClose = useCallback(async () => {
+    if (gravando) return;
+
+    if (temRascunhoVivo && orderStaging) {
+      const total = (orderStaging.stagingOrders || []).filter(o => o.importBatchId === batchId).length;
+      const descartar = await confirm({
+        title: 'Descartar esta importação?',
+        body: total > 0
+          ? `As ${total} ordens do rascunho serão removidas. O arquivo continua no seu computador — dá para importar de novo depois.`
+          : 'O rascunho desta importação será removido.',
+        confirmLabel: 'Descartar',
+        cancelLabel: 'Continuar importando',
+        tone: 'danger',
+      });
+      if (!descartar) return;
+
+      try {
+        await orderStaging.deleteStagingBatch(batchId);
+      } catch (err) {
+        console.warn('[OrderImportPage] Falha ao descartar rascunho:', err.message);
+      }
+    }
+
+    onClose();
+  }, [gravando, temRascunhoVivo, orderStaging, batchId, confirm, onClose]);
+
+  // Refresh e fechar aba não passam por onClose — sem isto o rascunho fica órfão.
+  useEffect(() => {
+    if (!temRascunhoVivo && !gravando) return;
+    const aviso = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [temRascunhoVivo, gravando]);
+
+  // ============================================
   // RENDER
   // ============================================
   return (
@@ -682,8 +733,10 @@ const OrderImportPage = ({
             </p>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors"
+            onClick={handleRequestClose}
+            disabled={gravando}
+            title={gravando ? 'Gravando — aguarde terminar' : 'Fechar'}
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <X className="w-4 h-4" />
           </button>
@@ -718,6 +771,11 @@ const OrderImportPage = ({
                   <span className="text-[10px] text-slate-500">
                     {parsedOrders.length} ordens válidas
                   </span>
+                  {ordersLoading && (
+                    <span className="text-[10px] text-slate-500">
+                      · conferindo o que já foi importado...
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -725,6 +783,8 @@ const OrderImportPage = ({
 
               <OrderPreview
                 orders={parsedOrders}
+                duplicateIndexes={duplicateIndexes}
+                loading={ordersLoading}
                 onConfirm={handlePreviewConfirm}
                 onCancel={() => {
                   setStep(STEPS.UPLOAD);
@@ -915,7 +975,7 @@ const OrderImportPage = ({
 
               <div className="flex justify-end pt-2">
                 <button
-                  onClick={onClose}
+                  onClick={handleRequestClose}
                   className="px-4 py-2 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
                 >
                   Fechar

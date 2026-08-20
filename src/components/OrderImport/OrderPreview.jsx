@@ -1,15 +1,35 @@
 /**
  * OrderPreview.jsx
- * @version 1.0.0 (v1.20.0)
+ * @version 1.1.0 (v1.83.15 — issue #366)
  * @description Preview tabular de ordens parseadas antes da ingestão.
  *   Permite exclusão de linhas individuais.
+ *
+ * #366 — porta de entrada: as ordens que já estão em `orders` chegam aqui
+ *   pré-excluídas (`duplicateIndexes`). O aluno vê quantas são e pode reincluí-las
+ *   de propósito; o que não pode mais é reimportar sem saber que está reimportando.
  */
 
-import { useState, useMemo } from 'react';
-import { Trash2, AlertTriangle, Shield, ShieldOff } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Trash2, AlertTriangle, Shield, ShieldOff, Copy } from 'lucide-react';
 
-const OrderPreview = ({ orders, onExclude, onConfirm, onCancel, loading = false }) => {
-  const [excludedIndexes, setExcludedIndexes] = useState(new Set());
+const OrderPreview = ({
+  orders,
+  onExclude,
+  onConfirm,
+  onCancel,
+  loading = false,
+  duplicateIndexes = null,
+}) => {
+  const [excludedIndexes, setExcludedIndexes] = useState(() => new Set(duplicateIndexes || []));
+
+  // A dedup roda contra a lista de `orders` do dashboard, que chega assíncrona: quando
+  // ela aterrissa depois do parse, a seleção precisa acompanhar.
+  useEffect(() => {
+    setExcludedIndexes(new Set(duplicateIndexes || []));
+  }, [duplicateIndexes]);
+
+  const duplicateCount = duplicateIndexes ? duplicateIndexes.size : 0;
+  const todasDuplicadas = duplicateCount > 0 && duplicateCount === orders.length;
 
   const toggleExclude = (idx) => {
     setExcludedIndexes(prev => {
@@ -31,6 +51,8 @@ const OrderPreview = ({ orders, onExclude, onConfirm, onCancel, loading = false 
     return { total: activeOrders.length, filled, stops, cancelled, excluded: excludedIndexes.size };
   }, [activeOrders, excludedIndexes]);
 
+  const reincluirDuplicadas = () => setExcludedIndexes(new Set());
+
   const handleConfirm = () => {
     if (onExclude) onExclude(Array.from(excludedIndexes));
     onConfirm(activeOrders);
@@ -49,6 +71,35 @@ const OrderPreview = ({ orders, onExclude, onConfirm, onCancel, loading = false 
 
   return (
     <div className="space-y-4">
+      {/* Já importadas (#366) — o import não tinha porta: reimportar era invisível */}
+      {duplicateCount > 0 && (
+        <div className={`flex items-start gap-2 p-3 rounded-lg border ${
+          todasDuplicadas
+            ? 'bg-amber-500/10 border-amber-500/30'
+            : 'bg-slate-800/60 border-slate-700/50'
+        }`}>
+          <Copy className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-xs text-amber-200">
+              {todasDuplicadas
+                ? `Todas as ${duplicateCount} ordens deste arquivo já foram importadas.`
+                : `${duplicateCount} de ${orders.length} ordens já foram importadas antes.`}
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {todasDuplicadas
+                ? 'Não há nada novo para trazer. Se quiser reimportar mesmo assim, reinclua as ordens abaixo.'
+                : 'Elas já estão marcadas para ficar de fora. As demais seguem normalmente.'}
+            </p>
+            <button
+              onClick={reincluirDuplicadas}
+              className="text-[11px] text-blue-400 hover:text-blue-300 underline underline-offset-2"
+            >
+              Importar mesmo assim
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Stats bar */}
       <div className="flex flex-wrap gap-3 text-xs">
         <span className="px-2 py-1 rounded bg-slate-800 text-slate-300">
