@@ -1685,6 +1685,26 @@ exports.onTradeDeleted = functions.firestore.document('trades/{tradeId}').onDele
         console.error('[onTradeDeleted] Erro PropFirm engine:', propErr);
       }
     }
+
+    // === 3. CASCATA DE REFERÊNCIAS (#363 fase A) ===
+    // Apagar um trade deixava vivo tudo que apontava para ele: 5.129 notificações órfãs
+    // (89% da collection, todas não lidas) e 26 ordens, medidos em produção 19/08/2026.
+    // A limpeza morava no `deleteTrade` do cliente, que só sabia apagar `movements` e não
+    // alcança /orders (rules: `allow delete: if false`). Roda DEPOIS das etapas 1 e 2, que
+    // dependem de `trade.result` e não do que está sendo apagado. Isolamento (INV-03).
+    try {
+      const { cascadeDeleteTradeRefs } = require('./trades/cascadeDeleteTradeRefs');
+      const c = await cascadeDeleteTradeRefs(db, { tradeId: context.params.tradeId });
+      if (!c.skipped) {
+        console.log(
+          `[onTradeDeleted] Cascata do trade ${context.params.tradeId}: ` +
+          `mov=${c.movements} orders=${c.orders} notif=${c.notifications}` +
+          (c.errors.length ? ` ERROS=[${c.errors.join('; ')}]` : '')
+        );
+      }
+    } catch (cascadeErr) {
+      console.error('[onTradeDeleted] Erro na cascata de referências:', cascadeErr);
+    }
   } catch (e) { console.error('[onTradeDeleted]', e); }
 
   return null;
