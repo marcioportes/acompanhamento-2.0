@@ -6,8 +6,8 @@
 
 - [x] Mockup apresentado — contrato da cascata (backend/CF, sem UI nova). Ver seção Mockup.
 - [x] Memória de cálculo apresentada — queries, ordem, limites de batch e casos limites. Ver seção Memória.
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou — 19/08/2026: _"toca a fase A e não pergunta mais, termina"_
+- [x] Gate Pré-Código liberado
 
 **Decisão de produto já tomada (19/08/2026, Marcio):** _"apaga tudo que é relacionado ao trade. Ponto!"_
 Registrada no issue (#363 comment) → vira DEC-AUTO-363-01. A cascata **deleta**, não desvincula.
@@ -100,7 +100,7 @@ Fases A e B não dependem disso e podem começar.
 
 ## Phases
 
-- A — cascata no `onTradeDeleted`: movements + orders + notifications (o volume e o dano)
+- A — cascata no `onTradeDeleted`: movements + orders + notifications (o volume e o dano) — **FEITA**
 - B — Storage `trades/{tradeId}/` + limpeza dos argumentos mortos no `deleteTrade`/`TradesJournal`
 - C — referências em reviews (bloqueada pelo ponto aberto acima)
 - D — script de backfill do passivo histórico: 5.129 notificações + 26 ordens já órfãs hoje. Fora do
@@ -108,7 +108,7 @@ Fases A e B não dependem disso e podem começar.
 
 ## Sessions
 
-_(vazio — nenhuma task despachada)_
+- `fase A [cascade-scalar-refs] commit d43bf9fa ok` — 9 testes novos, 225 verdes em functions
 
 ## Shared Deltas
 
