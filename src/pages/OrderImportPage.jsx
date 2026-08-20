@@ -19,8 +19,8 @@
  * @requires useOrderStaging, useCrossCheck
  */
 
-import { useState, useCallback, useMemo } from 'react';
-import { X, Upload, CheckCircle, AlertTriangle, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { X, Upload, CheckCircle, AlertTriangle, ArrowLeft, ArrowRight, Loader2, FileClock } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import OrderUploader from '../components/OrderImport/OrderUploader';
 import OrderPreview from '../components/OrderImport/OrderPreview';
@@ -45,17 +45,13 @@ import { compareOperationWithTrade } from '../utils/orderTradeComparison';
 import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
 import { detectCoverageGap } from '../utils/planCoverage';
-import {
-  routeConversationalDecisions,
-  enrichConversationalBatch,
-  operationOrderFingerprints,
-  orderMatchFingerprint,
-} from '../utils/conversationalIngest';
+import { enrichConversationalBatch } from '../utils/conversationalIngest';
+import { persistImportDecisions, stagingDocsToOrders } from '../utils/orderImportPipeline';
+import { indexExistingOrders, detectAlreadyImported } from '../utils/orderDedup';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
-import {
-  collection, query, where, getDocs, writeBatch, doc, serverTimestamp,
-} from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 
 // ============================================
 // STEPS
@@ -83,53 +79,6 @@ const STEP_LABELS = {
 };
 
 /**
- * Marca os docs de `orders` correspondentes a operações descartadas com
- * `userDecision: 'discarded'` + `userDecisionAt: serverTimestamp()`. As ordens
- * foram ingeridas no passo anterior (handleStagingConfirm); esta função só
- * atualiza os docs existentes para preservar a decisão do aluno em auditoria.
- *
- * Match: `batchId` + fingerprint instrument|side|filledAt|quantity
- * (ver `orderMatchFingerprint`). `orders` docs não carregam `externalOrderId`
- * atualmente; o fingerprint composto é suficiente para o propósito de
- * marcação — colisões dentro do mesmo batch são improváveis (mesmo ticker,
- * mesmo lado, mesmo filledAt exato, mesmo qty).
- */
-async function persistDiscardedOrders({ batchId, discardedItems }) {
-  if (!batchId || !discardedItems?.length) return { updated: 0 };
-
-  // Reúne fingerprints de todas as ordens (entry+exit+stop) das ops descartadas.
-  const discardedFps = new Set();
-  for (const item of discardedItems) {
-    const fps = operationOrderFingerprints(item.operation);
-    for (const fp of fps) discardedFps.add(fp);
-  }
-  if (discardedFps.size === 0) return { updated: 0 };
-
-  const q = query(collection(db, 'orders'), where('batchId', '==', batchId));
-  const snap = await getDocs(q);
-  if (snap.empty) return { updated: 0 };
-
-  const BATCH_SIZE = 450;
-  let updated = 0;
-  const matchingDocs = snap.docs.filter(d => discardedFps.has(orderMatchFingerprint(d.data())));
-
-  for (let i = 0; i < matchingDocs.length; i += BATCH_SIZE) {
-    const chunk = matchingDocs.slice(i, i + BATCH_SIZE);
-    const batch = writeBatch(db);
-    for (const d of chunk) {
-      batch.update(doc(db, 'orders', d.id), {
-        userDecision: 'discarded',
-        userDecisionAt: serverTimestamp(),
-      });
-    }
-    await batch.commit();
-    updated += chunk.length;
-  }
-
-  return { updated };
-}
-
-/**
  * @param {Object} props
  * @param {Function} props.onClose
  * @param {Object[]} props.plans — planos do aluno
@@ -147,6 +96,10 @@ const OrderImportPage = ({
   trades = [],
   orderStaging,
   crossCheck,
+  existingOrders = [],
+  ordersLoading = false,
+  studentId = null,
+  resumeBatch = null,
   userContext,
   onRequestRetroactivePlan,
 }) => {
@@ -175,6 +128,12 @@ const OrderImportPage = ({
   const [coverageGap, setCoverageGap] = useState({ hasCoverageGap: false, gapOperations: [] });
   const [gapResolution, setGapResolution] = useState(null); // null | 'accepted' | 'discarded'
 
+  // Material da correlação, calculado na revisão e consumido no passo final (#366)
+  const [stagedCorrelations, setStagedCorrelations] = useState(null);
+  // Marca que a ingestão do lote já concluiu: um retry após falha na criação de
+  // trades não pode reingerir (nem morrer tentando).
+  const ingestedBatchRef = useRef(null);
+
   // Ingest results
   const [correlationResult, setCorrelationResult] = useState(null);
   const [importSummary, setImportSummary] = useState(null);
@@ -187,6 +146,9 @@ const OrderImportPage = ({
 
   // Shadow Behavior Analysis — CF canônica (issue #156 Fase A)
   const { analyze: analyzeShadow } = useShadowAnalysis();
+
+  // Confirmações inline (nunca window.confirm) — #366
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   // Derivar conta do plano selecionado (para gate de plano retroativo + lookup)
   const selectedPlan = useMemo(
@@ -201,6 +163,18 @@ const OrderImportPage = ({
     [trades, selectedPlanId]
   );
   const tradesById = useMemo(() => new Map(planTrades.map(t => [t.id, t])), [planTrades]);
+
+  // Índice do que já está em `orders` — porta de entrada do import (#366). Bi-chave e
+  // escopado por aluno; ver orderDedup.js. Alimenta o aviso de duplicata no preview e
+  // o skip da ingestão, que é o que mantém toda escrita como `create`.
+  const existingOrderIndex = useMemo(
+    () => indexExistingOrders(existingOrders, studentId),
+    [existingOrders, studentId],
+  );
+  const existingOrderKeys = useMemo(
+    () => new Set(existingOrderIndex.keys()),
+    [existingOrderIndex],
+  );
   const tradesByDate = useMemo(() => {
     const map = new Map();
     for (const t of planTrades) {
@@ -252,6 +226,14 @@ const OrderImportPage = ({
 
     const parsed = detection.parser(result.text);
     setParseErrors(parsed.errors || []);
+    // lowResolution vem do parser e era descartado no set acima — o badge de baixa
+    // resolução nunca aparecia e o flag chegava sempre `false` na criação (#366).
+    setParseResult({
+      ...result,
+      format: detection.format,
+      confidence: detection.confidence,
+      lowResolution: !!parsed.lowResolution,
+    });
 
     const { orders: normalized } = normalizeBatch(parsed.orders);
     const validation = validateBatch(normalized);
@@ -267,6 +249,14 @@ const OrderImportPage = ({
       setError(`Arquivo reconhecido como ProfitChart-Pro mas sem ordens importáveis. ${reason}.`);
     }
   }, []);
+
+  // Ordens do arquivo que já estão em `orders` (#366). Enquanto a lista do dashboard
+  // carrega não há resposta: acusar "nenhuma duplicata" contra lista vazia seria pior
+  // que não acusar nada — `useOrders` roda sempre pelo fallback, sem índice.
+  const duplicateIndexes = useMemo(() => {
+    if (ordersLoading || parsedOrders.length === 0) return null;
+    return detectAlreadyImported(parsedOrders, existingOrderIndex).duplicateIndexes;
+  }, [ordersLoading, parsedOrders, existingOrderIndex]);
 
   // ============================================
   // STEP 2: PREVIEW → PLAN SELECT
@@ -286,11 +276,24 @@ const OrderImportPage = ({
     setError(null);
 
     try {
+      // Voltar da revisão e reconfirmar criava um segundo lote e abandonava o
+      // primeiro no staging — ghost que ninguém via nem limpava (#366).
+      if (batchId) {
+        setProgress('Descartando o rascunho anterior...');
+        try {
+          await orderStaging.deleteStagingBatch(batchId);
+        } catch (delErr) {
+          console.warn('[OrderImportPage] Falha ao descartar lote anterior:', delErr.message);
+        }
+      }
+
       setProgress('Gravando ordens em staging...');
       const newBatchId = await orderStaging.addStagingBatch(parsedOrders, {
         planId: selectedPlanId,
         sourceFormat: parseResult?.format || 'generic',
         fileName: parseResult?.fileName || null,
+        // Sem o fuso persistido, retomar o lote não consegue refazer a reconstrução.
+        importTimezone,
       });
       setBatchId(newBatchId);
 
@@ -310,7 +313,7 @@ const OrderImportPage = ({
       setStep(STEPS.PLAN_SELECT);
       setProgress('');
     }
-  }, [selectedPlanId, parsedOrders, parseResult, orderStaging, importTimezone]);
+  }, [selectedPlanId, parsedOrders, parseResult, orderStaging, importTimezone, batchId]);
 
   // ============================================
   // STEP 4: STAGING REVIEW → CATEGORIZE → CONVERSATIONAL REVIEW
@@ -339,44 +342,14 @@ const OrderImportPage = ({
       );
       setCorrelationResult({ correlations, stats: corrStats });
 
-      // 2. Mapear externalOrderId → stagingDoc.id (snapshot atual do hook).
-      //    addStagingBatch já gravou; o listener onSnapshot já trouxe os docs.
-      const stagingByExternalId = new Map();
-      for (const sd of (orderStaging.stagingOrders || [])) {
-        if (sd.importBatchId === batchId && sd.externalOrderId) {
-          stagingByExternalId.set(sd.externalOrderId, sd.id);
-        }
-      }
-      const correlationsByStagingId = {};
-      for (const c of correlations) {
-        if (!c.externalOrderId || !c.tradeId) continue;
-        const stagingId = stagingByExternalId.get(c.externalOrderId);
-        if (stagingId) correlationsByStagingId[stagingId] = { tradeId: c.tradeId, confidence: c.confidence };
-      }
-      for (const c of cancelledCorrs) {
-        if (!c.externalOrderId || !c.tradeId) continue;
-        const stagingId = stagingByExternalId.get(c.externalOrderId);
-        if (stagingId) correlationsByStagingId[stagingId] = { tradeId: c.tradeId, confidence: c.confidence };
-      }
+      // 2. Guardar o material do passo final. NADA é gravado aqui (#366): a ingestão
+      //    para `orders` acontece depois da decisão por operação, junto com a criação
+      //    dos trades. Antes o lote inteiro era ingerido nesta linha, e o que o aluno
+      //    descartasse na tela seguinte já estava gravado sem caminho de volta —
+      //    `orders` não aceita delete do cliente.
+      setStagedCorrelations({ correlations, cancelledCorrs, confirmedOrders, confirmedOrderKeys });
 
-      // 3. Ingest (staging → orders, deleta o resto) com correlatedTradeId populado.
-      setProgress('Ingerindo ordens das operações confirmadas...');
-      await orderStaging.ingestBatch(batchId, correlationsByStagingId, confirmedOrderKeys);
-
-      // 3. Cross-check (persistido — não exibido ao aluno).
-      if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
-        setProgress('Calculando cross-check...');
-        const now = new Date();
-        const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
-        const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-        try {
-          await crossCheck.runCrossCheck(confirmedOrders, planTrades, selectedPlanId, period);
-        } catch (ccErr) {
-          console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
-        }
-      }
-
-      // 4. Categorização → 4 classes (Fase B).
+      // 3. Categorização → 4 classes (Fase B).
       setProgress('Classificando operações...');
       const { toCreate, toConfront, ambiguous, autoliq } =
         categorizeConfirmedOps(confirmedOps, correlations);
@@ -435,7 +408,7 @@ const OrderImportPage = ({
     } finally {
       setIngesting(false);
     }
-  }, [batchId, parsedOrders, selectedPlanId, plans, accountId, planTrades, orderStaging, crossCheck]);
+  }, [batchId, parsedOrders, plans, accountId, planTrades, orderStaging]);
 
   // ============================================
   // STEP 5: CONVERSATIONAL REVIEW — handlers
@@ -492,6 +465,21 @@ const OrderImportPage = ({
   const handleConversationalSubmit = useCallback(async () => {
     if (coverageGap.hasCoverageGap && gapResolution == null) return; // Gate: só bloqueia gap não resolvido
 
+    // Operação sem decisão não vira trade nem ordem — some. Antes isso acontecia em
+    // silêncio: `pending` não entra em bucket nenhum no roteamento (#366).
+    const pendingCount = conversationalQueue.filter(i => i.userDecision === 'pending').length;
+    if (pendingCount > 0) {
+      const seguir = await confirm({
+        title: 'Operações sem decisão',
+        body: `${pendingCount} ${pendingCount === 1 ? 'operação continua' : 'operações continuam'} sem decisão. `
+          + 'As ordens delas não serão importadas e nenhum trade será criado a partir delas.',
+        confirmLabel: 'Continuar assim mesmo',
+        cancelLabel: 'Voltar e decidir',
+        tone: 'warning',
+      });
+      if (!seguir) return;
+    }
+
     setStep(STEPS.INGESTING);
     setIngesting(true);
     setError(null);
@@ -527,31 +515,48 @@ const OrderImportPage = ({
 
       const lowResolution = !!parseResult?.lowResolution;
 
-      // Roteia decisões em buckets (helper puro — ver conversationalIngest.js).
-      const { toEnrich, toCreate: toCreateOps, discarded } =
-        routeConversationalDecisions(conversationalQueue);
-
-      // Criação via gateway (INV-02) com throttling.
-      setProgress('Criando trades a partir das decisões...');
-      const batchResult = await createTradesBatch({
-        toCreate: toCreateOps,
-        planId: selectedPlanId,
-        importBatchId: batchId,
-        tickerRuleMap,
-        lowResolution,
-        existingTrades: planTrades,
-        userContext,
-        onProgress: (_current, _total, message) => setProgress(message),
-      });
-
-      // Enriquecimento real — chama tradeGateway.enrichTrade por item.
-      setProgress('Enriquecendo trades existentes com dados da corretora...');
-      const enrichResult = await enrichConversationalBatch({
-        toEnrich,
-        userContext,
-        tickerRuleMap,
-        importBatchId: batchId,
-        enrichTradeFn: enrichTrade,
+      // Gravação na ordem obrigatória: ordens confirmadas → trades → enriquecimento.
+      // A ordem é contrato (ver persistImportDecisions): linkOrdersToCreatedTrade roda
+      // dentro de onTradeCreated e desiste se não achar as ordens do batch (#351).
+      const autoCorrs = [
+        ...(stagedCorrelations?.correlations || []),
+        ...(stagedCorrelations?.cancelledCorrs || []),
+      ];
+      const { batchResult, enrichResult, toEnrich } = await persistImportDecisions({
+        queue: conversationalQueue,
+        autoCorrelations: autoCorrs,
+        existingKeys: existingOrderKeys,
+        alreadyIngested: !batchId || !orderStaging || ingestedBatchRef.current === batchId,
+        ingestFn: async (correlations, orderKeys, options) => {
+          setProgress('Gravando as ordens das operações confirmadas...');
+          const r = await orderStaging.ingestBatch(batchId, correlations, orderKeys, options);
+          ingestedBatchRef.current = batchId;
+          console.log('[OrderImportPage] Ingest pós-decisão:', r);
+          return r;
+        },
+        createFn: (toCreateOps) => {
+          setProgress('Criando trades a partir das decisões...');
+          return createTradesBatch({
+            toCreate: toCreateOps,
+            planId: selectedPlanId,
+            importBatchId: batchId,
+            tickerRuleMap,
+            lowResolution,
+            existingTrades: planTrades,
+            userContext,
+            onProgress: (_current, _total, message) => setProgress(message),
+          });
+        },
+        enrichFn: (toEnrich) => {
+          setProgress('Enriquecendo trades existentes com dados da corretora...');
+          return enrichConversationalBatch({
+            toEnrich,
+            userContext,
+            tickerRuleMap,
+            importBatchId: batchId,
+            enrichTradeFn: enrichTrade,
+          });
+        },
       });
 
       // Painel de confronto: mostra o que foi enriquecido (before vs after)
@@ -574,15 +579,25 @@ const OrderImportPage = ({
         setConfrontData({ divergent, converged });
       }
 
-      // Persist userDecision: 'discarded' nos docs de `orders` correspondentes.
-      // A operação teve suas ordens ingeridas no step anterior (handleStagingConfirm);
-      // aqui marcamos as ordens como descartadas para auditoria downstream.
-      if (discarded.length > 0 && batchId) {
+      // Operação descartada não precisa de marcação: suas ordens nunca chegaram em
+      // `orders` (#366). Antes a ingestão acontecia na tela anterior e a marcação de
+      // descarte era um update — negado pelas rules e engolido por try/catch, o que
+      // deixava o ghost gravado e sem rastro nenhum da decisão do aluno.
+
+      // 3. Cross-check (persistido — não exibido ao aluno). Confronta o extrato contra
+      //    os trades que JÁ existiam quando o import começou; os criados agora não
+      //    entram, porque `correlateOrders` exige `entryTime` e o retorno de
+      //    createTradesBatch não o carrega. Semântica declarada, não acidental.
+      const confirmedOrders = stagedCorrelations?.confirmedOrders || [];
+      if (crossCheck && planTrades.length > 0 && confirmedOrders.length > 0) {
+        setProgress('Calculando cross-check...');
+        const now = new Date();
+        const weekNum = Math.ceil((now.getDate() - now.getDay() + 1) / 7);
+        const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
         try {
-          setProgress('Registrando decisões de descarte...');
-          await persistDiscardedOrders({ batchId, discardedItems: discarded });
-        } catch (discErr) {
-          console.warn('[OrderImportPage] Persist discarded failed (non-blocking):', discErr.message);
+          await crossCheck.runCrossCheck(confirmedOrders, planTrades, selectedPlanId, period);
+        } catch (ccErr) {
+          console.warn('[OrderImportPage] Cross-check persist failed (non-blocking):', ccErr);
         }
       }
 
@@ -594,6 +609,7 @@ const OrderImportPage = ({
         autoliq: conversationalQueue.filter(i => i.classification === CLASSIFICATION.AUTOLIQ).length,
       };
       const discardedCount = conversationalQueue.filter(i => i.userDecision === 'discarded').length;
+      const pendingDiscardedCount = conversationalQueue.filter(i => i.userDecision === 'pending').length;
 
       setImportSummary({
         ordersConfirmed: null, // substituído pelo confirmedItems.length abaixo
@@ -604,6 +620,7 @@ const OrderImportPage = ({
         enrichedCount: enrichResult.enriched.length,
         enrichFailed: enrichResult.failed,
         discardedCount,
+        pendingDiscardedCount,
         byClass,
         lowResolution,
       });
@@ -646,7 +663,120 @@ const OrderImportPage = ({
     userContext,
     tradesById,
     analyzeShadow,
+    orderStaging,
+    crossCheck,
+    stagedCorrelations,
+    existingOrderKeys,
+    confirm,
   ]);
+
+  // Lotes que ficaram para trás — o daqui de dentro (batchId) não conta.
+  const rascunhosPendentes = useMemo(
+    () => (orderStaging?.stagingBatches || []).filter(b => b.batchId !== batchId),
+    [orderStaging, batchId],
+  );
+
+  const handleDescartarRascunho = useCallback(async (alvo) => {
+    const ok = await confirm({
+      title: 'Descartar o rascunho anterior?',
+      body: 'As ordens daquela importação inacabada serão removidas. Nada delas foi gravado.',
+      confirmLabel: 'Descartar',
+      cancelLabel: 'Manter',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await orderStaging.deleteStagingBatch(alvo);
+    } catch (err) {
+      console.warn('[OrderImportPage] Falha ao descartar rascunho anterior:', err.message);
+    }
+  }, [confirm, orderStaging]);
+
+  // ============================================
+  // RETOMADA de lote pendente (#366)
+  // ============================================
+  // O rascunho guarda tudo que o parser produziu, menos `_rowIndex` — que é o join da
+  // correlação. stagingDocsToOrders reatribui; sem isso cada operação já confrontada
+  // voltaria como trade novo. O fuso vem do próprio lote (importTimezone), porque
+  // repedir abriria espaço para o aluno reconfirmar um fuso diferente do original.
+  const resumedRef = useRef(null);
+  useEffect(() => {
+    if (!resumeBatch || resumedRef.current === resumeBatch.batchId) return;
+    resumedRef.current = resumeBatch.batchId;
+
+    const orders = stagingDocsToOrders(resumeBatch.orders || []);
+    if (orders.length === 0) return;
+
+    setParsedOrders(orders);
+    setParseResult({
+      fileName: resumeBatch.fileName || null,
+      format: resumeBatch.sourceFormat || 'generic',
+      confidence: 1,
+      lowResolution: false,
+      resumed: true,
+    });
+    setSelectedPlanId(resumeBatch.planId || '');
+    setBatchId(resumeBatch.batchId);
+
+    if (!resumeBatch.importTimezone) {
+      // Lote gravado antes do #366: o fuso não foi persistido e não dá para adivinhar.
+      setImportTimezone('');
+      setStep(STEPS.PLAN_SELECT);
+      setError('Este rascunho é anterior ao registro de fuso. Confirme o fuso dos horários do arquivo para continuar.');
+      return;
+    }
+
+    setImportTimezone(resumeBatch.importTimezone);
+    const ops = reconstructOperations(orders, { timezone: resumeBatch.importTimezone });
+    associateNonFilledOrders(ops, orders);
+    enrichOperationsWithStopSemantic(ops);
+    enrichOperationsWithStopAnalysis(ops);
+    setReconstructedOps(ops);
+    setStep(STEPS.STAGING_REVIEW);
+  }, [resumeBatch]);
+
+  // ============================================
+  // SAÍDA — o rascunho não pode sobreviver ao fechamento (#366)
+  // ============================================
+  // Enquanto o lote está em staging ele é reversível: a collection é isolada e o
+  // cliente pode apagar. Depois da ingestão não é mais — `orders` não aceita delete —
+  // e por isso o X fica travado durante a gravação em vez de "cancelável".
+  const temRascunhoVivo = !!batchId && step !== STEPS.DONE && ingestedBatchRef.current !== batchId;
+  const gravando = step === STEPS.STAGING_WRITE || step === STEPS.INGESTING;
+
+  const handleRequestClose = useCallback(async () => {
+    if (gravando) return;
+
+    if (temRascunhoVivo && orderStaging) {
+      const total = (orderStaging.stagingOrders || []).filter(o => o.importBatchId === batchId).length;
+      const descartar = await confirm({
+        title: 'Descartar esta importação?',
+        body: total > 0
+          ? `As ${total} ordens do rascunho serão removidas. O arquivo continua no seu computador — dá para importar de novo depois.`
+          : 'O rascunho desta importação será removido.',
+        confirmLabel: 'Descartar',
+        cancelLabel: 'Continuar importando',
+        tone: 'danger',
+      });
+      if (!descartar) return;
+
+      try {
+        await orderStaging.deleteStagingBatch(batchId);
+      } catch (err) {
+        console.warn('[OrderImportPage] Falha ao descartar rascunho:', err.message);
+      }
+    }
+
+    onClose();
+  }, [gravando, temRascunhoVivo, orderStaging, batchId, confirm, onClose]);
+
+  // Refresh e fechar aba não passam por onClose — sem isto o rascunho fica órfão.
+  useEffect(() => {
+    if (!temRascunhoVivo && !gravando) return;
+    const aviso = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [temRascunhoVivo, gravando]);
 
   // ============================================
   // RENDER
@@ -669,12 +799,16 @@ const OrderImportPage = ({
             </p>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors"
+            onClick={handleRequestClose}
+            disabled={gravando}
+            title={gravando ? 'Gravando — aguarde terminar' : 'Fechar'}
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {confirmDialog}
 
         {/* ─── Content ─── */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
@@ -689,7 +823,33 @@ const OrderImportPage = ({
 
           {/* ── UPLOAD ── */}
           {step === STEPS.UPLOAD && (
-            <OrderUploader onParsed={handleParsed} />
+            <>
+              {/* Rascunho de uma importação anterior (#366): antes ele ficava preso no
+                  staging sem tela nenhuma que o mostrasse. */}
+              {rascunhosPendentes.length > 0 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <FileClock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-xs text-amber-200">
+                      Você tem uma importação não finalizada
+                      {rascunhosPendentes[0].fileName ? ` (${rascunhosPendentes[0].fileName})` : ''}
+                      {' '}com {rascunhosPendentes[0].totalCount} {rascunhosPendentes[0].totalCount === 1 ? 'ordem' : 'ordens'}.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Nada dela foi importado ainda. Feche esta janela para retomá-la pelo
+                      card do painel, ou descarte para começar do zero.
+                    </p>
+                    <button
+                      onClick={() => handleDescartarRascunho(rascunhosPendentes[0].batchId)}
+                      className="text-[11px] text-red-300 hover:text-red-200 underline underline-offset-2"
+                    >
+                      Descartar rascunho anterior
+                    </button>
+                  </div>
+                </div>
+              )}
+              <OrderUploader onParsed={handleParsed} />
+            </>
           )}
 
           {/* ── PREVIEW ── */}
@@ -703,6 +863,11 @@ const OrderImportPage = ({
                   <span className="text-[10px] text-slate-500">
                     {parsedOrders.length} ordens válidas
                   </span>
+                  {ordersLoading && (
+                    <span className="text-[10px] text-slate-500">
+                      · conferindo o que já foi importado...
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -710,6 +875,8 @@ const OrderImportPage = ({
 
               <OrderPreview
                 orders={parsedOrders}
+                duplicateIndexes={duplicateIndexes}
+                loading={ordersLoading}
                 onConfirm={handlePreviewConfirm}
                 onCancel={() => {
                   setStep(STEPS.UPLOAD);
@@ -900,7 +1067,7 @@ const OrderImportPage = ({
 
               <div className="flex justify-end pt-2">
                 <button
-                  onClick={onClose}
+                  onClick={handleRequestClose}
                   className="px-4 py-2 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
                 >
                   Fechar
