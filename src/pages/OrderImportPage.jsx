@@ -20,7 +20,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { X, Upload, CheckCircle, AlertTriangle, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { X, Upload, CheckCircle, AlertTriangle, ArrowLeft, ArrowRight, Loader2, FileClock } from 'lucide-react';
 import DebugBadge from '../components/DebugBadge';
 import OrderUploader from '../components/OrderImport/OrderUploader';
 import OrderPreview from '../components/OrderImport/OrderPreview';
@@ -46,7 +46,7 @@ import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
 import { detectCoverageGap } from '../utils/planCoverage';
 import { enrichConversationalBatch } from '../utils/conversationalIngest';
-import { persistImportDecisions } from '../utils/orderImportPipeline';
+import { persistImportDecisions, stagingDocsToOrders } from '../utils/orderImportPipeline';
 import { indexExistingOrders, detectAlreadyImported } from '../utils/orderDedup';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -99,6 +99,7 @@ const OrderImportPage = ({
   existingOrders = [],
   ordersLoading = false,
   studentId = null,
+  resumeBatch = null,
   userContext,
   onRequestRetroactivePlan,
 }) => {
@@ -669,6 +670,71 @@ const OrderImportPage = ({
     confirm,
   ]);
 
+  // Lotes que ficaram para trás — o daqui de dentro (batchId) não conta.
+  const rascunhosPendentes = useMemo(
+    () => (orderStaging?.stagingBatches || []).filter(b => b.batchId !== batchId),
+    [orderStaging, batchId],
+  );
+
+  const handleDescartarRascunho = useCallback(async (alvo) => {
+    const ok = await confirm({
+      title: 'Descartar o rascunho anterior?',
+      body: 'As ordens daquela importação inacabada serão removidas. Nada delas foi gravado.',
+      confirmLabel: 'Descartar',
+      cancelLabel: 'Manter',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await orderStaging.deleteStagingBatch(alvo);
+    } catch (err) {
+      console.warn('[OrderImportPage] Falha ao descartar rascunho anterior:', err.message);
+    }
+  }, [confirm, orderStaging]);
+
+  // ============================================
+  // RETOMADA de lote pendente (#366)
+  // ============================================
+  // O rascunho guarda tudo que o parser produziu, menos `_rowIndex` — que é o join da
+  // correlação. stagingDocsToOrders reatribui; sem isso cada operação já confrontada
+  // voltaria como trade novo. O fuso vem do próprio lote (importTimezone), porque
+  // repedir abriria espaço para o aluno reconfirmar um fuso diferente do original.
+  const resumedRef = useRef(null);
+  useEffect(() => {
+    if (!resumeBatch || resumedRef.current === resumeBatch.batchId) return;
+    resumedRef.current = resumeBatch.batchId;
+
+    const orders = stagingDocsToOrders(resumeBatch.orders || []);
+    if (orders.length === 0) return;
+
+    setParsedOrders(orders);
+    setParseResult({
+      fileName: resumeBatch.fileName || null,
+      format: resumeBatch.sourceFormat || 'generic',
+      confidence: 1,
+      lowResolution: false,
+      resumed: true,
+    });
+    setSelectedPlanId(resumeBatch.planId || '');
+    setBatchId(resumeBatch.batchId);
+
+    if (!resumeBatch.importTimezone) {
+      // Lote gravado antes do #366: o fuso não foi persistido e não dá para adivinhar.
+      setImportTimezone('');
+      setStep(STEPS.PLAN_SELECT);
+      setError('Este rascunho é anterior ao registro de fuso. Confirme o fuso dos horários do arquivo para continuar.');
+      return;
+    }
+
+    setImportTimezone(resumeBatch.importTimezone);
+    const ops = reconstructOperations(orders, { timezone: resumeBatch.importTimezone });
+    associateNonFilledOrders(ops, orders);
+    enrichOperationsWithStopSemantic(ops);
+    enrichOperationsWithStopAnalysis(ops);
+    setReconstructedOps(ops);
+    setStep(STEPS.STAGING_REVIEW);
+  }, [resumeBatch]);
+
   // ============================================
   // SAÍDA — o rascunho não pode sobreviver ao fechamento (#366)
   // ============================================
@@ -757,7 +823,33 @@ const OrderImportPage = ({
 
           {/* ── UPLOAD ── */}
           {step === STEPS.UPLOAD && (
-            <OrderUploader onParsed={handleParsed} />
+            <>
+              {/* Rascunho de uma importação anterior (#366): antes ele ficava preso no
+                  staging sem tela nenhuma que o mostrasse. */}
+              {rascunhosPendentes.length > 0 && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <FileClock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-xs text-amber-200">
+                      Você tem uma importação não finalizada
+                      {rascunhosPendentes[0].fileName ? ` (${rascunhosPendentes[0].fileName})` : ''}
+                      {' '}com {rascunhosPendentes[0].totalCount} {rascunhosPendentes[0].totalCount === 1 ? 'ordem' : 'ordens'}.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Nada dela foi importado ainda. Feche esta janela para retomá-la pelo
+                      card do painel, ou descarte para começar do zero.
+                    </p>
+                    <button
+                      onClick={() => handleDescartarRascunho(rascunhosPendentes[0].batchId)}
+                      className="text-[11px] text-red-300 hover:text-red-200 underline underline-offset-2"
+                    >
+                      Descartar rascunho anterior
+                    </button>
+                  </div>
+                </div>
+              )}
+              <OrderUploader onParsed={handleParsed} />
+            </>
           )}
 
           {/* ── PREVIEW ── */}

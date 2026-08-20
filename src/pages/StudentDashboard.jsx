@@ -60,6 +60,8 @@ import CsvActivationResultModal from '../components/csv/CsvActivationResultModal
 
 // Order Import (CHUNK-10)
 import OrderImportPage from '../pages/OrderImportPage';
+import OrderStagingCard from '../components/OrderImport/OrderStagingCard';
+import OrderStagingManager from '../components/OrderImport/OrderStagingManager';
 
 // Student Onboarding (CHUNK-09) — guard movido para App.jsx (fix loop infinito)
 
@@ -183,6 +185,9 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   const [showCsvManager, setShowCsvManager] = useState(false);
   const [activationResult, setActivationResult] = useState(null);
   const [showOrderImport, setShowOrderImport] = useState(false);
+  // Rascunho de import retomado (#366): o wizard reabre no ponto em que parou.
+  const [showOrderStagingManager, setShowOrderStagingManager] = useState(false);
+  const [resumeOrderBatch, setResumeOrderBatch] = useState(null);
 
   // Sincronização bidirecional com StudentContext (issue #118 — DEC-047)
   // filters.accountId é fonte local para consumers prop-drilled; contexto é fonte de verdade global.
@@ -602,6 +607,17 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         </div>
       )}
 
+      {/* Order Import — rascunho não finalizado (#366) */}
+      {orderStaging.stagingBatches.length > 0 && (
+        <div className="flex items-center">
+          <OrderStagingCard
+            totalCount={orderStaging.stagingOrders.length}
+            batchCount={orderStaging.stagingBatches.length}
+            onClick={() => setShowOrderStagingManager(true)}
+          />
+        </div>
+      )}
+
       {/* Pendências da mentoria — takeaways em aberto (Stage 4.5) */}
       {/* ContextBar respect (#188 F4): filtra por studentCtx.planId quando definido. */}
       <PendingTakeaways
@@ -880,10 +896,24 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         result={activationResult}
       />
 
+      {/* Order Import — rascunhos pendentes (#366) */}
+      <OrderStagingManager
+        isOpen={showOrderStagingManager}
+        batches={orderStaging.stagingBatches}
+        onClose={() => setShowOrderStagingManager(false)}
+        onResume={(batch) => {
+          setResumeOrderBatch(batch);
+          setShowOrderStagingManager(false);
+          setShowOrderImport(true);
+        }}
+        onDelete={(batchId) => orderStaging.deleteStagingBatch(batchId)}
+      />
+
       {/* Order Import Modal (CHUNK-10) */}
       {showOrderImport && (
         <OrderImportPage
-          onClose={() => setShowOrderImport(false)}
+          onClose={() => { setShowOrderImport(false); setResumeOrderBatch(null); }}
+          resumeBatch={resumeOrderBatch}
           plans={plans}
           trades={trades}
           orderStaging={orderStaging}
