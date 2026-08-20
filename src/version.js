@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.14: #363 fix (RESERVA) onTradeDeleted não limpa nada — cascata completa de deleção do trade (movements, orders, notifications, reviews, Storage)
+ * - 1.83.14: #363 fix onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo (PR #365, 20/08/2026)
  * - 1.83.13: #362 fix ingestBatch com id determinístico + externalOrderId — reimportação vira ide (PR #364, 19/08/2026)
  * - 1.83.12: #351 fase D reaplicada — onTradeCreated liga as ordens ao trade que o próprio import cria
  * - 1.83.11: fix fingerprint do behaviorProfile ignorava a evidência — correção de número não era gravada
@@ -400,10 +400,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.13',
-  build: '20260819',
-  display: 'v1.83.13',
-  full: '1.83.13+20260819',
+  version: '1.83.14',
+  build: '20260820',
+  display: 'v1.83.14',
+  full: '1.83.14+20260820',
 };
 export default VERSION;
 export { VERSION };

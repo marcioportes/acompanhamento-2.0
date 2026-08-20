@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.14] - 20/08/2026 · #363 · PR #365
+
+**fix:** onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo
+
+- `useTrades.deleteTrade` para de apagar `movements` no cliente: apagá-los **antes** do trade corrompia o saldo quando o delete era negado — em ciclo selado (#259) os movements sumiam, `onMovementDeleted` estornava o `currentBalance`, o delete estourava permission-denied e o trade seguia vivo sem o movement, silenciosamente (DEC-AUTO-363-03)
+- `deleteDocsInBatches` carrega `err.deleted`: falha no meio da paginação reportava 0 apagados com milhares já fora do banco, invertendo o log — a única evidência que a deleção deixa
+- `deleteDocsInBatches` extraído para `_shared/batchDelete.js` e adotado pelas três cascatas (plano, conta, trade): eram três cópias do mesmo loop, que foi como as coberturas divergiram
+
+
 ## [1.83.13] - 19/08/2026 · #362
 
 **fix:** reimportar o mesmo arquivo de ordens criava cópias em `orders`
