@@ -33,20 +33,8 @@ const admin = require('firebase-admin');
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
 const isMentor = (email) => MENTOR_EMAILS.includes(String(email || '').toLowerCase());
 
-const BATCH_LIMIT = 400;
-
-async function deleteDocsInBatches(db, docRefs) {
-  if (docRefs.length === 0) return 0;
-  let deleted = 0;
-  for (let i = 0; i < docRefs.length; i += BATCH_LIMIT) {
-    const slice = docRefs.slice(i, i + BATCH_LIMIT);
-    const batch = db.batch();
-    slice.forEach((ref) => batch.delete(ref));
-    await batch.commit();
-    deleted += slice.length;
-  }
-  return deleted;
-}
+// Helper compartilhado com a cascata do trade (#363) — uma implementação só.
+const { deleteDocsInBatches } = require('../_shared/batchDelete');
 
 module.exports = onCall(
   { maxInstances: 5, timeoutSeconds: 120 },
