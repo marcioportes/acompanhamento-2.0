@@ -131,7 +131,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   // Order Import (CHUNK-10)
   const orderStaging = useOrderStaging(overrideStudentId);
-  const { orders, stats: orderStats } = useOrders(overrideStudentId);
+  const { orders, loading: ordersLoading, stats: orderStats } = useOrders(overrideStudentId);
   const crossCheckHook = useCrossCheck(overrideStudentId);
 
   // Maturity snapshot (issue #119 task 11)
@@ -888,6 +888,9 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
           trades={trades}
           orderStaging={orderStaging}
           crossCheck={crossCheckHook}
+          existingOrders={orders}
+          ordersLoading={ordersLoading}
+          studentId={overrideStudentId || user?.uid || null}
           userContext={user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null}
           onRequestRetroactivePlan={onRequestRetroactivePlan ? ({ accountId }) => {
             setShowOrderImport(false);

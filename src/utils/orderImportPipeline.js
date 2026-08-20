@@ -19,6 +19,7 @@
  */
 
 import { makeOrderKey } from './orderKey';
+import { routeConversationalDecisions } from './conversationalIngest';
 
 /** Decisões que resultam em gravação. `pending` e `discarded` ficam de fora. */
 const DECIDIDAS = new Set(['confirmed', 'adjusted']);
@@ -96,6 +97,52 @@ export function correlationsFromDecisions(queue, autoCorrelations = []) {
   }
 
   return byKey;
+}
+
+/**
+ * Executa a gravação do import na ordem obrigatória: ordens confirmadas primeiro,
+ * trades depois, enriquecimento por último.
+ *
+ * A ordem é contrato, não estilo: `linkOrdersToCreatedTrade` roda dentro de
+ * `onTradeCreated` e desiste quando não encontra ordens do batch. Criar o trade antes
+ * devolveria toda ordem nascida do import ao estado órfão que o #351 mediu (194 de 198).
+ *
+ * `alreadyIngested` guarda o retry: se a criação de trades falhou depois de uma
+ * ingestão bem-sucedida, reenviar não pode reingerir.
+ *
+ * @param {Object} params
+ * @param {Object[]} params.queue — conversationalQueue pós-decisão
+ * @param {Array} params.autoCorrelations — correlação automática calculada na revisão
+ * @param {Set<string>} [params.existingKeys] — chaves já presentes em `orders`
+ * @param {boolean} [params.alreadyIngested] — ingestão deste lote já concluiu
+ * @param {Function} params.ingestFn — (correlations, orderKeys, options) => Promise
+ * @param {Function} params.createFn — (toCreate) => Promise
+ * @param {Function} params.enrichFn — (toEnrich) => Promise
+ * @returns {Promise<{ingestResult: any, batchResult: any, enrichResult: any, toCreate: Object[], toEnrich: Object[], discarded: Object[]}>}
+ */
+export async function persistImportDecisions({
+  queue,
+  autoCorrelations = [],
+  existingKeys = null,
+  alreadyIngested = false,
+  ingestFn,
+  createFn,
+  enrichFn,
+}) {
+  const { toEnrich, toCreate, discarded } = routeConversationalDecisions(queue);
+
+  const ingestResult = alreadyIngested
+    ? { alreadyIngested: true }
+    : await ingestFn(
+      correlationsFromDecisions(queue, autoCorrelations),
+      finalOrderKeysFromQueue(queue),
+      { existingKeys },
+    );
+
+  const batchResult = await createFn(toCreate);
+  const enrichResult = await enrichFn(toEnrich);
+
+  return { ingestResult, batchResult, enrichResult, toCreate, toEnrich, discarded };
 }
 
 /** Campos de controle do staging — não fazem parte da ordem em si. */

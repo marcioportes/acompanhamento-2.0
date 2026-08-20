@@ -17,6 +17,7 @@ import {
 import { parseProfitChartPro } from '../../utils/orderParsers';
 import { reconstructOperations } from '../../utils/orderReconstruction';
 import { correlateOrders } from '../../utils/orderCorrelation';
+import { persistImportDecisions, stagingDocsToOrders } from '../../utils/orderImportPipeline';
 
 // ============================================
 // FIXTURES
@@ -648,5 +649,127 @@ describe('Cenário 13: aumento de posição no meio da operação (#351)', () =>
     expect(toConfront).toHaveLength(1);
     expect(toConfront[0].tradeId).toBe('tradeWIN18');
     expect(toConfront[0].operation.classification).toBe(CLASSIFICATION.MATCH_CONFIDENT);
+  });
+});
+
+// ============================================
+// Cenários 14-18 (#366) — a gravação acontece depois da decisão
+// ============================================
+
+describe('#366 — ordem de gravação e escopo do que é gravado', () => {
+  const opComOrdens = (id, tradeId = null) => ({
+    operation: {
+      operationId: id,
+      instrument: 'WINJ26',
+      entryOrders: [{ externalOrderId: `${id}-E`, instrument: 'WINJ26', side: 'BUY', quantity: 1 }],
+      exitOrders: [{ externalOrderId: `${id}-X`, instrument: 'WINJ26', side: 'SELL', quantity: 1 }],
+      stopOrders: [],
+      cancelledOrders: [],
+    },
+    classification: tradeId ? CLASSIFICATION.MATCH_CONFIDENT : CLASSIFICATION.NEW,
+    tradeId,
+    userDecision: 'pending',
+  });
+
+  const rodar = async (queue, extra = {}) => {
+    const callOrder = [];
+    const ingestFn = vi.fn(async (correlations, orderKeys) => {
+      callOrder.push('ingest');
+      return { success: orderKeys.length, correlations };
+    });
+    const createFn = vi.fn(async (toCreate) => {
+      callOrder.push('create');
+      return { created: toCreate.map(o => ({ id: `T-${o.operationId}` })), duplicates: [], failed: [] };
+    });
+    const enrichFn = vi.fn(async (toEnrich) => {
+      callOrder.push('enrich');
+      return { enriched: toEnrich.map(i => ({ tradeId: i.tradeId })), failed: [] };
+    });
+
+    const r = await persistImportDecisions({ queue, ingestFn, createFn, enrichFn, ...extra });
+    return { ...r, callOrder, ingestFn, createFn, enrichFn };
+  };
+
+  it('as ordens são gravadas ANTES do primeiro trade — guarda do #351', async () => {
+    // linkOrdersToCreatedTrade roda dentro de onTradeCreated e desiste se `orders`
+    // do batch estiver vazia. Inverter esta ordem devolve todo trade nascido do
+    // import ao estado órfão (194 de 198 medidos em produção).
+    const { callOrder } = await rodar([{ ...opComOrdens('OP-1'), userDecision: 'confirmed' }]);
+
+    expect(callOrder).toEqual(['ingest', 'create', 'enrich']);
+  });
+
+  it('operação descartada não tem ordem gravada nem trade criado', async () => {
+    const { ingestFn, createFn } = await rodar([
+      { ...opComOrdens('OP-1'), userDecision: 'confirmed' },
+      { ...opComOrdens('OP-2'), userDecision: 'discarded' },
+    ]);
+
+    const chaves = ingestFn.mock.calls[0][1];
+    expect(chaves).toContain('eid:OP-1-E');
+    expect(chaves.some(k => k.startsWith('eid:OP-2'))).toBe(false);
+    expect(createFn.mock.calls[0][0]).toHaveLength(1);
+  });
+
+  it('operação sem decisão não grava nada — nem ordem, nem trade', async () => {
+    const { ingestFn, createFn, enrichFn } = await rodar([opComOrdens('OP-3')]);
+
+    expect(ingestFn.mock.calls[0][1]).toEqual([]);
+    expect(createFn.mock.calls[0][0]).toEqual([]);
+    expect(enrichFn.mock.calls[0][0]).toEqual([]);
+  });
+
+  it('o vínculo das ordens vem da decisão do aluno, não da sugestão automática', async () => {
+    const item = { ...opComOrdens('OP-4', 'TRADE-ESCOLHIDO'), userDecision: 'confirmed' };
+    const auto = [{ externalOrderId: 'OP-4-E', tradeId: 'TRADE-SUGERIDO', confidence: 0.7 }];
+    const { ingestFn } = await rodar([item], { autoCorrelations: auto });
+
+    expect(ingestFn.mock.calls[0][0]['eid:OP-4-E'].tradeId).toBe('TRADE-ESCOLHIDO');
+    expect(ingestFn.mock.calls[0][0]['eid:OP-4-X'].tradeId).toBe('TRADE-ESCOLHIDO');
+  });
+
+  it('retry após falha na criação de trades não reingere', async () => {
+    const queue = [{ ...opComOrdens('OP-5'), userDecision: 'confirmed' }];
+    const { ingestFn, createFn } = await rodar(queue, { alreadyIngested: true });
+
+    expect(ingestFn).not.toHaveBeenCalled();
+    expect(createFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('repassa as chaves já existentes em `orders` para a ingestão pular', async () => {
+    const existingKeys = new Set(['eid:OP-6-E']);
+    const { ingestFn } = await rodar(
+      [{ ...opComOrdens('OP-6'), userDecision: 'confirmed' }],
+      { existingKeys },
+    );
+
+    expect(ingestFn.mock.calls[0][2]).toEqual({ existingKeys });
+  });
+});
+
+describe('#366 — retomada de lote pendente', () => {
+  const parse = () => parseProfitChartPro(CSV_AUMENTO_POSICAO);
+
+  it('preserva a classificação: op já confrontada não vira trade novo', () => {
+    // O join da correlação é por _rowIndex, que o staging não persiste. Sem
+    // reatribuição, correlationByRowIndex.get(undefined) não casa e a operação cai
+    // em toCreate — duplicando o trade que ela já tinha.
+    const { orders } = parse();
+    const docsDeStaging = orders.map(({ _rowIndex, ...resto }, i) => ({
+      ...resto, id: `stg-${i}`, importBatchId: 'ord_1', studentId: 'S1', userDecision: 'pending',
+    }));
+
+    const reidratadas = stagingDocsToOrders(docsDeStaging);
+    const ops = reconstructOperations(reidratadas, { timezone: 'America/Sao_Paulo' });
+    const tradeExistente = {
+      id: 'tradeWIN18', ticker: 'WINV26', side: 'LONG', qty: 8,
+      entryTime: '2026-08-18T13:58:31-03:00', exitTime: '2026-08-18T15:14:48-03:00',
+    };
+
+    const { correlations } = correlateOrders(reidratadas, [tradeExistente]);
+    const { toCreate, toConfront } = categorizeConfirmedOps(ops, correlations);
+
+    expect(toConfront).toHaveLength(1);
+    expect(toCreate).toHaveLength(0);
   });
 });
