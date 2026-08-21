@@ -669,13 +669,19 @@ const detectUnprotectedSize = (trade, orders) => {
     ? EVENT_SEVERITY.HIGH
     : EVENT_SEVERITY.MEDIUM;
 
-  // #375 — a emoção sai do que a janela revela, não é fixa no padrão:
-  //   nunca protegeu                     → nenhuma (é processo, negligência; gate puro)
-  //   retirou e não recolocou            → HOPE   ("não quero ser stopado, quero estar certo")
-  //   retirou e ainda aumentou a posição → DENIAL ("não estou errado, vou aumentar")
-  // Vingança seria reação a prejuízo já consumado — aqui o prejuízo ainda não foi aceito,
-  // e é para não aceitá-lo que a proteção sai (Marcio, 21/08/2026).
-  const emotionMapping = tl.neverProtected
+  // #375 — a emoção sai do que a janela revela, não é fixa no padrão. E o discriminador
+  // é o VERBO: "quem TIRA a proteção não quer ser stopado, quer estar certo" (Marcio,
+  // 21/08/2026). Entrar sem proteção e colocá-la depois não é isso — é processo.
+  //
+  //   entrou nu (nunca protegeu, ou protegeu tarde)  → nenhuma; é negligência, gate puro
+  //   TIROU a proteção e não recolocou               → HOPE   (segurar esperando voltar)
+  //   TIROU e ainda aumentou a posição               → DENIAL (não estou errado, vou aumentar)
+  //
+  // Vingança seria reação a prejuízo já consumado; aqui o prejuízo ainda não foi aceito,
+  // e é para não aceitá-lo que a proteção sai.
+  const abertaPorRetirada = tl.windows.some(w => tl.legs.some(l =>
+    l._cancelTs != null && Math.abs(l._cancelTs - w.startTs) <= REPLACEMENT_TOLERANCE_MS));
+  const emotionMapping = !abertaPorRetirada
     ? null
     : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 

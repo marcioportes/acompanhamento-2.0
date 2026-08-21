@@ -115,6 +115,21 @@ describe('#375 — linha do tempo da proteção', () => {
     expect(ev.evidence.addedWhileNaked).toBe(true);
   });
 
+  it('entrou nu e só protegeu depois → processo, não emoção', () => {
+    // Caso real (MNQM6 01/06/2026): entrou 10:36:01 e só mandou o stop 10:47:32 — 11min
+    // de posição descoberta. Não é "tirar a proteção", é entrar sem ela.
+    const t = trade();
+    const orders = [
+      entrada('E1', iso(0)),
+      protecao('S1', iso(min(6)), null, { status: 'FILLED' }),
+      saida('X1', iso(min(10))),
+    ];
+    const [ev] = nus(t, orders);
+    expect(ev.evidence.emotionMapping).toBeNull();
+    expect(ev.evidence.hasAnyStop).toBe(true);
+    expect(ev.severity).toBe(EVENT_SEVERITY.HIGH);
+  });
+
   it('nunca protegeu → é processo, não emoção; e trava estágio', () => {
     const t = trade();
     const orders = [entrada('E1', iso(0)), saida('X1', iso(min(10)))];
