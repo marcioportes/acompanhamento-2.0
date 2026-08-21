@@ -245,3 +245,49 @@ describe('BehaviorPanel', () => {
     expect(screen.queryByText('✕ Dispensar')).not.toBeInTheDocument();
   });
 });
+
+describe('R:R em dinheiro (#373)', () => {
+  // Caso real de 20/08/2026: WINV26 LONG 10, +R$ 610, stop a 247,5 pts.
+  const tradeRR = {
+    id: 'T-RR',
+    currency: 'BRL',
+    entry: 171842.5,
+    stopLoss: 171595,
+    qty: 10,
+    result: 610,
+    tickerRule: { tickSize: 5, tickValue: 1 },
+    redFlags: [
+      { type: 'RISCO_ACIMA_PERMITIDO', message: 'Risco 1.7% excede máximo do plano (0.84%)' },
+      { type: 'RR_ABAIXO_MINIMO', message: 'RR 1.2x abaixo do mínimo (2x)' },
+    ],
+  };
+  const plano = { pl: 30000, riskPerOperation: 0.84, rrTarget: 2 };
+
+  it('mostra o risco tomado e o resultado em dinheiro', () => {
+    render(<BehaviorPanel trade={tradeRR} plan={plano} isMentor embedded />);
+
+    expect(screen.getByText(/Arriscou/)).toBeInTheDocument();
+    expect(screen.getByText(/1,65% do capital/)).toBeInTheDocument();
+    expect(screen.getByText('1,23x')).toBeInTheDocument();
+  });
+
+  it('mostra o RO do plano e o que o mesmo resultado seria nele', () => {
+    render(<BehaviorPanel trade={tradeRR} plan={plano} isMentor embedded />);
+
+    expect(screen.getByText(/O plano autoriza/)).toBeInTheDocument();
+    expect(screen.getByText('2,42x')).toBeInTheDocument();
+  });
+
+  it('sem plano, ainda mostra o risco tomado', () => {
+    render(<BehaviorPanel trade={tradeRR} isMentor embedded />);
+
+    expect(screen.getByText(/Arriscou/)).toBeInTheDocument();
+    expect(screen.queryByText(/O plano autoriza/)).not.toBeInTheDocument();
+  });
+
+  it('trade sem stop nem plano não renderiza o bloco', () => {
+    render(<BehaviorPanel trade={trade} isMentor embedded />);
+
+    expect(screen.queryByText(/Risco × retorno/)).not.toBeInTheDocument();
+  });
+});

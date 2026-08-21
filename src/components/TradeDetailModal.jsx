@@ -443,7 +443,12 @@ const TradeDetailModal = ({
 
             {/* Comportamento consolidado (Fase 2 #301): adesão ao plano → padrões → gate.
                 Substitui ExecutionPatternsPanel + ShadowBehaviorPanel. Aluno vê os dados. */}
-            <BehaviorPanel trade={trade} isMentor={isMentor} embedded />
+            <BehaviorPanel
+              trade={trade}
+              plan={trade.planId && plans.length > 0 ? plans.find(p => p.id === trade.planId) : null}
+              isMentor={isMentor}
+              embedded
+            />
 
             {/* #308 — Espelho do trade. Read-only por padrão (mentor/View-As, ou trade sem resultado).
                 #327 — pro próprio aluno, num trade fechado ainda não refletido, o Espelho fica
