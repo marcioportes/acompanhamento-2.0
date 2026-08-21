@@ -242,16 +242,22 @@ Nenhuma janela nua → sem `UNPROTECTED_SIZE` → sem gate → sem confronto emo
 ## Phases
 
 - A1 — ~~probe~~ CONCLUÍDO 21/08: hipótese de dedup refutada, causa raiz é fuso horário (ver Memória §6)
-- A2 — instante de ordem no fuso do trade (`tradeOffsetOf` + `orderMs`) em todo o motor; teste que roda o detector sob `TZ=UTC` e `TZ=America/Sao_Paulo` e exige o mesmo resultado
-- A3 — linha do tempo de proteção: helper puro `protectionTimeline(trade, orders)` → janelas nuas + substituições
-- A4 — `detectUnprotectedSize` passa a consumir a linha do tempo; severidade por duração/proporção
-- A5 — paridade `functions/maturity/executionBehaviorMirror.js`
-- B1 — `TradeOrdersPanel`: status de proteção pelos quatro casos + badge de três estados + faixa de exposição
-- B2 — confronto emocional: padrão sem emoção fora do confronto, zero `null` na copy (front + `functions/behavior/buildBehaviorProfile.js`)
-- B3 — emoção do `UNPROTECTED_SIZE` derivada da janela (HOPE / DENIAL / nenhuma) + taxonomia
+- ~~A2~~ FEITO — instante de ordem no fuso do trade (`tradeOffsetOf` + `orderMs`) em todo o motor; teste que roda o detector sob `TZ=UTC` e `TZ=America/Sao_Paulo` e exige o mesmo resultado
+- ~~A3~~ FEITO — linha do tempo de proteção: helper puro `protectionTimeline(trade, orders)` → janelas nuas + substituições
+- ~~A4~~ FEITO — `detectUnprotectedSize` passa a consumir a linha do tempo; severidade por duração/proporção
+- ~~A5~~ FEITO — paridade `functions/maturity/executionBehaviorMirror.js`
+- ~~B1~~ FEITO — `TradeOrdersPanel`: status de proteção pelos quatro casos + badge de três estados + faixa de exposição
+- ~~B2~~ FEITO — confronto emocional: padrão sem emoção fora do confronto, zero `null` na copy (front + `functions/behavior/buildBehaviorProfile.js`)
+- ~~B3~~ FEITO — emoção do `UNPROTECTED_SIZE` derivada da janela (HOPE / DENIAL / nenhuma) + taxonomia
 - C1 — recompute dos `behaviorProfile` afetados (gates falsos gravados seguem travando estágio)
 
 ## Sessions
+
+- `A1 [probe-producao] concluida` — hipotese de dedup REFUTADA; causa raiz e fuso horario
+- `A2+A5 [fuso-da-ordem] commit 4bb55c4c ok` — tradeOffsetOf/orderMs no motor + espelho CJS; 12 testes
+- `A3+A4 [linha-do-tempo] commit b4971ad3 ok` — protectionTimeline + UNPROTECTED_SIZE por janela; 19 testes
+- `B1+B2+B3 [painel-e-confronto] commit a0c20961 ok` — 4 estados de protecao, badge de 3 estados, faixa de exposicao, confronto sem null
+- `C1 [recompute] pendente` — depende do deploy das CFs
 
 ## Shared Deltas
 
