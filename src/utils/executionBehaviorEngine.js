@@ -432,7 +432,11 @@ export const protectionTimeline = (trade, orders) => {
     // Perna sem instante utilizável cobre a posição inteira: ela existe, e onde não dá
     // para situá-la no tempo o benefício da dúvida é do aluno — subestimar exposição é
     // preferível a inventá-la.
-    const inicio = l._ts ?? inicioPos;
+    // A cobertura começa quando a ordem foi ENVIADA. Sem `submittedAt` não dá para
+    // saber quando ela passou a valer — e uma proteção que executou existia antes de
+    // executar. Nesse caso ela cobre desde a abertura da posição: onde o dado não
+    // informa, o benefício da dúvida é do aluno.
+    const inicio = orderMs(l.submittedAt, off) ?? inicioPos;
     const fillTs = (l.status === 'FILLED' || l.status === 'PARTIALLY_FILLED')
       ? (orderMs(l.filledAt, off) ?? orderMs(l.submittedAt, off))
       : null;
@@ -647,10 +651,14 @@ const detectUnprotectedSize = (trade, orders) => {
   const uncoveredQty = maior.contracts;
   const coveredQty = Math.max(0, Math.round((tradeQty - uncoveredQty) * 100) / 100);
 
-  // Nunca protegeu, ou ficou nu na maior parte da posição → trava estágio. Janela curta
-  // e isolada no meio de uma posição protegida é informativa, não sentença.
+  // "Ficar sem stop até o disparo da saída" — a frase de Marcio — é o caso grave: a
+  // posição chegou ao fim descoberta. Exposição que o aluno FECHOU recolocando proteção
+  // é informativa, não sentença; só vira grave se tomou a maior parte da posição.
+  const fimPosTs = toMs(trade.exitTime);
+  const nuAteASaida = fimPosTs != null && tl.windows.some(w =>
+    w.endTs != null && w.endTs >= fimPosTs - REPLACEMENT_TOLERANCE_MS);
   const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
-  const severity = (tl.neverProtected || proporcaoAlta)
+  const severity = (tl.neverProtected || nuAteASaida || proporcaoAlta)
     ? EVENT_SEVERITY.HIGH
     : EVENT_SEVERITY.MEDIUM;
 

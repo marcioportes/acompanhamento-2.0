@@ -396,7 +396,8 @@ function protectionTimeline(trade, orders) {
   legs.forEach(function (l) {
     const qty = Number(l.quantity != null ? l.quantity : (l.qty != null ? l.qty : 0));
     if (!isFinite(qty) || qty <= 0) return;
-    const inicio = l._ts != null ? l._ts : inicioPos;
+    const inicioEnvio = orderMs(l.submittedAt, off);
+    const inicio = inicioEnvio != null ? inicioEnvio : inicioPos;
     const fillTs = (l.status === 'FILLED' || l.status === 'PARTIALLY_FILLED')
       ? (orderMs(l.filledAt, off) != null ? orderMs(l.filledAt, off) : orderMs(l.submittedAt, off))
       : null;
@@ -507,8 +508,13 @@ function detectUnprotectedSize(trade, orders) {
   const uncoveredQty = maior.contracts;
   const coveredQty = Math.max(0, Math.round((tradeQty - uncoveredQty) * 100) / 100);
 
+  const fimPosTs = toMs(trade.exitTime);
+  const nuAteASaida = fimPosTs != null && tl.windows.some(function (w) {
+    return w.endTs != null && w.endTs >= fimPosTs - REPLACEMENT_TOLERANCE_MS;
+  });
   const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
-  const severity = (tl.neverProtected || proporcaoAlta) ? EVENT_SEVERITY.HIGH : EVENT_SEVERITY.MEDIUM;
+  const severity = (tl.neverProtected || nuAteASaida || proporcaoAlta)
+    ? EVENT_SEVERITY.HIGH : EVENT_SEVERITY.MEDIUM;
   const emotionMapping = tl.neverProtected ? null : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 
   return [{

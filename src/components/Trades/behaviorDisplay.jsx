@@ -155,15 +155,23 @@ const emo = (code) => EMOTION_LABELS[code] ?? code;
 /** Retorna {tone, text} para o banner do confronto, ou null quando não há o que dizer. */
 export const emotionConfrontDisplay = (confront) => {
   if (!confront) return null;
-  const { verdict, declared, suggested } = confront;
+  const { verdict, declared } = confront;
   const dec = declared?.name;
+  // #375 — sugestão só existe quando há emoção de verdade. Perfis gravados antes do fix
+  // trazem `suggested: { emotion: null }` (padrão de gate eleito como emoção), e o
+  // template imprimia a palavra "null" na cara do aluno. Ausência de emoção é ausência
+  // de sugestão — o veredicto cai nos ramos que já tratam isso.
+  const suggested = confront.suggested?.emotion ? confront.suggested : null;
   const sug = suggested ? emo(suggested.emotion) : null;
 
   switch (verdict) {
     case 'MISALIGNED':
+      if (!suggested) {
+        return { tone: 'amber', text: `Você declarou “${dec}”, mas a execução saiu do plano — vale revisitar o que você sentiu de fato na entrada.` };
+      }
       return { tone: 'red', text: `Você declarou “${dec}”, mas a execução sugere ${sug}. Vale revisitar o que você sentiu de fato na entrada.` };
     case 'ATTENTION':
-      if (declared?.category === 'NEGATIVE') {
+      if (declared?.category === 'NEGATIVE' && suggested) {
         return { tone: 'amber', text: `Você declarou “${dec}” e a execução foi de ${sug} — emoção reconhecida, mas não contida.` };
       }
       if (!suggested) {
