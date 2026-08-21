@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.16] - 20/08/2026 · fix direto autorizado (sem issue)
+
+**feat:** ordem só existe atrelada a trade vivo — purga automática de órfãs (INV-29)
+
+- Regra de produto: sem trade vivo, a ordem não existe. No import, o que casa com trade existente ou cria trade fica; o resto morre
+- `functions/orders/purgeOrphanOrders.js`: apaga toda ordem sem trade vivo. Aborta se `trades` vier vazia (credencial errada apagaria o banco) e respeita carência de 15min na varredura, porque a correlação roda em `onTradeCreated`, assíncrona — sem ela a varredura mataria import em curso
+- `finalizeOrderImport` (callable): o wizard fecha o próprio lote no fim, enviando o mapa `orderKey → tradeId` das operações decididas. O vínculo vai **explícito** porque `linkOrdersToCreatedTrade` casa por fingerprint com `filledAt`: stop cancelado não tem, e seria apagado junto com a evidência de stop tampering e hesitação
+- `purgeOrphanOrdersDaily`: varredura diária (04:30) como rede de segurança — import interrompido, falha de rede na chamada final e resíduo histórico não passam pelo caminho normal
+- `scripts/purge-orphan-orders.mjs` substitui `issue-366-cleanup-abandoned-batches.mjs` e reusa a função da CF: critério único, testado num lugar só. O anterior só pegava lote sem nenhum trade e deixava para trás as ordens recusadas dentro de lotes bons
+- **INV-29** registrado em `docs/invariants.md`: a invariante vale nos dois sentidos — apagar o trade apaga suas ordens (`cascadeDeleteTradeRefs`, #363), e ordem que nasce sem trade é purgada
+- **Produção:** 532 ordens sem trade apagadas (519 de lotes abandonados + 13 de operações recusadas dentro de lotes bons). Restaram 119, todas com trade vivo, confirmado por leitura independente
+
+---
+
 ## [1.83.15] - 20/08/2026 · #366 · PR #367
 
 **fix:** import de ordens grava só o que foi decidido — sem ghosts, sem reimportação

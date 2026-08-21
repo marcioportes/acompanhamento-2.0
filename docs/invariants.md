@@ -191,3 +191,30 @@ Notificação humana (STOP-XXX do coord autônomo para Marcio) usa **email iClou
 
 ---
 
+
+### INV-29: Ordem Só Existe Atrelada a Trade Vivo
+
+**Regra:** um doc em `orders` só tem direito de existir se `correlatedTradeId` apontar para
+um trade que existe. Sem trade vivo, a ordem não é registro de nada — é resíduo de
+importação, e resíduo se apaga.
+
+**No import:** o que casa com trade existente ou cria trade fica; o resto morre. Operação
+descartada ou sem decisão nunca chega em `orders` (#366); o que sobrar órfão no lote é
+apagado pelo próprio import ao terminar (`finalizeOrderImport`).
+
+**Nos dois sentidos:**
+- ordem perde o trade → `cascadeDeleteTradeRefs` apaga a ordem (`onTradeDeleted`, #363)
+- ordem nasce sem trade → `purgeOrphanOrders` apaga (callable no fim do import + varredura
+  diária `purgeOrphanOrdersDaily`)
+
+**Por que server-side:** `firestore.rules` tem `allow delete: if false` em `/orders` — o
+cliente nunca pôde limpar o que ele mesmo gravava. Foi assim que 532 ordens ficaram presas
+em produção, invisíveis para o painel de ordens do trade e para o sensor de execução, que
+agrupam por `correlatedTradeId`.
+
+**Cuidado ao mexer:** a ordem que NUNCA executou (stop cancelado, ordem expirada) é
+evidência comportamental — stop tampering, hesitação. Ela não casa por fingerprint com
+`filledAt`, então o vínculo dela vem explícito do cliente (`orderTradeLinks`). Quem alterar
+o fechamento do lote precisa manter esse caminho, ou apaga a evidência junto com o lixo.
+
+> Origem: decisão de Marcio em 20/08/2026, durante o #366. v1.83.16.
