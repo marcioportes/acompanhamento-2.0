@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.17] - 21/08/2026 · #369 · PR #370
+
+**feat:** ordens que não viraram posição pertencem ao trade vizinho — hesitação, re
+
+- `associateNonFilledOrders` só anexava ordem que caísse **dentro** do intervalo de uma operação. O que estava no vão entre dois trades: `if (!bestOp) continue`.
+- `correlateCancelledOrders` exigia **interseção** entre a vida da ordem e a vida do trade. Ordem que morreu antes do trade nascer não casava.
+
+
 ## [1.83.16] - 20/08/2026 · fix direto autorizado (sem issue)
 
 **feat:** ordem só existe atrelada a trade vivo — purga automática de órfãs (INV-29)
