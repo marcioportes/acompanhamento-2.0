@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.19] - 21/08/2026 · #373 · PR #374
+
+**feat:** R:R em dinheiro — risco tomado e RO do plano lado a lado
+
+- **Display-time** (`rrBreakdown`): derivado do trade + plano vigente, sem congelar snapshot nem reescrever `redFlags` gravadas — mesmo princípio da SSoT de tiles do #282, e dispensa recompute de histórico por causa de exibição.
+- **Só aparece com violação**, dentro da caixa: é onde o número explica algo.
+- **Decimais em pt-BR** (vírgula), como o resto do produto.
+
+
 ## [1.83.18] - 21/08/2026 · #371 · PR #372
 
 **fix:** dado do aluno é imutável pelo import + risco de proteção pelo preço executa

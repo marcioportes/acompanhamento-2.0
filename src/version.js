@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.19: #373 RR em dinheiro — risco tomado e RO do plano lado a lado (RESERVADA)
+ * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)
  * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)
  * - 1.83.17: #369 feat ordens que não viraram posição pertencem ao trade vizinho — hesitação, re (PR #370, 21/08/2026)
  * - 1.83.16: ordem só existe atrelada a trade vivo — purga automática de ordens órfãs (RESERVADA)
