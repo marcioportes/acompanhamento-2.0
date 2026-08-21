@@ -81,6 +81,33 @@ function toMs(value) {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
+/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
+const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/** Offset gravado no trade (#285/#292 — entryTime/exitTime são ISO+offset). */
+function tradeOffsetOf(trade) {
+  const cands = [trade && trade.entryTime, trade && trade.exitTime];
+  for (let i = 0; i < cands.length; i++) {
+    const v = cands[i];
+    if (typeof v !== 'string') continue;
+    const m = v.match(OFFSET_RE);
+    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
+  }
+  return null;
+}
+
+/**
+ * Instante de ordem no FUSO DO TRADE (#375). `orders` guarda ingênuo, `trades` guarda
+ * com offset; esta CF roda em UTC, então sem isto a ordem sai 3h antes do trade dela e
+ * `liveStopsAt` descarta toda proteção. Espelho de `executionBehaviorEngine.orderMs`.
+ */
+function orderMs(value, offset) {
+  if (typeof value === 'string' && offset && value && !OFFSET_RE.test(value)) {
+    return toMs(value + offset);
+  }
+  return toMs(value);
+}
+
 function sameInstrument(a, b) {
   const ax = (a || '').toUpperCase();
   const bx = (b || '').toUpperCase();
@@ -148,10 +175,11 @@ function liveStopsAt(trade, stops) {
 /** Referência de entrada: LIMITE original da 1ª entrada (DEC-AUTO-242-01). */
 function entryRefOf(trade, orders) {
   const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const off = tradeOffsetOf(trade);
   const cand = ordersForTrade(orders, trade.id)
     .filter(function (o) { return o.side === wanted && o.isStopOrder !== true; })
     .map(function (o) {
-      const ts = toMs(o.filledAt) != null ? toMs(o.filledAt) : (toMs(o.submittedAt) != null ? toMs(o.submittedAt) : 0);
+      const ts = orderMs(o.filledAt, off) != null ? orderMs(o.filledAt, off) : (orderMs(o.submittedAt, off) != null ? orderMs(o.submittedAt, off) : 0);
       return { o: o, ts: ts };
     })
     .sort(function (a, b) { return a.ts - b.ts; })[0];
@@ -173,14 +201,15 @@ function protectiveLegsOf(trade, orders) {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];
   const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
+  const off = tradeOffsetOf(trade);
 
   const legs = ordersForTrade(orders, trade.id)
     .filter(function (o) { return o.side === opposite; })
     .map(function (o) {
       const raw = o.stopPrice != null ? o.stopPrice : (o.limitPrice != null ? o.limitPrice : o.price);
       return Object.assign({}, o, {
-        _ts: toMs(o.submittedAt) != null ? toMs(o.submittedAt) : (toMs(o.cancelledAt) != null ? toMs(o.cancelledAt) : toMs(o.filledAt)),
-        _cancelTs: toMs(o.cancelledAt),
+        _ts: orderMs(o.submittedAt, off) != null ? orderMs(o.submittedAt, off) : (orderMs(o.cancelledAt, off) != null ? orderMs(o.cancelledAt, off) : orderMs(o.filledAt, off)),
+        _cancelTs: orderMs(o.cancelledAt, off),
         _isRealStop: o.isStopOrder === true || o.stopPrice != null,
         _price: parseFloat(o.stopPrice || o.limitPrice || o.price || NaN),
         // #371 — classifica pelo enviado, mede pelo executado quando houve execução.
@@ -310,6 +339,159 @@ function detectSizingDiscipline(trade, orders) {
 }
 
 /** UNPROTECTED_SIZE — substitui STOP_PARTIAL_SIZING (#357). Cobre o caso de ZERO stops. */
+
+/** Espelho de REPLACEMENT_TOLERANCE_MS (#375) — 20s, definido por Marcio em 21/08/2026. */
+const REPLACEMENT_TOLERANCE_MS = 20000;
+
+/** Espelho de `protectionTimeline` (#375). Ver doc na fonte ESM. */
+function protectionTimeline(trade, orders) {
+  const vazio = {
+    windows: [], totalNakedMs: 0, positionMs: 0, nakedRatio: null,
+    neverProtected: false, addedWhileNaked: false, legs: [], replacements: [],
+  };
+  const tradeQty = Number((trade && trade.qty) || 0);
+  if (!isFinite(tradeQty) || tradeQty <= 0) return vazio;
+
+  const all = ordersForTrade(orders, trade.id);
+  if (!all.length) return vazio;
+
+  const off = tradeOffsetOf(trade);
+  const legs = protectiveLegsOf(trade, orders);
+  const entradaSide = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const legIds = {};
+  legs.forEach(function (l) { if (l.externalOrderId) legIds[l.externalOrderId] = true; });
+
+  const fills = all
+    .filter(function (o) {
+      return (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
+        && !(o.externalOrderId && legIds[o.externalOrderId]);
+    })
+    .map(function (o) {
+      const ts = orderMs(o.filledAt, off) != null ? orderMs(o.filledAt, off) : orderMs(o.submittedAt, off);
+      const qty = Number(o.filledQuantity != null ? o.filledQuantity : (o.quantity != null ? o.quantity : 0));
+      return { ts: ts, qty: qty, entrada: o.side === entradaSide };
+    })
+    .filter(function (f) { return f.ts != null && isFinite(f.qty) && f.qty > 0; });
+
+  if (!fills.length && !legs.length) return vazio;
+
+  const abreTs = toMs(trade.entryTime);
+  const fechaTs = toMs(trade.exitTime);
+  const entradas = fills.filter(function (f) { return f.entrada; });
+  if (!entradas.length) {
+    if (abreTs == null) return vazio;
+    fills.length = 0;
+    fills.push({ ts: abreTs, qty: tradeQty, entrada: true });
+    if (fechaTs != null) fills.push({ ts: fechaTs, qty: tradeQty, entrada: false });
+  }
+
+  const tsEntradas = fills.filter(function (f) { return f.entrada; }).map(function (f) { return f.ts; });
+  const inicioPos = Math.min.apply(null, tsEntradas);
+  const fimPos = fechaTs != null ? fechaTs : Math.max.apply(null, fills.map(function (f) { return f.ts; }));
+
+  const eventos = [];
+  fills.forEach(function (f) {
+    eventos.push({ ts: f.ts, dAberto: f.entrada ? f.qty : -f.qty, dCoberto: 0 });
+  });
+  legs.forEach(function (l) {
+    const qty = Number(l.quantity != null ? l.quantity : (l.qty != null ? l.qty : 0));
+    if (!isFinite(qty) || qty <= 0) return;
+    const inicioEnvio = orderMs(l.submittedAt, off);
+    const inicio = inicioEnvio != null ? inicioEnvio : inicioPos;
+    const fillTs = (l.status === 'FILLED' || l.status === 'PARTIALLY_FILLED')
+      ? (orderMs(l.filledAt, off) != null ? orderMs(l.filledAt, off) : orderMs(l.submittedAt, off))
+      : null;
+    const fim = l._cancelTs != null ? l._cancelTs : fillTs;
+    eventos.push({ ts: inicio, dAberto: 0, dCoberto: qty });
+    if (fim != null) eventos.push({ ts: fim, dAberto: 0, dCoberto: -qty });
+    if (fillTs != null) {
+      const executada = Number(l.filledQuantity != null ? l.filledQuantity : (l.quantity != null ? l.quantity : qty));
+      eventos.push({ ts: fillTs, dAberto: -executada, dCoberto: 0 });
+    }
+  });
+  eventos.sort(function (a, b) { return a.ts - b.ts; });
+
+  const instantes = [];
+  let aberto = 0;
+  let coberto = 0;
+  for (let i = 0; i < eventos.length; i++) {
+    const ts = eventos[i].ts;
+    aberto += eventos[i].dAberto;
+    coberto += eventos[i].dCoberto;
+    while (i + 1 < eventos.length && eventos[i + 1].ts === ts) {
+      i++;
+      aberto += eventos[i].dAberto;
+      coberto += eventos[i].dCoberto;
+    }
+    const nu = Math.max(0, Math.round((aberto - Math.min(coberto, aberto)) * 100) / 100);
+    instantes.push({ ts: ts, nu: nu });
+  }
+
+  const brutas = [];
+  for (let k = 0; k < instantes.length; k++) {
+    const ts = instantes[k].ts;
+    const nu = instantes[k].nu;
+    if (nu <= 0) continue;
+    const fimTrecho = k + 1 < instantes.length ? instantes[k + 1].ts : fimPos;
+    if (fimTrecho <= ts) continue;
+    const ant = brutas[brutas.length - 1];
+    if (ant && ant.contracts === nu && ant.endTs === ts) {
+      ant.endTs = fimTrecho;
+      ant.durationMs = fimTrecho - ant.startTs;
+    } else {
+      brutas.push({ startTs: ts, endTs: fimTrecho, durationMs: fimTrecho - ts, contracts: nu });
+    }
+  }
+
+  const windows = brutas.filter(function (w) { return w.durationMs > REPLACEMENT_TOLERANCE_MS; });
+  let totalNakedMs = 0;
+  windows.forEach(function (w) { totalNakedMs += w.durationMs; });
+  const positionMs = Math.max(0, fimPos - inicioPos);
+
+  const replacements = [];
+  const entryRef = entryRefOf(trade, orders);
+  legs.forEach(function (morta) {
+    if (morta._cancelTs == null) return;
+    let nova = null;
+    for (let i = 0; i < legs.length; i++) {
+      const l = legs[i];
+      if (l === morta || l._ts == null) continue;
+      if (l._ts >= morta._cancelTs - REPLACEMENT_TOLERANCE_MS && l._ts <= morta._cancelTs + REPLACEMENT_TOLERANCE_MS) {
+        nova = l;
+        break;
+      }
+    }
+    if (!nova) return;
+    const antes = Math.abs(morta._price - entryRef);
+    const depois = Math.abs(nova._price - entryRef);
+    replacements.push({
+      fromOrderId: morta.externalOrderId || null,
+      toOrderId: nova.externalOrderId || null,
+      fromPrice: morta._price,
+      toPrice: nova._price,
+      ts: morta._cancelTs,
+      direction: depois < antes ? 'TIGHTENED' : (depois > antes ? 'WIDENED' : 'UNCHANGED'),
+    });
+  });
+
+  const addedWhileNaked = windows.some(function (w) {
+    return fills.some(function (f) {
+      return f.entrada && f.ts > w.startTs && (w.endTs == null || f.ts <= w.endTs);
+    });
+  });
+
+  return {
+    windows: windows,
+    totalNakedMs: totalNakedMs,
+    positionMs: positionMs,
+    nakedRatio: positionMs > 0 ? Math.round((totalNakedMs / positionMs) * 100) / 100 : null,
+    neverProtected: legs.length === 0,
+    addedWhileNaked: addedWhileNaked,
+    legs: legs,
+    replacements: replacements,
+  };
+}
+
 function detectUnprotectedSize(trade, orders) {
   const tradeQty = Number((trade && trade.qty) || 0);
   if (!isFinite(tradeQty) || tradeQty <= 0) return [];
@@ -317,29 +499,46 @@ function detectUnprotectedSize(trade, orders) {
   const all = ordersForTrade(orders, trade.id);
   if (!all.length) return [];
 
-  const stops = liveStopsAt(trade, protectiveLegsOf(trade, orders));
-  let rawCovered = 0;
-  for (let i = 0; i < stops.length; i++) {
-    const st = stops[i];
-    rawCovered += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
-  }
-  const coveredQty = Math.min(rawCovered, tradeQty);
-  const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
-  if (uncoveredQty <= 0) return [];
+  // #375 — tempo nu, não foto da saída. Espelho da fonte ESM.
+  const tl = protectionTimeline(trade, orders);
+  if (!tl.windows.length) return [];
+
+  let maior = tl.windows[0];
+  tl.windows.forEach(function (w) { if (w.durationMs > maior.durationMs) maior = w; });
+  const uncoveredQty = maior.contracts;
+  const coveredQty = Math.max(0, Math.round((tradeQty - uncoveredQty) * 100) / 100);
+
+  const fimPosTs = toMs(trade.exitTime);
+  const nuAteASaida = fimPosTs != null && tl.windows.some(function (w) {
+    return w.endTs != null && w.endTs >= fimPosTs - REPLACEMENT_TOLERANCE_MS;
+  });
+  const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
+  const severity = (tl.neverProtected || nuAteASaida || proporcaoAlta)
+    ? EVENT_SEVERITY.HIGH : EVENT_SEVERITY.MEDIUM;
+  const emotionMapping = tl.neverProtected ? null : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 
   return [{
     type: EVENT_TYPES.UNPROTECTED_SIZE,
-    severity: EVENT_SEVERITY.HIGH,
+    severity: severity,
     tradeId: trade.id,
-    orderIds: stops.map(function (s) { return s.externalOrderId; }).filter(Boolean),
-    timestamp: (stops.length && stops[0].submittedAt) || trade.entryTime || null,
+    orderIds: tl.legs.map(function (s) { return s.externalOrderId; }).filter(Boolean),
+    timestamp: trade.entryTime || null,
     evidence: {
       tradeQty: tradeQty,
       coveredQty: coveredQty,
       uncoveredQty: uncoveredQty,
-      hasAnyStop: stops.length > 0,
-      rawCoveredQty: rawCovered,
+      hasAnyStop: !tl.neverProtected,
+      neverProtected: tl.neverProtected,
       ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
+      nakedMs: tl.totalNakedMs,
+      nakedSeconds: Math.round(tl.totalNakedMs / 1000),
+      nakedRatio: tl.nakedRatio,
+      windowCount: tl.windows.length,
+      longestWindowMs: maior.durationMs,
+      positionMs: tl.positionMs,
+      addedWhileNaked: tl.addedWhileNaked,
+      replacements: tl.replacements.length,
+      emotionMapping: emotionMapping,
     },
     source: 'literature',
     citation: 'Shefrin & Statman (1985); Odean (1998)',
@@ -399,7 +598,8 @@ function detectHesitation(trade, orders, config) {
            orderSideMatchesTradeSide(o.side, trade.side);
   });
   if (!entryFill) return [];
-  const entryTs = toMs(entryFill.filledAt) || toMs(entryFill.submittedAt);
+  const offH = tradeOffsetOf(trade);
+  const entryTs = orderMs(entryFill.filledAt, offH) || orderMs(entryFill.submittedAt, offH);
   if (!entryTs) return [];
 
   const cancelled = tradeOrders.filter(function (o) {
@@ -412,7 +612,7 @@ function detectHesitation(trade, orders, config) {
 
   const events = [];
   for (const c of cancelled) {
-    const cancelTs = toMs(c.cancelledAt) || toMs(c.submittedAt);
+    const cancelTs = orderMs(c.cancelledAt, offH) || orderMs(c.submittedAt, offH);
     if (!cancelTs) continue;
     const gap = entryTs - cancelTs;
     if (gap <= 0) continue;
@@ -468,6 +668,7 @@ function detectHesitation(trade, orders, config) {
  * Espelho de `detectAbortedAttempt` em src/utils/executionBehaviorEngine.js.
  */
 function detectAbortedAttempt(trade, orders) {
+  const offA = tradeOffsetOf(trade);
   const exitTs = toMs(trade.exitTime) || toMs(trade.closedAt);
   if (!exitTs) return [];
 
@@ -482,7 +683,7 @@ function detectAbortedAttempt(trade, orders) {
   const events = [];
 
   for (const c of cancelled) {
-    const submittedTs = toMs(c.submittedAt) || toMs(c.cancelledAt);
+    const submittedTs = orderMs(c.submittedAt, offA) || orderMs(c.cancelledAt, offA);
     if (!submittedTs || submittedTs <= exitTs) continue;
 
     const gap = submittedTs - exitTs;
@@ -511,13 +712,14 @@ function detectAbortedAttempt(trade, orders) {
 }
 
 function detectChaseReentry(trade, orders) {
+  const offC = tradeOffsetOf(trade);
   const tradeOrders = ordersForTrade(orders, trade.id)
     .filter(function (o) {
       return !o.isStopOrder && orderSideMatchesTradeSide(o.side, trade.side);
     })
     .map(function (o) {
       return Object.assign({}, o, {
-        _ts: toMs(o.submittedAt) || toMs(o.filledAt) || toMs(o.cancelledAt),
+        _ts: orderMs(o.submittedAt, offC) || orderMs(o.filledAt, offC) || orderMs(o.cancelledAt, offC),
       });
     })
     .filter(function (o) { return o._ts != null; })
@@ -560,11 +762,12 @@ function detectStopBreakevenTooEarly(trade, orders, config) {
   const entryTs = trade ? toMs(trade.entryTime) : null;
   if (!entryPrice || !entryTs) return [];
 
+  const offB = tradeOffsetOf(trade);
   const stops = ordersForTrade(orders, trade.id)
     .filter(function (o) { return o.isStopOrder === true; })
     .map(function (o) {
       return Object.assign({}, o, {
-        _ts: toMs(o.submittedAt) || toMs(o.cancelledAt) || toMs(o.filledAt),
+        _ts: orderMs(o.submittedAt, offB) || orderMs(o.cancelledAt, offB) || orderMs(o.filledAt, offB),
         _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
       });
     })
@@ -609,13 +812,14 @@ function detectStopBreakevenTooEarly(trade, orders, config) {
 }
 
 function detectStopHesitation(trade, orders, config) {
+  const offSH = tradeOffsetOf(trade);
   const entryPrice = (trade && (trade.entry != null ? trade.entry : trade.entryPrice)) != null
     ? (trade.entry != null ? trade.entry : trade.entryPrice) : null;
   const stops = ordersForTrade(orders, trade.id)
     .filter(function (o) { return o.isStopOrder === true; })
     .map(function (o) {
       return Object.assign({}, o, {
-        _ts: toMs(o.submittedAt) || toMs(o.cancelledAt) || toMs(o.filledAt),
+        _ts: orderMs(o.submittedAt, offSH) || orderMs(o.cancelledAt, offSH) || orderMs(o.filledAt, offSH),
         _price: o.stopPrice != null ? o.stopPrice : (o.price != null ? o.price : null),
       });
     })
@@ -693,6 +897,8 @@ function detectExecutionEvents(input) {
 
 module.exports = {
   detectExecutionEvents: detectExecutionEvents,
+  protectionTimeline: protectionTimeline,
+  REPLACEMENT_TOLERANCE_MS: REPLACEMENT_TOLERANCE_MS,
   EVENT_TYPES: EVENT_TYPES,
   EVENT_SEVERITY: EVENT_SEVERITY,
 };

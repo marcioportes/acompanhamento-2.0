@@ -104,6 +104,54 @@ const toMs = (value) => {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 };
 
+/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
+const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * Offset gravado no trade (#285/#292 — `entryTime`/`exitTime` são ISO+offset).
+ * Devolve string tipo '-03:00', ou null quando o trade não carrega fuso.
+ */
+const tradeOffsetOf = (trade) => {
+  for (const v of [trade?.entryTime, trade?.exitTime]) {
+    if (typeof v !== 'string') continue;
+    const m = v.match(OFFSET_RE);
+    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
+  }
+  return null;
+};
+
+/**
+ * Instante de uma ordem, resolvido NO FUSO DO TRADE (#375).
+ *
+ * `orders` guarda instante ingênuo — `"2026-08-21T11:27:51"`, sem fuso — enquanto
+ * `trades` guarda com offset explícito desde o #285/#292. `new Date()` lê string sem
+ * offset no fuso DO PROCESSO: no browser dá America/Sao_Paulo e bate; na Cloud
+ * Function, que roda em UTC, a mesma ordem vira 11:27:51Z contra um trade em
+ * 14:27:51Z. Três horas de defasagem entre a ordem e o trade dela.
+ *
+ * O efeito medido em produção: `liveStopsAt` descarta toda perna de proteção como se
+ * tivesse sido cancelada 3h antes da saída, e TODO trade com ordem correlacionada
+ * saía com `UNPROTECTED_SIZE` HIGH e cobertura zero — o gate travando progressão de
+ * estágio em posição integralmente protegida. `detectStopBreakevenTooEarly`, pelo
+ * mesmo desvio invertido, nunca dispara.
+ *
+ * Aplicado a TODO instante de ordem: comparação ordem×ordem segue consistente (o
+ * deslocamento seria uniforme) e ordem×trade passa a ser correta.
+ */
+const orderMs = (value, offset) => {
+  if (typeof value === 'string' && offset && value && !OFFSET_RE.test(value)) {
+    return toMs(`${value}${offset}`);
+  }
+  return toMs(value);
+};
+
+/**
+ * Instante de uma ordem no fuso do trade — versão pública, para quem lê ordem fora do
+ * motor (o painel). Existe para que ninguém reimplemente o parse e reintroduza o desvio
+ * de 3h: aconteceu uma vez dentro deste mesmo issue.
+ */
+export const orderInstantMs = (trade, value) => orderMs(value, tradeOffsetOf(trade));
+
 const sameInstrument = (a, b) => {
   const ax = (a || '').toUpperCase();
   const bx = (b || '').toUpperCase();
@@ -233,9 +281,10 @@ const liveStopsAt = (trade, stops) => {
  */
 const entryRefOf = (trade, orders) => {
   const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const off = tradeOffsetOf(trade);
   const first = ordersForTrade(orders, trade.id)
     .filter(o => o.side === wanted && o.isStopOrder !== true)
-    .map(o => ({ o, ts: toMs(o.filledAt) ?? toMs(o.submittedAt) ?? 0 }))
+    .map(o => ({ o, ts: orderMs(o.filledAt, off) ?? orderMs(o.submittedAt, off) ?? 0 }))
     .sort((a, b) => a.ts - b.ts)[0];
   // Preferência: limite original > preço > preço executado (DEC-AUTO-242-01 prefere
   // o limite, mas sem ele a fill é melhor referência que nenhuma).
@@ -261,17 +310,25 @@ const entryRefOf = (trade, orders) => {
  * docs repetidos (medido em produção: a mesma ordem em 3 batches). Sem isso o
  * risco e a cobertura são multiplicados pelo número de importações.
  */
-const protectiveLegsOf = (trade, orders) => {
+/**
+ * Janela abaixo da qual uma proteção que sai e outra que entra são a MESMA proteção,
+ * trocada de lugar — não exposição (Marcio, 21/08/2026: 20s é o tempo real de trocar
+ * uma ordem na plataforma). Acima disso a posição ficou nua de verdade.
+ */
+export const REPLACEMENT_TOLERANCE_MS = 20000;
+
+export const protectiveLegsOf = (trade, orders) => {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];
   const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
+  const off = tradeOffsetOf(trade);
 
   const legs = ordersForTrade(orders, trade.id)
     .filter(o => o.side === opposite)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
-      _cancelTs: toMs(o.cancelledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
+      _cancelTs: orderMs(o.cancelledAt, off),
       _isRealStop: o.isStopOrder === true || o.stopPrice != null,
       _price: parseFloat(o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
       // #371 — o preço que CLASSIFICA a perna (alvo vs proteção) é o enviado; o que
@@ -306,6 +363,180 @@ const protectiveLegsOf = (trade, orders) => {
 
 /** Compat: mantém o nome usado pelos detectores. */
 const stopOrdersOf = (trade, orders) => protectiveLegsOf(trade, orders);
+
+/**
+ * LINHA DO TEMPO DA PROTEÇÃO (#375).
+ *
+ * Substitui a foto única no instante da saída. A regra de negócio (Marcio, 21/08/2026):
+ * cancelar o stop NÃO é o problema — o problema é a posição ficar sem stop enquanto está
+ * aberta. Cancelar e recriar é condução de posição: o sistema mostra, não acusa.
+ *
+ * Dois degraus caminhando no tempo, ambos derivados das ordens:
+ *   aberto(t)  = entradas executadas até t − saídas executadas até t
+ *   coberto(t) = Σ qty das pernas de proteção vivas em t
+ * Exposição é todo intervalo com `aberto(t) > coberto(t)`. Janela ≤ REPLACEMENT_TOLERANCE_MS
+ * é troca de ordem, não exposição.
+ *
+ * O cancelamento no alvo cai fora sozinho: a perna morre no mesmo instante em que a
+ * posição zera, e com zero contrato aberto não há o que expor. Sem regra especial.
+ *
+ * @returns {{
+ *   windows: Array<{startTs:number, endTs:number|null, durationMs:number, contracts:number}>,
+ *   totalNakedMs: number, positionMs: number, nakedRatio: number|null,
+ *   neverProtected: boolean, addedWhileNaked: boolean,
+ *   legs: Array<Object>, replacements: Array<Object>,
+ * }}
+ */
+export const protectionTimeline = (trade, orders) => {
+  const vazio = {
+    windows: [], totalNakedMs: 0, positionMs: 0, nakedRatio: null,
+    neverProtected: false, addedWhileNaked: false, legs: [], replacements: [],
+  };
+  const tradeQty = Number(trade?.qty ?? 0);
+  if (!Number.isFinite(tradeQty) || tradeQty <= 0) return vazio;
+
+  const all = ordersForTrade(orders, trade.id);
+  if (!all.length) return vazio;
+
+  const off = tradeOffsetOf(trade);
+  const legs = protectiveLegsOf(trade, orders);
+  const entradaSide = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const legIds = new Set(legs.map(l => l.externalOrderId).filter(Boolean));
+
+  // Fills de entrada e de saída — proteção não conta como fluxo de posição.
+  const fills = all
+    .filter(o => (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
+      && !(o.externalOrderId && legIds.has(o.externalOrderId)))
+    .map(o => ({
+      ts: orderMs(o.filledAt, off) ?? orderMs(o.submittedAt, off),
+      qty: Number(o.filledQuantity ?? o.quantity ?? 0),
+      entrada: o.side === entradaSide,
+    }))
+    .filter(f => f.ts != null && Number.isFinite(f.qty) && f.qty > 0);
+
+  // Sem fill de entrada nas ordens correlacionadas (fixture esparsa, import parcial), a
+  // posição é o que o trade declara, do entryTime ao exitTime. Não invento precisão que
+  // o dado não tem — só não deixo de medir por falta dela.
+  const abreTs = toMs(trade.entryTime);
+  const fechaTs = toMs(trade.exitTime);
+  const entradas = fills.filter(f => f.entrada);
+  if (!entradas.length) {
+    if (abreTs == null) return vazio;
+    fills.length = 0;
+    fills.push({ ts: abreTs, qty: tradeQty, entrada: true });
+    if (fechaTs != null) fills.push({ ts: fechaTs, qty: tradeQty, entrada: false });
+  }
+
+  const inicioPos = Math.min(...fills.filter(f => f.entrada).map(f => f.ts));
+  const fimPos = fechaTs ?? Math.max(...fills.map(f => f.ts));
+
+  // Eventos: +qty na entrada, −qty na saída, ±cobertura por perna.
+  const eventos = [];
+  for (const f of fills) eventos.push({ ts: f.ts, dAberto: f.entrada ? f.qty : -f.qty, dCoberto: 0 });
+  for (const l of legs) {
+    const qty = Number(l.quantity ?? l.qty ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    // Perna sem instante utilizável cobre a posição inteira: ela existe, e onde não dá
+    // para situá-la no tempo o benefício da dúvida é do aluno — subestimar exposição é
+    // preferível a inventá-la.
+    // A cobertura começa quando a ordem foi ENVIADA. Sem `submittedAt` não dá para
+    // saber quando ela passou a valer — e uma proteção que executou existia antes de
+    // executar. Nesse caso ela cobre desde a abertura da posição: onde o dado não
+    // informa, o benefício da dúvida é do aluno.
+    const inicio = orderMs(l.submittedAt, off) ?? inicioPos;
+    const fillTs = (l.status === 'FILLED' || l.status === 'PARTIALLY_FILLED')
+      ? (orderMs(l.filledAt, off) ?? orderMs(l.submittedAt, off))
+      : null;
+    const fim = l._cancelTs ?? fillTs ?? null;
+    eventos.push({ ts: inicio, dAberto: 0, dCoberto: qty });
+    if (fim != null) eventos.push({ ts: fim, dAberto: 0, dCoberto: -qty });
+    // Proteção que EXECUTA é saída: fecha posição no mesmo instante em que deixa de
+    // cobrir. Sem isto o stop disparado viraria uma janela nua até o fim do trade.
+    if (fillTs != null) {
+      const executada = Number(l.filledQuantity ?? l.quantity ?? qty);
+      eventos.push({ ts: fillTs, dAberto: -executada, dCoberto: 0 });
+    }
+  }
+  eventos.sort((a, b) => a.ts - b.ts);
+
+  // Varre os instantes de mudança acumulando os dois degraus. Cada trecho entre dois
+  // instantes tem um nível de exposição próprio; trechos vizinhos com o MESMO nível se
+  // fundem. Assim "2 contratos nus por 29s" e "1 contrato nu por 30min" continuam sendo
+  // dois fatos distintos, em vez de virarem um borrão com o pior número dos dois.
+  const instantes = [];
+  {
+    let aberto = 0;
+    let coberto = 0;
+    for (let i = 0; i < eventos.length; i += 1) {
+      const ts = eventos[i].ts;
+      aberto += eventos[i].dAberto;
+      coberto += eventos[i].dCoberto;
+      while (i + 1 < eventos.length && eventos[i + 1].ts === ts) {
+        i += 1;
+        aberto += eventos[i].dAberto;
+        coberto += eventos[i].dCoberto;
+      }
+      const nu = Math.max(0, Math.round((aberto - Math.min(coberto, aberto)) * 100) / 100);
+      instantes.push({ ts, nu });
+    }
+  }
+
+  const brutas = [];
+  for (let k = 0; k < instantes.length; k += 1) {
+    const { ts, nu } = instantes[k];
+    if (nu <= 0) continue;
+    const fimTrecho = k + 1 < instantes.length ? instantes[k + 1].ts : fimPos;
+    if (fimTrecho <= ts) continue;
+    const anterior = brutas[brutas.length - 1];
+    if (anterior && anterior.contracts === nu && anterior.endTs === ts) {
+      anterior.endTs = fimTrecho;
+      anterior.durationMs = fimTrecho - anterior.startTs;
+    } else {
+      brutas.push({ startTs: ts, endTs: fimTrecho, durationMs: fimTrecho - ts, contracts: nu });
+    }
+  }
+
+  // Troca de ordem não é exposição.
+  const windows = brutas.filter(w => w.durationMs > REPLACEMENT_TOLERANCE_MS);
+  const totalNakedMs = windows.reduce((acc, w) => acc + w.durationMs, 0);
+  const positionMs = Math.max(0, fimPos - inicioPos);
+
+  // Substituições: perna que morre e outra que nasce dentro da tolerância.
+  const replacements = [];
+  const entryRef = entryRefOf(trade, orders);
+  for (const morta of legs) {
+    if (morta._cancelTs == null) continue;
+    const nova = legs.find(l => l !== morta && l._ts != null
+      && l._ts >= morta._cancelTs - REPLACEMENT_TOLERANCE_MS
+      && l._ts <= morta._cancelTs + REPLACEMENT_TOLERANCE_MS);
+    if (!nova) continue;
+    const antes = Math.abs(morta._price - entryRef);
+    const depois = Math.abs(nova._price - entryRef);
+    replacements.push({
+      fromOrderId: morta.externalOrderId ?? null,
+      toOrderId: nova.externalOrderId ?? null,
+      fromPrice: morta._price,
+      toPrice: nova._price,
+      ts: morta._cancelTs,
+      direction: depois < antes ? 'TIGHTENED' : (depois > antes ? 'WIDENED' : 'UNCHANGED'),
+    });
+  }
+
+  // Aumentou a posição estando nu? (denota Negação, não Esperança — ver taxonomia)
+  const addedWhileNaked = windows.some(w => fills.some(f =>
+    f.entrada && f.ts > w.startTs && (w.endTs == null || f.ts <= w.endTs)));
+
+  return {
+    windows,
+    totalNakedMs,
+    positionMs,
+    nakedRatio: positionMs > 0 ? Math.round((totalNakedMs / positionMs) * 100) / 100 : null,
+    neverProtected: legs.length === 0,
+    addedWhileNaked,
+    legs,
+    replacements,
+  };
+};
 
 // ============================================
 // DETECTORS
@@ -417,27 +648,60 @@ const detectUnprotectedSize = (trade, orders) => {
   const all = ordersForTrade(orders, trade.id);
   if (!all.length) return [];   // sem ordens correlacionadas não há resolução p/ afirmar
 
-  const stops = liveStopsAt(trade, protectiveLegsOf(trade, orders));
-  // Cap de sanidade: cobertura não pode exceder a posição. Se exceder, sobraram
-  // cópias que o dedup não pegou — melhor subestimar cobertura do que inventar.
-  const rawCovered = stops.reduce((acc, s) => acc + Number(s.quantity ?? s.qty ?? 0), 0);
-  const coveredQty = Math.min(rawCovered, tradeQty);
-  const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
-  if (uncoveredQty <= 0) return [];
+  // #375 — a medida é TEMPO NU, não foto no instante da saída. Cancelar o stop não é o
+  // fato; ficar sem stop com posição aberta é. Cancelar e recriar é condução: a janela
+  // curta entre uma ordem e outra não conta (REPLACEMENT_TOLERANCE_MS).
+  const tl = protectionTimeline(trade, orders);
+  if (!tl.windows.length) return [];
+
+  const maior = tl.windows.reduce((a, w) => (w.durationMs > a.durationMs ? w : a), tl.windows[0]);
+  const uncoveredQty = maior.contracts;
+  const coveredQty = Math.max(0, Math.round((tradeQty - uncoveredQty) * 100) / 100);
+
+  // "Ficar sem stop até o disparo da saída" — a frase de Marcio — é o caso grave: a
+  // posição chegou ao fim descoberta. Exposição que o aluno FECHOU recolocando proteção
+  // é informativa, não sentença; só vira grave se tomou a maior parte da posição.
+  const fimPosTs = toMs(trade.exitTime);
+  const nuAteASaida = fimPosTs != null && tl.windows.some(w =>
+    w.endTs != null && w.endTs >= fimPosTs - REPLACEMENT_TOLERANCE_MS);
+  const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
+  const severity = (tl.neverProtected || nuAteASaida || proporcaoAlta)
+    ? EVENT_SEVERITY.HIGH
+    : EVENT_SEVERITY.MEDIUM;
+
+  // #375 — a emoção sai do que a janela revela, não é fixa no padrão:
+  //   nunca protegeu                     → nenhuma (é processo, negligência; gate puro)
+  //   retirou e não recolocou            → HOPE   ("não quero ser stopado, quero estar certo")
+  //   retirou e ainda aumentou a posição → DENIAL ("não estou errado, vou aumentar")
+  // Vingança seria reação a prejuízo já consumado — aqui o prejuízo ainda não foi aceito,
+  // e é para não aceitá-lo que a proteção sai (Marcio, 21/08/2026).
+  const emotionMapping = tl.neverProtected
+    ? null
+    : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 
   return [{
     type: EVENT_TYPES.UNPROTECTED_SIZE,
-    severity: EVENT_SEVERITY.HIGH,
+    severity,
     tradeId: trade.id,
-    orderIds: stops.map(s => s.externalOrderId).filter(Boolean),
-    timestamp: stops[0]?.submittedAt ?? trade.entryTime ?? null,
+    orderIds: tl.legs.map(s => s.externalOrderId).filter(Boolean),
+    timestamp: trade.entryTime ?? null,
     evidence: {
       tradeQty,
       coveredQty,
       uncoveredQty,
-      hasAnyStop: stops.length > 0,
-      rawCoveredQty: rawCovered,
+      hasAnyStop: !tl.neverProtected,
+      neverProtected: tl.neverProtected,
       ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
+      // Janela de exposição — o que a leitura antiga não sabia dizer.
+      nakedMs: tl.totalNakedMs,
+      nakedSeconds: Math.round(tl.totalNakedMs / 1000),
+      nakedRatio: tl.nakedRatio,
+      windowCount: tl.windows.length,
+      longestWindowMs: maior.durationMs,
+      positionMs: tl.positionMs,
+      addedWhileNaked: tl.addedWhileNaked,
+      replacements: tl.replacements.length,
+      emotionMapping,
     },
     source: 'literature',
     citation: 'Shefrin & Statman (1985); Odean (1998)',
@@ -502,7 +766,8 @@ const detectHesitation = (trade, orders, config) => {
     orderSideMatchesTradeSide(o.side, trade.side)
   );
   if (!entryFill) return [];
-  const entryTs = toMs(entryFill.filledAt) ?? toMs(entryFill.submittedAt);
+  const off = tradeOffsetOf(trade);
+  const entryTs = orderMs(entryFill.filledAt, off) ?? orderMs(entryFill.submittedAt, off);
   if (!entryTs) return [];
 
   const cancelled = tradeOrders.filter(o =>
@@ -515,7 +780,7 @@ const detectHesitation = (trade, orders, config) => {
 
   const events = [];
   for (const c of cancelled) {
-    const cancelTs = toMs(c.cancelledAt) ?? toMs(c.submittedAt);
+    const cancelTs = orderMs(c.cancelledAt, off) ?? orderMs(c.submittedAt, off);
     if (!cancelTs) continue;
     const gap = entryTs - cancelTs;
     if (gap <= 0) continue;
@@ -579,6 +844,7 @@ const detectHesitation = (trade, orders, config) => {
  * Fonte: heurística operacional (pedido de Marcio, 20/08/2026).
  */
 const detectAbortedAttempt = (trade, orders) => {
+  const off = tradeOffsetOf(trade);
   const exitTs = toMs(trade.exitTime) ?? toMs(trade.closedAt);
   if (!exitTs) return [];
 
@@ -593,7 +859,7 @@ const detectAbortedAttempt = (trade, orders) => {
   const events = [];
 
   for (const c of cancelled) {
-    const submittedTs = toMs(c.submittedAt) ?? toMs(c.cancelledAt);
+    const submittedTs = orderMs(c.submittedAt, off) ?? orderMs(c.cancelledAt, off);
     if (!submittedTs || submittedTs <= exitTs) continue;
 
     const gap = submittedTs - exitTs;
@@ -628,9 +894,10 @@ const detectAbortedAttempt = (trade, orders) => {
  * Fonte: Barber & Odean 2000 (overtrading agregado).
  */
 const detectChaseReentry = (trade, orders) => {
+  const off = tradeOffsetOf(trade);
   const tradeOrders = ordersForTrade(orders, trade.id)
     .filter(o => !o.isStopOrder && orderSideMatchesTradeSide(o.side, trade.side))
-    .map(o => ({ ...o, _ts: toMs(o.submittedAt) ?? toMs(o.filledAt) ?? toMs(o.cancelledAt) }))
+    .map(o => ({ ...o, _ts: orderMs(o.submittedAt, off) ?? orderMs(o.filledAt, off) ?? orderMs(o.cancelledAt, off) }))
     .filter(o => o._ts != null)
     .sort((a, b) => a._ts - b._ts);
 
@@ -676,11 +943,12 @@ const detectStopBreakevenTooEarly = (trade, orders, config) => {
   const entryTs = toMs(trade?.entryTime);
   if (!entryPrice || !entryTs) return [];
 
+  const off = tradeOffsetOf(trade);
   const stops = ordersForTrade(orders, trade.id)
     .filter(o => o.isStopOrder === true)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
       _price: o.stopPrice ?? o.price ?? null,
     }))
     .filter(o => o._ts != null && o._price != null)
@@ -732,11 +1000,12 @@ const detectStopBreakevenTooEarly = (trade, orders, config) => {
  */
 const detectStopHesitation = (trade, orders, config) => {
   const entryPrice = trade?.entry ?? trade?.entryPrice ?? null;
+  const off = tradeOffsetOf(trade);
   const stops = ordersForTrade(orders, trade.id)
     .filter(o => o.isStopOrder === true)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
       _price: o.stopPrice ?? o.price ?? null,
     }))
     .filter(o => o._ts != null && o._price != null)

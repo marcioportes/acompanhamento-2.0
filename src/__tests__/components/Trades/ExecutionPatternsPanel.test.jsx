@@ -28,9 +28,11 @@ describe('ExecutionPatternsPanel', () => {
         status: 'FILLED', quantity: 2, filledPrice: 100000,
         submittedAt: '2026-04-22T10:00:00Z', filledAt: '2026-04-22T10:00:01Z',
         isStopOrder: false, correlatedTradeId: 'T1' },
+      // #375 — trade limpo agora exige proteção desde a entrada: a posição não pode
+      // passar tempo nua. Antes o stop entrava 29s depois e ninguém media isso.
       { externalOrderId: 'S1', instrument: 'WINM26', side: 'SELL', type: 'STOP',
         status: 'FILLED', quantity: 2, stopPrice: 99500,
-        submittedAt: '2026-04-22T10:00:30Z', filledAt: '2026-04-22T10:30:00Z',
+        submittedAt: '2026-04-22T10:00:01Z', filledAt: '2026-04-22T10:30:00Z',
         isStopOrder: true, correlatedTradeId: 'T1' },
     ];
     render(<ExecutionPatternsPanel trade={trade} orders={orders} />);

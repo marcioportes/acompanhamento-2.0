@@ -72,11 +72,18 @@ const byDisplayOrder = (a, b) => {
   return (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
 };
 
-/** Família negativa dominante (maior severidade; empate → a que trava gate). */
-const dominantNegativeFamily = (families) => {
+/**
+ * Família negativa dominante (maior severidade; empate → a que trava gate).
+ *
+ * @param {boolean} [comEmocao] — quando true, só concorrem famílias que carregam emoção.
+ *   Usado pelo confronto emocional (#375): padrão de gate sem emoção associada não pode
+ *   ser eleito "a emoção do trade" — foi o que fez o card dizer "a execução sugere null".
+ */
+const dominantNegativeFamily = (families, comEmocao = false) => {
   let best = null;
   for (const f of families) {
     if (f.valence === 'positive') continue;
+    if (comEmocao && !f.emotionMapping) continue;
     if (!best) { best = f; continue; }
     const d = (SEVERITY_RANK[f.severity] ?? 0) - (SEVERITY_RANK[best.severity] ?? 0);
     if (d > 0 || (d === 0 && f.isGate && !best.isGate)) best = f;
@@ -110,9 +117,13 @@ const verdictFor = (declaredCategory, detSeverity) => {
 };
 
 const computeEmotionConfront = (trade, families, getEmotionConfig) => {
-  const dom = dominantNegativeFamily(families);
+  // #375 — o confronto é sobre EMOÇÃO: só participa padrão que carrega uma. Gate sem
+  // emoção continua inteiro na lista de padrões e no bloqueio de estágio, que é o canal
+  // dele. A severidade que calibra o veredicto também sai daí, senão um gate mudo
+  // continuaria endurecendo um confronto do qual não participa.
+  const dom = dominantNegativeFamily(families, true);
   const detSeverity = dom ? dom.severity : 'CLEAN';
-  const suggested = dom
+  const suggested = (dom && dom.emotionMapping)
     ? { emotion: dom.emotionMapping, code: dom.canonicalCode, severity: dom.severity }
     : null;
   const entryName = trade.emotionEntry || null;
@@ -224,7 +235,11 @@ const buildBehaviorProfiles = ({
         severity: ev.severity ?? pattern?.severityDefault ?? null,
         source: det.source,
         resolutionLayer: det.resolutionLayer,
-        emotionMapping: pattern?.emotionMapping ?? null,
+        // #375 — a emoção pode ser DERIVADA do que aconteceu no trade, não fixa no
+        // padrão. `UNPROTECTED_SIZE` é o caso: retirar a proteção e segurar é Esperança,
+        // retirar e ainda aumentar é Negação, e nunca ter protegido não é emoção nenhuma
+        // — é processo. O detector devolve isso na evidência; o padrão é o fallback.
+        emotionMapping: ev.evidence?.emotionMapping ?? pattern?.emotionMapping ?? null,
         valence: pattern?.valence ?? (pattern?.severityDefault == null ? 'positive' : 'negative'),
         isGate: gateInputs.includes(family),
         confidence: ev.confidence ?? null,
