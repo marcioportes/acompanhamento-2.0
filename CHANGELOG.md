@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.18] - 21/08/2026 · #371 · PR #372
+
+**fix:** dado do aluno é imutável pelo import + risco de proteção pelo preço executa
+
+- campo preenchido → import não toca; divergência gravada em `importDivergences`
+- campo vazio → preenche e marca `stopLossSource: 'import'`
+- ausência de dado no import **não** entra no payload: nulo nunca é gravado por cima
+- **ajuste no modal continua mandando**, inclusive para limpar (`stopLossFromUser`, `stopLossSource: 'student'`) — a proteção é contra o import decidir sozinho, nunca contra o aluno editar o que é dele
+- Usei o preço executado também para **classificar** a perna, não só para medir: mudou o que é alvo e o que é proteção, quebrando 7 testes existentes. Separado em dois campos.
+- Usei `filledPrice` sem checar se a ordem executou. Um fixture com ordem `CANCELLED` carregando `filledPrice` expôs isso.
+- deploy das functions (espelho do motor mudou)
+- `scripts/issue-357-recompute-behavior.mjs` para recalcular os `behaviorProfile` já gravados — os alertas falsos seguem travando o gate de progressão até serem recomputados
+
+
 ## [1.83.17] - 21/08/2026 · #369 · PR #370
 
 **feat:** ordens que não viraram posição pertencem ao trade vizinho — hesitação, re

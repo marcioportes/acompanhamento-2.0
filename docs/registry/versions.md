@@ -84,4 +84,4 @@
 | 1.83.15 | #366 | `fix/issue-366-import-order-ghosts` | 20/08/2026 | consumida (PR #367 squash `bce355f6`) |
 | 1.83.16 | — | `fix/orders-require-live-trade` | 20/08/2026 | consumida (PR #368 squash `c2a4c403`) — fix direto autorizado (sem issue) |
 | 1.83.17 | #369 | `feat/issue-369-aborted-orders` | 21/08/2026 | consumida (PR #370 squash `39dabdca`) |
-| 1.83.18 | #371 | `fix/issue-371-aluno-imutavel` | 21/08/2026 | reservada |
+| 1.83.18 | #371 | `fix/issue-371-aluno-imutavel` | 21/08/2026 | consumida (PR #372 squash `34e1ee99`) |

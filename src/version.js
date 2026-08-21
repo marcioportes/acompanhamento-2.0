@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.18: #371 dado do aluno é imutável pelo import + risco de proteção pelo preço executado (RESERVADA)
+ * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)
  * - 1.83.17: #369 feat ordens que não viraram posição pertencem ao trade vizinho — hesitação, re (PR #370, 21/08/2026)
  * - 1.83.16: ordem só existe atrelada a trade vivo — purga automática de ordens órfãs (RESERVADA)
  * - 1.83.15: #366 fix import de ordens grava só o que foi decidido — sem ghosts, sem reimportação (PR #367, 20/08/2026)
