@@ -10,10 +10,16 @@ Version source of truth: `src/version.js`.
 
 ## [1.83.21] - 21/08/2026 · #381 · PR #382
 
-**fix:** R:R derivado da geometria de preço — fim do "saída antecipada" em trade que 
+**fix:** R:R derivado da geometria de preço — fim do "saída antecipada" em trade que atingiu o alvo
 
-- _(decisões/testes/files — ajustar antes do commit)_
-
+- **A contradição.** O mesmo card trazia "Saída antecipada · Alta (RR 0.42 contra 2 do plano)" e "Alvo atingido (2:1)" no mesmo trade — e, depois do #375, a saída antecipada virou a família dominante e passou a ditar o confronto emocional.
+- **Causa.** `detectEarlyExit` lia o escalar `trade.rrRatio` gravado pela CF de compliance. O valor no documento era `0.42`: o que a fórmula produz sem `tickerRule`, convertendo R$ 520 em 52 pontos em vez de 260. O R:R real era 2,08 — a saída foi 10 pontos além do alvo.
+- **Correção.** `realizedRR` deriva de `(saída − entrada) ÷ |entrada − stop|`, a mesma régua que `detectTargetHit` já usava. A contradição fica impossível por construção (DEC-AUTO-381-01). Aplicado em `EARLY_EXIT`, `TARGET_HIT` e `CLEAN_EXECUTION`, no front e no espelho da CF.
+- **Nome canônico.** Detectores liam `trade.planRR`, campo inexistente; o modelo usa `planRrTarget`. O `?? 2.0` mascarava — todo aluno era julgado contra 2:1 qualquer que fosse o `rrTarget` do plano (AP-07).
+- **Ausência não é zero.** Sem stop devolve `null`, não `0` — sem a guarda, um trade sem stop viraria R:R 0,00 e "saída antecipada gravíssima".
+- **Recompute:** 83 perfis. O trade de referência ficou com três padrões, todos positivos, e confronto `ALIGNED`.
+- 10 testes novos, incluindo um que exige que `EARLY_EXIT` e `TARGET_HIT` nunca coexistam.
+- Arquivos: `shadowBehaviorAnalysis.js`, `functions/shadow/shadowDetectors.js`.
 
 ## [1.83.20] - 21/08/2026 · #375 · PRs #379, #380
 
