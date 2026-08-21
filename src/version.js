@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.21: #381 fix R:R derivado no lugar do escalar gravado — saída antecipada em trade que atingiu o alvo (RESERVADA)
  * - 1.83.20: #375 fix proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e (PR #379, 21/08/2026)
  * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)
  * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)
@@ -406,10 +407,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.20',
+  version: '1.83.21',
   build: '20260821',
-  display: 'v1.83.20',
-  full: '1.83.20+20260821',
+  display: 'v1.83.21',
+  full: '1.83.21+20260821',
 };
 export default VERSION;
 export { VERSION };
