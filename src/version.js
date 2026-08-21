@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.17: ordens que não viraram posição são atribuídas ao trade vizinho — hesitação, reconsideração e tentativa posterior (RESERVADA)
  * - 1.83.16: ordem só existe atrelada a trade vivo — purga automática de ordens órfãs (RESERVADA)
  * - 1.83.15: #366 fix import de ordens grava só o que foi decidido — sem ghosts, sem reimportação (PR #367, 20/08/2026)
  * - 1.83.14: #363 fix onTradeDeleted apaga tudo que aponta para o trade + limpeza do passivo (PR #365, 20/08/2026)
@@ -402,10 +403,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.16',
-  build: '20260820',
-  display: 'v1.83.16',
-  full: '1.83.16+20260820',
+  version: '1.83.17',
+  build: '20260821',
+  display: 'v1.83.17',
+  full: '1.83.17+20260821',
 };
 export default VERSION;
 export { VERSION };
