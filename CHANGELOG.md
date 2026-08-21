@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.21] - 21/08/2026 · #381 · PR #382
+
+**fix:** R:R derivado da geometria de preço — fim do "saída antecipada" em trade que 
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.20] - 21/08/2026 · #375 · PRs #379, #380
 
 **fix:** proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo, confronto sem `null`

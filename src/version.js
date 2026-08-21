@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.21: #381 fix R:R derivado no lugar do escalar gravado — saída antecipada em trade que atingiu o alvo (RESERVADA)
+ * - 1.83.21: #381 fix R:R derivado da geometria de preço — fim do "saída antecipada" em trade que  (PR #382, 21/08/2026)
  * - 1.83.20: #375 fix proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e (PR #379, 21/08/2026)
  * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)
  * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)

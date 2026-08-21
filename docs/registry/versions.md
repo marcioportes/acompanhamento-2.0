@@ -87,4 +87,4 @@
 | 1.83.18 | #371 | `fix/issue-371-aluno-imutavel` | 21/08/2026 | consumida (PR #372 squash `34e1ee99`) |
 | 1.83.19 | #373 | `feat/issue-373-rr-em-dinheiro` | 21/08/2026 | consumida (PR #374 squash `1e9ee0cb`) |
 | 1.83.20 | #375 | `fix/issue-375-oco-protection-read` | 21/08/2026 | consumida (PR #379 squash `080ab2d7`) |
-| 1.83.21 | #381 | `fix/issue-381-rr-derivado` | 21/08/2026 | reservada |
+| 1.83.21 | #381 | `fix/issue-381-rr-derivado` | 21/08/2026 | consumida (PR #382 squash `7d61c4b8`) |
