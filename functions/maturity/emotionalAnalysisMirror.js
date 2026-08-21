@@ -60,6 +60,10 @@ const EVENT_PENALTIES = {
   STOP_PARTIAL_SIZING: 10,
   RAPID_REENTRY_POST_STOP: 15,
   HESITATION_PRE_ENTRY: 5,
+  // #369 — RECONSIDERATION_PRE_ENTRY e ABORTED_ATTEMPT_POST_TRADE ficam DE FORA de
+  // propósito: peso ausente = 0. Desmontar uma ordem e esperar meia hora, ou montar
+  // depois do trade e recuar, é autocontrole — penalizar ensinaria a entrar rápido e a
+  // não recuar. Os eventos existem para o aluno e o mentor VEREM a frequência.
   CHASE_REENTRY: 10,
   // Issue #229 — sensores de medo + indecisão
   STOP_BREAKEVEN_TOO_EARLY: 12,

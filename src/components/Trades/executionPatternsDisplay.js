@@ -26,6 +26,8 @@ export const EVENT_LABELS = {
   STOP_PARTIAL_SIZING: 'Stop dimensionado para meio lote',
   RAPID_REENTRY_POST_STOP: 'Reentrada rápida após stop',
   HESITATION_PRE_ENTRY: 'Hesitação pré-entrada',
+  RECONSIDERATION_PRE_ENTRY: 'Reavaliação antes de entrar',
+  ABORTED_ATTEMPT_POST_TRADE: 'Tentativa depois do trade, recuada',
   CHASE_REENTRY: 'Reentrada com preço pior (chase)',
   STOP_BREAKEVEN_TOO_EARLY: 'Stop levado pra zero cedo demais',
   STOP_HESITATION: 'Hesitação no stop (reissue sem mudar preço)',
@@ -46,6 +48,10 @@ export const EVENT_DESCRIPTIONS = {
     'Nova entrada no mesmo lado e instrumento poucos minutos após sair em prejuízo. Padrão de loss-chasing.',
   HESITATION_PRE_ENTRY:
     'Limite cancelado e re-entrada efetiva pouco depois — heurística operacional, indica indecisão pré-trade.',
+  RECONSIDERATION_PRE_ENTRY:
+    'Você montou uma entrada, desmontou e só voltou depois de mais de meia hora. Não conta como falha: esperar e reavaliar é decisão, não indecisão — o registro existe para você enxergar o próprio tempo de espera.',
+  ABORTED_ATTEMPT_POST_TRADE:
+    'Depois que este trade fechou, você montou outra entrada no mesmo ativo e recuou antes de executar. Não conta como falha — recuar é controle. Depois de prejuízo, a frequência dessas tentativas é o que vale olhar.',
   CHASE_REENTRY:
     'Limite cancelado e re-submetido em preço pior antes do fill. Comportamento de overtrading/perseguição de preço.',
   STOP_BREAKEVEN_TOO_EARLY:
