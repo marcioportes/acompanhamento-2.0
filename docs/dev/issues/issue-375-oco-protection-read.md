@@ -12,7 +12,9 @@
 
 Trade WINV26 LONG 10 de 21/08/2026 (entradas 174.050 e 174.010 às 11:25, saída 174.290 às 11:27, +R$ 520) tinha proteção: duas pernas SELL 173.755 de 5 contratos, canceladas às 11:27:51 pelo OCO quando a saída no alvo executou. O painel exibiu "Sem stop", o motor emitiu `UNPROTECTED_SIZE` HIGH (que trava progressão de estágio) e o confronto emocional imprimiu a palavra `null` na tela.
 
-Três leituras diferentes das mesmas duas ordens, nenhuma correta. O objetivo é uma definição única de proteção — a que o #242/#359/#371 já fixaram — aplicada em todos os pontos que a leem.
+Três leituras diferentes das mesmas duas ordens, nenhuma correta.
+
+**Regra de negócio (Marcio, 21/08/2026):** cancelar o stop não é o problema. O problema é a posição **ficar sem stop enquanto está aberta**. Cancelar e criar outra é condução de posição — o sistema precisa **mostrar** isso, não acusar. O que acusa é o intervalo de tempo em que havia contratos abertos e nenhuma proteção cobrindo.
 
 ## Spec
 
@@ -37,103 +39,164 @@ Saída    SELL  174290  5  FILLED     21/08, 11:27:51
 Proposto:
 
 ```
-Ordens da Corretora  6     🛡️✓ Stop
-Entrada  BUY   174050  5  FILLED     21/08, 11:25:15
-Entrada  BUY   174010  5  FILLED     21/08, 11:25:18
-Stop     SELL  173755  5  CANCELADA NO ALVO  21/08, 11:27:51
-Stop     SELL  173755  5  CANCELADA NO ALVO  21/08, 11:27:51
-Saída    SELL  174290  5  FILLED     21/08, 11:25:51
-Saída    SELL  174290  5  FILLED     21/08, 11:27:51
+Ordens da Corretora  6     🛡️✓ Protegido o tempo todo
+Entrada  BUY   174050  5  FILLED           21/08, 11:25:15
+Entrada  BUY   174010  5  FILLED           21/08, 11:25:18
+Stop     SELL  173755  5  ativa até a saída  21/08, 11:25:15
+Stop     SELL  173755  5  ativa até a saída  21/08, 11:25:18
+Saída    SELL  174290  5  FILLED           21/08, 11:27:51
+Saída    SELL  174290  5  FILLED           21/08, 11:27:51
 ```
 
-Três estados de linha de proteção, visualmente distintos:
+Linha de proteção — o que a coluna de status diz, e o que cada caso significa:
 
-| Estado | Rótulo | Quando | Leitura |
-|--------|--------|--------|---------|
-| viva/executada | `Stop` | FILLED, ou ainda aberta | protegeu |
-| cancelada no fim | `Stop · cancelada no alvo` | `cancelledAt >= exitTime − 2s` | desfecho normal do OCO — protegeu até o fim |
-| retirada antes | `Stop · retirada` (âmbar) | `cancelledAt < exitTime − 2s` e sem substituta viva | **sinal comportamental** — ficou descoberto com posição aberta |
+| Status na linha | Quando | Leitura |
+|---|---|---|
+| `executada` | a proteção disparou | o stop fez o trabalho dele |
+| `ativa até a saída` | cancelada junto com a saída (OCO) | protegeu do começo ao fim — desfecho normal |
+| `substituída por 173.900 ↑` | cancelada e outra proteção entrou no lugar | **condução de posição** — informa, não acusa; a seta mostra se apertou ou afrouxou |
+| `retirada — 1m22s sem proteção` | cancelada e nada entrou no lugar | a posição ficou nua desse instante até a saída |
 
-Badge do cabeçalho: `Stop` quando existe proteção em qualquer um dos três estados; `Sem stop` só quando não há nenhuma. "Stop implícito" (loss sem stop formal) permanece como está.
+Badge do cabeçalho, três estados:
 
-O terceiro estado é ganho novo: hoje "proteção retirada com posição viva" e "proteção cancelada pelo OCO no alvo" aparecem idênticas como `Cancel`, e são fatos opostos.
+- 🛡️✓ **Protegido o tempo todo** — nunca houve contrato aberto sem cobertura
+- 🛡️⚠ **Sem proteção por 1m22s (10 contratos)** — houve janela nua; mostra a maior
+- 🛡️✗ **Sem stop** — nunca houve proteção nenhuma
+
+### Faixa de exposição (novo, dentro do painel)
+
+Quando houve janela nua, uma faixa abaixo da tabela mostra onde:
+
+```
+11:25:15 ├────────── protegido ──────────┤ 11:26:29
+11:26:29 ├══════ SEM PROTEÇÃO 1m22s ═════┤ 11:27:51 (saída)
+```
+
+É o fato que interessa: quanto tempo, quantos contratos, em que trecho.
 
 ### Confronto emocional
 
-Hoje, com família dominante de gate: *"Você declarou 'Calmo', mas a execução sugere **null**."*
+Hoje o card diz: *"Você declarou 'Calmo', mas a execução sugere **null**."*
 
-Proposto: família de gate (`emotionMapping: null`) **não** participa do confronto emocional — o confronto é declarado × emoção detectada, e gate não tem emoção. A dominante passa a ser a primeira família negativa **com** emoção; não havendo nenhuma, o veredicto cai para o ramo "execução saiu limpa" que já existe. Gate continua aparecendo inteiro na lista de padrões e no bloqueio de estágio, que é o canal dele.
+O confronto compara **a emoção que o aluno declarou na entrada** com **a emoção que a execução sugere**. Alguns padrões detectados carregam emoção: saída antecipada → Medo, reentrada rápida → Vingança. Outros não são emoção nenhuma — são regra quebrada, como "posição sem proteção", que aparece no painel com o rótulo `gate` onde os outros mostram "Medo" ou "Paciência".
+
+O que aconteceu: o sistema elegeu "posição sem proteção" como *a emoção do trade*. Como esse padrão não tem emoção associada, o texto saiu com a palavra `null` no lugar do nome da emoção.
+
+Proposto: só padrão que carrega emoção pode ser usado nessa comparação. "Posição sem proteção" continua aparecendo inteiro na lista de padrões e continua travando progressão de estágio — ele só deixa de ser tratado como emoção. Se nenhum padrão com emoção sobrar, o card cai no texto que já existe para execução limpa.
 
 ## Memória de Cálculo
 
 ### Inputs
 
-- `orders` (collection): `side`, `status`, `stopPrice`, `limitPrice`, `price`, `filledPrice`, `quantity`, `submittedAt`, `cancelledAt`, `filledAt`, `isStopOrder`, `externalOrderId`, `correlatedTradeId`
-- `trades`: `side`, `qty`, `entry`, `exitTime`
-- constante existente `OCO_TOLERANCE_MS = 2000` (`executionBehaviorEngine.js:221`)
+- `orders`: `side`, `status`, `stopPrice`, `limitPrice`, `price`, `filledPrice`, `quantity`, `submittedAt`, `cancelledAt`, `filledAt`, `isStopOrder`, `externalOrderId`, `correlatedTradeId`
+- `trades`: `side`, `qty`, `entry`, `entryTime`, `exitTime`
+- `OCO_TOLERANCE_MS = 2000` (`executionBehaviorEngine.js:221`), já existente
 
-### É proteção? (definição única, já vigente no motor)
-
-```
-entryRef  = limitPrice da 1ª ordem de entrada (fallback price → filledPrice → trade.entry)
-oposto    = LONG ? SELL : BUY
-preço     = stopPrice ?? limitPrice ?? price
-
-proteção  = isStopOrder
-          || (side === oposto && (LONG ? preço < entryRef : preço > entryRef))
-```
-
-Vale em qualquer `status`, CANCELLED incluído. É exatamente `protectiveLegsOf` (`executionBehaviorEngine.js:264`); o painel passa a consumir a mesma regra em vez da sua própria.
-
-### Estado da proteção
+### 1. É proteção? (definição única, já vigente no motor)
 
 ```
-refTs = trade.exitTime
-cancelada no alvo  se cancelledAt >= refTs − OCO_TOLERANCE_MS
-retirada           se cancelledAt <  refTs − OCO_TOLERANCE_MS
-viva/executada     se cancelledAt == null
+entryRef = limitPrice da 1ª ordem de entrada (fallback price → filledPrice → trade.entry)
+oposto   = LONG ? SELL : BUY
+preço    = stopPrice ?? limitPrice ?? price
+
+proteção = isStopOrder
+         || (side === oposto && (LONG ? preço < entryRef : preço > entryRef))
 ```
 
-Mesma expressão de `liveStopsAt` (:223) — o painel ganha o rótulo, o motor já usava para cobertura.
+Vale em qualquer `status`, CANCELLED incluído. É `protectiveLegsOf` (`executionBehaviorEngine.js:264`); o painel passa a consumir a mesma regra em vez da própria.
 
-### Identidade de ordem no dedup
+### 2. Linha do tempo da posição (o coração do fix)
 
-Hoje (`protectiveLegsOf:299`): `side|preço|qtd|submittedAt`. Duas pernas irmãs de entrada escalonada colidem quando a corretora as cria no mesmo segundo.
+Substitui a foto única no instante da saída por uma linha do tempo. Dois degraus, ambos derivados das ordens:
 
-Proposto: `makeOrderKey(order)` (`orderKey.js:23`), a SSoT já usada por staging, ingest e confirmação — `eid:<externalOrderId>` quando existe, composto `instrument|side|submittedAt|quantity|filledAt` como fallback. Perna irmã tem `ClOrdID` distinto; cópia de reimportação tem o mesmo. Preserva a proteção anti-duplicata do #362 sem apagar proteção real.
+```
+aberto(t)   = Σ qty das entradas executadas até t − Σ qty das saídas executadas até t
+coberto(t)  = Σ qty das pernas de proteção vivas em t
+              perna viva em t  ⇔  submittedAt ≤ t < (cancelledAt ?? filledAt ?? exitTime)
+```
 
-Nota: desde o #362 o doc em `orders` já tem id derivado dessa mesma chave, então duplicata de reimportação não chega mais ao Firestore. O dedup em memória cobre docs anteriores àquele fix.
+Percorre os instantes de mudança (cada fill de entrada, cada fill de saída, cada criação e cada cancelamento de proteção) e mede:
 
-### Cobertura (`detectUnprotectedSize`)
+```
+nu(t)     = max(0, aberto(t) − coberto(t))
+janela    = intervalo maximal com nu(t) > 0
+```
 
-Inalterada na fórmula: `uncovered = trade.qty − min(Σ qty das pernas vivas, trade.qty)`. Muda só a entrada — as duas pernas voltam a existir.
+**Janelas com duração ≤ `REPLACEMENT_TOLERANCE_MS` não contam.** É a troca de ordem: o aluno cancela 173.755 e cria 173.900, e a corretora leva alguns instantes entre uma e outra. Proposta: **5s** (ajustável — número de produto, não técnico). Abaixo disso é substituição; acima é exposição.
 
-Exemplo numérico, o trade de referência:
+O cancelamento no alvo já cai fora sozinho: a perna morre no mesmo instante da saída, quando `aberto(t)` já é zero. Não precisa de regra especial.
+
+### 3. `UNPROTECTED_SIZE` passa a medir a janela
+
+Hoje: foto no instante da saída — `uncovered = qty − Σ pernas vivas na saída`. Emite sempre que a foto der descoberto, sem saber por quanto tempo.
+
+Proposto: emite quando existe janela nua acima da tolerância. Evidência ganha o que faltava:
+
+```
+maiorJanela: { inicio, fim, duracaoMs, contratos }
+tempoNuTotal: soma das janelas
+proporcaoNua: tempoNuTotal / duração da posição
+nuncaProtegido: true quando não houve proteção em instante nenhum
+```
+
+Severidade sai do binário: `nuncaProtegido` ou janela cobrindo a maior parte da posição → HIGH (trava estágio, como hoje); janela curta e isolada no meio de uma posição protegida → MEDIUM, informativa. Entrada escalonada sem cobrir os novos contratos — o cenário de referência do #357, 5 protegidos de 8 — continua HIGH: `nu(t) = 3` durante todo o resto da posição.
+
+### 4. Substituição de proteção vira informação, não alerta
+
+Perna cancelada com outra entrando dentro da tolerância → par `substituída → substituta`. Registra direção comparando a distância até a entrada:
+
+```
+apertou  = nova proteção mais perto da entrada  (menos risco)
+afrouxou = nova proteção mais longe da entrada  (mais risco)
+```
+
+Vai para o painel como `substituída por 173.900 ↑`. **Não emite evento comportamental por si só** — mover stop é condução normal (é o que o #357 já concluiu ao aposentar o `STOP_TAMPERING`). O que continua sendo medido é o risco em dinheiro contra o RO, que é o `RISK_OVER_RO`, intocado aqui.
+
+### 5. Identidade de ordem no dedup
+
+Hoje (`protectiveLegsOf:299`): `side|preço|qtd|submittedAt`. Duas pernas irmãs de entrada escalonada colidem quando a corretora as cria no mesmo segundo, e o dedup apaga proteção real.
+
+Proposto: `makeOrderKey(order)` (`orderKey.js:23`) — a SSoT já usada por staging, ingest e confirmação: `eid:<externalOrderId>` quando existe, composto como fallback. Perna irmã tem `ClOrdID` distinto; cópia de reimportação tem o mesmo. Preserva o anti-duplicata do #362 sem apagar proteção.
+
+Desde o #362 o doc em `orders` já tem id derivado dessa chave, então duplicata de reimportação não chega mais ao Firestore — o dedup em memória cobre só docs anteriores àquele fix.
+
+### Exemplo numérico — o trade de referência
+
+| instante | evento | aberto | coberto | nu |
+|---|---|---|---|---|
+| 11:25:15 | entrada 5 + proteção 5 | 5 | 5 | 0 |
+| 11:25:18 | entrada 5 + proteção 5 | 10 | 10 | 0 |
+| 11:27:51 | saída 10, pernas canceladas | 0 | 0 | 0 |
+
+Nenhuma janela nua → sem `UNPROTECTED_SIZE` → sem gate → sem confronto emocional falso. Badge: **Protegido o tempo todo**.
 
 | | hoje | com o fix |
 |---|---|---|
-| pernas de proteção | 2 encontradas → 1 após dedup | 2 |
-| `coveredQty` | 5 | 10 |
-| `uncoveredQty` | 5 | 0 |
+| pernas de proteção | 2 → 1 após dedup | 2 |
+| leitura | descoberto 5 de 10 na saída | zero segundo nu |
 | evento | `UNPROTECTED_SIZE` HIGH (trava estágio) | nenhum |
-| confronto | "execução sugere null" | sem confronto (declarada positiva + limpo) |
-| badge do painel | Sem stop | Stop |
+| confronto | "execução sugere null" | sem confronto |
+| badge | Sem stop | Protegido o tempo todo |
 
 ### Casos limites
 
 - **ordem sem `externalOrderId`** (parser genérico, docs pré-#362) → fallback composto do `makeOrderKey`
-- **`trade.exitTime` ausente** (trade aberto) → sem `refTs`; proteção cancelada conta como retirada só se houver ordem posterior; na dúvida, não emitir
-- **proteção parcial legítima** (5 cobertos de 8) → `UNPROTECTED_SIZE` continua emitindo, que é o cenário de referência do #357
-- **perna substituída** (cancela 173.755 e cria 173.900 no mesmo instante) → `retirada` só quando não há substituta viva na janela
-- **trade sem ordens correlacionadas** → painel não renderiza e detector retorna vazio (comportamento atual, mantido)
+- **trade aberto** (`exitTime` ausente) → linha do tempo até agora; janela nua em curso conta com `fim = null`
+- **proteção criada antes da entrada executar** → só passa a cobrir quando há contrato aberto; ordem anterior à posição é tentativa abortada (#369), não proteção
+- **saída parcial** → `aberto(t)` cai e a cobertura remanescente pode passar a sobrar; sobra não vira crédito, `nu` tem piso zero
+- **proteção maior que a posição** → cobertura limitada a `aberto(t)` (o cap de sanidade de hoje, preservado)
+- **trade manual sem ordens correlacionadas** → painel não renderiza e detector não afirma nada (comportamento atual, mantido)
+- **timestamps com resolução de minuto** (CSV low-res) → janela menor que a resolução do arquivo é inconclusiva; não emite
 
 ## Phases
 
 - A1 — probe: confirmar em produção se as duas pernas do trade de referência têm `submittedAt` idêntico e `externalOrderId` distinto
 - A2 — `protectiveLegsOf`: dedup por `makeOrderKey`; testes com perna irmã e com cópia de reimportação
-- A3 — paridade `functions/maturity/executionBehaviorMirror.js`
-- B1 — `TradeOrdersPanel`: role de proteção pela definição única + três estados + badge
-- B2 — confronto emocional: família de gate fora do confronto, zero `null` na copy (front + `functions/behavior/buildBehaviorProfile.js`)
+- A3 — linha do tempo de proteção: helper puro `protectionTimeline(trade, orders)` → janelas nuas + substituições
+- A4 — `detectUnprotectedSize` passa a consumir a linha do tempo; severidade por duração/proporção
+- A5 — paridade `functions/maturity/executionBehaviorMirror.js`
+- B1 — `TradeOrdersPanel`: status de proteção pelos quatro casos + badge de três estados + faixa de exposição
+- B2 — confronto emocional: padrão sem emoção fora do confronto, zero `null` na copy (front + `functions/behavior/buildBehaviorProfile.js`)
 - C1 — recompute dos `behaviorProfile` afetados (gates falsos gravados seguem travando estágio)
 
 ## Sessions
@@ -151,4 +214,4 @@ Exemplo numérico, o trade de referência:
 ## Chunks
 
 - CHUNK-10 (escrita) — `TradeOrdersPanel`, leitura de ordens no painel
-- CHUNK-11 (escrita) — `protectiveLegsOf`, `detectUnprotectedSize`, confronto emocional, espelho em `functions/`
+- CHUNK-11 (escrita) — `protectiveLegsOf`, `detectUnprotectedSize`, linha do tempo, confronto emocional, espelho em `functions/`
