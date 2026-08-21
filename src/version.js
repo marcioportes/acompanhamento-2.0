@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.20: #375 fix proteção cancelada pelo OCO lida como "sem stop" — painel, dedup de cobertura, confronto null (RESERVADA)
  * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)
  * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)
  * - 1.83.17: #369 feat ordens que não viraram posição pertencem ao trade vizinho — hesitação, re (PR #370, 21/08/2026)
@@ -405,10 +406,10 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.19',
+  version: '1.83.20',
   build: '20260821',
-  display: 'v1.83.19',
-  full: '1.83.19+20260821',
+  display: 'v1.83.20',
+  full: '1.83.20+20260821',
 };
 export default VERSION;
 export { VERSION };
