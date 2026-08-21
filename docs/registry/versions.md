@@ -82,4 +82,4 @@
 | 1.83.13 | #362 | `fix/issue-362-ingest-dedup` | 19/08/2026 | consumida (PR #364 squash `f59efb06`) |
 | 1.83.14 | #363 | `fix/issue-363-trade-delete-cascade` | 19/08/2026 | consumida (PR #365 squash `cb6dfc5e`) |
 | 1.83.15 | #366 | `fix/issue-366-import-order-ghosts` | 20/08/2026 | consumida (PR #367 squash `bce355f6`) |
-| 1.83.16 | — | `fix/orders-require-live-trade` | 20/08/2026 | reservada — fix direto autorizado (sem issue) |
+| 1.83.16 | — | `fix/orders-require-live-trade` | 20/08/2026 | consumida (PR #368 squash `c2a4c403`) — fix direto autorizado (sem issue) |
