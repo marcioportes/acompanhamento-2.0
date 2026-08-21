@@ -670,6 +670,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
             <BehaviorPanel
               trade={trade}
+              plan={tradePlan}
               isMentor={userIsMentor}
               embedded
               onToggleViolation={handleToggleViolation}
@@ -871,6 +872,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
           <BehaviorPanel
             trade={trade}
+            plan={tradePlan}
             isMentor={userIsMentor}
             embedded
             onToggleViolation={handleToggleViolation}

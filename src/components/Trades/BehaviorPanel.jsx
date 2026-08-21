@@ -12,6 +12,8 @@ import React, { useState } from 'react';
 import { AlertTriangle, Lock } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilter';
+import { rrBreakdown } from '../../utils/rrBreakdown';
+import { formatCurrencyDynamic } from '../../utils/currency';
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
   BEHAVIOR_LABELS, narrativeFor, UndersizedBody,
@@ -112,7 +114,58 @@ const ViolationRow = ({ flag, isMentor, onToggleViolation, cleared }) => (
   </div>
 );
 
-const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViolation, mentorSlot = null }) => {
+/**
+ * R:R em dinheiro (#373). O painel dizia só "RR 1.2x abaixo do mínimo (2x)" — múltiplo
+ * abstrato, sem dizer de quanto dinheiro se tratava. Os dois denominadores aparecem
+ * lado a lado: o risco TOMADO (que governa a conformidade) e o RO que o plano autoriza,
+ * que mostra o que o trade teria sido dentro do sizing correto.
+ */
+const RrEmDinheiro = ({ trade, plan }) => {
+  const r = rrBreakdown(trade, plan);
+  if (r.riskAmount == null && r.roAmount == null) return null;
+
+  const dinheiro = (v) => (v == null ? '—' : formatCurrencyDynamic(v, r.currency));
+  // Decimal em pt-BR: o produto inteiro fala português.
+  const dec = (v) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const mult = (v) => (v == null ? '—' : `${dec(v)}x`);
+
+  return (
+    <div className="mt-2 rounded-lg border border-slate-700/40 bg-slate-800/30 p-3 space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wider text-zinc-500">Risco × retorno, em dinheiro</p>
+
+      {r.riskAmount != null && (
+        <p className="text-xs text-zinc-300">
+          Arriscou <span className="font-semibold text-white">{dinheiro(r.riskAmount)}</span>
+          {r.riskPercent != null && <span className="text-zinc-500">{` (${dec(r.riskPercent)}% do capital)`}</span>}
+          {r.resultAmount != null && (
+            <> para {r.resultAmount >= 0 ? 'ganhar' : 'perder'}{' '}
+              <span className={`font-semibold ${r.resultAmount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {dinheiro(Math.abs(r.resultAmount))}
+              </span>
+            </>
+          )}
+          {r.rrTaken != null && (
+            <> — <span className={`font-semibold ${r.meetsTarget === false ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {mult(r.rrTaken)}
+            </span></>
+          )}
+        </p>
+      )}
+
+      {r.roAmount != null && (
+        <p className="text-[11px] text-zinc-500">
+          O plano autoriza <span className="text-zinc-300">{dinheiro(r.roAmount)}</span> por operação
+          {r.rrVsPlan != null && (
+            <> — nesse risco, o mesmo resultado seria <span className="text-zinc-300">{mult(r.rrVsPlan)}</span></>
+          )}
+          {r.rrTarget != null && <span className="text-zinc-600"> · mínimo {mult(r.rrTarget)}</span>}
+        </p>
+      )}
+    </div>
+  );
+};
+
+const BehaviorPanel = ({ trade, plan = null, isMentor = false, embedded = false, onToggleViolation, mentorSlot = null }) => {
   if (!trade) return null;
   const currency = trade.currency || 'USD';
   const profile = trade.behaviorProfile;
@@ -169,6 +222,7 @@ const BehaviorPanel = ({ trade, isMentor = false, embedded = false, onToggleViol
                     <ViolationRow key={`eff-${i}`} flag={flag} isMentor={isMentor} onToggleViolation={onToggleViolation} cleared={false} />
                   ))}
                 </div>
+                <RrEmDinheiro trade={trade} plan={plan} />
               </div>
             )}
             {cleared.length > 0 && (
