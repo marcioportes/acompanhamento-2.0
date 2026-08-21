@@ -5,8 +5,8 @@
 **Status atual do documento:**
 - [x] Mockup apresentado
 - [x] Memória de cálculo apresentada
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou — 21/08/2026: *"ok, de acordo"* (modelo) + *"resolve o problema das ordens primeiro de tudo, preciso apresentar o fechamento semanal"*
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -180,13 +180,36 @@ afrouxou = nova proteção mais longe da entrada  (mais risco)
 
 Vai para o painel como `substituída por 173.900 ↑`. **Não emite evento comportamental por si só** — mover stop é condução normal (é o que o #357 já concluiu ao aposentar o `STOP_TAMPERING`). O que continua sendo medido é o risco em dinheiro contra o RO, que é o `RISK_OVER_RO`, intocado aqui.
 
-### 6. Identidade de ordem no dedup
+### 6. Instante de ordem no fuso do trade (causa raiz — probe 21/08)
 
-Hoje (`protectiveLegsOf:299`): `side|preço|qtd|submittedAt`. Duas pernas irmãs de entrada escalonada colidem quando a corretora as cria no mesmo segundo, e o dedup apaga proteção real.
+O probe em produção **refutou** a hipótese de dedup: as duas pernas têm `submittedAt` e `externalOrderId` distintos, são `STOP_LIMIT` (`isStopOrder: true`, `stopPrice: 173905`) e o trade tem `stopLoss: 173905` gravado. A causa é fuso horário.
 
-Proposto: `makeOrderKey(order)` (`orderKey.js:23`) — a SSoT já usada por staging, ingest e confirmação: `eid:<externalOrderId>` quando existe, composto como fallback. Perna irmã tem `ClOrdID` distinto; cópia de reimportação tem o mesmo. Preserva o anti-duplicata do #362 sem apagar proteção.
+```
+orders.cancelledAt   "2026-08-21T11:27:51"        ingênuo, sem fuso
+trades.exitTime      "2026-08-21T11:27:51-03:00"  com offset (#285/#292)
+```
 
-Desde o #362 o doc em `orders` já tem id derivado dessa chave, então duplicata de reimportação não chega mais ao Firestore — o dedup em memória cobre só docs anteriores àquele fix.
+`toMs` (:99) delega ao `new Date()`: string sem offset é lida no fuso **do processo**. A Cloud Function roda em UTC → a ordem vira 11:27:51Z e o trade 14:27:51Z. Três horas de defasagem entre a ordem e o trade dela.
+
+`liveStopsAt` descarta toda perna com `cancelledAt < exitTime − 2s`; com o desvio, **toda** proteção parece cancelada 3h antes da saída. Cobertura zero em todo trade com ordem correlacionada.
+
+Prova (mesmos dados reais, só o `TZ` do processo muda):
+
+```
+TZ=UTC               → UNPROTECTED_SIZE HIGH {coveredQty:0, hasAnyStop:false}
+TZ=America/Sao_Paulo → nenhum evento
+```
+
+Correção:
+
+```
+tradeOffsetOf(trade) = offset gravado em entryTime | exitTime   (ex.: '-03:00')
+orderMs(valor, offset) = string sem offset → aplica o do trade antes de parsear
+```
+
+Aplicado a TODO instante de ordem lido pelo motor — assim comparação ordem×ordem continua consistente e ordem×trade passa a ser correta. Sites afetados: `protectiveLegsOf` (:273-274), `detectStopBreakevenTooEarly` (:676-683, hoje nunca dispara), `detectAbortedAttempt` (:582-596), `detectHesitation` (:505-518).
+
+Dedup de `protectiveLegsOf` fica **como está** — o #362 já dá id determinístico por `externalOrderId` e o probe mostrou que pernas irmãs não colidem.
 
 ### Exemplo numérico — o trade de referência
 
@@ -218,8 +241,8 @@ Nenhuma janela nua → sem `UNPROTECTED_SIZE` → sem gate → sem confronto emo
 
 ## Phases
 
-- A1 — probe: confirmar em produção se as duas pernas do trade de referência têm `submittedAt` idêntico e `externalOrderId` distinto
-- A2 — `protectiveLegsOf`: dedup por `makeOrderKey`; testes com perna irmã e com cópia de reimportação
+- A1 — ~~probe~~ CONCLUÍDO 21/08: hipótese de dedup refutada, causa raiz é fuso horário (ver Memória §6)
+- A2 — instante de ordem no fuso do trade (`tradeOffsetOf` + `orderMs`) em todo o motor; teste que roda o detector sob `TZ=UTC` e `TZ=America/Sao_Paulo` e exige o mesmo resultado
 - A3 — linha do tempo de proteção: helper puro `protectionTimeline(trade, orders)` → janelas nuas + substituições
 - A4 — `detectUnprotectedSize` passa a consumir a linha do tempo; severidade por duração/proporção
 - A5 — paridade `functions/maturity/executionBehaviorMirror.js`
