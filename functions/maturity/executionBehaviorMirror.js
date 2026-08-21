@@ -339,6 +339,158 @@ function detectSizingDiscipline(trade, orders) {
 }
 
 /** UNPROTECTED_SIZE — substitui STOP_PARTIAL_SIZING (#357). Cobre o caso de ZERO stops. */
+
+/** Espelho de REPLACEMENT_TOLERANCE_MS (#375) — 20s, definido por Marcio em 21/08/2026. */
+const REPLACEMENT_TOLERANCE_MS = 20000;
+
+/** Espelho de `protectionTimeline` (#375). Ver doc na fonte ESM. */
+function protectionTimeline(trade, orders) {
+  const vazio = {
+    windows: [], totalNakedMs: 0, positionMs: 0, nakedRatio: null,
+    neverProtected: false, addedWhileNaked: false, legs: [], replacements: [],
+  };
+  const tradeQty = Number((trade && trade.qty) || 0);
+  if (!isFinite(tradeQty) || tradeQty <= 0) return vazio;
+
+  const all = ordersForTrade(orders, trade.id);
+  if (!all.length) return vazio;
+
+  const off = tradeOffsetOf(trade);
+  const legs = protectiveLegsOf(trade, orders);
+  const entradaSide = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const legIds = {};
+  legs.forEach(function (l) { if (l.externalOrderId) legIds[l.externalOrderId] = true; });
+
+  const fills = all
+    .filter(function (o) {
+      return (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
+        && !(o.externalOrderId && legIds[o.externalOrderId]);
+    })
+    .map(function (o) {
+      const ts = orderMs(o.filledAt, off) != null ? orderMs(o.filledAt, off) : orderMs(o.submittedAt, off);
+      const qty = Number(o.filledQuantity != null ? o.filledQuantity : (o.quantity != null ? o.quantity : 0));
+      return { ts: ts, qty: qty, entrada: o.side === entradaSide };
+    })
+    .filter(function (f) { return f.ts != null && isFinite(f.qty) && f.qty > 0; });
+
+  if (!fills.length && !legs.length) return vazio;
+
+  const abreTs = toMs(trade.entryTime);
+  const fechaTs = toMs(trade.exitTime);
+  const entradas = fills.filter(function (f) { return f.entrada; });
+  if (!entradas.length) {
+    if (abreTs == null) return vazio;
+    fills.length = 0;
+    fills.push({ ts: abreTs, qty: tradeQty, entrada: true });
+    if (fechaTs != null) fills.push({ ts: fechaTs, qty: tradeQty, entrada: false });
+  }
+
+  const tsEntradas = fills.filter(function (f) { return f.entrada; }).map(function (f) { return f.ts; });
+  const inicioPos = Math.min.apply(null, tsEntradas);
+  const fimPos = fechaTs != null ? fechaTs : Math.max.apply(null, fills.map(function (f) { return f.ts; }));
+
+  const eventos = [];
+  fills.forEach(function (f) {
+    eventos.push({ ts: f.ts, dAberto: f.entrada ? f.qty : -f.qty, dCoberto: 0 });
+  });
+  legs.forEach(function (l) {
+    const qty = Number(l.quantity != null ? l.quantity : (l.qty != null ? l.qty : 0));
+    if (!isFinite(qty) || qty <= 0) return;
+    const inicio = l._ts != null ? l._ts : inicioPos;
+    const fillTs = (l.status === 'FILLED' || l.status === 'PARTIALLY_FILLED')
+      ? (orderMs(l.filledAt, off) != null ? orderMs(l.filledAt, off) : orderMs(l.submittedAt, off))
+      : null;
+    const fim = l._cancelTs != null ? l._cancelTs : fillTs;
+    eventos.push({ ts: inicio, dAberto: 0, dCoberto: qty });
+    if (fim != null) eventos.push({ ts: fim, dAberto: 0, dCoberto: -qty });
+    if (fillTs != null) {
+      const executada = Number(l.filledQuantity != null ? l.filledQuantity : (l.quantity != null ? l.quantity : qty));
+      eventos.push({ ts: fillTs, dAberto: -executada, dCoberto: 0 });
+    }
+  });
+  eventos.sort(function (a, b) { return a.ts - b.ts; });
+
+  const instantes = [];
+  let aberto = 0;
+  let coberto = 0;
+  for (let i = 0; i < eventos.length; i++) {
+    const ts = eventos[i].ts;
+    aberto += eventos[i].dAberto;
+    coberto += eventos[i].dCoberto;
+    while (i + 1 < eventos.length && eventos[i + 1].ts === ts) {
+      i++;
+      aberto += eventos[i].dAberto;
+      coberto += eventos[i].dCoberto;
+    }
+    const nu = Math.max(0, Math.round((aberto - Math.min(coberto, aberto)) * 100) / 100);
+    instantes.push({ ts: ts, nu: nu });
+  }
+
+  const brutas = [];
+  for (let k = 0; k < instantes.length; k++) {
+    const ts = instantes[k].ts;
+    const nu = instantes[k].nu;
+    if (nu <= 0) continue;
+    const fimTrecho = k + 1 < instantes.length ? instantes[k + 1].ts : fimPos;
+    if (fimTrecho <= ts) continue;
+    const ant = brutas[brutas.length - 1];
+    if (ant && ant.contracts === nu && ant.endTs === ts) {
+      ant.endTs = fimTrecho;
+      ant.durationMs = fimTrecho - ant.startTs;
+    } else {
+      brutas.push({ startTs: ts, endTs: fimTrecho, durationMs: fimTrecho - ts, contracts: nu });
+    }
+  }
+
+  const windows = brutas.filter(function (w) { return w.durationMs > REPLACEMENT_TOLERANCE_MS; });
+  let totalNakedMs = 0;
+  windows.forEach(function (w) { totalNakedMs += w.durationMs; });
+  const positionMs = Math.max(0, fimPos - inicioPos);
+
+  const replacements = [];
+  const entryRef = entryRefOf(trade, orders);
+  legs.forEach(function (morta) {
+    if (morta._cancelTs == null) return;
+    let nova = null;
+    for (let i = 0; i < legs.length; i++) {
+      const l = legs[i];
+      if (l === morta || l._ts == null) continue;
+      if (l._ts >= morta._cancelTs - REPLACEMENT_TOLERANCE_MS && l._ts <= morta._cancelTs + REPLACEMENT_TOLERANCE_MS) {
+        nova = l;
+        break;
+      }
+    }
+    if (!nova) return;
+    const antes = Math.abs(morta._price - entryRef);
+    const depois = Math.abs(nova._price - entryRef);
+    replacements.push({
+      fromOrderId: morta.externalOrderId || null,
+      toOrderId: nova.externalOrderId || null,
+      fromPrice: morta._price,
+      toPrice: nova._price,
+      ts: morta._cancelTs,
+      direction: depois < antes ? 'TIGHTENED' : (depois > antes ? 'WIDENED' : 'UNCHANGED'),
+    });
+  });
+
+  const addedWhileNaked = windows.some(function (w) {
+    return fills.some(function (f) {
+      return f.entrada && f.ts > w.startTs && (w.endTs == null || f.ts <= w.endTs);
+    });
+  });
+
+  return {
+    windows: windows,
+    totalNakedMs: totalNakedMs,
+    positionMs: positionMs,
+    nakedRatio: positionMs > 0 ? Math.round((totalNakedMs / positionMs) * 100) / 100 : null,
+    neverProtected: legs.length === 0,
+    addedWhileNaked: addedWhileNaked,
+    legs: legs,
+    replacements: replacements,
+  };
+}
+
 function detectUnprotectedSize(trade, orders) {
   const tradeQty = Number((trade && trade.qty) || 0);
   if (!isFinite(tradeQty) || tradeQty <= 0) return [];
@@ -346,29 +498,41 @@ function detectUnprotectedSize(trade, orders) {
   const all = ordersForTrade(orders, trade.id);
   if (!all.length) return [];
 
-  const stops = liveStopsAt(trade, protectiveLegsOf(trade, orders));
-  let rawCovered = 0;
-  for (let i = 0; i < stops.length; i++) {
-    const st = stops[i];
-    rawCovered += Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
-  }
-  const coveredQty = Math.min(rawCovered, tradeQty);
-  const uncoveredQty = Math.round((tradeQty - coveredQty) * 100) / 100;
-  if (uncoveredQty <= 0) return [];
+  // #375 — tempo nu, não foto da saída. Espelho da fonte ESM.
+  const tl = protectionTimeline(trade, orders);
+  if (!tl.windows.length) return [];
+
+  let maior = tl.windows[0];
+  tl.windows.forEach(function (w) { if (w.durationMs > maior.durationMs) maior = w; });
+  const uncoveredQty = maior.contracts;
+  const coveredQty = Math.max(0, Math.round((tradeQty - uncoveredQty) * 100) / 100);
+
+  const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
+  const severity = (tl.neverProtected || proporcaoAlta) ? EVENT_SEVERITY.HIGH : EVENT_SEVERITY.MEDIUM;
+  const emotionMapping = tl.neverProtected ? null : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 
   return [{
     type: EVENT_TYPES.UNPROTECTED_SIZE,
-    severity: EVENT_SEVERITY.HIGH,
+    severity: severity,
     tradeId: trade.id,
-    orderIds: stops.map(function (s) { return s.externalOrderId; }).filter(Boolean),
-    timestamp: (stops.length && stops[0].submittedAt) || trade.entryTime || null,
+    orderIds: tl.legs.map(function (s) { return s.externalOrderId; }).filter(Boolean),
+    timestamp: trade.entryTime || null,
     evidence: {
       tradeQty: tradeQty,
       coveredQty: coveredQty,
       uncoveredQty: uncoveredQty,
-      hasAnyStop: stops.length > 0,
-      rawCoveredQty: rawCovered,
+      hasAnyStop: !tl.neverProtected,
+      neverProtected: tl.neverProtected,
       ratio: Math.round((coveredQty / tradeQty) * 100) / 100,
+      nakedMs: tl.totalNakedMs,
+      nakedSeconds: Math.round(tl.totalNakedMs / 1000),
+      nakedRatio: tl.nakedRatio,
+      windowCount: tl.windows.length,
+      longestWindowMs: maior.durationMs,
+      positionMs: tl.positionMs,
+      addedWhileNaked: tl.addedWhileNaked,
+      replacements: tl.replacements.length,
+      emotionMapping: emotionMapping,
     },
     source: 'literature',
     citation: 'Shefrin & Statman (1985); Odean (1998)',
@@ -727,6 +891,8 @@ function detectExecutionEvents(input) {
 
 module.exports = {
   detectExecutionEvents: detectExecutionEvents,
+  protectionTimeline: protectionTimeline,
+  REPLACEMENT_TOLERANCE_MS: REPLACEMENT_TOLERANCE_MS,
   EVENT_TYPES: EVENT_TYPES,
   EVENT_SEVERITY: EVENT_SEVERITY,
 };

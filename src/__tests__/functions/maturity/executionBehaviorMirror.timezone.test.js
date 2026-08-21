@@ -7,7 +7,15 @@
  */
 import { describe, it, expect } from 'vitest';
 import { detectExecutionEvents as esmDetect } from '../../../utils/executionBehaviorEngine.js';
-import { detectExecutionEvents as cjsDetect } from '../../../../functions/maturity/executionBehaviorMirror.js';
+import {
+  detectExecutionEvents as cjsDetect,
+  protectionTimeline as cjsTimeline,
+  REPLACEMENT_TOLERANCE_MS as CJS_TOL,
+} from '../../../../functions/maturity/executionBehaviorMirror.js';
+import {
+  protectionTimeline as esmTimeline,
+  REPLACEMENT_TOLERANCE_MS as ESM_TOL,
+} from '../../../utils/executionBehaviorEngine.js';
 
 const OFFSETS = ['-03:00', '-05:00', '-11:00', '+09:00', 'Z'];
 
@@ -58,5 +66,27 @@ describe('#375 — espelho CJS concorda com o motor ESM sobre o fuso da ordem', 
     const cjs = tipos(cjsDetect({ trades: [trade], orders }));
     expect(cjs).toEqual(esm);
     expect(esm.filter((t) => t.startsWith('UNPROTECTED_SIZE'))).toHaveLength(0);
+  });
+});
+
+describe('#375 — paridade da linha do tempo de proteção', () => {
+  it('tolerância de substituição é a mesma nos dois lados', () => {
+    expect(CJS_TOL).toBe(ESM_TOL);
+  });
+
+  it.each(OFFSETS)('janelas e emoção idênticas com trade em %s', (off) => {
+    const { trade, orders } = cenario(off);
+    // Retira a proteção no meio e não recoloca: janela nua de verdade nos dois motores.
+    const semSegunda = orders.map((o) => (o.externalOrderId === 'e3'
+      ? { ...o, cancelledAt: '2026-08-21T11:26:00' }
+      : o)).filter((o) => o.externalOrderId !== 'e4');
+
+    const esm = esmTimeline(trade, semSegunda);
+    const cjs = cjsTimeline(trade, semSegunda);
+    expect(cjs.windows).toEqual(esm.windows);
+    expect(cjs.totalNakedMs).toBe(esm.totalNakedMs);
+    expect(cjs.neverProtected).toBe(esm.neverProtected);
+    expect(cjs.addedWhileNaked).toBe(esm.addedWhileNaked);
+    expect(esm.windows.length).toBeGreaterThan(0);
   });
 });
