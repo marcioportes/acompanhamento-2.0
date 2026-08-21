@@ -145,6 +145,13 @@ const orderMs = (value, offset) => {
   return toMs(value);
 };
 
+/**
+ * Instante de uma ordem no fuso do trade — versão pública, para quem lê ordem fora do
+ * motor (o painel). Existe para que ninguém reimplemente o parse e reintroduza o desvio
+ * de 3h: aconteceu uma vez dentro deste mesmo issue.
+ */
+export const orderInstantMs = (trade, value) => orderMs(value, tradeOffsetOf(trade));
+
 const sameInstrument = (a, b) => {
   const ax = (a || '').toUpperCase();
   const bx = (b || '').toUpperCase();

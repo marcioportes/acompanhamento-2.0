@@ -9,7 +9,7 @@
 import { useMemo } from 'react';
 import { ShieldCheck, ShieldOff, ShieldAlert, ArrowDownRight, ArrowUpRight, XCircle, FileText } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
-import { protectionTimeline, protectiveLegsOf } from '../../utils/executionBehaviorEngine';
+import { protectionTimeline, protectiveLegsOf, orderInstantMs } from '../../utils/executionBehaviorEngine';
 
 /** Duração legível para janela de exposição: "1m22s", "45s", "2h05m". */
 const fmtDuracao = (ms) => {
@@ -89,13 +89,9 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
   // CANCELLED primeiro, então todo bracket morto pelo OCO no alvo — o desfecho normal —
   // virava "Cancel" e o cabeçalho anunciava "Sem stop" em trade protegido.
   const { orderedRows, timeline, temProtecao, hasImplicitStop } = useMemo(() => {
-    const tsOf = (o) => {
-      const raw = o.filledAt || o.submittedAt || o.cancelledAt;
-      if (!raw) return 0;
-      if (raw?.toMillis) return raw.toMillis();
-      const d = new Date(raw);
-      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
-    };
+    // Instante SEMPRE no fuso do trade: `orders` guarda string ingênua e o browser a leria
+    // no fuso da máquina. Foi exatamente esse desvio que originou o issue.
+    const tsOf = (o) => orderInstantMs(trade, o.filledAt || o.submittedAt || o.cancelledAt) ?? 0;
 
     const tradeSide = trade?.side;
     const tl = protectionTimeline(trade, tradeOrders);
@@ -128,7 +124,7 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
         } else if (!o.cancelledAt) {
           protectionState = { kind: 'LIVE', label: 'ativa' };
         } else {
-          const cTs = tsOf({ filledAt: null, submittedAt: null, cancelledAt: o.cancelledAt });
+          const cTs = orderInstantMs(trade, o.cancelledAt) ?? 0;
           const morreuNaSaida = exitTs != null && cTs >= exitTs - 20000;
           protectionState = morreuNaSaida
             ? { kind: 'OCO', label: 'ativa até a saída' }
