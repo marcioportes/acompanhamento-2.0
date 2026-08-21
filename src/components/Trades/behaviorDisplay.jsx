@@ -52,6 +52,9 @@ export const BEHAVIOR_LABELS = {
   SIZING_DISCIPLINE: 'Condução de sizing',
   CLEAN_EXECUTION: 'Execução limpa',
   TARGET_HIT: 'Alvo atingido',
+  // #369 — ordens montadas e desmontadas, atribuídas ao trade vizinho
+  RECONSIDERATION: 'Reavaliou antes de entrar',
+  ABORTED_ATTEMPT: 'Tentativa recuada',
 };
 
 export const BEHAVIOR_DESCRIPTIONS = {
@@ -66,6 +69,8 @@ export const BEHAVIOR_DESCRIPTIONS = {
   LATE_EXIT: 'Saída atrasada após remoção do stop — segurou a perda.',
   SUB_SIZING: 'Risco real muito abaixo do RO planejado — se há medo do plano, ajuste o plano (não a operação).',
   CHASE_REENTRY: 'Entrada cancelada seguida de reentrada a preço pior — perseguição.',
+  RECONSIDERATION: 'Você montou uma entrada, desmontou e voltou depois de mais de meia hora. Não conta contra você: esperar e reavaliar é decisão, não indecisão.',
+  ABORTED_ATTEMPT: 'Depois deste trade fechar, você montou outra entrada no mesmo ativo e recuou antes de executar. Recuar é controle — o que vale olhar é a frequência, principalmente depois de prejuízo.',
   FOMO_ENTRY: 'Entrada tardia com ordem a mercado após hesitação.',
   OVERTRADING: 'Número de trades acima do limite na janela temporal.',
   IMPULSE_CLUSTER: 'Trades executados em sequência muito rápida, sem análise.',
