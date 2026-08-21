@@ -104,6 +104,47 @@ const toMs = (value) => {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 };
 
+/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
+const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * Offset gravado no trade (#285/#292 — `entryTime`/`exitTime` são ISO+offset).
+ * Devolve string tipo '-03:00', ou null quando o trade não carrega fuso.
+ */
+const tradeOffsetOf = (trade) => {
+  for (const v of [trade?.entryTime, trade?.exitTime]) {
+    if (typeof v !== 'string') continue;
+    const m = v.match(OFFSET_RE);
+    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
+  }
+  return null;
+};
+
+/**
+ * Instante de uma ordem, resolvido NO FUSO DO TRADE (#375).
+ *
+ * `orders` guarda instante ingênuo — `"2026-08-21T11:27:51"`, sem fuso — enquanto
+ * `trades` guarda com offset explícito desde o #285/#292. `new Date()` lê string sem
+ * offset no fuso DO PROCESSO: no browser dá America/Sao_Paulo e bate; na Cloud
+ * Function, que roda em UTC, a mesma ordem vira 11:27:51Z contra um trade em
+ * 14:27:51Z. Três horas de defasagem entre a ordem e o trade dela.
+ *
+ * O efeito medido em produção: `liveStopsAt` descarta toda perna de proteção como se
+ * tivesse sido cancelada 3h antes da saída, e TODO trade com ordem correlacionada
+ * saía com `UNPROTECTED_SIZE` HIGH e cobertura zero — o gate travando progressão de
+ * estágio em posição integralmente protegida. `detectStopBreakevenTooEarly`, pelo
+ * mesmo desvio invertido, nunca dispara.
+ *
+ * Aplicado a TODO instante de ordem: comparação ordem×ordem segue consistente (o
+ * deslocamento seria uniforme) e ordem×trade passa a ser correta.
+ */
+const orderMs = (value, offset) => {
+  if (typeof value === 'string' && offset && value && !OFFSET_RE.test(value)) {
+    return toMs(`${value}${offset}`);
+  }
+  return toMs(value);
+};
+
 const sameInstrument = (a, b) => {
   const ax = (a || '').toUpperCase();
   const bx = (b || '').toUpperCase();
@@ -233,9 +274,10 @@ const liveStopsAt = (trade, stops) => {
  */
 const entryRefOf = (trade, orders) => {
   const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const off = tradeOffsetOf(trade);
   const first = ordersForTrade(orders, trade.id)
     .filter(o => o.side === wanted && o.isStopOrder !== true)
-    .map(o => ({ o, ts: toMs(o.filledAt) ?? toMs(o.submittedAt) ?? 0 }))
+    .map(o => ({ o, ts: orderMs(o.filledAt, off) ?? orderMs(o.submittedAt, off) ?? 0 }))
     .sort((a, b) => a.ts - b.ts)[0];
   // Preferência: limite original > preço > preço executado (DEC-AUTO-242-01 prefere
   // o limite, mas sem ele a fill é melhor referência que nenhuma).
@@ -265,13 +307,14 @@ const protectiveLegsOf = (trade, orders) => {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];
   const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
+  const off = tradeOffsetOf(trade);
 
   const legs = ordersForTrade(orders, trade.id)
     .filter(o => o.side === opposite)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
-      _cancelTs: toMs(o.cancelledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
+      _cancelTs: orderMs(o.cancelledAt, off),
       _isRealStop: o.isStopOrder === true || o.stopPrice != null,
       _price: parseFloat(o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
       // #371 — o preço que CLASSIFICA a perna (alvo vs proteção) é o enviado; o que
@@ -502,7 +545,8 @@ const detectHesitation = (trade, orders, config) => {
     orderSideMatchesTradeSide(o.side, trade.side)
   );
   if (!entryFill) return [];
-  const entryTs = toMs(entryFill.filledAt) ?? toMs(entryFill.submittedAt);
+  const off = tradeOffsetOf(trade);
+  const entryTs = orderMs(entryFill.filledAt, off) ?? orderMs(entryFill.submittedAt, off);
   if (!entryTs) return [];
 
   const cancelled = tradeOrders.filter(o =>
@@ -515,7 +559,7 @@ const detectHesitation = (trade, orders, config) => {
 
   const events = [];
   for (const c of cancelled) {
-    const cancelTs = toMs(c.cancelledAt) ?? toMs(c.submittedAt);
+    const cancelTs = orderMs(c.cancelledAt, off) ?? orderMs(c.submittedAt, off);
     if (!cancelTs) continue;
     const gap = entryTs - cancelTs;
     if (gap <= 0) continue;
@@ -579,6 +623,7 @@ const detectHesitation = (trade, orders, config) => {
  * Fonte: heurística operacional (pedido de Marcio, 20/08/2026).
  */
 const detectAbortedAttempt = (trade, orders) => {
+  const off = tradeOffsetOf(trade);
   const exitTs = toMs(trade.exitTime) ?? toMs(trade.closedAt);
   if (!exitTs) return [];
 
@@ -593,7 +638,7 @@ const detectAbortedAttempt = (trade, orders) => {
   const events = [];
 
   for (const c of cancelled) {
-    const submittedTs = toMs(c.submittedAt) ?? toMs(c.cancelledAt);
+    const submittedTs = orderMs(c.submittedAt, off) ?? orderMs(c.cancelledAt, off);
     if (!submittedTs || submittedTs <= exitTs) continue;
 
     const gap = submittedTs - exitTs;
@@ -628,9 +673,10 @@ const detectAbortedAttempt = (trade, orders) => {
  * Fonte: Barber & Odean 2000 (overtrading agregado).
  */
 const detectChaseReentry = (trade, orders) => {
+  const off = tradeOffsetOf(trade);
   const tradeOrders = ordersForTrade(orders, trade.id)
     .filter(o => !o.isStopOrder && orderSideMatchesTradeSide(o.side, trade.side))
-    .map(o => ({ ...o, _ts: toMs(o.submittedAt) ?? toMs(o.filledAt) ?? toMs(o.cancelledAt) }))
+    .map(o => ({ ...o, _ts: orderMs(o.submittedAt, off) ?? orderMs(o.filledAt, off) ?? orderMs(o.cancelledAt, off) }))
     .filter(o => o._ts != null)
     .sort((a, b) => a._ts - b._ts);
 
@@ -676,11 +722,12 @@ const detectStopBreakevenTooEarly = (trade, orders, config) => {
   const entryTs = toMs(trade?.entryTime);
   if (!entryPrice || !entryTs) return [];
 
+  const off = tradeOffsetOf(trade);
   const stops = ordersForTrade(orders, trade.id)
     .filter(o => o.isStopOrder === true)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
       _price: o.stopPrice ?? o.price ?? null,
     }))
     .filter(o => o._ts != null && o._price != null)
@@ -732,11 +779,12 @@ const detectStopBreakevenTooEarly = (trade, orders, config) => {
  */
 const detectStopHesitation = (trade, orders, config) => {
   const entryPrice = trade?.entry ?? trade?.entryPrice ?? null;
+  const off = tradeOffsetOf(trade);
   const stops = ordersForTrade(orders, trade.id)
     .filter(o => o.isStopOrder === true)
     .map(o => ({
       ...o,
-      _ts: toMs(o.submittedAt) ?? toMs(o.cancelledAt) ?? toMs(o.filledAt),
+      _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
       _price: o.stopPrice ?? o.price ?? null,
     }))
     .filter(o => o._ts != null && o._price != null)
