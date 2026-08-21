@@ -182,7 +182,13 @@ function protectiveLegsOf(trade, orders) {
         _ts: toMs(o.submittedAt) != null ? toMs(o.submittedAt) : (toMs(o.cancelledAt) != null ? toMs(o.cancelledAt) : toMs(o.filledAt)),
         _cancelTs: toMs(o.cancelledAt),
         _isRealStop: o.isStopOrder === true || o.stopPrice != null,
-        _price: parseFloat(raw),
+        _price: parseFloat(o.stopPrice || o.limitPrice || o.price || NaN),
+        // #371 — classifica pelo enviado, mede pelo executado quando houve execução.
+        _riskPrice: parseFloat(
+          ((o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED') && o.filledPrice != null)
+            ? o.filledPrice
+            : (o.stopPrice || o.limitPrice || o.price || NaN),
+        ),
       });
     })
     .filter(function (o) { return isFinite(o._price); })
@@ -217,7 +223,7 @@ function stopRiskBreakdown(trade, stops) {
   const legs = [];
   for (let i = 0; i < stops.length; i++) {
     const st = stops[i];
-    const price = st._price != null ? st._price : (st.stopPrice != null ? st.stopPrice : (st.price != null ? st.price : null));
+    const price = st._riskPrice != null ? st._riskPrice : (st._price != null ? st._price : (st.stopPrice != null ? st.stopPrice : (st.price != null ? st.price : null)));
     const qty = Number(st.quantity != null ? st.quantity : (st.qty != null ? st.qty : 0));
     if (price == null || !isFinite(qty) || qty <= 0) continue;
     const adverse = trade.side === 'LONG' ? entry - Number(price) : Number(price) - entry;

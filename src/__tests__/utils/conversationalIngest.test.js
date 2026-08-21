@@ -205,7 +205,9 @@ describe('buildEnrichmentPayload', () => {
     expect(payload.entry).toBe(24900);
     expect(payload.exit).toBe(24950);
     expect(payload.qty).toBe(2);
-    expect(payload.stopLoss).toBeNull();
+    // #371 — sem proteção encontrada, o campo NÃO entra no payload. Ausência de dado
+    // não é dado: mandar null apagava o stop que o aluno tinha digitado.
+    expect('stopLoss' in payload).toBe(false);
     expect(payload.importBatchId).toBe('batch-1');
     expect(payload._partials).toHaveLength(2);
     expect(payload._partials[0]).toMatchObject({ type: 'ENTRY', price: 24900, qty: 2 });
@@ -243,11 +245,12 @@ describe('buildEnrichmentPayload', () => {
     expect(payload.stopLoss).toBe(24890);
   });
 
-  it('userAdjustments.stopLoss = null → sobrescreve para null', () => {
+  it('userAdjustments.stopLoss = null → sobrescreve para null (ordem do aluno, #371)', () => {
     const op = makeOp({ hasStopProtection: true, stopOrders: [{ stopPrice: 24880 }] });
     const item = makeItem({ operation: op, userAdjustments: { stopLoss: null } });
     const payload = buildEnrichmentPayload(item);
     expect(payload.stopLoss).toBeNull();
+    expect(payload.stopLossFromUser).toBe(true);
   });
 
   it('tickerRuleMap resolvido pelo instrumento', () => {

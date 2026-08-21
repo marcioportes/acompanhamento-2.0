@@ -185,14 +185,14 @@ describe('enrichTrade — cálculos', () => {
     expect(typeof patch.rrRatio).toBe('number');
   });
 
-  it('calcula RR assumido quando sem stop', async () => {
+  it('import sem stop encontrado NÃO apaga o stop do aluno (#371)', async () => {
+    // Antes o patch levava `stopLoss: null` e apagava o 129950 que o aluno digitou.
+    // Regra: ausência de dado no import não é dado — o campo nem entra no patch.
     const { deps, updateDocFn } = makeDeps();
     await enrichTrade('trade-001', makeEnrichment({ stopLoss: null }), makeUser(), deps);
 
     const patch = updateDocFn.mock.calls[0][1];
-    // rrAssumed depende de calculateAssumedRR retornar algo válido
-    // Com planPl 50000 e riskPerOperation 2, deve calcular
-    expect(patch.stopLoss).toBeNull();
+    expect('stopLoss' in patch).toBe(false);
   });
 
   it('preserva side do trade original', async () => {
