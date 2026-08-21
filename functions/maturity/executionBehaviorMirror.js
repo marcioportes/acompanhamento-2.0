@@ -515,7 +515,13 @@ function detectUnprotectedSize(trade, orders) {
   const proporcaoAlta = tl.nakedRatio != null && tl.nakedRatio >= 0.5;
   const severity = (tl.neverProtected || nuAteASaida || proporcaoAlta)
     ? EVENT_SEVERITY.HIGH : EVENT_SEVERITY.MEDIUM;
-  const emotionMapping = tl.neverProtected ? null : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
+  // Espelho: só quem RETIROU a proteção carrega emoção. Entrar nu é processo.
+  const abertaPorRetirada = tl.windows.some(function (w) {
+    return tl.legs.some(function (l) {
+      return l._cancelTs != null && Math.abs(l._cancelTs - w.startTs) <= REPLACEMENT_TOLERANCE_MS;
+    });
+  });
+  const emotionMapping = !abertaPorRetirada ? null : (tl.addedWhileNaked ? 'DENIAL' : 'HOPE');
 
   return [{
     type: EVENT_TYPES.UNPROTECTED_SIZE,
