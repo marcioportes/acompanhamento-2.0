@@ -359,7 +359,28 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
   const entry = parseFloat(enrichment.entry);
   const exit = parseFloat(enrichment.exit);
   const qty = parseFloat(enrichment.qty);
-  const stopLoss = enrichment.stopLoss != null ? parseFloat(enrichment.stopLoss) : null;
+  // #371 — REGRA: dado informado pelo aluno é imutável pelo import. O stop declarado
+  // nunca é sobrescrito nem apagado; divergência vira registro, não correção silenciosa.
+  // Ausência do campo no payload significa "o import não achou proteção", não "zere".
+  const observedStop = enrichment.stopLoss != null && enrichment.stopLoss !== ''
+    ? parseFloat(enrichment.stopLoss)
+    : null;
+  const declaredStop = before.stopLoss != null && before.stopLoss !== ''
+    ? parseFloat(before.stopLoss)
+    : null;
+  const alunoInformouStop = Number.isFinite(declaredStop) && declaredStop !== 0;
+  // Ajuste explícito do aluno no modal manda em tudo — é ele editando o que é dele.
+  const veioDoAluno = enrichment.stopLossFromUser === true;
+  const stopLossPatch = veioDoAluno
+    ? { stopLoss: Number.isFinite(observedStop) ? observedStop : null, stopLossSource: 'student' }
+    : ((!alunoInformouStop && Number.isFinite(observedStop) && observedStop > 0)
+      ? { stopLoss: observedStop, stopLossSource: 'import' }
+      : {});
+  const divergences = (!veioDoAluno && alunoInformouStop && Number.isFinite(observedStop) && observedStop !== declaredStop)
+    ? { stopLoss: { declared: declaredStop, observed: observedStop } }
+    : null;
+  // Para os cálculos abaixo vale o que o aluno declarou; na ausência, o observado.
+  const stopLoss = alunoInformouStop ? declaredStop : (Number.isFinite(observedStop) ? observedStop : null);
   const side = before.side; // preserva side do trade original
   const tickerRule = enrichment.tickerRule || before.tickerRule || null;
 
@@ -446,7 +467,9 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
   // firestore.rules estrita (aluno não pode tocar metadados de lock direto).
   const patch = {
     _partials: enrichment._partials || [],
-    entry, exit, qty, stopLoss,
+    entry, exit, qty,
+    ...stopLossPatch,
+    ...(divergences ? { importDivergences: divergences } : {}),
     resultCalculated: Math.round(result * 100) / 100,
     result: effectiveResult,
     resultInPoints,

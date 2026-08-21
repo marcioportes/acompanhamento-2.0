@@ -373,8 +373,29 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
     if (!bestOp) bestOp = attributeOrphanOrder(operations, orderTs, order.instrument, orphanWindowMs);
     if (!bestOp) continue;
 
+    // #371 — mesma definição de proteção do detector (protectiveLegsOf, #359):
+    // esta corretora emite a perna de proteção do bracket como LIMITE com Preço Stop
+    // vazio (DEC-AUTO-242-01), então o que a identifica é o LADO — adversa à entrada.
+    // Antes só `isStopOrder` contava aqui, e a operação ficava `hasStopProtection:false`
+    // enquanto o detector via proteção: a mesma ordem lida de dois jeitos no mesmo
+    // sistema, e foi essa divergência que fez o import apagar o stop do aluno.
+    const entradaOp = parseFloat(bestOp.avgEntryPrice ?? NaN);
+    const ladoOposto = bestOp.side === 'LONG' ? 'SELL' : 'BUY';
+    const precoOrdem = parseFloat(order.stopPrice ?? order.limitPrice ?? order.price ?? NaN);
+    // Proteção nasce COM a posição: ordem enviada antes da entrada existir é tentativa
+    // abortada (#369), não bracket — mesmo estando do lado adverso.
+    const entradaTs = new Date(bestOp.entryTime).getTime();
+    const enviadaTs = new Date(order.submittedAt || order.cancelledAt || 0).getTime();
+    const nasceuComAPosicao = Number.isFinite(entradaTs) && Number.isFinite(enviadaTs)
+      && enviadaTs >= entradaTs - TOLERANCE_MS;
+    const protecaoDoBracket = !order.isStopOrder
+      && order.side === ladoOposto
+      && nasceuComAPosicao
+      && Number.isFinite(entradaOp) && Number.isFinite(precoOrdem)
+      && (bestOp.side === 'LONG' ? precoOrdem < entradaOp : precoOrdem > entradaOp);
+
     // Classificar a ordem
-    if (order.isStopOrder) {
+    if (order.isStopOrder || protecaoDoBracket) {
       bestOp.stopOrders.push(stripInternal(order));
       bestOp.hasStopProtection = true;
       // Stop executado = stop order que foi FILLED

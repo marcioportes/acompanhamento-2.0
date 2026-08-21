@@ -188,7 +188,7 @@ const stopRiskBreakdown = (trade, stops) => {
 
   const legs = [];
   for (const s of stops) {
-    const price = s._price ?? s.stopPrice ?? s.price ?? null;
+    const price = s._riskPrice ?? s._price ?? s.stopPrice ?? s.price ?? null;
     const qty = Number(s.quantity ?? s.qty ?? 0);
     if (price == null || !Number.isFinite(qty) || qty <= 0) continue;
     // Só distância ADVERSA vira risco. Stop acima da entrada num LONG (trail) trava
@@ -274,6 +274,16 @@ const protectiveLegsOf = (trade, orders) => {
       _cancelTs: toMs(o.cancelledAt),
       _isRealStop: o.isStopOrder === true || o.stopPrice != null,
       _price: parseFloat(o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
+      // #371 — o preço que CLASSIFICA a perna (alvo vs proteção) é o enviado; o que
+      // MEDE o risco é o executado, quando houve execução. O limite com folga que
+      // garante preenchimento não é onde a proteção estava: no caso real de 20/08 a
+      // ordem saiu com limite 170.280 e executou a 170.130, e o detector cobrava 400
+      // pontos de risco onde houve 250 — alerta HIGH travando progressão de estágio.
+      _riskPrice: parseFloat(
+        ((o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED') && o.filledPrice != null)
+          ? o.filledPrice
+          : (o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
+      ),
     }))
     .filter(o => Number.isFinite(o._price))
     // Ordem de stop de verdade protege em qualquer preço: acima da entrada num LONG

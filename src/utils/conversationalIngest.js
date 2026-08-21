@@ -108,10 +108,14 @@ export function buildEnrichmentPayload(item, opts = {}) {
     });
   }
 
-  let stopLoss = null;
+  // #371 — só reporta stop quando o import REALMENTE achou proteção. Antes devolvia
+  // `null` na ausência, e o patch apagava o stop que o aluno tinha digitado.
+  // Ausência de dado não é dado: o campo simplesmente não entra no payload.
+  let stopLoss;
   if (op.hasStopProtection && op.stopOrders?.length > 0) {
     const lastStop = op.stopOrders[op.stopOrders.length - 1];
-    stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.price) || null;
+    const preco = parseFloat(lastStop.filledPrice ?? lastStop.stopPrice ?? lastStop.price);
+    if (Number.isFinite(preco) && preco > 0) stopLoss = preco;
   }
 
   const instrument = (op.instrument || '').toUpperCase();
@@ -122,9 +126,9 @@ export function buildEnrichmentPayload(item, opts = {}) {
     entry: op.avgEntryPrice,
     exit: op.avgExitPrice,
     qty: op.totalQty,
-    stopLoss,
     tickerRule,
     importBatchId,
+    ...(stopLoss !== undefined ? { stopLoss } : {}),
   };
 
   const adj = item.userAdjustments;
@@ -133,6 +137,10 @@ export function buildEnrichmentPayload(item, opts = {}) {
     if (adj.exit != null && adj.exit !== '') payload.exit = parseFloat(adj.exit);
     if (adj.qty != null && adj.qty !== '') payload.qty = parseFloat(adj.qty);
     if ('stopLoss' in adj) {
+      // #371 — ajuste vindo do modal é ORDEM DO ALUNO, não inferência do import: vale
+      // sempre, inclusive para limpar. A proteção da regra é contra o import sobrescrever
+      // por conta própria, nunca contra o aluno editar o que é dele.
+      payload.stopLossFromUser = true;
       payload.stopLoss = adj.stopLoss != null && adj.stopLoss !== ''
         ? parseFloat(adj.stopLoss)
         : null;
