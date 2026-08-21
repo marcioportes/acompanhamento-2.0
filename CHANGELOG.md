@@ -8,11 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.83.20] - 21/08/2026 · #375 · PR #379
+## [1.83.20] - 21/08/2026 · #375 · PRs #379, #380
 
-**fix:** proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e
+**fix:** proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo, confronto sem `null`
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Fuso da ordem.** `orders` guarda instante ingênuo e `trades` guarda com offset explícito (#285/#292); a Cloud Function roda em UTC, então a ordem era lida 3h antes do trade dela. `liveStopsAt` descartava toda perna de proteção e **todo** trade com ordem correlacionada saía com `UNPROTECTED_SIZE` HIGH e cobertura zero. `tradeOffsetOf`/`orderMs`/`orderInstantMs` resolvem o instante no fuso do trade (DEC-AUTO-375-01).
+- **Exposição medida no tempo.** `protectionTimeline` cruza contratos abertos × cobertos e devolve as janelas em que a posição ficou nua; janela ≤ 20s é troca de ordem, não exposição. Cancelamento no alvo deixa de ser um caso especial (DEC-AUTO-375-02).
+- **Emoção pelo verbo.** Retirar a proteção carrega Esperança — ou Negação, quando ainda aumenta a posição; entrar sem proteção é processo, não emoção (DEC-AUTO-375-03).
+- **Painel de ordens.** Bracket cancelado pelo OCO no alvo deixa de aparecer como "Cancel": quatro estados de proteção, badge de três estados e faixa mostrando onde a posição ficou nua.
+- **Confronto emocional.** Padrão sem emoção não concorre mais a "a emoção do trade" — era o que imprimia a palavra `null` para o aluno (DEC-AUTO-375-04).
+- **Colateral:** `detectStopBreakevenTooEarly` nunca disparava, pelo mesmo desvio de fuso invertido.
+- **Recompute:** 42 perfis atualizados em produção — 6 gates falsos removidos, 14 gates verdadeiros revelados (entrada a mercado com stop enviado minutos depois).
+- 35 testes novos (3.767 no total). O teste de fuso falha se a correção for revertida, em qualquer máquina.
+- Arquivos: `executionBehaviorEngine.js`, `executionBehaviorMirror.js`, `buildBehaviorProfile.js`, `TradeOrdersPanel.jsx`, `behaviorDisplay.jsx`.
 
 
 ## [1.83.19] - 21/08/2026 · #373 · PR #374
