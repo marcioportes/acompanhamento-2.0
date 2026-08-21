@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.20] - 21/08/2026 · #375 · PR #379
+
+**fix:** proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.19] - 21/08/2026 · #373 · PR #374
 
 **feat:** R:R em dinheiro — risco tomado e RO do plano lado a lado

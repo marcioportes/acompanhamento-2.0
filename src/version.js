@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.20: #375 fix proteção cancelada pelo OCO lida como "sem stop" — painel, dedup de cobertura, confronto null (RESERVADA)
+ * - 1.83.20: #375 fix proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e (PR #379, 21/08/2026)
  * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)
  * - 1.83.18: #371 fix dado do aluno é imutável pelo import + risco de proteção pelo preço executa (PR #372, 21/08/2026)
  * - 1.83.17: #369 feat ordens que não viraram posição pertencem ao trade vizinho — hesitação, re (PR #370, 21/08/2026)
