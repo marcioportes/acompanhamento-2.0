@@ -153,6 +153,63 @@ const getTradeDurationMinutes = (trade) => {
   return (exit - entry) / 60000;
 };
 
+
+/**
+ * R:R REALIZADO — derivado na hora, a partir da geometria de preço do próprio trade.
+ *
+ * #381. Os detectores liam `trade.rrRatio`, um escalar gravado no documento pela CF de
+ * compliance. Caso real (WINV26 LONG 10, 21/08/2026, entrada 174.030, stop 173.905,
+ * saída 174.290): o campo trazia `0.42` — o valor que a fórmula de compliance produz
+ * quando o `tickerRule` NÃO está presente e a conversão para pontos perde o fator de
+ * tickSize (52 pontos em vez de 260). O R:R real é 2,08.
+ *
+ * O mesmo documento tinha `compliance.rrStatus: 'CONFORME'` contra um alvo de 2 — prova
+ * de que o objeto e o escalar foram escritos em momentos diferentes e o escalar
+ * envelheceu. O resultado na tela: o card acusava "saída antecipada com 21% do alvo" ao
+ * lado de "alvo atingido (2:1)", no mesmo trade, e a saída antecipada ainda virava a
+ * emoção dominante do confronto.
+ *
+ * A base é PREÇO, não dinheiro: é a mesma de `detectTargetHit`, que compara o preço de
+ * saída com `entrada ± risco × alvo`. Com os dois derivando da mesma geometria, a
+ * contradição deixa de ser possível por construção — e o número não depende de
+ * `tickerRule`, `result` nem de qualquer campo que possa ficar velho.
+ *
+ * Mesmo princípio do #373 (DEC-AUTO-373-02): derivar em display-time em vez de confiar
+ * em escalar gravado.
+ *
+ * @param {Object} trade — { entry, exit, stopLoss, side }
+ * @returns {number|null} R:R realizado, ou null quando falta dado para afirmar.
+ */
+export const realizedRR = (trade) => {
+  // Ausência não é zero: `Number(null)` é 0 e passa por finito. Sem essa guarda, trade
+  // SEM stop viraria "risco = a entrada inteira" e um R:R de 0,00 — que o detector leria
+  // como saída antecipada gravíssima. Mesma armadilha que o #373 pegou em `rrBreakdown`.
+  const num = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const entry = num(trade?.entry);
+  const exit = num(trade?.exit);
+  const stop = num(trade?.stopLoss);
+  if (entry == null || exit == null || stop == null) return null;
+
+  const riskPts = Math.abs(entry - stop);
+  if (!(riskPts > 0)) return null;   // stop na entrada não é R:R infinito, é ausência de razão
+
+  const dir = trade?.side === 'SHORT' ? -1 : 1;
+  const gainPts = (exit - entry) * dir;
+  return Math.round((gainPts / riskPts) * 100) / 100;
+};
+
+/**
+ * Alvo de R:R do plano. `buildBehaviorProfile` anexa `planRrTarget`; `planRR` nunca
+ * existiu no modelo e o `?? 2.0` mascarava isso — todo aluno era julgado contra 2,
+ * qualquer que fosse o `rrTarget` do plano dele (AP-07, nome canônico inventado).
+ */
+export const planRrTargetOf = (trade) =>
+  Number(trade?.planRrTarget ?? trade?.planRR ?? 2) || 2;
+
 const getTradeResult = (trade) => {
   return Number(trade.result) || 0;
 };
@@ -422,7 +479,7 @@ export const detectCleanExecution = (trade, adjacentTrades, otherPatterns = []) 
   const result = getTradeResult(trade);
   if (result <= 0) return null; // must be a winner
 
-  const rrRatio = trade.rrRatio ?? null;
+  const rrRatio = realizedRR(trade);
   const rrRespected = rrRatio != null && rrRatio >= 1.0;
 
   if (!hasStop) return null; // stop is required for clean execution
@@ -448,7 +505,7 @@ export const detectTargetHit = (trade, _adjacentTrades, config = DEFAULT_CONFIG.
   const result = getTradeResult(trade);
   if (result <= 0) return null;
 
-  const rrRatio = trade.rrRatio ?? null;
+  const rrRatio = realizedRR(trade);
   if (rrRatio == null) return null;
 
   // Check if the exit was close to the planned RR target
@@ -464,7 +521,7 @@ export const detectTargetHit = (trade, _adjacentTrades, config = DEFAULT_CONFIG.
   if (riskDistance <= 0) return null;
 
   // Planned target based on plan RR (minimum 2:1 default)
-  const planRR = trade.planRR ?? 2.0;
+  const planRR = planRrTargetOf(trade);
   const side = trade.side === 'SHORT' ? -1 : 1;
   const targetPrice = entry + (side * riskDistance * planRR);
   const tolerance = riskDistance * planRR * config.tolerancePct;
@@ -739,10 +796,10 @@ export const detectEarlyExit = (trade, orders, config = DEFAULT_CONFIG.earlyExit
   const result = getTradeResult(trade);
   if (result <= 0) return null; // must be a winner that exited early
 
-  const rrRatio = trade.rrRatio ?? null;
+  const rrRatio = realizedRR(trade);
   if (rrRatio == null || trade.rrAssumed) return null;
 
-  const planRR = trade.planRR ?? 2.0;
+  const planRR = planRrTargetOf(trade);
   if (rrRatio >= planRR * config.rrThresholdPct) return null; // exit was close enough to target
 
   // With orders: check that the stop was NOT hit (exit was voluntary)
