@@ -60,11 +60,11 @@ describe('associateNonFilledOrders — ordens que não viraram posição', () =>
 
   it('sem trade à frente, a tentativa vai para o último trade do dia', () => {
     const ops = [operacao('OP-10h', 10, 0, 10, 20)];
-    const orfa = cancelada(14, 0);
+    const orfa = cancelada(11, 30);
 
     associateNonFilledOrders(ops, [orfa]);
 
-    expect(ops[0].cancelledOrders.map(o => o.externalOrderId)).toEqual(['CL-140']);
+    expect(ops[0].cancelledOrders.map(o => o.externalOrderId)).toEqual(['CL-1130']);
   });
 
   it('a operação seguinte tem prioridade sobre a anterior', () => {
@@ -89,15 +89,15 @@ describe('associateNonFilledOrders — ordens que não viraram posição', () =>
     expect(ops[1].cancelledOrders).toHaveLength(0);
   });
 
-  it('longe demais do trade da frente vira tentativa posterior do trade de trás', () => {
-    // A janela de 2h limita só a leitura "hesitou antes de entrar". Cancelar às 13h e
-    // entrar às 16h não é hesitação daquela entrada — é tentativa que sobrou do trade
-    // das 10h, e é assim que ela deve aparecer.
+  it('a mais de 2h de qualquer trade a ordem não é aderente — e morre pela INV-29', () => {
+    // Marcio, 21/08: a janela de 2h é o critério de aderência. Cancelar às 13h com
+    // trades às 10h e às 16h não diz nada sobre nenhum dos dois — reportar seria
+    // fabricar evidência.
     const ops = [operacao('OP-10h', 10, 0, 10, 20), operacao('OP-16h', 16, 0, 16, 30)];
 
     associateNonFilledOrders(ops, [cancelada(13, 0)]);
 
-    expect(ops[0].cancelledOrders).toHaveLength(1);
+    expect(ops[0].cancelledOrders).toHaveLength(0);
     expect(ops[1].cancelledOrders).toHaveLength(0);
   });
 

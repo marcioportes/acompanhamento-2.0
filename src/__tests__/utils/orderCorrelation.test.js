@@ -292,10 +292,33 @@ describe('correlateCancelledOrders', () => {
     expect(result[0].confidence).toBe(0.7);
   });
 
-  it('cancel fora da janela do trade não correlaciona', () => {
+  it('cancel sem convivência vira tentativa posterior do último trade do dia (#369)', () => {
+    // Comportamento anterior: não correlacionava. A ordem montada e desmontada depois do
+    // trade é a tentativa que não se converteu — sem vínculo o motor não a enxerga,
+    // porque agrupa ordens por trade. Confidence menor: vizinhança é heurística mais
+    // fraca que convivência temporal.
+    const orders = [{
+      externalOrderId: 'O1', status: 'CANCELLED', instrument: 'WINM26',
+      submittedAt: '2026-04-22T11:30:00Z', cancelledAt: '2026-04-22T11:35:00Z',
+    }];
+    const result = correlateCancelledOrders(orders, [makeTrade()]);
+    expect(result).toHaveLength(1);
+    expect(result[0].tradeId).toBe('T1');
+    expect(result[0].confidence).toBe(0.6);
+  });
+
+  it('cancel a mais de 2h de qualquer trade não é aderente e fica sem vínculo (#369)', () => {
     const orders = [{
       externalOrderId: 'O1', status: 'CANCELLED', instrument: 'WINM26',
       submittedAt: '2026-04-22T15:00:00Z', cancelledAt: '2026-04-22T15:05:00Z',
+    }];
+    expect(correlateCancelledOrders(orders, [makeTrade()])).toEqual([]);
+  });
+
+  it('cancel de outro dia não correlaciona com trade nenhum', () => {
+    const orders = [{
+      externalOrderId: 'O1', status: 'CANCELLED', instrument: 'WINM26',
+      submittedAt: '2026-04-23T15:00:00Z', cancelledAt: '2026-04-23T15:05:00Z',
     }];
     expect(correlateCancelledOrders(orders, [makeTrade()])).toEqual([]);
   });

@@ -509,6 +509,52 @@ export const correlateOrders = (orders, trades) => {
 
 const CANCEL_TRADE_PADDING_MS = 60 * 1000;
 
+/** Aderência: distância máxima entre a ordem abortada e o trade vizinho (#369). */
+const CANCEL_NEIGHBOUR_MS = 2 * 60 * 60 * 1000;
+
+const mesmoDiaMs = (aMs, bMs) => {
+  const a = new Date(aMs);
+  const b = new Date(bMs);
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+};
+
+/**
+ * Trade vizinho de uma ordem que morreu sem conviver com nenhum trade (#369).
+ *
+ * A janela de 2h é o critério de aderência nos dois sentidos: ordem a mais de 2h de
+ * qualquer trade não pertence àquele momento operacional e fica sem vínculo — morre pela
+ * INV-29 em vez de virar evidência forçada.
+ */
+const neighbourTradeForCancel = (order, trades, orderStart, orderEnd, orderInstrument) => {
+  const ref = orderEnd || orderStart;
+  if (!ref) return null;
+
+  let proximo = null;
+  let anterior = null;
+
+  for (const trade of trades) {
+    const tradeInstrument = (trade.ticker || trade.instrument || '').toUpperCase();
+    if (orderInstrument && tradeInstrument && orderInstrument !== tradeInstrument) continue;
+
+    const entryTs = toWallMs(trade.entryTime || trade.openedAt);
+    if (!entryTs || !mesmoDiaMs(entryTs, ref)) continue;
+    const exitTs = toWallMs(trade.exitTime || trade.closedAt) || entryTs;
+
+    if (entryTs > ref && entryTs - ref <= CANCEL_NEIGHBOUR_MS) {
+      if (!proximo || entryTs < toWallMs(proximo.entryTime || proximo.openedAt)) proximo = trade;
+    } else if (exitTs < ref && ref - exitTs <= CANCEL_NEIGHBOUR_MS) {
+      const anteriorExit = anterior
+        ? (toWallMs(anterior.exitTime || anterior.closedAt) || toWallMs(anterior.entryTime))
+        : 0;
+      if (!anterior || exitTs > anteriorExit) anterior = trade;
+    }
+  }
+
+  return proximo || anterior;
+};
+
 /**
  * Correlaciona ordens canceladas (CANCELLED/REJECTED/EXPIRED) com trades por
  * sobreposição temporal e match de instrumento.
@@ -557,11 +603,23 @@ export const correlateCancelledOrders = (cancelledOrders, trades) => {
       }
     }
 
+    // Sem sobreposição: a ordem não conviveu com nenhum trade. Ela pertence ao trade
+    // VIZINHO (#369) — o seguinte, que ela antecipou (hesitação/reconsideração), ou, se
+    // não houver, o último do dia, do qual ela é a tentativa que não se converteu.
+    // Antes disto, ordem montada e desmontada entre dois trades ficava sem vínculo — e
+    // sem vínculo o motor comportamental não a enxerga, porque agrupa por trade.
+    let viaVizinho = false;
+    if (!bestMatch) {
+      bestMatch = neighbourTradeForCancel(order, trades, orderStart, orderEnd, orderInstrument);
+      viaVizinho = !!bestMatch;
+    }
+
     if (bestMatch) {
       results.push({
         externalOrderId: order.externalOrderId,
         tradeId: bestMatch.id,
-        confidence: 0.7,
+        // Vizinhança é heurística mais fraca que convivência temporal.
+        confidence: viaVizinho ? 0.6 : 0.7,
       });
     }
   }

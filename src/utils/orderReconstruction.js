@@ -265,7 +265,10 @@ export const reconstructOperations = (orders, opts = {}) => {
 // ASSOCIATE NON-FILLED ORDERS
 // ============================================
 
-/** Distância máxima entre a ordem que não virou posição e o trade vizinho (v1.83.17). */
+/**
+ * Aderência: distância máxima entre a ordem que não virou posição e o trade vizinho
+ * (v1.83.17, #369). Vale nos dois sentidos — antes da entrada e depois da saída.
+ */
 export const ORPHAN_ATTRIBUTION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 const mesmoDia = (aMs, bMs) => {
@@ -287,16 +290,14 @@ const mesmoDia = (aMs, bMs) => {
  * Prioridade: próxima operação do mesmo instrumento → operação anterior do mesmo
  * instrumento → última operação do dia (qualquer instrumento).
  *
- * A janela de 2h limita só a atribuição PARA A FRENTE: cancelar às 9h e entrar às 16h não
- * é hesitação daquela entrada. Para trás o limite é o dia — a tentativa que não virou nada
- * pertence ao último trade do dia, por mais tarde que tenha vindo. Fora do dia a ordem não
- * pertence a trade nenhum e morre (INV-29).
+ * A janela de 2h é o critério de ADERÊNCIA, e vale nos dois sentidos: ordem que ficou a
+ * mais de 2h de qualquer trade não pertence àquele momento operacional — cancelar às 9h e
+ * entrar às 16h não é hesitação daquela entrada, nem tentativa posterior daquele trade.
+ * Sem trade aderente a ordem morre (INV-29), em vez de virar evidência forçada.
  */
 const attributeOrphanOrder = (operations, orderTs, instrument, windowMs) => {
   const alvo = (instrument || '').toUpperCase();
-  // Para frente: janela curta. Para trás: o dia inteiro.
-  const janelaAdiante = (ts) => ts - orderTs <= windowMs && mesmoDia(ts, orderTs);
-  const janelaAtras = (ts) => mesmoDia(ts, orderTs);
+  const aderente = (ts) => Math.abs(ts - orderTs) <= windowMs && mesmoDia(ts, orderTs);
 
   let proxima = null;
   let anterior = null;
@@ -308,13 +309,13 @@ const attributeOrphanOrder = (operations, orderTs, instrument, windowMs) => {
     const saida = op.exitTime ? new Date(op.exitTime).getTime() : entrada;
     const mesmoInstrumento = (op.instrument || '').toUpperCase() === alvo;
 
-    if (mesmoInstrumento && entrada > orderTs && janelaAdiante(entrada)) {
+    if (mesmoInstrumento && entrada > orderTs && aderente(entrada)) {
       if (!proxima || entrada < new Date(proxima.entryTime).getTime()) proxima = op;
     }
-    if (mesmoInstrumento && saida < orderTs && janelaAtras(saida)) {
+    if (mesmoInstrumento && saida < orderTs && aderente(saida)) {
       if (!anterior || saida > new Date(anterior.exitTime || anterior.entryTime).getTime()) anterior = op;
     }
-    if (janelaAtras(entrada) || janelaAdiante(entrada)) {
+    if (aderente(entrada) || aderente(saida)) {
       if (!ultimaDoDia || entrada > new Date(ultimaDoDia.entryTime).getTime()) ultimaDoDia = op;
     }
   }
