@@ -46,11 +46,12 @@ import { enrichTrade } from '../utils/tradeGateway';
 import { makeOrderKey } from '../utils/orderKey';
 import { detectCoverageGap } from '../utils/planCoverage';
 import { enrichConversationalBatch } from '../utils/conversationalIngest';
-import { persistImportDecisions, stagingDocsToOrders } from '../utils/orderImportPipeline';
+import { persistImportDecisions, stagingDocsToOrders, orderTradeLinks } from '../utils/orderImportPipeline';
 import { indexExistingOrders, detectAlreadyImported } from '../utils/orderDedup';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { useConfirmDialog } from '../components/ConfirmDialog';
 
 // ============================================
@@ -624,6 +625,26 @@ const OrderImportPage = ({
         byClass,
         lowResolution,
       });
+
+      // Fecha o lote: ordem que não ficou atrelada a nenhum trade vivo é apagada
+      // (v1.83.16). Regra: ordem sem trade não existe. Server-side porque
+      // `firestore.rules` tem `allow delete: if false` em /orders — foi assim que
+      // importações abandonadas deixaram centenas de ordens presas em produção.
+      // Roda DEPOIS da criação dos trades: a correlação acontece em onTradeCreated.
+      if (batchId) {
+        try {
+          setProgress('Limpando ordens que não viraram trade...');
+          const finalize = httpsCallable(functions, 'finalizeOrderImport');
+          // O vínculo vai explícito: o servidor não tem como deduzir o trade de uma
+          // ordem que nunca executou (stop cancelado), e sem trade ela seria apagada.
+          const links = orderTradeLinks(conversationalQueue, batchResult.created);
+          const { data: purge } = await finalize({ batchId, links });
+          console.log(`[OrderImportPage] Lote fechado: ${purge?.linked ?? 0} ordens ligadas, ${purge?.deleted ?? 0} sem trade apagadas`);
+        } catch (purgeErr) {
+          // Não bloqueia o import: a varredura diária pega o que sobrar.
+          console.warn('[OrderImportPage] Falha ao fechar o lote:', purgeErr.message);
+        }
+      }
 
       // Shadow Behavior Analysis (pós-import) — CF canônica.
       if (userContext?.uid) {
