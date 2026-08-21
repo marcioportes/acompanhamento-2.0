@@ -37,9 +37,12 @@ const baseTrade = (overrides = {}) => ({
   qty: 1,
   stopLoss: 129900,
   result: 100,
+  // #381 — `rrRatio` continua na fixture só para provar que os detectores NÃO o leem
+  // mais; o R:R vem de entry/exit/stopLoss. `planRR` virou `planRrTarget`, o nome que o
+  // modelo realmente usa (o antigo nunca existiu e o fallback `?? 2` mascarava isso).
   rrRatio: 1.0,
   rrAssumed: false,
-  planRR: 2.0,
+  planRrTarget: 2.0,
   date: '2026-04-10',
   entryTime: '2026-04-10T10:00:00',
   exitTime: '2026-04-10T10:30:00',
@@ -764,11 +767,14 @@ describe('detectFomoEntry', () => {
 // ============================================
 
 describe('detectEarlyExit', () => {
+  // #381 — o R:R deixou de sair do escalar `rrRatio` gravado no documento e passou a ser
+  // derivado da geometria de preço (entrada/saída/stop). As fixtures abaixo expressam o
+  // cenário em PREÇO: risco de 100 pts (130.000 → 129.900) e a saída dizendo o R:R.
   it('detects exit well below RR target', () => {
     const trade = baseTrade({
+      exit: 130030,    // ganhou 30 de 100 de risco → RR 0,3
       result: 30,
-      rrRatio: 0.3,   // actual RR
-      planRR: 2.0      // plan RR target
+      planRrTarget: 2.0,
     });
     const result = detectEarlyExit(trade, []);
     expect(result).not.toBeNull();
@@ -778,9 +784,9 @@ describe('detectEarlyExit', () => {
 
   it('returns null when RR close to target', () => {
     const trade = baseTrade({
+      exit: 130180,    // 180 de 100 → RR 1,8, perto do alvo
       result: 180,
-      rrRatio: 1.8,
-      planRR: 2.0
+      planRrTarget: 2.0,
     });
     const result = detectEarlyExit(trade, []);
     expect(result).toBeNull();
@@ -792,14 +798,14 @@ describe('detectEarlyExit', () => {
   });
 
   it('returns null when stop was hit (orders present)', () => {
-    const trade = baseTrade({ result: 30, rrRatio: 0.3, planRR: 2.0 });
+    const trade = baseTrade({ exit: 130030, result: 30, planRrTarget: 2.0 });
     const orders = [{ isStopOrder: true, status: 'FILLED' }];
     const result = detectEarlyExit(trade, orders);
     expect(result).toBeNull();
   });
 
   it('has higher confidence with order data', () => {
-    const trade = baseTrade({ result: 30, rrRatio: 0.3, planRR: 2.0 });
+    const trade = baseTrade({ exit: 130030, result: 30, planRrTarget: 2.0 });
     const withoutOrders = detectEarlyExit(trade, null);
     const withOrders = detectEarlyExit(trade, [
       { isStopOrder: false, status: 'FILLED' }

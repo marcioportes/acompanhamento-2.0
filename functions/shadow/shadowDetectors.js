@@ -75,6 +75,33 @@ const getTradeDurationMinutes = (trade) => {
 
 const getResult = (trade) => Number(trade.result) || 0;
 
+/**
+ * #381 — R:R realizado derivado da geometria de preço. Espelho de
+ * `shadowBehaviorAnalysis.realizedRR`; ver doc completo na fonte ESM.
+ * Não usar `trade.rrRatio`: é escalar gravado e envelhece (caso de 21/08/2026, em que
+ * trazia 0,42 num trade cujo R:R real era 2,08, calculado sem `tickerRule`).
+ */
+const realizedRR = (trade) => {
+  // Ausência não é zero: Number(null) é 0 e passaria por finito (armadilha do #373).
+  const num = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return isFinite(n) ? n : null;
+  };
+  const entry = num(trade && trade.entry);
+  const exit = num(trade && trade.exit);
+  const stop = num(trade && trade.stopLoss);
+  if (entry == null || exit == null || stop == null) return null;
+  const riskPts = Math.abs(entry - stop);
+  if (!(riskPts > 0)) return null;
+  const dir = (trade && trade.side) === 'SHORT' ? -1 : 1;
+  return Math.round((((exit - entry) * dir) / riskPts) * 100) / 100;
+};
+
+/** #381 — `planRR` nunca existiu no modelo; o campo anexado é `planRrTarget` (AP-07). */
+const planRrTargetOf = (trade) => Number((trade && (trade.planRrTarget != null ? trade.planRrTarget : trade.planRR)) || 2) || 2;
+
+
 const applyPenalty = (confidence, trade) => {
   if (trade.lowResolution) return Math.max(0, confidence - DEFAULT_CONFIG.lowResolutionPenalty);
   return confidence;
@@ -169,22 +196,23 @@ const detectImpulseCluster = (trade, adjacent) => {
 const detectCleanExecution = (trade, otherPatterns) => {
   if (otherPatterns.some(p => p && p.code !== 'CLEAN_EXECUTION' && p.code !== 'TARGET_HIT')) return null;
   if (!trade.stopLoss || trade.stopLoss <= 0 || getResult(trade) <= 0) return null;
-  const rrRespected = trade.rrRatio != null && trade.rrRatio >= 1.0;
+  const rr = realizedRR(trade);
+  const rrRespected = rr != null && rr >= 1.0;
   return {
     code: 'CLEAN_EXECUTION', severity: 'NONE',
     confidence: applyPenalty(rrRespected ? 0.90 : 0.70, trade),
     emotionMapping: EMOTION_MAPPING.CLEAN_EXECUTION, layer: 1,
-    evidence: { hasStop: true, rrRatio: trade.rrRatio, result: getResult(trade) }
+    evidence: { hasStop: true, rrRatio: rr, result: getResult(trade) }
   };
 };
 
 const detectTargetHit = (trade) => {
-  if (getResult(trade) <= 0 || trade.rrRatio == null || trade.rrAssumed) return null;
+  if (getResult(trade) <= 0 || realizedRR(trade) == null || trade.rrAssumed) return null;
   const { stopLoss, entry, exit } = trade;
   if (!stopLoss || !entry || !exit) return null;
   const risk = Math.abs(entry - stopLoss);
   if (risk <= 0) return null;
-  const planRR = trade.planRR || 2.0;
+  const planRR = planRrTargetOf(trade);
   const side = trade.side === 'SHORT' ? -1 : 1;
   const target = entry + (side * risk * planRR);
   const tolerance = risk * planRR * DEFAULT_CONFIG.targetHit.tolerancePct;
@@ -291,16 +319,17 @@ const detectHesitation = (trade, orders) => {
 };
 
 const detectEarlyExit = (trade, orders) => {
-  if (getResult(trade) <= 0 || trade.rrRatio == null || trade.rrAssumed) return null;
-  const planRR = trade.planRR || 2.0;
-  if (trade.rrRatio >= planRR * DEFAULT_CONFIG.earlyExit.rrThresholdPct) return null;
+  const rr = realizedRR(trade);
+  if (getResult(trade) <= 0 || rr == null || trade.rrAssumed) return null;
+  const planRR = planRrTargetOf(trade);
+  if (rr >= planRR * DEFAULT_CONFIG.earlyExit.rrThresholdPct) return null;
   if (orders && orders.some(o => o.isStopOrder && o.status === 'FILLED')) return null;
   return {
     code: 'EARLY_EXIT',
-    severity: trade.rrRatio < planRR * 0.25 ? 'HIGH' : trade.rrRatio < planRR * 0.40 ? 'MEDIUM' : 'LOW',
+    severity: rr < planRR * 0.25 ? 'HIGH' : rr < planRR * 0.40 ? 'MEDIUM' : 'LOW',
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT, layer: orders && orders.length > 0 ? 2 : 1,
-    evidence: { actualRR: trade.rrRatio, planRR, rrAchievedPct: Math.round((trade.rrRatio / planRR) * 100) }
+    evidence: { actualRR: rr, planRR, rrAchievedPct: Math.round((rr / planRR) * 100) }
   };
 };
 
