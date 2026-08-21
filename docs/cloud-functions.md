@@ -47,11 +47,19 @@
 | `migrateReviewStateBackfill` | Migração retroativa (dry-run + safeguard D8 `expectedChanges`): preenche `trade.reviewId` (+`status=DISCUSSED` p/ reviews fechadas), provisiona rascunho vigente p/ órfãos-com-feedback, reconcilia `sequenceNumber`/ponteiros. Pula aluno fora de escopo. | One-time #269. Idempotente; blinda `DISCUSSED` contra re-run. |
 | `deleteStudent` | Hard delete LGPD-like do aluno: subcollections recursivas de `students/{sid}/*` + top-level por `studentId` (trades, orders, notifications, plans, csvStaging, csvStagingTrades, accounts, crossCheck, **cycleClosures**) + **movements por accountId** (DEP/WTD/INITIAL_BALANCE/ADJUSTMENT só têm accountId) **e por studentId** (TRADE_RESULT órfão) + **Storage** `trades/{tradeId}/` best-effort + doc + Auth user. Cascata em `functions/students/deleteStudentData.js` (testável). | Mentor-only. `timeoutSeconds: 300` (#309). Storage best-effort não aborta (DEC-AUTO-309-01). |
 
+## Callables — Order Import (CHUNK-10, v1.83.16)
+
+| Function | Responsabilidade |
+|----------|-----------------|
+| `finalizeOrderImport` | Fecha o lote: grava os vínculos `orderKey → tradeId` que o cliente decidiu e apaga as ordens do lote que não ficaram atreladas a trade vivo (INV-29). O vínculo vem explícito do cliente porque `linkOrdersToCreatedTrade` casa por fingerprint com `filledAt` — ordem cancelada não tem, e seria apagada junto com a evidência de stop tampering |
+
 ## Schedule
 
 | Function | Schedule | Responsabilidade |
 |----------|----------|-----------------|
 | `checkSubscriptions` | `0 8 * * *` (08h BRT) | Detecta vencimentos, marca overdue, expira trials, sincroniza accessTier (DEC-055/056) |
+| `cleanupOldNotifications` | `0 4 * * *` (04h BRT) | Apaga notificações lidas com mais de 30 dias |
+| `purgeOrphanOrdersDaily` | `30 4 * * *` (04h30 BRT) | **INV-29:** apaga toda ordem sem trade vivo atrelado. Rede de segurança do import interrompido e do resíduo histórico; respeita carência de 15min porque a correlação roda em `onTradeCreated` (assíncrona) — sem ela mataria import em curso (v1.83.16) |
 
 ## Regras
 

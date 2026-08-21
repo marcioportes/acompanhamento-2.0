@@ -12,7 +12,7 @@ Versão atual: ler `src/version.js`.
 
 ---
 
-## Invariantes (INV-01..28)
+## Invariantes (INV-01..29)
 
 Detalhes: [`docs/invariants.md`](docs/invariants.md).
 
@@ -38,6 +38,7 @@ Detalhes: [`docs/invariants.md`](docs/invariants.md).
 - **INV-26** — `.coord-id`/`.coord-dir` READ-ONLY (start script grava; Coord nunca sobrescreve)
 - **INV-27** — Validação externa de claims (cegueira epistêmica; `cc-validate-task.py` com 3 checks)
 - **INV-28** — Email iCloud é canal primário de gate humano no modo autônomo
+- **INV-29** — Ordem só existe atrelada a trade vivo (sem trade, a ordem é apagada)
 
 ## Anti-Patterns (AP-01..08)
 
