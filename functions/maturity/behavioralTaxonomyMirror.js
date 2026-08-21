@@ -38,6 +38,18 @@ const BEHAVIORAL_PATTERNS = Object.freeze({
     severityDefault: SEVERITY.LOW, emotionMapping: 'FEAR',
     resolutionLayer: RESOLUTION.HIGH, requires: ['orders'], feedsScore: true, feedsGates: false,
   }),
+  RECONSIDERATION: P({
+    code: 'RECONSIDERATION', family: 'RECONSIDERATION', valence: 'positive', dimensao: ['E'],
+    viesFramework: 'Autocontrole pré-entrada — desmontou, esperou e reavaliou (§2.3)',
+    severityDefault: null, emotionMapping: 'DISCIPLINE',
+    resolutionLayer: RESOLUTION.HIGH, requires: ['orders'], feedsScore: false, feedsGates: false,
+  }),
+  ABORTED_ATTEMPT: P({
+    code: 'ABORTED_ATTEMPT', family: 'ABORTED_ATTEMPT', valence: 'positive', dimensao: ['E'],
+    viesFramework: 'Tentativa posterior contida — montou depois do trade e recuou (§2.2)',
+    severityDefault: null, emotionMapping: 'DISCIPLINE',
+    resolutionLayer: RESOLUTION.HIGH, requires: ['trades', 'orders'], feedsScore: false, feedsGates: false,
+  }),
   GREED_CLUSTER: P({
     code: 'GREED_CLUSTER', family: 'GREED_CLUSTER', valence: 'negative', dimensao: ['F'],
     viesFramework: 'Profit-taking / greed (§3; §7.1 fin)',
@@ -141,6 +153,9 @@ const LEGACY_CODE_ALIAS = Object.freeze({
   STOP_BREAKEVEN_TOO_EARLY: 'STOP_PANIC',
   STOP_HESITATION: 'HESITATION',
   HESITATION_PRE_ENTRY: 'HESITATION',
+  // #369 — ordens que não viraram posição, lidas pelo tempo até o trade vizinho
+  RECONSIDERATION_PRE_ENTRY: 'RECONSIDERATION',
+  ABORTED_ATTEMPT_POST_TRADE: 'ABORTED_ATTEMPT',
   RAPID_REENTRY_POST_STOP: 'LOSS_CHASING',
   // #357 — cobertura parcial de stop NÃO é subdimensionamento (SUB_SIZING = risco muito
   // ABAIXO do RO). Passa a ter família própria: contrato aberto sem proteção.

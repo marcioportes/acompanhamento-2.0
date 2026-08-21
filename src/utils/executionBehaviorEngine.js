@@ -43,6 +43,9 @@ export const EVENT_TYPES = Object.freeze({
   SIZING_DISCIPLINE: 'SIZING_DISCIPLINE',
   RAPID_REENTRY_POST_STOP: 'RAPID_REENTRY_POST_STOP',
   HESITATION_PRE_ENTRY: 'HESITATION_PRE_ENTRY',
+  // #369 — ordens que não viraram posição, lidas pelo tempo até o trade vizinho
+  RECONSIDERATION_PRE_ENTRY: 'RECONSIDERATION_PRE_ENTRY',
+  ABORTED_ATTEMPT_POST_TRADE: 'ABORTED_ATTEMPT_POST_TRADE',
   CHASE_REENTRY: 'CHASE_REENTRY',
   STOP_BREAKEVEN_TOO_EARLY: 'STOP_BREAKEVEN_TOO_EARLY',
   STOP_HESITATION: 'STOP_HESITATION',
@@ -56,6 +59,8 @@ export const EVENT_SEVERITY = Object.freeze({
 
 const DEFAULT_CONFIG = Object.freeze({
   hesitationWindowMs: 30 * 60 * 1000,        // 30 min
+  triggerHesitationMs: 5 * 60 * 1000,        // ≤5min — hesitação de gatilho (#369)
+  reconsiderationWindowMs: 2 * 60 * 60 * 1000, // 30min–2h — "pensei melhor" (#369)
   rapidReentryWindowMs: 10 * 60 * 1000,      // 10 min
   partialSizingTolerance: 0,                  // stop qty < trade qty (estrito)
   breakevenWindowMs: 5 * 60 * 1000,          // 5 min — janela "cedo demais" (#229)
@@ -503,7 +508,33 @@ const detectHesitation = (trade, orders, config) => {
     const cancelTs = toMs(c.cancelledAt) ?? toMs(c.submittedAt);
     if (!cancelTs) continue;
     const gap = entryTs - cancelTs;
-    if (gap <= 0 || gap >= config.hesitationWindowMs) continue;
+    if (gap <= 0) continue;
+
+    // #369 — o tempo entre desmontar e entrar muda o que aconteceu. Meia hora depois
+    // não é indecisão: é decisão. Por isso a faixa longa não pontua como falha —
+    // penalizá-la ensinaria a entrar rápido, que é o oposto do objetivo.
+    if (gap >= config.hesitationWindowMs) {
+      if (gap >= config.reconsiderationWindowMs) continue;
+      events.push({
+        type: EVENT_TYPES.RECONSIDERATION_PRE_ENTRY,
+        severity: EVENT_SEVERITY.LOW,
+        tradeId: trade.id,
+        orderIds: [c.externalOrderId, entryFill.externalOrderId].filter(Boolean),
+        timestamp: c.cancelledAt ?? null,
+        evidence: {
+          cancelledAt: c.cancelledAt ?? null,
+          filledAt: entryFill.filledAt ?? null,
+          gapMs: gap,
+          gapMinutes: Math.round((gap / 60000) * 10) / 10,
+          side: trade.side,
+          instrument: trade.ticker,
+          pattern: 'RECONSIDERATION',
+        },
+        source: 'heuristic',
+        citation: null,
+      });
+      continue;
+    }
 
     events.push({
       type: EVENT_TYPES.HESITATION_PRE_ENTRY,
@@ -518,6 +549,60 @@ const detectHesitation = (trade, orders, config) => {
         gapMinutes: Math.round((gap / 60000) * 10) / 10,
         side: trade.side,
         instrument: trade.ticker,
+        pattern: gap <= config.triggerHesitationMs ? 'TRIGGER' : 'HESITATION',
+      },
+      source: 'heuristic',
+      citation: null,
+    });
+  }
+  return events;
+};
+
+/**
+ * ABORTED_ATTEMPT_POST_TRADE — ordem montada e desmontada DEPOIS do trade fechar,
+ * sem virar posição (#369).
+ *
+ * É a tentativa que não se converteu: o trader voltou ao book, montou, e recuou. Depois
+ * de prejuízo, o sinal é mais forte — é ansiedade de recuperar, contida na última hora.
+ * Depois de ganho, é informativo.
+ *
+ * Fonte: heurística operacional (pedido de Marcio, 20/08/2026).
+ */
+const detectAbortedAttempt = (trade, orders) => {
+  const exitTs = toMs(trade.exitTime) ?? toMs(trade.closedAt);
+  if (!exitTs) return [];
+
+  const cancelled = ordersForTrade(orders, trade.id).filter(o =>
+    o.status === 'CANCELLED' &&
+    !o.isStopOrder &&
+    sameInstrument(o.instrument, trade.ticker)
+  );
+  if (!cancelled.length) return [];
+
+  const afterLoss = typeof trade.result === 'number' && trade.result < 0;
+  const events = [];
+
+  for (const c of cancelled) {
+    const submittedTs = toMs(c.submittedAt) ?? toMs(c.cancelledAt);
+    if (!submittedTs || submittedTs <= exitTs) continue;
+
+    const gap = submittedTs - exitTs;
+    events.push({
+      type: EVENT_TYPES.ABORTED_ATTEMPT_POST_TRADE,
+      severity: afterLoss ? EVENT_SEVERITY.MEDIUM : EVENT_SEVERITY.LOW,
+      tradeId: trade.id,
+      orderIds: [c.externalOrderId].filter(Boolean),
+      timestamp: c.cancelledAt ?? c.submittedAt ?? null,
+      evidence: {
+        submittedAt: c.submittedAt ?? null,
+        cancelledAt: c.cancelledAt ?? null,
+        tradeExitTime: trade.exitTime ?? null,
+        gapMs: gap,
+        gapMinutes: Math.round((gap / 60000) * 10) / 10,
+        qty: c.quantity ?? null,
+        side: c.side ?? null,
+        instrument: trade.ticker,
+        afterLoss,
       },
       source: 'heuristic',
       citation: null,
@@ -706,6 +791,7 @@ export const detectExecutionEvents = ({ trades = [], orders = [], config = {} } 
     events.push(...detectUnprotectedSize(trade, orders));
     events.push(...detectSizingDiscipline(trade, orders));
     events.push(...detectHesitation(trade, orders, cfg));
+    events.push(...detectAbortedAttempt(trade, orders));
     events.push(...detectChaseReentry(trade, orders));
     events.push(...detectStopBreakevenTooEarly(trade, orders, cfg));
     events.push(...detectStopHesitation(trade, orders, cfg));

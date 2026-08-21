@@ -266,16 +266,80 @@ export const reconstructOperations = (orders, opts = {}) => {
 // ============================================
 
 /**
+ * Aderência: distância máxima entre a ordem que não virou posição e o trade vizinho
+ * (v1.83.17, #369). Vale nos dois sentidos — antes da entrada e depois da saída.
+ */
+export const ORPHAN_ATTRIBUTION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas
+
+const mesmoDia = (aMs, bMs) => {
+  const a = new Date(aMs);
+  const b = new Date(bMs);
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+};
+
+/**
+ * Operação a que pertence uma ordem que não caiu dentro de nenhuma (v1.83.17).
+ *
+ * O set de ordens montado e desmontado entre dois trades não é lixo: é o que veio ANTES
+ * da entrada seguinte (hesitação, ou reconsideração se demorou) — e, quando não há
+ * entrada seguinte, é a tentativa que veio DEPOIS do último trade do dia (ansiedade).
+ * Até a v1.83.16 essas ordens eram descartadas aqui, antes de qualquer gravação.
+ *
+ * Prioridade: próxima operação do mesmo instrumento → operação anterior do mesmo
+ * instrumento → última operação do dia (qualquer instrumento).
+ *
+ * A janela de 2h é o critério de ADERÊNCIA, e vale nos dois sentidos: ordem que ficou a
+ * mais de 2h de qualquer trade não pertence àquele momento operacional — cancelar às 9h e
+ * entrar às 16h não é hesitação daquela entrada, nem tentativa posterior daquele trade.
+ * Sem trade aderente a ordem morre (INV-29), em vez de virar evidência forçada.
+ */
+const attributeOrphanOrder = (operations, orderTs, instrument, windowMs) => {
+  const alvo = (instrument || '').toUpperCase();
+  const aderente = (ts) => Math.abs(ts - orderTs) <= windowMs && mesmoDia(ts, orderTs);
+
+  let proxima = null;
+  let anterior = null;
+  let ultimaDoDia = null;
+
+  for (const op of operations) {
+    const entrada = new Date(op.entryTime).getTime();
+    if (!entrada) continue;
+    const saida = op.exitTime ? new Date(op.exitTime).getTime() : entrada;
+    const mesmoInstrumento = (op.instrument || '').toUpperCase() === alvo;
+
+    if (mesmoInstrumento && entrada > orderTs && aderente(entrada)) {
+      if (!proxima || entrada < new Date(proxima.entryTime).getTime()) proxima = op;
+    }
+    if (mesmoInstrumento && saida < orderTs && aderente(saida)) {
+      if (!anterior || saida > new Date(anterior.exitTime || anterior.entryTime).getTime()) anterior = op;
+    }
+    if (aderente(entrada) || aderente(saida)) {
+      if (!ultimaDoDia || entrada > new Date(ultimaDoDia.entryTime).getTime()) ultimaDoDia = op;
+    }
+  }
+
+  return proxima || anterior || ultimaDoDia;
+};
+
+/**
  * Associa ordens não-FILLED (CANCELLED, stops) às operações reconstruídas.
  * Usa janela temporal: ordem associada à operação cujo intervalo [entryTime, exitTime] contém
  * o submittedAt da ordem. Tolerância de 60s antes da entrada e 60s após a saída.
  *
+ * A ordem que não cai dentro de nenhuma operação é atribuída ao trade vizinho
+ * (v1.83.17) — ver `attributeOrphanOrder`.
+ *
  * @param {Object[]} operations — output de reconstructOperations (mutated in place)
  * @param {Object[]} allOrders — todas as ordens (incluindo CANCELLED, stops)
+ * @param {Object} [opts]
+ * @param {number} [opts.orphanWindowMs] — janela de atribuição do órfão
  * @returns {Object[]} operations (mesma referência, mutated)
  */
-export const associateNonFilledOrders = (operations, allOrders) => {
+export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   const TOLERANCE_MS = 60 * 1000; // 60 segundos
+  const orphanWindowMs = opts.orphanWindowMs ?? ORPHAN_ATTRIBUTION_WINDOW_MS;
 
   const nonFilled = allOrders.filter(o =>
     o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED' ||
@@ -305,6 +369,8 @@ export const associateNonFilledOrders = (operations, allOrders) => {
       }
     }
 
+    // Fora de qualquer operação: pertence ao trade vizinho, não ao lixo (v1.83.17).
+    if (!bestOp) bestOp = attributeOrphanOrder(operations, orderTs, order.instrument, orphanWindowMs);
     if (!bestOp) continue;
 
     // Classificar a ordem
