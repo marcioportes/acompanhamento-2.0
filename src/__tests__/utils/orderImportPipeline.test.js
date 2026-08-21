@@ -21,6 +21,7 @@ import {
   finalOrderKeysFromQueue,
   correlationsFromDecisions,
   stagingDocsToOrders,
+  orderTradeLinks,
 } from '../../utils/orderImportPipeline';
 
 const ordem = (over = {}) => ({
@@ -175,5 +176,44 @@ describe('stagingDocsToOrders', () => {
 
   it('tolera lista vazia', () => {
     expect(stagingDocsToOrders([])).toEqual([]);
+  });
+});
+
+describe('orderTradeLinks (v1.83.16)', () => {
+  const op = (id) => ({
+    operationId: id,
+    entryOrders: [ordem({ externalOrderId: `${id}-E` })],
+    exitOrders: [ordem({ externalOrderId: `${id}-X` })],
+    stopOrders: [ordem({ externalOrderId: `${id}-STOP`, filledAt: null })],
+    cancelledOrders: [ordem({ externalOrderId: `${id}-C`, filledAt: null })],
+  });
+
+  it('inclui a ordem que NUNCA executou — sem isso o stop cancelado seria apagado', () => {
+    const queue = [{ operation: op('OP-1'), userDecision: 'confirmed' }];
+    const criados = [{ operationId: 'OP-1', id: 'TRADE-NOVO' }];
+
+    const links = orderTradeLinks(queue, criados);
+
+    expect(links['eid:OP-1-STOP']).toBe('TRADE-NOVO');
+    expect(links['eid:OP-1-C']).toBe('TRADE-NOVO');
+    expect(links['eid:OP-1-E']).toBe('TRADE-NOVO');
+  });
+
+  it('usa o trade decidido pelo aluno quando a operação casou com trade existente', () => {
+    const queue = [{ operation: op('OP-2'), userDecision: 'adjusted', tradeId: 'TRADE-EXISTENTE' }];
+
+    expect(orderTradeLinks(queue, [])['eid:OP-2-STOP']).toBe('TRADE-EXISTENTE');
+  });
+
+  it('operação descartada não entra — suas ordens nem foram gravadas', () => {
+    const queue = [{ operation: op('OP-3'), userDecision: 'discarded', tradeId: 'T' }];
+
+    expect(orderTradeLinks(queue, [])).toEqual({});
+  });
+
+  it('operação cujo trade falhou na criação fica sem vínculo — e morre na purga', () => {
+    const queue = [{ operation: op('OP-4'), userDecision: 'confirmed' }];
+
+    expect(orderTradeLinks(queue, [])).toEqual({});
   });
 });

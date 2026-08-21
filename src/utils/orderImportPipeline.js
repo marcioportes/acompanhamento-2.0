@@ -145,6 +145,37 @@ export async function persistImportDecisions({
   return { ingestResult, batchResult, enrichResult, toCreate, toEnrich, discarded };
 }
 
+/**
+ * Vínculo ordem→trade para o fechamento do lote no servidor (v1.83.16).
+ *
+ * Mapa `orderKey → tradeId` cobrindo TODAS as ordens das operações que viraram ou casaram
+ * com trade — inclusive as que nunca executaram. É o que salva o stop cancelado: a
+ * correlação server-side (`linkOrdersToCreatedTrade`) casa por fingerprint com `filledAt`,
+ * que ordem cancelada não tem, e a regra "sem trade a ordem morre" a apagaria junto com a
+ * evidência de stop tampering e hesitação.
+ *
+ * @param {Object[]} queue — conversationalQueue pós-decisão
+ * @param {Array<{operationId: string|null, id: string}>} createdTrades — retorno de createTradesBatch
+ * @returns {Object<string,string>}
+ */
+export function orderTradeLinks(queue, createdTrades = []) {
+  const porOperacao = new Map();
+  for (const t of createdTrades || []) {
+    if (t?.operationId && t.id) porOperacao.set(t.operationId, t.id);
+  }
+
+  const links = {};
+  for (const item of queue || []) {
+    if (!item?.operation || !DECIDIDAS.has(item.userDecision)) continue;
+    const tradeId = item.tradeId || porOperacao.get(item.operation.operationId);
+    if (!tradeId) continue;
+    for (const order of operationOrders(item.operation)) {
+      links[makeOrderKey(order)] = tradeId;
+    }
+  }
+  return links;
+}
+
 /** Campos de controle do staging — não fazem parte da ordem em si. */
 const CAMPOS_DE_CONTROLE = [
   'id', 'importBatchId', 'planId', 'sourceFormat', 'fileName', 'importTimezone',

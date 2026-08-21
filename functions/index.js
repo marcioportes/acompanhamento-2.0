@@ -1756,6 +1756,46 @@ exports.healthCheck = functions.https.onRequest((req, res) => {
 });
 
 // ============================================
+// ORDER IMPORT — fechamento do lote (v1.83.16)
+// ============================================
+
+/**
+ * Fecha um lote de importação: apaga as ordens do lote que não ficaram atreladas a
+ * nenhum trade vivo.
+ *
+ * Regra de produto: **ordem só existe atrelada a trade vivo**. No import, o que casa com
+ * trade existente ou cria trade fica; o resto morre. O cliente não consegue fazer isso —
+ * `firestore.rules` tem `allow delete: if false` em /orders — e foi assim que 519 ordens
+ * de importações abandonadas ficaram presas em produção.
+ *
+ * Chamada pelo wizard no fim do import, depois de criar os trades. A correlação acontece
+ * em `onTradeCreated` (assíncrona), então o cliente espera antes de chamar; o que sobrar
+ * órfão aqui é resíduo real.
+ */
+exports.finalizeOrderImport = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Autenticação necessária');
+  }
+  const batchId = data?.batchId;
+  if (!batchId || typeof batchId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'batchId obrigatório');
+  }
+
+  try {
+    const { purgeOrphanOrders } = require('./orders/purgeOrphanOrders');
+    // `links` vem do cliente: { orderKey: tradeId } das operações decididas. Sem ele a
+    // ordem que nunca executou (stop cancelado) não tem como ser atrelada e morreria.
+    const links = data?.links && typeof data.links === 'object' ? data.links : null;
+    const result = await purgeOrphanOrders(db, { batchId, links });
+    console.log(`[finalizeOrderImport] ${batchId}: ${result.linked} ligadas, ${result.deleted} órfãs apagadas, ${result.kept} preservadas`);
+    return { success: true, ...result };
+  } catch (err) {
+    console.error('[finalizeOrderImport] Erro:', err);
+    throw new functions.https.HttpsError('internal', err.message);
+  }
+});
+
+// ============================================
 // CLEANUP
 // ============================================
 
@@ -1790,6 +1830,32 @@ exports.cleanupOldNotifications = functions.pubsub
       console.log(`[cleanupOldNotifications] Deletados: ${totalDeleted}`);
     } catch (e) { console.error('[cleanupOldNotifications] Erro:', e); }
     
+    return null;
+  });
+
+/**
+ * Varredura diária: nenhuma ordem sobrevive sem trade vivo atrelado (v1.83.16).
+ *
+ * A rede de segurança da invariante. O caminho normal já cobre os dois sentidos — o
+ * import purga o próprio lote no fim (`finalizeOrderImport`) e apagar um trade apaga
+ * suas ordens (`cascadeDeleteTradeRefs`, #363) — mas import interrompido no meio,
+ * falha de rede na chamada final e resíduo histórico não passam por nenhum dos dois.
+ *
+ * Respeita a carência de 15 minutos: a correlação de uma ordem recém-ingerida acontece
+ * em `onTradeCreated`, que é assíncrona, e sem a carência a varredura apagaria ordens
+ * de um import em curso.
+ */
+exports.purgeOrphanOrdersDaily = functions.runWith({ timeoutSeconds: 540 }).pubsub
+  .schedule('30 4 * * *')
+  .timeZone('America/Sao_Paulo')
+  .onRun(async () => {
+    try {
+      const { purgeOrphanOrders } = require('./orders/purgeOrphanOrders');
+      const r = await purgeOrphanOrders(db);
+      console.log(`[purgeOrphanOrdersDaily] ${r.deleted} órfãs apagadas, ${r.kept} preservadas`);
+    } catch (e) {
+      console.error('[purgeOrphanOrdersDaily] Erro:', e);
+    }
     return null;
   });
 
