@@ -137,8 +137,30 @@ function aggregateSource(daySources) {
  */
 async function resolveGetSelicFn(opts) {
   if (typeof opts.getSelicForDateFn === 'function') return opts.getSelicForDateFn;
-  const mod = await import('../marketData/getSelicForDate.js');
-  return mod.getSelicForDate;
+  try {
+    const mod = await import('../marketData/getSelicForDate.js');
+    return mod.getSelicForDate;
+  } catch (err) {
+    // #385 — o import dinâmico vira um CHUNK PRÓPRIO no bundle
+    // (`dist/assets/getSelicForDate-<hash>.js`), e o hash muda a cada build que toca o
+    // módulo. Aba aberta antes de um deploy pede o chunk pelo nome antigo, recebe 404 e
+    // o `import()` REJEITA — derrubando o Sharpe inteiro.
+    //
+    // `getSelicForDate` já tem fallback interno para falha de rede/permissão, mas ele
+    // vive DENTRO do módulo: se o módulo não carrega, o fallback nunca é alcançado. Aqui
+    // ele é replicado no único ponto em que isso importa. Selic indisponível significa
+    // Sharpe sem desconto de taxa livre de risco — aproximação honesta e sinalizada por
+    // `fallbackUsed`, não uma métrica a menos na tela do aluno.
+    console.warn('[computeCycleSharpe] chunk do Selic indisponível, usando fallback:', err?.message ?? err);
+    const SELIC_FALLBACK_DAILY = 14.75 / 252 / 100;
+    return async () => ({
+      rateDaily: SELIC_FALLBACK_DAILY,
+      source: 'FALLBACK',
+      dateUsed: null,
+      isCarryForward: false,
+      isFallback: true,
+    });
+  }
 }
 
 /**
