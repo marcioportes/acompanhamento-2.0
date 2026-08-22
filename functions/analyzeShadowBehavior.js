@@ -51,10 +51,18 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
     return { analyzed: 0, total: 0, ordersFound: 0, message: 'Nenhum trade encontrado no período.' };
   }
 
+  // #389 — DUAS listas, com papéis distintos:
+  //   `sortedAll`   → o que ALIMENTA o cálculo. Sempre o histórico completo do aluno,
+  //                   igual ao que o trigger automático usa. É o que torna o resultado
+  //                   independente de quem disparou.
+  //   `sortedPeriod`→ o que este comando REGRAVA. O recorte pedido pelo mentor.
+  // Antes as duas eram a mesma coisa: calcular com um dia dava padrões diferentes de
+  // calcular com o histórico, e a última escrita vencia.
+  const sortedAll = sortChronologically(allStudentTrades);
   const sorted = sortChronologically(trades);
 
   // Enrich trades with planRoPct (for UNDERSIZED_TRADE detector)
-  const planIds = [...new Set(sorted.map(t => t.planId).filter(Boolean))];
+  const planIds = [...new Set(sortedAll.map(t => t.planId).filter(Boolean))];
   const plansById = {};
   await Promise.all(planIds.map(async (pid) => {
     const planDoc = await db.collection('plans').doc(pid).get();
@@ -62,7 +70,7 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
       plansById[pid] = planDoc.data();
     }
   }));
-  for (const trade of sorted) {
+  for (const trade of sortedAll) {
     if (trade.planId && plansById[trade.planId]) {
       const plan = plansById[trade.planId];
       trade.planRoPct = plan.riskPerOperation ?? null;
@@ -88,7 +96,7 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
   const ordersByTradeId = {};
   for (const order of allOrders) {
     const tradeId = order.correlatedTradeId;
-    if (tradeId && tradeIdsInPeriod.has(tradeId)) {
+    if (tradeId) {
       if (!ordersByTradeId[tradeId]) ordersByTradeId[tradeId] = [];
       ordersByTradeId[tradeId].push(order);
     }
@@ -99,7 +107,9 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
   let analyzed = 0;
 
   for (const trade of sorted) {
-    const adjacent = sorted.filter(t =>
+    // Adjacência sai do histórico completo, não do recorte: dois trades do mesmo dia
+    // continuam vizinhos mesmo quando o mentor pede a análise de um dia só.
+    const adjacent = sortedAll.filter(t =>
       t.id !== trade.id && t.studentId === trade.studentId && t.date === trade.date
     );
     const orders = ordersByTradeId[trade.id] || null;
@@ -122,7 +132,9 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
   let behaviorWritten = 0;
   try {
     const r = await recomputeBehaviorProfiles(db, { firestore: { FieldValue } }, {
-      trades: sorted, plans: plansArr, orders: allOrders, emotions, computedBy: 'backfill',
+      // Calcula com o histórico inteiro; regrava só o período pedido (#389).
+      trades: sortedAll, plans: plansArr, orders: allOrders, emotions, computedBy: 'backfill',
+      writeScope: tradeIdsInPeriod,
     });
     behaviorWritten = r.written;
   } catch (e) {

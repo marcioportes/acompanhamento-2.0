@@ -128,3 +128,55 @@ describe('recomputeBehaviorForStudent — variante com fetch (on-plan-change)', 
     }
   });
 });
+
+/**
+ * #389 — separar "com que dados calcular" de "o que regravar".
+ *
+ * A janela era um input escondido: o botão do mentor recalculava com um dia e o gatilho
+ * automático com o histórico inteiro, produzindo perfis diferentes para o mesmo trade.
+ * Agora o cálculo usa sempre o conjunto recebido e `writeScope` decide o que é gravado.
+ */
+describe('#389 — writeScope', () => {
+  const historico = () => [
+    ...clusterTrades(),
+    { id: 'T3', studentId: 'S1', date: '2026-05-05', side: 'C', entryTime: '2026-05-05T10:00:00', exitTime: '2026-05-05T10:20:00', result: 400, qty: 2, ticker: 'WIN', planId: 'P1' },
+  ];
+
+  it('calcula com tudo e grava só o recorte pedido', async () => {
+    const { db, writes } = makeMockDb();
+    const res = await recomputeBehaviorProfiles(db, admin, {
+      trades: historico(), plans, writeScope: new Set(['T3']),
+    });
+    expect(writes.map((w) => w.id)).toEqual(['T3']);
+    expect(res.written).toBe(1);
+    // `scanned` continua refletindo o universo calculado, não o gravado.
+    expect(res.scanned).toBe(3);
+  });
+
+  it('aceita array além de Set', async () => {
+    const { db, writes } = makeMockDb();
+    await recomputeBehaviorProfiles(db, admin, {
+      trades: historico(), plans, writeScope: ['T1'],
+    });
+    expect(writes.map((w) => w.id)).toEqual(['T1']);
+  });
+
+  it('sem writeScope, comportamento antigo preservado — grava todos', async () => {
+    const { db, writes } = makeMockDb();
+    await recomputeBehaviorProfiles(db, admin, { trades: historico(), plans });
+    expect(writes.map((w) => w.id).sort()).toEqual(['T1', 'T2', 'T3']);
+  });
+
+  it('o perfil gravado com writeScope é IDÊNTICO ao gravado sem ele', async () => {
+    // O contrato do issue: o recorte muda o que é escrito, nunca o conteúdo.
+    const a = makeMockDb();
+    await recomputeBehaviorProfiles(a.db, admin, { trades: historico(), plans, writeScope: ['T3'] });
+    const b = makeMockDb();
+    await recomputeBehaviorProfiles(b.db, admin, { trades: historico(), plans });
+
+    const perfilA = a.writes.find((w) => w.id === 'T3').data.behaviorProfile;
+    const perfilB = b.writes.find((w) => w.id === 'T3').data.behaviorProfile;
+    expect(perfilA.fingerprint).toBe(perfilB.fingerprint);
+  });
+});
+
