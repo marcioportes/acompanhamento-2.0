@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.25: #389 fix janela única de cálculo + feedback não recalcula comportamento (RESERVADA)
  * - 1.83.24: #387 fix card de ciclo pulava de altura — síncronas renderizam antes da assíncrona (RESERVADA)
  * - 1.83.23: #385 fix card Consistência Operacional resiliente a falha de chunk (PR #386, 22/08/2026)
  * - 1.83.22: #383 fix uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo (PR #384, 21/08/2026)
@@ -410,9 +411,9 @@
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
 const VERSION = {
-  version: '1.83.24',
+  version: '1.83.25',
   build: '20260822',
-  display: 'v1.83.24',
+  display: 'v1.83.25',
   full: '1.83.23+20260822'
 };
 export default VERSION;
