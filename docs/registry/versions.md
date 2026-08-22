@@ -90,3 +90,4 @@
 | 1.83.21 | #381 | `fix/issue-381-rr-derivado` | 21/08/2026 | consumida (PR #382 squash `7d61c4b8`) |
 | 1.83.22 | #383 | `fix/issue-383-rr-ssot` | 21/08/2026 | consumida (PR #384 squash `f4cb25f9`) |
 | 1.83.23 | #385 | `fix/issue-385-cycle-card-resiliente` | 22/08/2026 | consumida (PR #386 squash `6e77b4b2`) |
+| 1.83.24 | #387 | `fix/issue-387-card-sem-pulo` | 22/08/2026 | reservada |
