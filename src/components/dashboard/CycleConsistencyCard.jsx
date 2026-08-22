@@ -96,7 +96,10 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
         </div>
       </div>
 
-      {error ? (
+      {error && !cvNormalized && !avgExcursion ? (
+        // #385 — só some o card inteiro quando NADA foi calculado. Antes, uma falha no
+        // Sharpe (que depende de carregar o módulo do Selic) apagava CV, MEP e MEN junto,
+        // métricas que já estavam prontas na memória.
         <p className="text-sm text-amber-400/80">Não foi possível carregar métricas do ciclo</p>
       ) : loading ? (
         <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="cycle-consistency-skeleton">
@@ -145,6 +148,15 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
               isInsufficient={!!menView.valueClassName}
             />
           </div>
+
+          {/* #385 — quando só o Sharpe falhou, o card segue de pé e diz o que fazer. A
+              causa quase sempre é aba aberta antes de um deploy pedindo um chunk que já
+              não existe; recarregar resolve. */}
+          {error && (
+            <p className="mt-2 text-[11px] text-amber-400/70">
+              Sharpe indisponivel nesta sessao — recarregue a pagina (Ctrl+Shift+R).
+            </p>
+          )}
 
           {durationDelta && (() => {
             const t = deltaTTheme(durationDelta.level);

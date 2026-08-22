@@ -103,8 +103,14 @@ export function useCycleConsistency({ trades, plan, cycleStart, cycleEnd, opts =
       })
       .catch((err) => {
         if (cancelled) return;
+        // #385 — falha do Sharpe NÃO apaga o que já foi calculado. CV e MEP/MEN são puros,
+        // síncronos e não dependem de Selic: zerar tudo tirava três métricas boas da tela
+        // por causa de uma. `error` deixa de ser tudo-ou-nada e passa a significar "esta
+        // métrica não veio", com o card renderizando o resto.
         setState({
-          ...NULL_METRICS,
+          sharpe: null,
+          cvNormalized,
+          avgExcursion,
           loading: false,
           error: err instanceof Error ? err : new Error(String(err)),
         });

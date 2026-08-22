@@ -6,7 +6,7 @@
  *  C2 — happy path: trades + plan + cycle válidos com Selic mockada
  *  C3 — plan sem rrTarget → cvNormalized.insufficientReason='no_target_rr'
  *  C4 — plan sem pl inicial → sharpe.insufficientReason='no_pl_start'
- *  C5 — getSelicForDateFn rejeita → error capturado, loading=false
+ *  C5 — getSelicForDateFn rejeita → error capturado, loading=false, síncronas preservadas (#385)
  *  C6 — re-render com trades atualizados → recomputa
  *  C7 — unmount durante async → não setState pós-unmount (sem warning)
  */
@@ -234,8 +234,12 @@ describe('useCycleConsistency', () => {
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error.message).toBe('selic boom');
     expect(result.current.sharpe).toBeNull();
-    expect(result.current.cvNormalized).toBeNull();
-    expect(result.current.avgExcursion).toBeNull();
+    // #385 — CV e MEP/MEN são puros, síncronos e não dependem de Selic: SOBREVIVEM à
+    // falha do Sharpe. Antes eram zerados junto, e o card apagava três métricas boas
+    // por causa de uma. `error` passou a significar "esta métrica não veio", não
+    // "não há nada a mostrar".
+    expect(result.current.cvNormalized).not.toBeNull();
+    expect(result.current.avgExcursion).not.toBeNull();
   });
 
   // C6 ------------------------------------------------------------------------
