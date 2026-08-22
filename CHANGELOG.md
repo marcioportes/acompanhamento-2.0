@@ -10,10 +10,16 @@ Version source of truth: `src/version.js`.
 
 ## [1.83.25] - 22/08/2026 · #389 · PR #390
 
-**fix:** mesma origem, mesmo resultado — janela única de cálculo e feedback que não 
+**fix:** mesma origem, mesmo resultado — janela única de cálculo e feedback que não recalcula
 
-- _(decisões/testes/files — ajustar antes do commit)_
-
+- **Caso:** trade WINV26 de 21/08 (+R$ 520) revisado limpo às 14:11:11 e regravado com "Hesitação" às 14:11:21, pelo próprio ato de enviar o feedback. O aluno abriu na versão nova.
+- **Não era divergência de motor:** todas as telas, mentor e aluno, leem o mesmo campo `trade.behaviorProfile`. O motor cliente de 15 detectores é código morto. Era o mesmo documento em estados diferentes no tempo.
+- **Janela única.** `recomputeBehaviorProfiles` ganhou `writeScope`: calcula sempre com o conjunto completo, grava só o recorte pedido. Antes o botão do mentor calculava com um dia e o gatilho com o histórico (DEC-AUTO-389-01).
+- **Ato de conversa não recalcula.** Enviar feedback, comentar, anexar reflexão ou marcar como discutido deixam de disparar recompute; muda dado de origem ou pedido explícito, sim. A regra saiu de dentro de `onTradeUpdated` e virou `functions/shared/tradeChangeScope.js`, com teste (DEC-AUTO-389-02).
+- **Campo composto compara por valor**, nunca por identidade — foi assim que o guard anti-loop caiu no #383 (DEC-AUTO-389-03).
+- **Recompute:** 2 perfis corrigidos, incluindo a "Hesitação fóssil" do trade de referência.
+- 23 testes novos. Suíte verde no fuso local **e** em `TZ=UTC` (257 arquivos cada).
+- Arquivos: `functions/shared/tradeChangeScope.js` (novo), `functions/behavior/recomputeBehaviorProfiles.js`, `functions/analyzeShadowBehavior.js`, `functions/index.js`.
 
 ## [1.83.23] - 22/08/2026 · #385 · PR #386
 
