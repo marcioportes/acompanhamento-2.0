@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.23] - 22/08/2026 · #385 · PR #386
+
+**fix:** card Consistência Operacional resiliente a falha de chunk
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.22] - 21/08/2026 · #383 · PR #384
 
 **fix:** uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo

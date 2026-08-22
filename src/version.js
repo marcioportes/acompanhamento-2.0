@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.23: #385 fix card Consistência Operacional morria inteiro quando o chunk do Selic não carregava (RESERVADA)
+ * - 1.83.23: #385 fix card Consistência Operacional resiliente a falha de chunk (PR #386, 22/08/2026)
  * - 1.83.22: #383 fix uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo (PR #384, 21/08/2026)
  * - 1.83.21: #381 fix R:R derivado da geometria de preço — fim do "saída antecipada" em trade que  (PR #382, 21/08/2026)
  * - 1.83.20: #375 fix proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e (PR #379, 21/08/2026)
@@ -410,7 +410,7 @@
  */
 const VERSION = {
   version: '1.83.23',
-  build: '20260821',
+  build: '20260822',
   display: 'v1.83.23',
   full: '1.83.23+20260822'
 };
