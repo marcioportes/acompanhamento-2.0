@@ -12,8 +12,12 @@ Version source of truth: `src/version.js`.
 
 **fix:** uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo
 
-- _(decisões/testes/files — ajustar antes do commit)_
-
+- **O número da tela, rastreado.** `useTrades.js:365` dividia por `tickerRule.pointValue`, campo **null** no WIN (a especificação vem como tickSize 5 / tickValue 1), com fallback `|| 1`: `520 / (125 × 1 × 10) = 0,42`, onde o real é 2,08.
+- **Escrita parcial.** O mesmo bloco gravava `{ rrRatio, rrAssumed }` num write separado, por cima do que a CF calculara — daí `rrRatio: 0.42` convivendo com `rrStatus: 'CONFORME'`. Bloco removido: o write único já dispara `onTradeUpdated`, que grava o par junto.
+- **`tickerRule` entrou em `complianceFields`** — a especificação carimbada pelo import depois da criação não disparava recálculo.
+- **SSoT.** `realizedRR` (geometria de preço) em `compliance.js` e `functions/shared/realizedRR.js`, consumida por compliance, detectores e espelhos (DEC-AUTO-383-01). Sem `exit`, converte por tick apenas com a especificação completa — nunca assume 1.
+- **Backfill:** 10 trades corrigidos (`scripts/issue-383-backfill-rr.mjs`). Auditoria pós-fix: 0 divergentes em 161.
+- Teste de invariante trava a quarta implementação. Suíte verde — 251 arquivos.
 
 ## [1.83.21] - 21/08/2026 · #381 · PR #382
 
