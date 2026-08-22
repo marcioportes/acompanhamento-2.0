@@ -1437,14 +1437,22 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
     // a flag ficava estale (bug pré-existente descoberto durante o #188).
     // #383 — `tickerRule` entrou: o import de ordens carimba a especificação do contrato
-    // DEPOIS da criação, e sem ela no gatilho o compliance ficava com o valor antigo,
-    // calculado sem tick data.
-    const complianceFields = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry', 'tickerRule'];
-    const complianceChanged = complianceFields.some(f => {
-      const bv = before[f] ?? null;
-      const av = after[f] ?? null;
-      return bv !== av;
-    });
+    // DEPOIS da criação, e sem ela no gatilho o compliance ficava com o valor antigo.
+    //
+    // #388 — mas `tickerRule` é um MAPA, e `!==` entre dois mapas desserializados é
+    // sempre verdadeiro: referências distintas. Com ele na lista comparada por
+    // identidade, `complianceChanged` virava sempre true, a CF regravava compliance a
+    // cada escrita, a própria escrita disparava a CF de novo — loop infinito. Medido em
+    // produção: 1000+ invocações em poucas horas, três na mesma fração de segundo, com
+    // o cliente recebendo um snapshot por volta (tela oscilando, rolagem voltando).
+    //
+    // Campo escalar compara por identidade; campo composto compara por VALOR.
+    const SCALAR_COMPLIANCE_FIELDS = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry'];
+    const OBJECT_COMPLIANCE_FIELDS = ['tickerRule'];
+    const fingerprint = (v) => (v === undefined ? null : JSON.stringify(v) ?? null);
+    const complianceChanged =
+      SCALAR_COMPLIANCE_FIELDS.some(f => (before[f] ?? null) !== (after[f] ?? null)) ||
+      OBJECT_COMPLIANCE_FIELDS.some(f => fingerprint(before[f]) !== fingerprint(after[f]));
 
     // Issue #221 — detectar mudança em `mentorClearedViolations` (toggle do mentor).
     // Quando muda, dispara recompute do aluno (paralelo a mudança de plano).
