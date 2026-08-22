@@ -154,53 +154,11 @@ const getTradeDurationMinutes = (trade) => {
 };
 
 
-/**
- * R:R REALIZADO — derivado na hora, a partir da geometria de preço do próprio trade.
- *
- * #381. Os detectores liam `trade.rrRatio`, um escalar gravado no documento pela CF de
- * compliance. Caso real (WINV26 LONG 10, 21/08/2026, entrada 174.030, stop 173.905,
- * saída 174.290): o campo trazia `0.42` — o valor que a fórmula de compliance produz
- * quando o `tickerRule` NÃO está presente e a conversão para pontos perde o fator de
- * tickSize (52 pontos em vez de 260). O R:R real é 2,08.
- *
- * O mesmo documento tinha `compliance.rrStatus: 'CONFORME'` contra um alvo de 2 — prova
- * de que o objeto e o escalar foram escritos em momentos diferentes e o escalar
- * envelheceu. O resultado na tela: o card acusava "saída antecipada com 21% do alvo" ao
- * lado de "alvo atingido (2:1)", no mesmo trade, e a saída antecipada ainda virava a
- * emoção dominante do confronto.
- *
- * A base é PREÇO, não dinheiro: é a mesma de `detectTargetHit`, que compara o preço de
- * saída com `entrada ± risco × alvo`. Com os dois derivando da mesma geometria, a
- * contradição deixa de ser possível por construção — e o número não depende de
- * `tickerRule`, `result` nem de qualquer campo que possa ficar velho.
- *
- * Mesmo princípio do #373 (DEC-AUTO-373-02): derivar em display-time em vez de confiar
- * em escalar gravado.
- *
- * @param {Object} trade — { entry, exit, stopLoss, side }
- * @returns {number|null} R:R realizado, ou null quando falta dado para afirmar.
- */
-export const realizedRR = (trade) => {
-  // Ausência não é zero: `Number(null)` é 0 e passa por finito. Sem essa guarda, trade
-  // SEM stop viraria "risco = a entrada inteira" e um R:R de 0,00 — que o detector leria
-  // como saída antecipada gravíssima. Mesma armadilha que o #373 pegou em `rrBreakdown`.
-  const num = (v) => {
-    if (v === null || v === undefined || v === '') return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  const entry = num(trade?.entry);
-  const exit = num(trade?.exit);
-  const stop = num(trade?.stopLoss);
-  if (entry == null || exit == null || stop == null) return null;
+// #383 — a derivação virou SSoT em `compliance.js`. Aqui só se consome: três cópias da
+// mesma conta foi exatamente o defeito que o #383 fechou.
+import { realizedRR } from './compliance';
 
-  const riskPts = Math.abs(entry - stop);
-  if (!(riskPts > 0)) return null;   // stop na entrada não é R:R infinito, é ausência de razão
-
-  const dir = trade?.side === 'SHORT' ? -1 : 1;
-  const gainPts = (exit - entry) * dir;
-  return Math.round((gainPts / riskPts) * 100) / 100;
-};
+export { realizedRR };
 
 /**
  * Alvo de R:R do plano. `buildBehaviorProfile` anexa `planRrTarget`; `planRR` nunca

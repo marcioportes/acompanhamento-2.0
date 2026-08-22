@@ -32,7 +32,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeResult, calculateResultPercent } from '../utils/calculations';
-import { calculateFromPartials, calculateAssumedRR } from '../utils/tradeCalculations';
+import { calculateFromPartials } from '../utils/tradeCalculations';
 import { createTrade } from '../utils/tradeGateway';
 import { classifyStudent, inReviewScope } from '../utils/studentClassify';
 
@@ -349,52 +349,16 @@ export const useTrades = (overrideStudentId = null) => {
       // Write único do trade pai
       await updateDoc(tradeRef, updateData);
 
-      // C-RR3 (DEC-007): Recalcular RR
-      const resultChanged = Math.abs((updateData.result ?? currentTrade.result) - (currentTrade.result || 0)) > 0.01;
-      const stopChanged = updates.stopLoss !== undefined;
-      const priceChanged = updates.entry !== undefined || updates.exit !== undefined || updates.qty !== undefined || _partials?.length > 0;
-      
-      if (resultChanged || stopChanged || priceChanged) {
-        const effectiveStop = updateData.stopLoss !== undefined ? updateData.stopLoss : currentTrade.stopLoss;
-        const effectiveEntry = parseFloat(updateData.entry ?? currentTrade.entry);
-        const effectiveResult = updateData.result ?? currentTrade.result;
-        const effectiveQty = parseFloat(updateData.qty ?? currentTrade.qty);
-        
-        let newRrRatio = null;
-        let newRrAssumed = false;
-        
-        if (effectiveStop != null && effectiveStop !== 0 && effectiveEntry) {
-          const risk = Math.abs(effectiveEntry - effectiveStop);
-          if (risk > 0) {
-            const pointValue = (updates.tickerRule || currentTrade.tickerRule)?.pointValue || 1;
-            newRrRatio = Math.round((effectiveResult / (risk * pointValue * effectiveQty)) * 100) / 100;
-          }
-        } else {
-          try {
-            const planId = currentTrade.planId;
-            if (planId) {
-              const planSnap = await getDoc(doc(db, 'plans', planId));
-              if (planSnap.exists()) {
-                const planData = planSnap.data();
-                const assumed = calculateAssumedRR({
-                  result: effectiveResult,
-                  planPl: Number(planData.pl) || 0,
-                  planRiskPerOperation: Number(planData.riskPerOperation) || 0,
-                  planRrTarget: Number(planData.rrTarget) || 0,
-                });
-                if (assumed) {
-                  newRrRatio = assumed.rrRatio;
-                  newRrAssumed = true;
-                }
-              }
-            }
-          } catch (rrErr) {
-            console.warn('[useTrades] updateTrade: erro recalculando RR assumido:', rrErr);
-          }
-        }
-        
-        await updateDoc(tradeRef, { rrRatio: newRrRatio, rrAssumed: newRrAssumed });
-      }
+      // #383 — o recálculo de R:R saiu daqui. Este bloco mantinha uma TERCEIRA cópia da
+      // fórmula (dividia por `tickerRule.pointValue`, que é null no WIN, com fallback 1 —
+      // origem do `rrRatio: 0.42` num trade cujo R:R real era 2,08) e, pior, gravava
+      // `{ rrRatio, rrAssumed }` num write SEPARADO, por cima do que a Cloud Function
+      // acabara de calcular. O par `rrRatio`/`compliance` ficava permanentemente
+      // dessincronizado — 9 trades em produção com o escalar divergindo do próprio status.
+      //
+      // O write único acima já dispara `onTradeUpdated`, que recalcula compliance e R:R
+      // JUNTOS sempre que stopLoss/entry/exit/qty/side mudam — exatamente os gatilhos que
+      // este bloco observava. Um escritor só, um par sempre coerente.
 
       // Sanitizar newResult para uso no movement
       const effectiveUpdateResult = Math.round(newResult * 100) / 100;

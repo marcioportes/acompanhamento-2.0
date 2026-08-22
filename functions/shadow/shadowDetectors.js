@@ -75,28 +75,8 @@ const getTradeDurationMinutes = (trade) => {
 
 const getResult = (trade) => Number(trade.result) || 0;
 
-/**
- * #381 — R:R realizado derivado da geometria de preço. Espelho de
- * `shadowBehaviorAnalysis.realizedRR`; ver doc completo na fonte ESM.
- * Não usar `trade.rrRatio`: é escalar gravado e envelhece (caso de 21/08/2026, em que
- * trazia 0,42 num trade cujo R:R real era 2,08, calculado sem `tickerRule`).
- */
-const realizedRR = (trade) => {
-  // Ausência não é zero: Number(null) é 0 e passaria por finito (armadilha do #373).
-  const num = (v) => {
-    if (v === null || v === undefined || v === '') return null;
-    const n = Number(v);
-    return isFinite(n) ? n : null;
-  };
-  const entry = num(trade && trade.entry);
-  const exit = num(trade && trade.exit);
-  const stop = num(trade && trade.stopLoss);
-  if (entry == null || exit == null || stop == null) return null;
-  const riskPts = Math.abs(entry - stop);
-  if (!(riskPts > 0)) return null;
-  const dir = (trade && trade.side) === 'SHORT' ? -1 : 1;
-  return Math.round((((exit - entry) * dir) / riskPts) * 100) / 100;
-};
+// #383 — a conta virou SSoT compartilhada; três cópias foi o defeito que o #383 fechou.
+const { realizedRR } = require('../shared/realizedRR');
 
 /** #381 — `planRR` nunca existiu no modelo; o campo anexado é `planRrTarget` (AP-07). */
 const planRrTargetOf = (trade) => Number((trade && (trade.planRrTarget != null ? trade.planRrTarget : trade.planRR)) || 2) || 2;
