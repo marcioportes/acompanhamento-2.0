@@ -30,7 +30,6 @@
  */
 
 import { detectExecutionEvents } from '../executionBehaviorEngine';
-import { analyzeShadowBatch } from '../shadowBehaviorAnalysis';
 import {
   calculatePeriodScore,
   detectTiltV2,
@@ -56,17 +55,6 @@ const enrichEvent = (event) => ({
   legacyCode: event.type,
   canonicalCode: resolveCanonical(event.type),
 });
-
-/** Agrupa ordens planas por trade (correlatedTradeId) — entrada do shadow batch. */
-const groupOrdersByTrade = (orders) => {
-  const map = {};
-  for (const o of orders) {
-    const tid = o?.correlatedTradeId;
-    if (!tid) continue;
-    (map[tid] ??= []).push(o);
-  }
-  return map;
-};
 
 /**
  * Coleta detecções canônicas (events + shadow) numa lista achatada para o dedupe.
@@ -179,7 +167,9 @@ export const dedupeByFamily = (detections) => {
 export const detectBehavior = ({
   trades = [],
   orders = [],
-  ordersByTradeId,
+  // #392 — mantido no contrato por compatibilidade com o espelho CJS e com os callers;
+  // o ramo que o consumia (shadow ESM) saiu.
+  ordersByTradeId: _ordersByTradeId,
   getEmotionConfig,
   complianceEvents = [],
   config = {},
@@ -188,20 +178,17 @@ export const detectBehavior = ({
   const rawEvents = detectExecutionEvents({ trades, orders, config });
   const events = rawEvents.map(enrichEvent);
 
-  // --- byTrade (A2) — wrap shadow, enriquecido com canonicalCode + family ---
-  const ordersMap = ordersByTradeId ?? groupOrdersByTrade(orders);
-  const rawByTrade = analyzeShadowBatch(trades, ordersMap);
+  // --- byTrade (A2) ---
+  // #392 — este ramo saiu. Ele montava os padrões shadow a partir do motor cliente de 15
+  // detectores, e o espelho CJS — que é o que realmente roda no servidor — já devolvia
+  // `byTrade` SEMPRE vazio por decisão explícita (DEC-AUTO-301-01). Como nenhuma tela
+  // chama o caminho ESM, o ramo produzia dados que ninguém consumia e mantinha viva a
+  // ilusão de que existem dois motores concorrendo. Alinhar os dois lados aqui FORTALECE
+  // a paridade: agora o ESM e o CJS devolvem a mesma estrutura.
+  //
+  // Os padrões shadow que o servidor usa vêm de `functions/shadow/shadowDetectors.js`,
+  // chamado direto por `buildBehaviorProfile.js:193`.
   const byTrade = new Map();
-  for (const [tradeId, shadow] of rawByTrade) {
-    byTrade.set(tradeId, {
-      ...shadow,
-      patterns: shadow.patterns.map((p) => ({
-        ...p,
-        canonicalCode: resolveCanonical(p.code),
-        family: getPattern(p.code)?.family ?? null,
-      })),
-    });
-  }
 
   // --- aggregates (A2) ---
   // scoreInputs: só com getEmotionConfig (não inventa config emocional).

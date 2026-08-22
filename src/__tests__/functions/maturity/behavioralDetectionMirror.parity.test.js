@@ -76,10 +76,15 @@ describe('behavioralDetection — paridade ESM≡CJS (superfície compartilhada)
     expect(c.gateInputs).toEqual(e.gateInputs);
   });
 
-  it('byTrade é ESM-only: populado em ESM, vazio em CJS (intencional)', () => {
+  // #392 — o contrato mudou, e para melhor. `byTrade` era populado só no ESM, a partir
+  // do motor cliente de 15 detectores que nenhuma tela chamava; o CJS já o devolvia vazio
+  // por decisão (DEC-AUTO-301-01). Manter a divergência "intencional" foi o que permitiu
+  // o fix de fuso do #388 chegar num lado e não no outro. Agora os dois concordam, e os
+  // padrões shadow que o servidor usa vêm de `functions/shadow/shadowDetectors.js`.
+  it('byTrade agora é vazio nos DOIS lados — a divergência intencional acabou', () => {
     const e = esm.detectBehavior({ trades: TRADES, orders: ORDERS }).byTrade;
     const c = cjs.detectBehavior({ trades: TRADES, orders: ORDERS }).byTrade;
-    expect(e.size).toBeGreaterThan(0);
+    expect(e.size).toBe(0);
     expect(c.size).toBe(0);
   });
 

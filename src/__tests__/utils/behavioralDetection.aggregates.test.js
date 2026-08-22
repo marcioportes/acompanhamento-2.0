@@ -42,22 +42,15 @@ const ORDERS = [
 ];
 
 describe('detectBehavior — A2 byTrade', () => {
-  it('byTrade é Map e cada pattern é enriquecido com canonicalCode + family', () => {
+  // #392 — `byTrade` deixou de ser populado. Ele vinha do motor cliente de 15 detectores,
+  // que nenhuma tela chamava, enquanto o espelho CJS (o que roda no servidor) já o
+  // devolvia vazio por decisão. Manter os dois lados diferentes foi o que deixou o fix de
+  // fuso do #388 chegar num e não no outro. Os padrões shadow que valem vêm de
+  // `functions/shadow/shadowDetectors.js`, e o contrato que sobra aqui é a ESTRUTURA.
+  it('byTrade é um Map vazio — mesma estrutura do espelho CJS', () => {
     const { byTrade } = detectBehavior({ trades: TRADES, orders: ORDERS });
     expect(byTrade).toBeInstanceOf(Map);
-    let inspected = 0;
-    for (const [, shadow] of byTrade) {
-      for (const p of shadow.patterns) {
-        expect(p).toHaveProperty('canonicalCode');
-        expect(p).toHaveProperty('family');
-        if (p.canonicalCode) {
-          // family registrada bate com a taxonomia do código canônico.
-          expect(p.family).toBe(getPattern(p.canonicalCode).family);
-          inspected += 1;
-        }
-      }
-    }
-    expect(inspected).toBeGreaterThan(0); // fixtures disparam ao menos 1 pattern
+    expect(byTrade.size).toBe(0);
   });
 
   it('shadow original preservado (resolution/version) além dos campos extras', () => {
