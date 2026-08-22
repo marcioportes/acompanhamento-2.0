@@ -21,6 +21,49 @@
 /**
  * Tipos de Red Flag
  */
+
+/**
+ * R:R REALIZADO — SSoT do sistema (#383).
+ *
+ * Base é GEOMETRIA DE PREÇO: `(saída − entrada) × direção ÷ |entrada − stop|`. Não usa
+ * `result`, `tickerRule` nem `pointValue` — some a classe inteira de erro que vinha de
+ * converter dinheiro em pontos com a especificação do contrato ausente ou incompleta.
+ *
+ * O QUE ESTA FUNÇÃO SUBSTITUI (todas calculavam a mesma grandeza, de jeitos diferentes):
+ *   1. `calculateTradeCompliance` — convertia `result` em pontos via tickSize/tickValue;
+ *      sem `tickerRule`, R$ 520 viravam 52 pontos em vez de 260 (R:R 0,42 em vez de 2,08).
+ *   2. `useTrades.updateTrade` — dividia por `tickerRule.pointValue`, campo que é **null**
+ *      no WIN, com fallback `|| 1`: produzia o mesmo 0,42 e ainda gravava `rrRatio`
+ *      SOZINHO, deixando o par `rrRatio`/`compliance` permanentemente dessincronizado.
+ *   3. `shadowBehaviorAnalysis.realizedRR` (#381) — já era esta fórmula, mas em cópia.
+ *
+ * Efeito medido em produção antes do fix: 9 de 161 trades com stop tinham `rrRatio`
+ * gravado divergente do real, incluindo losses que bateram o stop (−1R) gravados como
+ * −0,2 e marcados `CONFORME`.
+ *
+ * @param {Object} trade — { entry, exit, stopLoss, side }
+ * @returns {number|null} R:R realizado, ou null quando falta dado para afirmar.
+ */
+export const realizedRR = (trade) => {
+  // Ausência não é zero: `Number(null)` é 0 e passa por finito — sem esta guarda um
+  // trade sem stop viraria "risco = a entrada inteira" (armadilha do #373).
+  const n = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+  const entry = n(trade?.entry);
+  const exit = n(trade?.exit);
+  const stop = n(trade?.stopLoss);
+  if (entry == null || exit == null || stop == null) return null;
+
+  const risk = Math.abs(entry - stop);
+  if (!(risk > 0)) return null;   // stop na entrada não é R:R infinito, é ausência de razão
+
+  const dir = trade?.side === 'SHORT' ? -1 : 1;
+  return Math.round((((exit - entry) * dir) / risk) * 100) / 100;
+};
+
 export const RED_FLAG_TYPES = {
   NO_PLAN: 'TRADE_SEM_PLANO',
   NO_STOP: 'TRADE_SEM_STOP',
@@ -104,11 +147,21 @@ export const calculateTradeCompliance = (trade, plan) => {
         const reward = Math.abs(trade.takeProfit - trade.entry);
         result.rrRatio = reward / risk;
       } else if (trade.result > 0) {
-        // Via resultado efetivo (realizado) — converter result R$ para pontos
-        const tickSize = trade.tickerRule?.tickSize || 1;
-        const tickValue = trade.tickerRule?.tickValue || 1;
-        const resultInPoints = (trade.result / (tickValue * (trade.qty ?? 1))) * tickSize;
-        result.rrRatio = resultInPoints / risk;
+        // #383 — realizado sai da geometria de preço (SSoT `realizedRR`), não mais da
+        // conversão de R$ para pontos: aquela dependia de `tickerRule` e, sem ele,
+        // devolvia R:R 0,42 onde o real era 2,08.
+        const derived = realizedRR(trade);
+        if (derived != null) {
+          result.rrRatio = derived;
+        } else if (trade.tickerRule?.tickSize && trade.tickerRule?.tickValue) {
+          // Sem preço de saída não há geometria (não ocorre em produção: todo trade com
+          // stop tem `exit`). Só então cai na conversão por tick — e apenas com a
+          // especificação COMPLETA do contrato. Sem ela, não afirma: era exatamente o
+          // `|| 1` silencioso que fabricava o número errado.
+          const resultInPoints = (trade.result / (trade.tickerRule.tickValue * (trade.qty ?? 1)))
+            * trade.tickerRule.tickSize;
+          result.rrRatio = resultInPoints / risk;
+        }
       }
     }
   } else {

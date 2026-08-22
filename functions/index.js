@@ -445,6 +445,9 @@ const notifyPropFirmFlag = async (accountId, trade, state) => {
  * 
  * @returns {{ riskPercent: number|null, rrRatio: number|null, rrAssumed: boolean, compliance: { roStatus, rrStatus } }}
  */
+// #383 — SSoT do R:R realizado, compartilhada com os detectores comportamentais.
+const { realizedRR } = require('./shared/realizedRR');
+
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
   
@@ -484,10 +487,17 @@ const calculateTradeCompliance = (trade, plan) => {
         const reward = Math.abs(trade.takeProfit - trade.entry);
         result.rrRatio = reward / risk;
       } else if (trade.result > 0) {
-        const tickSize = trade.tickerRule?.tickSize || 1;
-        const tickValue = trade.tickerRule?.tickValue || 1;
-        const resultInPoints = (trade.result / (tickValue * (trade.qty ?? 1))) * tickSize;
-        result.rrRatio = resultInPoints / risk;
+        // #383 — realizado sai da geometria de preço (SSoT), não da conversão R$→pontos.
+        const derived = realizedRR(trade);
+        if (derived != null) {
+          result.rrRatio = derived;
+        } else if (trade.tickerRule && trade.tickerRule.tickSize && trade.tickerRule.tickValue) {
+          // Sem `exit` não há geometria; só então converte por tick, e apenas com a
+          // especificação COMPLETA. Sem ela não afirma (o `|| 1` era o defeito).
+          const resultInPoints = (trade.result / (trade.tickerRule.tickValue * (trade.qty ?? 1)))
+            * trade.tickerRule.tickSize;
+          result.rrRatio = resultInPoints / risk;
+        }
       }
     }
   } else {
@@ -1426,7 +1436,10 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     // `emotionEntry` adicionado em v1.45.0 (#188 Fase E): mentor pode editar emoção
     // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
     // a flag ficava estale (bug pré-existente descoberto durante o #188).
-    const complianceFields = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry'];
+    // #383 — `tickerRule` entrou: o import de ordens carimba a especificação do contrato
+    // DEPOIS da criação, e sem ela no gatilho o compliance ficava com o valor antigo,
+    // calculado sem tick data.
+    const complianceFields = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry', 'tickerRule'];
     const complianceChanged = complianceFields.some(f => {
       const bv = before[f] ?? null;
       const av = after[f] ?? null;
