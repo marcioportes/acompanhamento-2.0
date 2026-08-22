@@ -12,8 +12,12 @@ Version source of truth: `src/version.js`.
 
 **fix:** card Consistência Operacional resiliente a falha de chunk
 
-- _(decisões/testes/files — ajustar antes do commit)_
-
+- **Sintoma:** "Não foi possível carregar métricas do ciclo" — as quatro métricas sumiam.
+- **Causa:** `computeCycleSharpe` carrega o módulo do Selic por `import()` dinâmico, que no bundle vira chunk próprio (`getSelicForDate-<hash>.js`). Aba aberta antes de um deploy pede o nome antigo, recebe 404, o import rejeita. O cálculo estava correto e a base de Selic completa até 21/08.
+- **Fallback alcançável:** o `try/catch` do `getSelicForDate` vive dentro do módulo; sem o módulo, nunca roda. O import dinâmico passou a ser guardado, degradando para a taxa de fallback (DEC-AUTO-385-01).
+- **Métricas independentes:** CV, MEP e MEN são síncronas e não dependem de Selic — deixaram de ser apagadas quando o Sharpe falha.
+- O card orienta a recarregar em vez de só sumir.
+- 5 testes novos; o C5 do hook foi atualizado (codificava o contrato antigo de zerar tudo). Suíte verde — 253 arquivos.
 
 ## [1.83.22] - 21/08/2026 · #383 · PR #384
 
