@@ -24,10 +24,20 @@ const BATCH_LIMIT = 450; // Firestore: 500 ops/batch; margem de segurança.
  * @param {Object[]} [params.orders]
  * @param {Object[]} [params.emotions]
  * @param {'auto'|'backfill'|'mentor'} [params.computedBy='auto']
+ * @param {Set<string>|string[]} [params.writeScope] — quando presente, LIMITA a gravação a
+ *   estes trades. O CÁLCULO continua usando `trades` inteiro.
+ *
+ *   #389 — separar "com que dados calcular" de "o que regravar" é o que torna o perfil
+ *   determinístico. Antes, quem chamava com um recorte de período calculava COM esse
+ *   recorte: os padrões que dependem da janela (cluster de vingança, overtrading, cluster
+ *   impulsivo, assimetria de tempo) mudavam conforme o gatilho. O botão do mentor passava
+ *   um dia; o trigger passava o histórico inteiro. Mesmo trade, duas respostas, e a última
+ *   escrita vencia — foi assim que um trade revisado limpo chegou ao aluno com Hesitação.
+ *
  * @returns {Promise<{written:number, scanned:number}>}
  */
 async function recomputeBehaviorProfiles(db, admin, {
-  trades = [], plans = [], orders = [], emotions = [], computedBy = 'auto',
+  trades = [], plans = [], orders = [], emotions = [], computedBy = 'auto', writeScope = null,
 } = {}) {
   if (!Array.isArray(trades) || trades.length === 0) return { written: 0, scanned: 0 };
 
@@ -36,8 +46,12 @@ async function recomputeBehaviorProfiles(db, admin, {
 
   // Só grava onde o fingerprint mudou vs. o que já está no doc.
   const existingByTrade = new Map(trades.map((t) => [t.id, t && t.behaviorProfile]));
+  const escopo = writeScope == null
+    ? null
+    : (writeScope instanceof Set ? writeScope : new Set(writeScope));
   const toWrite = [];
   for (const [tradeId, profile] of profiles) {
+    if (escopo && !escopo.has(tradeId)) continue;   // #389 — calcula com tudo, grava o recorte
     const existing = existingByTrade.get(tradeId);
     if (existing && existing.fingerprint === profile.fingerprint) continue;
     toWrite.push([tradeId, profile]);

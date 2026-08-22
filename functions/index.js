@@ -447,6 +447,7 @@ const notifyPropFirmFlag = async (accountId, trade, state) => {
  */
 // #383 — SSoT do R:R realizado, compartilhada com os detectores comportamentais.
 const { realizedRR } = require('./shared/realizedRR');
+const { tradeChangeScope } = require('./shared/tradeChangeScope');
 
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
@@ -1429,43 +1430,14 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
 
     const oldResult = before.result || 0;
     const newResult = after.result || 0;
-    const planChanged = before.planId !== after.planId;
-    const resultChanged = Math.abs(newResult - oldResult) > 0.01;
 
-    // Detectar mudanças em qualquer campo que afeta compliance.
-    // `emotionEntry` adicionado em v1.45.0 (#188 Fase E): mentor pode editar emoção
-    // pós-criação e a flag BLOCKED_EMOTION precisa ser recomputada — antes disso
-    // a flag ficava estale (bug pré-existente descoberto durante o #188).
-    // #383 — `tickerRule` entrou: o import de ordens carimba a especificação do contrato
-    // DEPOIS da criação, e sem ela no gatilho o compliance ficava com o valor antigo.
-    //
-    // #388 — mas `tickerRule` é um MAPA, e `!==` entre dois mapas desserializados é
-    // sempre verdadeiro: referências distintas. Com ele na lista comparada por
-    // identidade, `complianceChanged` virava sempre true, a CF regravava compliance a
-    // cada escrita, a própria escrita disparava a CF de novo — loop infinito. Medido em
-    // produção: 1000+ invocações em poucas horas, três na mesma fração de segundo, com
-    // o cliente recebendo um snapshot por volta (tela oscilando, rolagem voltando).
-    //
-    // Campo escalar compara por identidade; campo composto compara por VALOR.
-    const SCALAR_COMPLIANCE_FIELDS = ['stopLoss', 'entry', 'exit', 'qty', 'side', 'emotionEntry'];
-    const OBJECT_COMPLIANCE_FIELDS = ['tickerRule'];
-    const fingerprint = (v) => (v === undefined ? null : JSON.stringify(v) ?? null);
-    const complianceChanged =
-      SCALAR_COMPLIANCE_FIELDS.some(f => (before[f] ?? null) !== (after[f] ?? null)) ||
-      OBJECT_COMPLIANCE_FIELDS.some(f => fingerprint(before[f]) !== fingerprint(after[f]));
-
-    // Issue #221 — detectar mudança em `mentorClearedViolations` (toggle do mentor).
-    // Quando muda, dispara recompute do aluno (paralelo a mudança de plano).
-    const fpClearedBefore = JSON.stringify((Array.isArray(before.mentorClearedViolations)
-      ? before.mentorClearedViolations : []).slice().sort());
-    const fpClearedAfter = JSON.stringify((Array.isArray(after.mentorClearedViolations)
-      ? after.mentorClearedViolations : []).slice().sort());
-    const clearedChanged = fpClearedBefore !== fpClearedAfter;
-
-    // Issue #285 — detectar mudança em entryTime/exitTime (re-enrich MEP/MEN com a
-    // nova janela) ou mepPrice zerado pela ação "Recalcular MEP/MEN" da UI.
-    const timeChanged = before.entryTime !== after.entryTime || before.exitTime !== after.exitTime;
-    const mepCleared = before.mepPrice != null && after.mepPrice == null;
+    // #389 — a regra de "o que mudou de verdade" saiu daqui e virou módulo próprio,
+    // com teste. Era uma cadeia solta no meio de uma função de 250 linhas, e foi
+    // exatamente onde o #383 a quebrou (mapa comparado por identidade → guard sempre
+    // aberto → loop). Regra de negócio de Marcio: recalcula quando o DADO muda ou
+    // quando o mentor pede; enviar feedback não recalcula comportamento.
+    const escopo = tradeChangeScope(before, after);
+    const { resultChanged, planChanged, complianceChanged, clearedChanged, timeChanged, mepCleared } = escopo;
 
     // Guard: se apenas riskPercent/rrRatio/compliance/redFlags mudaram, é loop da própria CF
     if (!resultChanged && !planChanged && !complianceChanged && !clearedChanged && !timeChanged && !mepCleared) {
