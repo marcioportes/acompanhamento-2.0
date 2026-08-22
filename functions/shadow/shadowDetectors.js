@@ -77,6 +77,7 @@ const getResult = (trade) => Number(trade.result) || 0;
 
 // #383 — a conta virou SSoT compartilhada; três cópias foi o defeito que o #383 fechou.
 const { realizedRR } = require('../shared/realizedRR');
+const { orderInstantMs } = require('../shared/orderInstant');
 
 /** #381 — `planRR` nunca existiu no modelo; o campo anexado é `planRrTarget` (AP-07). */
 const planRrTargetOf = (trade) => Number((trade && (trade.planRrTarget != null ? trade.planRrTarget : trade.planRR)) || 2) || 2;
@@ -288,7 +289,16 @@ const detectUndersizedTrade = (trade) => {
 const detectHesitation = (trade, orders) => {
   if (!orders || !orders.length || !trade.entryTime) return null;
   const entryTime = new Date(trade.entryTime);
-  const cancels = orders.filter(o => o.status === 'CANCELLED' && new Date(o.cancelledAt || o.submittedAt) < entryTime);
+  // #388 — TERCEIRA cópia da comparação hora-de-ordem × hora-de-trade que o #375
+  // corrigiu em `executionBehaviorEngine` e `executionBehaviorMirror`, e que passou
+  // batida aqui. `orders` guarda instante INGÊNUO e `trades` guarda com offset: em UTC,
+  // que é onde a Cloud Function roda, o cancelamento de um bracket às 11:27 vira
+  // 11:27Z e a entrada das 11:25-03:00 vira 14:25Z — as pernas de proteção canceladas
+  // NO ALVO passavam a contar como "ordens canceladas antes de entrar" e o trade
+  // ganhava HESITATION. Caso real: WINV26 de 21/08, +R$ 520, marcado com hesitação
+  // depois de o feedback já ter sido enviado ao aluno.
+  const cancels = orders.filter(o => o.status === 'CANCELLED'
+    && orderInstantMs(trade, o.cancelledAt || o.submittedAt) < entryTime.getTime());
   if (cancels.length < DEFAULT_CONFIG.hesitation.minCancels) return null;
   return {
     code: 'HESITATION',
