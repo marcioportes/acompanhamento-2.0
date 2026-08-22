@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.22: #383 fix rrRatio gravado diverge do real — SSoT de R:R por geometria de preço (RESERVADA)
+ * - 1.83.22: #383 fix uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo (PR #384, 21/08/2026)
  * - 1.83.21: #381 fix R:R derivado da geometria de preço — fim do "saída antecipada" em trade que  (PR #382, 21/08/2026)
  * - 1.83.20: #375 fix proteção lida como "sem stop" — fuso da ordem, exposição medida no tempo e (PR #379, 21/08/2026)
  * - 1.83.19: #373 feat R:R em dinheiro — risco tomado e RO do plano lado a lado (PR #374, 21/08/2026)

@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.22] - 21/08/2026 · #383 · PR #384
+
+**fix:** uma SSoT de R:R — três fórmulas, uma escrita parcial e um campo nulo
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.21] - 21/08/2026 · #381 · PR #382
 
 **fix:** R:R derivado da geometria de preço — fim do "saída antecipada" em trade que atingiu o alvo
