@@ -6,3 +6,5 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
+| CHUNK-04 | #383 | `fix/issue-383-rr-ssot` | 21/08/2026 | useTrades grava rrRatio parcial |
+| CHUNK-05 | #383 | `fix/issue-383-rr-ssot` | 21/08/2026 | SSoT de R:R por geometria de preço |
