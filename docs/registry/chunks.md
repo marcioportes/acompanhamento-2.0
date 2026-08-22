@@ -7,5 +7,3 @@
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
 | CHUNK-02 | #387 | `fix/issue-387-card-sem-pulo` | 22/08/2026 | card de ciclo sem layout shift |
-| CHUNK-08 | #389 | `fix/issue-389-janela-unica` | 22/08/2026 | feedback não recalcula comportamento |
-| CHUNK-11 | #389 | `fix/issue-389-janela-unica` | 22/08/2026 | janela única de cálculo |

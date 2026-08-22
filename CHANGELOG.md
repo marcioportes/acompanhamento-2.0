@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.25] - 22/08/2026 · #389 · PR #390
+
+**fix:** mesma origem, mesmo resultado — janela única de cálculo e feedback que não 
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.23] - 22/08/2026 · #385 · PR #386
 
 **fix:** card Consistência Operacional resiliente a falha de chunk
