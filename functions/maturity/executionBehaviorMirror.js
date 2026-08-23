@@ -301,8 +301,34 @@ function detectRiskOverRo(trade, orders) {
   }];
 }
 
+/**
+ * #376 — padrão POSITIVO não é concedido a trade que quebrou o plano.
+ * Espelho de src/utils/executionBehaviorEngine.js; ver a nota longa lá.
+ *
+ * O detector lê o risco pelas ordens de stop VIVAS e o compliance pelo stop DECLARADO
+ * na entrada. No trade WINV26 de +R$ 610 isso produzia "risco excede o máximo do plano"
+ * e "o risco continuou dentro do RO" no mesmo card. A violação mora no risco TOMADO
+ * (#373).
+ */
+const REVOKED_RED_FLAG_TYPES = require('./violationFilter').REVOKED_RED_FLAG_TYPES;
+
+function quebrouPlano(trade) {
+  if (!trade) return false;
+  const limpas = (trade.mentorClearedViolations || []).map(function (x) {
+    return typeof x === 'string' ? x : (x && x.type);
+  });
+  const vigentes = (trade.redFlags || [])
+    .map(function (f) { return typeof f === 'string' ? f : (f && f.type); })
+    .filter(function (tipo) {
+      return tipo && REVOKED_RED_FLAG_TYPES.indexOf(tipo) === -1 && limpas.indexOf(tipo) === -1;
+    });
+  if (vigentes.length > 0) return true;
+  return !!(trade.compliance && trade.compliance.roStatus === 'FORA_DO_PLANO');
+}
+
 /** SIZING_DISCIPLINE — positivo (#357). Aumentou posição e manteve o risco no RO. */
 function detectSizingDiscipline(trade, orders) {
+  if (quebrouPlano(trade)) return [];
   const ro = roAmountOf(trade);
   if (ro == null) return [];
   const partials = (trade && trade._partials) || [];

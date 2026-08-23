@@ -21,6 +21,8 @@ const SHADOW_VERSION = '1.0';
 const RESOLUTION = { HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW' };
 const SEVERITY = { NONE: 'NONE', LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH' };
 
+const { REVOKED_RED_FLAG_TYPES } = require('../maturity/violationFilter');
+
 const EMOTION_MAPPING = {
   HOLD_ASYMMETRY: 'FEAR',
   REVENGE_CLUSTER: 'REVENGE',
@@ -188,8 +190,51 @@ const detectImpulseCluster = (trade, adjacent) => {
   };
 };
 
+/**
+ * #376 — "execução limpa" é presença de sinal bom, não ausência de sinal ruim.
+ *
+ * Marcio, 23/08: o trade WINV26 de +R$ 610 estourou o risco autorizado (R$ 495 tomados
+ * contra R$ 252 do plano) e mesmo assim recebia *"Stop no lugar, RR respeitado e nenhum
+ * padrão negativo. É exatamente assim que o plano espera que você opere."* O detector
+ * olhava só os padrões COMPORTAMENTAIS e ignorava as violações de plano.
+ *
+ * E, no mesmo dia: *"mesmo com setup indefinido, o sistema ajusta como execução alinhada
+ * se o Financeiro não tenha sido violado"*. Acertar sem saber por quê não é execução
+ * limpa — é sorte com stop. Setup vazio ou "Indefinido" passa a emitir UNDECLARED_MODEL
+ * (dimensão Operacional, sem emoção: é processo) e impede o elogio.
+ */
+const SETUP_VAGO = ['', 'indefinido', 'sem setup', 'n/a', 'na', '-'];
+
+const setupNaoDeclarado = (trade) => {
+  const s = String(trade?.setup ?? '').trim().toLowerCase();
+  return SETUP_VAGO.includes(s);
+};
+
+const violouPlano = (trade) => {
+  const limpas = (trade?.mentorClearedViolations || []).map((x) => (typeof x === 'string' ? x : x?.type));
+  const vigentes = (trade?.redFlags || [])
+    .map((f) => (typeof f === 'string' ? f : f?.type))
+    .filter((t) => t && REVOKED_RED_FLAG_TYPES.indexOf(t) === -1 && limpas.indexOf(t) === -1);
+  if (vigentes.length > 0) return true;
+  return trade?.compliance?.roStatus === 'FORA_DO_PLANO';
+};
+
+const detectUndeclaredModel = (trade) => {
+  if (!setupNaoDeclarado(trade)) return null;
+  return {
+    code: 'UNDECLARED_MODEL',
+    severity: 'MEDIUM',
+    confidence: 0.95,   // o campo é declarativo: ou está preenchido, ou não está
+    emotionMapping: null,
+    layer: 1,
+    evidence: { setup: trade?.setup ?? null }
+  };
+};
+
 const detectCleanExecution = (trade, otherPatterns) => {
   if (otherPatterns.some(p => p && p.code !== 'CLEAN_EXECUTION' && p.code !== 'TARGET_HIT')) return null;
+  if (violouPlano(trade)) return null;
+  if (setupNaoDeclarado(trade)) return null;
   if (!trade.stopLoss || trade.stopLoss <= 0 || getResult(trade) <= 0) return null;
   const rr = realizedRR(trade);
   const rrRespected = rr != null && rr >= 1.0;
@@ -618,6 +663,11 @@ const analyzeShadowForTradeCF = (trade, adjacent, orders) => {
     const le = detectLateExit(trade, orders);
     if (le) patterns.push(le);
   }
+
+  // #376 — modelo não declarado entra ANTES do elogio: é ele que impede a "execução
+  // limpa", e o aluno precisa ver o motivo no card, não só a ausência do selo.
+  const um = detectUndeclaredModel(trade);
+  if (um) patterns.push(um);
 
   const clean = detectCleanExecution(trade, patterns);
   if (clean) patterns.push(clean);

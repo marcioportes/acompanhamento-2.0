@@ -1,3 +1,4 @@
+import { REVOKED_RED_FLAG_TYPES } from './violationFilter';
 /**
  * executionBehaviorEngine.js
  * @version 1.0.0 (v1.49.0 — issue #208 Fase 2)
@@ -594,7 +595,31 @@ const detectRiskOverRo = (trade, orders) => {
  * financeiro final continuou dentro do RO. É o oposto do RISK_OVER_RO e existe para
  * reconhecer explicitamente boa condução, não apenas deixar de punir.
  */
+/**
+ * #376 — padrão POSITIVO não é concedido a trade que quebrou o plano.
+ *
+ * Marcio, 23/08, olhando o trade WINV26 de +R$ 610: o card listava "Risco 1,7% excede
+ * o máximo do plano (0,84%)" e, logo abaixo, "Condução de sizing — o risco continuou
+ * dentro do RO". Os dois no mesmo card.
+ *
+ * Os dois números estavam certos e mediam INSTANTES diferentes: o detector lê o risco
+ * pelas ordens de stop VIVAS (o aluno subiu o stop conduzindo a posição, então o risco
+ * final coube no RO), e o compliance lê pelo stop DECLARADO na entrada — R$ 495 contra
+ * R$ 252 autorizados. É a regra que o próprio Marcio cravou no #373: a violação mora no
+ * risco TOMADO. Elogiar a condução aqui é dizer ao aluno que dobrar a mão foi disciplina.
+ */
+const quebrouPlano = (trade) => {
+  if (!trade) return false;
+  const limpas = new Set((trade.mentorClearedViolations || []).map((x) => (typeof x === 'string' ? x : x?.type)));
+  const vigentes = (trade.redFlags || [])
+    .map((f) => (typeof f === 'string' ? f : f?.type))
+    .filter((tipo) => tipo && !REVOKED_RED_FLAG_TYPES.includes(tipo) && !limpas.has(tipo));
+  if (vigentes.length > 0) return true;
+  return trade.compliance?.roStatus === 'FORA_DO_PLANO';
+};
+
 const detectSizingDiscipline = (trade, orders) => {
+  if (quebrouPlano(trade)) return [];
   const ro = roAmountOf(trade);
   if (ro == null) return [];
 
