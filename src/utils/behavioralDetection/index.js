@@ -60,6 +60,18 @@ const enrichEvent = (event) => ({
  * Coleta detecções canônicas (events + shadow) numa lista achatada para o dedupe.
  * @returns {Array<{tradeId, canonicalCode, family, source, resolutionLayer}>}
  */
+/**
+ * #394 — espelho ESM de `functions/shared/gateEligibility`. Exposição que o aluno FECHOU
+ * (UNPROTECTED_SIZE MEDIUM) aparece no card mas não trava progressão de estágio; o que
+ * trava é nunca ter protegido ou ficar descoberto até a saída. Mantido em paridade pelo
+ * teste do espelho.
+ */
+const SEVERIDADE_DECIDE = Object.freeze({ UNPROTECTED_SIZE: 'HIGH' });
+const travaProgressao = (canonicalCode, severity) => {
+  const exigida = SEVERIDADE_DECIDE[canonicalCode];
+  return !exigida || severity === exigida;
+};
+
 const collectDetections = (events, byTrade) => {
   const out = [];
   for (const e of events) {
@@ -68,6 +80,9 @@ const collectDetections = (events, byTrade) => {
     out.push({
       tradeId: e.tradeId ?? null, canonicalCode: e.canonicalCode,
       family: p.family, source: 'events', resolutionLayer: p.resolutionLayer,
+      // #394 — severidade viaja até o dedupe: sem ela o gate não distinguia exposição
+      // fechada pelo aluno de posição que ficou descoberta até o fim.
+      severity: e.severity ?? p.severityDefault ?? null,
     });
   }
   for (const [tradeId, shadow] of byTrade) {
@@ -77,6 +92,7 @@ const collectDetections = (events, byTrade) => {
       out.push({
         tradeId, canonicalCode: pat.canonicalCode,
         family: p.family, source: 'shadow', resolutionLayer: p.resolutionLayer,
+        severity: pat.severity ?? p.severityDefault ?? null,
       });
     }
   }
@@ -147,7 +163,10 @@ export const dedupeByFamily = (detections) => {
   // p.ex. shadow detecta IMPULSE_CLUSTER (gate=false) cuja família OVERTRADING é gate.
   // Como o dedupe colapsa por família, o gate cruza por família. GATE_CODES são todas
   // cabeças de família (code===family), então a interseção por família é exata.
-  const detectedFamilies = new Set([...best.values()].map((d) => d.family));
+  // #394 — exposição que o aluno fechou não trava estágio (ver functions/shared/gateEligibility).
+  const detectedFamilies = new Set([...best.values()]
+    .filter((d) => travaProgressao(d.canonicalCode, d.severity))
+    .map((d) => d.family));
   const gateInputs = GATE_CODES.filter((c) => detectedFamilies.has(c));
   return { byFamily, gateInputs };
 };

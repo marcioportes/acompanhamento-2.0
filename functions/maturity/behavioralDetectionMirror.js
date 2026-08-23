@@ -23,6 +23,7 @@ const {
   detectRevengeV2,
 } = require('./emotionalAnalysisMirror');
 const { resolveCanonical, getPattern, GATE_CODES } = require('./behavioralTaxonomyMirror');
+const { travaProgressao } = require('../shared/gateEligibility');
 
 const BEHAVIORAL_DETECTION_VERSION = '1.0.0';
 
@@ -42,6 +43,9 @@ const collectDetections = (events) => {
     out.push({
       tradeId: e.tradeId ?? null, canonicalCode: e.canonicalCode,
       family: p.family, source: 'events', resolutionLayer: p.resolutionLayer,
+      // #394 — severidade viaja até o dedupe: sem ela o gate não distinguia exposição
+      // fechada pelo aluno de posição que ficou descoberta até o fim.
+      severity: e.severity ?? p.severityDefault ?? null,
     });
   }
   return out;
@@ -89,7 +93,12 @@ const dedupeByFamily = (detections) => {
     });
   }
   // gate-ness é propriedade da FAMÍLIA (cabeça), não do código canônico (ver ESM).
-  const detectedFamilies = new Set([...best.values()].map((d) => d.family));
+  // #394 — mas a detecção precisa ser elegível: exposição que o aluno FECHOU aparece no
+  // card e não trava estágio. Antes, um stop colocado 30s após a entrada bloqueava igual
+  // a nunca ter colocado stop.
+  const detectedFamilies = new Set([...best.values()]
+    .filter((d) => travaProgressao(d.canonicalCode, d.severity))
+    .map((d) => d.family));
   const gateInputs = GATE_CODES.filter((c) => detectedFamilies.has(c));
   return { byFamily, gateInputs };
 };
