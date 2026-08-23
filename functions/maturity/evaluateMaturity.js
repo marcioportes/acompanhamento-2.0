@@ -77,8 +77,14 @@ function evaluateMaturity({
     breakdown: { ...operational.breakdown, behavioralNet: behaviorWeights.netByDimension.O },
   };
 
-  const strategyConsWks = computeStrategyConsistencyWeeks(W, safePlans);
-  const strategyConsMonths = computeStrategyConsistencyMonths(W, safePlans);
+  // #376 — CONSTÂNCIA é fato HISTÓRICO, não da janela. Medida sobre `W` (a janela
+  // rolante: `max(últimos N trades, últimos N dias)`), ela ficava com teto ABAIXO do
+  // próprio gate: no stage 2 a janela cobre no máximo 45 dias = 6,4 semanas, e o gate
+  // pede 8. Quanto mais ativo o aluno, menos semanas cabiam — a régua punia atividade.
+  // Medido em produção: Rafael Perilo marcava 6 na janela e 11 no histórico; Elza, 7 e
+  // 10. Os dois passam o gate de 8 sem que o número do gate mude — o defeito era a conta.
+  const strategyConsWks = computeStrategyConsistencyWeeks(trades, safePlans);
+  const strategyConsMonths = computeStrategyConsistencyMonths(trades, safePlans);
   const stopUsageRate = computeStopUsageRate(W);
   const dailyReturns = computeDailyReturns(W, initialBalance);
   const monthlySharpe = computeSharpe(dailyReturns, { periodicity: 'monthly' });
