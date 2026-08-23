@@ -1242,13 +1242,11 @@ exports.onTradeCreated = functions.firestore
           }
           
           // Red flag: RR abaixo do mínimo
-          if (tradeCompliance.compliance.rrStatus === 'NAO_CONFORME') {
-            redFlags.push({ 
-              type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, 
-              message: `R:R ${tradeCompliance.rrRatio?.toFixed(1)} abaixo do mínimo ${plan.rrTarget}`, 
-              timestamp: new Date().toISOString() 
-            });
-          }
+          // #376 — R:R abaixo do alvo DEIXOU de ser violação de plano. Marcio, 23/08/2026:
+          // "sair abaixo do alvo não é violação de plano, é comportamento." Realizar
+          // parcial ou sair em 1,5R virava quebra de regra em CADA acerto e a conformidade
+          // do aluno nunca subia. Continua lido como comportamento (EARLY_EXIT) e o
+          // detalhamento em dinheiro segue no painel (#373).
           
           // Red flag: loss diário (calculado sobre capital base — DEC-009)
           if (plan.periodStop && trade.accountId) {
@@ -1485,9 +1483,6 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
           newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${compliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, timestamp: new Date().toISOString() });
         }
-        if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
-          newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: `RR ${compliance.rrRatio.toFixed(1)}x abaixo do mínimo (${plan.rrTarget}x)`, timestamp: new Date().toISOString() });
-        }
         // BLOCKED_EMOTION: recompila conforme a emoção CORRENTE vs blockedEmotions do plano.
         if (Array.isArray(plan.blockedEmotions) && plan.blockedEmotions.includes(after.emotionEntry)) {
           newFlags.push({
@@ -1544,7 +1539,12 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       try {
         const { recomputeForStudent } = require('./maturity/recomputeMaturity');
         await recomputeForStudent(db, after.studentId, { admin });
-        console.log(`[onTradeUpdated] Maturity recomputado por toggle de cleared (student=${after.studentId}, before=${fpClearedBefore}, after=${fpClearedAfter})`);
+        // #376 — `fpClearedBefore`/`fpClearedAfter` sumiram no #389, quando a regra virou
+        // `tradeChangeScope`, e este log ficou referenciando variável inexistente. Dentro
+        // do `try`, virava ReferenceError capturado e registrado como "erro de recompute"
+        // que nunca aconteceu — o recompute acima já tinha concluído. Log mentindo é pior
+        // que log ausente.
+        console.log(`[onTradeUpdated] Maturity recomputado por toggle de cleared (student=${after.studentId})`);
       } catch (recomputeErr) {
         console.error('[onTradeUpdated] Erro recompute maturity (cleared toggle):', recomputeErr);
       }
@@ -1957,9 +1957,6 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     }
     if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
       newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: 'Risco ' + compliance.riskPercent.toFixed(1) + '% excede maximo (' + plan.riskPerOperation + '%)', timestamp: new Date().toISOString() });
-    }
-    if (compliance.compliance.rrStatus === 'NAO_CONFORME' && compliance.rrRatio != null) {
-      newFlags.push({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, message: 'RR ' + compliance.rrRatio.toFixed(1) + 'x abaixo do minimo (' + plan.rrTarget + 'x)', timestamp: new Date().toISOString() });
     }
     
     updateData.redFlags = newFlags;
