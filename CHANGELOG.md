@@ -12,7 +12,13 @@ Version source of truth: `src/version.js`.
 
 **fix:** R:R abaixo do alvo não é violação + régua de maturidade relaxada
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- R:R abaixo do alvo deixa de emitir `RR_ABAIXO_MINIMO` — era 106 de 282 flags da base (38%). Revogação age no consumo (`REVOKED_RED_FLAG_TYPES` em `violationFilter`), não na persistência: 53 dos 106 trades estão em `DISCUSSED` e não se reescreve trade discutido.
+- Régua de maturidade relaxada em 39 gates nas 4 transições — nenhuma promoção desde a abertura da mentoria. Front e `functions/` com teste de paridade (id, métrica, operador, threshold e **label**): os 40 rótulos do backend estavam com os números pré-recalibração, e é o rótulo do backend que a tela renderiza.
+- Constância de estratégia passa a exigir vizinhança de calendário (tolerância 1 período): 4 semanas de janeiro + 4 de julho valiam 8 "consecutivas", sem teto desde o #396.
+- Dois gates impossíveis por construção: `computeRuleAdherenceRate` comparava com `'OK'`, valor inexistente no domínio (`CONFORME`/`NAO_CONFORME`/`FORA_DO_PLANO`); e `initialBalance` não existe em nenhum dos 27 planos — capital do produto é `pl` —, o que anulava `maxDDPercent` para a base inteira.
+- R:R sai de 3 superfícies onde ainda era violação: marcador no Extrato (que o mentor não conseguia limpar), evento `RR_FORA` no razão do plano e 1/3 da nota de aderência do snapshot mentor/IA.
+- Recompute aplicado: **2 alunos com todos os gates** (Rafael Perilo e Wilson Fu, `proposedTransition: UP` sem bloqueios) — as primeiras promoções da mentoria. Nenhum aluno regrediu. Segunda passada com zero mudanças (idempotente).
+- Testes: 3.870 no fuso local e em `TZ=UTC`, 246 em `functions/`. Deploy de CFs confirmado com `Successful update operation`.
 
 
 ## [1.83.27] - 23/08/2026 · #394 · PR #395
