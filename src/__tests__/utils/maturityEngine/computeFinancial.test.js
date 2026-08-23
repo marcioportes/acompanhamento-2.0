@@ -1,150 +1,132 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { computeFinancial } from '../../../utils/maturityEngine/computeFinancial';
-import { makeTradeSeries, resetFixtureCounter } from '../../../utils/maturityEngine/fixtures';
+/**
+ * #376 — dimensão Financeira mede CONDUTA de risco, não performance.
+ *
+ * Regra do Marcio (23/08/2026): *"eficiência, payoff, consistência e drawdown são
+ * indicadores de performance, não de maturidade. Se um aluno teve drawdown de 100%
+ * respeitando o limite de sua perda, usou o modelo, parou o ciclo e se manteve
+ * disciplinado — como pode ser penalizado?"*
+ *
+ * O teste anterior exercitava a fórmula antiga (eScore/pScore/cvScore/ddScore), que
+ * deixou de existir. Este exercita a nova, e o primeiro caso é literalmente o exemplo
+ * que originou a mudança.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  computeFinancial,
+  scoreRiscoPorOperacao,
+  scoreQuedaContraLimite,
+  scoreProtecao,
+} from '../../../utils/maturityEngine/computeFinancial';
 
-describe('computeFinancial', () => {
-  beforeEach(() => {
-    resetFixtureCounter();
-  });
+const trade = ({ ro = 'CONFORME', stop = true } = {}) => ({
+  compliance: { roStatus: ro },
+  stopLoss: stop ? 100 : null,
+  result: -10,
+});
+const nTrades = (n, opts) => Array.from({ length: n }, () => trade(opts));
 
-  it('janela vazia → score neutro 50, LOW, neutralFallback empty-window', () => {
-    const out = computeFinancial({ trades: [] });
-    expect(out.score).toBe(50);
-    expect(out.confidence).toBe('LOW');
-    expect(out.neutralFallback).toBe('financial:empty-window');
-    expect(out.breakdown).toEqual({ eScore: 50, pScore: 50, cvScore: 50, ddScore: 50 });
-  });
-
-  it('todas métricas ótimas → score próximo de 100, HIGH', () => {
-    const trades = makeTradeSeries({ count: 40 });
+describe('computeFinancial — conduta de risco (#376)', () => {
+  it('o caso do Marcio: queda de 100% DENTRO do limite que o aluno definiu → nota cheia', () => {
     const out = computeFinancial({
-      trades,
-      stats: { expectancy: 10 },
-      evLeakage: { evTheoretical: 10, evReal: 10 },
-      payoff: { ratio: 3.0 },
-      consistencyCV: { cv: 0.3 },
-      maxDrawdown: { maxDDPercent: 0 },
+      trades: nTrades(10),
+      plans: [{ cycleStop: 100 }],
+      maxDrawdown: { maxDDPercent: 100 },
     });
-    // eScore=100, pScore=100, cvScore=100, ddScore=100 → F = 100
-    expect(out.score).toBeCloseTo(100, 6);
-    expect(out.confidence).toBe('HIGH');
-    expect(out.neutralFallback).toBeNull();
-    expect(out.breakdown.eScore).toBe(100);
-    expect(out.breakdown.pScore).toBe(100);
-    expect(out.breakdown.cvScore).toBe(100);
+    expect(out.score).toBe(100);
     expect(out.breakdown.ddScore).toBe(100);
   });
 
-  it('todas métricas péssimas → score próximo de 0, HIGH', () => {
-    const trades = makeTradeSeries({ count: 40 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 10 },
-      evLeakage: { evTheoretical: 10, evReal: 0 },
-      payoff: { ratio: 0.8 },
-      consistencyCV: { cv: 2.0 },
-      maxDrawdown: { maxDDPercent: 25 },
-    });
-    // eScore=0, pScore=0, cvScore=0, ddScore=0 → F = 0
-    expect(out.score).toBeCloseTo(0, 6);
-    expect(out.confidence).toBe('HIGH');
-    expect(out.neutralFallback).toBeNull();
+  it('quanto da folga o aluno consumiu é performance — 1% e 99% do limite pontuam igual', () => {
+    const base = { trades: nTrades(10), plans: [{ cycleStop: 10 }] };
+    const pouco = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 0.1 } });
+    const quase = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 9.9 } });
+    expect(pouco.score).toBe(quase.score);
   });
 
-  it('evLeakage null, stats.expectancy=0.5 → eScore usa stats (ratio=1 → 100)', () => {
-    const trades = makeTradeSeries({ count: 40 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 0.5 },
-      evLeakage: null,
-      payoff: { ratio: 1.5 },
-      consistencyCV: { cv: 1.0 },
-      maxDrawdown: { maxDDPercent: 10 },
-    });
-    // expT=expR=0.5 → ratio=1 → eScore=100
-    // pScore = norm(1.5, 0.8, 3.0) = (1.5-0.8)/(3.0-0.8) * 100 ≈ 31.818
-    // cvScore = normInverted(1.0, 0.3, 2.0) = (1 - (1.0-0.3)/1.7) * 100 ≈ 58.824
-    // ddScore = normInverted(10, 0, 25) = (1 - 10/25) * 100 = 60
-    // F = 0.30·100 + 0.25·31.818 + 0.20·58.824 + 0.25·60 ≈ 30 + 7.955 + 11.765 + 15 = 64.72
-    expect(out.breakdown.eScore).toBeCloseTo(100, 6);
-    expect(out.breakdown.pScore).toBeCloseTo((1.5 - 0.8) / (3.0 - 0.8) * 100, 4);
-    expect(out.breakdown.cvScore).toBeCloseTo((1 - (1.0 - 0.3) / (2.0 - 0.3)) * 100, 4);
-    expect(out.breakdown.ddScore).toBeCloseTo(60, 6);
-    expect(out.neutralFallback).toBeNull();
+  it('estouro decai proporcionalmente e zera ao dobro do limite', () => {
+    const base = { trades: nTrades(10), plans: [{ cycleStop: 10 }] };
+    const noLimite = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 10 } });
+    const meio = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 15 } });
+    const dobro = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 20 } });
+    const muito = computeFinancial({ ...base, maxDrawdown: { maxDDPercent: 60 } });
+    expect(noLimite.breakdown.ddScore).toBe(100);
+    expect(meio.breakdown.ddScore).toBeCloseTo(50, 5);
+    expect(dobro.breakdown.ddScore).toBe(0);
+    expect(muito.breakdown.ddScore).toBe(0); // não vira negativo
   });
 
-  it('tudo ausente exceto trades → flags para eScore/pScore/ddScore, cv default sem flag', () => {
-    const trades = makeTradeSeries({ count: 40 });
-    const out = computeFinancial({ trades });
-    // eScore=50 (flag), pScore=50 (flag), cvScore=normInverted(2.0,0.3,2.0)=0 (no flag),
-    // ddScore=50 (flag)
-    // F = 0.30·50 + 0.25·50 + 0.20·0 + 0.25·50 = 15 + 12.5 + 0 + 12.5 = 40
-    expect(out.breakdown.eScore).toBe(50);
-    expect(out.breakdown.pScore).toBe(50);
-    expect(out.breakdown.cvScore).toBe(0);
-    expect(out.breakdown.ddScore).toBe(50);
-    expect(out.score).toBeCloseTo(40, 6);
-    expect(out.confidence).toBe('HIGH');
-    expect(out.neutralFallback).toBe('financial:eScore;financial:pScore;financial:ddScore');
+  it('o limite é o DO ALUNO, não uma régua fixa: mesma queda, planos diferentes', () => {
+    const queda = { maxDDPercent: 20 };
+    const conservador = computeFinancial({ trades: nTrades(10), plans: [{ cycleStop: 10 }], maxDrawdown: queda });
+    const arrojado = computeFinancial({ trades: nTrades(10), plans: [{ cycleStop: 30 }], maxDrawdown: queda });
+    expect(conservador.breakdown.ddScore).toBe(0);
+    expect(arrojado.breakdown.ddScore).toBe(100);
   });
 
-  it('confidence HIGH com 40 trades + todos inputs válidos', () => {
-    const trades = makeTradeSeries({ count: 40 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 5 },
-      evLeakage: { evTheoretical: 5, evReal: 4 },
-      payoff: { ratio: 1.8 },
-      consistencyCV: { cv: 0.8 },
-      maxDrawdown: { maxDDPercent: 6 },
-    });
-    expect(out.confidence).toBe('HIGH');
-    expect(out.neutralFallback).toBeNull();
-    // Score esperado entre 0 e 100
-    expect(out.score).toBeGreaterThan(0);
-    expect(out.score).toBeLessThan(100);
+  it('risco por operação: fração dos trades dentro do RO autorizado', () => {
+    expect(scoreRiscoPorOperacao(nTrades(4))).toBe(100);
+    expect(scoreRiscoPorOperacao([...nTrades(2), ...nTrades(2, { ro: 'FORA_DO_PLANO' })])).toBe(50);
+    expect(scoreRiscoPorOperacao(nTrades(3, { ro: 'FORA_DO_PLANO' }))).toBe(0);
   });
 
-  it('N = 10 (entre floor e floor+30) → MED', () => {
-    const trades = makeTradeSeries({ count: 10 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 1 },
-      evLeakage: { evTheoretical: 1, evReal: 1 },
-      payoff: { ratio: 2.0 },
-      consistencyCV: { cv: 0.5 },
-      maxDrawdown: { maxDDPercent: 5 },
-    });
-    expect(out.confidence).toBe('MED');
-    expect(out.neutralFallback).toBeNull();
+  it('proteção: fração dos trades que nasceram com stop definido', () => {
+    expect(scoreProtecao(nTrades(5))).toBe(100);
+    expect(scoreProtecao([...nTrades(1), ...nTrades(3, { stop: false })])).toBe(25);
   });
 
-  it('N = 3 (< floor) → LOW mesmo com inputs completos', () => {
-    const trades = makeTradeSeries({ count: 3 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 1 },
-      evLeakage: { evTheoretical: 1, evReal: 1 },
-      payoff: { ratio: 2.0 },
-      consistencyCV: { cv: 0.5 },
-      maxDrawdown: { maxDDPercent: 5 },
+  it('performance NÃO entra: payoff e expectativa não mudam a nota', () => {
+    const base = { trades: nTrades(10), plans: [{ cycleStop: 10 }], maxDrawdown: { maxDDPercent: 5 } };
+    const semPerf = computeFinancial(base);
+    const comPerf = computeFinancial({
+      ...base,
+      stats: { expectancy: -999, payoffRatio: 0.1 },
+      payoff: { ratio: 0.1 },
+      consistencyCV: { cv: 9 },
+      evLeakage: { evTheoretical: 100, evReal: -100 },
     });
-    expect(out.confidence).toBe('LOW');
-    expect(out.neutralFallback).toBeNull();
+    expect(comPerf.score).toBe(semPerf.score);
   });
 
-  it('payoff ausente mas stats.payoffRatio presente → pScore usa stats', () => {
-    const trades = makeTradeSeries({ count: 40 });
-    const out = computeFinancial({
-      trades,
-      stats: { expectancy: 1, payoffRatio: 2.0 },
-      evLeakage: { evTheoretical: 1, evReal: 1 },
-      payoff: null,
-      consistencyCV: { cv: 0.5 },
-      maxDrawdown: { maxDDPercent: 5 },
+  describe('ausência de dado vira componente neutro + flag, nunca zero', () => {
+    it('janela vazia → 50, LOW', () => {
+      const out = computeFinancial({ trades: [], plans: [{ cycleStop: 10 }] });
+      expect(out.score).toBe(50);
+      expect(out.confidence).toBe('LOW');
+      expect(out.neutralFallback).toBe('financial:empty-window');
     });
-    // pScore = norm(2.0, 0.8, 3.0) = (2.0-0.8)/(3.0-0.8)*100 ≈ 54.545
-    expect(out.breakdown.pScore).toBeCloseTo((2.0 - 0.8) / (3.0 - 0.8) * 100, 4);
-    expect(out.neutralFallback).toBeNull();
+
+    it('sem roStatus em nenhum trade → roScore neutro com flag', () => {
+      const out = computeFinancial({
+        trades: [{ stopLoss: 100 }, { stopLoss: 100 }],
+        plans: [{ cycleStop: 10 }],
+        maxDrawdown: { maxDDPercent: 5 },
+      });
+      expect(out.breakdown.roScore).toBe(50);
+      expect(out.neutralFallback).toContain('financial:roScore');
+    });
+
+    it('sem drawdown calculável → ddScore neutro com flag', () => {
+      const out = computeFinancial({ trades: nTrades(5), plans: [{ cycleStop: 10 }], maxDrawdown: null });
+      expect(out.breakdown.ddScore).toBe(50);
+      expect(out.neutralFallback).toContain('financial:ddScore');
+    });
+
+    it('plano sem cycleStop cai na régua de segurança, não em gate impossível', () => {
+      // Mesma lição do `initialBalance` neste issue: sem denominador o gate nunca passa.
+      const out = scoreQuedaContraLimite({ maxDDPercent: 10 }, [{}]);
+      expect(out).toBe(100); // 10% contra a régua de 25%
+    });
+  });
+
+  describe('confiança pelo tamanho da amostra', () => {
+    it('40 trades → HIGH', () => {
+      expect(computeFinancial({ trades: nTrades(40), plans: [{ cycleStop: 10 }], maxDrawdown: { maxDDPercent: 5 } }).confidence).toBe('HIGH');
+    });
+    it('10 trades → MED', () => {
+      expect(computeFinancial({ trades: nTrades(10), plans: [{ cycleStop: 10 }], maxDrawdown: { maxDDPercent: 5 } }).confidence).toBe('MED');
+    });
+    it('3 trades → LOW', () => {
+      expect(computeFinancial({ trades: nTrades(3), plans: [{ cycleStop: 10 }], maxDrawdown: { maxDDPercent: 5 } }).confidence).toBe('LOW');
+    });
   });
 });

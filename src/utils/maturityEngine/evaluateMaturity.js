@@ -70,6 +70,10 @@ export function evaluateMaturity({
   emotionalAnalysis,
   complianceRate,
   stats,
+  // #376 — `evLeakage` continua no contrato de entrada (preComputeShapes o produz e o
+  // schema de payload o valida), mas saiu do cálculo da nota: no servidor ele é sempre
+  // null, e o atalho que isso acionava dava 100 para todos os alunos com expectativa
+  // positiva — 30% da nota Financeira era um sim/não.
   evLeakage,
   payoff,
   consistencyCV,
@@ -83,6 +87,7 @@ export function evaluateMaturity({
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
 
   const safePlans = Array.isArray(plans) ? plans : [];
+  void evLeakage; // #376 — recebido por contrato, fora do cálculo da nota.
   // #376 — `initialBalance` NÃO existe em nenhum dos 27 planos da base: o campo de
   // capital do produto é `pl`. Sem fallback, `maxDDPercent` fica null para todo mundo e
   // os gates de drawdown ficam impossíveis por construção — inclusive `maxdd-under-20`,
@@ -92,13 +97,14 @@ export function evaluateMaturity({
 
   // 2. Dimensões
   const emotional = computeEmotional({ trades: W, emotionConfig: null, emotionalAnalysis });
+  // #376 — Financeira mede CONDUTA de risco, não performance: risco por operação
+  // dentro do RO do plano, queda contra o limite que o PRÓPRIO aluno definiu, e
+  // proteção definida antes de entrar. Payoff, expectativa e consistência seguem
+  // calculados (`stats`, `payoff`, `consistencyCV`) e exibidos nos painéis — só não
+  // decidem mais promoção. Ver a nota longa em computeFinancial.js.
   let financial = computeFinancial({
     trades: W,
-    initialBalance,
-    stats,
-    evLeakage,
-    payoff,
-    consistencyCV,
+    plans: safePlans,
     maxDrawdown,
   });
   let operational = computeOperational({ trades: W, plans: safePlans, complianceRate });
