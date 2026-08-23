@@ -95,3 +95,4 @@
 | 1.83.26 | #392 | `chore/issue-392-aposentar-mortos` | 22/08/2026 | consumida (PR #393 squash `6da8e7f5`) |
 | 1.83.27 | #394 | `fix/issue-394-exposicao-fechada` | 23/08/2026 | consumida (PR #395 squash `71be0203`) |
 | 1.83.28 | #376 | `fix/issue-376-constancia-historico` | 23/08/2026 | consumida (PR #397 squash `4eb158b4`) |
+| 1.83.29 | #376 | `fix/issue-376-financeiro-conduta` | 23/08/2026 | reservada |
