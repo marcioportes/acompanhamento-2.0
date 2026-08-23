@@ -102,8 +102,11 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
     }
   }
 
-  // Analyze each trade
-  const batch = db.batch();
+  // #392 — `trade.shadowBehavior` deixou de ser gravado. Era escrito a cada análise e
+  // lido por NINGUÉM: o único leitor (`ShadowBehaviorPanel`) é órfão desde o #301, quando
+  // o `BehaviorPanel` o substituiu. Pior, a escrita mexia em `updatedAt` e disparava
+  // `onTradeUpdated` por um campo que nenhuma tela consome. O que as telas leem é o
+  // `behaviorProfile`, recomputado logo abaixo — esse continua.
   let analyzed = 0;
 
   for (const trade of sorted) {
@@ -113,17 +116,9 @@ module.exports = onCall({ maxInstances: 10 }, async (request) => {
       t.id !== trade.id && t.studentId === trade.studentId && t.date === trade.date
     );
     const orders = ordersByTradeId[trade.id] || null;
-    const shadow = analyzeShadowForTradeCF(trade, adjacent, orders);
-
-    if (shadow) {
-      const tradeRef = db.collection('trades').doc(trade.id);
-      batch.update(tradeRef, { shadowBehavior: shadow, updatedAt: FieldValue.serverTimestamp() });
-      analyzed++;
-    }
-  }
-
-  if (analyzed > 0) {
-    await batch.commit();
+    // Roda só para contabilizar quantos trades o motor conseguiu analisar — o veredicto
+    // em si sai do `behaviorProfile`, que é montado por `recomputeBehaviorProfiles`.
+    if (analyzeShadowForTradeCF(trade, adjacent, orders)) analyzed++;
   }
 
   // Fase 2 #301: (re)computa e SOBRESCREVE behaviorProfile dos mesmos trades (inclui legados
