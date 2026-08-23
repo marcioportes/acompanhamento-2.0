@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.28] - 23/08/2026 · #376 · PR #397
+
+**fix:** R:R abaixo do alvo não é violação + régua de maturidade relaxada
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.27] - 23/08/2026 · #394 · PR #395
 
 **fix:** exposição fechada não trava progressão + oito achados da revisão
