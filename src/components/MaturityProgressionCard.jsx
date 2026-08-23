@@ -14,6 +14,7 @@
 import React, { useState, useEffect } from 'react';
 import DebugBadge from './DebugBadge';
 import { STAGE_NAMES, STAGE_NAMES_SHORT } from '../utils/maturityEngine/constants';
+import { isReadyForPromotion, nextStageOf } from '../utils/maturityEngine/promotionReadiness';
 
 const CONTAINER_CLS =
   'bg-slate-900/50 backdrop-blur border border-slate-700/50 rounded-xl p-4 relative';
@@ -413,6 +414,11 @@ function MaturityProgressionCard({
     : pendingGates.slice(0, MAX_MOBILE_GATES);
   const showMobileToggle = pendingGates.length > MAX_MOBILE_GATES;
   const regression = maturity.signalRegression?.detected === true;
+  // #376 — o aluno precisa SABER que cumpriu tudo. Antes, com 9/9, o card seguia
+  // dizendo "Stage atual: Reativo" e nada mais: nem ele nem o mentor eram avisados,
+  // e não havia ato de promoção em lugar nenhum do sistema.
+  const pronto = isReadyForPromotion(maturity);
+  const estagioAlvo = pronto ? STAGE_NAMES[nextStageOf(maturity)] : null;
 
   return (
     <div className={CONTAINER_CLS} data-testid="maturity-card">
@@ -446,6 +452,20 @@ function MaturityProgressionCard({
       </div>
 
       <StageBar currentStage={currentStage} gatesRatio={gatesRatio} mastery={mastery} />
+
+      {pronto && estagioAlvo && (
+        <div
+          data-testid="promotion-ready"
+          className="mt-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2"
+        >
+          <p className="text-sm font-semibold text-emerald-300">
+            Você cumpriu todos os requisitos para {estagioAlvo}.
+          </p>
+          <p className="text-xs text-emerald-200/80 mt-0.5">
+            Seu mentor foi avisado e vai conversar com você sobre a promoção.
+          </p>
+        </div>
+      )}
 
       <div className="mt-3 text-sm text-slate-300" data-testid="stage-summary">
         Stage atual: <span className="font-semibold text-white">{currentStageName}</span>

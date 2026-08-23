@@ -34,6 +34,7 @@ import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
+import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
@@ -368,6 +369,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             <EquityCurve trades={allTrades} />
             <CalendarHeatmap trades={allTrades} />
           </div>
+          {/* #376 — alunos prontos para promoção. Vem ANTES do alerta de regressão:
+              é a notícia boa, e era a que não existia em lugar nenhum. */}
+          <MentorPromotionAlert
+            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+            maturityMap={maturityByStudentId}
+            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
+          />
           {/* Alertas de regressão de maturidade — issue #119 task 18 */}
           <MentorMaturityAlert
             students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
