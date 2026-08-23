@@ -68,15 +68,22 @@ export function aggregateBehaviorWeights(trades = []) {
       if (cleared.includes(clearedKey(code, t.id))) continue; // clearing estendido
       const p = getPattern(code);
       if (!p) continue;
+      // #394 — exposição que o aluno FECHOU (recolocou proteção) não conta como violação
+      // nem alimenta gate: o gate mede posição descoberta, e essa foi coberta. Continua
+      // no card, porque o fato é verdadeiro e o mentor precisa ver. Ver
+      // functions/shared/gateEligibility.
+      const elegivel = !(code === 'UNPROTECTED_SIZE' && f.severity !== 'HIGH');
       const dims = Array.isArray(p.dimensao) ? p.dimensao : [];
       if (f.valence === 'positive') {
         for (const d of dims) if (wbon[d] != null) wbon[d] += POSITIVE_WEIGHT;
       } else {
         const w = SEVERITY_WEIGHT[f.severity] ?? SEVERITY_WEIGHT.LOW;
         for (const d of dims) if (wpen[d] != null) wpen[d] += w;
-        hasViolation = true;
-        const gc = GATE_COUNT_MAP[code];
-        if (gc) gateCounts[gc] += 1;
+        if (elegivel) {
+          hasViolation = true;
+          const gc = GATE_COUNT_MAP[code];
+          if (gc) gateCounts[gc] += 1;
+        }
       }
     }
     if (hasViolation) violationTrades += 1;

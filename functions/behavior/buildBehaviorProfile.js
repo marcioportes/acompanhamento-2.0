@@ -203,6 +203,11 @@ const buildBehaviorProfiles = ({
       detections.push({
         tradeId: trade.id, canonicalCode: canonical, family: p.family,
         source: 'events', resolutionLayer: p.resolutionLayer,
+        // #394/#396 — a severidade PRECISA viajar até o dedupe. Sem ela,
+        // `travaProgressao(codigo, undefined)` responde "não trava" para TODO
+        // UNPROTECTED_SIZE, inclusive o grave: um trade que nunca colocou stop saía com
+        // `gateInputs: []`. Era o oposto do que o #394 pedia.
+        severity: e.severity ?? p.severityDefault ?? null,
       });
       evidenceByCode[canonical] = { evidence: e.evidence ?? null, confidence: e.confidence ?? null, severity: e.severity ?? null, source: 'events' };
     }
@@ -214,6 +219,7 @@ const buildBehaviorProfiles = ({
       detections.push({
         tradeId: trade.id, canonicalCode: canonical, family: p.family,
         source: 'shadow', resolutionLayer: p.resolutionLayer,
+        severity: sp.severity ?? p.severityDefault ?? null,
       });
       // shadow só sobrescreve evidência se o código ainda não veio de events (events > shadow, DEC-074).
       if (!evidenceByCode[canonical]) {
