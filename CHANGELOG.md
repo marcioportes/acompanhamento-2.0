@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.29] - 23/08/2026 · #376 · PR #398
+
+**fix:** Financeiro mede conduta de risco, não performance
+
+- Regra do Marcio: *"eficiência, payoff, consistência e drawdown são indicadores de performance, não de maturidade. Se um aluno teve drawdown de 100% respeitando o limite de sua perda, usou o modelo, parou o ciclo e se manteve disciplinado — como pode ser penalizado?"* Das três dimensões, Emocional e Operacional sempre mediram o que o aluno FEZ; a Financeira media o que ele GANHOU.
+- Dois dos quatro componentes antigos eram constantes na base real: `eScore` dava **100 para os 16 alunos com dados** (`evLeakage` null no servidor fazia a conta comparar o número consigo mesmo) e `cvScore` dava **0 para 12 dos 16** (escala de dispersão mensal recebendo dispersão trade a trade). Só payoff e drawdown decidiam, e a nota vivia espremida entre 50 e 65.
+- Passa a medir três componentes de peso igual: risco por operação dentro do RO do plano, queda contra o **cycle stop do próprio aluno** (dentro do limite = 100, estouro decai e zera ao dobro) e proteção definida antes de entrar. Disciplina de tamanho não vira quarto componente — já entra em F pela modulação comportamental.
+- Impacto: André Campos 52,6→86,4 · Joe Hott 51,4→80,8 · Daniel Barbosa 30,7→68,7 (operam disciplinado, eram punidos pelo resultado); **Antonio Pina 51,3→42** (0% de proteção, metade dos trades acima do RO). 5 alunos ganham gate no recompute.
+- Payoff, expectativa, consistência e drawdown absoluto seguem calculados e visíveis nos painéis — só pararam de decidir promoção.
+- Testes: 3.875 no front (14 casos novos, o primeiro sendo o exemplo do Marcio) + 246 em `functions/`.
+
 ## [1.83.28] - 23/08/2026 · #376 · PR #397
 
 **fix:** R:R abaixo do alvo não é violação + régua de maturidade relaxada
