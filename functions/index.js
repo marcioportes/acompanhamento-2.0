@@ -1998,6 +1998,8 @@ exports.classifyMaturityProgression = require("./assessment/classifyMaturityProg
 // MATURITY — Recompute single-point (CHUNK-09, issue #119 task 20)
 // ============================================
 exports.recomputeStudentMaturity = require("./maturity/recomputeStudentMaturity");
+// #376 — o ato de promover: mentor-only, revalidado no servidor.
+exports.promoteStudentStage = require("./maturity/promoteStudentStageCallable");
 
 // ============================================
 // SUBSCRIPTIONS — Controle de Assinaturas (CHUNK-16, issue #094)

@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { isReadyForPromotion } from '../../../utils/maturityEngine/promotionReadiness';
 import { useToast } from '../../../contexts/ToastContext';
 import {
   Award, ShieldAlert, Check, X, Clock,
@@ -309,7 +310,11 @@ export default function Step5Check({ studentId, role = 'student', metrics, snaps
     });
   }, [maturity, cycleMetrics]);
 
-  const promotionEligible = maturity?.proposedTransition === 'PROMOTE';
+  // #376 — comparava o OBJETO `proposedTransition` com a string 'PROMOTE', valor que
+  // o motor nunca produziu (ele devolve { proposed: 'UP', nextStage, blockers }).
+  // `promotionEligible` era false por construção: a promoção não aparecia no ritual de
+  // fechamento, que é justamente onde a conversa com o aluno acontece.
+  const promotionEligible = isReadyForPromotion(maturity);
   // `regression` precisa ser estável entre renders quando o array não existe;
   // `[]` literal em cada render quebraria a dep de useEffect e geraria loop.
   const regression = useMemo(

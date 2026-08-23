@@ -414,11 +414,20 @@
  * - 1.16.0: State machine plano (#58), badge reclassification, quick fixes dívida técnica
  * - 1.15.0: Multi-currency (#40), account plan accordion (#39), dashboard partition
  */
+// #376 — `display` e `full` DERIVAM de `version` e `build`.
+//
+// Eram três literais com o mesmo número escrito à mão, e o número saía de sincronia
+// toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
+// atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
+// (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
+const version = '1.83.29';
+const build = '20260823';
+
 const VERSION = {
-  version: '1.83.29',
-  build: '20260823',
-  display: 'v1.83.28',
-  full: '1.83.29+20260823'
+  version,
+  build,
+  display: `v${version}`,
+  full: `${version}+${build}`
 };
 export default VERSION;
 export { VERSION };
