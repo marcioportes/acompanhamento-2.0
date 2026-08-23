@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.26] - 23/08/2026 · #392 · PR #393
+
+**chore:** aposenta campo shadowBehavior, painéis órfãos e o ramo byTrade morto
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.25] - 22/08/2026 · #389 · PR #390
 
 **fix:** mesma origem, mesmo resultado — janela única de cálculo e feedback que não recalcula

@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.83.26: #392 chore aposenta campo shadowBehavior + painéis órfãos + ramo byTrade morto (RESERVADA)
+ * - 1.83.26: #392 chore aposenta campo shadowBehavior, painéis órfãos e o ramo byTrade morto (PR #393, 23/08/2026)
  * - 1.83.25: #389 fix mesma origem, mesmo resultado — janela única de cálculo e feedback que não  (PR #390, 22/08/2026)
  * - 1.83.24: #387 fix card de ciclo pulava de altura — síncronas renderizam antes da assíncrona (RESERVADA)
  * - 1.83.23: #385 fix card Consistência Operacional resiliente a falha de chunk (PR #386, 22/08/2026)
@@ -413,9 +413,9 @@
  */
 const VERSION = {
   version: '1.83.26',
-  build: '20260822',
+  build: '20260823',
   display: 'v1.83.26',
-  full: '1.83.25+20260822'
+  full: '1.83.26+20260823'
 };
 export default VERSION;
 export { VERSION };
