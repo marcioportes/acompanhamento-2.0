@@ -113,6 +113,26 @@ function computeAnnualizedReturn(dailyReturns, options = {}) {
   return Math.pow(1 + cumulative, 252 / N) - 1;
 }
 
+/**
+ * #376 — a sequência exige vizinhança no calendário. Espelho de
+ * `src/utils/maturityEngine/helpers.js`; ver a nota longa lá.
+ *
+ * A lista tem só os períodos COM trade: contar run por adjacência nela fazia
+ * 4 semanas de janeiro + 4 de julho valerem 8 "consecutivas". Tolerância de 1
+ * período — uma semana sem operar não apaga a constância; meses sumido, sim.
+ */
+const MAX_BURACO = 1;
+
+function semanasEntre(a, b) {
+  return Math.round((Date.parse(b) - Date.parse(a)) / 604800000);
+}
+
+function mesesEntre(a, b) {
+  const pa = a.split('-').map(Number);
+  const pb = b.split('-').map(Number);
+  return (pb[0] - pa[0]) * 12 + (pb[1] - pa[1]);
+}
+
 function computeStrategyConsistencyWeeks(trades, plans) {
   void plans;
   if (!Array.isArray(trades) || trades.length === 0) return 0;
@@ -147,8 +167,12 @@ function computeStrategyConsistencyWeeks(trades, plans) {
   let maxRun = 0;
   let currentRun = 0;
   let currentSetup = null;
-  for (const dom of dominants) {
-    if (dom !== null && dom === currentSetup) {
+  let semanaAnterior = null;
+  for (let i = 0; i < dominants.length; i += 1) {
+    const dom = dominants[i];
+    const atual = sortedWeeks[i];
+    const vizinho = semanaAnterior !== null && semanasEntre(semanaAnterior, atual) <= MAX_BURACO + 1;
+    if (dom !== null && dom === currentSetup && vizinho) {
       currentRun += 1;
     } else if (dom !== null) {
       currentSetup = dom;
@@ -157,6 +181,7 @@ function computeStrategyConsistencyWeeks(trades, plans) {
       currentSetup = null;
       currentRun = 0;
     }
+    semanaAnterior = atual;
     if (currentRun > maxRun) maxRun = currentRun;
   }
 
@@ -306,8 +331,12 @@ function computeStrategyConsistencyMonths(trades, plans) {
   let maxRun = 0;
   let currentRun = 0;
   let currentSetup = null;
-  for (const dom of dominants) {
-    if (dom !== null && dom === currentSetup) {
+  let mesAnterior = null;
+  for (let i = 0; i < dominants.length; i += 1) {
+    const dom = dominants[i];
+    const atual = sortedMonths[i];
+    const vizinho = mesAnterior !== null && mesesEntre(mesAnterior, atual) <= MAX_BURACO + 1;
+    if (dom !== null && dom === currentSetup && vizinho) {
       currentRun += 1;
     } else if (dom !== null) {
       currentSetup = dom;
@@ -316,6 +345,7 @@ function computeStrategyConsistencyMonths(trades, plans) {
       currentSetup = null;
       currentRun = 0;
     }
+    mesAnterior = atual;
     if (currentRun > maxRun) maxRun = currentRun;
   }
 

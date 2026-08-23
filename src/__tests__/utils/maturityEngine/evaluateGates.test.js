@@ -294,3 +294,42 @@ describe('evaluateGates — agregação gatesRatio', () => {
     expect(nullGate.met).toBeNull();
   });
 });
+
+/**
+ * #376 — cobertura de fronteira.
+ *
+ * As fixtures derivadas usam folga dos dois lados, então nenhum caso cai EXATAMENTE
+ * em cima do threshold — e é esse caso que distingue `>=` de `>` e `<=` de `<`. Sem
+ * ele, inverter um operador passaria verde. Aqui o valor testado é o próprio limite,
+ * lido da tabela, um gate de cada operador.
+ */
+describe('#376 — valor exatamente no limite', () => {
+  const gateDe = (transicao, id) => GATES_BY_TRANSITION[transicao].find((g) => g.id === id);
+
+  it('>= no limite → met (o gate aceita o valor exato)', () => {
+    const g = gateDe('2-3', 'emotional-55');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('>=');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(true);
+  });
+
+  it('<= no limite → met', () => {
+    const g = gateDe('2-3', 'rule-violation-rate-15');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('<=');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(true);
+  });
+
+  it('< no limite → NÃO met (fronteira exclusiva)', () => {
+    const g = gateDe('4-5', 'cv-low');
+    const out = evaluateGates(4, { ...metrics45AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('<');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(false);
+  });
+
+  it('um passo abaixo do limite em >= → NÃO met', () => {
+    const g = gateDe('2-3', 'emotional-55');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold - 0.01 });
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(false);
+  });
+});

@@ -15,7 +15,9 @@
  * - PÓS-STOP    → trade realizado após STOP atingido
  * - VIOLAÇÃO    → trade após STOP (equivale a PÓS-STOP, flag de disciplina)
  * - RO_FORA     → risco operacional acima do permitido pelo plano
- * - RR_FORA     → razão risco-retorno abaixo do mínimo do plano
+ * - RR_FORA     → REVOGADO em #376 (razão risco-retorno abaixo do alvo). Não é mais
+ *                 emitido; o renderizador em ExtractEvents segue mapeando o código
+ *                 para não quebrar ledger antigo em memória.
  * 
  * USO:
  *   import { buildPlanLedger, summarizeLedger } from '../utils/planLedger';
@@ -75,9 +77,7 @@ export const buildPlanLedger = (trades = [], plan = {}, options = {}) => {
     if (trade.compliance?.roStatus === 'FORA_DO_PLANO') {
       events.push('RO_FORA');
     }
-    if (trade.compliance?.rrStatus === 'NAO_CONFORME') {
-      events.push('RR_FORA');
-    }
+    // #376 — RR_FORA removido: sair abaixo do alvo não é quebra de plano.
 
     // Fallback: calcular compliance localmente se não veio da CF
     if (!trade.compliance && plan.riskPerOperation && basePl > 0) {

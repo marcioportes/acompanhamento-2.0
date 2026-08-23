@@ -198,3 +198,38 @@ describe('effectiveEmotionalEventsForPeriod', () => {
     expect(effectiveEmotionalEventsForPeriod([], [])).toEqual([]);
   });
 });
+
+/**
+ * #376 — violação revogada some do consumo sem que ninguém reescreva o trade.
+ *
+ * Regra do Marcio (23/08): "não se pode modificar trade que já foi discutido". Metade
+ * dos trades acusados pela regra revogada (53 de 106) está em `status: 'DISCUSSED'`,
+ * que o tradeGateway trata como imutável. O backfill que reescreveria `redFlags` foi
+ * descartado por isso — o filtro age na leitura, e o registro do que foi conversado
+ * com o aluno fica intacto.
+ */
+describe('#376 — RR_ABAIXO_MINIMO revogado', () => {
+  it('sai de effectiveRedFlags sem tocar em trade.redFlags', () => {
+    const trade = {
+      status: 'DISCUSSED',
+      redFlags: [{ type: 'RR_ABAIXO_MINIMO' }, { type: 'TRADE_SEM_STOP' }],
+    };
+    const antes = JSON.stringify(trade);
+    expect(effectiveRedFlags(trade).map((f) => f.type)).toEqual(['TRADE_SEM_STOP']);
+    expect(JSON.stringify(trade)).toBe(antes); // o registro não foi tocado
+  });
+
+  it('trade cuja única violação era a revogada deixa de contar como violação', () => {
+    const trade = { status: 'DISCUSSED', redFlags: [{ type: 'RR_ABAIXO_MINIMO' }] };
+    expect(effectiveRedFlags(trade)).toEqual([]);
+    expect(hasEffectiveRedFlags(trade)).toBe(false);
+  });
+
+  it('revogada + limpa pelo mentor continuam podendo coexistir', () => {
+    const trade = {
+      redFlags: [{ type: 'RR_ABAIXO_MINIMO' }, { type: 'RISCO_ACIMA_PERMITIDO' }, { type: 'TRADE_SEM_STOP' }],
+      mentorClearedViolations: ['RISCO_ACIMA_PERMITIDO'],
+    };
+    expect(effectiveRedFlags(trade).map((f) => f.type)).toEqual(['TRADE_SEM_STOP']);
+  });
+});

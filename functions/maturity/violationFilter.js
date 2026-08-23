@@ -5,6 +5,28 @@
  *   Toda mudança no .js precisa ser refletida aqui.
  */
 
+
+/**
+ * #376 — violações REVOGADAS: a regra deixou de existir, mas o registro do trade
+ * não pode ser reescrito.
+ *
+ * `redFlags` é snapshot gravado no doc. Quando uma regra é revogada, os trades
+ * antigos continuam acusados. Reescrevê-los seria a saída óbvia — e é proibida:
+ * metade deles (53 de 106 em 23/08) já está em `status: 'DISCUSSED'`, e trade
+ * discutido é imutável (tradeGateway, #269 v2). O que foi conversado com o aluno
+ * fica como foi.
+ *
+ * A saída é filtrar no consumo, não na persistência: o histórico preserva que a
+ * violação existia, e nenhuma métrica volta a contá-la. Mesmo princípio do #282
+ * (consistência display-time, sem congelar snapshot).
+ *
+ * RR_ABAIXO_MINIMO — revogado por Marcio em 23/08: "sair abaixo do alvo não é
+ * violação de plano, é comportamento". Era 106 de 282 flags da base.
+ */
+const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO'];
+
+function isRevoked(type) { return REVOKED_RED_FLAG_TYPES.indexOf(type) !== -1; }
+
 function getEventKey(event, tradeId) {
   if (!event || !event.type || !tradeId) return '';
   return event.type + ':' + tradeId;
@@ -21,11 +43,12 @@ function isViolationCleared(trade, key) {
 function effectiveRedFlags(trade) {
   if (!trade) return [];
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
+  const vigentes = flags.filter(function (f) { return f && !isRevoked(f.type); });
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
-  if (cleared.length === 0) return flags;
-  return flags.filter(function (f) { return f && cleared.indexOf(f.type) === -1; });
+  if (cleared.length === 0) return vigentes;
+  return vigentes.filter(function (f) { return cleared.indexOf(f.type) === -1; });
 }
 
 function hasEffectiveRedFlags(trade) {
@@ -74,6 +97,7 @@ function effectiveEmotionalEventsForPeriod(trades, events) {
 }
 
 module.exports = {
+  REVOKED_RED_FLAG_TYPES,
   getEventKey,
   isViolationCleared,
   effectiveRedFlags,

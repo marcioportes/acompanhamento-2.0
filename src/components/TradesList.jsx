@@ -15,6 +15,7 @@
  */
 
 import React from 'react';
+import { effectiveRedFlags } from '../utils/violationFilter';
 import { useConfirmDialog } from './ConfirmDialog';
 import { 
   Eye, 
@@ -147,9 +148,13 @@ const TradesList = ({
             const resultPercentPl = planPl && planPl > 0 ? (result / planPl) * 100 : null;
             
             // Lógica do Risk Guardian
-            const hasViolations = trade.hasRedFlags || (Array.isArray(trade.redFlags) && trade.redFlags.length > 0);
-            const violationTooltip = hasViolations && Array.isArray(trade.redFlags) 
-              ? trade.redFlags.map(flag => typeof flag === 'string' ? flag : flag.message).join('\n')
+            // #376 — pelo filtro efetivo: violação revogada ou limpa pelo mentor não
+            // acende o marcador. Ler `redFlags` cru reacendia a acusação revogada.
+            const flagsVigentes = effectiveRedFlags(trade);
+            const hasViolations = flagsVigentes.length > 0
+              || (trade.hasRedFlags === true && !Array.isArray(trade.redFlags));
+            const violationTooltip = flagsVigentes.length > 0
+              ? flagsVigentes.map(flag => typeof flag === 'string' ? flag : flag.message).join('\n')
               : 'Violação de regras do plano';
 
             return (

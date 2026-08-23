@@ -47,7 +47,12 @@ function evaluateMaturity({
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
 
   const safePlans = Array.isArray(plans) ? plans : [];
-  const initialBalance = safePlans[0]?.initialBalance ?? 0;
+  // #376 — `initialBalance` NÃO existe em nenhum dos 27 planos da base: o campo de
+  // capital do produto é `pl`. Sem fallback, `maxDDPercent` fica null para todo mundo e
+  // os gates de drawdown ficam impossíveis por construção — inclusive `maxdd-under-20`,
+  // da transição 1→2, onde estão os alunos novos. Mesma classe do `strategy-8-weeks`
+  // que abriu esta issue.
+  const initialBalance = safePlans[0]?.initialBalance ?? safePlans[0]?.pl ?? 0;
 
   const emotional = computeEmotional({ trades: W, emotionConfig: null, emotionalAnalysis });
   let financial = computeFinancial({

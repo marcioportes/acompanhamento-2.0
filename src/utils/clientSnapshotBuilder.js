@@ -126,8 +126,11 @@ const computeComplianceAggregate = (trades, plan) => {
   const stopRespected = { count: stopOk, total, rate: pctRate(stopOk, total) };
   const rrRespected = { count: rrOk, total: rrEvalTotal, rate: pctRate(rrOk, rrEvalTotal) };
   const roRespected = { count: roOk, total: roEvalTotal, rate: pctRate(roOk, roEvalTotal) };
-  // Overall: média simples dos 3 rates (todos reportados em 0-100).
-  const overall = Math.round((stopRespected.rate + rrRespected.rate + roRespected.rate) / 3);
+  // #376 — overall = média de stop e RO apenas. `rrRespected` continua no snapshot como
+  // informação (o mentor quer ver o R:R), mas parou de compor a nota de aderência: sair
+  // abaixo do alvo é comportamento, não violação. Enquanto compunha, o snapshot e o
+  // `complianceRate` do dashboard divergiam para o mesmo aluno.
+  const overall = Math.round((stopRespected.rate + roRespected.rate) / 2);
   return { stopRespected, rrRespected, roRespected, overall };
 };
 

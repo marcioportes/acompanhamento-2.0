@@ -10,8 +10,7 @@
  */
 
 import {
-  Trophy, Skull, ShieldAlert, ShieldOff, Scale,
-  Flame, Zap, AlertTriangle,
+  Trophy, Skull, ShieldAlert, ShieldOff, Flame, Zap, AlertTriangle,
   CircleDot, CheckCircle2, HelpCircle, CheckCheck
 } from 'lucide-react';
 import { PERIOD_STATES } from '../../utils/planStateMachine';
@@ -190,8 +189,10 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
             );
             const roFora = trade.compliance?.roStatus === 'FORA_DO_PLANO'
               && !isViolationCleared(trade, 'RISCO_ACIMA_PERMITIDO');
-            const rrFora = trade.compliance?.rrStatus === 'NAO_CONFORME'
-              && !isViolationCleared(trade, 'RR_ABAIXO_MINIMO');
+            // #376 — R:R abaixo do alvo é comportamento, não violação de plano.
+            // O número continua na coluna; o marcador vermelho saiu. Mantinha a acusação
+            // viva justamente onde o mentor não tinha como limpá-la: o botão de limpar
+            // nasce de `effectiveRedFlags`, e o flag não existe mais.
 
             // RR: real (do trade) ou assumido (DEC-007: gravado no trade pela CF)
             let rrDisplay = '-';
@@ -210,7 +211,6 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                 rrDisplay = `${assumed.rrRatio.toFixed(2)}:1`;
               }
             }
-            const rrNonCompliant = rrFora; // #267 bug 6: já considera mentorClearedViolations
 
             // Inline events
             const inlineEvents = getTradeInlineEvents(row, emotionalEvents);
@@ -271,14 +271,12 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
                   </div>
                 </td>
 
-                {/* RR — real ou assumido. Azul se compliant, amber se non-compliant */}
+                {/* RR — real ou assumido. #376: sem marcador de violação; sair abaixo do
+                    alvo é comportamento, não quebra de plano. O número continua aqui. */}
                 <td className={`px-2 py-1.5 text-right font-mono text-xs ${
-                  rrFora || rrNonCompliant ? 'text-amber-400' 
-                  : (trade.rrRatio != null && trade.result > 0 && !rrNonCompliant) ? 'text-blue-400' 
-                  : 'text-slate-400'
+                  (trade.rrRatio != null && trade.result > 0) ? 'text-blue-400' : 'text-slate-400'
                 }`}>
                   <div className="flex items-center justify-end gap-0.5">
-                    {(rrFora || rrNonCompliant) && <Scale className="w-3 h-3 text-amber-400 flex-shrink-0" />}
                     <span>{rrDisplay}</span>
                     {rrIsAssumed && (
                       <span className="text-[7px] text-purple-400/70" title="RR estimado sem stop loss (baseado no RO% do plano)">*</span>

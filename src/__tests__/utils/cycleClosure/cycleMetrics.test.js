@@ -20,7 +20,10 @@ import {
 const PLAN = { pl: 50000, riskPerOperation: 1 };
 const R = 500;
 
-const okCompliance = { roStatus: 'OK', rrStatus: 'OK' };
+// #376 — fixture usava 'OK', valor que não existe em produção; era o que escondia
+// que a função devolvia 0 para todo trade real. Domínio real: CONFORME /
+// NAO_CONFORME / FORA_DO_PLANO.
+const okCompliance = { roStatus: 'CONFORME', rrStatus: 'CONFORME' };
 
 describe('computeR', () => {
   it('R = pl × riskPerOperation / 100', () => {
@@ -143,9 +146,10 @@ describe('computeRuleAdherenceRate', () => {
   it('mistura → fração', () => {
     const trades = [
       { compliance: okCompliance },
-      { compliance: { roStatus: 'OK', rrStatus: 'NAO_CONFORME' } },
-      { compliance: { roStatus: 'FORA_DO_PLANO', rrStatus: 'OK' } },
-      { compliance: okCompliance },
+      // #376 — R:R abaixo do alvo não derruba mais a aderência: é comportamento.
+      { compliance: { roStatus: 'CONFORME', rrStatus: 'NAO_CONFORME' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO', rrStatus: 'CONFORME' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO', rrStatus: 'CONFORME' } },
     ];
     expect(computeRuleAdherenceRate(trades)).toBe(0.5);
   });

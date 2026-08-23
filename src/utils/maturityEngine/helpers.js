@@ -207,6 +207,28 @@ export function computeAnnualizedReturn(dailyReturns, options = {}) {
  * @param {Array<any>} plans   recebido para futura extensão (não usado).
  * @returns {number} inteiro ≥ 0.
  */
+/**
+ * #376 — a sequência exige vizinhança no calendário.
+ *
+ * `sortedWeeks`/`sortedMonths` contêm só os períodos COM trade. Contar run como
+ * adjacência nessa lista esparsa fazia 4 semanas de janeiro + 4 de julho valerem 8
+ * "consecutivas" — e, desde que a janela virou histórico completo (#396), sem teto.
+ * Um trader que repetiu o mesmo setup em rajadas espalhadas passava no gate de
+ * constância.
+ *
+ * Tolerância de 1 período: quem não operou numa semana não perdeu a constância;
+ * quem sumiu por meses, sim.
+ */
+const MAX_BURACO = 1;
+
+const semanasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 604800000);
+
+const mesesEntre = (a, b) => {
+  const [ay, am] = a.split('-').map(Number);
+  const [by, bm] = b.split('-').map(Number);
+  return (by - ay) * 12 + (bm - am);
+};
+
 export function computeStrategyConsistencyWeeks(trades, plans) {
   void plans;
   if (!Array.isArray(trades) || trades.length === 0) return 0;
@@ -241,8 +263,12 @@ export function computeStrategyConsistencyWeeks(trades, plans) {
   let maxRun = 0;
   let currentRun = 0;
   let currentSetup = null;
-  for (const dom of dominants) {
-    if (dom !== null && dom === currentSetup) {
+  let semanaAnterior = null;
+  for (let i = 0; i < dominants.length; i += 1) {
+    const dom = dominants[i];
+    const semana = sortedWeeks[i];
+    const vizinha = semanaAnterior !== null && semanasEntre(semanaAnterior, semana) <= MAX_BURACO + 1;
+    if (dom !== null && dom === currentSetup && vizinha) {
       currentRun += 1;
     } else if (dom !== null) {
       currentSetup = dom;
@@ -251,6 +277,7 @@ export function computeStrategyConsistencyWeeks(trades, plans) {
       currentSetup = null;
       currentRun = 0;
     }
+    semanaAnterior = semana;
     if (currentRun > maxRun) maxRun = currentRun;
   }
 
@@ -464,8 +491,12 @@ export function computeStrategyConsistencyMonths(trades, plans) {
   let maxRun = 0;
   let currentRun = 0;
   let currentSetup = null;
-  for (const dom of dominants) {
-    if (dom !== null && dom === currentSetup) {
+  let mesAnterior = null;
+  for (let i = 0; i < dominants.length; i += 1) {
+    const dom = dominants[i];
+    const mes = sortedMonths[i];
+    const vizinho = mesAnterior !== null && mesesEntre(mesAnterior, mes) <= MAX_BURACO + 1;
+    if (dom !== null && dom === currentSetup && vizinho) {
       currentRun += 1;
     } else if (dom !== null) {
       currentSetup = dom;
@@ -474,6 +505,7 @@ export function computeStrategyConsistencyMonths(trades, plans) {
       currentSetup = null;
       currentRun = 0;
     }
+    mesAnterior = mes;
     if (currentRun > maxRun) maxRun = currentRun;
   }
 
