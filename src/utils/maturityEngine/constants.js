@@ -116,8 +116,8 @@ export const GATES_BY_TRANSITION = {
     {
       id: 'financial-solid', label: 'Financial ≥ 55',
       friendlyLabel: 'Score financeiro consistente (≥ 55)', unit: 'pts',
-      whatIs: 'Combina drawdown controlado, payoff positivo e consistência de resultado.',
-      howTo: 'Foco na gestão de risco antes de buscar performance. Drawdown abaixo do stop, payoff acima de 1.',
+      whatIs: 'Mede conduta de risco, não lucro: risco por operação dentro do plano, queda dentro do limite que você mesmo definiu, e stop definido antes de entrar.',
+      howTo: 'Não passar do risco por operação, parar quando o stop do ciclo bate, e nunca entrar sem stop. Resultado ruim respeitando o plano não derruba esta nota.',
       dim: 'fin', metric: 'F', op: '>=', threshold: 55,
     },
     {
@@ -181,8 +181,8 @@ export const GATES_BY_TRANSITION = {
     {
       id: 'financial-fortified', label: 'Financial ≥ 70',
       friendlyLabel: 'Score financeiro sólido (≥ 70)', unit: 'pts',
-      whatIs: 'Drawdown pequeno, payoff alto, consistência semanal. Gestão de risco em outro nível.',
-      howTo: 'Reduzir size em sequências negativas. Aumentar só quando há margem clara (Kelly Quarter).',
+      whatIs: 'Conduta de risco quase sem exceção: risco por operação sempre dentro, stop do ciclo respeitado, proteção em praticamente todo trade.',
+      howTo: 'Reduzir size em sequências negativas. Aumentar só quando há margem clara. A nota olha a disciplina, não o retorno.',
       dim: 'fin', metric: 'F', op: '>=', threshold: 70,
     },
     {
@@ -284,7 +284,7 @@ export const GATES_BY_TRANSITION = {
     {
       id: 'financial-90', label: 'Financial ≥ 80',
       friendlyLabel: 'Score financeiro de maestria (≥ 80)', unit: 'pts',
-      whatIs: 'Gestão de risco em nível institucional. Drawdown pequeno mesmo em regimes adversos.',
+      whatIs: 'Gestão de risco em nível institucional: o limite do plano é respeitado inclusive em regime adverso, e a proteção nunca falta.',
       howTo: 'Sizing por Kelly Quarter. Hedge quando há concentração. Caixa preservado pra oportunidades.',
       dim: 'fin', metric: 'F', op: '>=', threshold: 80,
     },

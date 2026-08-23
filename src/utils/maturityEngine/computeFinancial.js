@@ -1,60 +1,68 @@
 /**
- * src/utils/maturityEngine/computeFinancial.js
+ * Dimensão FINANCEIRA — mede CONDUTA de risco, não performance.
  *
- * Dimensão F (Financial) do motor de maturidade 4D (issue #119 task 02).
+ * #376 (23/08/2026) — reescrita a partir da regra de Marcio:
  *
- * Função pura: zero Firestore, zero I/O. A engine é **consumidora de shapes
- * pré-computados** — o chamador invoca os utils financeiros e passa os
- * resultados aqui. Isso preserva INV-02/03 e mantém a engine testável sem
- * mocks pesados.
+ *   "eficiência, payoff, consistência e drawdown são indicadores de PERFORMANCE, não
+ *    de maturidade. Se um aluno teve drawdown de 100% respeitando o limite de sua
+ *    perda, usou o modelo de entrada, parou o ciclo e se manteve disciplinado sem
+ *    operar até o fechamento — como pode ser penalizado?"
  *
- * Utils esperados (invocados pelo caller em Fase B, NÃO aqui):
- *   - `calculateStats(trades)`                → src/utils/calculations.js
- *   - `calculateEVLeakage(trades, plans)`     → src/utils/dashboardMetrics.js
- *   - `calculatePayoff(stats)`                → src/utils/dashboardMetrics.js
- *   - `calculateConsistencyCV(trades)`        → src/utils/dashboardMetrics.js
- *   - `calculateMaxDrawdown(trades, balance)` → src/utils/dashboardMetrics.js
+ * Das três dimensões, Emocional e Operacional sempre mediram o que o aluno FEZ. A
+ * Financeira media o que ele GANHOU, e era a única assim. O aluno do exemplo fazia
+ * tudo certo e a nota caía.
  *
- * Fórmula (§3.1 D3, com DEC-AUTO-119-03 aplicada):
- *   expT    = evLeakage?.evTheoretical ?? stats?.expectancy ?? 0
- *   expR    = evLeakage?.evReal        ?? stats?.expectancy ?? 0
- *   eScore  = norm(expR / max(expT, EPS), 0, 1.0)
- *   pScore  = norm(payoff?.ratio ?? 0, 0.8, 3.0)
- *   cvScore = normInverted(consistencyCV?.cv ?? 2.0, 0.3, 2.0)
- *   ddScore = normInverted(maxDrawdown?.maxDDPercent ?? 0, 0, 25)
- *   F = 0.30·eScore + 0.25·pScore + 0.20·cvScore + 0.25·ddScore
+ * O que a versão antiga media, e por que caiu (medido na base real em 23/08):
+ *   - eScore (30%)  — captura do ganho teórico. `evLeakage` é null no servidor, então
+ *                     a conta comparava o número consigo mesmo: **100 para TODOS os 16
+ *                     alunos com dados**, e 0 se a expectativa fosse negativa. Trinta
+ *                     por cento da nota era um sim/não disfarçado de nota.
+ *   - pScore (25%)  — payoff. Performance.
+ *   - cvScore (20%) — a escala (0,3 a 2,0) foi calibrada para dispersão de resultado
+ *                     MENSAL, mas o que entrava era dispersão trade a trade, que é
+ *                     estruturalmente maior: **0 para 12 dos 16 alunos**.
+ *   - ddScore (25%) — queda contra régua ABSOLUTA de 25%, igual para todo mundo,
+ *                     ignorando o limite que o próprio aluno definiu no plano.
  *
- * Política "evolução sempre visível" (§3.1 D6):
- *   trades.length === 0                                    → 50, LOW, 'financial:empty-window'
- *   evLeakage E stats ambos ausentes                       → eScore=50 + flag 'financial:eScore'
- *   payoff E stats.payoffRatio ambos ausentes              → pScore=50 + flag 'financial:pScore'
- *   consistencyCV ausente                                  → usa default 2.0 (sem flag)
- *   maxDrawdown ausente                                    → ddScore=50 + flag 'financial:ddScore'
+ * O que mede agora — três componentes de igual peso, todos com dado disponível na base
+ * real (`riskPerOperation` e `cycleStop` em 28/28 planos, `roStatus` em 346/351 trades,
+ * stop definido em 253/351):
  *
- * Confidence por trades.length (floor=5):
- *   ≥ 35 HIGH · 5..34 MED · < 5 LOW
+ *   roScore   = % dos trades cujo risco ficou dentro do RO que o plano autoriza
+ *   ddScore   = queda medida contra o CYCLE STOP DO PRÓPRIO ALUNO, não contra régua fixa
+ *   stopScore = % dos trades que nasceram com proteção definida
  *
- * `neutralFallback`: string com flags separados por `;`, ou null se nenhum.
+ * Disciplina de tamanho (piramidação, sub-sizing, ganância, saída antecipada/tardia)
+ * NÃO vira quarto componente: já entra em F pela modulação comportamental
+ * (`aggregateBehaviorWeights().netByDimension.F`, aplicada em `evaluateMaturity`).
+ * Contar duas vezes seria dobrar a punição pelo mesmo comportamento.
+ *
+ * Sobre o ddScore — a decisão que responde ao exemplo do Marcio: queda DENTRO do limite
+ * pontua 100, qualquer que seja o tamanho dela. Quanto da folga o aluno consumiu é
+ * performance; ter respeitado a folga é conduta. Estouro decai proporcionalmente e zera
+ * ao dobro do limite — estourar 1% não é a mesma coisa que continuar operando até
+ * dobrar a perda planejada.
+ *
+ * Payoff, expectativa, consistência e drawdown absoluto continuam calculados e exibidos
+ * nos painéis. Só pararam de decidir promoção.
+ *
+ * ⚠️ ESPELHO em functions/maturity/computeFinancial.js — MANTER SINCRONIZADO ⚠️
  */
-
-import { norm, normInverted } from './helpers.js';
 
 const FLOOR_TRADES = 5;
 const MED_CEILING = FLOOR_TRADES + 30;
 const NEUTRAL_SCORE = 50;
-const EPS = 1e-9;
 
-const WEIGHT_E = 0.30;
-const WEIGHT_P = 0.25;
-const WEIGHT_CV = 0.20;
-const WEIGHT_DD = 0.25;
+// Peso igual para os três. Média direta em vez de 3 × (1/3): `0.333… × 100` três vezes
+// devolve 99.99999999999999, e nota cheia precisa ser exatamente 100.
 
-const E_MAX = 1.0;
-const P_MIN = 0.8;
-const P_MAX = 3.0;
-const CV_MIN = 0.3;
-const CV_MAX = 2.0;
-const DD_MAX_PCT = 25;
+// Estouro do limite: razão 1,0 = exatamente no limite (100); 2,0 = dobro do limite (0).
+const DD_BREACH_ZERO = 2.0;
+
+// Régua de segurança quando o plano não define `cycleStop`. Não deveria acontecer
+// (28/28 planos preenchem), mas sem denominador a conta viraria gate impossível — foi
+// exatamente o defeito do `initialBalance` que este mesmo issue corrigiu.
+const DD_FALLBACK_LIMIT_PCT = 25;
 
 function isFiniteNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -66,96 +74,82 @@ function resolveConfidence(n) {
   return 'LOW';
 }
 
+/** % dos trades cujo risco por operação ficou dentro do que o plano autoriza. */
+export function scoreRiscoPorOperacao(trades) {
+  const avaliados = trades.filter((t) => t && typeof t.compliance?.roStatus === 'string');
+  if (avaliados.length === 0) return null;
+  const dentro = avaliados.filter((t) => t.compliance.roStatus === 'CONFORME').length;
+  return (dentro / avaliados.length) * 100;
+}
+
+/** Queda contra o limite que o PRÓPRIO aluno definiu. Dentro do limite = 100. */
+export function scoreQuedaContraLimite(maxDrawdown, plans) {
+  const quedaPct = isFiniteNum(maxDrawdown?.maxDDPercent) ? maxDrawdown.maxDDPercent : null;
+  if (quedaPct === null) return null;
+  const doPlano = plans
+    .map((p) => Number(p?.cycleStop))
+    .find((v) => isFiniteNum(v) && v > 0);
+  const limite = doPlano ?? DD_FALLBACK_LIMIT_PCT;
+  const razao = Math.abs(quedaPct) / limite;
+  if (razao <= 1) return 100;
+  const excedente = (razao - 1) / (DD_BREACH_ZERO - 1);
+  return Math.max(0, 100 * (1 - excedente));
+}
+
+/** % dos trades que nasceram com proteção definida. */
+export function scoreProtecao(trades) {
+  if (trades.length === 0) return null;
+  const comStop = trades.filter(
+    (t) => t && t.stopLoss != null && isFiniteNum(Number(t.stopLoss)),
+  ).length;
+  return (comStop / trades.length) * 100;
+}
+
 /**
  * @param {{
  *   trades: Array<object>,
- *   initialBalance?: number,
- *   stats?: { expectancy?: number, payoffRatio?: number } & object,
- *   evLeakage?: { evTheoretical?: number, evReal?: number } | null,
- *   payoff?: { ratio?: number } | null,
- *   consistencyCV?: { cv?: number } | null,
+ *   plans?: Array<object>,
  *   maxDrawdown?: { maxDDPercent?: number } | null,
  * }} input
  * @returns {{
  *   score: number,
- *   breakdown: { eScore: number, pScore: number, cvScore: number, ddScore: number },
+ *   breakdown: { roScore: number, ddScore: number, stopScore: number },
  *   confidence: 'HIGH'|'MED'|'LOW',
  *   neutralFallback: string|null,
  * }}
  */
-export function computeFinancial({
-  trades,
-  initialBalance,
-  stats,
-  evLeakage,
-  payoff,
-  consistencyCV,
-  maxDrawdown,
-} = {}) {
-  void initialBalance;
-
+export function computeFinancial({ trades, plans, maxDrawdown } = {}) {
   const safeTrades = Array.isArray(trades) ? trades : [];
+  const safePlans = Array.isArray(plans) ? plans : [];
   const N = safeTrades.length;
 
   if (N === 0) {
     return {
       score: NEUTRAL_SCORE,
-      breakdown: { eScore: NEUTRAL_SCORE, pScore: NEUTRAL_SCORE, cvScore: NEUTRAL_SCORE, ddScore: NEUTRAL_SCORE },
+      breakdown: { roScore: NEUTRAL_SCORE, ddScore: NEUTRAL_SCORE, stopScore: NEUTRAL_SCORE },
       confidence: 'LOW',
       neutralFallback: 'financial:empty-window',
     };
   }
 
   const flags = [];
+  const ou = (valor, flag) => {
+    if (valor === null) {
+      flags.push(flag);
+      return NEUTRAL_SCORE;
+    }
+    return valor;
+  };
 
-  // ---------- eScore ----------
-  const hasEV = evLeakage != null && (isFiniteNum(evLeakage.evTheoretical) || isFiniteNum(evLeakage.evReal));
-  const hasStats = stats != null && isFiniteNum(stats.expectancy);
-  let eScore;
-  if (!hasEV && !hasStats) {
-    eScore = NEUTRAL_SCORE;
-    flags.push('financial:eScore');
-  } else {
-    const expT = isFiniteNum(evLeakage?.evTheoretical) ? evLeakage.evTheoretical : (isFiniteNum(stats?.expectancy) ? stats.expectancy : 0);
-    const expR = isFiniteNum(evLeakage?.evReal)        ? evLeakage.evReal        : (isFiniteNum(stats?.expectancy) ? stats.expectancy : 0);
-    const ratio = expR / Math.max(expT, EPS);
-    eScore = norm(ratio, 0, E_MAX);
-  }
+  const roScore = ou(scoreRiscoPorOperacao(safeTrades), 'financial:roScore');
+  const ddScore = ou(scoreQuedaContraLimite(maxDrawdown, safePlans), 'financial:ddScore');
+  const stopScore = ou(scoreProtecao(safeTrades), 'financial:stopScore');
 
-  // ---------- pScore ----------
-  const hasPayoff = payoff != null && isFiniteNum(payoff.ratio);
-  const hasStatsPayoff = stats != null && isFiniteNum(stats.payoffRatio);
-  let pScore;
-  if (!hasPayoff && !hasStatsPayoff) {
-    pScore = NEUTRAL_SCORE;
-    flags.push('financial:pScore');
-  } else {
-    const payoffV = hasPayoff ? payoff.ratio : stats.payoffRatio;
-    pScore = norm(payoffV, P_MIN, P_MAX);
-  }
-
-  // ---------- cvScore (sem flag — default é sinal legítimo) ----------
-  const cvV = isFiniteNum(consistencyCV?.cv) ? consistencyCV.cv : 2.0;
-  const cvScore = normInverted(cvV, CV_MIN, CV_MAX);
-
-  // ---------- ddScore ----------
-  let ddScore;
-  if (maxDrawdown == null || !isFiniteNum(maxDrawdown.maxDDPercent)) {
-    ddScore = NEUTRAL_SCORE;
-    flags.push('financial:ddScore');
-  } else {
-    ddScore = normInverted(maxDrawdown.maxDDPercent, 0, DD_MAX_PCT);
-  }
-
-  const score =
-    WEIGHT_E * eScore +
-    WEIGHT_P * pScore +
-    WEIGHT_CV * cvScore +
-    WEIGHT_DD * ddScore;
+  const score = (roScore + ddScore + stopScore) / 3;
 
   return {
     score,
-    breakdown: { eScore, pScore, cvScore, ddScore },
+    breakdown: { roScore, ddScore, stopScore },
     confidence: resolveConfidence(N),
     neutralFallback: flags.length === 0 ? null : flags.join(';'),
   };
