@@ -7,4 +7,3 @@
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
 | CHUNK-02 | #387 | `fix/issue-387-card-sem-pulo` | 22/08/2026 | card de ciclo sem layout shift |
-| CHUNK-09 | #376 | `fix/issue-376-financeiro-conduta` | 23/08/2026 | Financeiro mede conduta, não resultado |
