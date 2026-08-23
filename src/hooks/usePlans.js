@@ -469,15 +469,9 @@ export const usePlans = (overrideStudentId = null) => {
       }
     }
 
-    if (plan.rrTarget && trade.riskReward) {
-      if (trade.riskReward < plan.rrTarget) {
-        violations.push({
-          type: 'RR_BELOW_MINIMUM',
-          severity: 'warning',
-          message: `R:R ${trade.riskReward.toFixed(1)} abaixo do mínimo ${plan.rrTarget}`
-        });
-      }
-    }
+    // #376 — R:R abaixo do alvo NÃO entra em violações: é comportamento, não quebra de
+    // plano (Marcio, 23/08). Este caminho hoje não tem chamador, mas está exportado via
+    // DataContext — se alguém plugasse, ressuscitaria a regra revogada.
 
     if (plan.riskPerOperation && trade.riskPercent) {
       if (trade.riskPercent > plan.riskPerOperation) {

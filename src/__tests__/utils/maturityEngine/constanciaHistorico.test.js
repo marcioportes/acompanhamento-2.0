@@ -9,7 +9,7 @@
  * Nenhum aluno da base passou esse gate desde a abertura da mentoria.
  */
 import { describe, it, expect } from 'vitest';
-import { computeStrategyConsistencyWeeks, resolveWindow } from '../../../utils/maturityEngine/helpers';
+import { computeStrategyConsistencyWeeks, computeStrategyConsistencyMonths, resolveWindow } from '../../../utils/maturityEngine/helpers';
 
 /** Gera N semanas de trades com o mesmo setup, 5 por semana. */
 const historico = (semanas, setup = 'Continuidade') => {
@@ -61,5 +61,45 @@ describe('#376 — constância medida no histórico', () => {
       date: new Date(new Date(t.date).getTime() + 28 * 86400000).toISOString().slice(0, 10),
     }))];
     expect(computeStrategyConsistencyWeeks(trades, [])).toBeLessThan(8);
+  });
+});
+
+/**
+ * #376 — a sequência precisa ser vizinha no calendário.
+ *
+ * Achado do review: `sortedWeeks` só tem as semanas COM trade, e o run contava
+ * adjacência nessa lista esparsa. Enquanto a janela era de 45 dias isso ficava
+ * estruturalmente limitado; sobre o histórico completo (#396) virou ilimitado —
+ * rajadas espalhadas por dois anos passavam no gate de constância.
+ */
+describe('#376 — buraco de calendário quebra a sequência', () => {
+  const t = (iso, setup = 'Rompimento') => ({ date: iso, setup });
+  const JAN = ['2026-01-05', '2026-01-12', '2026-01-19', '2026-01-26'];
+  const JUL = ['2026-07-06', '2026-07-13', '2026-07-20', '2026-07-27'];
+
+  it('4 semanas em janeiro + 4 em julho não valem 8 seguidas', () => {
+    const n = computeStrategyConsistencyWeeks([...JAN, ...JUL].map((d) => t(d)), []);
+    expect(n).toBe(4);
+  });
+
+  it('8 semanas realmente contíguas valem 8', () => {
+    const seguidas = ['2026-01-05', '2026-01-12', '2026-01-19', '2026-01-26',
+      '2026-02-02', '2026-02-09', '2026-02-16', '2026-02-23'];
+    expect(computeStrategyConsistencyWeeks(seguidas.map((d) => t(d)), [])).toBe(8);
+  });
+
+  it('uma semana sem operar não apaga a constância (tolerância de 1)', () => {
+    const pulaUma = ['2026-01-05', '2026-01-12', '2026-01-26', '2026-02-02'];
+    expect(computeStrategyConsistencyWeeks(pulaUma.map((d) => t(d)), [])).toBe(4);
+  });
+
+  it('duas semanas seguidas de ausência quebram', () => {
+    const pulaDuas = ['2026-01-05', '2026-01-12', '2026-02-02', '2026-02-09'];
+    expect(computeStrategyConsistencyWeeks(pulaDuas.map((d) => t(d)), [])).toBe(2);
+  });
+
+  it('meses: janeiro + julho não valem 2 consecutivos', () => {
+    const trades = [...JAN, ...JUL].map((d) => t(d));
+    expect(computeStrategyConsistencyMonths(trades, [])).toBe(1);
   });
 });

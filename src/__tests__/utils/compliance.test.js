@@ -451,13 +451,15 @@ describe('calculateTradeCompliance', () => {
       expect(result.compliance.rrStatus).toBe('CONFORME');
     });
 
-    it('RR assumido gera red flag RR_BELOW_MINIMUM quando abaixo do alvo', () => {
+    it('RR abaixo do alvo NAO gera red flag (#376) — e comportamento, nao violacao', () => {
+      // Marcio, 23/08: "sair abaixo do alvo nao e violacao de plano, e comportamento".
+      // O R:R continua calculado e exibido; o que saiu foi a acusacao de violacao.
       const trade = { entry: 5000, qty: 1, stopLoss: null, result: 50, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
-      expect(compliance.rrRatio).toBe(0.63); // 50/80
-      expect(flags).toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
+      expect(compliance.rrRatio).toBe(0.63); // 50/80 — o numero continua la
+      expect(flags).not.toContainEqual(expect.objectContaining({ type: RED_FLAG_TYPES.RR_BELOW_MINIMUM }));
     });
 
     it('RR assumido em loss NAO gera red flag RR_BELOW_MINIMUM (B1)', () => {

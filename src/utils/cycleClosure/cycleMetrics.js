@@ -132,10 +132,19 @@ export function computeRuleAdherenceRate(trades) {
   const list = Array.isArray(trades) ? trades : [];
   if (list.length === 0) return null;
 
+  // #376 — comparava com 'OK', valor que NUNCA existiu nos dados: o domínio é
+  // CONFORME / NAO_CONFORME / FORA_DO_PLANO (compliance.js). A função devolvia 0 para
+  // todo trade real, e como o Step5Check sobrescreve o gate de compliance com este
+  // número, relaxar a régua não mudava nada no fechamento de ciclo. Só as fixtures do
+  // teste usavam 'OK', o que escondia o bug. Mesma classe do gate impossível por
+  // construção que esta issue foi aberta para eliminar.
+  //
+  // R:R saiu do critério junto (Marcio, 23/08: abaixo do alvo é comportamento, não
+  // violação) — aderência aqui é risco por operação.
   let conform = 0;
   for (const t of list) {
     const c = t?.compliance;
-    if (c && c.roStatus === 'OK' && c.rrStatus === 'OK') conform++;
+    if (c && c.roStatus === 'CONFORME') conform++;
   }
   return conform / list.length;
 }

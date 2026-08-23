@@ -3,111 +3,33 @@ import { evaluateGates } from '../../../utils/maturityEngine/evaluateGates';
 import { GATES_BY_TRANSITION } from '../../../utils/maturityEngine/constants';
 
 // Shape completo de métricas usado por 1→2, todos no limiar do passa/não-passa.
-const metrics12AllMet = {
-  maxDDPercent: 20,        // <= 20 → met
-  complianceRate: 80,      // >= 80 → met
-  E: 30,                   // >= 30 → met
-  journalRate: 0.50,       // >= 0.50 → met
-  stopUsageRate: 0.80,     // >= 0.80 → met
-  planAdherence: 70,       // >= 70 → met
-  ruleViolationRate: 0.30, // <= 0.30 → met (CHUNK-11 Fase 2)
+// #376 — as fixtures DERIVAM da tabela de gates, não repetem os números.
+//
+// Antes elas eram literais copiados da régua ("E: 55, F: 70, complianceRate: 95..."),
+// então toda recalibração quebrava este arquivo — que testa o AVALIADOR, não a régua.
+// Na relaxada de 23/08 sete testes caíram sem que o avaliador tivesse mudado nada.
+// Agora o valor que passa e o que falha saem do próprio `GATES_BY_TRANSITION`.
+const metricasQue = (transicao, passa) => {
+  const out = {};
+  for (const g of GATES_BY_TRANSITION[transicao] || []) {
+    const t = g.threshold;
+    if (typeof t === 'boolean') { out[g.metric] = passa ? t : !t; continue; }
+    const folga = Math.max(Math.abs(t) * 0.2, 1);
+    if (g.op === '>=' || g.op === '>') out[g.metric] = passa ? t + folga : t - folga;
+    else if (g.op === '<=' || g.op === '<') out[g.metric] = passa ? Math.max(0, t - folga) : t + folga;
+    else out[g.metric] = passa ? t : t + folga;
+  }
+  return out;
 };
 
-const metrics12AllMissed = {
-  maxDDPercent: 25,
-  complianceRate: 50,
-  E: 20,
-  journalRate: 0.30,
-  stopUsageRate: 0.60,
-  planAdherence: 50,
-  ruleViolationRate: 0.40, // > 0.30 → miss
-};
-
-const metrics23AllMet = {
-  E: 55,
-  F: 70,
-  O: 65,
-  strategyConsWks: 8,
-  journalRate: 0.90,
-  complianceRate: 95,
-  winRate: 45,
-  payoff: 1.2,
-  ruleViolationRate: 0.15, // <= 0.15 → met
-};
-
-const metrics23AllMissed = {
-  E: 40,
-  F: 50,
-  O: 40,
-  strategyConsWks: 4,
-  journalRate: 0.50,
-  complianceRate: 80,
-  winRate: 30,
-  payoff: 0.8,
-  ruleViolationRate: 0.25, // > 0.15 → miss
-};
-
-const metrics34AllMet = {
-  E: 75,
-  F: 85,
-  O: 80,
-  strategyConsMonths: 12,
-  advancedMetricsPresent: true,
-  complianceRate100: 100,
-  winRate: 55,
-  payoff: 2.0,
-  maxDDPercent: 5,
-  monthlySharpe: 1.2,
-  // Issue #208 — gates comportamentais (counts == 0 quando há cobertura)
-  stopTamperingCount: 0,
-  chaseCount: 0,
-  partialStopCount: 0,
-  ruleViolationRate: 0.05, // <= 0.05 → met
-};
-
-const metrics34AllMissed = {
-  E: 60,
-  F: 70,
-  O: 65,
-  strategyConsMonths: 6,
-  advancedMetricsPresent: false,
-  complianceRate100: 90,
-  winRate: 45,
-  payoff: 1.5,
-  maxDDPercent: 10,
-  monthlySharpe: 0.8,
-  // Issue #208 — gates comportamentais (counts > 0 falham)
-  stopTamperingCount: 3,
-  chaseCount: 2,
-  partialStopCount: 4,
-  ruleViolationRate: 0.10, // > 0.05 → miss
-};
-
-const metrics45AllMet = {
-  E: 85,
-  F: 90,
-  payoff: 2.5,
-  winRate: 55,
-  maxDDPercent: 3,
-  cv: 0.4,                  // < 0.5 → met
-  tiltRevengeCount: 0,      // == 0 → met
-  annualizedReturn: 15,
-  annualSharpe: 1.5,
-  ruleViolationRate: 0.01, // <= 0.01 → met
-};
-
-const metrics45AllMissed = {
-  E: 70,
-  F: 80,
-  payoff: 2.0,
-  winRate: 50,
-  maxDDPercent: 5,
-  cv: 0.8,
-  tiltRevengeCount: 3,
-  annualizedReturn: 10,
-  annualSharpe: 1.0,
-  ruleViolationRate: 0.05, // > 0.01 → miss
-};
+const metrics12AllMet = metricasQue('1-2', true);
+const metrics12AllMissed = metricasQue('1-2', false);
+const metrics23AllMet = metricasQue('2-3', true);
+const metrics23AllMissed = metricasQue('2-3', false);
+const metrics34AllMet = metricasQue('3-4', true);
+const metrics34AllMissed = metricasQue('3-4', false);
+const metrics45AllMet = metricasQue('4-5', true);
+const metrics45AllMissed = metricasQue('4-5', false);
 
 describe('evaluateGates — transições', () => {
   it('stage 1 com todas métricas no limiar → todos os 6 gates met', () => {
@@ -223,11 +145,12 @@ describe('evaluateGates — operadores específicos', () => {
     expect(gate.gap).toBe(0);
   });
 
-  it('operador < com value igual ao threshold → met=false (cv=0.5 falha <0.5)', () => {
-    const out = evaluateGates(4, { ...metrics45AllMet, cv: 0.5 });
+  it('operador < com value igual ao threshold → met=false (valor == teto falha em <)', () => {
+    const teto = GATES_BY_TRANSITION['4-5'].find((g) => g.id === 'cv-low').threshold;
+    const out = evaluateGates(4, { ...metrics45AllMet, cv: teto });
     const gate = out.gates.find((g) => g.id === 'cv-low');
     expect(gate.met).toBe(false);
-    expect(gate.gap).toBe(0); // value - threshold = 0.5 - 0.5 = 0 (ε=0)
+    expect(gate.gap).toBe(0); // value - threshold = 0 (ε=0)
   });
 
   it('operador == booleano: true/false/undefined em advancedMetricsPresent', () => {
@@ -252,8 +175,9 @@ describe('evaluateGates — operadores específicos', () => {
     expect(gate.gap).toBe(0);
   });
 
-  it('operador >= com value abaixo → gap = threshold - value (E=40 vs >=55 → gap=15)', () => {
-    const out = evaluateGates(2, { ...metrics23AllMet, E: 40 });
+  it('operador >= com value abaixo → gap = threshold - value', () => {
+    const teto = GATES_BY_TRANSITION['2-3'].find((g) => g.id === 'emotional-55').threshold;
+    const out = evaluateGates(2, { ...metrics23AllMet, E: teto - 15 });
     const gate = out.gates.find((g) => g.id === 'emotional-55');
     expect(gate.met).toBe(false);
     expect(gate.gap).toBe(15);
@@ -265,17 +189,19 @@ describe('evaluateGates — operadores específicos', () => {
     expect(gZero.met).toBe(true);
     expect(gZero.gap).toBe(0);
 
+    // #376 — o gate deixou de exigir ZERO e passou a tolerar 1 episódio.
     const outThree = evaluateGates(4, { ...metrics45AllMet, tiltRevengeCount: 3 });
     const gThree = outThree.gates.find((g) => g.id === 'zero-tilt-revenge');
     expect(gThree.met).toBe(false);
-    expect(gThree.gap).toBe(1);
+    expect(gThree.gap).toBe(2);
   });
 
-  it('operador <= com value acima → gap = value - threshold (maxDDPercent=30 vs <=20 → gap=10)', () => {
+  // #376 — teto relaxado de 20% para 25% na régua de 23/08.
+  it('operador <= com value acima → gap = value - threshold (maxDDPercent=30 vs <=25 → gap=5)', () => {
     const out = evaluateGates(1, { ...metrics12AllMet, maxDDPercent: 30 });
     const gate = out.gates.find((g) => g.id === 'maxdd-under-20');
     expect(gate.met).toBe(false);
-    expect(gate.gap).toBe(10);
+    expect(gate.gap).toBe(5);
   });
 });
 
@@ -337,19 +263,18 @@ describe('evaluateGates — ordem determinística preservada', () => {
 });
 
 describe('evaluateGates — agregação gatesRatio', () => {
-  it('3/6 gates met → ratio = 0.5', () => {
-    const partial = {
-      maxDDPercent: 20,      // met
-      complianceRate: 80,    // met
-      E: 30,                 // met
-      journalRate: 0.30,     // miss
-      stopUsageRate: 0.60,   // miss
-      planAdherence: 50,     // miss
-    };
+  it('gatesRatio reflete a fração cumprida — metade dos gates', () => {
+    // #376 — derivado da tabela: metade dos gates com valor que passa, metade com valor
+    // que falha. Antes eram seis literais da régua de 1-2, que a recalibração invalidou.
+    const gates = GATES_BY_TRANSITION['1-2'];
+    const metade = Math.floor(gates.length / 2);
+    const passa = metricasQue('1-2', true);
+    const falha = metricasQue('1-2', false);
+    const partial = {};
+    gates.forEach((g, i) => { partial[g.metric] = i < metade ? passa[g.metric] : falha[g.metric]; });
     const out = evaluateGates(1, partial);
-    expect(out.gatesMet).toBe(3);
-    expect(out.gatesTotal).toBe(7);
-    expect(out.gatesRatio).toBeCloseTo(3 / 7, 6);
+    expect(out.gatesMet).toBe(metade);
+    expect(out.gatesRatio).toBeCloseTo(metade / gates.length, 5);
   });
 
   it('mix met/missed/null: gatesMet conta só true, gatesTotal inclui null (visibilidade)', () => {
@@ -367,5 +292,44 @@ describe('evaluateGates — agregação gatesRatio', () => {
     expect(out.gatesRatio).toBeCloseTo(4 / 7, 6);
     const nullGate = out.gates.find((g) => g.metric === 'complianceRate');
     expect(nullGate.met).toBeNull();
+  });
+});
+
+/**
+ * #376 — cobertura de fronteira.
+ *
+ * As fixtures derivadas usam folga dos dois lados, então nenhum caso cai EXATAMENTE
+ * em cima do threshold — e é esse caso que distingue `>=` de `>` e `<=` de `<`. Sem
+ * ele, inverter um operador passaria verde. Aqui o valor testado é o próprio limite,
+ * lido da tabela, um gate de cada operador.
+ */
+describe('#376 — valor exatamente no limite', () => {
+  const gateDe = (transicao, id) => GATES_BY_TRANSITION[transicao].find((g) => g.id === id);
+
+  it('>= no limite → met (o gate aceita o valor exato)', () => {
+    const g = gateDe('2-3', 'emotional-55');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('>=');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(true);
+  });
+
+  it('<= no limite → met', () => {
+    const g = gateDe('2-3', 'rule-violation-rate-15');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('<=');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(true);
+  });
+
+  it('< no limite → NÃO met (fronteira exclusiva)', () => {
+    const g = gateDe('4-5', 'cv-low');
+    const out = evaluateGates(4, { ...metrics45AllMet, [g.metric]: g.threshold });
+    expect(g.op).toBe('<');
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(false);
+  });
+
+  it('um passo abaixo do limite em >= → NÃO met', () => {
+    const g = gateDe('2-3', 'emotional-55');
+    const out = evaluateGates(2, { ...metrics23AllMet, [g.metric]: g.threshold - 0.01 });
+    expect(out.gates.find((x) => x.id === g.id).met).toBe(false);
   });
 });

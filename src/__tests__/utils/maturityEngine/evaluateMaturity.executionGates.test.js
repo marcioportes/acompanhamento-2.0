@@ -10,6 +10,14 @@
 
 import { describe, it, expect } from 'vitest';
 import { evaluateMaturity } from '../../../utils/maturityEngine/evaluateMaturity.js';
+import { GATES_BY_TRANSITION } from '../../../utils/maturityEngine/constants.js';
+
+// #376 — a régua saiu de `== 0` para um teto tolerante; o número de eventos que derruba
+// cada gate vem da tabela, não de literal, para a próxima recalibração não quebrar o teste.
+const tetoDe = (id) => GATES_BY_TRANSITION['3-4'].find((g) => g.id === id).threshold;
+// os tradeIds precisam existir na janela (T1..T50) — eventos órfãos são filtrados.
+const eventosQueDerrubam = (tipo, id, base) =>
+  Array.from({ length: tetoDe(id) + 1 }, (_, i) => ({ type: tipo, tradeId: `T${base + i}` }));
 
 const baseInput = (overrides = {}) => ({
   trades: [],
@@ -86,20 +94,18 @@ describe('evaluateMaturity — gates comportamentais (#208)', () => {
       trades,
       tradesWithOrderData: 50,
       executionEvents: [
-        { type: 'STOP_TAMPERING', tradeId: 'T1' },
-        { type: 'CHASE_REENTRY', tradeId: 'T2' },
-        { type: 'STOP_PARTIAL_SIZING', tradeId: 'T3' },
-        { type: 'HESITATION_PRE_ENTRY', tradeId: 'T4' }, // não tem gate
+        ...eventosQueDerrubam('STOP_TAMPERING', 'no-stop-tampering', 1),
+        ...eventosQueDerrubam('CHASE_REENTRY', 'no-chase', 11),
+        ...eventosQueDerrubam('STOP_PARTIAL_SIZING', 'disciplined-sizing', 21),
+        { type: 'HESITATION_PRE_ENTRY', tradeId: 'T31' }, // não tem gate
       ],
     }));
 
     const byId = Object.fromEntries(out.gates.map((g) => [g.id, g]));
-    expect(byId['no-stop-tampering'].met).toBe(false);
-    expect(byId['no-stop-tampering'].value).toBe(1);
-    expect(byId['no-chase'].met).toBe(false);
-    expect(byId['no-chase'].value).toBe(1);
-    expect(byId['disciplined-sizing'].met).toBe(false);
-    expect(byId['disciplined-sizing'].value).toBe(1);
+    for (const id of ['no-stop-tampering', 'no-chase', 'disciplined-sizing']) {
+      expect(byId[id].met).toBe(false);
+      expect(byId[id].value).toBe(tetoDe(id) + 1);
+    }
   });
 
   it('eventos fora da janela W são filtrados', () => {

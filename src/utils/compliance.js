@@ -246,13 +246,19 @@ export const generateComplianceRedFlags = (trade, plan, complianceResult) => {
     });
   }
   
-  if (complianceResult.compliance.rrStatus === 'NAO_CONFORME' && complianceResult.rrRatio != null) {
-    flags.push({ 
-      type: RED_FLAG_TYPES.RR_BELOW_MINIMUM, 
-      message: `RR ${complianceResult.rrRatio.toFixed(2)}x abaixo do mínimo (${plan.rrTarget}x)`, 
-      timestamp: new Date().toISOString() 
-    });
-  }
+  // #376 — R:R abaixo do alvo DEIXOU de ser violação de plano.
+  //
+  // Marcio, 23/08/2026: "sair abaixo do alvo não é violação de plano, é comportamento."
+  // Realizar parcial, sair em 1,5R porque o contexto mudou, ter alvo menor naquele setup —
+  // tudo isso virava quebra de regra em CADA acerto, e a conformidade do aluno nunca subia
+  // por mais disciplinado que ele fosse. Medido: esta regra sozinha derrubava a taxa do
+  // melhor aluno da base de 93,8% para 80,0%, e o gate pede 95%.
+  //
+  // A informação não se perde: sair antes do alvo continua sendo lido como COMPORTAMENTO
+  // (`EARLY_EXIT`, que diz com quantos % do alvo o aluno saiu) e o detalhamento em dinheiro
+  // segue no painel (#373). O que muda é o enquadramento: deixou de ser infração.
+  //
+  // `rrStatus` continua sendo calculado e exibido — só não vira red flag.
   
   return flags;
 };

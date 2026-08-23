@@ -11,7 +11,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Lock } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
-import { effectiveRedFlags, isViolationCleared } from '../../utils/violationFilter';
+import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
 import { rrBreakdown } from '../../utils/rrBreakdown';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import {
@@ -173,7 +173,10 @@ const BehaviorPanel = ({ trade, plan = null, isMentor = false, embedded = false,
   // ① Adesão ao plano (redFlags)
   const hasFlags = Array.isArray(trade.redFlags) && trade.redFlags.length > 0;
   const effective = hasFlags ? effectiveRedFlags(trade) : [];
-  const cleared = hasFlags ? trade.redFlags.filter((f) => isViolationCleared(trade, f.type)) : [];
+  // #376 — violação revogada não reaparece nem na lista de "limpas pelo mentor".
+  const cleared = hasFlags
+    ? trade.redFlags.filter((f) => !isRevokedRedFlag(f.type) && isViolationCleared(trade, f.type))
+    : [];
 
   // ② Padrões (já ordenados no profile: negativos por severidade, positivos por último)
   const families = profile?.families ?? [];

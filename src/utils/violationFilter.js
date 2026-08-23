@@ -19,6 +19,27 @@
  *  - Se TODOS os trades vinculados limparam o evento, ele sai da soma de penalties.
  */
 
+/**
+ * #376 — violações REVOGADAS: a regra deixou de existir, mas o registro do trade
+ * não pode ser reescrito.
+ *
+ * `redFlags` é snapshot gravado no doc. Quando uma regra é revogada, os trades
+ * antigos continuam acusados. Reescrevê-los seria a saída óbvia — e é proibida:
+ * metade deles (53 de 106 em 23/08) já está em `status: 'DISCUSSED'`, e trade
+ * discutido é imutável (tradeGateway, #269 v2). O que foi conversado com o aluno
+ * fica como foi.
+ *
+ * A saída é filtrar no consumo, não na persistência: o histórico preserva que a
+ * violação existia, e nenhuma métrica volta a contá-la. Mesmo princípio do #282
+ * (consistência display-time, sem congelar snapshot).
+ *
+ * RR_ABAIXO_MINIMO — revogado por Marcio em 23/08: "sair abaixo do alvo não é
+ * violação de plano, é comportamento". Era 106 de 282 flags da base.
+ */
+export const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO'];
+
+export const isRevokedRedFlag = (type) => REVOKED_RED_FLAG_TYPES.includes(type);
+
 export const getEventKey = (event, tradeId) => {
   if (!event?.type || !tradeId) return '';
   return `${event.type}:${tradeId}`;
@@ -39,11 +60,12 @@ export const isViolationCleared = (trade, key) => {
 export const effectiveRedFlags = (trade) => {
   if (!trade) return [];
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
+  const vigentes = flags.filter((f) => f && !isRevokedRedFlag(f.type));
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
-  if (cleared.length === 0) return flags;
-  return flags.filter((f) => f && !cleared.includes(f.type));
+  if (cleared.length === 0) return vigentes;
+  return vigentes.filter((f) => !cleared.includes(f.type));
 };
 
 /**

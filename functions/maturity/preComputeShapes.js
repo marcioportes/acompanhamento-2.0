@@ -152,7 +152,10 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig, orde
   const safeTrades = Array.isArray(trades) ? trades : [];
   const safePlans = Array.isArray(plans) ? plans : [];
   const safeOrders = Array.isArray(orders) ? orders : [];
-  const initialBalance = safePlans[0]?.initialBalance ?? 0;
+  // #376 — `pl` como fallback: nenhum plano da base preenche `initialBalance`, e sem
+  // denominador o maxDD% fica null → gate de drawdown impossível. Ver nota em
+  // evaluateMaturity.js.
+  const initialBalance = safePlans[0]?.initialBalance ?? safePlans[0]?.pl ?? 0;
   const refNow = now instanceof Date ? now : (now ? new Date(now) : new Date());
 
   const stats = calcStats(safeTrades);
