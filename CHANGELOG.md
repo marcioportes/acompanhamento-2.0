@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.27] - 23/08/2026 · #394 · PR #395
+
+**fix:** exposição fechada não trava progressão + oito achados da revisão
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.83.26] - 23/08/2026 · #392 · PR #393
 
 **chore:** aposenta campo shadowBehavior, painéis órfãos e o ramo byTrade morto
