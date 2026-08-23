@@ -134,6 +134,13 @@ const BEHAVIORAL_PATTERNS = Object.freeze({
     severityDefault: null, emotionMapping: 'DISCIPLINE',
     resolutionLayer: RESOLUTION.HIGH, requires: ['trades', 'orders', 'plan'], feedsScore: true, feedsGates: false,
   }),
+  // #376 — modelo de operação não declarado. Processo, não emoção (emotionMapping null).
+  UNDECLARED_MODEL: P({
+    code: 'UNDECLARED_MODEL', family: 'UNDECLARED_MODEL', valence: 'negative', dimensao: ['O'],
+    viesFramework: 'Desvio operacional — operar fora do modelo declarado (§5)',
+    severityDefault: SEVERITY.MEDIUM, emotionMapping: null,
+    resolutionLayer: RESOLUTION.LOW, requires: ['trades'], feedsScore: true, feedsGates: false,
+  }),
   CLEAN_EXECUTION: P({
     code: 'CLEAN_EXECUTION', family: 'CLEAN_EXECUTION', valence: 'positive', dimensao: ['E'],
     viesFramework: 'Disciplina — perfil SAGE (§2.4)',
@@ -178,6 +185,7 @@ const LEGACY_CODE_ALIAS = Object.freeze({
   LATE_EXIT: 'LATE_EXIT',
   AVERAGING_DOWN: 'AVERAGING_DOWN',
   CLEAN_EXECUTION: 'CLEAN_EXECUTION',
+  UNDECLARED_MODEL: 'UNDECLARED_MODEL',
   TARGET_HIT: 'TARGET_HIT',
   TILT_DETECTED: 'TILT',
   REVENGE_DETECTED: 'LOSS_CHASING',

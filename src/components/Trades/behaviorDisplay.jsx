@@ -51,6 +51,7 @@ export const BEHAVIOR_LABELS = {
   UNPROTECTED_SIZE: 'Posição sem proteção',
   SIZING_DISCIPLINE: 'Condução de sizing',
   CLEAN_EXECUTION: 'Execução limpa',
+  UNDECLARED_MODEL: 'Modelo não declarado',
   TARGET_HIT: 'Alvo atingido',
   // #369 — ordens montadas e desmontadas, atribuídas ao trade vizinho
   RECONSIDERATION: 'Reavaliou antes de entrar',
@@ -77,8 +78,12 @@ export const BEHAVIOR_DESCRIPTIONS = {
   DIRECTION_FLIP: 'Virou a mão no mesmo instrumento após loss — viés/narrativa quebrada.',
   RISK_OVER_RO: 'O valor financeiro do stop passou do RO do plano — a distância do stop não acompanhou o aumento da posição.',
   UNPROTECTED_SIZE: 'Contratos abertos sem ordem de stop cobrindo — exposição sem barreira.',
-  SIZING_DISCIPLINE: 'Aumentou a posição e ajustou a proteção junto: o risco continuou dentro do RO.',
-  CLEAN_EXECUTION: 'Trade com stop presente, RR respeitado e sem padrões negativos.',
+  // #376 — a frase afirmava que o risco ficou dentro do RO. Agora o padrão só é
+  // concedido quando isso é verdade (o detector recusa trade com violação de plano),
+  // então a descrição pode afirmar sem mentir.
+  SIZING_DISCIPLINE: 'Aumentou a posição e ajustou a proteção junto, mantendo o risco dentro do RO autorizado.',
+  CLEAN_EXECUTION: 'Trade com stop presente, RR respeitado, sem padrões negativos e sem violação de plano.',
+  UNDECLARED_MODEL: 'Trade registrado sem setup, ou com setup "Indefinido".',
   TARGET_HIT: 'Saída no alvo planejado — paciência na execução.',
 };
 
@@ -131,7 +136,9 @@ export const BEHAVIOR_NARRATIVE = {
   TARGET_HIT: (e) =>
     `Você saiu no alvo planejado${e.planRR ? ` (${e.planRR}:1)` : ''}. Paciência na execução — o trade foi até onde o plano mandou.`,
   CLEAN_EXECUTION: () =>
-    'Stop no lugar, RR respeitado e nenhum padrão negativo. É exatamente assim que o plano espera que você opere.',
+    'Stop no lugar, RR respeitado, nenhum padrão negativo e nenhuma violação de plano. É exatamente assim que o plano espera que você opere.',
+  UNDECLARED_MODEL: (e) =>
+    `Este trade não diz de onde veio${e.setup ? ` (setup: "${e.setup}")` : ''}. Sem o modelo declarado não dá pra saber se funcionou ou se deu certo por acaso — e o que não se identifica não se repete.`,
 };
 
 export const narrativeFor = (family) => {
