@@ -416,7 +416,7 @@ const VERSION = {
   version: '1.83.27',
   build: '20260823',
   display: 'v1.83.27',
-  full: '1.83.26+20260823'
+  full: '1.83.27+20260823'
 };
 export default VERSION;
 export { VERSION };

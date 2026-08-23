@@ -33,9 +33,6 @@ const EMOTION_MAPPING = {
   UNDERSIZED_TRADE: 'AVOIDANCE',
   HESITATION: 'FEAR',
   STOP_PANIC: 'PANIC',
-  LATE_EXIT: 'HOPE',
-  AVERAGING_DOWN: 'DENIAL',
-  STOP_PANIC: 'PANIC',
   FOMO_ENTRY: 'FOMO',
   EARLY_EXIT: 'FEAR',
   LATE_EXIT: 'HOPE',
@@ -314,8 +311,15 @@ const detectHesitation = (trade, orders) => {
   // NO ALVO passavam a contar como "ordens canceladas antes de entrar" e o trade
   // ganhava HESITATION. Caso real: WINV26 de 21/08, +R$ 520, marcado com hesitação
   // depois de o feedback já ter sido enviado ao aluno.
-  const cancels = orders.filter(o => o.status === 'CANCELLED'
-    && orderInstantMs(trade, o.cancelledAt || o.submittedAt) < entryTime.getTime());
+  // #396 — `orderInstantMs` devolve null quando a ordem não tem instante, e `null < n`
+  // coage para `0 < n` → true. Ou seja: ordem cancelada SEM data virava "cancelada antes
+  // da entrada" e fabricava HESITATION — exatamente o defeito que o #388 consertava, por
+  // outra porta. O comportamento anterior (`new Date(undefined)`) dava NaN e era falso.
+  const cancels = orders.filter((o) => {
+    if (o.status !== 'CANCELLED') return false;
+    const ms = orderInstantMs(trade, o.cancelledAt || o.submittedAt);
+    return ms != null && ms < entryTime.getTime();
+  });
   if (cancels.length < DEFAULT_CONFIG.hesitation.minCancels) return null;
   return {
     code: 'HESITATION',
@@ -390,8 +394,10 @@ const detectAveragingDown = (trade, orders) => {
   const mesmaDirecao = orders
     .filter((o) => (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
       && !o.isStopOrder && o.side === ladoEntrada && dentroDaPosicao(o))
-    .sort((a, b) => (orderInstantMs(trade, a.filledAt || a.submittedAt) || 0)
-      - (orderInstantMs(trade, b.filledAt || b.submittedAt) || 0));
+    // Sem instante a ordem vai para o fim, não para o começo: `|| 0` a colocaria antes de
+    // tudo e inventaria sequência de piramidação.
+    .sort((a, b) => (orderInstantMs(trade, a.filledAt || a.submittedAt) ?? Infinity)
+      - (orderInstantMs(trade, b.filledAt || b.submittedAt) ?? Infinity));
 
   if (mesmaDirecao.length < 2) return null;
 
@@ -425,34 +431,78 @@ const detectAveragingDown = (trade, orders) => {
 /** Cancelamento dentro desta janela da saída é OCO fechando no alvo, não decisão. */
 const OCO_TOLERANCIA_MIN = 0.5;
 
-/** Pânico no stop — afastou/cancelou a proteção e saiu logo em seguida. */
+/**
+ * Pânico no stop — AFASTOU ou REMOVEU a proteção e desistiu logo em seguida.
+ *
+ * #396 — duas correções sobre a primeira versão:
+ *
+ * 1. O cancelamento do OCO no alvo era descartado olhando só o ÚLTIMO stop tocado — e num
+ *    bracket o último é sempre esse. Resultado: a função devolvia "não é pânico" mesmo
+ *    quando houve afastamento de verdade minutos antes, e o detector nasceu inerte. O
+ *    ensaio contra produção deu zero e eu li como "base limpa"; era detector morto.
+ *    Agora o OCO sai da LISTA de candidatos, não do teste final.
+ *
+ * 2. Qualquer stop `MODIFIED` contava, sem olhar direção. Apertar o stop (trailing) é o
+ *    oposto de pânico, e ainda alimentaria o gate de tampering — o mesmo falso positivo
+ *    que o #394 estava corrigindo do outro lado. Agora exige AFASTAMENTO (stop mais longe
+ *    da entrada que o anterior) ou REMOÇÃO (cancelado sem nada no lugar).
+ */
 const detectStopPanic = (trade, orders) => {
   if (!orders || !orders.length) return null;
-  const mexidos = orders.filter((o) => o.isStopOrder && (o.status === 'MODIFIED' || o.status === 'CANCELLED'));
-  if (!mexidos.length) return null;
-
   const saida = tradeMs(trade.exitTime);
-  if (saida == null) return null;
+  const entrada = Number(trade.entry);
+  if (saida == null || !isFinite(entrada)) return null;
 
-  const ultimoMexido = mexidos
-    .map((o) => orderInstantMs(trade, o.lastUpdatedAt || o.cancelledAt || o.submittedAt))
-    .filter((ms) => ms != null)
-    .sort((a, b) => b - a)[0];
-  if (ultimoMexido == null) return null;
+  const precoDe = (o) => {
+    const v = Number(o.stopPrice != null ? o.stopPrice : (o.limitPrice != null ? o.limitPrice : o.price));
+    return isFinite(v) ? v : null;
+  };
+  const distancia = (preco) => Math.abs(entrada - preco);
 
-  const minutos = (saida - ultimoMexido) / 60000;
-  // Proteção cancelada NO instante da saída é o OCO fechando o bracket no alvo — desfecho
-  // normal, não pânico. No trade de 21/08 as duas pernas morreram junto com a saída e o
-  // detector original gritava pânico num trade que atingiu o alvo. Pânico é tirar a
-  // proteção e desistir LOGO EM SEGUIDA, não simultaneamente.
-  if (minutos <= OCO_TOLERANCIA_MIN) return null;
-  if (minutos > DEFAULT_CONFIG.stopPanic.maxExitMinutes) return null;
+  // Pernas de proteção na ordem em que foram COLOCADAS. Preço é exigido só para comparar
+  // afastamento — REMOÇÃO não depende de preço, e exigi-lo fazia a função ignorar stop
+  // sem `stopPrice` (comum em ordem de proteção sem gatilho explícito).
+  const pernas = orders
+    .filter((o) => o.isStopOrder && orderInstantMs(trade, o.submittedAt) != null)
+    .map((o) => ({
+      o,
+      nasceu: orderInstantMs(trade, o.submittedAt),
+      morreu: orderInstantMs(trade, o.cancelledAt || o.lastUpdatedAt),
+      preco: precoDe(o),
+    }))
+    .sort((a, b) => a.nasceu - b.nasceu);
+  if (!pernas.length) return null;
+
+  const ultima = pernas[pernas.length - 1];
+  const anteriores = pernas.slice(0, -1);
+
+  // AFASTOU: a proteção mais recente ficou MAIS LONGE da entrada que alguma anterior.
+  // Apertar (trailing) é o oposto e não conta — era o falso positivo do #396.
+  const afastou = ultima.preco != null
+    && anteriores.some((p) => p.preco != null && distancia(ultima.preco) > distancia(p.preco));
+
+  // REMOVEU: última proteção cancelada, sem nada no lugar, e o cancelamento NÃO é o OCO
+  // fechando no alvo (que acontece junto com a saída).
+  const cancelada = ultima.o.status === 'CANCELLED' || ultima.o.status === 'MODIFIED';
+  const foiOco = ultima.morreu != null && (saida - ultima.morreu) / 60000 <= OCO_TOLERANCIA_MIN;
+  const removeu = cancelada && !foiOco && ultima.morreu != null;
+
+  if (!afastou && !removeu) return null;
+
+  // O instante do ato: quando a proteção afastada nasceu, ou quando a proteção morreu.
+  const instante = afastou ? ultima.nasceu : ultima.morreu;
+  const minutos = (saida - instante) / 60000;
+  if (minutos < 0 || minutos > DEFAULT_CONFIG.stopPanic.maxExitMinutes) return null;
 
   return {
     code: 'STOP_PANIC',
     severity: minutos <= 1 ? 'HIGH' : minutos <= 3 ? 'MEDIUM' : 'LOW',
     confidence: 0.85, emotionMapping: EMOTION_MAPPING.STOP_PANIC, layer: 2,
-    evidence: { widenedStopCount: mexidos.length, exitAfterWidenMinutes: Math.round(minutos * 10) / 10 },
+    evidence: {
+      widenedStopCount: pernas.length,
+      exitAfterWidenMinutes: Math.round(minutos * 10) / 10,
+      motivo: afastou ? 'afastou' : 'removeu',
+    },
   };
 };
 
@@ -462,19 +512,31 @@ const detectLateExit = (trade, orders) => {
   const resultado = getResult(trade);
   if (resultado >= 0) return null;   // é sobre segurar PERDA
 
-  const cancelados = orders.filter((o) => o.isStopOrder && o.status === 'CANCELLED');
-  if (!cancelados.length) return null;
-
   const saida = tradeMs(trade.exitTime);
   if (saida == null) return null;
 
-  const ultimoCancelamento = cancelados
-    .map((o) => orderInstantMs(trade, o.cancelledAt || o.lastUpdatedAt || o.submittedAt))
-    .filter((ms) => ms != null)
-    .sort((a, b) => b - a)[0];
-  if (ultimoCancelamento == null) return null;
+  // #396 — o stop EXECUTOU: o trade saiu pela própria proteção. Não há "segurou depois de
+  // remover o stop" nenhuma. Antes, um trailing stop (cancela e recoloca) até ser
+  // finalmente acionado era lido como remoção, e o trade acusava saída tardia estando
+  // protegido o tempo todo.
+  const algumExecutou = orders.some((o) => o.isStopOrder
+    && (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED'));
+  if (algumExecutou) return null;
 
-  const minutos = (saida - ultimoCancelamento) / 60000;
+  const pernas = orders
+    .filter((o) => o.isStopOrder && orderInstantMs(trade, o.submittedAt) != null)
+    .map((o) => ({ o, nasceu: orderInstantMs(trade, o.submittedAt), morreu: orderInstantMs(trade, o.cancelledAt || o.lastUpdatedAt) }))
+    .sort((a, b) => a.nasceu - b.nasceu);
+  if (!pernas.length) return null;
+
+  const ultima = pernas[pernas.length - 1];
+  if (ultima.o.status !== 'CANCELLED' || ultima.morreu == null) return null;
+
+  // Cancelamento com outra proteção nascendo em seguida é SUBSTITUIÇÃO, não remoção.
+  const substituida = pernas.some((p) => p !== ultima && p.nasceu >= ultima.morreu - MESMA_LEVA_MS);
+  if (substituida) return null;
+
+  const minutos = (saida - ultima.morreu) / 60000;
   if (minutos < DEFAULT_CONFIG.lateExit.minDelayMinutes) return null;
 
   return {
@@ -483,7 +545,7 @@ const detectLateExit = (trade, orders) => {
     confidence: 0.85, emotionMapping: EMOTION_MAPPING.LATE_EXIT, layer: 2,
     evidence: {
       delayMinutes: Math.round(minutos * 10) / 10,
-      cancelledStopCount: cancelados.length,
+      cancelledStopCount: pernas.filter((p) => p.o.status === 'CANCELLED').length,
       tradeResult: resultado,
     },
   };
@@ -503,9 +565,12 @@ const detectGreedCluster = (trade, adjacent) => {
   }
   if (ganhosSeguidos === 0) return null;
 
+  // #396 — o primeiro da sequência conta sempre: `getMinutesBetween(inicio, inicio)` não
+  // é zero, é a DURAÇÃO do próprio trade. Um vencedor segurado 15 minutos era excluído do
+  // cluster que ele mesmo abriu, e três entradas rápidas depois dele viravam duas.
   const inicio = sorted[idx - ganhosSeguidos];
-  let rapidos = 0;
-  for (let i = idx - ganhosSeguidos; i <= idx; i++) {
+  let rapidos = 1;
+  for (let i = idx - ganhosSeguidos + 1; i <= idx; i++) {
     if (getMinutesBetween(inicio, sorted[i]) <= cfg.maxIntervalMinutes) rapidos++;
   }
   if (rapidos < cfg.minTrades) return null;
