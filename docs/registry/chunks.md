@@ -7,5 +7,3 @@
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
 | CHUNK-02 | #387 | `fix/issue-387-card-sem-pulo` | 22/08/2026 | card de ciclo sem layout shift |
-| CHUNK-09 | #376 | `feat/issue-376-ato-de-promocao` | 23/08/2026 | aviso de promoção + ato do mentor |
-| CHUNK-11 | #376 | `fix/issue-376-elogio-indevido` | 23/08/2026 | padrão positivo não convive com violação |

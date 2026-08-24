@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.30] - 23/08/2026 · #376 · PRs #399 / #400
+
+**feat:** aviso de promoção para os dois lados + o ato de promover é do mentor
+**fix:** padrão positivo não é concedido a trade que quebrou o plano
+
+- **Nada no sistema promovia ninguém.** O motor gravava `proposedTransition: UP` e parava aí; `currentStage` só mudava se o assessment mudasse. E o fechamento de ciclo comparava o objeto `proposedTransition` com a string `'PROMOTE'` — `false` por construção. O "9/9" era relatório, não evento. Sexto caso do dia da mesma família.
+- `promotionReadiness` (ESM + espelho CJS com teste de paridade): **uma** regra de prontidão para o card do aluno, o alerta do mentor, o fechamento de ciclo e a revalidação no servidor. Card do aluno avisa que cumpriu os requisitos; `MentorPromotionAlert` lista quem está pronto com o botão; callable `promoteStudentStage` é mentor-only e revalida no servidor. Grava `currentStage` + entrada em `stageHistory` (campos existentes — INV-15 preservada).
+- **Elogio indevido:** o WINV26 de +R$ 610 tomou R$ 495 de risco contra R$ 252 autorizados e recebia "Condução de sizing — o risco continuou dentro do RO" e "Execução limpa". `detectCleanExecution` ignorava violações de plano; `detectSizingDiscipline` media risco pelas ordens vivas enquanto o compliance media pelo stop declarado. Regra nova nos dois motores: padrão positivo exige ausência de red flag **vigente** (revogada e limpa pelo mentor não contam) e `roStatus !== 'FORA_DO_PLANO'`.
+- **`UNDECLARED_MODEL`:** setup vazio ou "Indefinido" emite padrão próprio (Operacional, sem emoção — é processo) e impede a "execução limpa". Acertar sem saber por quê não é execução limpa. Não alimenta gate.
+- Impacto: 33 trades perdem elogio indevido (todos com violação real de risco), 33 ganham "Modelo não declarado", 108 perfis recalculados, **zero** gates destravados ou travados a mais.
+- `version.display` e `version.full` passam a **derivar** de `version`/`build` — eram três literais com o mesmo número e o terceiro esquecimento em dois dias (#394 foi o `full`).
+- Testes: 3.903 no front + 246 em `functions/`.
+
 ## [1.83.29] - 23/08/2026 · #376 · PR #398
 
 **fix:** Financeiro mede conduta de risco, não performance

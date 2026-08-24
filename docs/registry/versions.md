@@ -96,4 +96,4 @@
 | 1.83.27 | #394 | `fix/issue-394-exposicao-fechada` | 23/08/2026 | consumida (PR #395 squash `71be0203`) |
 | 1.83.28 | #376 | `fix/issue-376-constancia-historico` | 23/08/2026 | consumida (PR #397 squash `4eb158b4`) |
 | 1.83.29 | #376 | `fix/issue-376-financeiro-conduta` | 23/08/2026 | consumida (PR #398 squash `92a90ced`) |
-| 1.83.30 | #376 | `feat/issue-376-ato-de-promocao` | 23/08/2026 | reservada |
+| 1.83.30 | #376 | `feat/issue-376-ato-de-promocao` + `fix/issue-376-elogio-indevido` | 23/08/2026 | consumida (PRs #399 `05673e51` / #400 `915f6964`) |

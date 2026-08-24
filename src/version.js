@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.30: #376 feat aviso de promoção nos dois lados + ato do mentor; padrão positivo não convive com violação (PRs #399/#400, 23/08/2026)
  * - 1.83.29: #376 fix Financeiro mede conduta de risco, não performance (PR #398, 23/08/2026)
  * - 1.83.28: #376 fix R:R abaixo do alvo não é violação + régua de maturidade relaxada (PR #397, 23/08/2026)
  * - 1.83.27: #394 fix exposição fechada não trava progressão + oito achados da revisão (PR #395, 23/08/2026)
@@ -420,7 +421,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.83.29';
+const version = '1.83.30';
 const build = '20260823';
 
 const VERSION = {
