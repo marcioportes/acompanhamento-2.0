@@ -371,10 +371,22 @@ if [ -n "$VER" ] && $TOUCHES_PRODUCT; then
       ' "$REPO/src/version.js" > "$REPO/src/version.js.tmp" && mv "$REPO/src/version.js.tmp" "$REPO/src/version.js"
     fi
     # Bump da constante VERSION (sempre que TOUCHES_PRODUCT, independente de reserva).
-    sed -i -E "s/version: '[^']+'/version: '${VER}'/" "$REPO/src/version.js"
-    sed -i -E "s/build: '[^']+'/build: '${TODAY_BUILD}'/" "$REPO/src/version.js"
-    sed -i -E "s/display: '[^']+'/display: 'v${VER}'/" "$REPO/src/version.js"
-    sed -i -E "s/full: '[^']+'/full: '${VER}+${TODAY_BUILD}'/" "$REPO/src/version.js"
+    #
+    # #387 — os quatro `sed` antigos casavam `version: '...'`, `build: '...'`,
+    # `display: '...'` e `full: '...'`, a forma do objeto literal. O #376 trocou o
+    # arquivo para duas constantes (`const version = '...'`) com `display`/`full`
+    # DERIVADOS, então nenhum dos quatro casava mais: o bump virou no-op SILENCIOSO.
+    # O encerramento do #387 gravou 1.83.31 no registry e no CHANGELOG e deixou o
+    # `version.js` em 1.83.30. Daí a checagem dura logo abaixo — no-op silencioso é
+    # exatamente o modo de falha que esta issue existe para não repetir.
+    sed -i -E "s/^const version = '[^']+';/const version = '${VER}';/" "$REPO/src/version.js"
+    sed -i -E "s/^const build = '[^']+';/const build = '${TODAY_BUILD}';/" "$REPO/src/version.js"
+    # `display` e `full` derivam de `version`/`build` desde o #376 — nada a substituir.
+    if ! grep -qE "^const version = '${VER}';" "$REPO/src/version.js"; then
+      echo "❌ src/version.js: bump para ${VER} NÃO foi aplicado — formato do arquivo mudou?" >&2
+      echo "   Linha atual: $(grep -nE "^const version = " "$REPO/src/version.js" || echo '<ausente>')" >&2
+      exit 1
+    fi
   fi
 elif [ -n "$VER" ]; then
   echo "  [skip] version.js bump (PR_TYPE=${PR_TYPE} não toca código de produto)"
