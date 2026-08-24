@@ -3,7 +3,7 @@
  *
  * Cobre:
  *  C1 — happy path: 4 métricas + badge BCB + sem coverage warning
- *  C2 — loading=true → skeleton visível
+ *  C2 — loading=true → métricas síncronas já na tela, só o Sharpe em espera (#387)
  *  C3 — error → mensagem amigável
  *  C4 — Sharpe insufficientReason='min_days' → label "Insuficiente · ≥X dias", sem badge BCB
  *  C5 — CV insufficientReason='no_target_rr' → label do plano sem RR
@@ -75,7 +75,39 @@ describe('CycleConsistencyCard', () => {
     expect(screen.queryByText(/MEP\/MEN em/)).toBeNull();
   });
 
-  it('C2 — loading=true exibe skeleton', () => {
+  // #387 — o esqueleto de card inteiro saiu. Enquanto o Sharpe carrega, as três métricas
+  // síncronas já aparecem e o layout nasce com a altura final; só a tile do Sharpe troca
+  // de conteúdo. Antes o card crescia ao carregar e empurrava os vizinhos da linha.
+  it('C2 — loading exibe as métricas síncronas e só o Sharpe em espera', () => {
+    vi.mocked(useCycleConsistency).mockReturnValue({
+      sharpe: null,
+      cvNormalized: { value: 1.8, cvObs: 5.2, cvExp: 3, daysWithTrade: 8 },
+      avgExcursion: { avgMEP: 0.15, avgMEN: -0.11, coverage: 1, coverageBelowThreshold: false },
+      loading: true,
+      error: null,
+    });
+
+    render(<CycleConsistencyCard {...baseProps} />);
+
+    // As três métricas síncronas já valem — nada de esperar rede pra mostrá-las.
+    expect(screen.getByText('CV norm.')).toBeTruthy();
+    expect(screen.getByText('1.80')).toBeTruthy();
+    expect(screen.getByText('MEP médio')).toBeTruthy();
+    expect(screen.getByText('+0.1%')).toBeTruthy();
+    expect(screen.getByText('MEN médio')).toBeTruthy();
+    expect(screen.getByText('-0.1%')).toBeTruthy();
+
+    // Só o Sharpe espera — placeholder no slot do valor, sem banda e sem badge, pra
+    // resolver não acrescentar linha nenhuma à tile.
+    expect(screen.getByText('Sharpe')).toBeTruthy();
+    expect(screen.getByText('···')).toBeTruthy();
+    expect(screen.queryByText('1.42')).toBeNull();
+    expect(screen.queryByText(/Selic atual/)).toBeNull();
+  });
+
+  // #387 — AP-08: no primeiro tick real o hook ainda não calculou nada e loading já é
+  // true. O card tem de renderizar, não estourar.
+  it('C2b — loading com cvNormalized/avgExcursion nulos renderiza sem lançar', () => {
     vi.mocked(useCycleConsistency).mockReturnValue({
       sharpe: null,
       cvNormalized: null,
@@ -84,10 +116,40 @@ describe('CycleConsistencyCard', () => {
       error: null,
     });
 
-    render(<CycleConsistencyCard {...baseProps} />);
+    expect(() => render(<CycleConsistencyCard {...baseProps} />)).not.toThrow();
+    expect(screen.getByText('Sharpe')).toBeTruthy();
+    expect(screen.getByText('CV norm.')).toBeTruthy();
+    expect(screen.getByText('···')).toBeTruthy();
+  });
 
-    expect(screen.getByTestId('cycle-consistency-skeleton')).toBeTruthy();
-    expect(screen.queryByText('1.42')).toBeNull();
+  // #387 — o que causava o pulo era o conjunto de blocos ABAIXO do grid mudar entre
+  // carregando e resolvido. Este teste trava a paridade: mesmos blocos nos dois estados.
+  it('C2c — carregando e resolvido renderizam os mesmos blocos abaixo do grid', () => {
+    const withBlocks = {
+      ...baseProps,
+      avgTradeDuration: { all: 12 },
+      durationDelta: { level: 'winners-run', deltaPercent: 40, durationWin: 20, durationLoss: 14 },
+    };
+    const loadingState = {
+      sharpe: null,
+      cvNormalized: { value: 1.8, cvObs: 5.2, cvExp: 3, daysWithTrade: 8 },
+      avgExcursion: { avgMEP: 0.15, avgMEN: -0.11, coverage: 1, coverageBelowThreshold: false },
+      loading: true,
+      error: null,
+    };
+
+    vi.mocked(useCycleConsistency).mockReturnValue(loadingState);
+    const { rerender, unmount } = render(<CycleConsistencyCard {...withBlocks} />);
+    expect(screen.getByText('Tempo W vs L')).toBeTruthy();
+    expect(screen.getByText(/Tempo medio geral/)).toBeTruthy();
+
+    vi.mocked(useCycleConsistency).mockReturnValue({ ...loadingState, sharpe: happyState.sharpe, loading: false });
+    rerender(<CycleConsistencyCard {...withBlocks} />);
+    expect(screen.getByText('Tempo W vs L')).toBeTruthy();
+    expect(screen.getByText(/Tempo medio geral/)).toBeTruthy();
+    expect(screen.getByText('1.42')).toBeTruthy();
+    expect(screen.queryByText('···')).toBeNull();
+    unmount();
   });
 
   it('C3 — error exibe mensagem amigável', () => {
@@ -102,7 +164,9 @@ describe('CycleConsistencyCard', () => {
     render(<CycleConsistencyCard {...baseProps} />);
 
     expect(screen.getByText(/Não foi possível carregar métricas do ciclo/i)).toBeTruthy();
-    expect(screen.queryByTestId('cycle-consistency-skeleton')).toBeNull();
+    // Sem nenhuma métrica calculada o grid inteiro sai (#385 mantido pelo #387).
+    expect(screen.queryByText('CV norm.')).toBeNull();
+    expect(screen.queryByText('Sharpe')).toBeNull();
   });
 
   it('C4 — Sharpe insufficientReason=min_days mostra label e oculta badge BCB', () => {
