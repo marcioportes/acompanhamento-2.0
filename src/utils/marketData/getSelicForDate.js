@@ -10,6 +10,16 @@
  * ⚠️ ESPELHO de functions/marketData/getSelicForDate.js — MANTER SINCRONIZADO ⚠️
  * Qualquer mudança aqui replica no CJS, e vice-versa (padrão #119/#191).
  *
+ * ⚠️ DIVERGÊNCIA INTENCIONAL com o espelho CJS (issue #387, DEC-AUTO-387-07) ⚠️
+ * A memoização abaixo (`clearSelicCache` + cache de promise por db/parâmetros/data)
+ * existe SÓ deste lado. Motivo: ela ataca reentrada de UI — recálculo do Sharpe a
+ * cada render do card de Consistência, um `getDoc` por dia operado por passada. Numa
+ * invocação de Cloud Function o processo é efêmero e não há reentrada, então o cache
+ * não pagaria seu custo lá; replicá-lo arrastaria deploy de CF para uma issue de
+ * layout. O CONTRATO DE VALORES permanece idêntico nos dois lados — o cache é
+ * transparente (mesmo shape, mesmas regras, NUNCA throw) e só suprime leituras
+ * repetidas. Paridade semântica preservada; paridade de performance, não.
+ *
  * Schema esperado (lock INV-10 com fetchSelicDaily.js):
  *   { date: 'YYYY-MM-DD', rateDaily: number, source: string, fetchedAt: Timestamp }
  *
@@ -60,20 +70,15 @@ function makeFallback(rateDaily) {
 }
 
 /**
- * Resolve `rateDaily` para `dateIso`.
+ * Resolve `rateDaily` para `dateIso` — leitura crua, sem passar pelo cache.
  *
- * @param {string} dateIso                                    — `YYYY-MM-DD`
- * @param {Object} [opts]
- * @param {Object} [opts.db]                                  — Firestore instance (default: client web SDK)
- * @param {number} [opts.maxCarryForwardDays=7]               — gap máximo aceito antes do fallback
- * @param {number} [opts.fallbackRateDaily=SELIC_FALLBACK_DAILY]
- * @returns {Promise<{rateDaily:number, source:string, dateUsed:string|null, isCarryForward:boolean, isFallback:boolean}>}
+ * @param {string} dateIso           — `YYYY-MM-DD`
+ * @param {Object} dbRef             — instância Firestore já resolvida
+ * @param {number} maxCarryForwardDays
+ * @param {number} fallbackRateDaily
+ * @returns {Promise<SelicLookup>}
  */
-export async function getSelicForDate(dateIso, opts = {}) {
-  const dbRef = opts.db ?? defaultDb;
-  const maxCarryForwardDays = opts.maxCarryForwardDays ?? DEFAULT_MAX_CARRY_FORWARD_DAYS;
-  const fallbackRateDaily = opts.fallbackRateDaily ?? SELIC_FALLBACK_DAILY;
-
+async function fetchSelicForDate(dateIso, dbRef, maxCarryForwardDays, fallbackRateDaily) {
   try {
     const exactRef = doc(dbRef, `${SELIC_HISTORY_PATH}/${dateIso}`);
     const exactSnap = await getDoc(exactRef);
@@ -119,4 +124,99 @@ export async function getSelicForDate(dateIso, opts = {}) {
     console.error(`[getSelicForDate] ${code}: ${message} (date=${dateIso})`);
     return makeFallback(fallbackRateDaily);
   }
+}
+
+
+// ── Memoização de escopo de módulo (issue #387) ─────────────
+//
+// A Selic de uma data passada é fato imutável: `computeCycleSharpe` faz um lookup por
+// dia operado e é reexecutado a cada recálculo do card de Consistência. Sem cache, um
+// ciclo de 20 dias custa 20 `getDoc` POR passada.
+//
+// Estrutura: Map externo por INSTÂNCIA de `db` → Map interno por
+// `maxCarryForwardDays|fallbackRateDaily|dateIso`. A data sozinha não serve de chave —
+// os parâmetros mudam o resultado para a mesma data, e testes injetam `db` mockados
+// distintos que se contaminariam entre si.
+//
+// Guarda-se a PROMISE, não o valor resolvido: `computeCycleSharpe` dispara os lookups
+// em `Promise.all`, então N chamadas concorrentes para a mesma data precisam
+// compartilhar uma única leitura in-flight — cachear só o resultado final não dedupa
+// nada nesse cenário.
+const selicCacheByDb = new Map();
+
+/**
+ * Zera a memoização. Existe para os testes (`beforeEach`) — sem isso o resultado de um
+ * teste vaza para o seguinte.
+ */
+export function clearSelicCache() {
+  selicCacheByDb.clear();
+}
+
+function cacheBucketFor(dbRef) {
+  let bucket = selicCacheByDb.get(dbRef);
+  if (bucket === undefined) {
+    bucket = new Map();
+    selicCacheByDb.set(dbRef, bucket);
+  }
+  return bucket;
+}
+
+/** Data de hoje em `YYYY-MM-DD` no fuso de Brasília — a CF `fetchSelicDaily` roda 09h BRT. */
+function todayIsoBrt() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+/**
+ * Decide se um resultado pode ser congelado na sessão.
+ *
+ * - Acerto exato (`isCarryForward:false, isFallback:false`) → fato histórico, cacheia.
+ * - Fallback → estado TRANSITÓRIO (erro de Firestore ou gap de dados). Congelar fixaria
+ *   uma taxa errada pelo resto da sessão; a chamada seguinte deve reconsultar.
+ * - Carry-forward para a data corrente (ou futura) → ainda pode virar acerto exato assim
+ *   que a CF gravar o doc do dia. Só cacheia carry-forward de data estritamente passada,
+ *   onde o doc exato nunca vai existir (fim-de-semana / feriado).
+ */
+function isCacheableResult(result, dateIso) {
+  if (result.isFallback === true) return false;
+  if (result.isCarryForward === true && dateIso >= todayIsoBrt()) return false;
+  return true;
+}
+
+/**
+ * Resolve `rateDaily` para `dateIso`, memoizando por (db, parâmetros, data).
+ *
+ * @param {string} dateIso                                    — `YYYY-MM-DD`
+ * @param {Object} [opts]
+ * @param {Object} [opts.db]                                  — Firestore instance (default: client web SDK)
+ * @param {number} [opts.maxCarryForwardDays=7]               — gap máximo aceito antes do fallback
+ * @param {number} [opts.fallbackRateDaily=SELIC_FALLBACK_DAILY]
+ * @returns {Promise<{rateDaily:number, source:string, dateUsed:string|null, isCarryForward:boolean, isFallback:boolean}>}
+ */
+export async function getSelicForDate(dateIso, opts = {}) {
+  const dbRef = opts.db ?? defaultDb;
+  const maxCarryForwardDays = opts.maxCarryForwardDays ?? DEFAULT_MAX_CARRY_FORWARD_DAYS;
+  const fallbackRateDaily = opts.fallbackRateDaily ?? SELIC_FALLBACK_DAILY;
+
+  const bucket = cacheBucketFor(dbRef);
+  const key = `${maxCarryForwardDays}|${fallbackRateDaily}|${dateIso}`;
+
+  const cached = bucket.get(key);
+  if (cached !== undefined) return cached;
+
+  const pending = fetchSelicForDate(dateIso, dbRef, maxCarryForwardDays, fallbackRateDaily)
+    .then((result) => {
+      if (!isCacheableResult(result, dateIso)) bucket.delete(key);
+      return result;
+    })
+    .catch((err) => {
+      // `fetchSelicForDate` já converte qualquer falha em fallback, então este ramo é
+      // inalcançável na prática. Ele existe para que uma rejeição inesperada não fique
+      // GRUDADA no cache pelo resto da sessão — a entrada sai e a próxima chamada tenta
+      // de novo. O throw preserva a rejeição original em vez de mascará-la.
+      bucket.delete(key);
+      throw err;
+    });
+
+  bucket.set(key, pending);
+  return pending;
 }
