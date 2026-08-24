@@ -62,6 +62,7 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
 - `task 00 [setup] main 71b141a0 / worktree 6cd604b8 ok — re-reserva v1.83.31, rebase sobre main, control file`
 - `task 01 [A1] 2743a6ba ok — 3907 passed / 0 failed; validator INV-27 exit 0 (commit_exists, tests_match, files_match)`
 - `task 02 [B1] 227d5b1b ok — 3913 passed / 0 failed; validator exit 1 REVERTIDO (artefato de parsing, ver .cc-mailbox/outbox/VALIDATOR-NOTE-02.log) — coord reverificou rodando a suite`
+- `task 03 [B2] bac75bc0 ok — 3920 passed / 0 failed; validator INV-27 exit 0 (commit_exists, tests_match, files_match). Fim do plano.`
 
 ## Shared Deltas
 
@@ -110,6 +111,18 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
   inexistente numa invocação de CF; tocar `functions/` arrastaria deploy de CF para uma
   issue de layout. Contrato de valores idêntico dos dois lados (cache é transparente) —
   paridade semântica preservada, divergência documentada no header do arquivo web.
+
+- `DEC-AUTO-387-08` — chave do cache: `Map<dbRef, Map<'maxCFD|fallbackRate|dateIso', Promise>>`.
+  | Justificativa: `Map` e não `WeakMap` no nível externo porque `WeakMap.set` lança com
+  chave primitiva e `dbRef` vem de `opts.db ?? defaultDb` — quebraria o contrato "NUNCA
+  throw" antes do `try`. Retenção irrelevante (`db` de prod é singleton).
+- `DEC-AUTO-387-09` — resultado de fallback não é cacheado. | Justificativa: erro/gap é
+  estado transitório; congelar fixaria taxa errada pela sessão inteira.
+- `DEC-AUTO-387-10` — carry-forward cacheado só em data estritamente passada (hoje em
+  `America/Sao_Paulo`). | Justificativa: na data corrente a CF das 09h BRT ainda pode gravar
+  o doc exato; sábado/feriado passado nunca terá doc próprio.
+- `DEC-AUTO-387-11` — promise rejeitada sai do cache. | Justificativa: evita rejeição
+  grudada na sessão.
 
 ### Pendência de verificação visual (handoff task 01)
 
