@@ -90,7 +90,7 @@
 | 1.83.21 | #381 | `fix/issue-381-rr-derivado` | 21/08/2026 | consumida (PR #382 squash `7d61c4b8`) |
 | 1.83.22 | #383 | `fix/issue-383-rr-ssot` | 21/08/2026 | consumida (PR #384 squash `f4cb25f9`) |
 | 1.83.23 | #385 | `fix/issue-385-cycle-card-resiliente` | 22/08/2026 | consumida (PR #386 squash `6e77b4b2`) |
-| 1.83.24 | #387 | `fix/issue-387-card-sem-pulo` | 22/08/2026 | pulada — main avançou até 1.83.30 antes do #387 sair do worktree; re-reservada em 1.83.31 |
+| 1.83.24 | #387 (re-reservada) | `fix/issue-387-card-sem-pulo` | 22/08/2026 | pulada — main avançou até 1.83.30 antes do #387 sair do worktree; re-reservada em 1.83.31 |
 | 1.83.25 | #389 | `fix/issue-389-janela-unica` | 22/08/2026 | consumida (PR #390 squash `06845123`) |
 | 1.83.26 | #392 | `chore/issue-392-aposentar-mortos` | 22/08/2026 | consumida (PR #393 squash `6da8e7f5`) |
 | 1.83.27 | #394 | `fix/issue-394-exposicao-fechada` | 23/08/2026 | consumida (PR #395 squash `71be0203`) |
