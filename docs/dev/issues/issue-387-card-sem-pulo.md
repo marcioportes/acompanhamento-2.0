@@ -61,6 +61,7 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
 
 - `task 00 [setup] main 71b141a0 / worktree 6cd604b8 ok — re-reserva v1.83.31, rebase sobre main, control file`
 - `task 01 [A1] 2743a6ba ok — 3907 passed / 0 failed; validator INV-27 exit 0 (commit_exists, tests_match, files_match)`
+- `task 02 [B1] 227d5b1b ok — 3913 passed / 0 failed; validator exit 1 REVERTIDO (artefato de parsing, ver .cc-mailbox/outbox/VALIDATOR-NOTE-02.log) — coord reverificou rodando a suite`
 
 ## Shared Deltas
 
@@ -88,6 +89,27 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
 - `DEC-AUTO-387-04` — asserções negativas sobre `cycle-consistency-skeleton` removidas e
   substituídas por asserções positivas. | Justificativa: critério de aceite pedia zero
   ocorrências do testid no `src/`.
+
+- `DEC-AUTO-387-05` — `status` fica FORA da assinatura de valor do `useCycleConsistency`,
+  divergindo do briefing da task 02. | Justificativa: sanity check do worker mostrou que
+  nenhum helper lê o campo (única ocorrência é comentário em `computeCVNormalized.js:46`
+  registrando remoção do filtro); incluí-lo manteria o bug, já que `status` é escrito pela
+  cascata de CFs. Assinatura é posicional — nenhum helper lê identificador de trade.
+- `DEC-AUTO-387-06` — validator INV-27 da task 02 deu exit 1 e o coord NÃO escalou
+  HALLUCINATION. | Justificativa: `parse_tests_passed_from_log()` casa a PRIMEIRA
+  ocorrência de `N passed` no arquivo; o result.log narrativo citava "14 passed" (arquivo
+  do hook) antes de "3913 passed" (suíte). Coord reverificou por execução direta —
+  `264 files / 3913 passed / 1 skipped` e `git show --name-only` subset do declarado.
+  Claim verdadeira; escalar seria falso positivo. Registro em
+  `.cc-mailbox/outbox/VALIDATOR-NOTE-02.log`. Briefing da task 03 exige contagem da suíte
+  como primeira ocorrência de "passed" no result.log.
+
+- `DEC-AUTO-387-07` — cache do `getSelicForDate` entra só no espelho web; o CJS
+  `functions/marketData/getSelicForDate.js` (padrão de espelho #119/#191) fica intocado.
+  | Justificativa: fase B2 aprovada lista só o arquivo web; a motivação é reentrada de UI,
+  inexistente numa invocação de CF; tocar `functions/` arrastaria deploy de CF para uma
+  issue de layout. Contrato de valores idêntico dos dois lados (cache é transparente) —
+  paridade semântica preservada, divergência documentada no header do arquivo web.
 
 ### Pendência de verificação visual (handoff task 01)
 
