@@ -1,6 +1,6 @@
 /**
  * useCycleConsistency
- * @version 1.0.0 (v1.54.0 — issue #235 F2.1)
+ * @version 1.1.0 (v1.83.31 — issue #387 B1: deps por valor, nao por identidade)
  * @description Orquestra os 3 helpers F1 do redesign do card "Consistência
  *   Operacional" — Sharpe per-ciclo (Selic descontada), CV normalizado e
  *   MEP/MEN médio. Recebe trades/plan/janela como props e retorna shape
@@ -33,10 +33,43 @@
  * }}
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { computeCycleSharpe } from '../utils/cycleConsistency/computeCycleSharpe';
 import { computeCVNormalized } from '../utils/cycleConsistency/computeCVNormalized';
 import { computeAvgExcursion } from '../utils/cycleConsistency/computeAvgExcursion';
+
+// #387 — assinatura por VALOR. Cada escrita de CF (score comportamental, flags, timestamps)
+// produz um snapshot novo do Firestore: `trades` chega como array de identidade nova com o
+// mesmo conteudo relevante, e o efeito reentrava a cada uma delas — religando `loading` e
+// redisparando a leitura de Selic no meio da cascata do import.
+//
+// A assinatura cobre EXATAMENTE os campos que os tres helpers leem (cross-check em
+// src/utils/cycleConsistency/): `date` (janela, os tres), `result` (CV + Sharpe) e
+// `entry`/`mepPrice`/`menPrice`/`side` (MEP/MEN). `status` NAO entra: o filtro por status
+// foi removido dos helpers (trade e monolitico desde a criacao) e nenhum deles le o campo.
+// Campo a mais reintroduz o bug; campo a menos congela a metrica quando ele muda.
+const TRADE_FIELD_SEP = '|';
+const TRADE_SEP = '\n';
+
+function tradesSignature(trades) {
+  if (!Array.isArray(trades)) return null;
+  const parts = new Array(trades.length);
+  for (let i = 0; i < trades.length; i += 1) {
+    const t = trades[i];
+    parts[i] = t
+      ? [t.date, t.result, t.entry, t.mepPrice, t.menPrice, t.side]
+          .map((v) => (v == null ? '' : String(v)))
+          .join(TRADE_FIELD_SEP)
+      : '';
+  }
+  return parts.join(TRADE_SEP);
+}
+
+// Do plano o hook consome so `rrTarget` (computeCVNormalized) e `pl` (plStart, aqui mesmo).
+function planSignature(plan) {
+  if (!plan || typeof plan !== 'object') return null;
+  return [plan.rrTarget, plan.pl].map((v) => (v == null ? '' : String(v))).join(TRADE_FIELD_SEP);
+}
 
 const NULL_METRICS = {
   sharpe: null,
@@ -50,6 +83,9 @@ export function useCycleConsistency({ trades, plan, cycleStart, cycleEnd, opts =
     loading: false,
     error: null,
   });
+
+  const tradesKey = useMemo(() => tradesSignature(trades), [trades]);
+  const planKey = useMemo(() => planSignature(plan), [plan]);
 
   useEffect(() => {
     if (!cycleStart || !cycleEnd || !Array.isArray(trades)) {
@@ -119,8 +155,15 @@ export function useCycleConsistency({ trades, plan, cycleStart, cycleEnd, opts =
     return () => {
       cancelled = true;
     };
+    // #387 — a regra continua desligada, mas por outro motivo: as deps agora sao as
+    // chaves por VALOR, e `trades`/`plan` (as referencias) ficam de fora de proposito.
+    // A chave muda sempre que muda algo que os helpers leem, e so nesse caso; o efeito
+    // sempre roda com o `trades`/`plan` do render em que a chave mudou, entao a closure
+    // nunca fica desatualizada em relacao ao conteudo relevante. `opts` segue fora das
+    // deps (comportamento preservado): o card monta o objeto inline, e inclui-lo por
+    // identidade reintroduziria exatamente o bug que esta correcao fecha.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, plan, cycleStart, cycleEnd]);
+  }, [tradesKey, planKey, cycleStart, cycleEnd]);
 
   return state;
 }
