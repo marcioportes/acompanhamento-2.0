@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.31] - 24/08/2026 · #387 · PR #401
+
+**fix:** card de consistencia sem layout shift + fim da reentrada por identidade
+
+- Esqueleto de 4 colunas removido. CV, MEP e MEN são puros e síncronos: pintam no mesmo tick.
+- Só a tile do Sharpe espera, com placeholder no slot do valor (sem banda, sem badge) para resolver não acrescentar linha.
+- O grid de `MetricsCards` é `auto-rows-fr`, então qualquer variação de altura estica o vizinho — a linha passa a reservar a altura da tile mais alta possível. A altura também não muda quando o Sharpe resolve em valor, em "insuficiente" ou em erro.
+- Caminho de erro do #385 preservado e com precedência.
+- Assinatura sobre exatamente os campos que os três helpers leem: `date`, `result`, `entry`, `mepPrice`, `menPrice`, `side` do trade; `rrTarget` e `pl` do plano.
+- `status` fica fora (DEC-AUTO-387-05): nenhum helper lê o campo, e ele é escrito pela cascata de CFs — incluí-lo manteria o bug.
+- Um ciclo de 20 dias custava 20 `getDoc` por passada. A Selic de data passada é fato imutável.
+- Cacheia a **promise**, não o valor: os lookups saem em `Promise.all` e chamadas concorrentes compartilham a leitura in-flight.
+
+
 ## [1.83.30] - 23/08/2026 · #376 · PRs #399 / #400
 
 **feat:** aviso de promoção para os dois lados + o ato de promover é do mentor

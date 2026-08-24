@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.31: #387 fix card de consistencia sem layout shift + fim da reentrada por identidade (PR #401, 24/08/2026)
  * - 1.83.30: #376 feat aviso de promoção nos dois lados + ato do mentor; padrão positivo não convive com violação (PRs #399/#400, 23/08/2026)
  * - 1.83.29: #376 fix Financeiro mede conduta de risco, não performance (PR #398, 23/08/2026)
  * - 1.83.28: #376 fix R:R abaixo do alvo não é violação + régua de maturidade relaxada (PR #397, 23/08/2026)
