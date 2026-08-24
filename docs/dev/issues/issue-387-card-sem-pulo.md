@@ -60,6 +60,7 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
 ## Sessions
 
 - `task 00 [setup] main 71b141a0 / worktree 6cd604b8 ok — re-reserva v1.83.31, rebase sobre main, control file`
+- `task 01 [A1] 2743a6ba ok — 3907 passed / 0 failed; validator INV-27 exit 0 (commit_exists, tests_match, files_match)`
 
 ## Shared Deltas
 
@@ -72,7 +73,27 @@ Ver issue body: #387. Diagnóstico ampliado de 24/08 registrado em Phases (fase 
 
 ## Decisions
 
-_(vazio — DEC-AUTO-387-NN a partir da Fase 4)_
+- `DEC-AUTO-387-01` — placeholder `···` do Sharpe vai no slot do valor, não no parágrafo de
+  texto longo do MetricTile (`isInsufficient={!loading && ...}`, invertido do WIP).
+  | Justificativa: o WIP jogava o placeholder no `<p min-h-[2.5rem]>`, trocando o layout da
+  tile ao resolver.
+- `DEC-AUTO-387-02` — altura reservada com `md:min-h-[6rem]` no grid, em vez de paridade de
+  linhas entre tile carregando/resolvida. | Justificativa: os dois requisitos do briefing
+  (paridade de linhas E sem bandLabel/badge no loading) não coexistem; reservar no grid
+  cobre também `insufficientReason`, erro e as reentradas da cascata de CFs.
+  `cycleMetricTiles.jsx` (SSoT do wizard #282) não foi tocada.
+- `DEC-AUTO-387-03` — `avgTradeDuration` no teste novo usa `{ all: 12 }` (o card lê `?.all`).
+  | Justificativa: escalar silenciava o bloco. Mesmo defeito no describe do #385 ficou —
+  fora do escopo da task.
+- `DEC-AUTO-387-04` — asserções negativas sobre `cycle-consistency-skeleton` removidas e
+  substituídas por asserções positivas. | Justificativa: critério de aceite pedia zero
+  ocorrências do testid no `src/`.
+
+### Pendência de verificação visual (handoff task 01)
+
+`md:min-h-[6rem]` foi derivado somando as linhas da tile do Sharpe resolvida (~93px); jsdom
+não faz layout, então nenhum teste prova o número. Conferir no dev server antes do
+encerramento.
 
 ## Chunks
 
