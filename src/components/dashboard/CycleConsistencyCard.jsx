@@ -24,6 +24,12 @@ import {
   buildSharpeTooltip, buildCvTooltip, MEP_TOOLTIP, MEN_TOOLTIP,
 } from '../metrics/cycleMetricTiles';
 
+// #387 — placeholder da tile do Sharpe enquanto a Selic nao resolve. Ocupa a MESMA
+// posicao visual do numero final (slot de valor, nao o paragrafo de texto longo), pra
+// tile nao trocar de layout quando o valor chega.
+const SHARPE_WAITING_VALUE = '···';
+const SHARPE_WAITING_TOOLTIP = 'Calculando — depende da Selic do periodo';
+
 const MONTH_PT_BR = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
 function deriveCycleLabel(cycleStart) {
@@ -101,27 +107,29 @@ const CycleConsistencyCard = ({ trades, plan, cycleStart, cycleEnd, cycleLabel, 
         // Sharpe (que depende de carregar o módulo do Selic) apagava CV, MEP e MEN junto,
         // métricas que já estavam prontas na memória.
         <p className="text-sm text-amber-400/80">Não foi possível carregar métricas do ciclo</p>
-      ) : loading ? (
-        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="cycle-consistency-skeleton">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="space-y-2">
-              <div className="h-3 bg-slate-700/30 rounded animate-pulse" />
-              <div className="h-7 bg-slate-700/30 rounded animate-pulse" />
-              <div className="h-3 bg-slate-700/30 rounded animate-pulse w-2/3" />
-            </div>
-          ))}
-        </div>
       ) : (
+        // #387 — o layout definitivo é desenhado no PRIMEIRO paint. Antes, enquanto o
+        // Sharpe não resolvia, um esqueleto de 4 colunas ocupava o card inteiro e os
+        // blocos de baixo (Tempo W vs L, aviso de cobertura) não existiam; quando o
+        // conteúdo chegava, o card crescia e empurrava os vizinhos da linha do grid — o
+        // "pulo". CV, MEP e MEN são puros e já estão prontos no mesmo tick: não há motivo
+        // para escondê-los atrás de espera de rede. Só a tile do Sharpe carrega, e troca
+        // de conteúdo sem mudar altura.
         <div className="flex-1 flex flex-col">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* #387 — a linha do grid reserva a altura da tile mais alta possivel (Sharpe
+              resolvido = valor + banda + badge da Selic, ~93px). Sem isso a linha ainda
+              encolhe/cresce conforme o Sharpe resolve em valor, em "insuficiente" ou em
+              erro — e como o grid de MetricsCards e `auto-rows-fr`, qualquer variacao de
+              altura deste card estica o vizinho da mesma linha. */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:min-h-[6rem]">
             <MetricTile
               label="Sharpe"
-              value={sharpeView.value}
+              value={loading ? SHARPE_WAITING_VALUE : sharpeView.value}
               theme={sharpeView.theme}
-              bandLabel={sharpeView.bandLabel}
-              badge={sharpeView.badge}
-              tooltip={buildSharpeTooltip(sharpe, label)}
-              isInsufficient={!!sharpeView.valueClassName}
+              bandLabel={loading ? null : sharpeView.bandLabel}
+              badge={loading ? null : sharpeView.badge}
+              tooltip={loading ? SHARPE_WAITING_TOOLTIP : buildSharpeTooltip(sharpe, label)}
+              isInsufficient={!loading && !!sharpeView.valueClassName}
             />
             <MetricTile
               label="CV norm."

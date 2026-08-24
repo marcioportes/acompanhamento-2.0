@@ -54,3 +54,44 @@ describe('#385 — card de ciclo resiliente', () => {
     });
   });
 });
+
+/**
+ * #387 — o card não pode mudar de altura ao carregar: os blocos abaixo do grid
+ * (Tempo W vs L, aviso de cobertura) precisam existir desde o primeiro paint, senão o
+ * card cresce quando o Sharpe resolve e empurra os vizinhos da linha do grid.
+ */
+describe('#387 — sem layout shift', () => {
+  // `avgTradeDuration` é objeto (`{ all }`) — o card lê `avgTradeDuration?.all`.
+  const props = {
+    trades, plan, cycleStart: '2026-08-01', cycleEnd: '2026-08-31',
+    cycleLabel: 'AGO/2026', avgTradeDuration: { all: 12 },
+    durationDelta: { level: 'winners-run', deltaPercent: 40, durationWin: 20, durationLoss: 14 },
+  };
+
+  it('os blocos abaixo do grid já estão na tela antes de o Sharpe resolver', async () => {
+    render(<CycleConsistencyCard {...props} />);
+
+    // Primeiro paint, com o Sharpe ainda pendente: o layout já é o definitivo.
+    expect(screen.getByText('Tempo W vs L')).toBeInTheDocument();
+    expect(screen.getByText(/Tempo medio geral/)).toBeInTheDocument();
+    expect(screen.getByText('CV norm.')).toBeInTheDocument();
+    expect(screen.getByText('MEP médio')).toBeInTheDocument();
+    expect(screen.getByText('MEN médio')).toBeInTheDocument();
+
+    // ...e continua sendo depois que o Sharpe resolve (aqui, rejeitando).
+    await waitFor(() => {
+      expect(screen.getByText(/Sharpe indisponivel nesta sessao/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText('Tempo W vs L')).toBeInTheDocument();
+    expect(screen.getByText(/Tempo medio geral/)).toBeInTheDocument();
+    expect(screen.getByText('CV norm.')).toBeInTheDocument();
+  });
+
+  it('o placeholder do Sharpe sai quando a métrica resolve', async () => {
+    render(<CycleConsistencyCard {...props} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('···')).not.toBeInTheDocument();
+    });
+  });
+});

@@ -9,6 +9,15 @@
  *  C5 — getSelicForDateFn rejeita → error capturado, loading=false, síncronas preservadas (#385)
  *  C6 — re-render com trades atualizados → recomputa
  *  C7 — unmount durante async → não setState pós-unmount (sem warning)
+ *
+ * Issue #387 B1 — deps por valor (identidade nova a cada snapshot do Firestore não
+ * pode reentrar no efeito; só mudança de conteúdo relevante recomputa):
+ *  C8  — array `trades` novo, conteúdo idêntico → NÃO recomputa
+ *  C9  — objeto `plan` novo, rrTarget/pl idênticos → NÃO recomputa
+ *  C10 — campo do trade que nenhum helper lê (escrita de CF) → NÃO recomputa
+ *  C11 — `result` alterado → recomputa
+ *  C12 — `mepPrice` alterado (campo lido só por computeAvgExcursion) → recomputa
+ *  C13 — janela do ciclo alterada → recomputa
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -327,5 +336,121 @@ describe('useCycleConsistency', () => {
     expect(setStateWarning).toBeUndefined();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  // C8..C13 — issue #387 B1 -----------------------------------------------------
+  // Helper: monta o hook no estado estável (loading=false, 6 lookups de Selic feitos)
+  // e devolve `rerender` + um snapshot das referências de estado. Um recálculo troca
+  // essas referências e chama a Selic de novo; a ausência das duas coisas é a prova
+  // de que o efeito não reentrou.
+  const renderSettled = async (opts) => {
+    const baseProps = {
+      trades: happyTrades,
+      plan: happyPlan,
+      cycleStart: CYCLE_START,
+      cycleEnd: CYCLE_END,
+      opts,
+    };
+    const { result, rerender } = renderHook((props) => useCycleConsistency(props), {
+      initialProps: baseProps,
+    });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(mockSelicFn).toHaveBeenCalledTimes(6);
+    return { result, rerender, baseProps, before: { ...result.current } };
+  };
+
+  it('C8 — array trades de identidade nova com conteúdo idêntico NÃO recomputa', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps, before } = await renderSettled(opts);
+
+    // Mesmo conteúdo, tudo novo: array novo + cada trade clonado (é o que o snapshot
+    // do Firestore entrega a cada escrita da cascata de CFs).
+    rerender({ ...baseProps, trades: happyTrades.map((t) => ({ ...t })) });
+
+    expect(result.current.loading).toBe(false);
+    expect(mockSelicFn).toHaveBeenCalledTimes(6);
+    expect(result.current.sharpe).toBe(before.sharpe);
+    expect(result.current.cvNormalized).toBe(before.cvNormalized);
+    expect(result.current.avgExcursion).toBe(before.avgExcursion);
+  });
+
+  it('C9 — objeto plan de identidade nova com rrTarget/pl idênticos NÃO recomputa', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps, before } = await renderSettled(opts);
+
+    rerender({ ...baseProps, plan: { ...happyPlan } });
+
+    expect(result.current.loading).toBe(false);
+    expect(mockSelicFn).toHaveBeenCalledTimes(6);
+    expect(result.current.cvNormalized).toBe(before.cvNormalized);
+    expect(result.current.sharpe).toBe(before.sharpe);
+  });
+
+  it('C10 — campo do trade que nenhum helper lê (escrita de CF) NÃO recomputa', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps, before } = await renderSettled(opts);
+
+    // Simula a cascata: CF grava score comportamental, flags e timestamp no trade.
+    // `status` entra aqui de propósito — os helpers deixaram de filtrar por ele
+    // (trade é monolítico desde a criação), então não faz parte da assinatura.
+    rerender({
+      ...baseProps,
+      trades: happyTrades.map((t, i) => ({
+        ...t,
+        status: 'REVIEWED',
+        behaviorScore: 7 + i,
+        updatedAt: '2026-08-24T12:00:00Z',
+      })),
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(mockSelicFn).toHaveBeenCalledTimes(6);
+    expect(result.current.sharpe).toBe(before.sharpe);
+    expect(result.current.cvNormalized).toBe(before.cvNormalized);
+    expect(result.current.avgExcursion).toBe(before.avgExcursion);
+  });
+
+  it('C11 — result alterado recomputa e atualiza a métrica', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps, before } = await renderSettled(opts);
+    const cvObsBefore = before.cvNormalized.cvObs;
+
+    const changed = happyTrades.map((t, i) => (i === 0 ? { ...t, result: 900 } : t));
+    rerender({ ...baseProps, trades: changed });
+
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(mockSelicFn).toHaveBeenCalledTimes(12);
+    expect(result.current.cvNormalized.cvObs).not.toBeCloseTo(cvObsBefore, 6);
+  });
+
+  it('C12 — mepPrice alterado recomputa MEP/MEN', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps, before } = await renderSettled(opts);
+    expect(before.avgExcursion.avgMEP).toBeCloseTo(2, 5);
+
+    const changed = happyTrades.map((t) => ({ ...t, mepPrice: 108 }));
+    rerender({ ...baseProps, trades: changed });
+
+    await waitFor(() => {
+      expect(result.current.avgExcursion.avgMEP).toBeCloseTo(8, 5);
+    });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('C13 — mudança de cycleStart/cycleEnd recomputa', async () => {
+    const opts = { getSelicForDateFn: mockSelicFn };
+    const { result, rerender, baseProps } = await renderSettled(opts);
+
+    rerender({ ...baseProps, cycleEnd: '2026-02-14' });
+
+    await waitFor(() => {
+      expect(result.current.avgExcursion.totalTrades).toBe(4);
+    });
+    expect(result.current.loading).toBe(false);
   });
 });
