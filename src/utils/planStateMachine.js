@@ -23,6 +23,8 @@
  *   - goalVal/stopVal = 0 → nunca atinge (desabilitado)
  */
 
+import { compareTradesChrono } from './tradeInstant';
+
 // ============================================
 // CONSTANTS
 // ============================================
@@ -317,18 +319,9 @@ export const computePlanState = (trades, planConfig, options = {}) => {
   // Filtrar trades do ciclo
   const cycleTrades = trades
     .filter(t => t.date && isTradeInCycle(t.date, cycleStart, cycleEnd))
-    .sort((a, b) => {
-      // Sort ASC: date → entryTime → createdAt
-      const dateA = a.date || '';
-      const dateB = b.date || '';
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      const timeA = a.entryTime || '';
-      const timeB = b.entryTime || '';
-      if (timeA && timeB) return timeA.localeCompare(timeB);
-      const caA = a.createdAt?.toDate?.()?.toISOString?.() || a.createdAt || '';
-      const caB = b.createdAt?.toDate?.()?.toISOString?.() || b.createdAt || '';
-      return caA.toString().localeCompare(caB.toString());
-    });
+    // #402 — ordem canônica. O localeCompare de `entryTime` comparava naive
+    // ('...T10:51:01') com offset ('...T11:34:02-03:00') como texto.
+    .sort(compareTradesChrono);
 
   // Agrupar trades por período
   const periodMap = new Map(); // periodKey → trades[]

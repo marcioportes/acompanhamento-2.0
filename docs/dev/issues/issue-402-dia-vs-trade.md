@@ -142,6 +142,12 @@ Consequência de projeto: `ordering.reliable = false` é rede de segurança, nã
 ## Sessions
 
 - `F0 [medicao] read-only ok` — 34 flags/364 trades, 7 viram compliant; 74/75 dias homogêneos
+- `F1a [tradeInstant] commit 3c2bc799 ok` — SSoT de instante + espelho CJS, 40 testes
+- `F1b [dayState] commit 7695fceb ok` — motor do período + espelho CJS, 47 testes; validado contra a base real
+- `F1c [ordenacao] ok` — 5 sorts ad-hoc trocados por compareTradesChrono; suíte completa verde (4007 testes)
+- `F2 [revogacao] ok` — getDailyLoss e o bloco emissor deletados; LOSS_DIARIO_EXCEDIDO em REVOKED nos 2 espelhos
+- `F3 [ui] ok` — shouldEvaluateRR exportado + rrBreakdown consumindo; dayMetricTiles + DayResultCard; BehaviorPanel em 2 seções; bloco inline do StudentDashboard deletado; card montado nos 2 layouts da FeedbackPage
+- `F4 [coerencia] ok` — planMechanicsCheck + fiação no PlanManagementModal, 18 testes
 
 ## Shared Deltas
 
@@ -155,6 +161,26 @@ Consequência de projeto: `ordering.reliable = false` é rede de segurança, nã
 ## Decisions
 
 _(IDs — texto em `docs/decisions.md`)_
+- DEC-AUTO-402-01 — resultado do período é LÍQUIDO; `Σ|negativos|` sai do produto
+- DEC-AUTO-402-02 — `periodStop` governa AUTORIZAÇÃO PARA ABRIR; "fechou além do stop" é fato do período, de nenhuma operação
+- DEC-AUTO-402-03 — `SEM_FOLGA` é aviso, não violação (o plano pode ser o incoerente)
+- DEC-AUTO-402-04 — `cushionPolicy: 'net'` como default: ganho anterior estende o orçamento de risco do período
+- DEC-AUTO-402-05 — `LOSS_DIARIO_EXCEDIDO` revogado em leitura (precedente #376), sem backfill
+- DEC-AUTO-402-06 — `shouldEvaluateRR` vira predicado exportado; o painel não julga o que o motor absteve
+- DEC-AUTO-402-07 — estado do período é DERIVADO, nunca persistido (sem campo/collection nova, INV-15 não se aplica)
+- DEC-AUTO-402-08 — `computePeriodState` NÃO delega para `dayState` (desvio do plano; ver §Desvios)
+
+## Desvios do plano aprovado
+
+**`computePeriodState` não passou a delegar para `dayState`.** O plano previa "um motor, dois idiomas". Contra o código real a troca é ruim: `computePeriodState(trades, goalVal, stopVal)` recebe trades **já ordenados** e limiares prontos, e carrega uma máquina de estados (`POST_GOAL`/`POST_STOP`) que o `dayState` não modela. Delegar deduplicaria ~5 linhas de caminhamento em troca de uma tradução de shape e um acoplamento novo entre módulos com consumidores distintos (extrato, cards de plano, fechamento de ciclo). O bug real daquele arquivo era a **ordenação**, a montante — essa foi corrigida. A unificação fica no follow-up, se algum dia pagar.
+
+## Follow-up (não entra)
+
+- Unificar os ~12 agregadores de dia/período sobre `dayState`
+- Unificar as 3 cópias de `complianceRate` (`dashboardMetrics.js:100`, `useDashboardMetrics.js:226`, `preComputeShapes.js:139`)
+- **Ambiguidade de vocabulário de R:R**: com `takeProfit` declarado, `compliance` calcula o R:R PLANEJADO (`|alvo − entrada| / risco`) e `rrBreakdown` calcula o REALIZADO em dinheiro (`resultado / risco`). Uma perda com alvo de 2R dá 2,00x num e −1,00x no outro — os dois certos, medindo coisas diferentes, com o mesmo nome na tela. Anterior ao #402; exposto pelos testes de coerência
+- Reemitir enforcement de servidor como `TRADE_APOS_STOP_DIARIO` via reconciliação de período inteiro (corte temporal sozinho troca falso positivo por falso negativo quando a escrita chega fora de ordem)
+- Código morto confirmado: `PlanProgress.jsx` (sem importador), `usePlans.validateTradeAgainstPlan` (zero chamadores, 3ª semântica de `periodStop`), `cycleMetrics.topErrors` (lê `compliance.violations[]`, que nenhum writer produz), `planLedger.js:62-63`
 
 ## Chunks
 

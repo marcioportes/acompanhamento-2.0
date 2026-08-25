@@ -9,6 +9,7 @@
 
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { sortTradesChrono } from './tradeInstant';
 
 // --- CÁLCULOS BÁSICOS ---
 
@@ -110,11 +111,10 @@ export const analyzeByEmotion = (trades) => {
 export const analyzePlanCompliance = (periodTrades, stopLimitValue, goalLimitValue) => {
   if (!periodTrades || periodTrades.length === 0) return { status: 'NO_TRADES', events: [], history: [] };
 
-  const sortedTrades = [...periodTrades].sort((a, b) => {
-    const tA = a.createdAt?.seconds || new Date(a.date).getTime();
-    const tB = b.createdAt?.seconds || new Date(b.date).getTime();
-    return tA - tB;
-  });
+  // #402 — ordenava por `createdAt`, isto é, por ordem de ESCRITA: num dia
+  // importado o caminhamento seguia a ordem do lote, não a ordem em que o aluno
+  // operou. `entryTime` era ignorado por completo.
+  const sortedTrades = sortTradesChrono(periodTrades);
 
   const stopLimit = -Math.abs(stopLimitValue || 0);
   const goalLimit = Math.abs(goalLimitValue || 0);

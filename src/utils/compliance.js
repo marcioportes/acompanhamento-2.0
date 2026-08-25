@@ -74,6 +74,34 @@ export const RED_FLAG_TYPES = {
 };
 
 /**
+ * O aluno declarou um alvo para este trade?
+ *
+ * `trade.takeProfit` é o compromisso explícito. (A forma antiga
+ * `takeProfit || (stopLoss && takeProfit)` colapsava nisto por precedência de
+ * operador — a segunda metade era código morto.)
+ */
+export const isRRDeclared = (trade) => !!trade?.takeProfit;
+
+/**
+ * Este trade admite veredicto de R:R contra o alvo do plano? (#402)
+ *
+ * | alvo declarado | resultado | avalia | por quê                                  |
+ * |----------------|-----------|--------|------------------------------------------|
+ * | sim            | qualquer  | sim    | métrica planejada, independe do desfecho |
+ * | não            | > 0       | sim    | ganho que não chegou ao alvo             |
+ * | não            | <= 0      | NÃO    | perder 1R é o risco planejado se realizando |
+ *
+ * Exportado porque o painel precisa da MESMA regra: `rrBreakdown` recalculava o
+ * múltiplo por conta própria e imprimia "−1,00x · mínimo 2,00x" em âmbar num
+ * trade que esta função tinha classificado CONFORME. Duas implementações do
+ * mesmo conceito, veredictos opostos, na mesma tela (issue #402).
+ *
+ * @param {Object} trade
+ * @returns {boolean}
+ */
+export const shouldEvaluateRR = (trade) => isRRDeclared(trade) || (Number(trade?.result) || 0) > 0;
+
+/**
  * Calcula compliance do trade contra o plano
  * Risco Operacional (RO) e Razão Risco-Retorno (RR)
  * 
@@ -176,14 +204,8 @@ export const calculateTradeCompliance = (trade, plan) => {
     }
   }
 
-  // RR compliance: 
-  // - Com takeProfit: sempre avalia (métrica planejada, independe do resultado)
-  // - Sem takeProfit + win (result > 0): avalia (win que não atingiu alvo)
-  // - Sem takeProfit + loss/breakeven (result <= 0): NÃO avalia (perder 1R é o risco planejado)
-  const tradeResultForRR = trade.result ?? 0;
-  const hasPlannedRR = !!(trade.takeProfit || trade.stopLoss && trade.takeProfit);
-  const shouldEvaluateRR = hasPlannedRR || tradeResultForRR > 0;
-  if (result.rrRatio != null && plan.rrTarget && shouldEvaluateRR && result.rrRatio < plan.rrTarget) {
+  // RR compliance — regra em `shouldEvaluateRR` (exportada, ver acima).
+  if (result.rrRatio != null && plan.rrTarget && shouldEvaluateRR(trade) && result.rrRatio < plan.rrTarget) {
     result.compliance.rrStatus = 'NAO_CONFORME';
   }
   

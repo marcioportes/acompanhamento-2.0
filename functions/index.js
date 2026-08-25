@@ -250,26 +250,6 @@ const calculateRiskPercent = (trade, accountBalance) => {
   return (risk / accountBalance) * 100;
 };
 
-const getDailyLoss = async (studentId, accountId, date) => {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const snapshot = await db.collection('trades')
-    .where('studentId', '==', studentId)
-    .where('accountId', '==', accountId)
-    .where('date', '>=', startOfDay.toISOString().split('T')[0])
-    .where('date', '<=', endOfDay.toISOString().split('T')[0])
-    .get();
-  
-  let total = 0;
-  snapshot.forEach(doc => { 
-    if (doc.data().result < 0) total += Math.abs(doc.data().result); 
-  });
-  return total;
-};
-
 const updateAccountBalance = async (accountId, resultDiff) => {
   if (!accountId || resultDiff === 0) return;
   const accountRef = db.collection('accounts').doc(accountId);
@@ -1248,21 +1228,21 @@ exports.onTradeCreated = functions.firestore
           // do aluno nunca subia. Continua lido como comportamento (EARLY_EXIT) e o
           // detalhamento em dinheiro segue no painel (#373).
           
-          // Red flag: loss diário (calculado sobre capital base — DEC-009)
-          if (plan.periodStop && trade.accountId) {
-            const planPl = plan.pl ?? plan.currentPl ?? 0;
-            if (planPl > 0) {
-              const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
-              const dailyLossPercent = (dailyLoss / planPl) * 100;
-              if (dailyLossPercent > plan.periodStop) {
-                redFlags.push({ 
-                  type: RED_FLAG_TYPES.DAILY_LOSS_EXCEEDED, 
-                  message: `Loss diário ${dailyLossPercent.toFixed(1)}% excede stop do período (${plan.periodStop}%)`, 
-                  timestamp: new Date().toISOString() 
-                });
-              }
-            }
-          }
+          // #402 — o loss do período NÃO é mais avaliado aqui. Era o único fato
+          // AGREGADO gravado num container ATÔMICO (`trade.redFlags[]`), e a
+          // função que o calculava tinha três defeitos compostos:
+          //   1. somava o dia inteiro sem corte temporal, incluindo trades
+          //      posteriores ao que estava sendo avaliado — o veredicto dependia
+          //      da ordem de ESCRITA do lote, não do que o aluno fez;
+          //   2. somava só as perdas e ignorava os ganhos, então um dia lucrativo
+          //      podia "estourar" o stop do período;
+          //   3. carimbava TODA operação do dia, transformando um fato do dia em
+          //      N violações e deflacionando `complianceRate` por N/total.
+          // Na base real, 31 das 34 acusações eram falsas.
+          //
+          // O período agora é medido por `functions/shared/dayState.js` — líquido,
+          // ordenado por instante e com autorização por operação. O fato do dia
+          // pertence ao dia e é exibido no card do dia, não acusado no trade.
           
           // Red flag: emoção bloqueada
           if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotionEntry)) {

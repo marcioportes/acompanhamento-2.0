@@ -54,6 +54,8 @@ import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify, toggleViolationClearedAsMentor as gatewayToggleViolation } from '../utils/tradeGateway';
 import { effectiveRedFlags, isViolationCleared } from '../utils/violationFilter';
+import DayResultCard from '../components/day/DayResultCard';
+import { buildPeriodState } from '../utils/dayState';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -384,6 +386,18 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
     [plans, trade?.planId],
   );
 
+  // #402 — o período a que este trade pertence. Mentor e aluno leem o MESMO
+  // objeto, construído do mesmo jeito, então não há como divergirem sobre
+  // "quanto foi o dia". O card declara o fato do período; o BehaviorPanel usa a
+  // linha desta operação para dizer o que ELA decidiu ao abrir.
+  const tradePeriodState = useMemo(() => {
+    if (!trade?.date) return null;
+    const doPeriodo = (studentTrades || []).filter(
+      (t) => t.date === trade.date && t.planId === trade.planId,
+    );
+    return buildPeriodState(doPeriodo, tradePlan, { periodKey: trade.date });
+  }, [studentTrades, trade?.date, trade?.planId, tradePlan]);
+
   // Mentor edit + lock (#188 F1c). Handlers inline para evitar duplicar useTrades
   // listener. Gateway valida role e schema.
   // isMentor é function no AuthContext — invocar pra obter bool.
@@ -667,10 +681,22 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <div className="mt-3">
               <TradeOrdersPanel trade={trade} orders={orders} embedded />
             </div>
+            {/* #402 — o fato do PERÍODO, antes do fato da operação. Mesmo card do
+                dashboard do aluno, mesmos números. */}
+            {tradePeriodState && tradePeriodState.count > 0 && (
+              <div className="mt-3">
+                <DayResultCard
+                  periodState={tradePeriodState}
+                  dateLabel={trade.date}
+                  currency={trade.currency || 'BRL'}
+                />
+              </div>
+            )}
             {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
             <BehaviorPanel
               trade={trade}
               plan={tradePlan}
+              periodState={tradePeriodState}
               isMentor={userIsMentor}
               embedded
               onToggleViolation={handleToggleViolation}
@@ -869,10 +895,21 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <div className="mt-4">
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
           </div>
+          {/* #402 — o fato do PERÍODO, antes do fato da operação. */}
+          {tradePeriodState && tradePeriodState.count > 0 && (
+            <div className="mt-4">
+              <DayResultCard
+                periodState={tradePeriodState}
+                dateLabel={trade.date}
+                currency={trade.currency || 'BRL'}
+              />
+            </div>
+          )}
           {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
           <BehaviorPanel
             trade={trade}
             plan={tradePlan}
+            periodState={tradePeriodState}
             isMentor={userIsMentor}
             embedded
             onToggleViolation={handleToggleViolation}

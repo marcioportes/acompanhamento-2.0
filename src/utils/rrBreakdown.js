@@ -24,8 +24,15 @@
  * em snapshot — mesmo princípio da SSoT de tiles do #282. As mensagens já gravadas em
  * `redFlags` continuam válidas; isto só as detalha.
  *
+ * ABSTENÇÃO (#402): o veredicto contra o alvo (`meetsTarget`) segue a MESMA regra do
+ * motor — `shouldEvaluateRR`. Antes este módulo julgava incondicionalmente, e o painel
+ * imprimia "−1,00x · mínimo 2,00x" em âmbar num trade que `calculateTradeCompliance`
+ * tinha classificado CONFORME: perda com stop respeitado é o risco planejado se
+ * realizando, não uma falha contra um alvo que o aluno nunca declarou.
+ *
  * @see src/utils/compliance.js — cálculo canônico de conformidade (DEC-006/007/009)
  */
+import { shouldEvaluateRR } from './compliance';
 
 // Ausência não é zero: `Number(null)` é 0 e passaria por finito, fazendo um trade sem
 // stop informado virar "risco de 343.685" (a entrada inteira como distância).
@@ -40,7 +47,8 @@ const num = (v) => {
  * @param {Object|null} plan — { pl, currentPl, riskPerOperation, rrTarget }
  * @returns {{
  *   riskAmount: number|null, riskPercent: number|null, resultAmount: number|null,
- *   rrTaken: number|null, meetsTarget: boolean|null,
+ *   rrTaken: number|null, meetsTarget: boolean|null, rrEvaluable: boolean,
+ *   riskIsTautological: boolean,
  *   roAmount: number|null, rrVsPlan: number|null, meetsTargetVsPlan: boolean|null,
  *   rrTarget: number|null, currency: string,
  * }}
@@ -51,6 +59,7 @@ export function rrBreakdown(trade, plan) {
     rrTaken: null, meetsTarget: null,
     roAmount: null, rrVsPlan: null, meetsTargetVsPlan: null,
     rrTarget: null, currency: trade?.currency || 'BRL',
+    rrEvaluable: false, riskIsTautological: false,
   };
   if (!trade) return out;
 
@@ -90,7 +99,20 @@ export function rrBreakdown(trade, plan) {
     out.rrVsPlan = Math.round((result / out.roAmount) * 100) / 100;
   }
 
-  if (out.rrTarget != null && out.rrTarget > 0) {
+  out.rrEvaluable = shouldEvaluateRR(trade);
+
+  // Stop informado no próprio preço de saída: risco = |entrada − stop| = |entrada − saída|
+  // = a própria perda, então o múltiplo é −1,00x POR CONSTRUÇÃO. Continua sendo exibido,
+  // mas rotulado — apresentar identidade aritmética como medida é a "falsa análise" que
+  // o #402 elimina. Tolerância de um tick absorve arredondamento de fill.
+  const exit = num(trade.exit);
+  if (stop != null && exit != null) {
+    out.riskIsTautological = Math.abs(stop - exit) <= tickSize;
+  }
+
+  // `meetsTarget` só é emitido quando há veredicto a emitir. `null` ≠ `false`:
+  // a UI pinta âmbar em `false`, e nunca deve pintar o que não foi julgado.
+  if (out.rrTarget != null && out.rrTarget > 0 && out.rrEvaluable) {
     if (out.rrTaken != null) out.meetsTarget = out.rrTaken >= out.rrTarget;
     if (out.rrVsPlan != null) out.meetsTargetVsPlan = out.rrVsPlan >= out.rrTarget;
   }

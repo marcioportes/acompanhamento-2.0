@@ -25,6 +25,8 @@
  *   const summary = summarizeLedger(ledger, plan);
  */
 
+import { sortTradesChrono } from './tradeInstant';
+
 /**
  * Constrói o extrato do plano com eventos derivados
  * @param {Array} trades - Trades do plano (crus do Firestore)
@@ -48,12 +50,9 @@ export const buildPlanLedger = (trades = [], plan = {}, options = {}) => {
   }
 
   // Ordenar cronologicamente (mais antigo primeiro)
-  filtered.sort((a, b) => {
-    const dateCompare = (a.date || '').localeCompare(b.date || '');
-    if (dateCompare !== 0) return dateCompare;
-    // Desempate por horário de entrada
-    return (a.entryTime || '').localeCompare(b.entryTime || '');
-  });
+  // #402 — ordem canônica (o desempate por `entryTime` como texto misturava
+  // horário naive com horário com offset).
+  filtered = sortTradesChrono(filtered);
 
   // Calcular alvos em R$ a partir dos percentuais do plano
   const basePl = plan.pl || 0;

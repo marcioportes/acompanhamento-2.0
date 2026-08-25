@@ -9,6 +9,7 @@
  */
 
 import { fmtTradeTime } from './tradeTimezone';
+import { sortTradesChrono } from './tradeInstant';
 
 // ============================================
 // Formatadores — BR (INV-06)
@@ -97,9 +98,8 @@ export const buildVisibleRows = (trades, expandedDays) => {
   const sortedDates = Array.from(days.keys()).sort((a, b) => b.localeCompare(a));
   const result = [];
   for (const date of sortedDates) {
-    const dayTrades = days.get(date).sort((a, b) =>
-      (a.entryTime || '').localeCompare(b.entryTime || '')
-    );
+    // #402 — ordem canônica por instante, não por texto do entryTime.
+    const dayTrades = sortTradesChrono(days.get(date));
     const count = dayTrades.length;
     const pl = dayTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
     const wins = dayTrades.filter((t) => Number(t.pnl) > 0).length;

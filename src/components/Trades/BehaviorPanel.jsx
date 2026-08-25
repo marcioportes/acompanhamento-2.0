@@ -13,12 +13,23 @@ import { AlertTriangle, Lock } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
 import { rrBreakdown } from '../../utils/rrBreakdown';
+import { authorizationFor } from '../../utils/dayState';
+import { authorizationNotice } from '../metrics/dayMetricTiles';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
   BEHAVIOR_LABELS, narrativeFor, UndersizedBody,
   emotionConfrontDisplay, CONFRONT_TONE_STYLES,
 } from './behaviorDisplay';
+
+// Tons do aviso de autorização (#402). `warn` é laranja discreto — SEM_FOLGA é aviso
+// sobre a aritmética do plano, não acusação ao aluno; `alert` é vermelho — abrir
+// depois do orçamento fechado é decisão dele.
+const AUTH_TONE_STYLES = {
+  warn: 'bg-orange-500/5 border-orange-500/20 text-orange-300',
+  alert: 'bg-red-500/5 border-red-500/25 text-red-300',
+  neutral: 'bg-slate-800/30 border-slate-700/30 text-zinc-300',
+};
 
 const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolation }) => {
   const [expanded, setExpanded] = useState(false);
@@ -144,7 +155,9 @@ const RrEmDinheiro = ({ trade, plan }) => {
               </span>
             </>
           )}
-          {r.rrTaken != null && (
+          {/* O múltiplo só aparece como veredicto quando HÁ veredicto. `meetsTarget`
+              null nunca pinta âmbar — só `false` pinta. */}
+          {r.rrTaken != null && r.rrEvaluable && (
             <> — <span className={`font-semibold ${r.meetsTarget === false ? 'text-amber-400' : 'text-emerald-400'}`}>
               {mult(r.rrTaken)}
             </span></>
@@ -152,20 +165,39 @@ const RrEmDinheiro = ({ trade, plan }) => {
         </p>
       )}
 
+      {/* Perda com stop respeitado: o motor se abstém de julgar R:R ("perder 1R é o
+          risco planejado"). O painel dizia o contrário na mesma tela — imprimia
+          "−1,00x · mínimo 2,00x" em âmbar. Agora diz o que de fato aconteceu. */}
+      {!r.rrEvaluable && r.resultAmount != null && r.resultAmount < 0 && (
+        <p className="text-[11px] text-zinc-400">
+          Perda dentro do risco planejado — o stop foi respeitado.
+        </p>
+      )}
+
+      {/* Stop informado no próprio preço de saída: risco = |entrada − stop| = a perda,
+          então o múltiplo é −1,00R por construção. Identidade aritmética não é medida. */}
+      {r.riskIsTautological && (
+        <p className="text-[10px] text-zinc-600 leading-relaxed">
+          O stop informado coincide com a saída, então o {mult(-1)} é aritmética, não medida.
+        </p>
+      )}
+
       {r.roAmount != null && (
         <p className="text-[11px] text-zinc-500">
           O plano autoriza <span className="text-zinc-300">{dinheiro(r.roAmount)}</span> por operação
-          {r.rrVsPlan != null && (
+          {r.rrVsPlan != null && r.rrEvaluable && (
             <> — nesse risco, o mesmo resultado seria <span className="text-zinc-300">{mult(r.rrVsPlan)}</span></>
           )}
-          {r.rrTarget != null && <span className="text-zinc-600"> · mínimo {mult(r.rrTarget)}</span>}
+          {/* O mínimo é propriedade do ALVO DECLARADO. Sem alvo declarado, cobrá-lo é
+              acusar o aluno de não ter atingido algo com que nunca se comprometeu. */}
+          {r.rrTarget != null && r.rrEvaluable && <span className="text-zinc-600"> · mínimo {mult(r.rrTarget)}</span>}
         </p>
       )}
     </div>
   );
 };
 
-const BehaviorPanel = ({ trade, plan = null, isMentor = false, embedded = false, onToggleViolation, mentorSlot = null }) => {
+const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = false, embedded = false, onToggleViolation, mentorSlot = null }) => {
   if (!trade) return null;
   const currency = trade.currency || 'USD';
   const profile = trade.behaviorProfile;
@@ -185,6 +217,11 @@ const BehaviorPanel = ({ trade, plan = null, isMentor = false, embedded = false,
 
   // ③ Gate
   const gateInputs = profile?.gateInputs ?? [];
+
+  // #402 — o que ESTA operação decidiu ao abrir (fato atômico derivado do período)
+  // e o que o PERÍODO fez (fato do período). Coisas diferentes, blocos diferentes.
+  const periodRow = authorizationFor(trade, periodState);
+  const authNotice = authorizationNotice(periodRow, periodState, currency);
 
   const computed = !!profile; // o motor já rodou neste trade?
 
@@ -210,36 +247,80 @@ const BehaviorPanel = ({ trade, plan = null, isMentor = false, embedded = false,
           );
         })()}
 
-        {/* ① Adesão ao plano */}
-        {(effective.length > 0 || cleared.length > 0) && (
+        {/* ① ESTA OPERAÇÃO — só o que é propriedade dela.
+            Antes o R:R em dinheiro ficava DENTRO da caixa de violações: um trade
+            limpo não mostrava risco nenhum, e um trade acusado por um fato do DIA
+            mostrava. Agora o dinheiro é sempre dito e a acusação é separada. */}
+        <section>
+          <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Esta operação</p>
+
+          {effective.length > 0 && (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 mb-2">
+              <div className="flex items-center gap-2 text-amber-400 mb-2">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">Violações ({effective.length})</span>
+              </div>
+              <div className="space-y-1">
+                {effective.map((flag, i) => (
+                  <ViolationRow key={`eff-${i}`} flag={flag} isMentor={isMentor} onToggleViolation={onToggleViolation} cleared={false} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Autorização para abrir: fato atômico derivado do período (#402).
+              Aviso factual com os dois números lado a lado — não acusação. */}
+          {authNotice && (
+            <div className={`rounded-lg p-3 mb-2 border ${AUTH_TONE_STYLES[authNotice.tone]}`}>
+              <p className="text-xs font-semibold mb-0.5">{authNotice.title}</p>
+              <p className="text-[11px] opacity-80 leading-relaxed">{authNotice.detail}</p>
+            </div>
+          )}
+
+          {effective.length === 0 && !authNotice && (
+            <p className="text-xs text-emerald-300/80 mb-2">Nenhuma violação de plano nesta operação.</p>
+          )}
+
+          <RrEmDinheiro trade={trade} plan={plan} />
+
+          {cleared.length > 0 && (
+            <div className="bg-slate-800/30 border border-slate-700/30 rounded-lg p-3 mt-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider">Limpas pelo mentor ({cleared.length})</span>
+              </div>
+              <div className="space-y-1">
+                {cleared.map((flag, i) => (
+                  <ViolationRow key={`cl-${i}`} flag={flag} isMentor={isMentor} onToggleViolation={onToggleViolation} cleared />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ①b O PERÍODO — contexto, nunca acusação. Sem chip, sem âmbar.
+            "O dia fechou além do stop" não é culpa de operação nenhuma. */}
+        {periodState && periodState.count > 0 && (
           <section>
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Adesão ao plano</p>
-            {effective.length > 0 && (
-              <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 mb-2">
-                <div className="flex items-center gap-2 text-amber-400 mb-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-xs font-bold uppercase tracking-wider">Violações ({effective.length})</span>
-                </div>
-                <div className="space-y-1">
-                  {effective.map((flag, i) => (
-                    <ViolationRow key={`eff-${i}`} flag={flag} isMentor={isMentor} onToggleViolation={onToggleViolation} cleared={false} />
-                  ))}
-                </div>
-                <RrEmDinheiro trade={trade} plan={plan} />
-              </div>
-            )}
-            {cleared.length > 0 && (
-              <div className="bg-slate-800/30 border border-slate-700/30 rounded-lg p-3">
-                <div className="flex items-center gap-2 text-slate-500 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider">Limpas pelo mentor ({cleared.length})</span>
-                </div>
-                <div className="space-y-1">
-                  {cleared.map((flag, i) => (
-                    <ViolationRow key={`cl-${i}`} flag={flag} isMentor={isMentor} onToggleViolation={onToggleViolation} cleared />
-                  ))}
-                </div>
-              </div>
-            )}
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
+              {periodState.operationPeriod === 'Semanal' ? 'A semana' : 'O dia'}
+              {trade.date ? ` (${trade.date.slice(8, 10)}/${trade.date.slice(5, 7)})` : ''}
+            </p>
+            <div className="bg-slate-800/30 border border-slate-700/30 rounded-lg p-3 space-y-1">
+              <p className="text-xs text-zinc-300">
+                Resultado: <span className={`font-semibold ${periodState.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {formatCurrencyDynamic(periodState.net, currency)}
+                </span>
+                <span className="text-zinc-500">{` (${periodState.count} ${periodState.count === 1 ? 'trade' : 'trades'})`}</span>
+              </p>
+              {periodState.stopValue != null && (
+                <p className="text-[11px] text-zinc-500">
+                  Folga do stop: <span className="text-zinc-300">
+                    {formatCurrencyDynamic(Math.max(0, periodState.stopValue + Math.min(periodState.net, 0)), currency)}
+                  </span>{' de '}
+                  <span className="text-zinc-300">{formatCurrencyDynamic(periodState.stopValue, currency)}</span>
+                </p>
+              )}
+            </div>
           </section>
         )}
 

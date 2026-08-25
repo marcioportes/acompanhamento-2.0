@@ -18,6 +18,8 @@
  *   - Funções retornam null quando sample insuficiente, NUNCA NaN/Infinity.
  */
 
+import { sortTradesChrono } from '../tradeInstant';
+
 /**
  * R = capital arriscado por trade conforme plano.
  * R = plan.pl × plan.riskPerOperation / 100
@@ -183,12 +185,10 @@ export function computeStopBreach(cycleTrades, plan) {
   const stopValue = cycleStopPct != null ? plan.pl * (cycleStopPct / 100) : 0;
   const goalValue = cycleGoalPct != null ? plan.pl * (cycleGoalPct / 100) : 0;
 
-  // Ordenação cronológica replica analyzePlanCompliance
-  const sorted = [...list].sort((a, b) => {
-    const tA = a.createdAt?.seconds || new Date(a.date).getTime();
-    const tB = b.createdAt?.seconds || new Date(b.date).getTime();
-    return tA - tB;
-  });
+  // #402 — mesma SSoT de ordem que analyzePlanCompliance. Antes ordenava por
+  // `createdAt` (ordem de importação), o que deslocava o índice do estouro em
+  // qualquer ciclo com dia importado.
+  const sorted = sortTradesChrono(list);
 
   const stopLimit = -Math.abs(stopValue);
   const goalLimit = Math.abs(goalValue);
