@@ -66,15 +66,22 @@ export const isViolationCleared = (trade, key) => {
  * Compliance: filtra `trade.redFlags` removendo as cleared pelo mentor.
  * Chave = `flag.type` (o próprio code da violação).
  */
+export const flagType = (f) => (typeof f === 'string' ? f : f?.type);
+
 export const effectiveRedFlags = (trade) => {
   if (!trade) return [];
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
-  const vigentes = flags.filter((f) => f && !isRevokedRedFlag(f.type));
+  // #402 — `flagType` em vez de `f.type` direto: um flag gravado como string
+  // (formato que `TradesList`, `onTradeUpdated` e `recalculateCompliance` já
+  // tratam) escapava tanto da revogação quanto do clearing, em silêncio. Não há
+  // nenhum na base hoje — mas este é o portão de que a revogação depende, e
+  // falhar calado aqui traz de volta a acusação que o issue removeu.
+  const vigentes = flags.filter((f) => f && !isRevokedRedFlag(flagType(f)));
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
   if (cleared.length === 0) return vigentes;
-  return vigentes.filter((f) => !cleared.includes(f.type));
+  return vigentes.filter((f) => !cleared.includes(flagType(f)));
 };
 
 /**

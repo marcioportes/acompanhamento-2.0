@@ -49,15 +49,19 @@ function isViolationCleared(trade, key) {
   return cleared.indexOf(key) !== -1;
 }
 
+function flagType(f) { return typeof f === 'string' ? f : (f && f.type); }
+
 function effectiveRedFlags(trade) {
   if (!trade) return [];
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
-  const vigentes = flags.filter(function (f) { return f && !isRevoked(f.type); });
+  // #402 — ver nota no espelho ESM: flag em formato string escapava da revogação
+  // e do clearing em silêncio.
+  const vigentes = flags.filter(function (f) { return f && !isRevoked(flagType(f)); });
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
   if (cleared.length === 0) return vigentes;
-  return vigentes.filter(function (f) { return cleared.indexOf(f.type) === -1; });
+  return vigentes.filter(function (f) { return cleared.indexOf(flagType(f)) === -1; });
 }
 
 function hasEffectiveRedFlags(trade) {
@@ -106,6 +110,7 @@ function effectiveEmotionalEventsForPeriod(trades, events) {
 }
 
 module.exports = {
+  flagType,
   REVOKED_RED_FLAG_TYPES,
   getEventKey,
   isViolationCleared,
