@@ -54,7 +54,10 @@ describe('buildPeriodState — o incidente de 25/08', () => {
     expect(ps.stopValue).toBeCloseTo(501, 2);
     expect(ps.roValue).toBeCloseTo(252, 2);
     expect(ps.goalValue).toBeCloseTo(1005, 2);
-    expect(ps.maxAuthorizedTrades).toBe(1);
+    // Com margem de manejo, 1,99 operações É 2 — era essa a intenção de quem
+    // escreveu o plano. Sem isso, a segunda operação do dia nascia sem
+    // autorização por meio por cento.
+    expect(ps.maxAuthorizedTrades).toBe(2);
   });
 
   it('resultado do dia é o LÍQUIDO', () => {
@@ -76,11 +79,21 @@ describe('buildPeriodState — o incidente de 25/08', () => {
     expect(linha.authorization).toBe(AUTHORIZATION.AUTHORIZED);
   });
 
-  it('o trade das 11:34 abriu sem folga — R$ 251 para um RO de R$ 252', () => {
+  it('o trade das 11:34 também está limpo — R$ 251 para um RO de R$ 252 é manejo', () => {
+    // R$ 1 de diferença, num contrato cujo tick vale R$ 5. Sem margem isto virava
+    // "aberta sem orçamento"; com margem (252 × 0,98 = 246,96) é operação normal.
     const linha = ps.rows[1];
     expect(linha.cumBefore).toBe(-250);
     expect(linha.budgetBefore).toBeCloseTo(251, 2);
-    expect(linha.authorization).toBe(AUTHORIZATION.NO_ROOM);
+    expect(linha.authorization).toBe(AUTHORIZATION.AUTHORIZED);
+  });
+
+  it('mas orçamento realmente insuficiente ainda avisa', () => {
+    const apertado = buildPeriodState([
+      trade('a', '09:00:00', -260), // sobra 241 < 246,96
+      trade('b', '10:00:00', -50),
+    ], PLANO);
+    expect(apertado.rows[1].authorization).toBe(AUTHORIZATION.NO_ROOM);
   });
 
   it('o dia é que estourou — e ninguém abriu depois do stop', () => {
@@ -276,7 +289,7 @@ describe('buildPeriodIndex + authorizationFor', () => {
   it('authorizationFor devolve a linha do trade', () => {
     const ps = buildPeriodState([B, A], PLANO);
     expect(authorizationFor(A, ps).authorization).toBe(AUTHORIZATION.AUTHORIZED);
-    expect(authorizationFor(B, ps).authorization).toBe(AUTHORIZATION.NO_ROOM);
+    expect(authorizationFor(B, ps).authorization).toBe(AUTHORIZATION.AUTHORIZED);
     expect(authorizationFor({ id: 'inexistente' }, ps)).toBeNull();
   });
 });

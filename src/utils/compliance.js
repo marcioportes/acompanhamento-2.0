@@ -73,6 +73,8 @@ export const RED_FLAG_TYPES = {
   BLOCKED_EMOTION: 'EMOCIONAL_BLOQUEADO'
 };
 
+import { exceedsLimit } from './planTolerance';
+
 /**
  * O aluno declarou um alvo para este trade?
  *
@@ -160,8 +162,10 @@ export const calculateTradeCompliance = (trade, plan) => {
     }
   }
   
-  // RO compliance: só avalia se riskPercent é numérico
-  if (result.riskPercent != null && plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
+  // RO compliance: só avalia se riskPercent é numérico.
+  // #402 — com margem de manejo: 2% acima do RO é execução, não indisciplina.
+  // O número exibido não muda; o que muda é ele virar violação.
+  if (result.riskPercent != null && exceedsLimit(result.riskPercent, plan.riskPerOperation)) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   

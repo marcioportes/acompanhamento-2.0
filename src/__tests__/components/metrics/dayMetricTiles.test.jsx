@@ -78,9 +78,9 @@ describe('dayBudgetContent — folga do orçamento', () => {
     expect(c.theme.text).toBe('text-red-400');
   });
 
-  it('diz quantas operações o plano comporta', () => {
+  it('diz quantas operações o plano comporta — 1,99 conta como 2', () => {
     const c = dayBudgetContent(buildPeriodState([A], PLANO), 'BRL');
-    expect(c.caption).toContain('1 operação por período');
+    expect(c.caption).toContain('2 operações por período');
   });
 
   it('plano que não autoriza nenhuma operação se denuncia', () => {
@@ -158,11 +158,16 @@ describe('authorizationNotice — o fato ATÔMICO, no painel do trade', () => {
     expect(authorizationNotice(ps.rows[0], ps, 'BRL')).toBeNull();
   });
 
-  it('operação sem folga gera AVISO factual, com os dois números', () => {
-    const n = authorizationNotice(ps.rows[1], ps, 'BRL');
+  it('R$ 251 para um RO de R$ 252 não gera aviso — é manejo', () => {
+    expect(authorizationNotice(ps.rows[1], ps, 'BRL')).toBeNull();
+  });
+
+  it('mas orçamento realmente insuficiente gera AVISO factual, com os dois números', () => {
+    const apertado = buildPeriodState([t('a', '09:00:00', -260), t('b', '10:00:00', -50)], PLANO);
+    const n = authorizationNotice(apertado.rows[1], apertado, 'BRL');
     expect(n.tone).toBe('warn');
     expect(n.title).toBe('Aberta sem orçamento');
-    expect(n.detail).toContain('251'); // folga que restava
+    expect(n.detail).toContain('241'); // folga que restava
     expect(n.detail).toContain('252'); // RO autorizado
   });
 

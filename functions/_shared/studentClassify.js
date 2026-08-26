@@ -41,10 +41,31 @@ async function studentInReviewScope(db, studentId) {
   return inReviewScope(classifyStudent(subsSnap.docs.map((d) => d.data())));
 }
 
+/**
+ * Lê as subscriptions do aluno e diz se ele está no ESCOPO DE GESTÃO — isto é, se
+ * o mentor ainda o acompanha. Mesmo predicado da visibilidade em Contas /
+ * Acompanhamento (`src/utils/mentorAccountsVisibility.js`): `classifyStudent !== null`
+ * — VIP ativo, sem-sub e cancelled/expired ficam fora; `overdue` (grace) permanece.
+ *
+ * Mais largo que `studentInReviewScope` de propósito: a Revisão é só o track Alpha,
+ * mas o alarme do cockpit vale para todo aluno que o mentor gerencia.
+ *
+ * #402 — 203 dos 588 alarmes do cockpit (35%) eram de aluno sem assinatura ativa;
+ * seis pessoas que já saíram continuavam pedindo atenção no painel do mentor.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function studentInManagementScope(db, studentId) {
+  if (!studentId) return false;
+  const subsSnap = await db.collection('students').doc(studentId).collection('subscriptions').get();
+  return classifyStudent(subsSnap.docs.map((d) => d.data())) !== null;
+}
+
 module.exports = {
   ENDED_STATUSES,
   classifyStudent,
   inReviewScope,
   REVIEW_SCOPE_BUCKETS,
   studentInReviewScope,
+  studentInManagementScope,
 };

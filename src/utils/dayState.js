@@ -28,6 +28,7 @@
  * @see src/utils/planStateMachine.js — getPeriodKey (bucketização por período)
  */
 import { sortTradesChrono, orderingConfidence, tradeInstantInfo } from './tradeInstant';
+import { exceedsLimit, fallsShortOf, authorizedCount } from './planTolerance';
 import { getPeriodKey } from './planStateMachine';
 
 /**
@@ -69,9 +70,8 @@ function thresholdsOf(plan) {
     stopValue,
     goalValue: pct(plan.periodGoal),
     roValue,
-    maxAuthorizedTrades: stopValue != null && roValue != null && roValue > 0
-      ? Math.floor(stopValue / roValue)
-      : null,
+    // #402 — com margem: 1,99 operações é 2.
+    maxAuthorizedTrades: authorizedCount(stopValue, roValue),
   };
 }
 
@@ -112,12 +112,13 @@ export function buildPeriodState(trades, plan, opts = {}) {
 
     let authorization = null;
     if (avaliaAutorizacao) {
-      if (cumBefore <= -stopValue) {
+      // #402 — margem de manejo nos dois lados. Sem ela, restar R$ 251 para um RO
+      // de R$ 252 virava "aberta sem orçamento" — um real, num contrato cujo tick
+      // vale cinco.
+      if (exceedsLimit(-cumBefore, stopValue)) {
         authorization = AUTHORIZATION.AFTER_STOP;
         tradesAfterStop += 1;
-      } else if (roValue != null && budgetBefore < roValue) {
-        // Inclui o caso de orçamento já negativo por política 'net' com ganho — aí
-        // budgetBefore < roValue também, e o aviso é legítimo.
+      } else if (roValue != null && fallsShortOf(budgetBefore, roValue)) {
         authorization = AUTHORIZATION.NO_ROOM;
       } else {
         authorization = AUTHORIZATION.AUTHORIZED;
@@ -129,7 +130,7 @@ export function buildPeriodState(trades, plan, opts = {}) {
     if (result < 0) losses = cents(losses + Math.abs(result));
     qty += num(t?.qty) ?? 0;
 
-    if (stopValue != null && stopHitIndex === null && cum <= -stopValue) stopHitIndex = index;
+    if (stopValue != null && stopHitIndex === null && exceedsLimit(-cum, stopValue)) stopHitIndex = index;
     if (goalValue != null && goalHitIndex === null && cum >= goalValue) goalHitIndex = index;
 
     const info = tradeInstantInfo(t);
@@ -148,7 +149,9 @@ export function buildPeriodState(trades, plan, opts = {}) {
   });
 
   const net = cents(cum);
-  const closedBeyondStop = stopValue != null ? net <= -stopValue : null;
+  // Barreira: só além da margem. O EXCESSO reportado (`beyondStopBy`) continua
+  // medido contra o limite REAL — a margem decide se vira violação, não altera o fato.
+  const closedBeyondStop = stopValue != null ? exceedsLimit(-net, stopValue) : null;
 
   return {
     periodKey: opts.periodKey ?? null,

@@ -14,6 +14,7 @@
  */
 
 const { sortTradesChrono, orderingConfidence, tradeInstantInfo } = require('./tradeInstant');
+const { exceedsLimit, fallsShortOf, authorizedCount } = require('./planTolerance');
 
 const AUTHORIZATION = {
   AUTHORIZED: 'AUTORIZADA',
@@ -72,9 +73,8 @@ function thresholdsOf(plan) {
     stopValue,
     goalValue: pct(plan.periodGoal),
     roValue,
-    maxAuthorizedTrades: stopValue != null && roValue != null && roValue > 0
-      ? Math.floor(stopValue / roValue)
-      : null,
+    // #402 — com margem: 1,99 operações é 2.
+    maxAuthorizedTrades: authorizedCount(stopValue, roValue),
   };
 }
 
@@ -113,10 +113,11 @@ function buildPeriodState(trades, plan, opts) {
 
     let authorization = null;
     if (avaliaAutorizacao) {
-      if (cumBefore <= -stopValue) {
+      // #402 — margem de manejo (ver planTolerance).
+      if (exceedsLimit(-cumBefore, stopValue)) {
         authorization = AUTHORIZATION.AFTER_STOP;
         tradesAfterStop += 1;
-      } else if (roValue != null && budgetBefore < roValue) {
+      } else if (roValue != null && fallsShortOf(budgetBefore, roValue)) {
         authorization = AUTHORIZATION.NO_ROOM;
       } else {
         authorization = AUTHORIZATION.AUTHORIZED;
@@ -128,7 +129,7 @@ function buildPeriodState(trades, plan, opts) {
     if (result < 0) losses = cents(losses + Math.abs(result));
     qty += num(t && t.qty) !== null ? num(t.qty) : 0;
 
-    if (stopValue != null && stopHitIndex === null && cum <= -stopValue) stopHitIndex = index;
+    if (stopValue != null && stopHitIndex === null && exceedsLimit(-cum, stopValue)) stopHitIndex = index;
     if (goalValue != null && goalHitIndex === null && cum >= goalValue) goalHitIndex = index;
 
     const info = tradeInstantInfo(t);
@@ -149,7 +150,8 @@ function buildPeriodState(trades, plan, opts) {
   });
 
   const net = cents(cum);
-  const closedBeyondStop = stopValue != null ? net <= -stopValue : null;
+  // Barreira só além da margem; `beyondStopBy` segue medido contra o limite REAL.
+  const closedBeyondStop = stopValue != null ? exceedsLimit(-net, stopValue) : null;
 
   return {
     periodKey: o.periodKey != null ? o.periodKey : null,

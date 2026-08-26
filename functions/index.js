@@ -428,6 +428,7 @@ const notifyPropFirmFlag = async (accountId, trade, state) => {
 // #383 — SSoT do R:R realizado, compartilhada com os detectores comportamentais.
 const { realizedRR } = require('./shared/realizedRR');
 const { tradeChangeScope } = require('./shared/tradeChangeScope');
+const { exceedsLimit } = require('./shared/planTolerance');
 
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
@@ -456,7 +457,10 @@ const calculateTradeCompliance = (trade, plan) => {
     }
   }
   
-  if (result.riskPercent != null && plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
+  // #402 — margem de manejo: 2% acima do RO é execução (slippage, granularidade
+  // de tick), não indisciplina. O número gravado não muda; o que muda é ele virar
+  // violação. MANTER EM SINCRONIA com src/utils/compliance.js.
+  if (result.riskPercent != null && exceedsLimit(result.riskPercent, plan.riskPerOperation)) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   
@@ -1257,23 +1261,34 @@ exports.onTradeCreated = functions.firestore
       await snap.ref.update(updates);
 
       // === 3. NOTIFICAÇÕES ===
-      if (redFlags.length > 0) {
+      // #402 — alarme só para aluno que o mentor ainda acompanha. Alunos com
+      // assinatura cancelada/expirada continuavam pedindo atenção no cockpit:
+      // 203 dos 588 alarmes (35%) eram de seis pessoas que já tinham saído.
+      // Mesmo predicado da visibilidade em Contas/Acompanhamento.
+      const { studentInManagementScope } = require('./_shared/studentClassify');
+      const alunoAtivo = await studentInManagementScope(db, trade.studentId);
+
+      if (alunoAtivo) {
+        if (redFlags.length > 0) {
+          await db.collection('notifications').add({ 
+            type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+            tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
+            message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+          });
+        }
+
         await db.collection('notifications').add({ 
-          type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
-          tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
-          message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+          type: 'NEW_TRADE', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+          tradeId, ticker: trade.ticker, message: `Novo trade: ${trade.ticker}`, read: false, 
+          createdAt: admin.firestore.FieldValue.serverTimestamp() 
         });
+      } else {
+        console.log(`[onTradeCreated] aluno ${trade.studentId} fora do escopo de gestão — alarmes suprimidos`);
       }
-      
-      await db.collection('notifications').add({ 
-        type: 'NEW_TRADE', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
-        tradeId, ticker: trade.ticker, message: `Novo trade: ${trade.ticker}`, read: false, 
-        createdAt: admin.firestore.FieldValue.serverTimestamp() 
-      });
 
       // === 4. ALERTA EMOCIONAL (Fase 1.4.0) ===
       // Notifica mentor se emoção de entrada é CRITICAL (Revanche, FOMO, Ganância)
-      if (trade.emotionEntry) {
+      if (trade.emotionEntry && alunoAtivo) {
         try {
           const emotionSnap = await db.collection('emotions')
             .where('name', '==', trade.emotionEntry)
@@ -1593,13 +1608,21 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     }
 
     // === B1 (v1.19.0): Re-check alerta emocional se emotionEntry mudou ===
+    // #402 — mesmo gate de escopo de gestão do onTradeCreated.
     if (before.emotionEntry !== after.emotionEntry && after.emotionEntry) {
       try {
-        const emotionSnap = await db.collection('emotions')
-          .where('name', '==', after.emotionEntry)
-          .limit(1)
-          .get();
-        
+        const { studentInManagementScope } = require('./_shared/studentClassify');
+        const alunoAtivo = await studentInManagementScope(db, after.studentId);
+        if (!alunoAtivo) {
+          console.log(`[onTradeUpdated] aluno ${after.studentId} fora do escopo de gestão — alerta emocional suprimido`);
+        }
+        const emotionSnap = alunoAtivo
+          ? await db.collection('emotions')
+            .where('name', '==', after.emotionEntry)
+            .limit(1)
+            .get()
+          : { empty: true, docs: [] };
+
         if (!emotionSnap.empty) {
           const emotionData = emotionSnap.docs[0].data();
           if (emotionData.analysisCategory === 'CRITICAL' || emotionData.riskLevel === 'CRITICAL') {

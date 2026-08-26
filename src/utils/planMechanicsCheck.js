@@ -20,6 +20,8 @@
  * enquanto está sendo escrito, não impedir o aluno de mexer nele.
  */
 
+import { withinTolerance, authorizedCount } from './planTolerance';
+
 const num = (v) => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -77,9 +79,16 @@ export function checkPlanCoherence(plan) {
   if (roPct != null && roPct > 0 && stopPct != null && stopPct > 0) {
     const n = stopPct / roPct;
     out.tradesImplied = Math.round(n * 100) / 100;
-    out.maxAuthorizedTrades = Math.floor(n);
+    out.maxAuthorizedTrades = authorizedCount(stopPct, roPct);
 
-    if (n < 1) {
+    // #402 — margem de manejo: 1,99 operações É 2. Um plano fora por meio por
+    // cento não pode virar barreira (Marcio, 25/08/2026). As demais checagens
+    // (stop do ciclo, meta vs R:R) seguem valendo.
+    const dentroDaMargem = withinTolerance(n, Math.max(1, Math.round(n)));
+
+    if (dentroDaMargem) {
+      // nada a apontar na relação stop × RO
+    } else if (n < 1) {
       out.issues.push({
         code: PLAN_ISSUE.PERIOD_STOP_BELOW_RO,
         severity: 'error',

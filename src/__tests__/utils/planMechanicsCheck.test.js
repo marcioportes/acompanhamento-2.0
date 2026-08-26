@@ -17,18 +17,15 @@ describe('o Ago-Plano — o plano que originou o issue', () => {
     expect(r.goalAmount).toBe(1005);
   });
 
-  it('comporta 1,99 operações — e o plano autoriza apenas 1', () => {
+  it('comporta 1,99 operações — que dentro da margem de manejo É 2', () => {
     expect(r.tradesImplied).toBe(1.99);
-    expect(r.maxAuthorizedTrades).toBe(1);
+    expect(r.maxAuthorizedTrades).toBe(2);
   });
 
-  it('acusa o múltiplo fracionário como aviso, não como erro', () => {
-    expect(cod(r)).toContain(PLAN_ISSUE.PERIOD_STOP_NOT_MULTIPLE_OF_RO);
-    const issue = r.issues.find((i) => i.code === PLAN_ISSUE.PERIOD_STOP_NOT_MULTIPLE_OF_RO);
-    expect(issue.severity).toBe('warning');
-    expect(issue.message).toContain('1,99');
-    expect(issue.message).toContain('1,68%'); // o valor que fecharia em 2 operações
-    expect(issue.message).toContain('0,84%'); // o valor que fecharia em 1
+  it('meio por cento de sobra NÃO vira barreira', () => {
+    // O plano segue tecnicamente fracionário, mas 1,99 está dentro dos 2% de
+    // margem — cobrar exatidão onde o tick não permite exatidão fabrica violação.
+    expect(cod(r)).not.toContain(PLAN_ISSUE.PERIOD_STOP_NOT_MULTIPLE_OF_RO);
   });
 
   it('a meta de 3,35% é coerente com stop 1,67% e alvo 2:1 — não reclama', () => {
@@ -36,7 +33,17 @@ describe('o Ago-Plano — o plano que originou o issue', () => {
   });
 
   it('rótulo legível para a UI', () => {
-    expect(authorizedTradesLabel(plano)).toBe('Autoriza 1 operação por dia');
+    expect(authorizedTradesLabel(plano)).toBe('Autoriza 2 operações por dia');
+  });
+});
+
+describe('plano fracionário além da margem ainda reclama', () => {
+  it('2,25 operações não é 2 nem 3', () => {
+    // Caso real da base: Elza (mentoria)/Plano Lucid Flex 50K.
+    const r = checkPlanCoherence({ pl: 50000, riskPerOperation: 0.8, periodStop: 1.8, cycleStop: 8 });
+    expect(r.tradesImplied).toBe(2.25);
+    expect(cod(r)).toContain(PLAN_ISSUE.PERIOD_STOP_NOT_MULTIPLE_OF_RO);
+    expect(r.maxAuthorizedTrades).toBe(2);
   });
 });
 
@@ -110,7 +117,7 @@ describe('entradas incompletas não explodem', () => {
     const r = checkPlanCoherence({ riskPerOperation: 0.84, periodStop: 1.67 });
     expect(r.roAmount).toBeNull();
     // a relação stop × RO independe do capital — segue sendo avaliada
-    expect(r.maxAuthorizedTrades).toBe(1);
+    expect(r.maxAuthorizedTrades).toBe(2);
     expect(authorizedTradesLabel({ riskPerOperation: 0.84, periodStop: 1.67 })).toBeNull();
   });
 
@@ -123,6 +130,6 @@ describe('entradas incompletas não explodem', () => {
   it('campos como string (vindos de formulário)', () => {
     const r = checkPlanCoherence({ pl: '30000', riskPerOperation: '0.84', periodStop: '1.67', cycleStop: '8.5' });
     expect(r.roAmount).toBe(252);
-    expect(r.maxAuthorizedTrades).toBe(1);
+    expect(r.maxAuthorizedTrades).toBe(2);
   });
 });
