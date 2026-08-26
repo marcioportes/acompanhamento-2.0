@@ -250,26 +250,6 @@ const calculateRiskPercent = (trade, accountBalance) => {
   return (risk / accountBalance) * 100;
 };
 
-const getDailyLoss = async (studentId, accountId, date) => {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const snapshot = await db.collection('trades')
-    .where('studentId', '==', studentId)
-    .where('accountId', '==', accountId)
-    .where('date', '>=', startOfDay.toISOString().split('T')[0])
-    .where('date', '<=', endOfDay.toISOString().split('T')[0])
-    .get();
-  
-  let total = 0;
-  snapshot.forEach(doc => { 
-    if (doc.data().result < 0) total += Math.abs(doc.data().result); 
-  });
-  return total;
-};
-
 const updateAccountBalance = async (accountId, resultDiff) => {
   if (!accountId || resultDiff === 0) return;
   const accountRef = db.collection('accounts').doc(accountId);
@@ -448,6 +428,7 @@ const notifyPropFirmFlag = async (accountId, trade, state) => {
 // #383 — SSoT do R:R realizado, compartilhada com os detectores comportamentais.
 const { realizedRR } = require('./shared/realizedRR');
 const { tradeChangeScope } = require('./shared/tradeChangeScope');
+const { exceedsLimit } = require('./shared/planTolerance');
 
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
@@ -476,7 +457,10 @@ const calculateTradeCompliance = (trade, plan) => {
     }
   }
   
-  if (result.riskPercent != null && plan.riskPerOperation && result.riskPercent > plan.riskPerOperation) {
+  // #402 — margem de manejo: 2% acima do RO é execução (slippage, granularidade
+  // de tick), não indisciplina. O número gravado não muda; o que muda é ele virar
+  // violação. MANTER EM SINCRONIA com src/utils/compliance.js.
+  if (result.riskPercent != null && exceedsLimit(result.riskPercent, plan.riskPerOperation)) {
     result.compliance.roStatus = 'FORA_DO_PLANO';
   }
   
@@ -1248,21 +1232,21 @@ exports.onTradeCreated = functions.firestore
           // do aluno nunca subia. Continua lido como comportamento (EARLY_EXIT) e o
           // detalhamento em dinheiro segue no painel (#373).
           
-          // Red flag: loss diário (calculado sobre capital base — DEC-009)
-          if (plan.periodStop && trade.accountId) {
-            const planPl = plan.pl ?? plan.currentPl ?? 0;
-            if (planPl > 0) {
-              const dailyLoss = await getDailyLoss(trade.studentId, trade.accountId, trade.date);
-              const dailyLossPercent = (dailyLoss / planPl) * 100;
-              if (dailyLossPercent > plan.periodStop) {
-                redFlags.push({ 
-                  type: RED_FLAG_TYPES.DAILY_LOSS_EXCEEDED, 
-                  message: `Loss diário ${dailyLossPercent.toFixed(1)}% excede stop do período (${plan.periodStop}%)`, 
-                  timestamp: new Date().toISOString() 
-                });
-              }
-            }
-          }
+          // #402 — o loss do período NÃO é mais avaliado aqui. Era o único fato
+          // AGREGADO gravado num container ATÔMICO (`trade.redFlags[]`), e a
+          // função que o calculava tinha três defeitos compostos:
+          //   1. somava o dia inteiro sem corte temporal, incluindo trades
+          //      posteriores ao que estava sendo avaliado — o veredicto dependia
+          //      da ordem de ESCRITA do lote, não do que o aluno fez;
+          //   2. somava só as perdas e ignorava os ganhos, então um dia lucrativo
+          //      podia "estourar" o stop do período;
+          //   3. carimbava TODA operação do dia, transformando um fato do dia em
+          //      N violações e deflacionando `complianceRate` por N/total.
+          // Na base real, 31 das 34 acusações eram falsas.
+          //
+          // O período agora é medido por `functions/shared/dayState.js` — líquido,
+          // ordenado por instante e com autorização por operação. O fato do dia
+          // pertence ao dia e é exibido no card do dia, não acusado no trade.
           
           // Red flag: emoção bloqueada
           if (plan.blockedEmotions && plan.blockedEmotions.includes(trade.emotionEntry)) {
@@ -1277,23 +1261,34 @@ exports.onTradeCreated = functions.firestore
       await snap.ref.update(updates);
 
       // === 3. NOTIFICAÇÕES ===
-      if (redFlags.length > 0) {
+      // #402 — alarme só para aluno que o mentor ainda acompanha. Alunos com
+      // assinatura cancelada/expirada continuavam pedindo atenção no cockpit:
+      // 203 dos 588 alarmes (35%) eram de seis pessoas que já tinham saído.
+      // Mesmo predicado da visibilidade em Contas/Acompanhamento.
+      const { studentInManagementScope } = require('./_shared/studentClassify');
+      const alunoAtivo = await studentInManagementScope(db, trade.studentId);
+
+      if (alunoAtivo) {
+        if (redFlags.length > 0) {
+          await db.collection('notifications').add({ 
+            type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+            tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
+            message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+          });
+        }
+
         await db.collection('notifications').add({ 
-          type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
-          tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
-          message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+          type: 'NEW_TRADE', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
+          tradeId, ticker: trade.ticker, message: `Novo trade: ${trade.ticker}`, read: false, 
+          createdAt: admin.firestore.FieldValue.serverTimestamp() 
         });
+      } else {
+        console.log(`[onTradeCreated] aluno ${trade.studentId} fora do escopo de gestão — alarmes suprimidos`);
       }
-      
-      await db.collection('notifications').add({ 
-        type: 'NEW_TRADE', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
-        tradeId, ticker: trade.ticker, message: `Novo trade: ${trade.ticker}`, read: false, 
-        createdAt: admin.firestore.FieldValue.serverTimestamp() 
-      });
 
       // === 4. ALERTA EMOCIONAL (Fase 1.4.0) ===
       // Notifica mentor se emoção de entrada é CRITICAL (Revanche, FOMO, Ganância)
-      if (trade.emotionEntry) {
+      if (trade.emotionEntry && alunoAtivo) {
         try {
           const emotionSnap = await db.collection('emotions')
             .where('name', '==', trade.emotionEntry)
@@ -1613,13 +1608,21 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
     }
 
     // === B1 (v1.19.0): Re-check alerta emocional se emotionEntry mudou ===
+    // #402 — mesmo gate de escopo de gestão do onTradeCreated.
     if (before.emotionEntry !== after.emotionEntry && after.emotionEntry) {
       try {
-        const emotionSnap = await db.collection('emotions')
-          .where('name', '==', after.emotionEntry)
-          .limit(1)
-          .get();
-        
+        const { studentInManagementScope } = require('./_shared/studentClassify');
+        const alunoAtivo = await studentInManagementScope(db, after.studentId);
+        if (!alunoAtivo) {
+          console.log(`[onTradeUpdated] aluno ${after.studentId} fora do escopo de gestão — alerta emocional suprimido`);
+        }
+        const emotionSnap = alunoAtivo
+          ? await db.collection('emotions')
+            .where('name', '==', after.emotionEntry)
+            .limit(1)
+            .get()
+          : { empty: true, docs: [] };
+
         if (!emotionSnap.empty) {
           const emotionData = emotionSnap.docs[0].data();
           if (emotionData.analysisCategory === 'CRITICAL' || emotionData.riskLevel === 'CRITICAL') {

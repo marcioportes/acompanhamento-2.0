@@ -22,8 +22,17 @@
  *
  * RR_ABAIXO_MINIMO — revogado por Marcio em 23/08: "sair abaixo do alvo não é
  * violação de plano, é comportamento". Era 106 de 282 flags da base.
+ *
+ * LOSS_DIARIO_EXCEDIDO — revogado em 25/08 (#402). Não era uma regra ruim: era um
+ * fato do DIA gravado como propriedade de um TRADE. Quem o emitia somava o dia
+ * inteiro sem corte temporal e só as perdas, então (a) o veredicto dependia da
+ * ordem em que o importador gravou o lote — o primeiro trade de 25/08, −R$ 250
+ * contra um limite de R$ 501, foi acusado por causa de um trade que aconteceu 40
+ * minutos DEPOIS dele — e (b) todo trade do dia levava uma cópia, virando N
+ * violações. Na base: 34 trades acusados, 3 violações reais, 31 falsas.
+ * O período passou a ser medido por `dayState` e mostrado no card do dia.
  */
-const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO'];
+const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO', 'LOSS_DIARIO_EXCEDIDO'];
 
 function isRevoked(type) { return REVOKED_RED_FLAG_TYPES.indexOf(type) !== -1; }
 
@@ -40,15 +49,19 @@ function isViolationCleared(trade, key) {
   return cleared.indexOf(key) !== -1;
 }
 
+function flagType(f) { return typeof f === 'string' ? f : (f && f.type); }
+
 function effectiveRedFlags(trade) {
   if (!trade) return [];
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
-  const vigentes = flags.filter(function (f) { return f && !isRevoked(f.type); });
+  // #402 — ver nota no espelho ESM: flag em formato string escapava da revogação
+  // e do clearing em silêncio.
+  const vigentes = flags.filter(function (f) { return f && !isRevoked(flagType(f)); });
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
   if (cleared.length === 0) return vigentes;
-  return vigentes.filter(function (f) { return cleared.indexOf(f.type) === -1; });
+  return vigentes.filter(function (f) { return cleared.indexOf(flagType(f)) === -1; });
 }
 
 function hasEffectiveRedFlags(trade) {
@@ -97,6 +110,7 @@ function effectiveEmotionalEventsForPeriod(trades, events) {
 }
 
 module.exports = {
+  flagType,
   REVOKED_RED_FLAG_TYPES,
   getEventKey,
   isViolationCleared,

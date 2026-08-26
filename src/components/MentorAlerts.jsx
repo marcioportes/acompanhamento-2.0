@@ -73,7 +73,13 @@ const StudentAlertGenerator = ({ trades, studentName, studentEmail, detectionCon
   return null; // Componente invisível
 };
 
-const MentorAlerts = ({ students = [], getTradesByStudent, onViewStudent, maxVisible = 5 }) => {
+/**
+ * @param {Set<string>} [activeEmails] — #402: emails (minúsculas) de alunos que o
+ *   mentor ainda acompanha. Alarme de quem já saiu não é alarme, é ruído: 203 dos
+ *   588 do cockpit eram de seis pessoas sem assinatura ativa. Set vazio = ainda
+ *   carregando; nesse caso não filtra (sumir depois é pior que aparecer e sumir).
+ */
+const MentorAlerts = ({ students = [], activeEmails = null, getTradesByStudent, onViewStudent, maxVisible = 5 }) => {
   const [firestoreAlerts, setFirestoreAlerts] = useState([]);
   const [clientAlerts, setClientAlerts] = useState({}); // { email: alerts[] }
   const [showAll, setShowAll] = useState(false);
@@ -114,8 +120,17 @@ const MentorAlerts = ({ students = [], getTradesByStudent, onViewStudent, maxVis
 
   // Merge + deduplicate + sort
   const allAlerts = useMemo(() => {
+    const filtraAtivo = (a) => {
+      if (!activeEmails || activeEmails.size === 0) return true;
+      const email = a?.studentEmail;
+      return !!email && activeEmails.has(String(email).toLowerCase());
+    };
+
     const fromFs = firestoreAlerts
       .filter(a => a.type === 'EMOTIONAL_ALERT' || a.type === 'RED_FLAG')
+      // #402 — varre o passivo: alarme já gravado de aluno inativo some da leitura,
+      // sem reescrever nada (mesmo princípio da revogação de red flag).
+      .filter(filtraAtivo)
       .map(a => ({
         ...a,
         severity: a.severity || 'MEDIUM',
@@ -123,7 +138,7 @@ const MentorAlerts = ({ students = [], getTradesByStudent, onViewStudent, maxVis
         read: a.read || false
       }));
 
-    const fromClient = Object.values(clientAlerts).flat();
+    const fromClient = Object.values(clientAlerts).flat().filter(filtraAtivo);
 
     // Deduplicate: se Firestore já tem um alert para o mesmo aluno+tipo, skip client
     const fsKeys = new Set(fromFs.map(a => `${a.studentEmail}_${a.type}`));
@@ -131,7 +146,7 @@ const MentorAlerts = ({ students = [], getTradesByStudent, onViewStudent, maxVis
 
     return [...fromFs, ...deduped]
       .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3));
-  }, [firestoreAlerts, clientAlerts]);
+  }, [firestoreAlerts, clientAlerts, activeEmails]);
 
   const unreadCount = allAlerts.filter(a => !a.read).length;
   const visibleAlerts = showAll ? allAlerts : allAlerts.slice(0, maxVisible);
@@ -140,6 +155,7 @@ const MentorAlerts = ({ students = [], getTradesByStudent, onViewStudent, maxVis
     <div className="glass-card overflow-hidden">
       {/* Invisible alert generators */}
       {students.map(s => {
+        if (activeEmails && activeEmails.size > 0 && !activeEmails.has(String(s.email || '').toLowerCase())) return null;
         const trades = getTradesByStudent ? getTradesByStudent(s.email) : [];
         if (trades.length === 0) return null;
         return (

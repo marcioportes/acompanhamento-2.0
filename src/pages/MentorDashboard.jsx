@@ -60,6 +60,8 @@ import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/curre
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { filterSetupsForStudent } from '../utils/setupsFilter';
 import { fmtTradeTime } from '../utils/tradeTimezone';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -105,7 +107,23 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
-  const studentsNeedingAttention = useMemo(() => identifyStudentsNeedingAttention(groupedTrades), [groupedTrades]);
+  // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
+  // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
+  // "Precisam Atenção" e os alertas do cockpit listavam gente que já tinha saído:
+  // 203 dos 588 alarmes da base eram de seis alunos sem assinatura ativa.
+  const { subscriptions: allSubscriptions, students: allStudents } = useSubscriptions();
+  const emailsAtivos = useMemo(
+    () => visibleStudentEmails(allStudents, allSubscriptions),
+    [allStudents, allSubscriptions],
+  );
+
+  const studentsNeedingAttention = useMemo(() => {
+    const todos = identifyStudentsNeedingAttention(groupedTrades);
+    // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
+    // que aparecer e sumir.
+    if (emailsAtivos.size === 0) return todos;
+    return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
+  }, [groupedTrades, emailsAtivos]);
   const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
 
   const studentsWithPending = useMemo(() => {
@@ -391,6 +409,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <div className="mb-8">
             <MentorAlerts
               students={students}
+              activeEmails={emailsAtivos}
               getTradesByStudent={getTradesByStudent}
               onViewStudent={setSelectedStudent}
             />

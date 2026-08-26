@@ -35,4 +35,25 @@ export const visibleStudentIds = (students, subscriptions) => {
   return visible;
 };
 
+/**
+ * Mesma regra, chaveada por EMAIL — superfícies derivadas de trades (alertas do
+ * cockpit, "precisam de atenção") agrupam por email, não por studentId.
+ *
+ * #402 — o mentor via alunos pedindo atenção que já tinham saído: 203 dos 588
+ * alarmes eram de seis pessoas sem assinatura ativa. O predicado é o mesmo da
+ * visibilidade em Contas/Acompanhamento; só muda a chave.
+ *
+ * @param {Array} students       docs de /students ({ id, email, ... })
+ * @param {Array} subscriptions  subs enriquecidas ({ studentId, status, type, plan })
+ * @returns {Set<string>} emails em minúsculas
+ */
+export const visibleStudentEmails = (students, subscriptions) => {
+  const ids = visibleStudentIds(students, subscriptions);
+  const emails = new Set();
+  for (const s of students ?? []) {
+    if (s?.id && s?.email && ids.has(s.id)) emails.add(String(s.email).toLowerCase());
+  }
+  return emails;
+};
+
 export default visibleStudentIds;

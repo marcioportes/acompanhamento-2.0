@@ -75,10 +75,21 @@ describe('rrBreakdown — bordas', () => {
     expect(r.rrVsPlan).toBeNull();
   });
 
-  it('trade perdedor não vira RR negativo disfarçado', () => {
+  it('trade perdedor mostra o múltiplo, mas sem veredicto contra o alvo (#402)', () => {
+    // Até o #402 isto travava `meetsTarget: false` — o painel reprovava uma perda
+    // com stop respeitado contra um alvo que o aluno nunca declarou, enquanto o
+    // motor (compliance.js) classificava o mesmo trade como CONFORME.
     const r = rrBreakdown({ ...trade, result: -495 }, plan);
 
     expect(r.rrTaken).toBe(-1);
+    expect(r.rrEvaluable).toBe(false);
+    expect(r.meetsTarget).toBeNull();
+  });
+
+  it('perda COM alvo declarado continua sendo julgada', () => {
+    const r = rrBreakdown({ ...trade, result: -495, takeProfit: 172500 }, plan);
+
+    expect(r.rrEvaluable).toBe(true);
     expect(r.meetsTarget).toBe(false);
   });
 

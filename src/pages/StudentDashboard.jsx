@@ -93,6 +93,8 @@ import ContextBar from '../components/ContextBar';
 import { searchTrades } from '../utils/calculations';
 import { formatCurrencyDynamic, getPlanCurrency } from '../utils/currency';
 import { generateIdealEquitySeries, calculateIdealStatus } from '../utils/equityCurveIdeal';
+import DayResultCard from '../components/day/DayResultCard';
+import { buildPeriodState } from '../utils/dayState';
 
 
 /**
@@ -739,39 +741,30 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         </div>
       )}
 
-      {/* Trades do dia selecionado — totalização (gated por plano via calendário) */}
+      {/* O dia selecionado (#402). Antes daqui saía um bloco inline com
+          ganhos/perdas/total e nada mais: sem stop, sem RO, sem ordem — enquanto
+          o stop do período aparecia como ACUSAÇÃO dentro de um trade. Agora o
+          período é medido por `buildPeriodState` e declarado no próprio card. */}
       {planSelected && calendarSelectedDate && (() => {
         const dayTrades = filteredTrades.filter(t => t.date === calendarSelectedDate);
-        const dayGain = dayTrades.filter(t => (t.result || 0) > 0).reduce((s, t) => s + t.result, 0);
-        const dayLoss = dayTrades.filter(t => (t.result || 0) < 0).reduce((s, t) => s + t.result, 0);
-        const dayTotal = dayGain + dayLoss;
-        const dayQty = dayTrades.reduce((s, t) => s + (Number(t.qty) || 0), 0);
+        const dayPlan = plans.find(p => p.id === (dayTrades[0]?.planId)) || null;
+        const periodState = buildPeriodState(dayTrades, dayPlan);
         const dayCurrency = dominantCurrency || 'BRL';
         return (
         <div id="daily-trades" className="mb-6 animate-in slide-in-from-top-4">
           <div className="glass-card border-l-4 border-blue-500 overflow-hidden">
-            <div className="p-4 border-b border-slate-700/50 bg-slate-800/30">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-white">📅 Trades de {calendarSelectedDate.split('-').reverse().join('/')}</h3>
-                <button onClick={() => setCalendarSelectedDate(null)} className="text-sm text-slate-400 hover:text-white flex gap-1"><X className="w-4 h-4"/> Fechar</button>
-              </div>
-              {dayTrades.length > 0 && (
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <span className="text-slate-400">{dayTrades.length} trade{dayTrades.length !== 1 ? 's' : ''}</span>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-slate-400">{dayQty} contratos</span>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-emerald-400">+{formatCurrencyDynamic(dayGain, dayCurrency)}</span>
-                  <span className="text-red-400">{formatCurrencyDynamic(dayLoss, dayCurrency)}</span>
-                  <span className="text-slate-600">·</span>
-                  <span className={`font-bold ${dayTotal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    Total: {dayTotal >= 0 ? '+' : ''}{formatCurrencyDynamic(dayTotal, dayCurrency)}
-                  </span>
-                </div>
-              )}
+            <DayResultCard
+              periodState={periodState}
+              dateLabel={calendarSelectedDate}
+              currency={dayCurrency}
+              compact
+              headerSlot={null}
+            />
+            <div className="px-4 pb-2 -mt-2 flex justify-end">
+              <button onClick={() => setCalendarSelectedDate(null)} className="text-sm text-slate-400 hover:text-white flex gap-1"><X className="w-4 h-4"/> Fechar</button>
             </div>
             <TradesList 
-              trades={filteredTrades.filter(t => t.date === calendarSelectedDate)} 
+              trades={dayTrades} 
               plans={plans}
               onViewTrade={setViewingTrade} 
               onEditTrade={(t) => { setEditingTrade(t); setShowAddModal(true); }} 

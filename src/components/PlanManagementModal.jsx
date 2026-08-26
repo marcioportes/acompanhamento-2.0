@@ -17,6 +17,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { formatCurrency } from '../utils/calculations';
 import DebugBadge from './DebugBadge';
+import { checkPlanCoherence, authorizedTradesLabel } from '../utils/planMechanicsCheck';
 
 const PLAN_TYPES = ['Day Trade', 'Swing Trade', 'Position', 'Opções', 'Crypto Spot', 'Forex'];
 const CYCLES = ['Mensal', 'Trimestral', 'Semestral', 'Anual'];
@@ -413,6 +414,38 @@ const PlanManagementModal = ({
                           <span className="text-red-400 font-mono text-xs">{formData.periodStop}% · -{formatCurrency(calcValue(formData.periodStop), accountCurrency)}</span>
                         </div>
                       </div>
+                      {/* #402 — DEC-069: o stop do período é `maxTrades × RO`. Um plano
+                          que comporta 1,99 operações autoriza uma segunda que ele mesmo
+                          proíbe perder, e o aluno é acusado por isso. Aqui ele se
+                          denuncia enquanto está sendo escrito. */}
+                      {(() => {
+                        const coerencia = checkPlanCoherence({
+                          pl: calcValue(100), riskPerOperation: formData.riskPerOperation,
+                          periodStop: formData.periodStop, periodGoal: formData.periodGoal,
+                          cycleStop: formData.cycleStop, rrTarget: formData.rrTarget,
+                          operationPeriod: formData.operationPeriod,
+                        });
+                        const rotulo = authorizedTradesLabel({
+                          pl: calcValue(100), riskPerOperation: formData.riskPerOperation,
+                          periodStop: formData.periodStop, operationPeriod: formData.operationPeriod,
+                        });
+                        const avisos = coerencia.issues.filter((i) => i.code !== 'PERIOD_STOP_ABOVE_CYCLE_STOP');
+                        if (!rotulo && avisos.length === 0) return null;
+                        return (
+                          <div className="mt-1 pt-1 border-t border-slate-700/30 space-y-1">
+                            {rotulo && (
+                              <p className={`text-[10px] ${coerencia.maxAuthorizedTrades === 0 ? 'text-orange-400' : 'text-slate-400'}`}>
+                                {rotulo}
+                              </p>
+                            )}
+                            {avisos.map((i) => (
+                              <p key={i.code} className={`text-[10px] leading-relaxed ${i.severity === 'error' ? 'text-orange-400' : 'text-amber-400/80'}`}>
+                                {i.message}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       {selectedAccount?.propFirm?.suggestedPlan?.dailyLossLimit > 0 && (
                         <div className="flex justify-between mt-1 pt-1 border-t border-slate-700/30">
                           <span className="text-slate-500 text-[10px]">Daily loss mesa (hard limit):</span>
