@@ -26,6 +26,34 @@ import { MetricTile } from './cycleMetricTiles';
 
 export { MetricTile };
 
+/**
+ * Render DENSO do período.
+ *
+ * O `MetricTile` de `cycleMetricTiles` usa `text-2xl` porque lá ele É o conteúdo
+ * principal da tela (card de Consistência do ciclo). O período aparece como
+ * CONTEXTO — acima do painel de um trade, ou no topo da lista do dia — e com
+ * aquele peso dominava o layout. A SSoT preservada é a das funções de conteúdo
+ * (valor, banda, legenda, tooltip); o que muda aqui é só a tipografia.
+ */
+export function DayTile({ label, value, theme, bandLabel, caption, tooltip, isInsufficient }) {
+  return (
+    <div className="min-w-0" title={tooltip}>
+      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium truncate">{label}</p>
+      {isInsufficient ? (
+        <p className="text-[11px] text-slate-500 leading-snug">{value}</p>
+      ) : (
+        <p className={`text-sm font-semibold font-mono leading-tight ${theme.text}`}>
+          {value}
+          {bandLabel && <span className="ml-1.5 text-[10px] font-sans font-normal opacity-70">{bandLabel}</span>}
+        </p>
+      )}
+      {!isInsufficient && caption && (
+        <p className="text-[10px] text-slate-600 leading-snug">{caption}</p>
+      )}
+    </div>
+  );
+}
+
 const NEUTRAL = { text: 'text-slate-300', dot: 'bg-slate-500' };
 const EMERALD = { text: 'text-emerald-400', dot: 'bg-emerald-400' };
 const AMBER = { text: 'text-amber-400', dot: 'bg-amber-400' };

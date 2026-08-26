@@ -297,32 +297,11 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
           )}
         </section>
 
-        {/* ①b O PERÍODO — contexto, nunca acusação. Sem chip, sem âmbar.
-            "O dia fechou além do stop" não é culpa de operação nenhuma. */}
-        {periodState && periodState.count > 0 && (
-          <section>
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
-              {periodState.operationPeriod === 'Semanal' ? 'A semana' : 'O dia'}
-              {trade.date ? ` (${trade.date.slice(8, 10)}/${trade.date.slice(5, 7)})` : ''}
-            </p>
-            <div className="bg-slate-800/30 border border-slate-700/30 rounded-lg p-3 space-y-1">
-              <p className="text-xs text-zinc-300">
-                Resultado: <span className={`font-semibold ${periodState.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {formatCurrencyDynamic(periodState.net, currency)}
-                </span>
-                <span className="text-zinc-500">{` (${periodState.count} ${periodState.count === 1 ? 'trade' : 'trades'})`}</span>
-              </p>
-              {periodState.stopValue != null && (
-                <p className="text-[11px] text-zinc-500">
-                  Folga do stop: <span className="text-zinc-300">
-                    {formatCurrencyDynamic(Math.max(0, periodState.stopValue + Math.min(periodState.net, 0)), currency)}
-                  </span>{' de '}
-                  <span className="text-zinc-300">{formatCurrencyDynamic(periodState.stopValue, currency)}</span>
-                </p>
-              )}
-            </div>
-          </section>
-        )}
+        {/* O fato do PERÍODO não mora aqui. Ele tem um lugar só — o `DayResultCard`,
+            montado acima deste painel. Uma faixa aqui repetia o mesmo número em cada
+            trade do dia e, na FeedbackPage, ficava logo abaixo do próprio card. O que
+            este painel diz sobre o período é apenas o que ESTA operação decidiu ao
+            abrir (`authNotice`, acima), que é fato atômico. */}
 
         {/* ② Padrões comportamentais — sempre informa o estado do motor (independente de ①) */}
         <section>

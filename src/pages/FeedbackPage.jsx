@@ -683,12 +683,15 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             </div>
             {/* #402 — o fato do PERÍODO, antes do fato da operação. Mesmo card do
                 dashboard do aluno, mesmos números. */}
+            {/* Mesma moldura dos painéis vizinhos (TradeOrdersPanel, BehaviorPanel):
+                aqui o período é contexto do trade, não card autônomo de dashboard. */}
             {tradePeriodState && tradePeriodState.count > 0 && (
-              <div className="mt-3">
+              <div className="mt-3 bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
                 <DayResultCard
                   periodState={tradePeriodState}
                   dateLabel={trade.date}
                   currency={trade.currency || 'BRL'}
+                  compact
                 />
               </div>
             )}
@@ -896,12 +899,15 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
           </div>
           {/* #402 — o fato do PERÍODO, antes do fato da operação. */}
+          {/* Mesma moldura dos painéis vizinhos (TradeOrdersPanel, BehaviorPanel):
+              aqui o período é contexto do trade, não card autônomo de dashboard. */}
           {tradePeriodState && tradePeriodState.count > 0 && (
-            <div className="mt-4">
+            <div className="mt-4 bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
               <DayResultCard
                 periodState={tradePeriodState}
                 dateLabel={trade.date}
                 currency={trade.currency || 'BRL'}
+                compact
               />
             </div>
           )}
