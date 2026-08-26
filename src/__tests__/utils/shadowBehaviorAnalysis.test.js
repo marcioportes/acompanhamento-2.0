@@ -385,8 +385,184 @@ describe('detectTargetHit', () => {
 // LAYER 1 — DIRECTION_FLIP
 // ============================================
 
+describe('detectGreedCluster', () => {
+  it('detects 3+ rapid trades after consecutive wins', () => {
+    const wins = [
+      baseTrade({ id: 'w1', entryTime: '2026-04-10T10:00:00', exitTime: '2026-04-10T10:02:00', result: 50 }),
+      baseTrade({ id: 'w2', entryTime: '2026-04-10T10:03:00', exitTime: '2026-04-10T10:05:00', result: 60 }),
+      baseTrade({ id: 'w3', entryTime: '2026-04-10T10:06:00', exitTime: '2026-04-10T10:08:00', result: 70 })
+    ];
+    const trade = baseTrade({
+      entryTime: '2026-04-10T10:09:00',
+      exitTime: '2026-04-10T10:11:00'
+    });
+    const result = detectGreedCluster(trade, wins);
+    expect(result).not.toBeNull();
+    expect(result.code).toBe(PATTERN_CODES.GREED_CLUSTER);
+    expect(result.evidence.consecutiveWinsBefore).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns null when previous trades were losses', () => {
+    const losses = adjacentLosses(3);
+    const trade = baseTrade({
+      entryTime: '2026-04-10T10:00:00',
+      exitTime: '2026-04-10T10:05:00'
+    });
+    const result = detectGreedCluster(trade, losses);
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================
+// LAYER 1 — OVERTRADING
+// ============================================
+
+describe('detectOvertrading', () => {
+  it('detects when trades exceed threshold in window', () => {
+    const trade = baseTrade({ entryTime: '2026-04-10T10:30:00' });
+    const adjacent = Array.from({ length: 8 }, (_, i) => baseTrade({
+      id: `ot-${i}`,
+      date: '2026-04-10',
+      entryTime: `2026-04-10T10:${String(i * 5).padStart(2, '0')}:00`,
+      exitTime: `2026-04-10T10:${String(i * 5 + 3).padStart(2, '0')}:00`
+    }));
+    const result = detectOvertrading(trade, adjacent);
+    expect(result).not.toBeNull();
+    expect(result.code).toBe(PATTERN_CODES.OVERTRADING);
+    expect(result.evidence.tradesInWindow).toBeGreaterThan(5);
+  });
+
+  it('returns null when below threshold', () => {
+    const trade = baseTrade({ entryTime: '2026-04-10T10:30:00' });
+    const adjacent = [
+      baseTrade({ id: 'a1', date: '2026-04-10', entryTime: '2026-04-10T10:00:00' }),
+      baseTrade({ id: 'a2', date: '2026-04-10', entryTime: '2026-04-10T10:15:00' })
+    ];
+    const result = detectOvertrading(trade, adjacent);
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================
+// LAYER 1 — IMPULSE_CLUSTER
+// ============================================
+
+describe('detectImpulseCluster', () => {
+  it('detects 2+ trades within 2 minutes', () => {
+    const trade = baseTrade({
+      entryTime: '2026-04-10T10:01:00',
+      exitTime: '2026-04-10T10:03:00'
+    });
+    const neighbor = baseTrade({
+      id: 'neighbor',
+      entryTime: '2026-04-10T10:03:30',
+      exitTime: '2026-04-10T10:05:00'
+    });
+    const result = detectImpulseCluster(trade, [neighbor]);
+    expect(result).not.toBeNull();
+    expect(result.code).toBe(PATTERN_CODES.IMPULSE_CLUSTER);
+    expect(result.evidence.clusterCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('returns null when gap exceeds threshold', () => {
+    const trade = baseTrade({ entryTime: '2026-04-10T10:00:00', exitTime: '2026-04-10T10:05:00' });
+    const neighbor = baseTrade({
+      id: 'far',
+      entryTime: '2026-04-10T10:10:00',
+      exitTime: '2026-04-10T10:15:00'
+    });
+    const result = detectImpulseCluster(trade, [neighbor]);
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================
+// LAYER 1 — CLEAN_EXECUTION
+// ============================================
+
+describe('detectCleanExecution', () => {
+  it('detects clean trade with stop + positive RR + no negative patterns', () => {
+    const trade = baseTrade({ rrRatio: 2.0, result: 200 });
+    const result = detectCleanExecution(trade, [], []);
+    expect(result).not.toBeNull();
+    expect(result.code).toBe(PATTERN_CODES.CLEAN_EXECUTION);
+    expect(result.severity).toBe(SEVERITY.NONE);
+    expect(result.emotionMapping).toBe('DISCIPLINE');
+  });
+
+  it('returns null when negative patterns exist', () => {
+    const trade = baseTrade({ rrRatio: 2.0, result: 200 });
+    const negativePatterns = [{ code: PATTERN_CODES.IMPULSE_CLUSTER, severity: SEVERITY.LOW }];
+    const result = detectCleanExecution(trade, [], negativePatterns);
+    expect(result).toBeNull();
+  });
+
+  it('returns null for losing trade', () => {
+    const trade = lossTrade();
+    const result = detectCleanExecution(trade, [], []);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when no stop', () => {
+    const trade = baseTrade({ stopLoss: null, result: 100 });
+    const result = detectCleanExecution(trade, [], []);
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================
+// LAYER 1 — TARGET_HIT
+// ============================================
+
+describe('detectTargetHit', () => {
+  it('detects exit at planned target', () => {
+    // entry 130000, stop 129900 (risk = 100), planRR 2.0
+    // target = 130000 + 200 = 130200
+    const trade = baseTrade({
+      exit: 130195, // within 5% tolerance of 200pt target = 10pts
+      result: 195,
+      rrRatio: 1.95,
+      planRR: 2.0
+    });
+    const result = detectTargetHit(trade, []);
+    expect(result).not.toBeNull();
+    expect(result.code).toBe(PATTERN_CODES.TARGET_HIT);
+    expect(result.severity).toBe(SEVERITY.NONE);
+  });
+
+  it('returns null for losing trade', () => {
+    const result = detectTargetHit(lossTrade(), []);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when rrAssumed', () => {
+    const trade = baseTrade({ rrAssumed: true });
+    const result = detectTargetHit(trade, []);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when exit is far from target', () => {
+    // target = 130200, exit = 130050 — too far
+    const trade = baseTrade({
+      exit: 130050,
+      result: 50,
+      rrRatio: 0.5,
+      planRR: 2.0
+    });
+    const result = detectTargetHit(trade, []);
+    expect(result).toBeNull();
+  });
+});
+
+// ============================================
+// LAYER 1 — DIRECTION_FLIP
+// ============================================
+
 describe('detectDirectionFlip', () => {
-  it('detects LONG→SHORT flip after loss within 120min', () => {
+  // #402 — a janela de 120min saiu. Sinal agora é só reação (≤5min da saída,
+  // após loss) ou inversões em sequência (2+ em 30min). Em meia hora dá para
+  // reler o mercado; acusar isso era transformar leitura em indisciplina.
+  it('30 min depois NÃO é mais sinal — houve tempo de reler o mercado', () => {
     const prevLoss = lossTrade({
       id: 'prev-loss',
       side: 'LONG',
@@ -399,16 +575,23 @@ describe('detectDirectionFlip', () => {
       entryTime: '2026-04-14T10:30:00', // 30min depois
       exitTime: '2026-04-14T10:45:00'
     });
+    expect(detectDirectionFlip(trade, [prevLoss])).toBeNull();
+  });
+
+  it('LONG→SHORT em 3 min após loss é DESESPERO', () => {
+    const prevLoss = lossTrade({ id: 'prev-loss', side: 'LONG', ticker: 'WIN', exitTime: '2026-04-14T10:00:00' });
+    const trade = baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T10:03:00', exitTime: '2026-04-14T10:45:00' });
     const result = detectDirectionFlip(trade, [prevLoss]);
     expect(result).not.toBeNull();
     expect(result.code).toBe(PATTERN_CODES.DIRECTION_FLIP);
+    expect(result.evidence.trigger).toBe('DESESPERO');
     expect(result.evidence.previousSide).toBe('LONG');
     expect(result.evidence.currentSide).toBe('SHORT');
     expect(result.evidence.instrument).toBe('WIN');
     expect(result.emotionMapping).toBe('CONFUSION');
   });
 
-  it('detects SHORT→LONG flip after loss', () => {
+  it('SHORT→LONG 10 min depois já não alarma (fora dos 5 min)', () => {
     const prevLoss = lossTrade({
       id: 'prev-loss',
       side: 'SHORT',
@@ -421,28 +604,26 @@ describe('detectDirectionFlip', () => {
       entryTime: '2026-04-14T10:10:00',
       exitTime: '2026-04-14T10:20:00'
     });
-    const result = detectDirectionFlip(trade, [prevLoss]);
-    expect(result).not.toBeNull();
-    expect(result.severity).toBe(SEVERITY.HIGH); // ≤15min
+    expect(detectDirectionFlip(trade, [prevLoss])).toBeNull();
   });
 
-  it('severity escalates: HIGH ≤15min, MEDIUM ≤60min, LOW ≤120min', () => {
+  it('não há mais escala de severidade — o que sobrou é forte, e é HIGH', () => {
+    // A escala antiga (HIGH ≤15 / MEDIUM ≤60 / LOW ≤120) era um gradiente
+    // inventado: chamava de sinal uma virada 97 min depois. #402.
     const prev = lossTrade({ id: 'p', side: 'LONG', ticker: 'WIN', exitTime: '2026-04-14T10:00:00' });
-    const high = detectDirectionFlip(
-      baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T10:10:00', exitTime: '2026-04-14T10:15:00' }),
-      [prev]
+    const dentro = detectDirectionFlip(
+      baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T10:04:00', exitTime: '2026-04-14T10:15:00' }),
+      [prev],
     );
-    const medium = detectDirectionFlip(
-      baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T10:45:00', exitTime: '2026-04-14T11:00:00' }),
-      [prev]
-    );
-    const low = detectDirectionFlip(
-      baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T11:45:00', exitTime: '2026-04-14T12:00:00' }),
-      [prev]
-    );
-    expect(high.severity).toBe(SEVERITY.HIGH);
-    expect(medium.severity).toBe(SEVERITY.MEDIUM);
-    expect(low.severity).toBe(SEVERITY.LOW);
+    expect(dentro.severity).toBe(SEVERITY.HIGH);
+
+    for (const hora of ['10:45:00', '11:45:00']) {
+      const fora = detectDirectionFlip(
+        baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: `2026-04-14T${hora}`, exitTime: '2026-04-14T12:00:00' }),
+        [prev],
+      );
+      expect(fora, hora).toBeNull();
+    }
   });
 
   it('returns null when previous trade was a win', () => {
@@ -472,7 +653,7 @@ describe('detectDirectionFlip', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when interval > 120min', () => {
+  it('returns null quando a inversão está fora dos 5 min e não há cadeia', () => {
     const prevLoss = lossTrade({ id: 'p', side: 'LONG', ticker: 'WIN', exitTime: '2026-04-14T10:00:00' });
     const trade = baseTrade({ side: 'SHORT', ticker: 'WIN', entryTime: '2026-04-14T13:00:00' }); // 180min
     const result = detectDirectionFlip(trade, [prevLoss]);

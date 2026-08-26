@@ -49,7 +49,7 @@ const DEFAULT_CONFIG = {
   impulseCluster: { maxIntervalMinutes: 2, minTrades: 2 },
   targetHit: { tolerancePct: 0.05 },
   earlyExit: { rrThresholdPct: 0.50 },
-  directionFlip: { maxIntervalMinutes: 120 },
+  directionFlip: { desperationMinutes: 5, flipFlopWindowMinutes: 30, flipFlopMinReversals: 2 },
   undersizedTrade: { ratioThreshold: 0.65, highRatio: 0.30, mediumRatio: 0.50 },
   hesitation: { minCancels: 2 },
   stopPanic: { maxExitMinutes: 5 },
@@ -265,30 +265,82 @@ const detectTargetHit = (trade) => {
   };
 };
 
+/**
+ * DIRECTION_FLIP — dois estados, não um gradiente (#402).
+ *   DESESPERO — inversão em até 5' da saída, após loss.
+ *   PERDIDO   — 2+ inversões dentro de 30' (da primeira entrada da cadeia).
+ * PERDIDO tem precedência: a cadeia descreve um estado, o desespero um evento.
+ * MANTER EM SINCRONIA com src/utils/shadowBehaviorAnalysis.js.
+ */
 const detectDirectionFlip = (trade, adjacent) => {
   if (!trade.entryTime || !trade.side) return null;
+  const cfg = DEFAULT_CONFIG.directionFlip;
   const sorted = sortChronologically([...adjacent, trade]);
   const idx = sorted.findIndex(t => t.id === trade.id);
   if (idx <= 0) return null;
+
   const prev = sorted[idx - 1];
-  if (getResult(prev) >= 0) return null;
-  const prevTicker = prev.ticker || prev.instrument;
-  const currTicker = trade.ticker || trade.instrument;
-  if (!prevTicker || !currTicker || prevTicker !== currTicker) return null;
-  if (!prev.side || prev.side === trade.side) return null;
-  const interval = getMinutesBetween(prev, trade);
-  if (interval > DEFAULT_CONFIG.directionFlip.maxIntervalMinutes) return null;
-  return {
-    code: 'DIRECTION_FLIP',
-    severity: interval <= 15 ? 'HIGH' : interval <= 60 ? 'MEDIUM' : 'LOW',
-    confidence: applyPenalty(0.90, trade),
-    emotionMapping: EMOTION_MAPPING.DIRECTION_FLIP, layer: 1,
-    evidence: {
-      previousSide: prev.side, previousResult: getResult(prev),
-      currentSide: trade.side, instrument: currTicker,
-      intervalMinutes: Math.round(interval * 10) / 10
-    }
+  const mesmoAtivo = (a, b) => {
+    const ta = a.ticker || a.instrument;
+    const tb = b.ticker || b.instrument;
+    return !!ta && !!tb && ta === tb;
   };
+  if (!mesmoAtivo(prev, trade)) return null;
+  if (!prev.side || prev.side === trade.side) return null;
+
+  const gapMinutes = getMinutesBetween(prev, trade);
+  const base = {
+    code: 'DIRECTION_FLIP',
+    severity: 'HIGH',
+    confidence: applyPenalty(0.90, trade),
+    emotionMapping: EMOTION_MAPPING.DIRECTION_FLIP,
+    layer: 1,
+  };
+  const comum = {
+    previousSide: prev.side,
+    previousResult: getResult(prev),
+    currentSide: trade.side,
+    instrument: trade.ticker || trade.instrument,
+    gapMinutes: Math.round(gapMinutes * 10) / 10,
+  };
+
+  // --- PERDIDO (precedência) ---
+  let reversals = 1;
+  let inicio = idx - 1;
+  while (
+    inicio >= 1
+    && mesmoAtivo(sorted[inicio], sorted[inicio - 1])
+    && sorted[inicio].side
+    && sorted[inicio - 1].side
+    && sorted[inicio].side !== sorted[inicio - 1].side
+  ) {
+    reversals += 1;
+    inicio -= 1;
+  }
+
+  if (reversals >= cfg.flipFlopMinReversals) {
+    const a = new Date(sorted[inicio].entryTime || sorted[inicio].date);
+    const b = new Date(trade.entryTime);
+    const spanMinutes = (isNaN(a) || isNaN(b)) ? null : Math.abs(b - a) / 60000;
+    if (spanMinutes != null && spanMinutes <= cfg.flipFlopWindowMinutes) {
+      return {
+        ...base,
+        evidence: {
+          trigger: 'PERDIDO',
+          ...comum,
+          reversals,
+          spanMinutes: Math.round(spanMinutes * 10) / 10,
+        },
+      };
+    }
+  }
+
+  // --- DESESPERO ---
+  if (getResult(prev) < 0 && gapMinutes <= cfg.desperationMinutes) {
+    return { ...base, evidence: { trigger: 'DESESPERO', ...comum } };
+  }
+
+  return null;
 };
 
 const detectUndersizedTrade = (trade) => {

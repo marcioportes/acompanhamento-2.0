@@ -97,7 +97,10 @@ export const DEFAULT_CONFIG = {
     rrThresholdPct: 0.50     // exit < 50% of RR target
   },
   directionFlip: {
-    maxIntervalMinutes: 120  // flip direction dentro de 2h após loss → viés/narrativa
+    // Dois estados distintos, não um gradiente (#402, domínio 25/08/2026):
+    desperationMinutes: 5,    // virou a mão em até 5' da saída → não deu tempo de reler
+    flipFlopWindowMinutes: 30, // 2+ inversões dentro de 30' → a direção não para de mudar
+    flipFlopMinReversals: 2,
   },
   undersizedTrade: {
     ratioThreshold: 0.65,    // riskPercent <= 65% do plan.riskPerOperation → flag (DEC-AUTO-278-01)
@@ -505,10 +508,24 @@ export const detectTargetHit = (trade, _adjacentTrades, config = DEFAULT_CONFIG.
 };
 
 /**
- * DIRECTION_FLIP — virada de direção no mesmo instrumento após loss.
- * Sinaliza viés/narrativa quebrada: trader não entendeu direção do mercado,
- * não aceitou o erro do primeiro setup, ou está operando por reação.
- * Janela 120min (2h) — além disso, é um novo setup legítimo.
+ * DIRECTION_FLIP — inversão de lado no mesmo instrumento.
+ *
+ * A regra antiga era uma escala inventada: qualquer inversão após loss dentro de
+ * **2 horas**, com severidade caindo por faixa. Isso tratava releitura de mercado
+ * como reação — uma virada 97 minutos depois ainda contava como narrativa
+ * quebrada. Em meia hora dá para identificar que o mercado mudou.
+ *
+ * O domínio (25/08/2026) separa dois estados, e só eles são sinal:
+ *
+ *   DESESPERO — virou a mão em até `desperationMinutes` da SAÍDA anterior, e a
+ *     anterior foi loss. Não houve tempo de reler nada; é reação ao prejuízo.
+ *
+ *   PERDIDO — `flipFlopMinReversals`+ inversões dentro de `flipFlopWindowMinutes`,
+ *     medidos da PRIMEIRA entrada da cadeia. "Comprou, vendeu em 10', comprou de
+ *     novo em 23'": a direção não para de mudar. Aqui o resultado não entra —
+ *     o sinal é confusão de direção, não reação a perda.
+ *
+ * Fora disso não é sinal. Na base de 25/08/2026: 2 de 37 inversões alarmam.
  */
 export const detectDirectionFlip = (trade, adjacentTrades, config = DEFAULT_CONFIG.directionFlip) => {
   if (!trade.entryTime || !trade.side) return null;
@@ -518,37 +535,83 @@ export const detectDirectionFlip = (trade, adjacentTrades, config = DEFAULT_CONF
   if (tradeIndex <= 0) return null;
 
   const prev = sorted[tradeIndex - 1];
-  // Gate 1: trade anterior foi loss
-  if (getTradeResult(prev) >= 0) return null;
-  // Gate 2: mesmo instrumento
-  const prevTicker = prev.ticker || prev.instrument;
-  const currTicker = trade.ticker || trade.instrument;
-  if (!prevTicker || !currTicker || prevTicker !== currTicker) return null;
-  // Gate 3: side oposto
-  if (!prev.side || prev.side === trade.side) return null;
-  // Gate 4: janela temporal
-  const interval = getMinutesBetween(prev, trade);
-  if (interval > config.maxIntervalMinutes) return null;
-
-  const severity = interval <= 15 ? SEVERITY.HIGH
-    : interval <= 60 ? SEVERITY.MEDIUM
-      : SEVERITY.LOW;
-
-  return {
-    code: PATTERN_CODES.DIRECTION_FLIP,
-    severity,
-    confidence: applyConfidencePenalty(0.90, trade, DEFAULT_CONFIG),
-    emotionMapping: EMOTION_MAPPING.DIRECTION_FLIP,
-    layer: 1,
-    evidence: {
-      previousSide: prev.side,
-      previousResult: getTradeResult(prev),
-      currentSide: trade.side,
-      instrument: currTicker,
-      intervalMinutes: Math.round(interval * 10) / 10,
-      previousTradeId: prev.id
-    }
+  const mesmoAtivo = (a, b) => {
+    const ta = a.ticker || a.instrument;
+    const tb = b.ticker || b.instrument;
+    return !!ta && !!tb && ta === tb;
   };
+  // Porta única: isto é uma INVERSÃO de lado no mesmo instrumento?
+  if (!mesmoAtivo(prev, trade)) return null;
+  if (!prev.side || prev.side === trade.side) return null;
+
+  const gapMinutes = getMinutesBetween(prev, trade);
+
+  // PERDIDO tem precedência sobre DESESPERO: quando os dois se aplicam, a cadeia
+  // é o diagnóstico mais completo — descreve um estado, não um evento isolado.
+  // --- PERDIDO: cadeia de inversões consecutivas no mesmo instrumento ---
+  // Caminha para trás enquanto cada par consecutivo for inversão no mesmo ativo.
+  let reversals = 1;
+  let inicio = tradeIndex - 1;
+  while (
+    inicio >= 1
+    && mesmoAtivo(sorted[inicio], sorted[inicio - 1])
+    && sorted[inicio].side
+    && sorted[inicio - 1].side
+    && sorted[inicio].side !== sorted[inicio - 1].side
+  ) {
+    reversals += 1;
+    inicio -= 1;
+  }
+
+  if (reversals >= config.flipFlopMinReversals) {
+    const spanMinutes = getMinutesBetweenTimestamps(
+      sorted[inicio].entryTime || sorted[inicio].date,
+      trade.entryTime,
+    );
+    if (spanMinutes != null && spanMinutes <= config.flipFlopWindowMinutes) {
+      return {
+        code: PATTERN_CODES.DIRECTION_FLIP,
+        severity: SEVERITY.HIGH,
+        confidence: applyConfidencePenalty(0.90, trade, DEFAULT_CONFIG),
+        emotionMapping: EMOTION_MAPPING.DIRECTION_FLIP,
+        layer: 1,
+        evidence: {
+          trigger: 'PERDIDO',
+          previousSide: prev.side,
+          previousResult: getTradeResult(prev),
+          currentSide: trade.side,
+          instrument: trade.ticker || trade.instrument,
+          gapMinutes: Math.round(gapMinutes * 10) / 10,
+          reversals,
+          spanMinutes: Math.round(spanMinutes * 10) / 10,
+          firstTradeId: sorted[inicio].id,
+          previousTradeId: prev.id
+        }
+      };
+    }
+  }
+
+  // --- DESESPERO: virou logo depois de sair perdendo ---
+  if (getTradeResult(prev) < 0 && gapMinutes <= config.desperationMinutes) {
+    return {
+      code: PATTERN_CODES.DIRECTION_FLIP,
+      severity: SEVERITY.HIGH,
+      confidence: applyConfidencePenalty(0.90, trade, DEFAULT_CONFIG),
+      emotionMapping: EMOTION_MAPPING.DIRECTION_FLIP,
+      layer: 1,
+      evidence: {
+        trigger: 'DESESPERO',
+        previousSide: prev.side,
+        previousResult: getTradeResult(prev),
+        currentSide: trade.side,
+        instrument: trade.ticker || trade.instrument,
+        gapMinutes: Math.round(gapMinutes * 10) / 10,
+        previousTradeId: prev.id
+      }
+    };
+  }
+
+  return null;
 };
 
 /**

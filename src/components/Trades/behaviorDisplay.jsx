@@ -75,7 +75,7 @@ export const BEHAVIOR_DESCRIPTIONS = {
   FOMO_ENTRY: 'Entrada tardia com ordem a mercado após hesitação.',
   OVERTRADING: 'Número de trades acima do limite na janela temporal.',
   IMPULSE_CLUSTER: 'Trades executados em sequência muito rápida, sem análise.',
-  DIRECTION_FLIP: 'Virou a mão no mesmo instrumento após loss — viés/narrativa quebrada.',
+  DIRECTION_FLIP: 'Inverteu o lado no mesmo instrumento sem tempo de reler o mercado — reação ao prejuízo (até 5 min) ou inversões em sequência (2+ em 30 min).',
   RISK_OVER_RO: 'O valor financeiro do stop passou do RO do plano — a distância do stop não acompanhou o aumento da posição.',
   UNPROTECTED_SIZE: 'Contratos abertos sem ordem de stop cobrindo — exposição sem barreira.',
   // #376 — a frase afirmava que o risco ficou dentro do RO. Agora o padrão só é
@@ -119,9 +119,19 @@ export const BEHAVIOR_NARRATIVE = {
     return `${n} trades em sequência muito rápida, sem espaço para análise entre um e outro — execução no impulso.`;
   },
   DIRECTION_FLIP: (e, c) => {
-    const i = num(e.intervalMinutes);
     if (e.previousSide == null || e.currentSide == null) return null;
-    return `${i != null ? `${i} min depois ` : 'Logo após '}de um ${e.previousSide}${e.previousResult != null ? ` que deu ${fmt(num(e.previousResult), c)}` : ''}, você virou para ${e.currentSide} no mesmo ${e.instrument || 'ativo'}. Virar a mão logo após o loss costuma ser narrativa quebrada, não sinal.`;
+    const ativo = e.instrument || 'ativo';
+
+    // #402 — a narrativa acompanha o gatilho. Virar a mão não é errado por si:
+    // em meia hora dá para reler o mercado. O que é sinal são estes dois casos.
+    if (e.trigger === 'PERDIDO') {
+      const n = num(e.reversals);
+      const span = num(e.spanMinutes);
+      return `Você inverteu o lado ${n != null ? `${n} vezes` : 'mais de uma vez'} em ${ativo}${span != null ? ` dentro de ${span} min` : ''}. Não é releitura: quando a direção muda a esse ritmo, é sinal de que não havia leitura nenhuma.`;
+    }
+
+    const g = num(e.gapMinutes ?? e.intervalMinutes);
+    return `${g != null ? `${g} min depois ` : 'Logo após '}de sair de um ${e.previousSide}${e.previousResult != null ? ` que deu ${fmt(num(e.previousResult), c)}` : ''}, você virou para ${e.currentSide} no mesmo ${ativo}. Nesse intervalo não houve tempo de reler o mercado — é reação ao prejuízo.`;
   },
   EARLY_EXIT: (e) => {
     const pct = num(e.rrAchievedPct); const ar = num(e.actualRR); const pr = num(e.planRR);
