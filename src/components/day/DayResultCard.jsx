@@ -26,7 +26,7 @@
 import { AlertTriangle } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import {
-  MetricTile,
+  DayTile,
   dayResultContent,
   dayBudgetContent,
   dayStopContent,
@@ -51,7 +51,10 @@ const dataBR = (iso) => {
  * @param {Object} props.periodState — saída de `buildPeriodState`
  * @param {string} [props.dateLabel] — 'YYYY-MM-DD' do período (título)
  * @param {string} [props.currency]
- * @param {boolean} [props.compact] — sem título e sem DebugBadge (uso embutido)
+ * @param {boolean} [props.compact] — sem moldura própria e sem DebugBadge (uso
+ *   embutido, dentro de um card que já existe). NÃO suprime o cabeçalho: o
+ *   título é o que diz DE QUE dia o número é, e some-lo deixava o painel do
+ *   dashboard sem identificação nenhuma.
  * @param {React.ReactNode} [props.headerSlot] — ex.: botão de fechar
  */
 export default function DayResultCard({
@@ -75,9 +78,9 @@ export default function DayResultCard({
 
   return (
     <div className={compact ? '' : 'glass-card border-l-4 border-blue-500 overflow-hidden'}>
-      {!compact && (
-        <div className="p-4 border-b border-slate-700/50 bg-slate-800/30 flex justify-between items-center">
-          <h3 className="font-bold text-white">
+      {(dateLabel || headerSlot) && (
+        <div className="px-4 py-2.5 border-b border-slate-700/50 bg-slate-800/30 flex justify-between items-center">
+          <h3 className="text-sm font-semibold text-white">
             {rotuloPeriodo(periodState)}
             {dateLabel ? ` — ${dataBR(dateLabel)}` : ''}
           </h3>
@@ -85,10 +88,12 @@ export default function DayResultCard({
         </div>
       )}
 
-      <div className={compact ? 'py-2' : 'p-4'}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={compact ? 'px-4 py-3' : 'p-4'}>
+        {/* Denso e numa linha só: o período é contexto, não a manchete da tela.
+            Com o `MetricTile` de ciclo (text-2xl) o card dominava o layout. */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-5 gap-y-3">
           {tiles.map((t) => (
-            <MetricTile
+            <DayTile
               key={t.label}
               label={t.label}
               value={t.value}
@@ -103,7 +108,7 @@ export default function DayResultCard({
 
         {aviso && (
           <p
-            className="mt-3 text-[10px] text-amber-400/80 flex items-center gap-1.5"
+            className="mt-2.5 text-[10px] text-amber-400/80 flex items-center gap-1.5"
             title={aviso.tooltip}
           >
             <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
@@ -112,7 +117,7 @@ export default function DayResultCard({
         )}
 
         {periodState.maxAuthorizedTrades === 0 && periodState.roValue != null && (
-          <p className="mt-2 text-[10px] text-orange-400/80">
+          <p className="mt-1.5 text-[10px] text-orange-400/80">
             O plano para o período antes de autorizar uma operação inteira — reveja o risco por
             operação e o stop do período.
           </p>

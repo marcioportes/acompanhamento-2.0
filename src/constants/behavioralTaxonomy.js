@@ -136,7 +136,10 @@ export const BEHAVIORAL_PATTERNS = Object.freeze({
   DIRECTION_FLIP: P({
     code: 'DIRECTION_FLIP', family: 'DIRECTION_FLIP', valence: 'negative', dimensao: ['O'],
     viesFramework: 'Confusion / falta de sistema (§4)',
-    severityDefault: SEVERITY.LOW, emotionMapping: 'CONFUSION',
+    // #402 — os dois gatilhos que restaram (reação em até 5' e inversões em
+    // sequência em 30') são estados fortes; o gradiente antigo, que chamava de
+    // sinal uma virada 97 min depois, saiu.
+    severityDefault: SEVERITY.HIGH, emotionMapping: 'CONFUSION',
     resolutionLayer: RESOLUTION.LOW, requires: ['trades'], feedsScore: true, feedsGates: false,
   }),
   // ---- Positivos (reforço) ----

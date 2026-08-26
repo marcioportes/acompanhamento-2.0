@@ -758,11 +758,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
               dateLabel={calendarSelectedDate}
               currency={dayCurrency}
               compact
-              headerSlot={null}
+              headerSlot={(
+                <button onClick={() => setCalendarSelectedDate(null)} className="text-sm text-slate-400 hover:text-white flex gap-1"><X className="w-4 h-4"/> Fechar</button>
+              )}
             />
-            <div className="px-4 pb-2 -mt-2 flex justify-end">
-              <button onClick={() => setCalendarSelectedDate(null)} className="text-sm text-slate-400 hover:text-white flex gap-1"><X className="w-4 h-4"/> Fechar</button>
-            </div>
             <TradesList 
               trades={dayTrades} 
               plans={plans}

@@ -113,7 +113,7 @@ const BEHAVIORAL_PATTERNS = Object.freeze({
   DIRECTION_FLIP: P({
     code: 'DIRECTION_FLIP', family: 'DIRECTION_FLIP', valence: 'negative', dimensao: ['O'],
     viesFramework: 'Confusion / falta de sistema (§4)',
-    severityDefault: SEVERITY.LOW, emotionMapping: 'CONFUSION',
+    severityDefault: SEVERITY.HIGH, emotionMapping: 'CONFUSION',
     resolutionLayer: RESOLUTION.LOW, requires: ['trades'], feedsScore: true, feedsGates: false,
   }),
   RISK_OVER_RO: P({
