@@ -131,6 +131,14 @@ Nenhum cruza `rule-compliance-80` (≥60) para cima nesta passagem — German fi
 
 Consequência de projeto: `ordering.reliable = false` é rede de segurança, não estado comum. E o fuso deve ser inferido **por trade**, não por dia — 10 dias homogêneos têm exchange/ticker misto entre linhas.
 
+## Medição (F5/F6 — 25/08/2026, read-only)
+
+**Alarmes de aluno inativo**: 68 alunos cadastrados, **39 com assinatura ativa** (14 vip, 14 espelho, 11 alpha). Dos **588** alarmes do mentor — todos não lidos —, **203 (35%)** são de seis pessoas sem assinatura ativa: Joe Hott (56), Sael (53), Franklin (42), Henrique Yotani (33), Wilkinson (10), Igor Vinhote (9).
+
+**Margem de manejo (2%)**: dos 82 `RISCO_ACIMA_PERMITIDO`, **19 deixam de ser violação** (German 12, Joe 3, Wilson/Thiago/Sael/Marcio 1 cada). Dos 6 planos com múltiplo fracionário, **2 saem da lista** (Ago-Plano 1,99≈2 e futuros WinFut 2,94≈3); seguem apontados o Lucid Flex 50K (2,25), o Setup 4 barras (2,08), o Apex Intraday 50K (1,86) e o Teste do Daniel (0,50 — não autoriza operação nenhuma).
+
+**Efeito nos dois trades de 25/08**: ambos ficam **sem acusação**. O das 11:34 tinha R$ 251 de folga contra um RO de R$ 252 — um real, num contrato cujo tick vale cinco.
+
 ## Phases
 
 - F0 — medição read-only: contar `LOSS_DIARIO_EXCEDIDO` na base (trades/alunos/`DISCUSSED`) e trades com `entryTime` naive
@@ -148,6 +156,8 @@ Consequência de projeto: `ordering.reliable = false` é rede de segurança, nã
 - `F2 [revogacao] ok` — getDailyLoss e o bloco emissor deletados; LOSS_DIARIO_EXCEDIDO em REVOKED nos 2 espelhos
 - `F3 [ui] ok` — shouldEvaluateRR exportado + rrBreakdown consumindo; dayMetricTiles + DayResultCard; BehaviorPanel em 2 seções; bloco inline do StudentDashboard deletado; card montado nos 2 layouts da FeedbackPage
 - `F4 [coerencia] ok` — planMechanicsCheck + fiação no PlanManagementModal, 18 testes
+- `F5 [alarme-ativo] commit a19ff42c ok` — 4 writers de notificação com gate de escopo + filtro na leitura (MentorAlerts, Precisam Atenção)
+- `F6 [margem-manejo] commit a19ff42c ok` — planTolerance espelhado; 2% governa RO, stop do período, autorização e coerência do plano
 
 ## Shared Deltas
 
@@ -169,6 +179,9 @@ _(IDs — texto em `docs/decisions.md`)_
 - DEC-AUTO-402-06 — `shouldEvaluateRR` vira predicado exportado; o painel não julga o que o motor absteve
 - DEC-AUTO-402-07 — estado do período é DERIVADO, nunca persistido (sem campo/collection nova, INV-15 não se aplica)
 - DEC-AUTO-402-08 — `computePeriodState` NÃO delega para `dayState` (desvio do plano; ver §Desvios)
+- DEC-AUTO-402-09 — alarme do mentor só para aluno em escopo de gestão (`classifyStudent !== null`); passivo varrido em leitura, sem backfill
+- DEC-AUTO-402-10 — margem de manejo de 2% governa RO, stop do período, autorização e coerência do plano; **não altera número exibido**, só decide se vira violação
+- DEC-AUTO-402-11 — `authorizedCount` arredonda dentro da margem: 1,99 operações é 2 (corrige `floor` que subdimensionava a autorização do plano)
 
 ## Desvios do plano aprovado
 
@@ -179,6 +192,7 @@ _(IDs — texto em `docs/decisions.md`)_
 - Unificar os ~12 agregadores de dia/período sobre `dayState`
 - Unificar as 3 cópias de `complianceRate` (`dashboardMetrics.js:100`, `useDashboardMetrics.js:226`, `preComputeShapes.js:139`)
 - **Ambiguidade de vocabulário de R:R**: com `takeProfit` declarado, `compliance` calcula o R:R PLANEJADO (`|alvo − entrada| / risco`) e `rrBreakdown` calcula o REALIZADO em dinheiro (`resultado / risco`). Uma perda com alvo de 2R dá 2,00x num e −1,00x no outro — os dois certos, medindo coisas diferentes, com o mesmo nome na tela. Anterior ao #402; exposto pelos testes de coerência
+- **Risco tautológico no RO**: 26 dos 82 `RISCO_ACIMA_PERMITIDO` (32%, 12 alunos) medem a PERDA, não o dimensionamento — 7 sem stop (DEC-006 infere risco do resultado) e 19 com `stopLoss` igual ao preço de saída. Nos dois casos "risco" = |entrada − stop| = a perda, então "arriscou demais" é "perdeu mais que o RO". Mesma classe da acusação que este issue removeu. Decisão de produto pendente: (a) deixar, (b) `compliance` se abster do veredicto de RO quando o risco é tautológico, (c) não aceitar `stopLoss` igual à saída no registro
 - Reemitir enforcement de servidor como `TRADE_APOS_STOP_DIARIO` via reconciliação de período inteiro (corte temporal sozinho troca falso positivo por falso negativo quando a escrita chega fora de ordem)
 - Código morto confirmado: `PlanProgress.jsx` (sem importador), `usePlans.validateTradeAgainstPlan` (zero chamadores, 3ª semântica de `periodStop`), `cycleMetrics.topErrors` (lê `compliance.violations[]`, que nenhum writer produz), `planLedger.js:62-63`
 
