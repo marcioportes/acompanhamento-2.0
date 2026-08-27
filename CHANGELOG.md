@@ -8,6 +8,19 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.33] - 27/08/2026 · #402 · PR #407
+
+**fix:** a caixa verde não pode contradizer a ressalva de abertura
+
+Reportado em produção: o painel dizia *"Aberta sem orçamento — restavam R$ 0,00 de folga e o plano autoriza R$ 40,00 por operação"* e, dois blocos abaixo, *"Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada"*.
+
+`BehaviorPanel.jsx:327` condicionava a caixa verde a `effective.length === 0 && cleared.length === 0` — olhava só os red flags e não conhecia o `authNotice`. Como `SEM_FOLGA` é **aviso e não violação** (DEC-AUTO-402-03), ele não entra em `effective` e a verde disparava contradizendo o aviso ao lado. **É o mesmo defeito do R:R que a 1.83.32 removeu, recriado ao lado dele pela própria entrega.**
+
+- A verde passa a exigir `!authNotice`
+- Com ressalva de abertura, o texto diz só o que pode ser afirmado: *"Nenhum padrão comportamental de risco na execução — veja a ressalva sobre a abertura, acima"* — sem estender para "nenhuma violação de plano"
+- Sem ressalva e sem violação, a afirmação verde continua valendo integralmente
+
+
 ## [1.83.32] - 27/08/2026 · #402 · PRs #403 / #404 / #405
 
 **fix:** separar o fato atômico (trade) do fato do dia
