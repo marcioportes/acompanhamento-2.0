@@ -11,6 +11,7 @@ import {
   dayGoalContent,
   dayOrderingNotice,
   authorizationNotice,
+  tradePositionInPeriod,
 } from '../../../components/metrics/dayMetricTiles';
 import { buildPeriodState } from '../../../utils/dayState';
 
@@ -145,8 +146,14 @@ describe('dayOrderingNotice — honestidade sobre a sequência', () => {
     expect(n.text).toContain('inferida');
   });
 
-  it('avisa quando o dia mistura fusos', () => {
-    const n = dayOrderingNotice(buildPeriodState([B, A], PLANO));
+  it('não avisa quando naive e offset resolvem para o mesmo fuso', () => {
+    // O dia do incidente: A naive em B3, B com offset −03:00. Mesmo fuso.
+    expect(dayOrderingNotice(buildPeriodState([B, A], PLANO))).toBeNull();
+  });
+
+  it('avisa quando os fusos RESOLVIDOS divergem', () => {
+    const nyse = { id: 'us', date: '2026-08-25', entryTime: '2026-08-25T10:00:00', exchange: 'NYSE', result: -10 };
+    const n = dayOrderingNotice(buildPeriodState([A, nyse], PLANO));
     expect(n.text).toContain('fusos diferentes');
   });
 });
@@ -183,5 +190,65 @@ describe('authorizationNotice — o fato ATÔMICO, no painel do trade', () => {
   it('sem linha ou sem período não explode', () => {
     expect(authorizationNotice(null, ps)).toBeNull();
     expect(authorizationNotice(ps.rows[0], null)).toBeNull();
+  });
+});
+
+describe('tradePositionInPeriod — situar a operação no dia, sem virar painel do dia', () => {
+  const ps = buildPeriodState([B, A], PLANO); // A 10:51 (−250), B 11:34 (−265)
+
+  it('a 1ª operação: posição, folga na abertura e onde o dia terminou', () => {
+    const r = tradePositionInPeriod(ps.rows[0], ps, 'BRL');
+    expect(r.text).toContain('1ª das 2 operações do dia');
+    expect(r.text).toContain('limite do dia inteiro');
+    expect(r.text).toContain('501');
+    expect(r.text).toContain('515'); // onde o dia fechou
+    expect(r.text).toContain('14');  // além do stop
+  });
+
+  it('a 2ª: quanto o dia já acumulava e quanta folga restava quando ela abriu', () => {
+    const r = tradePositionInPeriod(ps.rows[1], ps, 'BRL');
+    expect(r.text).toContain('2ª e última das 2 operações do dia');
+    expect(r.text).toContain('250'); // o dia estava em −250
+    expect(r.text).toContain('251'); // folga restante
+  });
+
+  it('dia de uma operação só NÃO repete o resultado do próprio trade', () => {
+    // 71% dos dias da base. O card antigo dizia "Resultado do período: −R$250 · 1 trade"
+    // logo acima do painel daquele mesmo trade.
+    const sozinho = buildPeriodState([A], PLANO);
+    const r = tradePositionInPeriod(sozinho.rows[0], sozinho, 'BRL');
+    expect(r.text).toContain('Única operação do dia');
+    expect(r.text).toContain('501');
+    expect(r.text).not.toContain('fechou');
+  });
+
+  it('ordem inferida NÃO afirma posição', () => {
+    const semHora = { id: 'z', date: '2026-08-25', result: -10, exchange: 'B3' };
+    const duvidoso = buildPeriodState([t('a', '09:00:00', -10), semHora], PLANO);
+    const r = tradePositionInPeriod(duvidoso.rows[0], duvidoso, 'BRL');
+    expect(r.text).toContain('Uma das 2 operações do dia');
+    expect(r.text).toContain('sequência foi inferida');
+    expect(r.text).not.toMatch(/\d+ª/);
+  });
+
+  it('o dia do incidente afirma a sequência — naive e offset no mesmo fuso', () => {
+    expect(ps.ordering.reliable).toBe(true);
+    expect(tradePositionInPeriod(ps.rows[0], ps, 'BRL').text).toContain('1ª das 2');
+  });
+
+  it('semana usa o vocabulário do período', () => {
+    const semanal = buildPeriodState([t('a', '09:00:00', -100), t('b', '10:00:00', -50)], { ...PLANO, operationPeriod: 'Semanal' });
+    const r = tradePositionInPeriod(semanal.rows[0], semanal, 'BRL');
+    expect(r.text).toContain('operações da semana');
+  });
+
+  it('sem período ou sem linha não inventa nada', () => {
+    expect(tradePositionInPeriod(null, null)).toBeNull();
+    expect(tradePositionInPeriod(null, buildPeriodState([], PLANO))).toBeNull();
+  });
+
+  it('o tooltip avisa que a posição é transitória e que a Revisão é o registro definitivo', () => {
+    const r = tradePositionInPeriod(ps.rows[0], ps, 'BRL');
+    expect(r.tooltip).toContain('Revisão');
   });
 });

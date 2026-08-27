@@ -54,7 +54,6 @@ import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify, toggleViolationClearedAsMentor as gatewayToggleViolation } from '../utils/tradeGateway';
 import { effectiveRedFlags, isViolationCleared } from '../utils/violationFilter';
-import DayResultCard from '../components/day/DayResultCard';
 import { buildPeriodState } from '../utils/dayState';
 
 // Helpers locais
@@ -681,20 +680,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             <div className="mt-3">
               <TradeOrdersPanel trade={trade} orders={orders} embedded />
             </div>
-            {/* #402 — o fato do PERÍODO, antes do fato da operação. Mesmo card do
-                dashboard do aluno, mesmos números. */}
-            {/* Mesma moldura dos painéis vizinhos (TradeOrdersPanel, BehaviorPanel):
-                aqui o período é contexto do trade, não card autônomo de dashboard. */}
-            {tradePeriodState && tradePeriodState.count > 0 && (
-              <div className="mt-3 bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
-                <DayResultCard
-                  periodState={tradePeriodState}
-                  dateLabel={trade.date}
-                  currency={trade.currency || 'BRL'}
-                  compact
-                />
-              </div>
-            )}
             {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
             <BehaviorPanel
               trade={trade}
@@ -898,19 +883,6 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
           <div className="mt-4">
             <TradeOrdersPanel trade={trade} orders={orders} embedded />
           </div>
-          {/* #402 — o fato do PERÍODO, antes do fato da operação. */}
-          {/* Mesma moldura dos painéis vizinhos (TradeOrdersPanel, BehaviorPanel):
-              aqui o período é contexto do trade, não card autônomo de dashboard. */}
-          {tradePeriodState && tradePeriodState.count > 0 && (
-            <div className="mt-4 bg-zinc-800/50 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
-              <DayResultCard
-                periodState={tradePeriodState}
-                dateLabel={trade.date}
-                currency={trade.currency || 'BRL'}
-                compact
-              />
-            </div>
-          )}
           {/* Comportamento consolidado: adesão ao plano → padrões → gate → mentor. */}
           <BehaviorPanel
             trade={trade}

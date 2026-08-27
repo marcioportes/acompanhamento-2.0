@@ -187,12 +187,16 @@ export function orderingConfidence(trades) {
   const lista = Array.isArray(trades) ? trades : [];
   if (lista.length <= 1) return { reliable: true, reason: 'single' };
 
-  const fontes = new Set(lista.map((t) => tradeInstantInfo(t).source));
-  if (fontes.has('date') || fontes.has('none')) {
+  const infos = lista.map((t) => tradeInstantInfo(t));
+  if (infos.some((i) => i.source === 'date' || i.source === 'none')) {
     return { reliable: false, reason: 'missing_entry_time' };
   }
-  if (fontes.has('offset') && fontes.has('inferred')) {
-    return { reliable: false, reason: 'mixed_offsets' };
-  }
+  // Misturar horário com offset e horário naive só é risco quando os fusos
+  // RESOLVIDOS divergem. Se o naive foi inferido para o mesmo fuso dos demais,
+  // a ordem relativa é tão sólida quanto seria com offset em todos — e recusar
+  // afirmá-la seria conservadorismo sem lastro, do mesmo tipo que este issue
+  // combate na direção oposta.
+  const fusos = new Set(infos.map((i) => i.tz));
+  if (fusos.size > 1) return { reliable: false, reason: 'mixed_offsets' };
   return { reliable: true, reason: 'ok' };
 }

@@ -185,10 +185,17 @@ function orderingConfidence(trades) {
   const lista = Array.isArray(trades) ? trades : [];
   if (lista.length <= 1) return { reliable: true, reason: 'single' };
 
-  const fontes = {};
-  for (let i = 0; i < lista.length; i++) fontes[tradeInstantInfo(lista[i]).source] = true;
-  if (fontes.date || fontes.none) return { reliable: false, reason: 'missing_entry_time' };
-  if (fontes.offset && fontes.inferred) return { reliable: false, reason: 'mixed_offsets' };
+  const infos = [];
+  for (let i = 0; i < lista.length; i++) infos.push(tradeInstantInfo(lista[i]));
+  for (let i = 0; i < infos.length; i++) {
+    if (infos[i].source === 'date' || infos[i].source === 'none') {
+      return { reliable: false, reason: 'missing_entry_time' };
+    }
+  }
+  // Ver nota no espelho ESM: mistura só é risco quando os fusos RESOLVIDOS divergem.
+  const fusos = {};
+  for (let i = 0; i < infos.length; i++) fusos[String(infos[i].tz)] = true;
+  if (Object.keys(fusos).length > 1) return { reliable: false, reason: 'mixed_offsets' };
   return { reliable: true, reason: 'ok' };
 }
 

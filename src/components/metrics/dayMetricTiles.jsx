@@ -282,3 +282,84 @@ export function authorizationNotice(row, ps, currency = 'BRL') {
 
   return null; // AUTORIZADA não gera aviso — ausência de acusação é o normal
 }
+
+// ============================================================
+// A posição DESTA operação dentro do período
+// ============================================================
+
+const ORDINAIS = ['1ª', '2ª', '3ª', '4ª', '5ª', '6ª', '7ª', '8ª', '9ª', '10ª'];
+const ordinal = (i) => ORDINAIS[i] || `${i + 1}ª`;
+
+/**
+ * Onde esta operação cai no período, e em que estado o período estava quando ela
+ * abriu.
+ *
+ * POR QUE ISTO E NÃO UM CARD DO DIA (#402):
+ *   A tela de feedback é sobre UMA operação. Empilhar um painel do período acima
+ *   dela dava os dois números sem ligar um ao outro: o dado do dia não ajudava a
+ *   julgar o trade, só ocupava espaço e quebrava a atomicidade da tela. Em 71%
+ *   dos dias da base há uma operação só, então o painel ainda repetia o mesmo
+ *   resultado duas vezes.
+ *
+ *   Isto aqui é predicado sobre a OPERAÇÃO — posição na sequência e orçamento no
+ *   instante da abertura. É o que torna o dado do período utilizável: dá para
+ *   julgar a segunda entrada sabendo com quanta folga ela nasceu.
+ *
+ * HONESTIDADE SOBRE A SEQUÊNCIA:
+ *   A ordinal só é afirmada quando `ordering.reliable`. Metade da base tem
+ *   `entryTime` sem fuso, e a importação de ordens sem linha de evento cai no
+ *   horário de CRIAÇÃO da ordem, não no fill. Onde a ordem foi inferida, dizer
+ *   "2ª operação" seria afirmar o que não se pode provar — o mesmo defeito que
+ *   este issue removeu.
+ *
+ * DISPLAY TRANSITÓRIO, POR CONTRATO: se o aluno lançar um trade retroativo do
+ * mesmo dia, a posição muda. É correto que mude. O congelamento do que foi
+ * conversado é papel da Revisão, não desta linha.
+ *
+ * @param {Object|null} row — linha de `periodState.rows` desta operação
+ * @param {Object|null} ps  — PeriodState
+ * @returns {{ text: string, tooltip: string }|null}
+ */
+export function tradePositionInPeriod(row, ps, currency = 'BRL') {
+  if (!ps || !ps.count) return null;
+
+  const periodo = ps.operationPeriod === 'Semanal' ? 'da semana' : 'do dia';
+  const fechou = `O ${ps.operationPeriod === 'Semanal' ? 'período' : 'dia'} fechou em ${money(ps.net, currency)}`;
+  const alem = ps.closedBeyondStop && ps.beyondStopBy != null
+    ? ` — ${money(ps.beyondStopBy, currency)} além do stop`
+    : '';
+  const tooltip = 'Posição desta operação na sequência do período. Muda se um trade anterior for lançado depois — o registro definitivo do que foi conversado é a Revisão.';
+
+  // Operação única: não repete o resultado, que é o do próprio trade.
+  if (ps.count === 1) {
+    const folga = row?.budgetBefore != null ? ` Abriu com ${money(row.budgetBefore, currency)} de folga.` : '';
+    return { text: `Única operação ${periodo}.${folga}`, tooltip };
+  }
+
+  // Ordem inferida: não afirma posição.
+  if (ps.ordering?.reliable === false) {
+    const motivo = ps.ordering.reason === 'missing_entry_time'
+      ? 'alguma operação deste dia não tem horário de entrada'
+      : 'os horários deste dia estão em fusos diferentes';
+    return {
+      text: `Uma das ${ps.count} operações ${periodo} — ${motivo}, então a sequência foi inferida. ${fechou}${alem}.`,
+      tooltip,
+    };
+  }
+
+  if (!row || row.index == null) return null;
+
+  const ultima = row.index === ps.count - 1;
+  const posicao = ultima
+    ? `${ordinal(row.index)} e última das ${ps.count} operações ${periodo}.`
+    : `${ordinal(row.index)} das ${ps.count} operações ${periodo}.`;
+
+  let abertura = '';
+  if (row.index === 0 && row.budgetBefore != null) {
+    abertura = ` Abriu com o limite ${periodo} inteiro disponível — ${money(row.budgetBefore, currency)} de folga.`;
+  } else if (row.budgetBefore != null) {
+    abertura = ` Quando abriu, o ${ps.operationPeriod === 'Semanal' ? 'período' : 'dia'} estava em ${money(row.cumBefore, currency)} e restavam ${money(row.budgetBefore, currency)} de folga.`;
+  }
+
+  return { text: `${posicao}${abertura} ${fechou}${alem}.`, tooltip };
+}

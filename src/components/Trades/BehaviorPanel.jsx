@@ -14,7 +14,7 @@ import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
 import { rrBreakdown } from '../../utils/rrBreakdown';
 import { authorizationFor } from '../../utils/dayState';
-import { authorizationNotice } from '../metrics/dayMetricTiles';
+import { authorizationNotice, tradePositionInPeriod } from '../metrics/dayMetricTiles';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
@@ -222,6 +222,8 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
   // e o que o PERÍODO fez (fato do período). Coisas diferentes, blocos diferentes.
   const periodRow = authorizationFor(trade, periodState);
   const authNotice = authorizationNotice(periodRow, periodState, currency);
+  // Onde ESTA operação cai no período. Predicado sobre o trade, não painel do dia.
+  const posicao = tradePositionInPeriod(periodRow, periodState, currency);
 
   const computed = !!profile; // o motor já rodou neste trade?
 
@@ -253,6 +255,12 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
             mostrava. Agora o dinheiro é sempre dito e a acusação é separada. */}
         <section>
           <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">Esta operação</p>
+
+          {posicao && (
+            <p className="text-[11px] text-zinc-400 leading-relaxed mb-2" title={posicao.tooltip}>
+              {posicao.text}
+            </p>
+          )}
 
           {effective.length > 0 && (
             <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 mb-2">

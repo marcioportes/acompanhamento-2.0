@@ -107,10 +107,18 @@ describe('buildPeriodState — o incidente de 25/08', () => {
     expect(ps.rows.some((r) => r.authorization === AUTHORIZATION.AFTER_STOP)).toBe(false);
   });
 
-  it('a ordem é confiável mesmo com naive + offset misturados no dia', () => {
-    // reason 'mixed_offsets': o instante resolve, mas o motor declara a mistura
-    expect(ps.ordering.reliable).toBe(false);
-    expect(ps.ordering.reason).toBe('mixed_offsets');
+  it('naive + offset no mesmo dia NÃO derruba a ordem quando o fuso resolvido é o mesmo', () => {
+    // A é naive (B3 → Brasília inferida), B tem offset −03:00 (Brasília).
+    // Os dois resolvem para o mesmo fuso, então a ordem relativa é sólida.
+    expect(ps.ordering.reliable).toBe(true);
+    expect(ps.ordering.reason).toBe('ok');
+  });
+
+  it('mas fusos RESOLVIDOS diferentes derrubam', () => {
+    const nyse = { id: 'us', date: '2026-08-25', entryTime: '2026-08-25T10:00:00', exchange: 'NYSE', result: -10 };
+    const misto = buildPeriodState([A, nyse], PLANO);
+    expect(misto.ordering.reliable).toBe(false);
+    expect(misto.ordering.reason).toBe('mixed_offsets');
   });
 });
 
