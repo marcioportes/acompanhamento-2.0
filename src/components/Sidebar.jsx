@@ -26,6 +26,7 @@ import {
   Brain,
   CreditCard,
   ClipboardCheck,
+  Radar,
   Shield,
   FileText,
   History,
@@ -87,6 +88,9 @@ const Sidebar = ({
       badge: emotionalAlerts > 0 ? emotionalAlerts : null,
       badgeColor: 'purple'
     },
+    // #101 — a Torre nasce como destino próprio ao lado do Dashboard. Na Fase D
+    // ela vira o destino padrão do mentor e o overview atual é aposentado (D8).
+    { id: 'torre', label: 'Torre de Controle', icon: Radar },
     { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
     { id: 'students', label: 'Acompanhamento', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },

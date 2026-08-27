@@ -37,6 +37,7 @@ import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import TorreDeControle from '../components/torre/TorreDeControle';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
 import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
@@ -100,7 +101,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
+  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
@@ -342,6 +343,22 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           accountId={mentorClosureContext?.accountId}
           role="mentor"
           planName={mentorClosureContext?.planName}
+        />
+      </div>
+    );
+  }
+
+  // #101 — a Torre é destino próprio, não uma aba do overview: entra antes da
+  // barra de abas e do título "Dashboard do Mentor". Na Fase D ela assume o lugar
+  // do overview (D8).
+  if (activeView === 'torre') {
+    return (
+      <div className="min-h-screen p-6 lg:p-8">
+        <TorreDeControle
+          allTrades={allTrades}
+          plans={plans}
+          students={allStudents}
+          subscriptions={allSubscriptions}
         />
       </div>
     );

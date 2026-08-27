@@ -200,13 +200,25 @@ tela incompleta.
 
 - **D1 · "Alerta" (MC-2):** 1 alerta = 1 aluno com ≥1 flag efetiva HOJE (dedup por aluno). Janela = hoje.
 - **D2 · Limiar "Fora do Plano" header (MC-3):** `foraPct > 0` — qualquer violação efetiva hoje conta.
-- **D3 · "Metas" header (MC-4):** "N metas" = planos ativos com `plan.periodGoal`; "%" = média de
-  `progressPercent` (janela = período/semana).
+- **D3 · "Metas" header (MC-4):** ~~"N metas" = planos ativos com `plan.periodGoal`; "%" = média de
+  `progressPercent`~~ — **REVISADA 27/08/2026 (Marcio: "veja os tiles do extrato, eles representam o
+  que é hoje, e deveríamos seguí-los").** O tile conta **estado do período**, não média de progresso.
+  Duas razões: (1) `progressPercent` divide pela meta do CICLO (`planLedger.js:176`), subestimando
+  entre 2x e 20x, com fator diferente por aluno — média entre eles não significa nada; (2) o extrato
+  não exibe percentual de progresso, exibe Meta/Stop em dinheiro + campo Estado. Fonte = `buildPeriodState`
+  (#402), o mesmo motor do card do dia do aluno. Número em destaque: quem **seguiu operando após
+  meta/stop**.
 - **D4 · Prioridade do Dia (MC-5):** 3 gatilhos = TILT/REVENGE hoje / risco no trade atual / loss diário.
   Mapa: TILT/loss diário → "Bloquear conta / Call urgente"; risco no trade → "Alertar no WhatsApp".
 - **D5 · Janela "Fora do Plano %" (MC-7):** semana corrente.
 - **D6 · Stop×Gain (MC-8):** barras = contagem de trades; liquidez em R; multi-moeda normalizada em R.
-- **D7 · "aluno ativo" (MC-1):** `deriveStatus==='active'` (estrito), MESMA definição em toda a torre.
+- **D7 · "aluno ativo" (MC-1):** ~~`deriveStatus==='active'` (estrito)~~ — **REVISADA 27/08/2026
+  (Marcio: "acesso + assinatura viva"; "uma vez que o atrasado entra em bloqueio, ele sai do radar
+  da torre").** Predicado: `getAccessStatus(student)==='active' && !student.loginBlocked &&
+  classifyStudent(student, subs) !== null`. `loginBlocked` é explícito porque o bloqueio por
+  inadimplência grava o campo e **não** mexe em `accessStatus` (`functions/index.js:767`) — sem ele o
+  bloqueado seguiria no radar. `overdue` **permanece**: quem decide o corte é o bloqueio, não a Torre.
+  Base 27/08: 68 cadastrados · 19 com acesso · 39 com assinatura viva · **12 no radar**.
 
 - **D8 · Construção como destino próprio** (27/08/2026): a Torre é `activeView` novo desde a Fase A,
   com item próprio na sidebar; o overview v1 fica intocado até a Fase D. Evita conviver com tela
@@ -221,6 +233,7 @@ tela incompleta.
   com o que isso implica de persistência e autorização. Decisão de produto, não técnica.
 
 > D1..D8 viram DEC-AUTO-101-01..08 no encerramento (§4.3). D9 vira decisão quando resolvida.
+> D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
 
@@ -242,3 +255,7 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 27/08/2026 — **Fase A entregue**: item de sidebar + `activeView` 'torre' + `mentorRiskRadar` (agregação
+  pura, 41 testes) + `useMentorRiskRadar` + `TorreHeader` (S1, MC-1..4) + casca com placeholders S2..S6.
+  D3 e D7 revisadas por Marcio. Medição na base real: 12 no radar; 27/08 → 2 operaram, 1 em alerta,
+  33% fora do plano em 3 trades, 1 stop. Suíte 274/274 verde.
