@@ -98,5 +98,5 @@
 | 1.83.29 | #376 | `fix/issue-376-financeiro-conduta` | 23/08/2026 | consumida (PR #398 squash `92a90ced`) |
 | 1.83.30 | #376 | `feat/issue-376-ato-de-promocao` + `fix/issue-376-elogio-indevido` | 23/08/2026 | consumida (PRs #399 `05673e51` / #400 `915f6964`) |
 | 1.83.31 | #387 | `fix/issue-387-card-sem-pulo` | 24/08/2026 | consumida (PR #401 squash `5a7f7da2`) |
-| 1.83.32 | #402 | `fix/issue-402-dia-vs-trade` + `-card-dia-compacto` + `-trade-no-dia` | 25/08/2026 | consumida (PRs #403 `56c0dea8` / #404 `761145b4` / #405 `298a3245`) |
+| 1.83.32 | #402 | `fix/issue-402-dia-vs-trade` + `-card-dia-compacto` + `-trade-no-dia` | 25/08/2026 | consumida (PR #403 squash `56c0dea8`) |
 | 1.83.33 | #402 (reaberta) | `fix/issue-402-verde-coerente` | 27/08/2026 | reservada |
