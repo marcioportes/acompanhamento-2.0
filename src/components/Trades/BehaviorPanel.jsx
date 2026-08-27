@@ -324,12 +324,25 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
               {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
               {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
             </div>
-          ) : (effective.length === 0 && cleared.length === 0) ? (
-            // Motor rodou, nada negativo e sem violação → afirmação de execução alinhada.
+          ) : (effective.length === 0 && cleared.length === 0 && !authNotice) ? (
+            // Motor rodou, nada negativo, sem violação E sem ressalva de autorização
+            // → só aqui cabe afirmar execução alinhada.
+            //
+            // O `!authNotice` é o conserto de uma contradição que esta entrega criou:
+            // `SEM_FOLGA` é aviso, não violação (decisão de domínio), então não entra
+            // em `effective` — e a caixa verde disparava logo abaixo de "Aberta sem
+            // orçamento", afirmando "nenhuma violação de plano" na mesma tela que
+            // dizia o contrário. É o mesmo defeito do R:R que este issue removeu,
+            // recriado ao lado dele.
             <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
               <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
               <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
             </div>
+          ) : (effective.length === 0 && cleared.length === 0 && authNotice) ? (
+            // Há ressalva de autorização em ①. O motor não achou padrão de risco na
+            // EXECUÇÃO, e é só isso que pode ser afirmado — sem estender para "nenhuma
+            // violação de plano", que é o pedaço que mentia.
+            <p className="text-xs text-zinc-500">Nenhum padrão comportamental de risco na execução — veja a ressalva sobre a abertura, acima.</p>
           ) : (
             // Motor rodou, sem padrão comportamental, mas há violação de plano em ①.
             <p className="text-xs text-zinc-500">Nenhum padrão comportamental detectado.</p>
