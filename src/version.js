@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.83.33: #402 fix caixa verde de execucao alinhada ignorava o aviso de autorizacao (RESERVADA)
  * - 1.83.32: #402 fix separar o fato atômico (trade) do fato do dia (PR #403, 27/08/2026)
  * - 1.83.31: #387 fix card de consistencia sem layout shift + fim da reentrada por identidade (PR #401, 24/08/2026)
  * - 1.83.30: #376 feat aviso de promoção nos dois lados + ato do mentor; padrão positivo não convive com violação (PRs #399/#400, 23/08/2026)
@@ -423,7 +424,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.83.32';
+const version = '1.83.33';
 const build = '20260827';
 
 const VERSION = {
