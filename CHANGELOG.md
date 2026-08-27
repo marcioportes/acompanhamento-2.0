@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.83.32] - 27/08/2026 · #402 · PR #403
+
+**fix:** separar o fato atômico (trade) do fato do dia
+
+- `LOSS_DIARIO_EXCEDIDO`: 34 acusados → **3 violações reais**, 31 falsas
+- `RISCO_ACIMA_PERMITIDO`: **19 dos 82** saem pela margem de manejo
+- Alarmes do mentor: **203 dos 588** deixam de aparecer
+- Planos incoerentes: 6 → **4** (o Ago-Plano 1,99≈2 e o WinFut 2,94≈3 saem)
+- Maturidade: **4 alunos mudam, 1 gate muda de estado em toda a base** (`operational-80` do Marcio), **zero promoções e zero rebaixamentos novos**. Ninguém piora.
+
+
 ## [1.83.31] - 24/08/2026 · #387 · PR #401
 
 **fix:** card de consistencia sem layout shift + fim da reentrada por identidade

@@ -6,7 +6,3 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-16 | #101 | `feat/issue-101-torre-controle` | 27/07/2026 | Torre de Controle — tela operacional (S1–S6) |
-| CHUNK-05 | #402 | `fix/issue-402-dia-vs-trade` | 25/08/2026 | Separar fato atômico do fato do dia |
-| CHUNK-02 | #402 | `fix/issue-402-dia-vs-trade` | 25/08/2026 | Card do dia no StudentDashboard |
-| CHUNK-04 | #402 | `fix/issue-402-dia-vs-trade` | 25/08/2026 | BehaviorPanel + rrBreakdown |
-| CHUNK-03 | #402 | `fix/issue-402-dia-vs-trade` | 25/08/2026 | Coerência mecânica do plano |
