@@ -53,7 +53,7 @@ Um trade de −R$ 250 — primeira operação do dia, contra um limite diário d
 
 Maturidade: 4 alunos mudam, **1 gate muda de estado em toda a base**, zero promoções e zero rebaixamentos novos. Ninguém piora.
 
-**Segue em aberto (follow-up):** 26 dos 82 `RISCO_ACIMA_PERMITIDO` medem a *perda*, não o dimensionamento — 7 sem stop e 19 com `stopLoss` igual à saída; snapshot do período no `frozenSnapshot` da Revisão; unificar os ~12 agregadores de período e as 3 cópias de `complianceRate`.
+**Segue em aberto (follow-up):** snapshot do período no `frozenSnapshot` da Revisão; unificar os ~12 agregadores de período e as 3 cópias de `complianceRate`.
 
 
 ## [1.83.31] - 24/08/2026 · #387 · PR #401
