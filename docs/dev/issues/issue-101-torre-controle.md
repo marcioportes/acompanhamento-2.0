@@ -2,8 +2,13 @@
 
 > **Doc de controle + SSoT** da tela operacional do epic #101. Interativo.
 > **Branch:** `feat/issue-101-torre-controle` · **Worktree:** `~/projects/issue-101`
-> **Versão reservada:** 1.84.0 (feature=minor sobre 1.83.1) · **Chunk:** CHUNK-16 (ESCRITA)
+> **Versão reservada:** 1.84.0 (feature=minor sobre 1.83.33, última consumida no #402) · **Chunk:** CHUNK-16 (ESCRITA)
 > **Âncora visual:** `docs/dev/mentor-dashboard-v2-mockup.png`
+> **Abordagem (D8, 27/08/2026):** a Torre é construída como **destino próprio** — `activeView`
+> novo + item de sidebar — e ganha uma seção por fase. O overview v1 fica **intocado até a
+> Fase D**. Navegação por ESTADO, não por rota: `MentorDashboard` resolve `currentView` via
+> `viewMapping` (`src/pages/MentorDashboard.jsx:103`); `react-router` só é usado no onboarding
+> do aluno.
 > **Status:** PRÉ-ABERTURA concluída — Gate Pré-Código ok — **sem código de feature.**
 > **Nota de marca:** o mockup exibe "TITCHIO ALPHA" (nome de código antigo). Implementar com a
 > identidade pública **Espelho** (DEC-031) — não replicar o logo/nome do mockup.
@@ -160,11 +165,34 @@ ativo, o registro agregado que alimenta S1/S2/S3/S4/S6.
 
 ## 7. Fases (decompõe em tasks depois)
 
-- **Fase A** — `useMentorRiskRadar` + testes de agregação (INV-05) + Header S1 (MC-1..4).
-- **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental.
+Construção da tela NOVA, faseada por seção (D8). Cada fase acrescenta uma seção à Torre; o
+overview v1 segue funcionando e intocado até a Fase D.
+
+- **Fase A** — item de sidebar "Torre de Controle" + `activeView` novo (tela navegável desde o
+  primeiro dia) + **`useMentorRiskRadar` COMPLETO** + testes de agregação (INV-05) + Header S1 (MC-1..4).
+- **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental. **Resolver D9 antes de codar.**
 - **Fase C** — Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8).
-- **Fase D** — Visão Rápida S6 (MC-9) + sidebar/navegação + polish + DebugBadge.
+- **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
+  overview v1 é aposentado.
 - Testes de formatação/agregação ANTES da UI em cada fase.
+
+**Por que o hook nasce COMPLETO na Fase A**, em vez de crescer por seção: `useMentorRiskRadar`
+faz **uma passada só** sobre `allTrades` produzindo `header`, `priority[]`, `radar[]`,
+`foraPlano[]` e `byStudent` de uma vez. Fatiá-lo por fase significaria varrer os mesmos trades
+quatro vezes ou refatorar um `useMemo` pesado a cada fase — pior nos dois casos. As seções
+plugam num hook que já está pronto e testado.
+
+**A Fase D não é polish.** Ela carrega decisão de escopo: o que fazer com os seis componentes que
+moram no overview atual e **não estão no mockup** — `EquityCurve`, `CalendarHeatmap`,
+`MentorPromotionAlert`, `MentorMaturityAlert`, `PendingReviewsCard`, `MentorAlerts`. Aposentar,
+migrar para a Torre ou mover para o #103 é decisão a tomar, não limpeza. Não subestimar no
+planejamento.
+
+**Por que não faseamos por cima do overview atual:** a Fase A trocaria os quatro `StatCard` de
+hoje (P&L Total · Win Rate · Alunos Ativos · Trades Hoje) pelos quatro tiles novos, deixando o
+corpo v1 abaixo. Da A à C a tela ficaria híbrida — nem v1 coerente, nem v2 — e o face lift só
+fecharia na D. Como Marcio é o único mentor, construir em destino separado não expõe ninguém à
+tela incompleta.
 
 ---
 
@@ -180,7 +208,19 @@ ativo, o registro agregado que alimenta S1/S2/S3/S4/S6.
 - **D6 · Stop×Gain (MC-8):** barras = contagem de trades; liquidez em R; multi-moeda normalizada em R.
 - **D7 · "aluno ativo" (MC-1):** `deriveStatus==='active'` (estrito), MESMA definição em toda a torre.
 
-> Viram DEC-AUTO-101-01..07 no encerramento (§4.3).
+- **D8 · Construção como destino próprio** (27/08/2026): a Torre é `activeView` novo desde a Fase A,
+  com item próprio na sidebar; o overview v1 fica intocado até a Fase D. Evita conviver com tela
+  híbrida por três fases. Navegação por estado — não introduzir roteador onde não há.
+
+### Pendente
+
+- **D9 · Botões de ação da Prioridade do Dia — RESOLVER ANTES DA FASE B.** O mockup mostra
+  recomendação como **ação** ("Bloquear conta / Call urgente", "Alertar no WhatsApp"), o que
+  extrapola o §3 ("camada de leitura/agregação, sem persistência nova"). Duas saídas: (a) viram
+  link para a tela onde a ação já existe — mantém o escopo; (b) a Fase B ganha escopo de ação,
+  com o que isso implica de persistência e autorização. Decisão de produto, não técnica.
+
+> D1..D8 viram DEC-AUTO-101-01..08 no encerramento (§4.3). D9 vira decisão quando resolvida.
 
 ---
 
@@ -201,3 +241,4 @@ ativo, o registro agregado que alimenta S1/S2/S3/S4/S6.
 ## 11. Sessions
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
+- 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
