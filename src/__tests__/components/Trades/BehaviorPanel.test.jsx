@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import BehaviorPanel from '../../../components/Trades/BehaviorPanel';
+import { buildPeriodState } from '../../../utils/dayState';
 
 const trade = {
   id: 'T1',
@@ -289,5 +290,52 @@ describe('R:R em dinheiro (#373)', () => {
     render(<BehaviorPanel trade={trade} isMentor embedded />);
 
     expect(screen.queryByText(/Risco × retorno/)).not.toBeInTheDocument();
+  });
+});
+
+describe('#402 — a caixa verde não pode contradizer a ressalva de autorização', () => {
+  // Caso real reportado em produção (27/08/2026): o painel dizia
+  // "Aberta sem orçamento — restavam R$ 0,00 de folga e o plano autoriza R$ 40,00"
+  // e, logo abaixo, "Nenhuma violação de plano nem padrão de risco — execução alinhada".
+  const planoSemFolga = { pl: 4000, riskPerOperation: 1, periodStop: 1, rrTarget: 2 };
+
+  const tradeLimpo = {
+    id: 't1', date: '2026-08-27', ticker: 'WINV26', side: 'LONG',
+    entry: 100, exit: 90, stopLoss: 90, qty: 1, result: -40,
+    entryTime: '2026-08-27T11:00:00-03:00', exitTime: '2026-08-27T11:10:00-03:00',
+    currency: 'BRL', redFlags: [],
+    behaviorProfile: { families: [], gateInputs: [] },
+  };
+  const anterior = {
+    id: 't0', date: '2026-08-27', ticker: 'WINV26', side: 'LONG',
+    entry: 100, exit: 90, qty: 1, result: -40,
+    entryTime: '2026-08-27T09:00:00-03:00', exitTime: '2026-08-27T09:10:00-03:00',
+  };
+
+  it('com ressalva de abertura, NÃO afirma "nenhuma violação de plano"', () => {
+    const ps = buildPeriodState([anterior, tradeLimpo], planoSemFolga);
+    // sanidade do fixture: a 2ª operação abre sem orçamento
+    expect(ps.rows[1].authorization).toBe('SEM_FOLGA');
+
+    render(<BehaviorPanel trade={tradeLimpo} plan={planoSemFolga} periodState={ps} isMentor embedded />);
+
+    expect(screen.getByText(/Aberta sem orçamento/i)).toBeInTheDocument();
+    expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nenhum padrão comportamental de risco na execução/i)).toBeInTheDocument();
+  });
+
+  it('sem ressalva e sem violação, a afirmação verde continua valendo', () => {
+    const folgado = { pl: 100000, riskPerOperation: 1, periodStop: 5, rrTarget: 2 };
+    const ps = buildPeriodState([tradeLimpo], folgado);
+    expect(ps.rows[0].authorization).toBe('AUTORIZADA');
+
+    render(<BehaviorPanel trade={tradeLimpo} plan={folgado} periodState={ps} isMentor embedded />);
+    expect(screen.getByText(/execução alinhada/i)).toBeInTheDocument();
+  });
+
+  it('sem periodState (modal do trade), nada muda — a verde segue como antes', () => {
+    render(<BehaviorPanel trade={tradeLimpo} plan={planoSemFolga} isMentor embedded />);
+    expect(screen.getByText(/execução alinhada/i)).toBeInTheDocument();
   });
 });
