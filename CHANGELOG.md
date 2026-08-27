@@ -8,15 +8,39 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.83.32] - 27/08/2026 · #402 · PR #403
+## [1.83.32] - 27/08/2026 · #402 · PRs #403 / #404 / #405
 
 **fix:** separar o fato atômico (trade) do fato do dia
 
-- `LOSS_DIARIO_EXCEDIDO`: 34 acusados → **3 violações reais**, 31 falsas
-- `RISCO_ACIMA_PERMITIDO`: **19 dos 82** saem pela margem de manejo
-- Alarmes do mentor: **203 dos 588** deixam de aparecer
-- Planos incoerentes: 6 → **4** (o Ago-Plano 1,99≈2 e o WinFut 2,94≈3 saem)
-- Maturidade: **4 alunos mudam, 1 gate muda de estado em toda a base** (`operational-80` do Marcio), **zero promoções e zero rebaixamentos novos**. Ninguém piora.
+Um trade de −R$ 250 — primeira operação do dia, contra um limite diário de ~R$ 501 — foi acusado de estourar o stop diário. `getDailyLoss` somava o dia inteiro **sem corte temporal** e **só as perdas**, e o importador gravou o 2º trade 3s antes do 1º: a acusação dependia da ordem de escrita do lote. Debaixo disso, `LOSS_DIARIO_EXCEDIDO` era o único fato **agregado** guardado num container **atômico** (`trade.redFlags[]`).
+
+**Três fatos, três donos:** o que é da operação fica na operação; o que é do período fica no período; a decisão de abrir é atômica, derivada do período.
+
+- **Resultado do período é LÍQUIDO** — ganhos compensam perdas. Um dia de +1.000/−600/−300 deixa de "estourar" um stop de 501
+- **O stop do período governa autorização para ABRIR** (DEC-069), não é carimbo retroativo em toda operação do dia
+- `tradeInstant` + `dayState` (espelhados ESM/CJS) — ordem canônica `data → instante → createdAt → id`, total e determinística; substitui 5 ordenações ad-hoc, duas delas por `createdAt` (ordem de importação)
+- `getDailyLoss` e o bloco emissor **deletados**; `LOSS_DIARIO_EXCEDIDO` revogado em leitura (precedente #376 — nada reescrito, trades `DISCUSSED` intactos)
+- **Fim da contradição do painel**: `shouldEvaluateRR` vira predicado único; o painel não julga o que o motor absteve, e `riskIsTautological` rotula o stop informado no próprio preço de saída
+- `dayMetricTiles` + `DayResultCard` — o período **declara, não acusa**; mesmo card para aluno e mentor
+- `planMechanicsCheck` — `periodStop = maxTrades × RO` (DEC-069) passa a ser verificável
+- **Alarme só para aluno com assinatura ativa** (`classifyStudent !== null`), nos writers e na leitura
+- **Margem de manejo de 2%** (`planTolerance`) — plano de trade não é contrato de precisão de centavo; não altera número exibido, só decide se vira violação
+- **Virada de mão** reescrita: desespero (≤5' da saída, após loss) ou perdido (2+ inversões em 30'). A janela de 2h com gradiente de severidade saiu
+- **`tradePositionInPeriod`** — a tela de feedback situa o trade na sequência do dia em vez de empilhar um painel do período; a ordinal só é afirmada quando a ordem é demonstrável
+
+**Impacto medido na base (376 trades):**
+
+| | antes | depois |
+|---|---|---|
+| `LOSS_DIARIO_EXCEDIDO` | 34 acusados | **3 violações reais** — 31 falsas, zero falsos negativos |
+| `RISCO_ACIMA_PERMITIDO` | 82 | **63** — 19 saem pela margem de manejo |
+| Alarmes do mentor | 588 (todos não lidos) | **385** — 203 eram de 6 alunos sem assinatura ativa |
+| `DIRECTION_FLIP` | 16 | **2** |
+| Planos incoerentes | 6 | **4** |
+
+Maturidade: 4 alunos mudam, **1 gate muda de estado em toda a base**, zero promoções e zero rebaixamentos novos. Ninguém piora.
+
+**Segue em aberto (follow-up):** 26 dos 82 `RISCO_ACIMA_PERMITIDO` medem a *perda*, não o dimensionamento — 7 sem stop e 19 com `stopLoss` igual à saída; snapshot do período no `frozenSnapshot` da Revisão; unificar os ~12 agregadores de período e as 3 cópias de `complianceRate`.
 
 
 ## [1.83.31] - 24/08/2026 · #387 · PR #401
