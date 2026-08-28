@@ -175,7 +175,7 @@ overview v1 segue funcionando e intocado até a Fase D.
   O hook entrega `header` + `byStudent`; `priority[]`/`radar[]`/`foraPlano[]` nascem nas fases
   que os consomem — são DERIVAÇÕES sobre `byStudent`, não passadas novas sobre os trades, então
   o motivo de D8 (não varrer os mesmos trades quatro vezes) segue respeitado.
-- **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental. **Resolver D9 antes de codar.**
+- **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental. D9 resolvida — desbloqueada.
 - **Fase C** — Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8).
 - **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
   overview v1 é aposentado.
@@ -231,15 +231,23 @@ tela incompleta.
   ter uma tab da torre... para que a torre tenha o aspecto do mockup". A aba dá a tela inteira ao
   layout do mockup sem tirar o overview do lugar. Navegação por estado — sem roteador.
 
-### Pendente
+- **D9 · Botões de ação da Prioridade do Dia — RESOLVIDA 28/08/2026 (Marcio: "o que já existe
+  funciona... o que mais precisa? Segue simples").** Caminho (a): a Torre **não ganha escopo de
+  ação nem persistência**. A recomendação é texto; o que estiver ao lado é LINK para onde a ação
+  já mora.
+  - *Bloquear conta* → link para a ficha do aluno em Acompanhamento, onde a callable
+    `setStudentLoginBlocked` já opera com confirmação, grava autor e motivo (`manual`/`auto`) e
+    desabilita o login no Auth. Não se replica dentro de um card de alerta comportamental um botão
+    que tira a pessoa da plataforma — e do radar da Torre.
+  - *Alertar no WhatsApp* → link `wa.me/<E.164>` a partir de `student.whatsappNumber`. Dado que já
+    existe e está validado: **os 12 alunos do radar têm número** (os 2 sem são cancelados). Sem
+    número, o botão não aparece.
+  - *Call urgente* → não vira botão. O número fica visível no card.
+  - **Sem registro de "tratei este alerta"**: seria campo novo (INV-15) e a Torre é sobre hoje —
+    o card sai sozinho quando o comportamento não se repete na janela. Se um dia fizer falta, o
+    `whatsappState` (none/talking/waiting) já existe e não exige campo novo.
 
-- **D9 · Botões de ação da Prioridade do Dia — RESOLVER ANTES DA FASE B.** O mockup mostra
-  recomendação como **ação** ("Bloquear conta / Call urgente", "Alertar no WhatsApp"), o que
-  extrapola o §3 ("camada de leitura/agregação, sem persistência nova"). Duas saídas: (a) viram
-  link para a tela onde a ação já existe — mantém o escopo; (b) a Fase B ganha escopo de ação,
-  com o que isso implica de persistência e autorização. Decisão de produto, não técnica.
-
-> D1..D8 viram DEC-AUTO-101-01..08 no encerramento (§4.3). D9 vira decisão quando resolvida.
+> D1..D9 viram DEC-AUTO-101-01..09 no encerramento (§4.3).
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
@@ -275,6 +283,7 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — D9 resolvida (links para o que já existe; sem ação nem persistência na Torre). Fase B desbloqueada.
 - 28/08/2026 — correções sobre o overview pedidas por Marcio ao ver a tela: curva de patrimônio
   removida (somava 2 moedas de 12 pessoas); `CalendarHeatmap` trocado por `TradingCalendar` em modo
   turma (o antigo lia `dayOfWeek`/`pl`, campos que `generateCalendarData` não devolve — renderizava
