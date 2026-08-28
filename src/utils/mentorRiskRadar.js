@@ -258,14 +258,31 @@ export function buildCalendarDays(trades, emailsNoRadar = null) {
     if (!t?.date) continue;
     const email = String(t.studentEmail ?? '').toLowerCase();
     if (emailsNoRadar && emailsNoRadar.size > 0 && !emailsNoRadar.has(email)) continue;
-    const d = (dias[t.date] ??= { trades: 0, alunos: new Set(), flags: 0 });
+    const d = (dias[t.date] ??= { trades: 0, flags: 0, porAluno: new Map() });
+    const flags = effectiveRedFlags(t).length;
     d.trades += 1;
-    if (email) d.alunos.add(email);
-    d.flags += effectiveRedFlags(t).length;
+    d.flags += flags;
+
+    const chave = email || t.studentName || '(sem dono)';
+    const aluno = d.porAluno.get(chave) ?? {
+      nome: t.studentName || (email ? email.split('@')[0] : 'sem dono'),
+      email: t.studentEmail ?? null,
+      trades: 0,
+      flags: 0,
+    };
+    aluno.trades += 1;
+    aluno.flags += flags;
+    if (t.studentName) aluno.nome = t.studentName;
+    d.porAluno.set(chave, aluno);
   }
+
   const saida = {};
   for (const [data, d] of Object.entries(dias)) {
-    saida[data] = { trades: d.trades, alunos: d.alunos.size, flags: d.flags };
+    // Quem mais operou primeiro: é a ordem em que o mentor quer ler o dia.
+    const alunos = [...d.porAluno.values()].sort(
+      (a, b) => b.trades - a.trades || a.nome.localeCompare(b.nome),
+    );
+    saida[data] = { trades: d.trades, alunos: alunos.length, flags: d.flags, nomes: alunos };
   }
   return saida;
 }

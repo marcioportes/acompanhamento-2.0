@@ -495,6 +495,22 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                       <span className="text-amber-400"> · {diasDaTurma[diaSelecionado].flags} fora do plano</span>
                     )}
                   </p>
+                  {/* Quem operou no dia, do que mais operou pro que menos. */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(diasDaTurma[diaSelecionado]?.nomes ?? []).map((a) => (
+                      <span
+                        key={a.email || a.nome}
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                          a.flags > 0
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            : 'border-slate-700 bg-slate-800/50 text-slate-300'
+                        }`}
+                        title={a.flags > 0 ? `${a.flags} fora do plano` : 'dentro do plano'}
+                      >
+                        {a.nome} <span className="text-slate-500">{a.trades}</span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <button
                   onClick={() => setDiaSelecionado(null)}

@@ -339,8 +339,8 @@ describe('buildCalendarDays — o calendário do mentor não soma dinheiro', () 
       t('c', 'bruno@x.com', '2026-08-27'),
       t('d', 'ana@x.com', '2026-08-26'),
     ]);
-    expect(dias['2026-08-27']).toEqual({ trades: 3, alunos: 2, flags: 1 });
-    expect(dias['2026-08-26']).toEqual({ trades: 1, alunos: 1, flags: 0 });
+    expect(dias['2026-08-27']).toMatchObject({ trades: 3, alunos: 2, flags: 1 });
+    expect(dias['2026-08-26']).toMatchObject({ trades: 1, alunos: 1, flags: 0 });
   });
 
   it('não devolve nenhum campo de dinheiro — BRL e USD convivem na turma', () => {
@@ -348,7 +348,10 @@ describe('buildCalendarDays — o calendário do mentor não soma dinheiro', () 
       t('a', 'ana@x.com', '2026-08-27', { result: 500, currency: 'BRL' }),
       t('b', 'bruno@x.com', '2026-08-27', { result: 500, currency: 'USD' }),
     ]);
-    expect(Object.keys(dias['2026-08-27'])).toEqual(['trades', 'alunos', 'flags']);
+    const chaves = Object.keys(dias['2026-08-27']);
+    expect(chaves).not.toContain('pnl');
+    expect(chaves).not.toContain('totalPL');
+    expect(chaves).not.toContain('result');
   });
 
   it('flag revogada pelo #402 não pinta o dia', () => {
@@ -363,7 +366,7 @@ describe('buildCalendarDays — o calendário do mentor não soma dinheiro', () 
       [t('a', 'ana@x.com', '2026-08-27'), t('b', 'saiu@x.com', '2026-08-27')],
       new Set(['ana@x.com']),
     );
-    expect(dias['2026-08-27']).toEqual({ trades: 1, alunos: 1, flags: 0 });
+    expect(dias['2026-08-27']).toMatchObject({ trades: 1, alunos: 1, flags: 0 });
   });
 
   it('não depende de caixa do email pra contar aluno distinto', () => {
@@ -371,6 +374,23 @@ describe('buildCalendarDays — o calendário do mentor não soma dinheiro', () 
       t('a', 'Ana@x.com', '2026-08-27'), t('b', 'ana@X.com', '2026-08-27'),
     ]);
     expect(dias['2026-08-27'].alunos).toBe(1);
+  });
+
+  it('diz QUEM operou no dia, do que mais operou pro que menos', () => {
+    const dias = buildCalendarDays([
+      t('a', 'bruno@x.com', '2026-08-27', { studentName: 'Bruno' }),
+      t('b', 'ana@x.com', '2026-08-27', { studentName: 'Ana', redFlags: [{ type: 'TRADE_SEM_STOP' }] }),
+      t('c', 'ana@x.com', '2026-08-27', { studentName: 'Ana' }),
+    ]);
+    expect(dias['2026-08-27'].nomes).toEqual([
+      { nome: 'Ana', email: 'ana@x.com', trades: 2, flags: 1 },
+      { nome: 'Bruno', email: 'bruno@x.com', trades: 1, flags: 0 },
+    ]);
+  });
+
+  it('sem studentName cai no prefixo do email — nunca linha anônima', () => {
+    const dias = buildCalendarDays([t('a', 'joao.victor@x.com', '2026-08-27')]);
+    expect(dias['2026-08-27'].nomes[0].nome).toBe('joao.victor');
   });
 
   it('trade sem data não cria dia fantasma', () => {

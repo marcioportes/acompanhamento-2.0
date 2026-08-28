@@ -179,6 +179,16 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                 key={dateString}
                 onClick={() => data && onSelectDate(dateString)}
                 disabled={!data}
+                // Modo turma: o dia diz QUANTOS na célula e QUEM no hover — sem
+                // isso o mentor via "3 alunos" e não sabia quais.
+                title={
+                  modoTurma && meta
+                    ? [
+                        `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.trades} ${meta.trades === 1 ? 'trade' : 'trades'}`,
+                        ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
+                      ].join('\n')
+                    : undefined
+                }
                 className={`
                   relative rounded-lg border p-1 flex flex-col items-center justify-center transition-all duration-200
                   ${bgClass} ${!data ? 'cursor-default' : 'cursor-pointer'}
