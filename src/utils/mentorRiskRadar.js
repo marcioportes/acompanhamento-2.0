@@ -19,12 +19,19 @@
  */
 import { classifyStudent, getAccessStatus } from './studentClassify';
 import { calculateComplianceRate } from './dashboardMetrics';
-import { effectiveRedFlags } from './violationFilter';
+import { redFlagLabel } from './compliance';
+import { effectiveRedFlags, flagType } from './violationFilter';
 import { buildPeriodState } from './dayState';
 import { getPattern } from '../constants/behavioralTaxonomy';
 import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
 import { tradeInstantMs } from './tradeInstant';
 
+
+/** Número finito ou null — entrada de Firestore chega como string com frequência. */
+const num = (v) => {
+  const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 /** 'YYYY-MM-DD' de hoje, no fuso local do mentor. */
 export const todayKey = (now = new Date()) => {
@@ -174,7 +181,12 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   // Janela do Radar: a turma tem 12 alunos e 2 a 4 operam por dia. Um radar de
   // HOJE ficaria vazio quase sempre e o mentor perderia o padrão da semana. A
   // Prioridade continua sendo só de hoje — ela é sobre agir agora.
-  const inicioJanela = todayKey(new Date(agora.getTime() - (janelaDias - 1) * 86400000));
+  const inicioRadar = todayKey(new Date(agora.getTime() - (janelaDias - 1) * 86400000));
+  // A Fase C compara a semana corrente com a anterior, então a varredura vai até a
+  // segunda-feira retrasada — o que for mais antigo entre isso e a janela do Radar.
+  const segundaAtual = segundaDa(dia);
+  const segundaAnterior = diasAntes(segundaAtual, 7);
+  const inicioJanela = [inicioRadar, segundaAnterior].filter(Boolean).sort()[0];
   const subsIdx = indexSubsByStudent(subscriptions);
   const planoPorId = new Map((plans ?? []).filter((p) => p?.id).map((p) => [p.id, p]));
 
@@ -187,6 +199,7 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   // Um passe sobre a janela; quem não é aluno do radar não entra.
   const tradesPorAluno = new Map();
   const janelaPorAluno = new Map();
+  const radarPorAluno = new Map();
   for (const t of allTrades ?? []) {
     if (!t?.date || t.date < inicioJanela || t.date > dia) continue;
     const dono =
@@ -197,6 +210,11 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     const naJanela = janelaPorAluno.get(dono.id) ?? [];
     naJanela.push(t);
     janelaPorAluno.set(dono.id, naJanela);
+    if (t.date >= inicioRadar) {
+      const noRadar = radarPorAluno.get(dono.id) ?? [];
+      noRadar.push(t);
+      radarPorAluno.set(dono.id, noRadar);
+    }
     if (t.date === dia) {
       const hoje = tradesPorAluno.get(dono.id) ?? [];
       hoje.push(t);
@@ -207,6 +225,11 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   const byStudent = ativos.map((s) => {
     const tradesHoje = tradesPorAluno.get(s.id) ?? [];
     const tradesJanela = janelaPorAluno.get(s.id) ?? [];
+    const tradesRadar = radarPorAluno.get(s.id) ?? [];
+    const tradesSemana = tradesJanela.filter((t) => t.date >= segundaAtual);
+    const tradesSemanaAnterior = tradesJanela.filter(
+      (t) => t.date >= segundaAnterior && t.date < segundaAtual,
+    );
     // Um estado de período POR PLANO: contas diferentes não se somam, nem os stops
     // nem as moedas. `periodState` (singular) segue existindo para o header e é o do
     // plano com o pior resultado do dia — o que exige conversa.
@@ -228,7 +251,7 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     const flags = flagsHoje(tradesHoje);
 
     const familiasHoje = tradesHoje.flatMap(familiasDeRisco);
-    const familiasJanela = tradesJanela.flatMap(familiasDeRisco);
+    const familiasJanela = tradesRadar.flatMap(familiasDeRisco);
 
     return {
       tradesJanela,
@@ -236,6 +259,8 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       familiasJanela,
       prioridade: gatilhoDePrioridade(familiasHoje, periodStates),
       radar: linhaDeRadar(familiasJanela),
+      tradesSemana,
+      foraDoPlanoSemana: foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior),
       studentId: s.id,
       email: s.email ?? null,
       // D9: a ação da Torre é LINK pro que já existe. O número já está cadastrado
@@ -294,7 +319,19 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     .filter((a) => a.radar && !naPrioridade.has(a.studentId))
     .sort((a, b) => b.radar.score - a.radar.score || (b.radar.quandoMs ?? 0) - (a.radar.quandoMs ?? 0));
 
-  return { dia, janelaDias, header, byStudent, priority, radar };
+  // S4 — ranking de quem mais saiu do plano na semana. Quem não violou nada não
+  // entra: uma lista de zeros não é ranking.
+  const foraPlano = byStudent
+    .filter((a) => a.foraDoPlanoSemana && a.foraDoPlanoSemana.pct > 0)
+    .sort((a, b) => b.foraDoPlanoSemana.pct - a.foraDoPlanoSemana.pct);
+
+  // S5 — a semana da turma inteira, em contagem de trades e líquido em R.
+  const stopGain = stopVsGain(byStudent.flatMap((a) => a.tradesSemana), planoPorId);
+
+  return {
+    dia, janelaDias, semanaComecaEm: segundaAtual,
+    header, byStudent, priority, radar, foraPlano, stopGain,
+  };
 }
 
 /**
@@ -501,4 +538,126 @@ export function gatilhoDePrioridade(familias, periodStates) {
   }
 
   return null;
+}
+
+// ============================================================================
+// Fase C — Fora do Plano (S4) e Stop × Gain (S5)
+// ============================================================================
+
+/** Segunda-feira da semana de uma data 'YYYY-MM-DD' (INV-06: semana começa segunda). */
+export const segundaDa = (dataKey) => {
+  const [y, m, d] = String(dataKey).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d, 12); // meio-dia: imune a horário de verão
+  const dow = dt.getDay();
+  dt.setDate(dt.getDate() - (dow === 0 ? 6 : dow - 1));
+  return todayKey(dt);
+};
+
+/** Mesma data, N dias antes, em 'YYYY-MM-DD'. */
+export const diasAntes = (dataKey, n) => {
+  const [y, m, d] = String(dataKey).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return todayKey(new Date(y, m - 1, d - n, 12));
+};
+
+/**
+ * MC-7 · Fora do Plano por aluno — ranking da SEMANA CORRENTE (D5).
+ *
+ * Aqui a fonte é a red flag, não o motor comportamental: a seção é sobre
+ * ADESÃO AO PLANO, e é isso que a red flag mede. O motor (D10) mede comportamento,
+ * que é o assunto do Radar. Duas perguntas diferentes, duas fontes.
+ *
+ * A "regra pior" é a violação mais frequente da semana — a que o aluno repete,
+ * não a mais grave que ele cometeu uma vez.
+ *
+ * @returns {{pct:number, regraPior:string|null, tipoPior:string|null, direcao:'up'|'down'|'flat'|null, trades:number}|null}
+ */
+export function foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior) {
+  const pct = foraDoPlanoPct(tradesSemana);
+  if (pct == null) return null;
+
+  const contagem = new Map();
+  for (const t of tradesSemana ?? []) {
+    for (const f of effectiveRedFlags(t)) {
+      const tipo = flagType(f);
+      if (!tipo) continue;
+      contagem.set(tipo, (contagem.get(tipo) ?? 0) + 1);
+    }
+  }
+  const [tipoPior] = [...contagem.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] ?? [];
+
+  const anterior = foraDoPlanoPct(tradesSemanaAnterior);
+  // Sem semana anterior não há direção — seta inventada é pior que seta ausente.
+  let direcao = null;
+  if (anterior != null) {
+    if (pct > anterior + 1) direcao = 'up';
+    else if (pct < anterior - 1) direcao = 'down';
+    else direcao = 'flat';
+  }
+
+  return {
+    pct,
+    tipoPior: tipoPior ?? null,
+    regraPior: tipoPior ? redFlagLabel(tipoPior) : null,
+    direcao,
+    trades: tradesSemana?.length ?? 0,
+    pctAnterior: anterior,
+  };
+}
+
+const DIAS_UTEIS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+
+/**
+ * MC-8 · Stop × Gain da semana (D6).
+ *
+ * Barras = CONTAGEM de trades por dia da semana, verde ganho / vermelho perda.
+ * Contagem, e não dinheiro, porque a turma opera em duas moedas — a mesma razão
+ * que tirou o dinheiro do calendário.
+ *
+ * O líquido, esse, é em **R**: `result / (plan.pl × riskPerOperation/100)`. R é
+ * adimensional — é quantas vezes o próprio risco autorizado do aluno o resultado
+ * representa. É a única unidade em que o dia de quem opera 30 mil em real e o de
+ * quem opera 50 mil em dólar podem ser somados.
+ *
+ * Trade sem plano (ou com plano sem RO) fica FORA do líquido e é reportado em
+ * `semR`: somar o que não tem unidade seria inventar número.
+ */
+export function stopVsGain(tradesSemana, planoPorId) {
+  const dias = DIAS_UTEIS.map((label) => ({ label, gains: 0, losses: 0 }));
+  let liquidoR = 0;
+  let semR = 0;
+  let comR = 0;
+
+  for (const t of tradesSemana ?? []) {
+    const r = num(t?.result);
+    if (r == null || !t?.date) continue;
+
+    const [y, m, d] = t.date.split('-').map(Number);
+    const dow = new Date(y, m - 1, d, 12).getDay(); // 1..5 = Seg..Sex
+    const idx = dow - 1;
+    if (idx >= 0 && idx < 5) {
+      if (r > 0) dias[idx].gains += 1;
+      else if (r < 0) dias[idx].losses += 1; // breakeven não entra em nenhuma barra
+    }
+
+    const plano = planoPorId?.get?.(t.planId) ?? null;
+    const roValor = plano?.pl > 0 && plano?.riskPerOperation > 0
+      ? plano.pl * (plano.riskPerOperation / 100)
+      : null;
+    if (roValor) {
+      liquidoR += r / roValor;
+      comR += 1;
+    } else {
+      semR += 1;
+    }
+  }
+
+  return {
+    dias,
+    liquidoR: Math.round(liquidoR * 100) / 100,
+    comR,
+    semR,
+    total: (tradesSemana ?? []).length,
+  };
 }

@@ -73,6 +73,25 @@ export const RED_FLAG_TYPES = {
   BLOCKED_EMOTION: 'EMOCIONAL_BLOQUEADO'
 };
 
+/**
+ * Rótulo em português de cada violação de plano — #101.
+ *
+ * O código canônico circula por Firestore e por testes; a tela nunca deveria
+ * mostrá-lo. Não existia mapa: cada superfície improvisava o texto ou exibia o
+ * código cru. Mora aqui, ao lado de `RED_FLAG_TYPES`, para não nascer um segundo.
+ */
+export const RED_FLAG_LABELS = {
+  TRADE_SEM_PLANO: 'Operou sem plano',
+  TRADE_SEM_STOP: 'Sem stop declarado',
+  RISCO_ACIMA_PERMITIDO: 'Risco acima do autorizado',
+  RR_ABAIXO_MINIMO: 'Alvo abaixo do mínimo',
+  LOSS_DIARIO_EXCEDIDO: 'Estouro do stop do dia',
+  EMOCIONAL_BLOQUEADO: 'Emoção bloqueada pelo plano',
+};
+
+/** Rótulo legível de uma flag; devolve o próprio código se for desconhecido. */
+export const redFlagLabel = (type) => RED_FLAG_LABELS[type] ?? type ?? '';
+
 import { exceedsLimit } from './planTolerance';
 
 /**

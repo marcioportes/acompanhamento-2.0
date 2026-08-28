@@ -20,6 +20,10 @@ import {
   linhaDeRadar,
   gatilhoDePrioridade,
   TRIGGER,
+  segundaDa,
+  diasAntes,
+  foraDoPlanoDoAluno,
+  stopVsGain,
 } from '../../utils/mentorRiskRadar';
 import { buildPeriodState } from '../../utils/dayState';
 
@@ -662,5 +666,120 @@ describe('buildMentorRadar — Prioridade e Radar (Fase B)', () => {
     const r = run([t('x', 'a1', dia, [{ canonicalCode: 'TARGET_HIT', severity: 'NONE' }], { result: 200 })]);
     expect(r.priority).toEqual([]);
     expect(r.radar).toEqual([]);
+  });
+});
+
+describe('segundaDa / diasAntes — a semana começa na segunda (INV-06)', () => {
+  it('sexta, sábado e domingo pertencem à mesma semana', () => {
+    expect(segundaDa('2026-08-28')).toBe('2026-08-24'); // sexta
+    expect(segundaDa('2026-08-29')).toBe('2026-08-24'); // sábado
+    expect(segundaDa('2026-08-30')).toBe('2026-08-24'); // domingo
+  });
+
+  it('segunda é a própria segunda; terça volta um dia', () => {
+    expect(segundaDa('2026-08-24')).toBe('2026-08-24');
+    expect(segundaDa('2026-08-25')).toBe('2026-08-24');
+  });
+
+  it('atravessa a virada de mês', () => {
+    expect(segundaDa('2026-09-02')).toBe('2026-08-31');
+    expect(diasAntes('2026-09-02', 7)).toBe('2026-08-26');
+  });
+
+  it('data inválida devolve null em vez de data errada', () => {
+    expect(segundaDa('')).toBeNull();
+    expect(diasAntes(null, 7)).toBeNull();
+  });
+});
+
+describe('foraDoPlanoDoAluno — MC-7', () => {
+  const t = (id, flags = []) => ({ id, date: '2026-08-25', redFlags: flags.map((type) => ({ type })) });
+
+  it('a regra pior é a mais REPETIDA, não a mais grave', () => {
+    const r = foraDoPlanoDoAluno([
+      t('a', ['TRADE_SEM_STOP']), t('b', ['TRADE_SEM_STOP']), t('c', ['RISCO_ACIMA_PERMITIDO']),
+    ], null);
+    expect(r.tipoPior).toBe('TRADE_SEM_STOP');
+    expect(r.regraPior).toBe('Sem stop declarado');
+  });
+
+  it('percentual é dos trades violados, não das violações', () => {
+    const r = foraDoPlanoDoAluno([t('a', ['TRADE_SEM_STOP', 'RISCO_ACIMA_PERMITIDO']), t('b'), t('c'), t('d')], null);
+    expect(r.pct).toBe(25); // 1 trade de 4, ainda que com 2 violações
+  });
+
+  it('sobe, desce e estabiliza contra a semana anterior', () => {
+    const semana = [t('a', ['TRADE_SEM_STOP']), t('b')]; // 50%
+    expect(foraDoPlanoDoAluno(semana, [t('x'), t('y'), t('z'), t('w')]).direcao).toBe('up');
+    expect(foraDoPlanoDoAluno(semana, [t('x', ['TRADE_SEM_STOP']), t('y', ['TRADE_SEM_STOP'])]).direcao).toBe('down');
+    expect(foraDoPlanoDoAluno(semana, [t('x', ['TRADE_SEM_STOP']), t('y')]).direcao).toBe('flat');
+  });
+
+  it('sem semana anterior não inventa seta', () => {
+    expect(foraDoPlanoDoAluno([t('a', ['TRADE_SEM_STOP'])], []).direcao).toBeNull();
+    expect(foraDoPlanoDoAluno([t('a', ['TRADE_SEM_STOP'])], null).direcao).toBeNull();
+  });
+
+  it('flag revogada não conta — semana limpa é 0%, não null', () => {
+    const r = foraDoPlanoDoAluno([t('a', ['LOSS_DIARIO_EXCEDIDO'])], null);
+    expect(r.pct).toBe(0);
+    expect(r.tipoPior).toBeNull();
+  });
+
+  it('semana sem trade não vira linha', () => {
+    expect(foraDoPlanoDoAluno([], null)).toBeNull();
+  });
+});
+
+describe('stopVsGain — MC-8', () => {
+  const plano = new Map([
+    ['p1', { id: 'p1', pl: 30000, riskPerOperation: 1 }],   // RO = R$300
+    ['p2', { id: 'p2', pl: 50000, riskPerOperation: 0.75 }], // RO = US$375
+  ]);
+  const t = (date, result, planId = 'p1') => ({ id: `${date}-${result}`, date, result, planId });
+
+  it('conta ganhos e perdas por dia útil', () => {
+    const r = stopVsGain([
+      t('2026-08-24', 100), t('2026-08-24', -50), t('2026-08-26', -50),
+    ], plano);
+    expect(r.dias[0]).toEqual({ label: 'Seg', gains: 1, losses: 1 });
+    expect(r.dias[2]).toEqual({ label: 'Qua', gains: 0, losses: 1 });
+  });
+
+  it('breakeven não entra em barra nenhuma', () => {
+    const r = stopVsGain([t('2026-08-24', 0)], plano);
+    expect(r.dias[0]).toEqual({ label: 'Seg', gains: 0, losses: 0 });
+  });
+
+  it('sábado e domingo não têm barra', () => {
+    const r = stopVsGain([t('2026-08-29', -100), t('2026-08-30', 100)], plano);
+    expect(r.dias.every((d) => d.gains === 0 && d.losses === 0)).toBe(true);
+  });
+
+  it('o líquido em R soma moedas diferentes sem mentir', () => {
+    // +300 BRL num RO de 300 = +1R; −375 USD num RO de 375 = −1R. Líquido 0R.
+    const r = stopVsGain([t('2026-08-24', 300, 'p1'), t('2026-08-25', -375, 'p2')], plano);
+    expect(r.liquidoR).toBe(0);
+    expect(r.comR).toBe(2);
+  });
+
+  it('trade sem plano fica FORA do líquido e é reportado', () => {
+    const r = stopVsGain([t('2026-08-24', 300, 'p1'), t('2026-08-25', -9999, 'inexistente')], plano);
+    expect(r.liquidoR).toBe(1);
+    expect(r.semR).toBe(1);
+    expect(r.total).toBe(2);
+  });
+
+  it('plano sem RO não produz R', () => {
+    const semRo = new Map([['p3', { id: 'p3', pl: 30000, riskPerOperation: 0 }]]);
+    const r = stopVsGain([t('2026-08-24', 300, 'p3')], semRo);
+    expect(r.liquidoR).toBe(0);
+    expect(r.semR).toBe(1);
+  });
+
+  it('semana vazia não explode', () => {
+    const r = stopVsGain([], plano);
+    expect(r.total).toBe(0);
+    expect(r.dias).toHaveLength(5);
   });
 });

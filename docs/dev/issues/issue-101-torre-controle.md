@@ -177,7 +177,9 @@ overview v1 segue funcionando e intocado até a Fase D.
   o motivo de D8 (não varrer os mesmos trades quatro vezes) segue respeitado.
 - **Fase B** — ✅ ENTREGUE 28/08. Prioridade S2 (MC-5) + Radar S3 (MC-6). Duas adaptações de spec
   (D10, D11) e um bug de domínio corrigido: o dia é por CONTA, não por aluno.
-- **Fase C** — Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8).
+- **Fase C** — ✅ ENTREGUE 28/08. Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8). D13: as duas
+  seções usam FONTES DIFERENTES de propósito — S4 lê red flag (adesão ao plano), S3 lê o motor
+  comportamental. Perguntas diferentes.
 - **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
   overview v1 é aposentado.
 - Testes de formatação/agregação ANTES da UI em cada fase.
@@ -248,7 +250,7 @@ tela incompleta.
     o card sai sozinho quando o comportamento não se repete na janela. Se um dia fizer falta, o
     `whatsappState` (none/talking/waiting) já existe e não exige campo novo.
 
-> D1..D12 viram DEC-AUTO-101-01..12 no encerramento (§4.3).
+> D1..D15 viram DEC-AUTO-101-01..15 no encerramento (§4.3).
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
@@ -270,6 +272,20 @@ tela incompleta.
   uma delas soma moedas e contas diferentes — o pecado do #267/#289. Agora cada conta tem seu estado
   de período e responde pelo próprio stop; a acusação nomeia a conta quando o aluno tem mais de uma.
   Wilson segue sinalizado em 25/08, mas pela conta certa: −700 USD contra stop de US$375, na mesma moeda.
+
+- **D13 · Fora do Plano lê red flag; o Radar lê o motor** (28/08/2026). Não é inconsistência com a
+  D10: "saiu do plano" é conformidade, e é o que a red flag mede; "está em risco" é comportamento, e
+  é o que o motor mede. Uma fonte só empobreceria as duas respostas. A "regra pior" é a violação mais
+  REPETIDA da semana — a que o aluno está repetindo, não a mais grave que cometeu uma vez.
+- **D14 · O líquido da semana é em R, não em dinheiro** (28/08/2026). R = `result / (plan.pl ×
+  riskPerOperation/100)` é adimensional: quantas vezes o próprio risco autorizado do aluno o
+  resultado representa. É a única unidade em que o dia de quem opera 30 mil em real e o de quem opera
+  50 mil em dólar podem somar. Trade sem plano com RO declarado fica FORA do líquido e é reportado
+  na própria seção — somar o que não tem unidade seria inventar número. As barras são CONTAGEM de
+  trades, pelo mesmo motivo que tirou dinheiro do calendário.
+- **D15 · `RED_FLAG_LABELS` nasce em `compliance.js`** (28/08/2026). Não existia mapa de rótulo PT
+  para as violações de plano: cada superfície improvisava o texto ou exibia o código cru. Mora ao
+  lado de `RED_FLAG_TYPES` para não nascer um segundo.
 
 ### Achados fora do escopo (não corrigidos — decisão de Marcio)
 
@@ -302,6 +318,10 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — **Fase C entregue**: S4 Fora do Plano (semana corrente, seta vs semana anterior) +
+  S5 Stop×Gain (barras de contagem por dia útil, líquido em R). D13/D14/D15. 101 testes na
+  agregação. Base na semana de 24-27/08: 24 trades, 4 ganhos contra 20 perdas, líquido −13,2R;
+  quatro alunos fora do plano, todos com "risco acima do autorizado" como regra mais repetida.
 - 28/08/2026 — **Fase B entregue**: S2 Prioridade do Dia + S3 Radar de Risco, sobre o motor
   unificado do CHUNK-11 (D10), janela 7d no Radar (D11), dia por conta (D12). 84 testes na
   agregação. Medição na base: 25/08 → 2 na prioridade; 26/08 → 2 + 2 no radar; 28/08 → 0 + 3.

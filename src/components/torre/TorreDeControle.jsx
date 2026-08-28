@@ -22,6 +22,8 @@ import useMentorRiskRadar from '../../hooks/useMentorRiskRadar';
 import TorreHeader from './TorreHeader';
 import TorrePrioridade from './TorrePrioridade';
 import TorreRadar from './TorreRadar';
+import TorreForaDoPlano from './TorreForaDoPlano';
+import TorreStopGain from './TorreStopGain';
 
 const Secao = ({ titulo, fase, altura = 'h-40' }) => (
   <div className={`bg-slate-900/40 border border-dashed border-slate-800 rounded-xl px-5 flex flex-col items-center justify-center ${altura}`}>
@@ -31,7 +33,7 @@ const Secao = ({ titulo, fase, altura = 'h-40' }) => (
 );
 
 const TorreDeControle = ({ allTrades, plans, students, subscriptions, onAbrirAluno }) => {
-  const { dia, janelaDias, header, priority, radar } = useMentorRiskRadar({
+  const { dia, janelaDias, header, priority, radar, foraPlano, stopGain } = useMentorRiskRadar({
     allTrades, plans, students, subscriptions,
   });
 
@@ -52,8 +54,8 @@ const TorreDeControle = ({ allTrades, plans, students, subscriptions, onAbrirAlu
           <TorrePrioridade priority={priority} onAbrirAluno={onAbrirAluno} />
           <TorreRadar radar={radar} janelaDias={janelaDias} onAbrirAluno={onAbrirAluno} />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Secao titulo="Fora do Plano" fase="C" altura="h-52" />
-            <Secao titulo="Stop × Gain" fase="C" altura="h-52" />
+            <TorreForaDoPlano foraPlano={foraPlano} onAbrirAluno={onAbrirAluno} />
+            <TorreStopGain stopGain={stopGain} />
           </div>
         </div>
 
