@@ -11,7 +11,7 @@
  * - 1.2.0: Cards por aluno com contadores clicáveis (OPEN/QUESTION)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
@@ -217,6 +217,20 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const handleClickStudentOpen = (student) => { setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name }); setSelectedTradeIds(new Set()); };
   const handleClickStudentQuestion = (student) => { setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name }); setSelectedTradeIds(new Set()); };
   const handleClickStudentAll = (student) => { setSelectedStudent(student); setPendingFilter(null); setSelectedTradeIds(new Set()); };
+
+  // #101 — vários pontos abriam o aluno com `{email, name}` só. A tela de detalhe
+  // usa `selectedStudent.studentId` para filtrar os PLANOS e para o fluxo de
+  // fechamento de ciclo: sem ele, abrir o aluno pelo alerta, pelo ranking ou pelo
+  // card de promoção entregava a tela sem plano nenhum, enquanto abrir pela lista
+  // de Alunos entregava completa. O id vem do próprio trade (getUniqueStudents).
+  const abrirAluno = useCallback((student) => {
+    if (!student?.email) return setSelectedStudent(student);
+    if (student.studentId) return setSelectedStudent(student);
+    const conhecido = students.find(
+      (s) => String(s.email).toLowerCase() === String(student.email).toLowerCase(),
+    );
+    setSelectedStudent(conhecido ? { ...student, studentId: conhecido.studentId } : student);
+  }, [students]);
   const handleBackFromFilter = () => { setPendingFilter(null); setSelectedTradeIds(new Set()); };
 
   // === Bulk Feedback Handlers ===
@@ -454,7 +468,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               students={students}
               activeEmails={emailsAtivos}
               getTradesByStudent={getTradesByStudent}
-              onViewStudent={setSelectedStudent}
+              onViewStudent={abrirAluno}
             />
           </div>
           {/* #376 — alunos prontos para promoção. Vem ANTES do alerta de regressão:
@@ -462,13 +476,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <MentorPromotionAlert
             students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
             maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
+            onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
           />
           {/* Alertas de regressão de maturidade — issue #119 task 18 */}
           <MentorMaturityAlert
             students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
             maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
+            onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
           />
           {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
           <PendingReviewsCard
@@ -772,7 +786,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                       {student.reasons.map((reason, i) => <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>)}
                     </div>
                   </div>
-                  <button onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
+                  <button onClick={() => abrirAluno({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
                 </div>
               </div>
             ))
@@ -793,7 +807,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               const studentRankingTrades = groupedTrades[student.email] || [];
               const studentTotalsByCurrency = aggregateTradesByCurrency(studentRankingTrades);
               return (
-              <div key={student.email} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
+              <div key={student.email} onClick={() => abrirAluno({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>{index + 1}</div>
                 <div className="flex-1"><p className="font-medium text-white">{student.name}</p><p className="text-xs text-slate-500">{student.totalTrades} trades</p></div>
                 <div className="text-right min-w-[8rem]">
