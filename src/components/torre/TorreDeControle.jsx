@@ -24,16 +24,10 @@ import TorrePrioridade from './TorrePrioridade';
 import TorreRadar from './TorreRadar';
 import TorreForaDoPlano from './TorreForaDoPlano';
 import TorreStopGain from './TorreStopGain';
-
-const Secao = ({ titulo, fase, altura = 'h-40' }) => (
-  <div className={`bg-slate-900/40 border border-dashed border-slate-800 rounded-xl px-5 flex flex-col items-center justify-center ${altura}`}>
-    <div className="text-sm text-slate-500 font-semibold">{titulo}</div>
-    <div className="text-[10px] text-slate-700 uppercase tracking-wide mt-1.5">Fase {fase}</div>
-  </div>
-);
+import TorreVisaoRapida from './TorreVisaoRapida';
 
 const TorreDeControle = ({ allTrades, plans, students, subscriptions, onAbrirAluno }) => {
-  const { dia, janelaDias, header, priority, radar, foraPlano, stopGain } = useMentorRiskRadar({
+  const { dia, janelaDias, header, priority, radar, foraPlano, stopGain, byStudent } = useMentorRiskRadar({
     allTrades, plans, students, subscriptions,
   });
 
@@ -59,7 +53,7 @@ const TorreDeControle = ({ allTrades, plans, students, subscriptions, onAbrirAlu
           </div>
         </div>
 
-        <Secao titulo="Visão Rápida por Aluno" fase="D" altura="h-full min-h-[20rem]" />
+        <TorreVisaoRapida byStudent={byStudent} onAbrirAluno={onAbrirAluno} />
       </div>
     </div>
   );

@@ -24,7 +24,9 @@ import { effectiveRedFlags, flagType } from './violationFilter';
 import { buildPeriodState } from './dayState';
 import { getPattern } from '../constants/behavioralTaxonomy';
 import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
-import { tradeInstantMs } from './tradeInstant';
+import { tradeInstantMs, sortTradesChrono } from './tradeInstant';
+import { computeCurrentPl, computeCycleBalance } from './planBalance';
+import { buildPlanLedger, summarizeLedger } from './planLedger';
 
 
 /** Número finito ou null — entrada de Firestore chega como string com frequência. */
@@ -200,13 +202,21 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   const tradesPorAluno = new Map();
   const janelaPorAluno = new Map();
   const radarPorAluno = new Map();
+  // Saldo, winrate e drawdown são do CICLO, não da janela: precisam do histórico.
+  const todosDoAluno = new Map();
   for (const t of allTrades ?? []) {
-    if (!t?.date || t.date < inicioJanela || t.date > dia) continue;
+    if (!t?.date) continue;
     const dono =
       (t.studentId && porId.get(t.studentId)) ||
       (t.studentEmail && porEmail.get(String(t.studentEmail).toLowerCase())) ||
       null;
     if (!dono) continue;
+
+    const todos = todosDoAluno.get(dono.id) ?? [];
+    todos.push(t);
+    todosDoAluno.set(dono.id, todos);
+
+    if (t.date < inicioJanela || t.date > dia) continue;
     const naJanela = janelaPorAluno.get(dono.id) ?? [];
     naJanela.push(t);
     janelaPorAluno.set(dono.id, naJanela);
@@ -261,6 +271,14 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       radar: linhaDeRadar(familiasJanela),
       tradesSemana,
       foraDoPlanoSemana: foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior),
+      // S6 — o retrato do aluno é sempre de UM plano. Com duas contas, a do dia;
+      // sem trade hoje, a mais recente da janela. Misturar as duas seria repetir
+      // o erro que a D12 corrigiu.
+      visaoRapida: visaoRapidaDoAluno({
+        plano: planoPorId.get(planoEmFoco(tradesHoje, todosDoAluno.get(s.id))) ?? null,
+        tradesDoPlano: todosDoAluno.get(s.id) ?? [],
+        periodState,
+      }),
       studentId: s.id,
       email: s.email ?? null,
       // D9: a ação da Torre é LINK pro que já existe. O número já está cadastrado
@@ -659,5 +677,94 @@ export function stopVsGain(tradesSemana, planoPorId) {
     comR,
     semR,
     total: (tradesSemana ?? []).length,
+  };
+}
+
+// ============================================================================
+// Fase D — Visão Rápida por Aluno (S6)
+// ============================================================================
+
+/**
+ * MC-9 · O retrato de um aluno no trilho direito.
+ *
+ * REUSA A SSoT, não recomputa fórmula: `computeCurrentPl`/`computeCycleBalance`
+ * (planBalance) para o saldo, `buildPlanLedger`/`summarizeLedger` (planLedger)
+ * para o winrate, `buildPeriodState` (#402) para a meta do período.
+ *
+ * DUAS CORREÇÕES sobre a spec de 27/07:
+ *
+ * 1. "Meta semanal" NÃO usa `summarizeLedger().progressPercent`: aquele campo
+ *    divide pela meta do CICLO (`planLedger.js:176`), não do período — subestima
+ *    entre 2x e 20x, com fator diferente por aluno. Aqui a meta é a do PERÍODO
+ *    que o plano declara (`operationPeriod`), medida pelo mesmo motor que desenha
+ *    o card do dia do aluno. Mesma correção da D3.
+ *
+ * 2. O drawdown é pico-a-vale sobre a ordem CRONOLÓGICA (`sortTradesChrono`, a
+ *    SSoT do #402). O cálculo que existe no dashboard ordena só por `date`, então
+ *    trades do mesmo dia entram na ordem que o Firestore devolver — e o valor
+ *    muda a cada leitura. Aqui a ordem é total e determinística.
+ *
+ * @returns {Object|null}
+ */
+/**
+ * Qual conta está em foco no retrato: a do dia; sem trade hoje, a do último trade
+ * que o aluno registrou — não a da janela, que deixava quem passou a semana sem
+ * operar aparecendo como "sem plano".
+ */
+export function planoEmFoco(tradesHoje, todosOsTrades) {
+  if (tradesHoje?.[0]?.planId) return tradesHoje[0].planId;
+  const comData = (todosOsTrades ?? []).filter((t) => t?.date && t.planId);
+  if (!comData.length) return null;
+  return comData.reduce((maisNovo, t) => (t.date > maisNovo.date ? t : maisNovo)).planId;
+}
+
+export function visaoRapidaDoAluno({ plano, tradesDoPlano, periodState }) {
+  if (!plano) return null;
+
+  const doPlano = (tradesDoPlano ?? []).filter((t) => t.planId === plano.id);
+  const saldoCiclo = computeCycleBalance(plano, doPlano);
+  const saldoAtual = computeCurrentPl(plano, doPlano);
+
+  const roValor = plano.pl > 0 && plano.riskPerOperation > 0
+    ? plano.pl * (plano.riskPerOperation / 100)
+    : null;
+
+  const ledger = buildPlanLedger(doPlano, plano);
+  const resumo = summarizeLedger(ledger, plano);
+
+  // Meta DO PERÍODO — não a do ciclo. Ver nota 1 acima.
+  // Sem período aberto (ninguém operou hoje) a meta não some: o progresso do dia é
+  // zero, e zero é uma informação — "não começou" é diferente de "não sei".
+  const metaValor = periodState?.goalValue
+    ?? (plano.pl > 0 && plano.periodGoal > 0 ? plano.pl * (plano.periodGoal / 100) : null);
+  const metaPercent = metaValor > 0
+    ? Math.round(((periodState?.net ?? 0) / metaValor) * 100)
+    : null;
+
+  // Drawdown pico-a-vale, em ordem cronológica total. Ver nota 2 acima.
+  const emOrdem = sortTradesChrono(doPlano);
+  let cum = 0;
+  let pico = 0;
+  let maiorQueda = 0;
+  for (const t of emOrdem) {
+    cum += num(t.result) ?? 0;
+    if (cum > pico) pico = cum;
+    const queda = pico - cum;
+    if (queda > maiorQueda) maiorQueda = queda;
+  }
+
+  return {
+    planId: plano.id,
+    planName: plano.name ?? null,
+    saldoAtual,
+    saldoCiclo,
+    liquidoR: roValor ? Math.round((saldoCiclo / roValor) * 100) / 100 : null,
+    metaValor,
+    metaPercent,
+    periodo: plano.operationPeriod ?? 'Diário',
+    drawdown: Math.round(maiorQueda * 100) / 100,
+    drawdownPercent: plano.pl > 0 ? Math.round((maiorQueda / plano.pl) * 1000) / 10 : null,
+    winRate: Math.round((resumo.winRate ?? 0) * 10) / 10,
+    trades: doPlano.length,
   };
 }

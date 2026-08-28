@@ -180,8 +180,8 @@ overview v1 segue funcionando e intocado até a Fase D.
 - **Fase C** — ✅ ENTREGUE 28/08. Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8). D13: as duas
   seções usam FONTES DIFERENTES de propósito — S4 lê red flag (adesão ao plano), S3 lê o motor
   comportamental. Perguntas diferentes.
-- **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
-  overview v1 é aposentado.
+- **Fase D** — ✅ ENTREGUE 28/08. Visão Rápida S6 (MC-9). A **promoção caiu** (D16): a Torre virou
+  ABA do Dashboard por decisão de Marcio, então não há destino a promover nem overview a aposentar.
 - Testes de formatação/agregação ANTES da UI em cada fase.
 
 **Por que o hook nasce COMPLETO na Fase A**, em vez de crescer por seção: `useMentorRiskRadar`
@@ -250,7 +250,7 @@ tela incompleta.
     o card sai sozinho quando o comportamento não se repete na janela. Se um dia fizer falta, o
     `whatsappState` (none/talking/waiting) já existe e não exige campo novo.
 
-> D1..D15 viram DEC-AUTO-101-01..15 no encerramento (§4.3).
+> D1..D18 viram DEC-AUTO-101-01..18 no encerramento (§4.3).
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
@@ -287,6 +287,24 @@ tela incompleta.
   para as violações de plano: cada superfície improvisava o texto ou exibia o código cru. Mora ao
   lado de `RED_FLAG_TYPES` para não nascer um segundo.
 
+- **D16 · Não há promoção nem aposentadoria** (28/08/2026). A Fase D previa a Torre virando destino
+  padrão e o overview v1 sendo aposentado, junto com a decisão sobre os seis componentes órfãos.
+  Perdeu o objeto quando a Torre virou aba (D8 revisada): o overview continua sendo a Visão Geral, já
+  corrigido em 28/08 (curva fora, calendário funcionando, alertas agrupados, lista por dia). Dos seis
+  componentes, só o `CalendarHeatmap` ficou órfão — e quebrado. Clicar em "Dashboard" ainda abre a
+  Visão Geral; a Torre é a primeira aba. Trocar o pouso padrão é decisão de Marcio, não default meu.
+- **D17 · O retrato do S6 é de UMA conta** (28/08/2026). Aluno com duas contas tem dois retratos, e a
+  conta em foco é a do dia — sem trade hoje, a do último trade registrado (não a da janela, que
+  deixava quem passou a semana sem operar aparecendo como "sem plano": eram 8 dos 12, viraram 3, e
+  esses 3 nunca operaram). Saldo, winrate e drawdown são do CICLO; meta é do PERÍODO. Misturar contas
+  repetiria o erro que a D12 corrigiu.
+- **D18 · Meta e drawdown do S6 corrigem a spec** (28/08/2026). (a) A "meta semanal" não usa
+  `summarizeLedger().progressPercent` — aquele campo divide pela meta do CICLO (mesma correção da D3);
+  aqui é a meta do PERÍODO que o plano declara, medida pelo motor do #402. Dia sem operação mostra 0%,
+  não esconde a barra: "não começou" é informação. (b) O drawdown é pico-a-vale em ordem CRONOLÓGICA
+  (`sortTradesChrono`); o cálculo do dashboard ordena só por `date`, então trades do mesmo dia entram
+  na ordem que o Firestore devolver e o número muda a cada leitura — é o achado de 24/08 ainda sem issue.
+
 ### Achados fora do escopo (não corrigidos — decisão de Marcio)
 
 - `useEmotionalProfile.js:85` passa `analysis.trades || null` a `calculateStudentStatus`, mas
@@ -318,6 +336,9 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — **Fase D entregue**: S6 Visão Rápida por Aluno. D16/D17/D18. 117 testes na agregação.
+  Base: 9 dos 12 alunos com retrato (3 nunca operaram) — Sandra −9,27R e winrate 0% na DEMO, German
+  +11,47R, Rafael +6,85R. Todas as seções do mockup no ar.
 - 28/08/2026 — **Fase C entregue**: S4 Fora do Plano (semana corrente, seta vs semana anterior) +
   S5 Stop×Gain (barras de contagem por dia útil, líquido em R). D13/D14/D15. 101 testes na
   agregação. Base na semana de 24-27/08: 24 trades, 4 ganhos contra 20 perdas, líquido −13,2R;

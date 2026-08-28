@@ -24,6 +24,8 @@ import {
   diasAntes,
   foraDoPlanoDoAluno,
   stopVsGain,
+  visaoRapidaDoAluno,
+  planoEmFoco,
 } from '../../utils/mentorRiskRadar';
 import { buildPeriodState } from '../../utils/dayState';
 
@@ -781,5 +783,126 @@ describe('stopVsGain — MC-8', () => {
     const r = stopVsGain([], plano);
     expect(r.total).toBe(0);
     expect(r.dias).toHaveLength(5);
+  });
+});
+
+describe('visaoRapidaDoAluno — MC-9', () => {
+  const plano = {
+    id: 'p1', name: 'WINFUT', pl: 30000, periodStop: 1.67, periodGoal: 3.35,
+    riskPerOperation: 1, operationPeriod: 'Diário',
+  };
+  const t = (id, date, result, hora = '10:00') => ({
+    id, date, planId: 'p1', result, entryTime: `${date}T${hora}:00-03:00`,
+  });
+
+  it('saldo é PL alocado mais o resultado do ciclo aberto', () => {
+    const r = visaoRapidaDoAluno({
+      plano, tradesDoPlano: [t('a', '2026-08-24', 500), t('b', '2026-08-25', -200)],
+    });
+    expect(r.saldoCiclo).toBe(300);
+    expect(r.saldoAtual).toBe(30300);
+  });
+
+  it('o líquido em R usa o RO do próprio plano', () => {
+    // RO = 30.000 × 1% = R$300. Saldo de +600 = +2R.
+    const r = visaoRapidaDoAluno({ plano, tradesDoPlano: [t('a', '2026-08-24', 600)] });
+    expect(r.liquidoR).toBe(2);
+  });
+
+  it('a meta é a do PERÍODO, não a do ciclo', () => {
+    // Meta do período = 3,35% de 30.000 = R$1.005. Net do dia +500 → 50%.
+    const r = visaoRapidaDoAluno({
+      plano, tradesDoPlano: [t('a', '2026-08-28', 500)],
+      periodState: { net: 500, goalValue: 1005 },
+    });
+    expect(r.metaPercent).toBe(50);
+  });
+
+  it('sem período aberto o progresso do dia é ZERO, não desconhecido', () => {
+    // A meta vem do plano; o que falta é resultado. "Não começou" é informação —
+    // esconder a barra faria o mentor achar que o aluno não tem meta.
+    const r = visaoRapidaDoAluno({ plano, tradesDoPlano: [t('a', '2026-08-20', 500)], periodState: null });
+    expect(r.metaPercent).toBe(0);
+    expect(r.metaValor).toBeCloseTo(1005, 2);
+  });
+
+  it('drawdown é pico-a-vale, não saldo atual contra inicial', () => {
+    // +1000 (pico), −400, +100 → o vale foi 400 abaixo do pico; o saldo final é +700.
+    const r = visaoRapidaDoAluno({
+      plano,
+      tradesDoPlano: [t('a', '2026-08-24', 1000), t('b', '2026-08-25', -400), t('c', '2026-08-26', 100)],
+    });
+    expect(r.drawdown).toBe(400);
+    expect(r.saldoCiclo).toBe(700);
+  });
+
+  it('drawdown não muda com a ordem em que os trades chegam no mesmo dia', () => {
+    const manha = t('a', '2026-08-24', 800, '09:00');
+    const tarde = t('b', '2026-08-24', -300, '15:00');
+    const umaOrdem = visaoRapidaDoAluno({ plano, tradesDoPlano: [manha, tarde] });
+    const outraOrdem = visaoRapidaDoAluno({ plano, tradesDoPlano: [tarde, manha] });
+    expect(umaOrdem.drawdown).toBe(outraOrdem.drawdown);
+    expect(umaOrdem.drawdown).toBe(300);
+  });
+
+  it('drawdown em % é sobre o PL alocado', () => {
+    const r = visaoRapidaDoAluno({ plano, tradesDoPlano: [t('a', '2026-08-24', -600)] });
+    expect(r.drawdownPercent).toBe(2); // 600 de 30.000
+  });
+
+  it('só conta trade do próprio plano — duas contas não se misturam', () => {
+    const r = visaoRapidaDoAluno({
+      plano,
+      tradesDoPlano: [t('a', '2026-08-24', 500), { id: 'x', date: '2026-08-24', planId: 'outro', result: -9999 }],
+    });
+    expect(r.saldoCiclo).toBe(500);
+    expect(r.trades).toBe(1);
+  });
+
+  it('sem plano não há retrato', () => {
+    expect(visaoRapidaDoAluno({ plano: null, tradesDoPlano: [] })).toBeNull();
+  });
+
+  it('plano sem RO não produz R', () => {
+    const semRo = { ...plano, riskPerOperation: 0 };
+    expect(visaoRapidaDoAluno({ plano: semRo, tradesDoPlano: [t('a', '2026-08-24', 500)] }).liquidoR).toBeNull();
+  });
+});
+
+describe('planoEmFoco — qual conta o retrato mostra', () => {
+  const t = (id, date, planId) => ({ id, date, planId });
+
+  it('a conta do dia manda', () => {
+    expect(planoEmFoco([t('a', '2026-08-28', 'p1')], [t('b', '2026-08-20', 'p2')])).toBe('p1');
+  });
+
+  it('sem trade hoje, a do último trade registrado — não "sem plano"', () => {
+    expect(planoEmFoco([], [t('a', '2026-07-01', 'p2'), t('b', '2026-08-20', 'p1')])).toBe('p1');
+  });
+
+  it('aluno que nunca operou não tem conta em foco', () => {
+    expect(planoEmFoco([], [])).toBeNull();
+    expect(planoEmFoco(null, null)).toBeNull();
+  });
+
+  it('trade sem planId não entra na disputa', () => {
+    expect(planoEmFoco([], [t('a', '2026-08-27', null), t('b', '2026-08-20', 'p1')])).toBe('p1');
+  });
+});
+
+describe('visaoRapidaDoAluno — dia sem operação', () => {
+  const plano = { id: 'p1', pl: 30000, periodGoal: 3.35, riskPerOperation: 1, operationPeriod: 'Diário' };
+
+  it('meta do dia é 0%, não some da tela', () => {
+    const r = visaoRapidaDoAluno({
+      plano, tradesDoPlano: [{ id: 'a', date: '2026-08-20', planId: 'p1', result: 500 }], periodState: null,
+    });
+    expect(r.metaPercent).toBe(0);
+    expect(r.metaValor).toBeCloseTo(1005, 2);
+  });
+
+  it('plano sem meta declarada não inventa barra', () => {
+    const r = visaoRapidaDoAluno({ plano: { ...plano, periodGoal: 0 }, tradesDoPlano: [], periodState: null });
+    expect(r.metaPercent).toBeNull();
   });
 });
