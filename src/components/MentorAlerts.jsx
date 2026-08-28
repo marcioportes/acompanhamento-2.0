@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
 import { useComplianceRules } from '../hooks/useComplianceRules';
-import { agruparAlertasPorAluno } from '../utils/mentorAlertsGrouping';
+import { agruparAlertasPorAluno, mapearAlertasDoAluno } from '../utils/mentorAlertsGrouping';
 import DebugBadge from '../components/DebugBadge';
 
 const timeAgo = (ts) => {
@@ -54,22 +54,9 @@ const StudentAlertGenerator = ({ trades, studentName, studentEmail, detectionCon
   
   useEffect(() => {
     if (isReady && alerts && alerts.length > 0) {
-      const mapped = alerts
-        .filter(a => a.severity === 'CRITICAL' || a.severity === 'HIGH')
-        .map(a => ({
-          id: `local_${studentEmail}_${a.id || `${a.type}_${a.timestamp || 'na'}`}`,
-          type: a.type,
-          severity: a.severity || 'MEDIUM',
-          studentName,
-          studentEmail,
-          message: a.message,
-          timestamp: a.date ? new Date(a.date) : new Date(),
-          source: 'client',
-          read: false
-        }));
-      onAlerts(studentEmail, mapped);
+      onAlerts(studentEmail, mapearAlertasDoAluno(alerts, { studentName, studentEmail }));
     }
-  }, [isReady, alerts]);
+  }, [isReady, alerts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null; // Componente invisível
 };
@@ -92,6 +79,20 @@ const MentorAlerts = ({ students = [], activeEmails = null, getTradesByStudent, 
   const [showAll, setShowAll] = useState(false);
   const [verHistorico, setVerHistorico] = useState(false);
   const { detectionConfig, statusThresholds } = useComplianceRules();
+
+  // #101 — `getTradesByStudent(email)` devolve um ARRAY NOVO a cada chamada, e era
+  // chamado direto no render. Cada render dava novos `trades` a cada gerador, que
+  // recomputava `analysis` e `alerts` no `useEmotionalProfile`, que disparava o
+  // efeito de novo — a segunda metade do loop que fazia o painel pular. Memoizado,
+  // a identidade só muda quando os trades mudam de verdade.
+  const alunosComTrades = useMemo(() => {
+    const ativo = (email) =>
+      !activeEmails || activeEmails.size === 0 || activeEmails.has(String(email || '').toLowerCase());
+    return (students ?? [])
+      .filter((s) => s?.email && ativo(s.email))
+      .map((s) => ({ aluno: s, trades: getTradesByStudent ? getTradesByStudent(s.email) : [] }))
+      .filter(({ trades }) => trades.length > 0);
+  }, [students, activeEmails, getTradesByStudent]);
 
   // Listener de notificações do Firestore
   useEffect(() => {
@@ -166,10 +167,7 @@ const MentorAlerts = ({ students = [], activeEmails = null, getTradesByStudent, 
   return (
     <div className="glass-card overflow-hidden">
       {/* Invisible alert generators */}
-      {students.map(s => {
-        if (activeEmails && activeEmails.size > 0 && !activeEmails.has(String(s.email || '').toLowerCase())) return null;
-        const trades = getTradesByStudent ? getTradesByStudent(s.email) : [];
-        if (trades.length === 0) return null;
+      {alunosComTrades.map(({ aluno: s, trades }) => {
         return (
           <StudentAlertGenerator
             key={s.email}

@@ -14,6 +14,37 @@
 
 const ORDEM_SEVERIDADE = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
+/**
+ * Converte os alertas client-side (`useEmotionalProfile`) no formato do painel.
+ *
+ * DETERMINÍSTICO POR CONTRATO. O mapeamento anterior fazia
+ * `timestamp: a.date ? new Date(a.date) : new Date()` — e nenhum alerta do hook
+ * tem campo `date` (todos usam `timestamp`). Ou seja: TODO alerta nascia
+ * carimbado com a hora atual, diferente a cada execução. Como o painel guarda o
+ * resultado em estado e compara por JSON, o carimbo novo sempre diferia do
+ * anterior, disparava `setState`, que re-renderizava, que remapeava — um loop
+ * que não parava. Visível como painel pulando e como "agora" em alerta velho.
+ *
+ * Duas chamadas com a mesma entrada precisam devolver a MESMA saída. É isso que
+ * o teste desta função trava.
+ */
+export function mapearAlertasDoAluno(alerts, { studentName, studentEmail } = {}) {
+  return (alerts ?? [])
+    .filter((a) => a.severity === 'CRITICAL' || a.severity === 'HIGH')
+    .map((a) => ({
+      id: `local_${studentEmail}_${a.id || `${a.type}_${a.timestamp || 'na'}`}`,
+      type: a.type,
+      severity: a.severity || 'MEDIUM',
+      studentName,
+      studentEmail,
+      message: a.message,
+      // O carimbo é o do alerta. Sem carimbo, sem carimbo — nunca "agora".
+      timestamp: a.timestamp ?? a.date ?? null,
+      source: 'client',
+      read: false,
+    }));
+}
+
 /** Timestamp em ms de campos que chegam como Firestore Timestamp, Date ou string. */
 export const paraMs = (ts) => {
   if (!ts) return null;

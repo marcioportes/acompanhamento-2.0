@@ -4,7 +4,7 @@
  * apenas 4 alunos — quatro linhas, não vinte e seis.
  */
 import { describe, it, expect } from 'vitest';
-import { agruparAlertasPorAluno, paraMs } from '../../utils/mentorAlertsGrouping';
+import { agruparAlertasPorAluno, paraMs, mapearAlertasDoAluno } from '../../utils/mentorAlertsGrouping';
 
 const AGORA = new Date('2026-08-27T12:00:00-03:00');
 const diasAtras = (n) => new Date(AGORA.getTime() - n * 86400000);
@@ -119,5 +119,50 @@ describe('agruparAlertasPorAluno', () => {
 
   it('entrada vazia não explode', () => {
     expect(agruparAlertasPorAluno(null).linhas).toEqual([]);
+  });
+});
+
+describe('mapearAlertasDoAluno — a causa do painel pulando', () => {
+  // Nenhum alerta do useEmotionalProfile tem campo `date`; todos usam `timestamp`.
+  const doHook = [
+    { id: 'tilt_0', type: 'TILT_DETECTED', severity: 'CRITICAL', message: 'TILT', timestamp: '2026-08-25T10:00:00-03:00' },
+    { id: 'revenge_0', type: 'REVENGE_DETECTED', severity: 'HIGH', message: 'Revenge', timestamp: '2026-08-25T11:00:00-03:00' },
+    { id: 'x', type: 'OUTRO', severity: 'MEDIUM', message: 'ruído', timestamp: '2026-08-25T12:00:00-03:00' },
+  ];
+
+  it('é determinístico — duas chamadas com a mesma entrada dão a mesma saída', () => {
+    // O mapeamento antigo carimbava `new Date()` em todo alerta (porque lia `a.date`,
+    // que não existe). O painel guardava isso em estado e comparava por JSON: o
+    // carimbo novo sempre diferia, disparava setState, re-renderizava, remapeava.
+    const a = mapearAlertasDoAluno(doHook, { studentName: 'Sandra', studentEmail: 's@x.com' });
+    const b = mapearAlertasDoAluno(doHook, { studentName: 'Sandra', studentEmail: 's@x.com' });
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it('preserva o carimbo do alerta em vez de inventar "agora"', () => {
+    const [tilt] = mapearAlertasDoAluno(doHook, { studentEmail: 's@x.com' });
+    expect(tilt.timestamp).toBe('2026-08-25T10:00:00-03:00');
+  });
+
+  it('alerta sem carimbo fica sem carimbo — nunca "agora"', () => {
+    const [a] = mapearAlertasDoAluno(
+      [{ id: 'z', type: 'TILT_DETECTED', severity: 'CRITICAL', message: 'sem hora' }],
+      { studentEmail: 's@x.com' },
+    );
+    expect(a.timestamp).toBeNull();
+  });
+
+  it('só sobe CRITICAL e HIGH ao painel', () => {
+    const r = mapearAlertasDoAluno(doHook, { studentEmail: 's@x.com' });
+    expect(r.map((a) => a.severity)).toEqual(['CRITICAL', 'HIGH']);
+  });
+
+  it('id é estável e carrega o dono', () => {
+    const [a] = mapearAlertasDoAluno(doHook, { studentEmail: 's@x.com' });
+    expect(a.id).toBe('local_s@x.com_tilt_0');
+  });
+
+  it('entrada vazia não explode', () => {
+    expect(mapearAlertasDoAluno(null, { studentEmail: 's@x.com' })).toEqual([]);
   });
 });
