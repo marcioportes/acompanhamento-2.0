@@ -103,8 +103,16 @@ const TradesList = ({
     return 'text-slate-400';
   };
 
-  // Sort interno: ASC por data, depois entryTime, fallback createdAt
+  // Sort interno: ASC por data, depois entryTime, fallback createdAt.
+  // #101 — quando a lista MISTURA alunos (dia da turma), o aluno vem antes da hora:
+  // cronologia entrelaçada entre pessoas não se lê. Agrupado, cada aluno tem seu
+  // bloco em ordem de execução, que é como o feedback é dado (aluno/dia/trades).
   const sortedTrades = [...trades].sort((a, b) => {
+    if (showStudent) {
+      const alunoA = a.studentName || a.studentEmail || '';
+      const alunoB = b.studentName || b.studentEmail || '';
+      if (alunoA !== alunoB) return alunoA.localeCompare(alunoB, 'pt-BR');
+    }
     const dateA = a.date || '';
     const dateB = b.date || '';
     if (dateA !== dateB) return dateA.localeCompare(dateB);
@@ -169,14 +177,16 @@ const TradesList = ({
                   )}
                 </td>
 
-                {/* ALUNO (opcional) */}
+                {/* ALUNO — #101. Era cinza, 12px e truncado em 100px: numa lista que
+                    mistura alunos, quem fez o trade é a âncora da linha, não um
+                    detalhe secundário. */}
                 {showStudent && (
                   <td className="p-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[10px] text-white font-bold">
-                        {trade.studentName?.charAt(0)?.toUpperCase() || '?'}
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] text-white font-bold flex-shrink-0">
+                        {(trade.studentName || trade.studentEmail || '?').charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-slate-400 text-xs truncate max-w-[100px]">
+                      <span className="text-white text-sm font-medium whitespace-nowrap">
                         {trade.studentName || trade.studentEmail?.split('@')[0] || '-'}
                       </span>
                     </div>
