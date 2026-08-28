@@ -11,8 +11,13 @@ import { formatCurrencyCompact } from '../utils/currency';
  * @param {string} currency - Moeda dominante do conjunto de trades (ex.: 'BRL', 'USD').
  * @param {Date|string|null} focusDate - Mês inicial exibido; segue o período da barra
  *   de contexto (#289). Navegação manual com as setas persiste até focusDate mudar.
+ * @param {Object|null} daysMeta - #101, modo TURMA. Mapa { 'YYYY-MM-DD': {trades, alunos, flags} }
+ *   vindo de `buildCalendarDays`. Quando presente, o dia deixa de mostrar dinheiro e passa a
+ *   mostrar quantos alunos operaram, colorido por violação — a turma opera em duas moedas, e
+ *   somar o P&L de doze pessoas num número só não descreve dia nenhum (#267/#289).
  */
-const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = 'BRL', focusDate = null }) => {
+const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = 'BRL', focusDate = null, daysMeta = null }) => {
+  const modoTurma = daysMeta !== null;
   const formatCurrency = (value) => formatCurrencyCompact(value, currency);
 
   const [currentDate, setCurrentDate] = useState(() => (focusDate ? new Date(focusDate) : new Date()));
@@ -60,6 +65,20 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
     return monthPnL;
   }, [dailyData, currentDate]);
 
+  // Totais do mês em modo turma: atividade e risco, nunca soma de dinheiro.
+  const mesTurma = useMemo(() => {
+    if (!modoTurma) return { trades: 0, dias: 0, flags: 0 };
+    const ano = currentDate.getFullYear();
+    const mes = currentDate.getMonth();
+    let trades = 0, dias = 0, flags = 0;
+    for (const [data, d] of Object.entries(daysMeta)) {
+      const [y, m] = data.split('-').map(Number);
+      if (y !== ano || m - 1 !== mes) continue;
+      trades += d.trades; flags += d.flags; dias += 1;
+    }
+    return { trades, dias, flags };
+  }, [modoTurma, daysMeta, currentDate]);
+
   // --- NAVEGAÇÃO ---
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -89,9 +108,16 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
           <span className="text-sm font-bold text-white capitalize">{formattedTitle}</span>
         </div>
         
-        <div className={`text-sm font-mono font-bold ${monthStats >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-          {monthStats > 0 ? '+' : ''}{formatCurrency(monthStats)}
-        </div>
+        {modoTurma ? (
+          <div className="text-xs font-mono text-slate-400">
+            {mesTurma.trades} {mesTurma.trades === 1 ? 'trade' : 'trades'} · {mesTurma.dias} {mesTurma.dias === 1 ? 'dia' : 'dias'}
+            {mesTurma.flags > 0 && <span className="text-amber-400"> · {mesTurma.flags} fora do plano</span>}
+          </div>
+        ) : (
+          <div className={`text-sm font-mono font-bold ${monthStats >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {monthStats > 0 ? '+' : ''}{formatCurrency(monthStats)}
+          </div>
+        )}
       </div>
 
       {/* BODY */}
@@ -111,14 +137,28 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
 
           {daysArray.map(day => {
             const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const data = dailyData[dateString];
+            const meta = modoTurma ? daysMeta[dateString] : null;
+            const data = modoTurma ? (meta ? { pnl: 0, count: meta.trades } : undefined) : dailyData[dateString];
             const isSelected = selectedDate === dateString;
             
             // Estilos Condicionais
             let bgClass = "bg-slate-800/20 border-transparent hover:bg-slate-800/50";
             let textClass = "text-slate-500";
             
-            if (data) {
+            if (modoTurma && meta) {
+              // A cor do dia da turma é RISCO, não resultado: dia com violação puxa o olho.
+              if (meta.flags > 0) {
+                bgClass = isSelected
+                  ? "bg-amber-500 border-amber-400 shadow-lg shadow-amber-500/20"
+                  : "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20";
+                textClass = isSelected ? "text-white" : "text-amber-400";
+              } else {
+                bgClass = isSelected
+                  ? "bg-blue-500 border-blue-400 shadow-lg shadow-blue-500/20"
+                  : "bg-slate-700/30 border-slate-600/30 hover:bg-slate-700/50";
+                textClass = isSelected ? "text-white" : "text-slate-300";
+              }
+            } else if (data) {
               if (data.pnl > 0) {
                 bgClass = isSelected 
                   ? "bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-500/20" 
@@ -156,10 +196,12 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                   </span>
                 )}
                 
-                {/* Valor Financeiro */}
+                {/* Valor do dia: dinheiro na tela do aluno; alunos que operaram na da turma */}
                 {data && (
                   <span className={`text-[10px] md:text-xs font-bold mt-3 truncate max-w-full px-1 ${textClass}`}>
-                    {formatCurrency(data.pnl)}
+                    {modoTurma
+                      ? `${meta.alunos} ${meta.alunos === 1 ? 'aluno' : 'alunos'}`
+                      : formatCurrency(data.pnl)}
                   </span>
                 )}
               </button>

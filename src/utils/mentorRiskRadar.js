@@ -235,3 +235,37 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
 
   return { dia, header, byStudent };
 }
+
+/**
+ * Índice de dias para o calendário do mentor.
+ *
+ * POR QUE NÃO SOMA DINHEIRO: a turma opera em duas moedas (base 27/08: 274
+ * trades em BRL, 58 em USD, 47 sem moeda declarada). Somar o P&L da turma num
+ * dia entrega um número que não existe — a mesma armadilha do #267/#289. E
+ * ainda que fosse moeda única, somar o dinheiro de doze pessoas diferentes não
+ * responde nada que o mentor precise saber.
+ *
+ * O que o dia diz aqui é ATIVIDADE E RISCO: quantos operaram, quantos trades,
+ * quantas violações efetivas. Dinheiro do dia é assunto do aluno, na tela dele.
+ *
+ * @param {Array} trades
+ * @param {Set<string>} [emailsNoRadar] — quando presente, ignora quem saiu do radar
+ * @returns {Object} { 'YYYY-MM-DD': { trades, alunos, flags } }
+ */
+export function buildCalendarDays(trades, emailsNoRadar = null) {
+  const dias = {};
+  for (const t of trades ?? []) {
+    if (!t?.date) continue;
+    const email = String(t.studentEmail ?? '').toLowerCase();
+    if (emailsNoRadar && emailsNoRadar.size > 0 && !emailsNoRadar.has(email)) continue;
+    const d = (dias[t.date] ??= { trades: 0, alunos: new Set(), flags: 0 });
+    d.trades += 1;
+    if (email) d.alunos.add(email);
+    d.flags += effectiveRedFlags(t).length;
+  }
+  const saida = {};
+  for (const [data, d] of Object.entries(dias)) {
+    saida[data] = { trades: d.trades, alunos: d.alunos.size, flags: d.flags };
+  }
+  return saida;
+}

@@ -83,14 +83,13 @@ const Sidebar = ({
   const mentorMenuItems = [
     { 
       id: 'dashboard', 
-      label: 'Dashboard', 
-      icon: LayoutDashboard,
+      // #101 — o dashboard do mentor É a Torre de Controle. Não é destino
+      // paralelo: é a mesma tela, reconstruída por seção.
+      label: 'Torre de Controle', 
+      icon: Radar,
       badge: emotionalAlerts > 0 ? emotionalAlerts : null,
       badgeColor: 'purple'
     },
-    // #101 — a Torre nasce como destino próprio ao lado do Dashboard. Na Fase D
-    // ela vira o destino padrão do mentor e o overview atual é aposentado (D8).
-    { id: 'torre', label: 'Torre de Controle', icon: Radar },
     { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
     { id: 'students', label: 'Acompanhamento', icon: Users },
     { id: 'accounts', label: 'Contas', icon: Wallet },

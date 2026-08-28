@@ -1,26 +1,31 @@
 /**
  * TorreDeControle — issue #101
  *
- * Destino próprio do mentor, construído por seção (D8). O overview atual segue
- * intocado até a Fase D, quando a Torre vira o destino padrão.
+ * O dashboard do mentor **é** a Torre. Não é destino paralelo: é a mesma tela,
+ * reconstruída por seção. Cada fase substitui um pedaço do que está aqui hoje.
  *
- *   Fase A (aqui) — S1 Header.
+ *   Fase A (aqui) — S1 Header. Substitui os quatro StatCards de média de turma.
  *   Fase B — S2 Prioridade do Dia + S3 Radar de Risco.
  *   Fase C — S4 Fora do Plano + S5 Stop × Gain.
- *   Fase D — S6 Visão Rápida por Aluno + promoção a destino padrão.
+ *   Fase D — S6 Visão Rápida por Aluno + destino do que sobrar do overview v1.
  *
  * Camada de leitura: nenhuma persistência nova (INV-15). Tudo é derivado do que
- * o mentor já escuta.
+ * o mentor já escuta — este componente não abre listener.
+ *
+ * Sem DebugBadge próprio: é seção, e a página (`MentorDashboard`) já tem o dela.
  */
-import { Radar } from 'lucide-react';
 import useMentorRiskRadar from '../../hooks/useMentorRiskRadar';
 import TorreHeader from './TorreHeader';
-import DebugBadge from '../DebugBadge';
 
-const Placeholder = ({ titulo, fase }) => (
-  <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-xl px-5 py-8 text-center">
-    <div className="text-sm text-slate-400 font-semibold">{titulo}</div>
-    <div className="text-[11px] text-slate-600 mt-1">Fase {fase}</div>
+/** Roadmap visível: o mentor sabe o que ainda não chegou, sem caixa vazia ocupando a tela. */
+const EmConstrucao = () => (
+  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 mb-8">
+    <span className="uppercase tracking-wide text-slate-700">Em construção</span>
+    <span>Prioridade do Dia · Radar de Risco <span className="text-slate-700">(B)</span></span>
+    <span className="text-slate-800">|</span>
+    <span>Fora do Plano · Stop × Gain <span className="text-slate-700">(C)</span></span>
+    <span className="text-slate-800">|</span>
+    <span>Visão Rápida por Aluno <span className="text-slate-700">(D)</span></span>
   </div>
 );
 
@@ -30,31 +35,14 @@ const TorreDeControle = ({ allTrades, plans, students, subscriptions }) => {
   const [ano, mes, diaDoMes] = String(dia).split('-');
 
   return (
-    // pb-20: o DebugBadge é fixed e não pode cobrir conteúdo no fim do scroll.
-    <div className="space-y-6 pb-20">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Radar className="w-5 h-5 text-blue-400" />
-          <h1 className="text-xl font-bold text-white">Torre de Controle</h1>
-        </div>
-        <span className="text-xs text-slate-500 font-mono">{`${diaDoMes}/${mes}/${ano}`}</span>
+    <div className="mb-8">
+      <div className="flex items-center justify-end mb-2">
+        <span className="text-[11px] text-slate-600 font-mono">{`hoje · ${diaDoMes}/${mes}/${ano}`}</span>
       </div>
 
       <TorreHeader header={header} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Placeholder titulo="Prioridade do Dia" fase="B" />
-          <Placeholder titulo="Radar de Risco" fase="B" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Placeholder titulo="Fora do Plano" fase="C" />
-            <Placeholder titulo="Stop × Gain" fase="C" />
-          </div>
-        </div>
-        <Placeholder titulo="Visão Rápida por Aluno" fase="D" />
-      </div>
-
-      <DebugBadge component="TorreDeControle" />
+      <div className="h-4" />
+      <EmConstrucao />
     </div>
   );
 };
