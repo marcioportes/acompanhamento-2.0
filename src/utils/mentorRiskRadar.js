@@ -21,6 +21,9 @@ import { classifyStudent, getAccessStatus } from './studentClassify';
 import { calculateComplianceRate } from './dashboardMetrics';
 import { effectiveRedFlags } from './violationFilter';
 import { buildPeriodState } from './dayState';
+import { getPattern } from '../constants/behavioralTaxonomy';
+import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
+import { tradeInstantMs } from './tradeInstant';
 
 
 /** 'YYYY-MM-DD' de hoje, no fuso local do mentor. */
@@ -165,8 +168,13 @@ export const estadoDoPeriodo = (periodState) => {
  * @param {Date}   [p.now]
  * @returns {{ dia: string, header: Object, byStudent: Array }}
  */
-export function buildMentorRadar({ allTrades, plans, students, subscriptions, now } = {}) {
-  const dia = todayKey(now ?? new Date());
+export function buildMentorRadar({ allTrades, plans, students, subscriptions, now, janelaDias = 7 } = {}) {
+  const agora = now ?? new Date();
+  const dia = todayKey(agora);
+  // Janela do Radar: a turma tem 12 alunos e 2 a 4 operam por dia. Um radar de
+  // HOJE ficaria vazio quase sempre e o mentor perderia o padrão da semana. A
+  // Prioridade continua sendo só de hoje — ela é sobre agir agora.
+  const inicioJanela = todayKey(new Date(agora.getTime() - (janelaDias - 1) * 86400000));
   const subsIdx = indexSubsByStudent(subscriptions);
   const planoPorId = new Map((plans ?? []).filter((p) => p?.id).map((p) => [p.id, p]));
 
@@ -176,28 +184,63 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     ativos.filter((s) => s?.email).map((s) => [String(s.email).toLowerCase(), s]),
   );
 
-  // Um passe sobre os trades do dia; quem não é aluno do radar não entra.
+  // Um passe sobre a janela; quem não é aluno do radar não entra.
   const tradesPorAluno = new Map();
+  const janelaPorAluno = new Map();
   for (const t of allTrades ?? []) {
-    if (t?.date !== dia) continue;
+    if (!t?.date || t.date < inicioJanela || t.date > dia) continue;
     const dono =
       (t.studentId && porId.get(t.studentId)) ||
       (t.studentEmail && porEmail.get(String(t.studentEmail).toLowerCase())) ||
       null;
     if (!dono) continue;
-    const arr = tradesPorAluno.get(dono.id) ?? [];
-    arr.push(t);
-    tradesPorAluno.set(dono.id, arr);
+    const naJanela = janelaPorAluno.get(dono.id) ?? [];
+    naJanela.push(t);
+    janelaPorAluno.set(dono.id, naJanela);
+    if (t.date === dia) {
+      const hoje = tradesPorAluno.get(dono.id) ?? [];
+      hoje.push(t);
+      tradesPorAluno.set(dono.id, hoje);
+    }
   }
 
   const byStudent = ativos.map((s) => {
     const tradesHoje = tradesPorAluno.get(s.id) ?? [];
+    const tradesJanela = janelaPorAluno.get(s.id) ?? [];
+    // Um estado de período POR PLANO: contas diferentes não se somam, nem os stops
+    // nem as moedas. `periodState` (singular) segue existindo para o header e é o do
+    // plano com o pior resultado do dia — o que exige conversa.
+    const porPlano = new Map();
+    for (const t of tradesHoje) {
+      const chave = t.planId ?? '(sem plano)';
+      const arr = porPlano.get(chave) ?? [];
+      arr.push(t);
+      porPlano.set(chave, arr);
+    }
+    const periodStates = [...porPlano.entries()].map(([planId, ts]) => {
+      const p = planoPorId.get(planId) ?? null;
+      return { ...buildPeriodState(ts, p, { periodKey: dia }), planId, planName: p?.name ?? null };
+    });
+    const periodState = periodStates.length
+      ? [...periodStates].sort((a, b) => a.net - b.net)[0]
+      : null;
     const plano = planoPorId.get(tradesHoje[0]?.planId) ?? null;
-    const periodState = tradesHoje.length ? buildPeriodState(tradesHoje, plano) : null;
     const flags = flagsHoje(tradesHoje);
+
+    const familiasHoje = tradesHoje.flatMap(familiasDeRisco);
+    const familiasJanela = tradesJanela.flatMap(familiasDeRisco);
+
     return {
+      tradesJanela,
+      familiasHoje,
+      familiasJanela,
+      prioridade: gatilhoDePrioridade(familiasHoje, periodStates),
+      radar: linhaDeRadar(familiasJanela),
       studentId: s.id,
       email: s.email ?? null,
+      // D9: a ação da Torre é LINK pro que já existe. O número já está cadastrado
+      // e validado em E.164 — 66 dos 68 alunos têm.
+      whatsappNumber: s.whatsappNumber ?? null,
       name: s.name || s.displayName || (s.email ? String(s.email).split('@')[0] : s.id),
       tradesHoje,
       operouHoje: tradesHoje.length > 0,
@@ -206,6 +249,7 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       foraDoPlano: foraDoPlanoPct(tradesHoje),
       plano,
       periodState,
+      periodStates,
       estado: estadoDoPeriodo(periodState),
     };
   });
@@ -233,7 +277,24 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     },
   };
 
-  return { dia, header, byStudent };
+  // S2 — quem exige ação hoje, do mais grave para o menos. A gravidade é a do
+  // GATILHO (o estado da pessoa vem antes do estouro, que vem antes do risco de
+  // uma operação); o score do comportamento só desempata.
+  const ORDEM_GATILHO = { [TRIGGER.FURIA]: 0, [TRIGGER.ALEM_DO_STOP]: 1, [TRIGGER.RISCO]: 2 };
+  const priority = byStudent
+    .filter((a) => a.prioridade)
+    .sort((a, b) =>
+      (ORDEM_GATILHO[a.prioridade.trigger] ?? 9) - (ORDEM_GATILHO[b.prioridade.trigger] ?? 9)
+      || (b.radar?.score ?? 0) - (a.radar?.score ?? 0));
+
+  // S3 — o resto de quem tem risco na janela. Quem já está na Prioridade não se
+  // repete embaixo: seria a mesma pessoa cobrada duas vezes na mesma tela.
+  const naPrioridade = new Set(priority.map((a) => a.studentId));
+  const radar = byStudent
+    .filter((a) => a.radar && !naPrioridade.has(a.studentId))
+    .sort((a, b) => b.radar.score - a.radar.score || (b.radar.quandoMs ?? 0) - (a.radar.quandoMs ?? 0));
+
+  return { dia, janelaDias, header, byStudent, priority, radar };
 }
 
 /**
@@ -285,4 +346,159 @@ export function buildCalendarDays(trades, emailsNoRadar = null) {
     saida[data] = { trades: d.trades, alunos: alunos.length, flags: d.flags, nomes: alunos };
   }
   return saida;
+}
+
+// ============================================================================
+// Fase B — Prioridade do Dia (S2) e Radar de Risco (S3)
+// ============================================================================
+
+/**
+ * FONTE DO COMPORTAMENTO: `trade.behaviorProfile.families`, o motor unificado do
+ * CHUNK-11 (#301/#305) — não as red flags que a spec de 27/07 assumia.
+ *
+ * Por quê: a spec é anterior ao motor. Hoje **100% dos 379 trades da base têm
+ * `behaviorProfile`**, com severidade já normalizada (HIGH/MEDIUM/LOW) e código
+ * canônico com rótulo em português (`BEHAVIOR_LABELS`). As red flags cobrem só
+ * conformidade com o plano; o motor cobre o comportamento inteiro, que é o
+ * assunto da Torre.
+ */
+
+/** Gatilhos críticos da Prioridade do Dia (D4). */
+export const TRIGGER = {
+  FURIA: 'DIA_DE_FURIA',
+  RISCO: 'RISCO_NA_OPERACAO',
+  ALEM_DO_STOP: 'ALEM_DO_STOP',
+};
+
+/** Famílias que caracterizam "dia de fúria" — reatividade e revanche. */
+const FAMILIAS_FURIA = new Set(['TILT', 'LOSS_CHASING', 'IMPULSE_CLUSTER', 'CHASE_REENTRY']);
+/** Famílias que caracterizam risco na própria operação. */
+const FAMILIAS_RISCO = new Set(['RISK_OVER_RO', 'UNPROTECTED_SIZE', 'AVERAGING_DOWN']);
+
+const clearedKey = (code, tradeId) => `${code}:${tradeId}`;
+
+/**
+ * Famílias NEGATIVAS e vigentes de um trade.
+ *
+ * Aplica o mesmo clearing estendido do motor de maturidade (`canonicalCode:tradeId`
+ * em `mentorClearedViolations`) — o que o mentor liberou não volta como alarme.
+ * Padrões positivos (TARGET_HIT, CLEAN_EXECUTION, RECONSIDERATION) ficam de fora:
+ * são o oposto de risco.
+ */
+export function familiasDeRisco(trade) {
+  const fams = trade?.behaviorProfile?.families;
+  if (!Array.isArray(fams)) return [];
+  const cleared = Array.isArray(trade.mentorClearedViolations) ? trade.mentorClearedViolations : [];
+  const saida = [];
+  for (const f of fams) {
+    const code = f?.canonicalCode;
+    if (!code) continue;
+    if (cleared.includes(clearedKey(code, trade.id))) continue;
+    const p = getPattern(code);
+    if (!p || p.valence !== 'negative') continue;
+    const severity = f.severity ?? p.severityDefault ?? null;
+    if (!SEVERITY_WEIGHT[severity]) continue; // NONE/null não é risco
+    saida.push({
+      code,
+      family: p.family,
+      severity,
+      peso: SEVERITY_WEIGHT[severity],
+      tradeId: trade.id ?? null,
+      quandoMs: tradeInstantMs(trade),
+      ticker: trade.ticker ?? null,
+    });
+  }
+  return saida;
+}
+
+/** Ordena por gravidade e, empatado, pelo mais recente. */
+const maisGrave = (a, b) => b.peso - a.peso || (b.quandoMs ?? 0) - (a.quandoMs ?? 0);
+
+/**
+ * MC-6 · Uma linha de Radar por aluno.
+ *
+ * IMPACTO vem da severidade já normalizada pelo motor (HIGH→ALTO, MEDIUM→MÉDIO,
+ * LOW→BAIXO) em vez de um limiar novo sobre soma de penalidades: a escala
+ * unificada existe justamente para não haver duas réguas na plataforma.
+ *
+ * GATILHO é a família dominante — a mais grave, e entre iguais a mais recente.
+ */
+export function linhaDeRadar(familias) {
+  if (!familias?.length) return null;
+  const ordenadas = [...familias].sort(maisGrave);
+  const dominante = ordenadas[0];
+  return {
+    code: dominante.code,
+    family: dominante.family,
+    severity: dominante.severity,
+    quandoMs: dominante.quandoMs,
+    tradeId: dominante.tradeId,
+    ocorrencias: familias.length,
+    score: familias.reduce((acc, f) => acc + f.peso, 0),
+  };
+}
+
+/**
+ * MC-5 · O aluno entra na Prioridade do Dia?
+ *
+ * Três gatilhos (D4), todos sobre HOJE:
+ *   a) dia de fúria — reatividade/revanche (TILT, LOSS_CHASING, IMPULSE_CLUSTER, CHASE_REENTRY);
+ *   b) risco na operação — risco acima do RO, posição descoberta, preço médio;
+ *   c) além do stop — o fato do DIA, não do trade.
+ *
+ * (c) merece nota: a spec pedia a red flag `LOSS_DIARIO_EXCEDIDO`, que o #402
+ * revogou por acusar o trade errado — o estouro é do dia, e um trade não pode
+ * carregá-lo. O fato continua existindo e vive em `buildPeriodState`: fechar além
+ * do stop, ou continuar operando depois de batê-lo. É de lá que ele vem agora.
+ *
+ * @returns {{trigger: string, motivo: string}|null}
+ */
+export function gatilhoDePrioridade(familias, periodStates) {
+  const negativas = familias ?? [];
+  // Um aluno com duas contas tem DOIS dias em paralelo, cada um com seu stop e sua
+  // moeda. Somar os dois num número só foi o que quase me fez acusar o Wilson de
+  // estourar o stop: −350 USD numa conta e −350/−520 BRL na outra, medidos contra
+  // o stop de uma delas. Cada conta responde pelo seu próprio dia.
+  const estados = (Array.isArray(periodStates) ? periodStates : [periodStates]).filter(Boolean);
+
+  const furia = negativas.filter((f) => FAMILIAS_FURIA.has(f.family)).sort(maisGrave);
+  if (furia.length) {
+    return {
+      trigger: TRIGGER.FURIA,
+      motivo: furia.length > 1
+        ? `${furia.length} episódios de reatividade hoje`
+        : 'reatividade após perda',
+      familia: furia[0].family,
+    };
+  }
+
+  // O fato do dia vem antes do risco de uma operação: perder o dia inteiro é maior.
+  // Com mais de uma conta, dizer QUAL: sem isso o mentor abre o dia e não sabe
+  // onde olhar.
+  const ondeFoi = (e) => (estados.length > 1 && e.planName ? ` na conta ${e.planName}` : '');
+
+  const seguiu = estados.filter((e) => e.tradesAfterStop > 0);
+  if (seguiu.length) {
+    const n = seguiu.reduce((acc, e) => acc + e.tradesAfterStop, 0);
+    return {
+      trigger: TRIGGER.ALEM_DO_STOP,
+      motivo: `continuou operando depois do stop (${n} ${n === 1 ? 'operação' : 'operações'})${ondeFoi(seguiu[0])}`,
+      familia: null,
+    };
+  }
+  const estourada = estados.find((e) => e.closedBeyondStop);
+  if (estourada) {
+    return {
+      trigger: TRIGGER.ALEM_DO_STOP,
+      motivo: `fechou o dia além do stop${ondeFoi(estourada)}`,
+      familia: null,
+    };
+  }
+
+  const risco = negativas.filter((f) => FAMILIAS_RISCO.has(f.family)).sort(maisGrave);
+  if (risco.length && risco[0].severity === 'HIGH') {
+    return { trigger: TRIGGER.RISCO, motivo: 'risco acima do autorizado', familia: risco[0].family };
+  }
+
+  return null;
 }

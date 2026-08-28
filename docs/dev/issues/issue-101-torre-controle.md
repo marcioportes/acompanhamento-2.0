@@ -175,7 +175,8 @@ overview v1 segue funcionando e intocado até a Fase D.
   O hook entrega `header` + `byStudent`; `priority[]`/`radar[]`/`foraPlano[]` nascem nas fases
   que os consomem — são DERIVAÇÕES sobre `byStudent`, não passadas novas sobre os trades, então
   o motivo de D8 (não varrer os mesmos trades quatro vezes) segue respeitado.
-- **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental. D9 resolvida — desbloqueada.
+- **Fase B** — ✅ ENTREGUE 28/08. Prioridade S2 (MC-5) + Radar S3 (MC-6). Duas adaptações de spec
+  (D10, D11) e um bug de domínio corrigido: o dia é por CONTA, não por aluno.
 - **Fase C** — Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8).
 - **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
   overview v1 é aposentado.
@@ -247,10 +248,28 @@ tela incompleta.
     o card sai sozinho quando o comportamento não se repete na janela. Se um dia fizer falta, o
     `whatsappState` (none/talking/waiting) já existe e não exige campo novo.
 
-> D1..D9 viram DEC-AUTO-101-01..09 no encerramento (§4.3).
+> D1..D12 viram DEC-AUTO-101-01..12 no encerramento (§4.3).
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
+
+- **D10 · A fonte do comportamento é o motor unificado, não as red flags** (28/08/2026). A spec de
+  27/07 pedia `EVENT_PENALTIES` + `RED_FLAG_TYPES`; é anterior ao CHUNK-11 aterrissar. Hoje **100%
+  dos 379 trades têm `behaviorProfile.families`**, com severidade normalizada (HIGH/MEDIUM/LOW),
+  código canônico e rótulo PT (`BEHAVIOR_LABELS`). IMPACTO = severidade do motor (`SEVERITY_LABELS`),
+  sem limiar novo: duas réguas para a mesma coisa é o começo do drift. Red flags cobrem conformidade
+  com o plano; o motor cobre o comportamento, que é o assunto da Torre. Clearing do mentor
+  (`canonicalCode:tradeId`) respeitado; padrão positivo nunca vira risco.
+- **D11 · Janela do Radar = 7 dias; a Prioridade continua sendo de hoje** (28/08/2026). A turma tem
+  12 alunos e 2 a 4 operam por dia: um Radar de hoje ficaria vazio quase sempre e o mentor perderia
+  o padrão da semana. A Prioridade é sobre agir agora, então segue diária. O gatilho "loss diário"
+  da D4 vem do FATO DO DIA (`buildPeriodState`: `closedBeyondStop`/`tradesAfterStop`), não da red
+  flag `LOSS_DIARIO_EXCEDIDO` que o #402 revogou por acusar o trade errado.
+- **D12 · O dia é por CONTA, não por aluno** (28/08/2026, achado ao medir). Wilson opera duas contas:
+  em 25/08 fez −700 numa (USD) e −520 na outra (BRL). Avaliar os três trades juntos contra o stop de
+  uma delas soma moedas e contas diferentes — o pecado do #267/#289. Agora cada conta tem seu estado
+  de período e responde pelo próprio stop; a acusação nomeia a conta quando o aluno tem mais de uma.
+  Wilson segue sinalizado em 25/08, mas pela conta certa: −700 USD contra stop de US$375, na mesma moeda.
 
 ### Achados fora do escopo (não corrigidos — decisão de Marcio)
 
@@ -283,6 +302,9 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — **Fase B entregue**: S2 Prioridade do Dia + S3 Radar de Risco, sobre o motor
+  unificado do CHUNK-11 (D10), janela 7d no Radar (D11), dia por conta (D12). 84 testes na
+  agregação. Medição na base: 25/08 → 2 na prioridade; 26/08 → 2 + 2 no radar; 28/08 → 0 + 3.
 - 28/08/2026 — D9 resolvida (links para o que já existe; sem ação nem persistência na Torre). Fase B desbloqueada.
 - 28/08/2026 — correções sobre o overview pedidas por Marcio ao ver a tela: curva de patrimônio
   removida (somava 2 moedas de 12 pessoas); `CalendarHeatmap` trocado por `TradingCalendar` em modo

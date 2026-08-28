@@ -436,6 +436,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           plans={plans}
           students={allStudents}
           subscriptions={allSubscriptions}
+          onAbrirAluno={abrirAluno}
         />
       )}
 
