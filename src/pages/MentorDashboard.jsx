@@ -414,9 +414,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
         {[
-          // #101 — a Torre é aba do Dashboard, com a tela inteira pra ter o aspecto do mockup.
-          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
           { id: 'overview', sidebarId: 'dashboard', label: 'Visão Geral', icon: Activity },
+          // #101 — a Torre é aba do Dashboard, com a tela inteira pra ter o aspecto do
+          // mockup. Vem depois da Visão Geral, que é onde o mentor pousa.
+          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
           { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },

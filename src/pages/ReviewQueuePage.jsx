@@ -15,6 +15,8 @@ import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestor
 import { db } from '../firebase';
 import { ClipboardCheck, ChevronDown, ChevronRight, Clock, CheckCircle2, Archive, Loader2, Search, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { visibleStudentIds } from '../utils/mentorAccountsVisibility';
 import DebugBadge from '../components/DebugBadge';
 
 const statusColor = {
@@ -146,8 +148,23 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
   const { isMentor } = useAuth();
   const mentor = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
 
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // #101 — a fila trazia aluno que já saiu. O único filtro era `status !== 'inactive'`,
+  // um campo legado que na base inteira vale 'active' para 67 dos 68 alunos: não
+  // excluía ninguém. Três dos dez rascunhos abertos eram de gente com assinatura
+  // cancelada. Passa a usar o MESMO predicado de Contas/Acompanhamento e dos alarmes
+  // do #402 — `classifyStudent(student, subs) !== null`.
+  const { students: todosOsAlunos, subscriptions, loading: loadingAlunos } = useSubscriptions();
+
+  const students = useMemo(() => {
+    const lista = todosOsAlunos ?? [];
+    // Assinaturas ainda carregando: não esconde nada. Sumir depois é melhor que
+    // aparecer vazio e o mentor achar que não tem trabalho.
+    if (!subscriptions?.length) return lista;
+    const visiveis = visibleStudentIds(lista, subscriptions);
+    return lista.filter((s) => visiveis.has(s.id));
+  }, [todosOsAlunos, subscriptions]);
+
+  const loading = loadingAlunos;
   const [expandedId, setExpandedId] = useState(null);
   const [search, setSearch] = useState('');
   // Contagens por aluno — usadas para filtrar quem aparece na fila.
@@ -168,19 +185,6 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
       return { ...prev, [studentId]: count };
     });
     setProbesReady(true);
-  }, []);
-
-  useEffect(() => {
-    const q = query(collection(db, 'students'));
-    const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => s.status !== 'inactive')
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setStudents(items);
-      setLoading(false);
-    });
-    return () => unsub();
   }, []);
 
   if (!mentor) {
