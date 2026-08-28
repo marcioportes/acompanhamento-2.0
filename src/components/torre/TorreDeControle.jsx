@@ -1,31 +1,30 @@
 /**
  * TorreDeControle — issue #101
  *
- * O dashboard do mentor **é** a Torre. Não é destino paralelo: é a mesma tela,
- * reconstruída por seção. Cada fase substitui um pedaço do que está aqui hoje.
+ * Aba do Dashboard do mentor, com a tela inteira: é o layout do mockup
+ * (`docs/dev/mentor-dashboard-v2-mockup.png`) — header de quatro tiles, coluna
+ * principal com Prioridade do Dia / Radar de Risco / Fora do Plano × Stop-Gain,
+ * e trilho direito com a Visão Rápida por Aluno.
  *
- *   Fase A (aqui) — S1 Header. Substitui os quatro StatCards de média de turma.
+ *   Fase A (aqui) — S1 Header.
  *   Fase B — S2 Prioridade do Dia + S3 Radar de Risco.
  *   Fase C — S4 Fora do Plano + S5 Stop × Gain.
- *   Fase D — S6 Visão Rápida por Aluno + destino do que sobrar do overview v1.
+ *   Fase D — S6 Visão Rápida por Aluno.
  *
- * Camada de leitura: nenhuma persistência nova (INV-15). Tudo é derivado do que
- * o mentor já escuta — este componente não abre listener.
+ * As seções que ainda não chegaram ocupam o lugar delas no layout, nomeadas: a
+ * tela já tem a forma final, e dá pra ver o que falta sem abrir o issue.
  *
- * Sem DebugBadge próprio: é seção, e a página (`MentorDashboard`) já tem o dela.
+ * Camada de leitura: nenhuma persistência nova (INV-15). Não abre listener —
+ * recebe o que o `MentorDashboard` já escuta.
+ * Sem DebugBadge próprio: é seção, e a página já tem o dela.
  */
 import useMentorRiskRadar from '../../hooks/useMentorRiskRadar';
 import TorreHeader from './TorreHeader';
 
-/** Roadmap visível: o mentor sabe o que ainda não chegou, sem caixa vazia ocupando a tela. */
-const EmConstrucao = () => (
-  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 mb-8">
-    <span className="uppercase tracking-wide text-slate-700">Em construção</span>
-    <span>Prioridade do Dia · Radar de Risco <span className="text-slate-700">(B)</span></span>
-    <span className="text-slate-800">|</span>
-    <span>Fora do Plano · Stop × Gain <span className="text-slate-700">(C)</span></span>
-    <span className="text-slate-800">|</span>
-    <span>Visão Rápida por Aluno <span className="text-slate-700">(D)</span></span>
+const Secao = ({ titulo, fase, altura = 'h-40' }) => (
+  <div className={`bg-slate-900/40 border border-dashed border-slate-800 rounded-xl px-5 flex flex-col items-center justify-center ${altura}`}>
+    <div className="text-sm text-slate-500 font-semibold">{titulo}</div>
+    <div className="text-[10px] text-slate-700 uppercase tracking-wide mt-1.5">Fase {fase}</div>
   </div>
 );
 
@@ -36,13 +35,26 @@ const TorreDeControle = ({ allTrades, plans, students, subscriptions }) => {
 
   return (
     <div className="mb-8">
+      {/* No mockup os quatro tiles atravessam a tela inteira; as duas colunas
+          começam abaixo deles. */}
       <div className="flex items-center justify-end mb-2">
         <span className="text-[11px] text-slate-600 font-mono">{`hoje · ${diaDoMes}/${mes}/${ano}`}</span>
       </div>
 
       <TorreHeader header={header} />
-      <div className="h-4" />
-      <EmConstrucao />
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
+        <div className="xl:col-span-2 space-y-6">
+          <Secao titulo="Prioridade do Dia" fase="B" altura="h-44" />
+          <Secao titulo="Radar de Risco" fase="B" altura="h-56" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Secao titulo="Fora do Plano" fase="C" altura="h-52" />
+            <Secao titulo="Stop × Gain" fase="C" altura="h-52" />
+          </div>
+        </div>
+
+        <Secao titulo="Visão Rápida por Aluno" fase="D" altura="h-full min-h-[20rem]" />
+      </div>
     </div>
   );
 };

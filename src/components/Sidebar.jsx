@@ -26,7 +26,6 @@ import {
   Brain,
   CreditCard,
   ClipboardCheck,
-  Radar,
   Shield,
   FileText,
   History,
@@ -83,10 +82,8 @@ const Sidebar = ({
   const mentorMenuItems = [
     { 
       id: 'dashboard', 
-      // #101 — o dashboard do mentor É a Torre de Controle. Não é destino
-      // paralelo: é a mesma tela, reconstruída por seção.
-      label: 'Torre de Controle', 
-      icon: Radar,
+      label: 'Dashboard', 
+      icon: LayoutDashboard,
       badge: emotionalAlerts > 0 ? emotionalAlerts : null,
       badgeColor: 'purple'
     },
@@ -171,7 +168,9 @@ const Sidebar = ({
               key={item.id}
               onClick={() => onViewChange(item.id)}
               className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                currentView === item.id
+                // #101 — a Torre é ABA do Dashboard, não item de sidebar: estando
+                // nela, o Dashboard continua aceso.
+                (currentView === 'torre' ? 'dashboard' : currentView) === item.id
                   ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
               }`}

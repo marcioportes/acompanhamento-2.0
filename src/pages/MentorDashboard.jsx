@@ -16,7 +16,7 @@ import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
   Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
-  CheckSquare, Square, Loader2, X
+  CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
@@ -55,7 +55,7 @@ import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
   calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention,
-  formatPercent
+  formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
@@ -105,11 +105,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
+  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
   const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
+  const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
   // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
   // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
@@ -179,8 +180,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     });
   }, [pendingFilter, getTradesByStudentAndStatus]);
 
-  // #101 — `overallStats`/`overallTotalsByCurrency` morreram com os StatCards de
-  // média de turma (P&L Total · Win Rate). Ninguém mais lê a média da turma.
+  const overallStats = useMemo(() => {
+    const allStats = calculateStats(allTrades);
+    return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length, avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0 };
+  }, [allTrades, students, todayTrades, ranking]);
+
+  // Agregados multi-moeda (F2 issue #188): P&L nunca soma cross-currency.
+  const overallTotalsByCurrency = useMemo(() => aggregateTradesByCurrency(allTrades), [allTrades]);
 
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
@@ -388,13 +394,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   return (
     <div className="min-h-screen p-6 lg:p-8">
       <div className="mb-8">
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">Torre de Controle</h1>
-        <p className="text-slate-400 mt-1">O que exige atenção hoje</p>
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">Dashboard do Mentor</h1>
+        <p className="text-slate-400 mt-1">Visão geral da turma</p>
       </div>
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
         {[
-          { id: 'overview', sidebarId: 'dashboard', label: 'Torre', icon: Activity },
+          // #101 — a Torre é aba do Dashboard, com a tela inteira pra ter o aspecto do mockup.
+          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
+          { id: 'overview', sidebarId: 'dashboard', label: 'Visão Geral', icon: Activity },
           { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
@@ -408,17 +416,28 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         ))}
       </div>
 
+      {activeView === 'torre' && (
+        <TorreDeControle
+          allTrades={allTrades}
+          plans={plans}
+          students={allStudents}
+          subscriptions={allSubscriptions}
+        />
+      )}
+
       {activeView === 'overview' && (
         <>
-          {/* #101 — S1. Substitui os quatro StatCards (P&L Total · Win Rate · Alunos
-              Ativos · Trades Hoje): média de turma não diz de quem cuidar hoje.
-              O restante desta tela vai sendo absorvido pelas seções S2..S6. */}
-          <TorreDeControle
-            allTrades={allTrades}
-            plans={plans}
-            students={allStudents}
-            subscriptions={allSubscriptions}
-          />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <StatCard
+              title="P&L Total Turma"
+              value={<MultiCurrencyAmount totalsByCurrency={overallTotalsByCurrency} layout="stack" showSign />}
+              icon={DollarSign}
+              color={overallTotalsByCurrency.size <= 1 ? (overallStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
+            />
+            <StatCard title="Win Rate Médio" value={formatPercent(overallStats.avgWinRate)} icon={Target} color={overallStats.avgWinRate >= 50 ? 'green' : 'yellow'} />
+            <StatCard title="Alunos Ativos" value={students.length} icon={Users} color="blue" />
+            <StatCard title="Trades Hoje" value={todayTrades.length} icon={Activity} color="purple" />
+          </div>
           {/* #101 — a curva de patrimônio saiu: somava o dinheiro de doze pessoas em
               duas moedas numa linha só. O calendário passou a ser o do aluno
               (TradingCalendar) em modo turma — o CalendarHeatmap lia campos que
