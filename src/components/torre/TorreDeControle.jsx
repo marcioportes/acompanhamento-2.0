@@ -1,60 +1,64 @@
 /**
- * TorreDeControle — issue #101
+ * TorreDeControle — a home do mentor (issue #101, Fase E)
  *
- * Aba do Dashboard do mentor, com a tela inteira: é o layout do mockup
- * (`docs/dev/mentor-dashboard-v2-mockup.png`) — header de quatro tiles, coluna
- * principal com Prioridade do Dia / Radar de Risco / Fora do Plano × Stop-Gain,
- * e trilho direito com a Visão Rápida por Aluno.
+ * UMA tela que responde "o que eu faço agora?", em três faixas:
  *
- *   Fase A (aqui) — S1 Header.
- *   Fase B — S2 Prioridade do Dia + S3 Radar de Risco.
- *   Fase C — S4 Fora do Plano + S5 Stop × Gain.
- *   Fase D — S6 Visão Rápida por Aluno.
+ *   1. AGIR AGORA — quem exige atitude hoje (prioridade do dia, promoções
+ *      prontas, regressões de maturidade). Some quando não há nada.
+ *   2. A TURMA — uma linha por aluno, todos, ordenada por quem precisa de você.
+ *      É a espinha dorsal, e substitui Radar de Risco, Fora do Plano e o painel
+ *      de Alertas Emocionais, que recortavam a mesma população três vezes.
+ *   3. MINHAS PENDÊNCIAS — o que EU devo: feedbacks e revisões.
  *
- * As seções que ainda não chegaram ocupam o lugar delas no layout, nomeadas: a
- * tela já tem a forma final, e dá pra ver o que falta sem abrir o issue.
+ * O que era diagnóstico (calendário, Stop × Gain, retrato do aluno) saiu daqui e
+ * foi para a aba Análises: gráfico serve para investigar DEPOIS de escolher a
+ * pessoa, não para competir com a triagem.
  *
- * Camada de leitura: nenhuma persistência nova (INV-15). Não abre listener —
- * recebe o que o `MentorDashboard` já escuta.
- * Sem DebugBadge próprio: é seção, e a página já tem o dela.
+ * Presentacional: recebe o resultado de `useMentorRiskRadar` pronto, para que a
+ * mesma passada alimente as duas abas sem recalcular.
  */
-import useMentorRiskRadar from '../../hooks/useMentorRiskRadar';
+import { useState, useMemo } from 'react';
 import TorreHeader from './TorreHeader';
 import TorrePrioridade from './TorrePrioridade';
-import TorreRadar from './TorreRadar';
-import TorreForaDoPlano from './TorreForaDoPlano';
-import TorreStopGain from './TorreStopGain';
-import TorreVisaoRapida from './TorreVisaoRapida';
+import TorreTurma from './TorreTurma';
+import { FAIXA } from '../../utils/mentorRiskRadar';
 
-const TorreDeControle = ({ allTrades, plans, students, subscriptions, onAbrirAluno }) => {
-  const { dia, janelaDias, header, priority, radar, foraPlano, stopGain, byStudent } = useMentorRiskRadar({
-    allTrades, plans, students, subscriptions,
-  });
+const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = null }) => {
+  const { dia, header, priority = [], turma = [] } = radar ?? {};
 
-  const [ano, mes, diaDoMes] = String(dia).split('-');
+  // O número do tile clica e recorta a lista — contador que não filtra é decoração.
+  const [filtro, setFiltro] = useState(null);
+  const turmaVisivel = useMemo(() => {
+    if (filtro === 'hoje') return turma.filter((a) => a.operouHoje);
+    if (filtro === 'atencao') return turma.filter((a) => a.atencao.faixa <= FAIXA.FORA_DO_PLANO);
+    if (filtro === 'fora') return turma.filter((a) => a.foraDoPlanoSemana?.pct > 0);
+    return turma;
+  }, [turma, filtro]);
+
+  const [ano, mes, diaDoMes] = String(dia ?? '').split('-');
 
   return (
-    <div className="mb-8">
-      {/* No mockup os quatro tiles atravessam a tela inteira; as duas colunas
-          começam abaixo deles. */}
-      <div className="flex items-center justify-end mb-2">
-        <span className="text-[11px] text-slate-600 font-mono">{`hoje · ${diaDoMes}/${mes}/${ano}`}</span>
+    <div className="mb-8 space-y-6">
+      <div className="flex items-center justify-end">
+        <span className="text-[11px] text-slate-600 font-mono">
+          {ano ? `hoje · ${diaDoMes}/${mes}/${ano}` : ''}
+        </span>
       </div>
 
-      <TorreHeader header={header} />
+      <TorreHeader header={header} filtro={filtro} onFiltrar={setFiltro} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mt-6">
-        <div className="xl:col-span-2 space-y-6">
-          <TorrePrioridade priority={priority} onAbrirAluno={onAbrirAluno} />
-          <TorreRadar radar={radar} janelaDias={janelaDias} onAbrirAluno={onAbrirAluno} />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <TorreForaDoPlano foraPlano={foraPlano} onAbrirAluno={onAbrirAluno} />
-            <TorreStopGain stopGain={stopGain} />
-          </div>
-        </div>
+      <TorrePrioridade priority={priority} onAbrirAluno={onAbrirAluno} />
+      {extrasAcao}
 
-        <TorreVisaoRapida byStudent={byStudent} onAbrirAluno={onAbrirAluno} />
-      </div>
+      <TorreTurma
+        turma={turmaVisivel}
+        total={turma.length}
+        filtro={filtro}
+        onLimparFiltro={() => setFiltro(null)}
+        onAbrirAluno={onAbrirAluno}
+      />
+
+      {pendencias}
     </div>
   );
 };

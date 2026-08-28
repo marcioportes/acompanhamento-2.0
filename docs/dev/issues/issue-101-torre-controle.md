@@ -180,6 +180,8 @@ overview v1 segue funcionando e intocado até a Fase D.
 - **Fase C** — ✅ ENTREGUE 28/08. Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8). D13: as duas
   seções usam FONTES DIFERENTES de propósito — S4 lê red flag (adesão ao plano), S3 lê o motor
   comportamental. Perguntas diferentes.
+- **Fase E** — ✅ ENTREGUE 28/08. Consolidação: a Torre vira a home (três faixas), a Visão Geral
+  vira **Análises**. D19/D20/D21.
 - **Fase D** — ✅ ENTREGUE 28/08. Visão Rápida S6 (MC-9). A **promoção caiu** (D16): a Torre virou
   ABA do Dashboard por decisão de Marcio, então não há destino a promover nem overview a aposentar.
 - Testes de formatação/agregação ANTES da UI em cada fase.
@@ -250,7 +252,7 @@ tela incompleta.
     o card sai sozinho quando o comportamento não se repete na janela. Se um dia fizer falta, o
     `whatsappState` (none/talking/waiting) já existe e não exige campo novo.
 
-> D1..D18 viram DEC-AUTO-101-01..18 no encerramento (§4.3).
+> D1..D21 viram DEC-AUTO-101-01..21 no encerramento (§4.3).
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
 
 ---
@@ -305,6 +307,28 @@ tela incompleta.
   (`sortTradesChrono`); o cálculo do dashboard ordena só por `date`, então trades do mesmo dia entram
   na ordem que o Firestore devolver e o número muda a cada leitura — é o achado de 24/08 ainda sem issue.
 
+- **D19 · O padrão certo é painel de elenco, não console de incidentes** (28/08/2026). Marcio: *"há
+  uma confusão de informação entre a aba Visão Geral e Torre... não me traz nada de valor. Preciso
+  bater o olho e saber o que fazer"*. A medição explicou: na semana de 24-28/08, **8 dos 12 alunos
+  não operaram nenhuma vez**, a fila de feedback tinha **2 trades** e cinco alunos com assinatura
+  viva estavam sem operar há 15, 78, 92, 127 e 176 dias. As duas telas triavam um fluxo de violações
+  que quase não existe e **nenhuma mostrava quem sumiu**. Console de incidentes (PagerDuty, Zendesk)
+  serve a volume alto de eventos; painel de elenco (Khan, TrainingPeaks, painel de pacientes, Linear
+  My Issues) serve a poucas pessoas em acompanhamento contínuo — que é o caso. O alarme vira COLUNA e
+  critério de ordenação; a lista é a turma inteira, sempre.
+- **D20 · Uma tela, três faixas** (28/08/2026). Agir agora (prioridade + promoção + regressão) ·
+  A turma (uma linha por aluno, todos) · Minhas pendências. `TorreTurma` substitui Radar de Risco,
+  Fora do Plano e Alertas Emocionais — as três recortavam a mesma população. A ordem da lista é por
+  FAIXA, não por score: ação hoje → sumiu → risco alto → fora do plano → esfriando → em dia → nunca
+  operou. Faixa é uma frase que o mentor prevê antes de olhar; score seria peso inventado.
+- **D21 · Análises é o nível de baixo** (28/08/2026). Calendário, Stop × Gain e o retrato do aluno
+  saem da home: gráfico serve para investigar DEPOIS de escolher a pessoa. Saem de vez os StatCards
+  de média de turma (P&L Total, Win Rate Médio — não geram decisão, e "Alunos Ativos" valia 17 ali e
+  12 na Torre), o `SubscriptionSummaryCard` (assinatura tem tela própria) e o painel de Alertas
+  Emocionais. O tile "Fora do Plano" passa a medir a SEMANA, igual à coluna da turma: havia dois
+  números com o mesmo nome na mesma tela. Cada tile do header filtra a lista — contador que não
+  clica é decoração.
+
 ### Achados fora do escopo (não corrigidos — decisão de Marcio)
 
 - `useEmotionalProfile.js:85` passa `analysis.trades || null` a `calculateStudentStatus`, mas
@@ -336,6 +360,10 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — **Fase E entregue** (consolidação): Torre vira a home com três faixas; `TorreTurma`
+  substitui Radar/Fora do Plano/Alertas Emocionais; header de 3 tiles clicáveis; Visão Geral vira
+  Análises. Medido: 5 alunos sumidos (176/127/92/78/15 dias) que nenhuma tela mostrava. 136 testes
+  na agregação. Suíte 276 arquivos verde.
 - 28/08/2026 — **Fase D entregue**: S6 Visão Rápida por Aluno. D16/D17/D18. 117 testes na agregação.
   Base: 9 dos 12 alunos com retrato (3 nunca operaram) — Sandra −9,27R e winrate 0% na DEMO, German
   +11,47R, Rafael +6,85R. Todas as seções do mockup no ar.

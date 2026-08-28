@@ -260,6 +260,16 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     const plano = planoPorId.get(tradesHoje[0]?.planId) ?? null;
     const flags = flagsHoje(tradesHoje);
 
+    // Faixa 2 — a espinha dorsal: quando operou pela última vez e o que devo a ele.
+    const todos = todosDoAluno.get(s.id) ?? [];
+    const ultimaData = todos.reduce(
+      (maisNova, t) => (t?.date && (!maisNova || t.date > maisNova) ? t.date : maisNova),
+      null,
+    );
+    const feedbackPendente = todos.filter(
+      (t) => t?.status === 'OPEN' || t?.status === 'QUESTION',
+    ).length;
+
     const familiasHoje = tradesHoje.flatMap(familiasDeRisco);
     const familiasJanela = tradesRadar.flatMap(familiasDeRisco);
 
@@ -270,6 +280,10 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       prioridade: gatilhoDePrioridade(familiasHoje, periodStates),
       radar: linhaDeRadar(familiasJanela),
       tradesSemana,
+      ultimaOperacao: ultimaData,
+      diasSemOperar: ultimaData ? diasEntre(ultimaData, dia) : null,
+      resultadoSemanaR: semanaEmR(tradesSemana, planoPorId),
+      pendencias: { feedback: feedbackPendente },
       foraDoPlanoSemana: foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior),
       // S6 — o retrato do aluno é sempre de UM plano. Com duas contas, a do dia;
       // sem trade hoje, a mais recente da janela. Misturar as duas seria repetir
@@ -302,22 +316,17 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   const tradesDoDia = byStudent.flatMap((a) => a.tradesHoje);
 
   const header = {
-    // MC-1
     alunosAtivos: byStudent.length,
     operaramHoje: byStudent.filter((a) => a.operouHoje).length,
-    // MC-2 — dedup por aluno: três flags no mesmo aluno é um aluno em alerta.
-    comAlerta: byStudent.filter((a) => a.temAlerta).length,
-    flagsTotal: byStudent.reduce((acc, a) => acc + a.flags, 0),
-    // MC-3
-    foraDoPlano: foraDoPlanoPct(tradesDoDia),
     tradesHoje: tradesDoDia.length,
-    // MC-4
-    estados: {
-      meta: byStudent.filter((a) => a.estado.atingiuMeta).length,
-      stop: byStudent.filter((a) => a.estado.atingiuStop).length,
-      seguiuDepois: byStudent.filter((a) => a.estado.seguiuDepois).length,
-      emAndamento: byStudent.filter((a) => a.estado.emAndamento).length,
-    },
+    // Fora do plano do header mede a SEMANA, igual à coluna da turma. Antes havia
+    // dois "Fora do Plano" na mesma tela com janelas diferentes — o tile media hoje
+    // e a seção media a semana. Um nome, um número.
+    foraDoPlano: foraDoPlanoPct(byStudent.flatMap((a) => a.tradesSemana)),
+    tradesSemana: byStudent.reduce((acc, a) => acc + a.tradesSemana.length, 0),
+    // Quantos exigem alguma atitude sua — as quatro primeiras faixas da turma.
+    precisamDeVoce: 0, // preenchido abaixo, depois que `turma` existe
+    pendencias: byStudent.reduce((acc, a) => acc + (a.pendencias?.feedback ?? 0), 0),
   };
 
   // S2 — quem exige ação hoje, do mais grave para o menos. A gravidade é a do
@@ -337,6 +346,18 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     .filter((a) => a.radar && !naPrioridade.has(a.studentId))
     .sort((a, b) => b.radar.score - a.radar.score || (b.radar.quandoMs ?? 0) - (a.radar.quandoMs ?? 0));
 
+  // Faixa 2 — a turma inteira, ordenada por quem precisa de atenção. NUNCA
+  // filtrada: uma lista que esconde quem está quieto não é a lista da turma.
+  const turma = byStudent
+    .map((a) => ({ ...a, atencao: faixaDeAtencao(a) }))
+    .sort((a, b) =>
+      a.atencao.faixa - b.atencao.faixa
+      // Dentro da faixa: quem está calado há mais tempo primeiro; empate, por nome.
+      || (b.diasSemOperar ?? -1) - (a.diasSemOperar ?? -1)
+      || String(a.name).localeCompare(String(b.name), 'pt-BR'));
+
+  header.precisamDeVoce = turma.filter((a) => a.atencao.faixa <= FAIXA.FORA_DO_PLANO).length;
+
   // S4 — ranking de quem mais saiu do plano na semana. Quem não violou nada não
   // entra: uma lista de zeros não é ranking.
   const foraPlano = byStudent
@@ -348,7 +369,7 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
 
   return {
     dia, janelaDias, semanaComecaEm: segundaAtual,
-    header, byStudent, priority, radar, foraPlano, stopGain,
+    header, byStudent, turma, priority, radar, foraPlano, stopGain,
   };
 }
 
@@ -767,4 +788,102 @@ export function visaoRapidaDoAluno({ plano, tradesDoPlano, periodState }) {
     winRate: Math.round((resumo.winRate ?? 0) * 10) / 10,
     trades: doPlano.length,
   };
+}
+
+// ============================================================================
+// Fase E — A turma (faixa 2): uma linha por aluno, todos, sempre
+// ============================================================================
+
+/**
+ * Distância em dias entre duas datas 'YYYY-MM-DD'.
+ */
+export const diasEntre = (de, ate) => {
+  if (!de || !ate) return null;
+  const [y1, m1, d1] = String(de).split('-').map(Number);
+  const [y2, m2, d2] = String(ate).split('-').map(Number);
+  if (!y1 || !y2) return null;
+  return Math.round((new Date(y2, m2 - 1, d2, 12) - new Date(y1, m1 - 1, d1, 12)) / 86400000);
+};
+
+/**
+ * Faixas de atenção — a ordem da lista da turma.
+ *
+ * POR QUE FAIXA E NÃO SCORE: um score único exigiria pesos inventados ("silêncio
+ * vale 30, severidade alta vale 40") que ninguém consegue defender nem depurar.
+ * A faixa é uma frase: primeiro quem exige ação hoje, depois quem sumiu, depois
+ * quem está em risco, depois quem saiu do plano, depois quem está sumindo, e por
+ * fim quem está em dia. O mentor consegue prever a ordem antes de olhar a tela.
+ *
+ * SUMIU vem em segundo, à frente do risco comportamental, porque é o problema
+ * real desta turma: na semana de 24-28/08, 8 dos 12 alunos não operaram nenhuma
+ * vez. Alarme a tela já mostrava; ausência, nenhuma das duas mostrava.
+ */
+export const FAIXA = {
+  ACAO_HOJE: 0,
+  SUMIU: 1,
+  RISCO_ALTO: 2,
+  FORA_DO_PLANO: 3,
+  ESFRIANDO: 4,
+  EM_DIA: 5,
+  NUNCA_OPEROU: 6,
+};
+
+export const FAIXA_LABEL = {
+  [FAIXA.ACAO_HOJE]: 'Ação hoje',
+  [FAIXA.SUMIU]: 'Sumiu',
+  [FAIXA.RISCO_ALTO]: 'Risco alto',
+  [FAIXA.FORA_DO_PLANO]: 'Fora do plano',
+  [FAIXA.ESFRIANDO]: 'Esfriando',
+  [FAIXA.EM_DIA]: 'Em dia',
+  [FAIXA.NUNCA_OPEROU]: 'Nunca operou',
+};
+
+/** Dias sem operar a partir dos quais o silêncio vira assunto. */
+export const DIAS_ESFRIANDO = 7;
+export const DIAS_SUMIU = 14;
+
+/**
+ * @param {Object} a — linha de `byStudent`
+ * @returns {{faixa:number, motivo:string}}
+ */
+export function faixaDeAtencao(a) {
+  if (a?.prioridade) return { faixa: FAIXA.ACAO_HOJE, motivo: a.prioridade.motivo };
+
+  const dias = a?.diasSemOperar;
+  if (dias == null) {
+    // Nunca operou é outro problema — é onboarding, não acompanhamento. Fica por
+    // último para não empurrar quem opera pra baixo, mas NÃO some da lista.
+    return { faixa: FAIXA.NUNCA_OPEROU, motivo: 'nunca registrou uma operação' };
+  }
+  if (dias >= DIAS_SUMIU) return { faixa: FAIXA.SUMIU, motivo: `${dias} dias sem operar` };
+
+  if (a?.radar?.severity === 'HIGH') {
+    return { faixa: FAIXA.RISCO_ALTO, motivo: 'padrão de risco grave na semana' };
+  }
+  if (a?.foraDoPlanoSemana?.pct > 0) {
+    return { faixa: FAIXA.FORA_DO_PLANO, motivo: `${Math.round(a.foraDoPlanoSemana.pct)}% dos trades fora do plano` };
+  }
+  if (dias >= DIAS_ESFRIANDO) return { faixa: FAIXA.ESFRIANDO, motivo: `${dias} dias sem operar` };
+
+  return { faixa: FAIXA.EM_DIA, motivo: dias === 0 ? 'operou hoje' : `operou há ${dias} ${dias === 1 ? 'dia' : 'dias'}` };
+}
+
+/**
+ * Resultado da semana em R — a única unidade que soma alunos de moedas diferentes.
+ * Trade sem plano com RO declarado fica fora, como no Stop × Gain (D14).
+ */
+export function semanaEmR(tradesSemana, planoPorId) {
+  let total = 0;
+  let comR = 0;
+  for (const t of tradesSemana ?? []) {
+    const r = num(t?.result);
+    const plano = planoPorId?.get?.(t?.planId) ?? null;
+    const ro = plano?.pl > 0 && plano?.riskPerOperation > 0
+      ? plano.pl * (plano.riskPerOperation / 100)
+      : null;
+    if (r == null || !ro) continue;
+    total += r / ro;
+    comR += 1;
+  }
+  return { valor: Math.round(total * 100) / 100, comR };
 }

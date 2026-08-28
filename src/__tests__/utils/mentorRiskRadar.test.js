@@ -26,6 +26,10 @@ import {
   stopVsGain,
   visaoRapidaDoAluno,
   planoEmFoco,
+  diasEntre,
+  faixaDeAtencao,
+  semanaEmR,
+  FAIXA,
 } from '../../utils/mentorRiskRadar';
 import { buildPeriodState } from '../../utils/dayState';
 
@@ -250,7 +254,7 @@ describe('buildMentorRadar — a passada única', () => {
       allTrades: trades, plans: [plano, planoB], students, subscriptions, now: HOJE, ...opts,
     });
 
-  it('MC-1 conta só quem está no radar — bloqueado e nunca-logado ficam fora', () => {
+  it('conta só quem está no radar — bloqueado e nunca-logado ficam fora', () => {
     const r = run([]);
     expect(r.header.alunosAtivos).toBe(2);
     expect(r.byStudent.map((a) => a.studentId).sort()).toEqual(['a1', 'a2']);
@@ -265,8 +269,9 @@ describe('buildMentorRadar — a passada única', () => {
   it('ignora trade de aluno fora do radar — não infla nenhum tile', () => {
     const r = run([t('x', 'a3', -100, { redFlags: [{ type: 'TRADE_SEM_STOP' }] })]);
     expect(r.header.tradesHoje).toBe(0);
-    expect(r.header.comAlerta).toBe(0);
+    expect(r.header.tradesSemana).toBe(0);
     expect(r.header.foraDoPlano).toBeNull();
+    expect(r.turma.every((a) => a.studentId !== 'a3')).toBe(true);
   });
 
   it('casa o trade pelo email quando não há studentId, sem depender de caixa', () => {
@@ -275,18 +280,23 @@ describe('buildMentorRadar — a passada única', () => {
     expect(r.byStudent.find((a) => a.studentId === 'a1').tradesHoje).toHaveLength(1);
   });
 
-  it('MC-2 dedupa por aluno: 3 flags num aluno é 1 aluno em alerta', () => {
+  it('três flags num aluno é UMA linha na turma, não três alarmes', () => {
+    // O tile "Alertas" morreu na Fase E — era a terceira noção de alerta da
+    // plataforma. A violação agora vive na linha do aluno.
     const r = run([
       t('x', 'a1', -100, { redFlags: [{ type: 'TRADE_SEM_STOP' }, { type: 'RISCO_ACIMA_PERMITIDO' }] }),
       t('y', 'a1', -100, { redFlags: [{ type: 'TRADE_SEM_STOP' }] }),
     ]);
-    expect(r.header.comAlerta).toBe(1);
-    expect(r.header.flagsTotal).toBe(3);
+    const ana = r.turma.filter((a) => a.studentId === 'a1');
+    expect(ana).toHaveLength(1);
+    expect(ana[0].flags).toBe(3);
+    expect(ana[0].foraDoPlanoSemana.pct).toBe(100);
   });
 
-  it('MC-2 não conta flag revogada pelo #402', () => {
+  it('flag revogada pelo #402 não acusa ninguém', () => {
     const r = run([t('x', 'a1', -100, { redFlags: [{ type: 'LOSS_DIARIO_EXCEDIDO' }] })]);
-    expect(r.header.comAlerta).toBe(0);
+    expect(r.header.foraDoPlano).toBe(0);
+    expect(r.turma.find((a) => a.studentId === 'a1').flags).toBe(0);
   });
 
   it('MC-3 mede no nível do trade, não média de médias', () => {
@@ -300,33 +310,34 @@ describe('buildMentorRadar — a passada única', () => {
     expect(r.header.foraDoPlano).toBe(50);
   });
 
-  it('MC-3 sem trade no dia devolve null — não medir não é estar limpo', () => {
+  it('sem trade na semana devolve null — não medir não é estar limpo', () => {
     expect(run([]).header.foraDoPlano).toBeNull();
   });
 
-  it('MC-4 usa o plano DO TRADE, não o primeiro plano da lista', () => {
+  it('usa o plano DO TRADE, não o primeiro plano da lista', () => {
     // Bruno opera no p2 (PL 10.000 → stop ~R$ 167). Perder R$ 300 estoura o dele
     // e ficaria dentro do stop do p1 (~R$ 501) se o plano fosse resolvido errado.
     const r = run([t('y', 'a2', -300, { planId: 'p2' })]);
     const bruno = r.byStudent.find((a) => a.studentId === 'a2');
     expect(bruno.plano.id).toBe('p2');
     expect(bruno.estado.atingiuStop).toBe(true);
-    expect(r.header.estados.stop).toBe(1);
+    expect(bruno.prioridade.trigger).toBe(TRIGGER.ALEM_DO_STOP);
   });
 
-  it('MC-4 conta quem continuou operando depois do stop', () => {
+  it('quem continuou operando depois do stop vira prioridade', () => {
     const r = run([
       t('y1', 'a2', -300, { planId: 'p2' }),
       t('y2', 'a2', -80, { planId: 'p2', entryTime: `${dia}T15:00:00-03:00` }),
     ]);
-    expect(r.header.estados.seguiuDepois).toBe(1);
+    expect(r.priority.map((a) => a.studentId)).toEqual(['a2']);
+    expect(r.priority[0].prioridade.motivo).toContain('depois do stop');
   });
 
   it('quem não operou hoje não entra em nenhum estado', () => {
     const r = run([t('x', 'a1', 1200)]); // Ana bate a meta; Bruno não operou
-    expect(r.header.estados.meta).toBe(1);
-    expect(r.header.estados.emAndamento).toBe(0);
+    expect(r.byStudent.find((a) => a.studentId === 'a1').estado.atingiuMeta).toBe(true);
     expect(r.byStudent.find((a) => a.studentId === 'a2').periodState).toBeNull();
+    expect(r.header.operaramHoje).toBe(1);
   });
 
   it('base vazia não explode', () => {
@@ -904,5 +915,146 @@ describe('visaoRapidaDoAluno — dia sem operação', () => {
   it('plano sem meta declarada não inventa barra', () => {
     const r = visaoRapidaDoAluno({ plano: { ...plano, periodGoal: 0 }, tradesDoPlano: [], periodState: null });
     expect(r.metaPercent).toBeNull();
+  });
+});
+
+describe('diasEntre', () => {
+  it('conta dias entre duas datas', () => {
+    expect(diasEntre('2026-08-20', '2026-08-28')).toBe(8);
+    expect(diasEntre('2026-08-28', '2026-08-28')).toBe(0);
+  });
+
+  it('atravessa mês e ano', () => {
+    expect(diasEntre('2026-07-31', '2026-08-01')).toBe(1);
+    expect(diasEntre('2025-12-31', '2026-01-01')).toBe(1);
+  });
+
+  it('data ausente não vira zero', () => {
+    expect(diasEntre(null, '2026-08-28')).toBeNull();
+  });
+});
+
+describe('faixaDeAtencao — a ordem da lista da turma', () => {
+  const aluno = (extra = {}) => ({ diasSemOperar: 0, ...extra });
+
+  it('quem exige ação hoje vem primeiro', () => {
+    const r = faixaDeAtencao(aluno({ prioridade: { motivo: 'fechou o dia além do stop' }, diasSemOperar: 30 }));
+    expect(r.faixa).toBe(FAIXA.ACAO_HOJE);
+    expect(r.motivo).toBe('fechou o dia além do stop');
+  });
+
+  it('SUMIU vem antes de risco alto — é o problema real desta turma', () => {
+    const sumido = faixaDeAtencao(aluno({ diasSemOperar: 18, radar: { severity: 'HIGH' } }));
+    expect(sumido.faixa).toBe(FAIXA.SUMIU);
+    expect(sumido.motivo).toBe('18 dias sem operar');
+    expect(FAIXA.SUMIU).toBeLessThan(FAIXA.RISCO_ALTO);
+  });
+
+  it('risco alto vem antes de fora do plano', () => {
+    const r = faixaDeAtencao(aluno({ radar: { severity: 'HIGH' }, foraDoPlanoSemana: { pct: 50 } }));
+    expect(r.faixa).toBe(FAIXA.RISCO_ALTO);
+  });
+
+  it('fora do plano entra com qualquer violação na semana', () => {
+    const r = faixaDeAtencao(aluno({ foraDoPlanoSemana: { pct: 22 } }));
+    expect(r.faixa).toBe(FAIXA.FORA_DO_PLANO);
+    expect(r.motivo).toBe('22% dos trades fora do plano');
+  });
+
+  it('sete dias calado já é assunto, mesmo sem violação', () => {
+    expect(faixaDeAtencao(aluno({ diasSemOperar: 7 })).faixa).toBe(FAIXA.ESFRIANDO);
+    expect(faixaDeAtencao(aluno({ diasSemOperar: 6 })).faixa).toBe(FAIXA.EM_DIA);
+  });
+
+  it('quem está em dia diz desde quando', () => {
+    expect(faixaDeAtencao(aluno({ diasSemOperar: 0 })).motivo).toBe('operou hoje');
+    expect(faixaDeAtencao(aluno({ diasSemOperar: 1 })).motivo).toBe('operou há 1 dia');
+    expect(faixaDeAtencao(aluno({ diasSemOperar: 3 })).motivo).toBe('operou há 3 dias');
+  });
+
+  it('quem nunca operou é onboarding, não acompanhamento — mas NÃO some da lista', () => {
+    const r = faixaDeAtencao(aluno({ diasSemOperar: null }));
+    expect(r.faixa).toBe(FAIXA.NUNCA_OPEROU);
+    expect(r.motivo).toBe('nunca registrou uma operação');
+  });
+
+  it('risco MÉDIO não sobe de faixa sozinho', () => {
+    expect(faixaDeAtencao(aluno({ radar: { severity: 'MEDIUM' } })).faixa).toBe(FAIXA.EM_DIA);
+  });
+});
+
+describe('semanaEmR', () => {
+  const planos = new Map([
+    ['p1', { id: 'p1', pl: 30000, riskPerOperation: 1 }],    // RO R$300
+    ['p2', { id: 'p2', pl: 50000, riskPerOperation: 0.75 }], // RO US$375
+  ]);
+  const t = (result, planId = 'p1') => ({ id: `${planId}-${result}`, result, planId });
+
+  it('soma moedas diferentes sem mentir', () => {
+    const r = semanaEmR([t(600, 'p1'), t(-375, 'p2')], planos);
+    expect(r.valor).toBe(1); // +2R e −1R
+    expect(r.comR).toBe(2);
+  });
+
+  it('trade sem plano fica de fora', () => {
+    const r = semanaEmR([t(300, 'p1'), t(-9999, 'inexistente')], planos);
+    expect(r.valor).toBe(1);
+    expect(r.comR).toBe(1);
+  });
+
+  it('semana vazia é zero, não erro', () => {
+    expect(semanaEmR([], planos)).toEqual({ valor: 0, comR: 0 });
+  });
+});
+
+describe('buildMentorRadar — a turma não esconde ninguém', () => {
+  const HOJE = new Date(2026, 7, 28, 18, 0);
+  const plano = { id: 'p1', pl: 30000, periodStop: 1.67, periodGoal: 3.35, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const students = [
+    { id: 'a1', email: 'ativo@x.com', name: 'Ativo', firstLoginAt: '2026-01-01' },
+    { id: 'a2', email: 'sumido@x.com', name: 'Sumido', firstLoginAt: '2026-01-01' },
+    { id: 'a3', email: 'novo@x.com', name: 'Novo', firstLoginAt: '2026-01-01' },
+  ];
+  const subscriptions = students.map((s) => ({ studentId: s.id, status: 'active', type: 'paid', plan: 'alpha' }));
+  const t = (id, studentId, date, extra = {}) => ({
+    id, studentId, date, entryTime: `${date}T10:00:00-03:00`, result: -100, planId: 'p1',
+    redFlags: [], behaviorProfile: { families: [] }, ...extra,
+  });
+
+  const run = (trades) => buildMentorRadar({ allTrades: trades, plans: [plano], students, subscriptions, now: HOJE });
+
+  it('lista TODOS os alunos, inclusive quem nunca operou', () => {
+    const r = run([t('x', 'a1', '2026-08-28')]);
+    expect(r.turma).toHaveLength(3);
+    expect(r.turma.map((a) => a.name).sort()).toEqual(['Ativo', 'Novo', 'Sumido']);
+  });
+
+  it('quem sumiu sobe na lista, quem está em dia desce', () => {
+    const r = run([t('x', 'a1', '2026-08-28'), t('y', 'a2', '2026-07-01')]);
+    expect(r.turma[0].name).toBe('Sumido');
+    expect(r.turma[0].atencao.faixa).toBe(FAIXA.SUMIU);
+    // Quem nunca operou fica por último — é onboarding, não acompanhamento.
+    expect(r.turma[r.turma.length - 1].name).toBe('Novo');
+  });
+
+  it('conta os dias desde a última operação, não desde o começo da janela', () => {
+    const r = run([t('y', 'a2', '2026-07-01')]);
+    const sumido = r.turma.find((a) => a.name === 'Sumido');
+    expect(sumido.ultimaOperacao).toBe('2026-07-01');
+    expect(sumido.diasSemOperar).toBe(58);
+  });
+
+  it('conta o que o mentor deve de feedback', () => {
+    const r = run([
+      t('x', 'a1', '2026-08-28', { status: 'OPEN' }),
+      t('y', 'a1', '2026-08-27', { status: 'QUESTION' }),
+      t('z', 'a1', '2026-08-26', { status: 'REVIEWED' }),
+    ]);
+    expect(r.turma.find((a) => a.name === 'Ativo').pendencias.feedback).toBe(2);
+  });
+
+  it('o resultado da semana vem em R', () => {
+    const r = run([t('x', 'a1', '2026-08-24', { result: 600 })]);
+    expect(r.turma.find((a) => a.name === 'Ativo').resultadoSemanaR.valor).toBe(2);
   });
 });

@@ -29,15 +29,16 @@ import SetupAnalysis from '../components/SetupAnalysis';
 import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
-import MentorAlerts from '../components/MentorAlerts';
 import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
-import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
+import TorreStopGain from '../components/torre/TorreStopGain';
+import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
+import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
 import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
@@ -132,6 +133,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
 
   // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
+  // #101 Fase E — uma passada só, consumida pelas duas abas. A Torre é a home
+  // (triagem); Análises recebe o que é diagnóstico.
+  const radar = useMentorRiskRadar({
+    allTrades,
+    plans,
+    students: allStudents,
+    subscriptions: allSubscriptions,
+  });
+
   const diasDaTurma = useMemo(
     () => buildCalendarDays(allTrades, emailsAtivos),
     [allTrades, emailsAtivos],
@@ -414,10 +424,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
         {[
-          { id: 'overview', sidebarId: 'dashboard', label: 'Visão Geral', icon: Activity },
-          // #101 — a Torre é aba do Dashboard, com a tela inteira pra ter o aspecto do
-          // mockup. Vem depois da Visão Geral, que é onde o mentor pousa.
+          // #101 Fase E — a Torre é a home: é ela que diz o que fazer. Análises (ex-Visão
+          // Geral) é o nível de baixo, para investigar depois de escolher a pessoa.
           { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
+          { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
           { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
@@ -433,27 +443,39 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       {activeView === 'torre' && (
         <TorreDeControle
-          allTrades={allTrades}
-          plans={plans}
-          students={allStudents}
-          subscriptions={allSubscriptions}
+          radar={radar}
           onAbrirAluno={abrirAluno}
+          extrasAcao={(
+            <>
+              {/* #376 — promoção vem antes da regressão: é a notícia boa, e era a
+                  que não existia em lugar nenhum. Ambas somem quando vazias. */}
+              <MentorPromotionAlert
+                students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+                maturityMap={maturityByStudentId}
+                onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
+              />
+              <MentorMaturityAlert
+                students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+                maturityMap={maturityByStudentId}
+                onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
+              />
+            </>
+          )}
+          pendencias={(
+            <PendingReviewsCard
+              students={students}
+              onOpenReviewQueue={() => onViewChange('reviews')}
+            />
+          )}
         />
       )}
 
       {activeView === 'overview' && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              title="P&L Total Turma"
-              value={<MultiCurrencyAmount totalsByCurrency={overallTotalsByCurrency} layout="stack" showSign />}
-              icon={DollarSign}
-              color={overallTotalsByCurrency.size <= 1 ? (overallStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
-            />
-            <StatCard title="Win Rate Médio" value={formatPercent(overallStats.avgWinRate)} icon={Target} color={overallStats.avgWinRate >= 50 ? 'green' : 'yellow'} />
-            <StatCard title="Alunos Ativos" value={students.length} icon={Users} color="blue" />
-            <StatCard title="Trades Hoje" value={todayTrades.length} icon={Activity} color="purple" />
-          </div>
+          {/* #101 Fase E — os quatro StatCards de média de turma (P&L Total · Win Rate
+              Médio · Alunos Ativos · Trades Hoje) saíram: média de turma não gera
+              decisão, e "Alunos Ativos" valia 17 aqui e 12 na Torre. Esta aba passa a
+              ser DIAGNÓSTICO — o lugar de investigar depois de escolher a pessoa. */}
           {/* #101 — a curva de patrimônio saiu: somava o dinheiro de doze pessoas em
               duas moedas numa linha só. O calendário passou a ser o do aluno
               (TradingCalendar) em modo turma — o CalendarHeatmap lia campos que
@@ -466,34 +488,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               selectedDate={diaSelecionado}
               onSelectDate={(date) => setDiaSelecionado(date === diaSelecionado ? null : date)}
             />
-            <MentorAlerts
-              students={students}
-              activeEmails={emailsAtivos}
-              getTradesByStudent={getTradesByStudent}
-              onViewStudent={abrirAluno}
-            />
+            {/* #101 Fase E — os Alertas Emocionais saíram: eram a terceira noção de
+                "alerta" na plataforma, sobre a mesma população que a lista da turma
+                já cobre com o motor unificado. No lugar, o que é diagnóstico. */}
+            <TorreStopGain stopGain={radar.stopGain} />
           </div>
-          {/* #376 — alunos prontos para promoção. Vem ANTES do alerta de regressão:
-              é a notícia boa, e era a que não existia em lugar nenhum. */}
-          <MentorPromotionAlert
-            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
-            maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
-          />
-          {/* Alertas de regressão de maturidade — issue #119 task 18 */}
-          <MentorMaturityAlert
-            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
-            maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
-          />
-          {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
-          <PendingReviewsCard
-            students={students}
-            onOpenReviewQueue={() => onViewChange('reviews')}
-          />
-          {/* Card Assinaturas (issue #094) */}
-          <div className="mb-8 max-w-sm">
-            <SubscriptionSummaryCard onNavigate={() => onViewChange('subscriptions')} />
+
+          <div className="max-w-sm mb-8">
+            <TorreVisaoRapida byStudent={radar.byStudent} onAbrirAluno={abrirAluno} />
           </div>
           {/* #101 — a lista era os 20 trades mais recentes da turma, sem recorte
               nenhum. Agora só existe com um dia escolhido no calendário. */}
