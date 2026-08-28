@@ -168,8 +168,13 @@ ativo, o registro agregado que alimenta S1/S2/S3/S4/S6.
 Construção da tela NOVA, faseada por seção (D8). Cada fase acrescenta uma seção à Torre; o
 overview v1 segue funcionando e intocado até a Fase D.
 
-- **Fase A** — item de sidebar "Torre de Controle" + `activeView` novo (tela navegável desde o
-  primeiro dia) + **`useMentorRiskRadar` COMPLETO** + testes de agregação (INV-05) + Header S1 (MC-1..4).
+- **Fase A** — ✅ ENTREGUE 27-28/08. Aba "Torre de Controle" no Dashboard + `activeView` novo +
+  `useMentorRiskRadar` + testes de agregação (INV-05) + Header S1 (MC-1..4).
+  Duas correções de rota de Marcio: a Torre **não** virou item de sidebar (D8 revisada) e o
+  Dashboard **não** virou a Torre — ela é aba dele, com a tela inteira, no layout do mockup.
+  O hook entrega `header` + `byStudent`; `priority[]`/`radar[]`/`foraPlano[]` nascem nas fases
+  que os consomem — são DERIVAÇÕES sobre `byStudent`, não passadas novas sobre os trades, então
+  o motivo de D8 (não varrer os mesmos trades quatro vezes) segue respeitado.
 - **Fase B** — Prioridade S2 (MC-5) + Radar S3 (MC-6): núcleo comportamental. **Resolver D9 antes de codar.**
 - **Fase C** — Fora do Plano S4 (MC-7) + Stop×Gain S5 (MC-8).
 - **Fase D** — Visão Rápida S6 (MC-9) + **PROMOÇÃO**: a Torre vira o destino padrão do mentor e o
@@ -220,9 +225,11 @@ tela incompleta.
   bloqueado seguiria no radar. `overdue` **permanece**: quem decide o corte é o bloqueio, não a Torre.
   Base 27/08: 68 cadastrados · 19 com acesso · 39 com assinatura viva · **12 no radar**.
 
-- **D8 · Construção como destino próprio** (27/08/2026): a Torre é `activeView` novo desde a Fase A,
-  com item próprio na sidebar; o overview v1 fica intocado até a Fase D. Evita conviver com tela
-  híbrida por três fases. Navegação por estado — não introduzir roteador onde não há.
+- **D8 · Construção como destino próprio** (27/08/2026, **REVISADA 28/08**): a Torre é `activeView`
+  novo desde a Fase A e o overview v1 fica intocado até a Fase D — isso vale. O que mudou: ela é
+  **aba do Dashboard**, não item de sidebar nem substituta do Dashboard. Marcio: "o Dashboard deve
+  ter uma tab da torre... para que a torre tenha o aspecto do mockup". A aba dá a tela inteira ao
+  layout do mockup sem tirar o overview do lugar. Navegação por estado — sem roteador.
 
 ### Pendente
 
@@ -234,6 +241,19 @@ tela incompleta.
 
 > D1..D8 viram DEC-AUTO-101-01..08 no encerramento (§4.3). D9 vira decisão quando resolvida.
 > D3 e D7 entram na versão REVISADA (27/08) — o texto travado em 27/07 não é o implementado.
+
+---
+
+### Achados fora do escopo (não corrigidos — decisão de Marcio)
+
+- `useEmotionalProfile.js:85` passa `analysis.trades || null` a `calculateStudentStatus`, mas
+  `analyzeEmotionsV2` **não devolve** campo `trades`: o argumento é sempre `null` e o filtro de
+  violações liberadas pelo mentor (#221) nunca recebe trade. Mexer altera o score emocional de
+  toda a base.
+- `CalendarHeatmap.jsx` ficou **sem consumidor** e está quebrado (lê campos que o util não devolve).
+  Candidato a remoção.
+- `RED_FLAG` grava notificação **sem `severity`** (202 dos 235 alertas): caem como MEDIUM e a
+  ordenação do painel vira "emocional primeiro". Endereçar no S3 da Fase B.
 
 ---
 
@@ -255,6 +275,15 @@ tela incompleta.
 
 - 27/07/2026 — pré-abertura §4.0: lock+reserva no main, worktree, doc SSoT, Gate Pré-Código. Sem código.
 - 27/08/2026 — reordenação das fases para construção da tela nova (D8) + D9 aberta. Correção da base da reserva (1.83.1 → 1.83.33). Sem código.
+- 28/08/2026 — correções sobre o overview pedidas por Marcio ao ver a tela: curva de patrimônio
+  removida (somava 2 moedas de 12 pessoas); `CalendarHeatmap` trocado por `TradingCalendar` em modo
+  turma (o antigo lia `dayOfWeek`/`pl`, campos que `generateCalendarData` não devolve — renderizava
+  grade vazia); alertas agrupados por aluno com janela de 7d (235 alertas vivos, mediana 105 dias,
+  viravam "4 sandras"); lista de trades só com dia escolhido, com nomes de quem operou e o aluno
+  como âncora da linha.
+- 28/08/2026 — 3 defeitos de origem corrigidos no caminho: loop de render no painel de alertas
+  (carimbo `new Date()` em alerta sem campo `date` + array novo de trades por render); `studentId`
+  ausente em 5 pontos de entrada da ficha do aluno (abria sem os planos).
 - 27/08/2026 — **Fase A entregue**: item de sidebar + `activeView` 'torre' + `mentorRiskRadar` (agregação
   pura, 41 testes) + `useMentorRiskRadar` + `TorreHeader` (S1, MC-1..4) + casca com placeholders S2..S6.
   D3 e D7 revisadas por Marcio. Medição na base real: 12 no radar; 27/08 → 2 operaram, 1 em alerta,
