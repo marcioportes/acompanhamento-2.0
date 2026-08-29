@@ -59,7 +59,7 @@ const Celula = ({ titulo, grupo, tom }) => (
   </div>
 );
 
-const FichaDiagnostico = ({ diagnostico, nome }) => {
+const FichaDiagnostico = ({ diagnostico, nome, compacto = false }) => {
   if (!diagnostico || diagnostico.trades === 0) return null;
 
   const { setups, emocoes } = diagnostico;
@@ -67,7 +67,7 @@ const FichaDiagnostico = ({ diagnostico, nome }) => {
   const primeiroNome = nome?.split(' ')[0] ?? 'o aluno';
 
   return (
-    <div className="glass-card p-4 sm:p-5 mb-8">
+    <div className={`glass-card p-4 sm:p-5 ${compacto ? 'h-full' : 'mb-8'}`}>
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <h3 className="font-bold text-white">O que dói e o que funciona</h3>
         <span className="text-[10px] text-slate-500 uppercase tracking-wide">
@@ -75,7 +75,10 @@ const FichaDiagnostico = ({ diagnostico, nome }) => {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Compacto = metade da tela. A 1280px isso dá ~465px, e em duas colunas cada
+          célula ficaria com 225px — "Ponto de Reação +4.0R" ocupa ~190px e a legenda
+          quebraria em duas linhas. Empilha até 2xl, onde há folga real. */}
+      <div className={`grid gap-3 ${compacto ? 'grid-cols-1 2xl:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
         <Celula titulo="Setup que mais custa" grupo={setups.dor} tom="dor" />
         <Celula titulo="Setup que mais entrega" grupo={setups.forca} tom="forca" />
         <Celula titulo="Emoção que mais custa" grupo={emocoes.dor} tom="dor" />

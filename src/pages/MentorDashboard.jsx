@@ -350,8 +350,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           trades={selectedStudentTrades}
         />
 
-        <FichaDiagnostico diagnostico={diagnosticoAluno} nome={selectedStudent.name} />
-        <PlanoDeConversa prescricoes={planoDeConversa} nome={selectedStudent.name} />
+        {/* #101 — diagnóstico e plano lado a lado a partir de xl (1280px): abaixo
+            disso cada coluna ficaria estreita demais para as frases do plano, e os
+            dois empilham como antes. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8 items-start">
+          <FichaDiagnostico diagnostico={diagnosticoAluno} nome={selectedStudent.name} compacto />
+          <PlanoDeConversa prescricoes={planoDeConversa} nome={selectedStudent.name} compacto />
+        </div>
 
         {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
             era uma pilha de cards de mesmo peso visual, e o mentor tinha que

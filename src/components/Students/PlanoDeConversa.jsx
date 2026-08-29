@@ -73,7 +73,7 @@ const Item = ({ p }) => {
   );
 };
 
-const PlanoDeConversa = ({ prescricoes: lista = [], nome }) => {
+const PlanoDeConversa = ({ prescricoes: lista = [], nome, compacto = false }) => {
   const [copiado, setCopiado] = useState(false);
   if (!lista.length) return null;
 
@@ -92,7 +92,7 @@ const PlanoDeConversa = ({ prescricoes: lista = [], nome }) => {
   };
 
   return (
-    <div className="glass-card p-4 sm:p-5 mb-8">
+    <div className={`glass-card p-4 sm:p-5 ${compacto ? 'h-full' : 'mb-8'}`}>
       <div className="flex items-baseline justify-between mb-4 gap-2 flex-wrap">
         <div>
           <h3 className="font-bold text-white">Plano de conversa</h3>
@@ -109,7 +109,9 @@ const PlanoDeConversa = ({ prescricoes: lista = [], nome }) => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* Lado a lado com o diagnóstico, os três blocos empilham: em meia tela
+          cada coluna ficaria com ~190px e toda frase quebraria em quatro linhas. */}
+      <div className={`grid gap-3 ${compacto ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3'}`}>
         {BLOCOS.map(({ tipo, titulo, subtitulo, Icon, cor, borda }) => {
           const itens = lista.filter((p) => p.tipo === tipo);
           return (
