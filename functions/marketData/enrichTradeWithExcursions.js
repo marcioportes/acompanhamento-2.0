@@ -65,9 +65,18 @@ async function runEnrichment({ tradeId }, deps = {}) {
   if (!snap.exists) throw new Error(`Trade ${tradeId} não encontrado`);
   const trade = snap.data();
 
-  // Idempotente: já tem MEP e MEN → no-op
+  // Idempotente: já tem MEP e MEN → nada a computar de excursão.
+  //
+  // #101 — mas o APONTADOR PÓS-SAÍDA é posterior a esses 20 trades já enriquecidos,
+  // e o early return os deixaria fora para sempre. Se falta `postExit`, calcula só
+  // ele e devolve; se tem os dois, aí sim é no-op de verdade.
   if (trade.mepPrice != null && trade.menPrice != null) {
-    return { ok: true, skipped: true, source: trade.excursionSource };
+    if (trade.postExit) {
+      return { ok: true, skipped: true, source: trade.excursionSource };
+    }
+    const somentePostExit = await computePostExit(trade, deps);
+    if (somentePostExit) await tradeRef.update({ postExit: somentePostExit });
+    return { ok: true, skipped: true, postExit: somentePostExit ?? null, source: trade.excursionSource };
   }
 
   const yahooSymbol = mapToYahoo(trade.ticker);
