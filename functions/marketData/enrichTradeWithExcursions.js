@@ -30,7 +30,6 @@ const { onCall, HttpsError } = (() => {
 const { mapToYahoo } = require('./symbolMapper');
 const { fetchYahooBars } = require('./fetchYahooBars');
 const { computeExcursionFromBars } = require('./computeExcursionFromBars');
-const { computePostExitOutcome, precoAlvoDoPlano } = require('./computePostExitOutcome');
 
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
 const isMentorEmail = (email) => MENTOR_EMAILS.includes(email?.toLowerCase?.());
@@ -65,18 +64,9 @@ async function runEnrichment({ tradeId }, deps = {}) {
   if (!snap.exists) throw new Error(`Trade ${tradeId} não encontrado`);
   const trade = snap.data();
 
-  // Idempotente: já tem MEP e MEN → nada a computar de excursão.
-  //
-  // #101 — mas o APONTADOR PÓS-SAÍDA é posterior a esses 20 trades já enriquecidos,
-  // e o early return os deixaria fora para sempre. Se falta `postExit`, calcula só
-  // ele e devolve; se tem os dois, aí sim é no-op de verdade.
+  // Idempotente: já tem MEP e MEN → no-op
   if (trade.mepPrice != null && trade.menPrice != null) {
-    if (trade.postExit) {
-      return { ok: true, skipped: true, source: trade.excursionSource };
-    }
-    const somentePostExit = await computePostExit(trade, deps);
-    if (somentePostExit) await tradeRef.update({ postExit: somentePostExit });
-    return { ok: true, skipped: true, postExit: somentePostExit ?? null, source: trade.excursionSource };
+    return { ok: true, skipped: true, source: trade.excursionSource };
   }
 
   const yahooSymbol = mapToYahoo(trade.ticker);
@@ -116,67 +106,12 @@ async function runEnrichment({ tradeId }, deps = {}) {
     return { ok: false, reason: 'bars vazias dentro do range', source: 'unavailable' };
   }
 
-  // #101 — APONTADOR PÓS-SAÍDA. Mesma matéria-prima, janela estendida: depois da
-  // saída, dentro do mesmo dia, o preço tocou primeiro o stop declarado ou o alvo
-  // do plano? Sem isso o motor lê toda saída antecipada como medo, quando ela pode
-  // ter sido proteção de uma posição que ia virar (regra de Marcio, 29/08).
-  const postExit = await computePostExit(trade, deps);
-
   await tradeRef.update({
     mepPrice,
     menPrice,
     excursionSource: 'yahoo',
-    ...(postExit ? { postExit } : {}),
   });
-  return { ok: true, mepPrice, menPrice, postExit: postExit ?? null, source: 'yahoo' };
-}
-
-/**
- * Pós-saída: busca as barras do fim da saída até o fim do dia e responde o que veio
- * primeiro. Isolado (INV-03): qualquer falha aqui devolve null e o enriquecimento de
- * MEP/MEN segue — o apontador é evidência adicional, não pré-requisito.
- */
-async function computePostExit(trade, deps = {}) {
-  try {
-    const db = deps.db;
-    if (!db) return null;
-    if (!trade?.planId || !trade?.exitTime || !trade?.stopLoss) return null;
-
-    const planSnap = await db.collection('plans').doc(trade.planId).get();
-    if (!planSnap.exists) return null;
-    const alvo = precoAlvoDoPlano(trade, planSnap.data());
-    if (alvo == null) return null;
-
-    const inicio = toBrasiliaISO(trade.exitTime);
-    // Fim do dia do trade: o pregão termina antes disso e o Yahoo só devolve barras
-    // de sessão, então não é preciso codificar horário de bolsa por ativo aqui.
-    const fim = toBrasiliaISO(`${String(trade.exitTime).slice(0, 10)}T23:59:00`);
-
-    const r = await fetchYahooBars(
-      { yahooSymbol: mapToYahoo(trade.ticker), from: inicio, to: fim },
-      { fetchFn: deps.fetchFn, now: deps.now },
-    );
-    if (!r.ok || !r.bars?.length) return { outcome: 'NENHUM', source: 'unavailable', alvoPreco: alvo, stopPreco: Number(trade.stopLoss) };
-
-    const resultado = computePostExitOutcome({
-      bars: r.bars,
-      side: trade.side,
-      stopPrice: Number(trade.stopLoss),
-      targetPrice: alvo,
-    });
-
-    return {
-      outcome: resultado.outcome,
-      touchedAt: resultado.touchedAtMs ? new Date(resultado.touchedAtMs).toISOString() : null,
-      alvoPreco: Math.round(alvo * 100) / 100,
-      stopPreco: Number(trade.stopLoss),
-      barsAvaliadas: resultado.bars,
-      source: 'yahoo',
-    };
-  } catch (e) {
-    console.warn('[enrichTradeWithExcursions] pós-saída falhou:', e?.message ?? e);
-    return null;
-  }
+  return { ok: true, mepPrice, menPrice, source: 'yahoo' };
 }
 
 const enrichTradeWithExcursions = onCall(

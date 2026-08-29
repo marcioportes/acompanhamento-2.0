@@ -432,15 +432,13 @@ const detectEarlyExit = (trade, orders) => {
   const planRR = planRrTargetOf(trade);
   if (rr >= planRR * DEFAULT_CONFIG.earlyExit.rrThresholdPct) return null;
   if (orders && orders.some(o => o.isStopOrder && o.status === 'FILLED')) return null;
-  // #101 — saída que evitou o stop é leitura correta, não achado negativo.
-  if (trade?.postExit?.outcome === 'STOP') return null;
   return {
     code: 'EARLY_EXIT',
-    // #101 — espelho de src/utils/shadowBehaviorAnalysis.js. A severidade vem do
-    // apontador pós-saída: ALVO (seguiu e bateu o alvo) = cortou lucro, MÉDIA;
-    // qualquer outro caso = BAIXA. STOP não chega aqui — a saída protetora é
-    // descartada antes, porque leitura correta não é achado negativo.
-    severity: trade?.postExit?.outcome === 'ALVO' ? 'MEDIUM' : 'LOW',
+    // #101 — BAIXA, fixo. Espelho de src/utils/shadowBehaviorAnalysis.js: sair
+    // abaixo do RR reduz a esperança matemática, mas pode ser proteção de um trade
+    // que ia virar. Distinguir exigiria dado de mercado pós-saída, que não existe
+    // para futuros B3. NÃO REESCALAR sem resolver a fonte.
+    severity: 'LOW',
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT, layer: orders && orders.length > 0 ? 2 : 1,
     evidence: { actualRR: rr, planRR, rrAchievedPct: Math.round((rr / planRR) * 100) }

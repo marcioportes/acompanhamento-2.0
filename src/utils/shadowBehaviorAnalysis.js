@@ -813,30 +813,12 @@ export const detectFomoEntry = (trade, orders, config = DEFAULT_CONFIG.fomoEntry
   };
 };
 
-/**
- * A severidade da saída antecipada vem do que o preço fez DEPOIS dela.
- * Sem `postExit` (ativo sem dado de mercado, trade antigo), fica em baixa — o
- * sistema não acusa o que não pode provar.
- */
-export const severidadeDaSaidaAntecipada = (trade) => {
-  const outcome = trade?.postExit?.outcome;
-  if (outcome === 'ALVO') return SEVERITY.MEDIUM;
-  return SEVERITY.LOW;
-};
-
-/** A saída antecipada foi PROTETORA — o preço voltou e teria batido o stop. */
-export const saidaFoiProtetora = (trade) => trade?.postExit?.outcome === 'STOP';
-
 export const detectEarlyExit = (trade, orders, config = DEFAULT_CONFIG.earlyExit) => {
   const result = getTradeResult(trade);
   if (result <= 0) return null; // must be a winner that exited early
 
   const rrRatio = realizedRR(trade);
   if (rrRatio == null || trade.rrAssumed) return null;
-
-  // Saída que evitou o stop não é achado negativo: é leitura correta do mercado, e
-  // aparece como tal no fechamento do ciclo — não como padrão comportamental.
-  if (saidaFoiProtetora(trade)) return null;
 
   const planRR = planRrTargetOf(trade);
   if (rrRatio >= planRR * config.rrThresholdPct) return null; // exit was close enough to target
@@ -849,20 +831,23 @@ export const detectEarlyExit = (trade, orders, config = DEFAULT_CONFIG.earlyExit
 
   return {
     code: PATTERN_CODES.EARLY_EXIT,
-    // #101 (29/08/2026) — a severidade depende do APONTADOR PÓS-SAÍDA, não da
-    // distância do alvo. Marcio: "sair abaixo do RR não é grave, é baixo... ele
-    // também pode estar protegendo o loss".
+    // #101 (29/08/2026) — SEVERIDADE FIXA EM BAIXA, e não é provisório.
     //
-    // O detector só dispara em trade VENCEDOR, e é justamente aí que a leitura é
-    // ambígua: sair em +25 pode ser medo cortando o lucro OU proteção de posição que
-    // ia virar. `trade.postExit` responde com barras de 1 minuto o que o preço fez
-    // DEPOIS da saída:
+    // Marcio: "sair abaixo do RR não é grave, é baixo. Contribui para diminuir a
+    // esperança matemática, mas pode ser lido como condução de um trade perdido...
+    // ele também pode estar protegendo o loss".
     //
-    //   ALVO   → o trade seguiu e bateu o alvo: cortou lucro. MÉDIA.
-    //   STOP   → voltou e bateu o stop: PROTEGEU. Não é achado negativo — some.
-    //   AMBOS  → a barra tocou os dois; a ordem interna é desconhecida. BAIXA.
-    //   ausente/NENHUM → sem evidência: BAIXA. Não se acusa o que não se pode provar.
-    severity: severidadeDaSaidaAntecipada(trade),
+    // O detector só dispara em trade VENCEDOR, e é aí que a leitura é ambígua: sair
+    // em +25 pode ser medo cortando o lucro OU proteção de posição que ia virar.
+    // Distinguir exigiria saber o que o preço fez DEPOIS da saída — e a fonte não
+    // existe: futuros B3 (WIN/WDO), que são 121 dos 131 trades elegíveis da base,
+    // não têm série de 1 minuto gratuita (ver `marketData/symbolMapper.js`). Sem
+    // fonte, o sistema não tem como provar, e não acusa o que não pode provar.
+    //
+    // NÃO REESCALAR sem resolver a fonte de dados primeiro. A régua anterior
+    // escalava por distância do alvo (abaixo de 25% dele virava ALTA) e colocou o
+    // próprio mentor em "risco alto" por uma saída de +25.
+    severity: SEVERITY.LOW,
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT,
     layer: orders && orders.length > 0 ? 2 : 1,

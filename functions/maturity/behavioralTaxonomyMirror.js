@@ -71,7 +71,12 @@ const BEHAVIORAL_PATTERNS = Object.freeze({
   EARLY_EXIT: P({
     code: 'EARLY_EXIT', family: 'EARLY_EXIT', valence: 'negative', dimensao: ['E', 'F'],
     viesFramework: 'Disposition / fear (§2.2 Q4)',
-    severityDefault: SEVERITY.MEDIUM, emotionMapping: 'FEAR',
+    // #101 (29/08/2026) — BAIXA, fixo. Sair abaixo do R:R reduz a esperança
+    // matemática, mas pode ser condução de um trade que ia virar. Distinguir medo
+    // de proteção exigiria saber o que o preço fez DEPOIS da saída, e essa fonte
+    // não existe: futuros B3 não têm série de 1 minuto gratuita. NÃO REESCALAR sem
+    // resolver a fonte.
+    severityDefault: SEVERITY.LOW, emotionMapping: 'FEAR',
     resolutionLayer: RESOLUTION.MEDIUM, requires: ['orders'], feedsScore: true, feedsGates: false,
   }),
   LATE_EXIT: P({
@@ -197,6 +202,17 @@ function resolveCanonical(code) {
   return LEGACY_CODE_ALIAS[code] || null;
 }
 
+/**
+ * Severidade que VALE na leitura, dada a gravada no trade.
+ *
+ * #101 — `EARLY_EXIT` foi gravado como HIGH/MEDIUM por uma régua que escalava pela
+ * distância do alvo, e que a plataforma abandonou: sem dado de mercado pós-saída
+ * não há como separar medo de proteção. Os trades antigos continuam com o valor
+ * velho no Firestore (backfill de snapshot é o que o #402 proibiu), então o teto é
+ * aplicado na LEITURA — mesma mecânica das red flags revogadas.
+ */
+const TETO_DE_SEVERIDADE = { EARLY_EXIT: 'LOW' };
+
 function getPattern(code) {
   const canonical = resolveCanonical(code);
   return canonical ? BEHAVIORAL_PATTERNS[canonical] : null;
@@ -209,7 +225,16 @@ const GATE_CODES = Object.freeze(
   Object.values(BEHAVIORAL_PATTERNS).filter((p) => p.feedsGates).map((p) => p.code),
 );
 
+function severidadeVigente(code, severityGravada) {
+  const teto = TETO_DE_SEVERIDADE[code];
+  if (!teto) return severityGravada ?? null;
+  if (severityGravada == null) return teto;
+  const ordem = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
+  return (ordem[severityGravada] ?? 0) > (ordem[teto] ?? 0) ? teto : severityGravada;
+}
+
 module.exports = {
+  severidadeVigente,
   DIMENSIONS, SEVERITY, RESOLUTION,
   BEHAVIORAL_PATTERNS, LEGACY_CODE_ALIAS,
   resolveCanonical, getPattern, SCORING_CODES, GATE_CODES,
