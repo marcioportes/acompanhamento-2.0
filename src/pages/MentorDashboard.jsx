@@ -18,7 +18,6 @@ import {
   Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
   CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
-import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import ExcursionDisplay from '../components/ExcursionDisplay';
@@ -37,6 +36,7 @@ import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
 import FichaDiagnostico from '../components/Students/FichaDiagnostico';
 import PlanoDeConversa from '../components/Students/PlanoDeConversa';
 import DetalheDoAluno from '../components/Students/DetalheDoAluno';
+import ResultadoDoAluno from '../components/Students/ResultadoDoAluno';
 import { diagnosticoDoAluno, prescricoes, episodios } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
@@ -63,7 +63,7 @@ import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
-import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
+import { buildCalendarDays, emailsDoRadar, planoEmFoco } from '../utils/mentorRiskRadar';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -227,6 +227,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     () => episodios(selectedStudentTrades, planosPorId),
     [selectedStudentTrades, planosPorId],
   );
+  // O R depende do plano; aluno com duas contas tem dois R. A ficha mede a conta
+  // do último trade registrado, nomeada no cabeçalho do bloco.
+  const planoDaFicha = useMemo(
+    () => planosPorId.get(planoEmFoco([], selectedStudentTrades)) ?? null,
+    [planosPorId, selectedStudentTrades],
+  );
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -348,18 +354,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
             era uma pilha de cards de mesmo peso visual, e o mentor tinha que
             garimpar a informação relevante em cada um. */}
-        <h4 className="text-[11px] uppercase tracking-widest text-slate-500 mb-3">Resultado</h4>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            title="P&L Total"
-            value={<MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="stack" showSign />}
-            icon={DollarSign}
-            color={selectedStudentTotals.size <= 1 ? (selectedStudentStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
-          />
-          <StatCard title="Win Rate" value={formatPercent(selectedStudentStats.winRate)} icon={Target} color={selectedStudentStats.winRate >= 50 ? 'green' : 'red'} />
-          <StatCard title="Total Trades" value={selectedStudentStats.totalTrades} icon={Activity} color="blue" />
-          <StatCard title="Profit Factor" value={selectedStudentStats.profitFactor === Infinity ? '∞' : selectedStudentStats.profitFactor.toFixed(2)} icon={TrendingUp} color={selectedStudentStats.profitFactor >= 1 ? 'green' : 'red'} />
-        </div>
+        <ResultadoDoAluno trades={selectedStudentTrades} plano={planoDaFicha} />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <EquityCurve trades={selectedStudentTrades} />
           {/* #101 — mesmo defeito do calendário da turma: o CalendarHeatmap lia
