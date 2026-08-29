@@ -25,10 +25,7 @@ import ExcursionDisplay from '../components/ExcursionDisplay';
 import StudentFeedbackCard from '../components/StudentFeedbackCard';
 import TradingCalendar from '../components/TradingCalendar';
 import EquityCurve from '../components/EquityCurve';
-import SetupAnalysis from '../components/SetupAnalysis';
-import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
-import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
 import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
@@ -39,7 +36,8 @@ import TorreDeControle from '../components/torre/TorreDeControle';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
 import FichaDiagnostico from '../components/Students/FichaDiagnostico';
 import PlanoDeConversa from '../components/Students/PlanoDeConversa';
-import { diagnosticoDoAluno, prescricoes } from '../utils/studentDiagnosis';
+import DetalheDoAluno from '../components/Students/DetalheDoAluno';
+import { diagnosticoDoAluno, prescricoes, episodios } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
@@ -62,7 +60,6 @@ import {
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
-import { filterSetupsForStudent } from '../utils/setupsFilter';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
@@ -89,6 +86,9 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [pendingFilter, setPendingFilter] = useState(null);
+  // #101 — os memos de setups e de perfil emocional do aluno selecionado saíram
+  // junto com os componentes que os consumiam. O detalhamento agora vem de
+  // `diagnosticoDoAluno`/`episodios`, que já rodam para o Plano de Conversa.
   const [showEmotionalDetail, setShowEmotionalDetail] = useState(null); // studentEmail or null
   // #101 — o calendário da turma é o seletor do dia; sem dia escolhido não há lista.
   const [diaSelecionado, setDiaSelecionado] = useState(null);
@@ -223,20 +223,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     () => prescricoes(selectedStudentTrades, planosPorId),
     [selectedStudentTrades, planosPorId],
   );
-  // Setups isolados por aluno selecionado — garante que targetRR de aluno X
-  // não vaze para o cálculo de Aderência RR do aluno Y (issue #174, INV-27 spec-level).
-  const selectedStudentSetups = useMemo(
-    () => filterSetupsForStudent(allSetups, selectedStudent?.studentId),
-    [allSetups, selectedStudent?.studentId],
+  const episodiosAluno = useMemo(
+    () => episodios(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
   );
-
-  // Perfil emocional do aluno selecionado
-  const selectedStudentEmotional = useEmotionalProfile({
-    trades: selectedStudentTrades,
-    detectionConfig,
-    statusThresholds
-  });
-
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -398,26 +388,21 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </button>
 
         {detalheAberto && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <SetupAnalysis trades={selectedStudentTrades} setupsMeta={selectedStudentSetups} />
-          <EmotionAnalysis trades={selectedStudentTrades} />
-        </div>
+          <DetalheDoAluno diagnostico={diagnosticoAluno} episodios={episodiosAluno} />
         )}
-        {/* Perfil Emocional v2 — dentro do fole, junto com o resto do material bruto */}
-        {detalheAberto && selectedStudentEmotional.isReady && (
-          <div className="mb-8">
-            <EmotionalProfileDetail
-              analysis={selectedStudentEmotional.analysis}
-              status={selectedStudentEmotional.status}
-              metrics={selectedStudentEmotional.metrics}
-              alerts={selectedStudentEmotional.alerts}
-              dailyScores={selectedStudentEmotional.dailyScores}
-            />
-          </div>
-        )}
-        <div className="glass-card">
-          {/* Clicar num dia do calendário filtra esta lista; sem dia, é o histórico inteiro. */}
-          {diaAluno && (
+        {/* #101 — o Perfil Emocional saiu da ficha do mentor. Submetido ao teste da
+            conversa, sobrou um item de seis: score 68/100 é nota de prova (gera
+            defesa no aluno, não muda comportamento), a distribuição descreve sem
+            cruzar com resultado, a evolução diária é gráfico de um número sem
+            alavanca e o top de emoções é frequência sem consequência. O que
+            sobreviveu — evento com data — virou a coluna "Episódios", e o cruzamento
+            estado × resultado virou a tabela ao lado. A seção continua inteira na
+            tela do ALUNO, onde o autoconhecimento é o produto. */}
+        {/* #101 — a lista de trades só existe com um dia escolhido no calendário.
+            Marcio: "não quero todos os trades". O histórico inteiro numa página que
+            serve para preparar revisão é ruído — o que se discute é um dia. */}
+        {diaAluno ? (
+          <div className="glass-card">
             <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
               <h3 className="font-semibold text-white text-sm">
                 Trades de {diaAluno.split('-').reverse().join('/')}
@@ -426,18 +411,22 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                 onClick={() => setDiaAluno(null)}
                 className="text-xs text-slate-400 hover:text-white px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-800/50 transition-colors"
               >
-                Ver todos
+                Limpar dia
               </button>
             </div>
-          )}
-          <TradesList
-            trades={diaAluno ? selectedStudentTrades.filter((t) => t.date === diaAluno) : selectedStudentTrades}
-            plans={plans}
-            onViewTrade={setViewingTrade}
-            showStudent={false}
-            showStatus={true}
-          />
-        </div>
+            <TradesList
+              trades={selectedStudentTrades.filter((t) => t.date === diaAluno)}
+              plans={plans}
+              onViewTrade={setViewingTrade}
+              showStudent={false}
+              showStatus={true}
+            />
+          </div>
+        ) : (
+          <div className="glass-card p-6 text-center">
+            <p className="text-sm text-slate-500">Escolha um dia no calendário para ver os trades.</p>
+          </div>
+        )}
         <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
 
         {/* Flow C — modal do wizard em modo mentor */}

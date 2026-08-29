@@ -11,6 +11,7 @@ import {
   agruparImpacto, extremos, diagnosticoDoAluno, fraseParaOFeedback, chaveSetup, chaveEmocao,
   prescricoes,
   alcanceDoAlvo,
+  episodios,
 } from '../../utils/studentDiagnosis';
 
 const planos = new Map([
@@ -302,5 +303,60 @@ describe('prescrição emocional exige magnitude, não só sinal', () => {
   it('estado que custa um risco inteiro vira regra', () => {
     const ps = prescricoes([t2('Ansioso', -300, 1), t2('Ansioso', -300, 2), t2('Ansioso', -300, 3)], planos);
     expect(ps.find((p) => p.mudanca.includes('Não abrir operação em estado "Ansioso"'))).toBeTruthy();
+  });
+});
+
+describe('episodios — o que sobrou do Perfil Emocional', () => {
+  const comFamilia = (data, code, severity = 'HIGH', extra = {}) => ({
+    id: `${data}-${code}`, date: data, entryTime: `${data}T10:00:00-03:00`, result: -300,
+    planId: 'p1', behaviorProfile: { families: [{ canonicalCode: code, severity }] }, ...extra,
+  });
+
+  it('vira linha com data, o que aconteceu e quanto custou o dia', () => {
+    const e = episodios([comFamilia('2026-08-26', 'TILT')], planos);
+    expect(e).toHaveLength(1);
+    expect(e[0].data).toBe('2026-08-26');
+    expect(e[0].marcas).toContain('perdeu o controle depois de uma perda');
+    expect(e[0].r).toBe(-1); // −300 num RO de 300
+  });
+
+  it('junta várias marcas do mesmo dia numa linha só', () => {
+    const e = episodios([
+      comFamilia('2026-08-26', 'TILT'),
+      comFamilia('2026-08-26', 'LOSS_CHASING'),
+    ], planos);
+    expect(e).toHaveLength(1);
+    expect(e[0].marcas).toHaveLength(2);
+    expect(e[0].trades).toBe(2);
+  });
+
+  it('sequência de perdas do dia entra mesmo sem detector comportamental', () => {
+    const semProfile = (h) => ({
+      id: `t${h}`, date: '2026-08-24', entryTime: `2026-08-24T1${h}:00:00-03:00`, result: -100, planId: 'p1',
+    });
+    const e = episodios([semProfile(0), semProfile(1), semProfile(2)], planos);
+    expect(e[0].marcas).toContain('3 perdas seguidas');
+  });
+
+  it('padrão liberado pelo mentor não vira episódio', () => {
+    const t = comFamilia('2026-08-26', 'TILT');
+    const e = episodios([{ ...t, mentorClearedViolations: [`TILT:${t.id}`] }], planos);
+    expect(e).toEqual([]);
+  });
+
+  it('família positiva não vira episódio', () => {
+    expect(episodios([comFamilia('2026-08-26', 'TARGET_HIT', 'NONE')], planos)).toEqual([]);
+  });
+
+  it('mais recente primeiro — é a ordem em que o mentor lê', () => {
+    const e = episodios([
+      comFamilia('2026-08-20', 'TILT'),
+      comFamilia('2026-08-26', 'DIRECTION_FLIP'),
+    ], planos);
+    expect(e.map((x) => x.data)).toEqual(['2026-08-26', '2026-08-20']);
+  });
+
+  it('sem trade não há episódio', () => {
+    expect(episodios([], planos)).toEqual([]);
   });
 });

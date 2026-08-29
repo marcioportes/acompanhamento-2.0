@@ -371,3 +371,78 @@ export function prescricoes(trades, planoPorId = null) {
 }
 
 export const TIPO_PRESCRICAO = TIPO;
+
+/**
+ * Episódios — os dias em que o processo saiu do trilho, com data.
+ *
+ * É o que sobra de útil do Perfil Emocional depois do teste da conversa: score
+ * 68/100 é nota de prova (gera defesa, não mudança) e a distribuição de emoções
+ * descreve sem cruzar com resultado. O que se discute com o aluno é EVENTO —
+ * "no dia 26 você tomou três perdas seguidas e continuou" — porque evento tem
+ * data, tem contexto e vira regra.
+ *
+ * Duas fontes: o motor comportamental (`behaviorProfile.families`, CHUNK-11) e a
+ * sequência de perdas do próprio dia, que nenhum detector cobre.
+ */
+const FAMILIAS_EPISODIO = {
+  TILT: 'perdeu o controle depois de uma perda',
+  LOSS_CHASING: 'reentrou quente para recuperar',
+  IMPULSE_CLUSTER: 'sequência rápida de entradas',
+  CHASE_REENTRY: 'perseguiu o preço',
+  DIRECTION_FLIP: 'virou a mão',
+  STOP_PANIC: 'saiu no pânico',
+};
+
+export function episodios(trades, planoPorId = null) {
+  const lista = trades ?? [];
+  const porData = new Map();
+
+  const add = (data, texto, peso) => {
+    if (!data) return;
+    const e = porData.get(data) ?? { data, marcas: [], peso: 0 };
+    if (!e.marcas.includes(texto)) e.marcas.push(texto);
+    e.peso += peso;
+    porData.set(data, e);
+  };
+
+  for (const t of lista) {
+    const fams = t?.behaviorProfile?.families;
+    if (!Array.isArray(fams)) continue;
+    const cleared = Array.isArray(t.mentorClearedViolations) ? t.mentorClearedViolations : [];
+    for (const f of fams) {
+      const texto = FAMILIAS_EPISODIO[f?.canonicalCode];
+      if (!texto) continue;
+      if (cleared.includes(`${f.canonicalCode}:${t.id}`)) continue;
+      add(t.date, texto, f.severity === 'HIGH' ? 3 : f.severity === 'MEDIUM' ? 2 : 1);
+    }
+  }
+
+  for (const d of diasDeSequenciaRuim(lista)) {
+    add(d.data, `${d.perdasSeguidas} perdas seguidas`, 3);
+  }
+
+  // Resultado do dia, em R quando há plano — o episódio custou quanto?
+  const resultadoPorDia = new Map();
+  for (const t of lista) {
+    if (!t?.date) continue;
+    const res = num(t.result);
+    if (res == null) continue;
+    const plano = planoPorId?.get?.(t.planId) ?? null;
+    const ro = plano?.pl > 0 && plano?.riskPerOperation > 0 ? plano.pl * (plano.riskPerOperation / 100) : null;
+    const acc = resultadoPorDia.get(t.date) ?? { r: 0, comR: 0, trades: 0 };
+    acc.trades += 1;
+    if (ro) { acc.r += res / ro; acc.comR += 1; }
+    resultadoPorDia.set(t.date, acc);
+  }
+
+  return [...porData.values()]
+    .map((e) => {
+      const dia = resultadoPorDia.get(e.data) ?? { r: 0, comR: 0, trades: 0 };
+      return {
+        ...e,
+        trades: dia.trades,
+        r: dia.comR ? Math.round(dia.r * 100) / 100 : null,
+      };
+    })
+    .sort((a, b) => b.data.localeCompare(a.data));
+}
