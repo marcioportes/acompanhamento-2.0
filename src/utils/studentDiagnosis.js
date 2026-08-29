@@ -151,3 +151,185 @@ export function fraseParaOFeedback(diag) {
 
   return partes.length ? partes.join(' ') : null;
 }
+
+// ============================================================================
+// Prescrições — o que MUDAR e o que PRESERVAR, pronto para a revisão
+// ============================================================================
+
+/**
+ * Marcio, 29/08: *"preciso de uma análise concisa para entender o que pode mudar
+ * para resolver a dor e manter o que funciona... que me dê leverage de não ter que
+ * minerar informação cada vez que tenho que fazer uma revisão"*.
+ *
+ * Cada regra aqui só existe porque o campo que ela lê EXISTE na base. Medido em
+ * 29/08 sobre 381 trades: `takeProfit` em 0, `mepPrice` em 55, `stopLoss` em 282,
+ * `emotionEntry` em 377, `entryTime`/`exitTime` em ~379. Prescrição sobre campo
+ * vazio é adivinhação com cara de análise.
+ *
+ * Cada item devolve: o que mudar, a evidência numérica, e como dizer ao aluno.
+ */
+
+const TIPO = { OPERACIONAL: 'operacional', EMOCIONAL: 'emocional', PRESERVAR: 'preservar' };
+
+const duracaoMin = (t) => {
+  if (!t?.entryTime || !t?.exitTime) return null;
+  const ms = new Date(t.exitTime) - new Date(t.entryTime);
+  return Number.isFinite(ms) && ms > 0 ? ms / 60000 : null;
+};
+
+const media = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+
+/** Dias em que o aluno tomou 3+ perdas seguidas — a sequência que ninguém corta sozinho. */
+export function diasDeSequenciaRuim(trades, minimo = 3) {
+  const porDia = new Map();
+  for (const t of trades ?? []) {
+    if (!t?.date) continue;
+    const arr = porDia.get(t.date) ?? [];
+    arr.push(t);
+    porDia.set(t.date, arr);
+  }
+  const dias = [];
+  for (const [data, lista] of porDia) {
+    const ordenada = [...lista].sort((a, b) => String(a.entryTime ?? '').localeCompare(String(b.entryTime ?? '')));
+    let seq = 0;
+    let maior = 0;
+    for (const t of ordenada) {
+      if ((num(t.result) ?? 0) < 0) { seq += 1; maior = Math.max(maior, seq); } else seq = 0;
+    }
+    if (maior >= minimo) dias.push({ data, perdasSeguidas: maior });
+  }
+  return dias.sort((a, b) => a.data.localeCompare(b.data));
+}
+
+/**
+ * O que fazer, em ordem de impacto na conversa.
+ *
+ * @returns {Array<{tipo, mudanca, evidencia, comoDizer}>}
+ */
+export function prescricoes(trades, planoPorId = null) {
+  const lista = (trades ?? []).filter((t) => num(t?.result) != null);
+  if (!lista.length) return [];
+
+  const diag = diagnosticoDoAluno(lista, planoPorId);
+  const out = [];
+  const n = lista.length;
+
+  // ── OPERACIONAL ───────────────────────────────────────────────────────────
+
+  // Sem alvo declarado: sem isso não existe R:R para discutir, e a saída fica sem
+  // critério. Na base inteira são 0 de 381 — é a regra que mais muda a conversa.
+  const semAlvo = lista.filter((t) => t.takeProfit == null || t.takeProfit === '').length;
+  if (semAlvo / n >= 0.6) {
+    out.push({
+      tipo: TIPO.OPERACIONAL,
+      mudanca: 'Declarar o alvo antes de entrar',
+      evidencia: semAlvo === n
+        ? `nenhum dos ${n} trades tem alvo declarado`
+        : `${semAlvo} de ${n} trades sem alvo declarado`,
+      comoDizer: 'Sem alvo declarado eu não consigo avaliar se a saída foi decisão ou reação — e você também não. É o primeiro campo a preencher, antes do clique.',
+    });
+  }
+
+  // Sem stop declarado: risco vira retroativo (DEC-006) e o plano perde o freio.
+  const semStop = lista.filter((t) => t.stopLoss == null || t.stopLoss === '').length;
+  if (semStop / n >= 0.2) {
+    out.push({
+      tipo: TIPO.OPERACIONAL,
+      mudanca: 'Declarar o stop em toda operação',
+      evidencia: `${semStop} de ${n} trades (${Math.round((semStop / n) * 100)}%) entraram sem stop declarado`,
+      comoDizer: 'Operação sem stop declarado não tem risco definido — o risco vira o que o mercado decidir. Não é sobre acertar o ponto, é sobre existir um.',
+    });
+  }
+
+  // Setup que drena, com amostra que sustenta a conversa.
+  const dorSetup = diag.setups.dor;
+  if (dorSetup && dorSetup.n >= 3) {
+    out.push({
+      tipo: TIPO.OPERACIONAL,
+      mudanca: `Suspender ${dorSetup.chave} até revisar o critério de entrada`,
+      evidencia: `${dorSetup.n} trades, ${dorSetup.wr}% de acerto${dorSetup.comR ? `, ${dorSetup.r.toFixed(1)}R acumulados` : ''}`,
+      comoDizer: `${dorSetup.chave} é onde o dinheiro sai. Antes de operar de novo, quero ver o critério escrito: o que precisa estar na tela para ser esse setup, e o que o desqualifica.`,
+    });
+  }
+
+  // ── EMOCIONAL ─────────────────────────────────────────────────────────────
+
+  // Estado emocional com prejuízo e acerto baixo: vira porta, não sermão.
+  // Exige MAGNITUDE, não só sinal: sem isso, "Neutro" com −0,3R em 4 trades virava
+  // prescrição emocional ao lado de "Ansioso" com −3,8R e 0% de acerto. Um risco
+  // autorizado inteiro perdido é o piso do que merece virar regra.
+  const emocaoToxica = diag.emocoes.todos.find(
+    (e) => e.chave !== 'Não informada' && e.n >= 3 && e.wr <= 30
+      && (e.comR ? e.r <= -1 : e.pl < 0),
+  );
+  if (emocaoToxica) {
+    out.push({
+      tipo: TIPO.EMOCIONAL,
+      mudanca: `Não abrir operação em estado "${emocaoToxica.chave}"`,
+      evidencia: `${emocaoToxica.n} trades nesse estado, ${emocaoToxica.wr}% de acerto${emocaoToxica.comR ? `, ${emocaoToxica.r.toFixed(1)}R` : ''}`,
+      comoDizer: `Quando você marca "${emocaoToxica.chave}" na entrada, o resultado não aparece — são ${emocaoToxica.n} trades e ${emocaoToxica.wr}% de acerto. A regra não é controlar a emoção, é não operar nela.`,
+    });
+  }
+
+  // Sequência de perdas no mesmo dia: regra de parada, não força de vontade.
+  const dias = diasDeSequenciaRuim(lista);
+  if (dias.length) {
+    out.push({
+      tipo: TIPO.EMOCIONAL,
+      mudanca: 'Parar o dia após duas perdas seguidas',
+      evidencia: `${dias.length} ${dias.length === 1 ? 'dia' : 'dias'} com 3 ou mais perdas em sequência`,
+      comoDizer: 'Depois da segunda perda seguida, o dia já disse o que tinha para dizer. A regra existe para não depender de você estar bem naquele momento.',
+    });
+  }
+
+  // Trades sem emoção declarada: sem isso a conversa emocional não tem sobre o quê.
+  const semEmocao = lista.filter((t) => !t.emotionEntry && !t.emotion).length;
+  if (semEmocao / n >= 0.3) {
+    out.push({
+      tipo: TIPO.EMOCIONAL,
+      mudanca: 'Registrar o estado na entrada',
+      evidencia: `${semEmocao} de ${n} trades sem emoção declarada`,
+      comoDizer: 'Sem o estado registrado na hora, a gente reconstrói a conversa pela memória — e a memória conta a história que o resultado sugere.',
+    });
+  }
+
+  // ── PRESERVAR ─────────────────────────────────────────────────────────────
+
+  const forcaSetup = diag.setups.forca;
+  if (forcaSetup) {
+    out.push({
+      tipo: TIPO.PRESERVAR,
+      mudanca: `Manter ${forcaSetup.chave}`,
+      evidencia: `${forcaSetup.n} ${forcaSetup.n === 1 ? 'trade' : 'trades'}, ${forcaSetup.wr}% de acerto${forcaSetup.comR ? `, ${forcaSetup.r >= 0 ? '+' : ''}${forcaSetup.r.toFixed(1)}R` : ''}${forcaSetup.n < 3 ? ' — amostra pequena, observar' : ''}`,
+      comoDizer: `${forcaSetup.chave} é o que está entregando. Antes de procurar setup novo, quero ver frequência maior nesse.`,
+    });
+  }
+
+  const forcaEmocao = diag.emocoes.forca;
+  if (forcaEmocao && forcaEmocao.chave !== 'Não informada') {
+    out.push({
+      tipo: TIPO.PRESERVAR,
+      mudanca: `Reproduzir a condição de "${forcaEmocao.chave}"`,
+      evidencia: `${forcaEmocao.n} trades nesse estado, ${forcaEmocao.wr}% de acerto`,
+      comoDizer: `Seu melhor resultado sai em "${forcaEmocao.chave}". O que você fez ANTES do pregão nesses dias? É isso que a gente quer transformar em rotina.`,
+    });
+  }
+
+  // Corta o perdedor rápido e deixa o vencedor correr — quando é verdade, é a
+  // coisa mais difícil do ofício e ninguém diz ao aluno que ele já faz.
+  const comDuracao = lista.map((t) => ({ r: num(t.result) ?? 0, d: duracaoMin(t) })).filter((x) => x.d != null);
+  const tv = media(comDuracao.filter((x) => x.r > 0).map((x) => x.d));
+  const tp = media(comDuracao.filter((x) => x.r < 0).map((x) => x.d));
+  if (tv != null && tp != null && comDuracao.length >= 8 && tp / tv <= 0.8) {
+    out.push({
+      tipo: TIPO.PRESERVAR,
+      mudanca: 'Manter a assimetria de tempo entre ganho e perda',
+      evidencia: `vencedor dura ${Math.round(tv)}min contra ${Math.round(tp)}min do perdedor`,
+      comoDizer: 'Você corta a perda rápido e deixa o ganho correr — é o inverso do que a maioria faz sob pressão. Isso não é sorte, é execução, e é o que sustenta o resto.',
+    });
+  }
+
+  return out;
+}
+
+export const TIPO_PRESCRICAO = TIPO;

@@ -15,7 +15,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
   CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
@@ -38,7 +38,8 @@ import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
 import FichaDiagnostico from '../components/Students/FichaDiagnostico';
-import { diagnosticoDoAluno } from '../utils/studentDiagnosis';
+import PlanoDeConversa from '../components/Students/PlanoDeConversa';
+import { diagnosticoDoAluno, prescricoes } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
@@ -92,6 +93,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // #101 — o calendário da turma é o seletor do dia; sem dia escolhido não há lista.
   const [diaSelecionado, setDiaSelecionado] = useState(null);
   const [diaAluno, setDiaAluno] = useState(null);
+  const [detalheAberto, setDetalheAberto] = useState(false);
 
   // === Bulk Feedback State ===
   const [selectedTradeIds, setSelectedTradeIds] = useState(new Set());
@@ -215,6 +217,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // #101 — o veredicto da ficha: o que dói e o que funciona, setup e emoção.
   const diagnosticoAluno = useMemo(
     () => diagnosticoDoAluno(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
+  );
+  const planoDeConversa = useMemo(
+    () => prescricoes(selectedStudentTrades, planosPorId),
     [selectedStudentTrades, planosPorId],
   );
   // Setups isolados por aluno selecionado — garante que targetRR de aluno X
@@ -347,6 +353,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         />
 
         <FichaDiagnostico diagnostico={diagnosticoAluno} nome={selectedStudent.name} />
+        <PlanoDeConversa prescricoes={planoDeConversa} nome={selectedStudent.name} />
 
         {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
             era uma pilha de cards de mesmo peso visual, e o mentor tinha que
@@ -376,13 +383,28 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             onSelectDate={(date) => setDiaAluno(date === diaAluno ? null : date)}
           />
         </div>
-        <h4 className="text-[11px] uppercase tracking-widest text-slate-500 mb-3">Detalhamento</h4>
+        {/* #101 — o detalhamento vira fole. Marcio: "deixa embaixo todo o emaranhado
+            de resultados soltos, eu não preciso disso". O dado não sumiu: saiu do
+            caminho de quem abre a ficha para preparar uma revisão em cinco minutos. */}
+        <button
+          onClick={() => setDetalheAberto(!detalheAberto)}
+          className="w-full flex items-center gap-2 text-[11px] uppercase tracking-widest text-slate-500 hover:text-slate-300 mb-3 transition-colors"
+        >
+          {detalheAberto ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Detalhamento
+          <span className="normal-case tracking-normal text-slate-600">
+            setup, emocional e perfil — o material bruto por trás do plano
+          </span>
+        </button>
+
+        {detalheAberto && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <SetupAnalysis trades={selectedStudentTrades} setupsMeta={selectedStudentSetups} />
           <EmotionAnalysis trades={selectedStudentTrades} />
         </div>
-        {/* Perfil Emocional v2 */}
-        {selectedStudentEmotional.isReady && (
+        )}
+        {/* Perfil Emocional v2 — dentro do fole, junto com o resto do material bruto */}
+        {detalheAberto && selectedStudentEmotional.isReady && (
           <div className="mb-8">
             <EmotionalProfileDetail
               analysis={selectedStudentEmotional.analysis}
