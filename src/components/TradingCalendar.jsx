@@ -111,14 +111,26 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
         </div>
         
         {modoTurma ? (
-          <div className="flex items-center gap-3 text-xs font-mono">
-            {/* Stop × Gain do mês, no próprio card do calendário: um gráfico de
-                barras por dia da semana era um calendário com menos informação. */}
-            <span className="text-emerald-400">{mesTurma.gains}<span className="text-slate-600">g</span></span>
-            <span className="text-red-400">{mesTurma.losses}<span className="text-slate-600">p</span></span>
+          /* Stop × Gain do mês, no próprio card: um gráfico de barras por dia da
+             semana era um calendário com menos informação. */
+          <div className="flex items-center gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500/80" />
+              {mesTurma.gains} {mesTurma.gains === 1 ? 'ganho' : 'ganhos'}
+            </span>
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-red-500/80" />
+              {mesTurma.losses} {mesTurma.losses === 1 ? 'perda' : 'perdas'}
+            </span>
+            {mesTurma.flags > 0 && (
+              <span className="flex items-center gap-1.5 text-amber-400/80">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                {mesTurma.flags} fora do plano
+              </span>
+            )}
             {mesTurma.comR > 0 && (
               <span
-                className={`font-bold px-2 py-0.5 rounded border ${
+                className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${
                   mesTurma.r >= 0
                     ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
                     : 'text-red-300 border-red-500/30 bg-red-500/10'
@@ -148,7 +160,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
         </div>
 
         {/* Grid de Dias */}
-        <div className="grid grid-cols-7 gap-1 h-full auto-rows-fr">
+        <div className="grid grid-cols-7 gap-1.5 h-full auto-rows-fr">
           {blanks.map((_, i) => <div key={`b-${i}`} />)}
 
           {daysArray.map(day => {
@@ -156,37 +168,98 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
             const meta = modoTurma ? daysMeta[dateString] : null;
             const data = modoTurma ? (meta ? { pnl: 0, count: meta.trades } : undefined) : dailyData[dateString];
             const isSelected = selectedDate === dateString;
-            
-            // Estilos Condicionais
+
+            // ── MODO TURMA ────────────────────────────────────────────────────
+            // O dia é lido em três camadas, não em quatro números empilhados:
+            //   COR   = veredicto (verde ganhou, vermelho perdeu, âmbar violou o plano)
+            //   NÚMERO grande = o líquido do dia em R — o que aconteceu
+            //   BARRA = proporção ganhos × perdas — como aconteceu
+            // Quem operou fica no hover. Antes eram "3 · 0" e "1 aluno" em texto
+            // miúdo dentro de um quadrado: planilha, não calendário.
+            if (modoTurma) {
+              if (!meta) {
+                return (
+                  <div key={dateString} className="rounded-xl border border-transparent min-h-[74px] p-2">
+                    <span className="text-[11px] text-slate-700">{day}</span>
+                  </div>
+                );
+              }
+
+              const positivo = meta.comR ? meta.r >= 0 : meta.gains >= meta.losses;
+              const temFalta = meta.flags > 0;
+              const total = Math.max(1, meta.gains + meta.losses);
+              const pctGanho = (meta.gains / total) * 100;
+
+              const moldura = isSelected
+                ? 'border-blue-400 bg-blue-500/20 ring-2 ring-blue-500/40'
+                : temFalta
+                  ? 'border-amber-500/40 bg-amber-500/[0.07] hover:bg-amber-500/[0.14]'
+                  : positivo
+                    ? 'border-emerald-500/25 bg-emerald-500/[0.07] hover:bg-emerald-500/[0.14]'
+                    : 'border-red-500/25 bg-red-500/[0.07] hover:bg-red-500/[0.14]';
+
+              return (
+                <button
+                  key={dateString}
+                  onClick={() => onSelectDate(dateString)}
+                  title={[
+                    `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.gains} ${meta.gains === 1 ? 'ganho' : 'ganhos'} · ${meta.losses} ${meta.losses === 1 ? 'perda' : 'perdas'}${meta.comR ? ` · ${meta.r >= 0 ? '+' : ''}${meta.r.toFixed(1)}R` : ''}`,
+                    ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
+                  ].join('\n')}
+                  className={`group relative rounded-xl border p-2 min-h-[74px] flex flex-col justify-between text-left transition-all duration-150 ${moldura}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <span className={`text-[11px] leading-none ${isSelected ? 'text-white' : 'text-slate-400'}`}>{day}</span>
+                    {temFalta && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`${meta.flags} fora do plano`} />
+                    )}
+                  </div>
+
+                  {meta.comR > 0 && (
+                    <span className={`text-base font-bold font-mono leading-none ${
+                      isSelected ? 'text-white' : positivo ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {meta.r >= 0 ? '+' : ''}{meta.r.toFixed(1)}
+                      <span className="text-[10px] font-normal opacity-60">R</span>
+                    </span>
+                  )}
+
+                  <div>
+                    {/* Proporção ganhos × perdas: o dia inteiro numa faixa. */}
+                    <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800 flex">
+                      <div className="bg-emerald-500/80" style={{ width: `${pctGanho}%` }} />
+                      <div className="bg-red-500/80" style={{ width: `${100 - pctGanho}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[9px] text-slate-500">
+                        {meta.gains}<span className="text-slate-700">/</span>{meta.losses}
+                      </span>
+                      <span className="text-[9px] text-slate-500">
+                        {meta.alunos} {meta.alunos === 1 ? 'aluno' : 'alunos'}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            }
+
+            // ── MODO ALUNO (inalterado) ───────────────────────────────────────
             let bgClass = "bg-slate-800/20 border-transparent hover:bg-slate-800/50";
             let textClass = "text-slate-500";
-            
-            if (modoTurma && meta) {
-              // A cor do dia da turma é RISCO, não resultado: dia com violação puxa o olho.
-              if (meta.flags > 0) {
-                bgClass = isSelected
-                  ? "bg-amber-500 border-amber-400 shadow-lg shadow-amber-500/20"
-                  : "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20";
-                textClass = isSelected ? "text-white" : "text-amber-400";
-              } else {
-                bgClass = isSelected
-                  ? "bg-blue-500 border-blue-400 shadow-lg shadow-blue-500/20"
-                  : "bg-slate-700/30 border-slate-600/30 hover:bg-slate-700/50";
-                textClass = isSelected ? "text-white" : "text-slate-300";
-              }
-            } else if (data) {
+
+            if (data) {
               if (data.pnl > 0) {
-                bgClass = isSelected 
-                  ? "bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-500/20" 
+                bgClass = isSelected
+                  ? "bg-emerald-500 border-emerald-400 shadow-lg shadow-emerald-500/20"
                   : "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20";
                 textClass = isSelected ? "text-white" : "text-emerald-400";
               } else if (data.pnl < 0) {
-                bgClass = isSelected 
-                  ? "bg-red-500 border-red-400 shadow-lg shadow-red-500/20" 
+                bgClass = isSelected
+                  ? "bg-red-500 border-red-400 shadow-lg shadow-red-500/20"
                   : "bg-red-500/10 border-red-500/20 hover:bg-red-500/20";
                 textClass = isSelected ? "text-white" : "text-red-400";
               } else {
-                 textClass = "text-slate-300";
+                textClass = "text-slate-300";
               }
             }
 
@@ -195,51 +268,26 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                 key={dateString}
                 onClick={() => data && onSelectDate(dateString)}
                 disabled={!data}
-                // Modo turma: o dia diz QUANTOS na célula e QUEM no hover — sem
-                // isso o mentor via "3 alunos" e não sabia quais.
-                title={
-                  modoTurma && meta
-                    ? [
-                        `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.gains} ${meta.gains === 1 ? 'ganho' : 'ganhos'} · ${meta.losses} ${meta.losses === 1 ? 'perda' : 'perdas'}${meta.comR ? ` · ${meta.r >= 0 ? '+' : ''}${meta.r.toFixed(1)}R` : ''}`,
-                        ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
-                      ].join('\n')
-                    : undefined
-                }
                 className={`
                   relative rounded-lg border p-1 flex flex-col items-center justify-center transition-all duration-200
                   ${bgClass} ${!data ? 'cursor-default' : 'cursor-pointer'}
                 `}
               >
-                {/* Dia Numérico */}
                 <span className={`text-[10px] absolute top-1 left-1.5 leading-none ${data ? 'text-slate-400' : 'text-slate-700'}`}>
                   {day}
                 </span>
 
-                {/* Badge de Contador (NOVO REQUISITO) */}
                 {data && (
                   <span className="absolute top-1 right-1 flex h-3.5 min-w-[14px] items-center justify-center rounded bg-slate-900/60 px-0.5 text-[8px] font-medium text-slate-300 border border-slate-700/30">
                     {data.count}
                   </span>
                 )}
-                
-                {/* Valor do dia: dinheiro na tela do aluno. Na da turma, a marcação
-                    de ganho × perda — verde e vermelho — com quantos operaram embaixo. */}
-                {data && (modoTurma ? (
-                  <div className="mt-3 flex flex-col items-center leading-none">
-                    <span className="text-[11px] md:text-xs font-bold">
-                      <span className={meta.gains ? 'text-emerald-400' : 'text-slate-700'}>{meta.gains}</span>
-                      <span className="text-slate-700 mx-0.5">·</span>
-                      <span className={meta.losses ? 'text-red-400' : 'text-slate-700'}>{meta.losses}</span>
-                    </span>
-                    <span className="text-[9px] text-slate-500 mt-0.5">
-                      {meta.alunos} {meta.alunos === 1 ? 'aluno' : 'alunos'}
-                    </span>
-                  </div>
-                ) : (
+
+                {data && (
                   <span className={`text-[10px] md:text-xs font-bold mt-3 truncate max-w-full px-1 ${textClass}`}>
                     {formatCurrency(data.pnl)}
                   </span>
-                ))}
+                )}
               </button>
             );
           })}

@@ -489,18 +489,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               (TradingCalendar) em modo turma — o CalendarHeatmap lia campos que
               `generateCalendarData` não devolve mais (dayOfWeek, pl) e renderizava
               uma grade de quadrados vazios. */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* #101 — o calendário ocupa a linha inteira: é a peça de diagnóstico
+              desta aba, e espremido em meia tela a célula do dia virava planilha. */}
+          <div className="mb-6">
             <TradingCalendar
               trades={allTrades}
               daysMeta={diasDaTurma}
               selectedDate={diaSelecionado}
               onSelectDate={(date) => setDiaSelecionado(date === diaSelecionado ? null : date)}
             />
-            {/* #101 — o card de Stop × Gain sumiu daqui: a marcação de ganho e perda
-                vive DENTRO do calendário, no dia. Barra por dia da semana era um
-                calendário com menos informação, e dois cards para o mesmo fato era
-                justamente a confusão que esta fase veio desfazer. */}
-            <TorreVisaoRapida byStudent={radar.byStudent} onAbrirAluno={abrirAluno} />
           </div>
 
           {/* #101 — a lista era os 20 trades mais recentes da turma, sem recorte
@@ -551,6 +548,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             </div>
           )}
         </>
+      )}
+
+      {activeView === 'overview' && (
+        <div className="max-w-sm mb-8">
+          <TorreVisaoRapida byStudent={radar.byStudent} onAbrirAluno={abrirAluno} />
+        </div>
       )}
 
       {activeView === 'students' && (
