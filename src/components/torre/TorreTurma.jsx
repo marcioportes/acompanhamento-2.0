@@ -65,7 +65,70 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
     {turma.length === 0 ? (
       <div className="p-8 text-center text-sm text-slate-500">Nenhum aluno neste recorte.</div>
     ) : (
-    <div className="w-full overflow-x-auto">
+    <>
+    {/* Celular: cartão por aluno. Tabela de sete colunas rolando lateralmente é
+        ilegível no telefone, e esta é a tela onde o mentor bate o olho. */}
+    <div className="sm:hidden divide-y divide-slate-800/50">
+      {turma.map((a) => {
+        const semana = a.resultadoSemanaR;
+        const fora = a.foraDoPlanoSemana;
+        const sumido = a.atencao.faixa === FAIXA.SUMIU;
+        const wa = linkWhatsapp(
+          a.whatsappNumber,
+          `${a.name?.split(' ')[0] ?? ''}, tudo bem? ${sumido ? 'Faz um tempo que não vejo operação sua.' : 'Podemos falar sobre seu dia?'}`,
+        );
+        return (
+          <div key={a.studentId} className="p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium text-white truncate">{a.name}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">{a.atencao.motivo}</div>
+              </div>
+              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border flex-shrink-0 ${ESTILO_FAIXA[a.atencao.faixa]}`}>
+                {FAIXA_LABEL[a.atencao.faixa]}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              {semana?.comR ? (
+                <span className={`text-xs font-mono font-bold ${semana.valor >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {semana.valor >= 0 ? '+' : ''}{semana.valor.toFixed(1)}R
+                  <span className="text-slate-600 font-normal"> · {a.tradesSemana.length}t</span>
+                </span>
+              ) : null}
+              {fora?.pct > 0 && (
+                <span className="text-xs text-amber-400">{Math.round(fora.pct)}% fora</span>
+              )}
+              {a.radar && (
+                <span className="text-[11px] text-slate-400 truncate">
+                  {BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family}
+                </span>
+              )}
+              {a.pendencias?.feedback > 0 && (
+                <span className="text-[11px] text-blue-300">{a.pendencias.feedback} feedback</span>
+              )}
+
+              <span className="ml-auto flex items-center gap-1.5">
+                {wa && (
+                  <a href={wa} target="_blank" rel="noopener noreferrer"
+                     className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                <button
+                  onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
+                  className="p-1.5 rounded-lg border border-slate-700 text-slate-300"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    <div className="hidden sm:block w-full overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="border-b border-slate-800 text-[10px] text-slate-500 uppercase tracking-wider">
@@ -191,6 +254,7 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
         </tbody>
       </table>
     </div>
+    </>
     )}
   </div>
 );

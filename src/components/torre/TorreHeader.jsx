@@ -18,17 +18,17 @@ const Tile = ({ icon: Icon, valor, sufixo, label, detalhe, tone = 'slate', ativo
       type="button"
       onClick={onClick}
       title={title || undefined}
-      className={`text-left bg-slate-900/60 border rounded-xl px-5 py-4 transition-colors ${
+      className={`text-left bg-slate-900/60 border rounded-xl px-3 py-3 sm:px-5 sm:py-4 transition-colors ${
         ativo ? 'border-blue-500/50 bg-blue-500/5' : 'border-slate-800 hover:border-slate-700'
       }`}
     >
       <div className="flex items-baseline gap-2">
         <Icon className={`w-4 h-4 ${cor} self-center`} />
-        <span className="text-3xl font-bold text-white leading-none tabular-nums">{valor}</span>
-        {sufixo && <span className="text-sm text-slate-500">{sufixo}</span>}
+        <span className="text-2xl sm:text-3xl font-bold text-white leading-none tabular-nums">{valor}</span>
+        {sufixo && <span className="text-xs sm:text-sm text-slate-500">{sufixo}</span>}
       </div>
-      <div className="text-[10px] text-slate-500 uppercase tracking-wide mt-2">{label}</div>
-      {detalhe && <div className="text-[11px] text-slate-400 mt-1">{detalhe}</div>}
+      <div className="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-wide mt-1.5 sm:mt-2 leading-tight">{label}</div>
+      {detalhe && <div className="hidden sm:block text-[11px] text-slate-400 mt-1">{detalhe}</div>}
     </button>
   );
 };
@@ -42,7 +42,7 @@ const TorreHeader = ({ header, filtro, onFiltrar }) => {
   const alterna = (nome) => () => onFiltrar?.(filtro === nome ? null : nome);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-3 gap-2 sm:gap-4">
       <Tile
         icon={Users}
         valor={operaramHoje}

@@ -101,7 +101,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
     <div className="glass-card flex flex-col h-full min-h-[420px]">
       
       {/* HEADER */}
-      <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+      <div className="p-3 sm:p-4 border-b border-slate-800/50 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <div className="flex bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50">
             <button onClick={prevMonth} className="p-1 hover:text-white text-slate-400 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
@@ -113,24 +113,24 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
         {modoTurma ? (
           /* Stop × Gain do mês, no próprio card: um gráfico de barras por dia da
              semana era um calendário com menos informação. */
-          <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1.5 text-slate-400">
+          <div className="flex items-center gap-2 sm:gap-4 text-[11px] sm:text-xs">
+            <span className="flex items-center gap-1 sm:gap-1.5 text-slate-400" title="ganhos no mês">
               <span className="w-2 h-2 rounded-full bg-emerald-500/80" />
-              {mesTurma.gains} {mesTurma.gains === 1 ? 'ganho' : 'ganhos'}
+              {mesTurma.gains}<span className="hidden sm:inline"> {mesTurma.gains === 1 ? 'ganho' : 'ganhos'}</span>
             </span>
-            <span className="flex items-center gap-1.5 text-slate-400">
+            <span className="flex items-center gap-1 sm:gap-1.5 text-slate-400" title="perdas no mês">
               <span className="w-2 h-2 rounded-full bg-red-500/80" />
-              {mesTurma.losses} {mesTurma.losses === 1 ? 'perda' : 'perdas'}
+              {mesTurma.losses}<span className="hidden sm:inline"> {mesTurma.losses === 1 ? 'perda' : 'perdas'}</span>
             </span>
             {mesTurma.flags > 0 && (
-              <span className="flex items-center gap-1.5 text-amber-400/80">
+              <span className="flex items-center gap-1 sm:gap-1.5 text-amber-400/80" title="trades fora do plano no mês">
                 <span className="w-2 h-2 rounded-full bg-amber-400" />
-                {mesTurma.flags} fora do plano
+                {mesTurma.flags}<span className="hidden sm:inline"> fora do plano</span>
               </span>
             )}
             {mesTurma.comR > 0 && (
               <span
-                className={`font-mono font-bold px-2.5 py-1 rounded-lg border ${
+                className={`font-mono font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg border whitespace-nowrap ${
                   mesTurma.r >= 0
                     ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
                     : 'text-red-300 border-red-500/30 bg-red-500/10'
@@ -149,7 +149,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
       </div>
 
       {/* BODY */}
-      <div className="p-4 flex-1 flex flex-col">
+      <div className="p-3 sm:p-4 flex-1 flex flex-col">
         {/* Dias da Semana */}
         <div className="grid grid-cols-7 mb-2">
           {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
@@ -160,7 +160,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
         </div>
 
         {/* Grid de Dias */}
-        <div className="grid grid-cols-7 gap-1.5 h-full auto-rows-fr">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5 h-full auto-rows-fr">
           {blanks.map((_, i) => <div key={`b-${i}`} />)}
 
           {daysArray.map(day => {
@@ -179,8 +179,8 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
             if (modoTurma) {
               if (!meta) {
                 return (
-                  <div key={dateString} className="rounded-xl border border-transparent min-h-[74px] p-2">
-                    <span className="text-[11px] text-slate-700">{day}</span>
+                  <div key={dateString} className="rounded-xl border border-transparent min-h-[46px] sm:min-h-[74px] p-1 sm:p-2">
+                    <span className="text-[10px] sm:text-[11px] text-slate-700">{day}</span>
                   </div>
                 );
               }
@@ -206,31 +206,33 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                     `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.gains} ${meta.gains === 1 ? 'ganho' : 'ganhos'} · ${meta.losses} ${meta.losses === 1 ? 'perda' : 'perdas'}${meta.comR ? ` · ${meta.r >= 0 ? '+' : ''}${meta.r.toFixed(1)}R` : ''}`,
                     ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
                   ].join('\n')}
-                  className={`group relative rounded-xl border p-2 min-h-[74px] flex flex-col justify-between text-left transition-all duration-150 ${moldura}`}
+                  className={`group relative rounded-lg sm:rounded-xl border p-1 sm:p-2 min-h-[46px] sm:min-h-[74px] flex flex-col justify-between gap-1 text-left transition-all duration-150 ${moldura}`}
                 >
                   <div className="flex items-start justify-between">
-                    <span className={`text-[11px] leading-none ${isSelected ? 'text-white' : 'text-slate-400'}`}>{day}</span>
+                    <span className={`text-[10px] sm:text-[11px] leading-none ${isSelected ? 'text-white' : 'text-slate-400'}`}>{day}</span>
                     {temFalta && (
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400" title={`${meta.flags} fora do plano`} />
                     )}
                   </div>
 
                   {meta.comR > 0 && (
-                    <span className={`text-base font-bold font-mono leading-none ${
+                    <span className={`text-[11px] sm:text-base font-bold font-mono leading-none tabular-nums ${
                       isSelected ? 'text-white' : positivo ? 'text-emerald-400' : 'text-red-400'
                     }`}>
                       {meta.r >= 0 ? '+' : ''}{meta.r.toFixed(1)}
-                      <span className="text-[10px] font-normal opacity-60">R</span>
+                      <span className="text-[8px] sm:text-[10px] font-normal opacity-60">R</span>
                     </span>
                   )}
 
                   <div>
                     {/* Proporção ganhos × perdas: o dia inteiro numa faixa. */}
-                    <div className="h-1.5 w-full rounded-full overflow-hidden bg-slate-800 flex">
+                    <div className="h-1 sm:h-1.5 w-full rounded-full overflow-hidden bg-slate-800 flex">
                       <div className="bg-emerald-500/80" style={{ width: `${pctGanho}%` }} />
                       <div className="bg-red-500/80" style={{ width: `${100 - pctGanho}%` }} />
                     </div>
-                    <div className="flex items-center justify-between mt-1">
+                    {/* No celular a célula tem ~28px úteis: a barra carrega sozinha a
+                        proporção, e os contadores só aparecem quando há espaço. */}
+                    <div className="hidden sm:flex items-center justify-between mt-1">
                       <span className="text-[9px] text-slate-500">
                         {meta.gains}<span className="text-slate-700">/</span>{meta.losses}
                       </span>
