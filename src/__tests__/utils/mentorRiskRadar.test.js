@@ -30,6 +30,7 @@ import {
   faixaDeAtencao,
   semanaEmR,
   FAIXA,
+  emailsDoRadar,
 } from '../../utils/mentorRiskRadar';
 import { buildPeriodState } from '../../utils/dayState';
 
@@ -1056,5 +1057,48 @@ describe('buildMentorRadar — a turma não esconde ninguém', () => {
   it('o resultado da semana vem em R', () => {
     const r = run([t('x', 'a1', '2026-08-24', { result: 600 })]);
     expect(r.turma.find((a) => a.name === 'Ativo').resultadoSemanaR.valor).toBe(2);
+  });
+});
+
+describe('isOnRadar — escopo de mentoria é o track Alpha (#269)', () => {
+  const aluno = { id: 's1', email: 'x@x.com', firstLoginAt: '2026-01-10' };
+  const sub = (extra) => [{ studentId: 's1', status: 'active', ...extra }];
+
+  it('alpha pago entra', () => {
+    expect(isOnRadar(aluno, sub({ type: 'paid', plan: 'alpha' }))).toBe(true);
+  });
+
+  it('trial de alpha entra', () => {
+    expect(isOnRadar(aluno, sub({ type: 'trial', plan: 'alpha' }))).toBe(true);
+  });
+
+  it('ESPELHO fica fora — self-service não tem mentor', () => {
+    // Antonio Pina e Thiago Lau apareciam como "sumidos há 176 e 92 dias":
+    // cobrança de uma relação que não existe.
+    expect(isOnRadar(aluno, sub({ type: 'paid', plan: 'self_service' }))).toBe(false);
+    expect(isOnRadar(aluno, sub({ type: 'trial', plan: 'self_service' }))).toBe(false);
+  });
+
+  it('VIP segue fora', () => {
+    expect(isOnRadar(aluno, sub({ type: 'vip', plan: 'alpha' }))).toBe(false);
+  });
+});
+
+describe('emailsDoRadar', () => {
+  const students = [
+    { id: 'a', email: 'Alpha@x.com', firstLoginAt: '2026-01-01' },
+    { id: 'e', email: 'espelho@x.com', firstLoginAt: '2026-01-01' },
+  ];
+  const subs = [
+    { studentId: 'a', status: 'active', type: 'paid', plan: 'alpha' },
+    { studentId: 'e', status: 'active', type: 'paid', plan: 'self_service' },
+  ];
+
+  it('devolve só o track Alpha, em minúsculas', () => {
+    expect([...emailsDoRadar(students, subs)]).toEqual(['alpha@x.com']);
+  });
+
+  it('base vazia não explode', () => {
+    expect(emailsDoRadar(null, null).size).toBe(0);
   });
 });

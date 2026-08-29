@@ -17,7 +17,7 @@
  *
  * @see docs/dev/issues/issue-101-torre-controle.md — MC-1..9
  */
-import { classifyStudent, getAccessStatus } from './studentClassify';
+import { classifyStudent, getAccessStatus, inReviewScope } from './studentClassify';
 import { calculateComplianceRate } from './dashboardMetrics';
 import { redFlagLabel } from './compliance';
 import { effectiveRedFlags, flagType } from './violationFilter';
@@ -63,6 +63,13 @@ export const todayKey = (now = new Date()) => {
  * foi bloqueado segue operando e segue precisando de acompanhamento. Quem decide
  * o corte é o bloqueio, não a Torre.
  *
+ * ESCOPO DE MENTORIA (28/08, Marcio: "Antonio não é alpha"): a Torre é a tela de
+ * ACOMPANHAMENTO individual, e acompanhamento individual só existe no track Alpha
+ * — é a mesma regra que o #269 fixou para Revisão e feedback (`inReviewScope`:
+ * alpha + trial-alpha). Espelho é self-service: o aluno tem a plataforma, não tem
+ * mentor. Na base, Antonio Pina e Thiago Lau são espelho e apareciam como
+ * "sumidos há 176 e 92 dias" — cobrança de uma relação que não existe.
+ *
  * @param {Object} student — doc de `students`
  * @param {Array} subs — subscriptions do aluno
  * @returns {boolean}
@@ -71,7 +78,21 @@ export const isOnRadar = (student, subs) => {
   if (!student) return false;
   if (student.loginBlocked) return false;
   if (getAccessStatus(student) !== 'active') return false;
-  return classifyStudent(student, subs) !== null;
+  return inReviewScope(classifyStudent(student, subs));
+};
+
+/**
+ * Emails (minúsculos) de quem está no radar. O calendário e as listas da aba
+ * Análises usam o MESMO conjunto da Torre — duas populações com o mesmo nome na
+ * mesma plataforma foi o que gerou "17 alunos ativos aqui, 12 ali".
+ */
+export const emailsDoRadar = (students, subscriptions) => {
+  const idx = indexSubsByStudent(subscriptions);
+  const emails = new Set();
+  for (const s of students ?? []) {
+    if (s?.email && isOnRadar(s, idx.get(s.id) ?? [])) emails.add(String(s.email).toLowerCase());
+  }
+  return emails;
 };
 
 /** Índice `studentId → subscriptions[]` a partir da lista achatada do hook. */

@@ -64,7 +64,7 @@ import { filterSetupsForStudent } from '../utils/setupsFilter';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
-import { buildCalendarDays } from '../utils/mentorRiskRadar';
+import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -123,6 +123,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     [allStudents, allSubscriptions],
   );
 
+  // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
+  // Alpha). `emailsAtivos` continua sendo o escopo de Acompanhamento/Contas, que é
+  // mais largo e vale para as outras superfícies.
+  const emailsDaMentoria = useMemo(
+    () => emailsDoRadar(allStudents, allSubscriptions),
+    [allStudents, allSubscriptions],
+  );
+
   const studentsNeedingAttention = useMemo(() => {
     const todos = identifyStudentsNeedingAttention(groupedTrades);
     // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
@@ -143,8 +151,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   });
 
   const diasDaTurma = useMemo(
-    () => buildCalendarDays(allTrades, emailsAtivos),
-    [allTrades, emailsAtivos],
+    () => buildCalendarDays(allTrades, emailsDaMentoria),
+    [allTrades, emailsDaMentoria],
   );
   const tradesDoDia = useMemo(
     () => (diaSelecionado ? allTrades.filter((t) => t.date === diaSelecionado) : []),
