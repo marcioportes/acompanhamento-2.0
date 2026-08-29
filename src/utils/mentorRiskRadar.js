@@ -554,6 +554,9 @@ export function linhaDeRadar(familias) {
     quandoMs: dominante.quandoMs,
     tradeId: dominante.tradeId,
     ocorrencias: familias.length,
+    // Quantos achados GRAVES na janela. "Risco alto" sem número não diz se foi um
+    // episódio ou um padrão — foi o que Marcio perguntou ao se ver na faixa.
+    graves: familias.filter((f) => f.severity === 'HIGH').length,
     score: familias.reduce((acc, f) => acc + f.peso, 0),
   };
 }
@@ -848,7 +851,15 @@ export function faixaDeAtencao(a) {
   if (dias >= DIAS_SUMIU) return { faixa: FAIXA.SUMIU, motivo: `${dias} dias sem operar` };
 
   if (a?.radar?.severity === 'HIGH') {
-    return { faixa: FAIXA.RISCO_ALTO, motivo: 'padrão de risco grave na semana' };
+    const graves = a.radar.graves ?? 1;
+    return {
+      faixa: FAIXA.RISCO_ALTO,
+      // O rótulo da família dominante entra na tela (`BEHAVIOR_LABELS`); aqui fica
+      // o que é fato puro: quantos achados graves, para separar episódio de padrão.
+      motivo: graves === 1
+        ? '1 achado grave na semana'
+        : `${graves} achados graves na semana`,
+    };
   }
   if (a?.foraDoPlanoSemana?.pct > 0) {
     return { faixa: FAIXA.FORA_DO_PLANO, motivo: `${Math.round(a.foraDoPlanoSemana.pct)}% dos trades fora do plano` };

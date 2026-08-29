@@ -86,7 +86,11 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="font-medium text-white truncate">{a.name}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">{a.atencao.motivo}</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  {a.atencao.faixa === FAIXA.RISCO_ALTO && a.radar
+                    ? `${BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family} · ${a.atencao.motivo}`
+                    : a.atencao.motivo}
+                </div>
               </div>
               <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border flex-shrink-0 ${ESTILO_FAIXA[a.atencao.faixa]}`}>
                 {FAIXA_LABEL[a.atencao.faixa]}
@@ -179,7 +183,11 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
                   <span className={sumido ? 'text-red-400 font-bold' : a.diasSemOperar == null ? 'text-slate-600' : 'text-slate-300'}>
                     {desdeQuandoOperou(a.diasSemOperar)}
                   </span>
-                  <div className="text-[10px] text-slate-600">{a.atencao.motivo}</div>
+                  <div className="text-[10px] text-slate-600">
+                    {a.atencao.faixa === FAIXA.RISCO_ALTO && a.radar
+                      ? `${BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family} · ${a.atencao.motivo}`
+                      : a.atencao.motivo}
+                  </div>
                 </td>
 
                 <td className="p-3 text-right whitespace-nowrap font-mono">
@@ -217,7 +225,8 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
                       <span className="text-slate-300 text-xs">{BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family}</span>
                       <div className="text-[10px] text-slate-600">
                         severidade {String(SEVERITY_LABELS[a.radar.severity] ?? a.radar.severity).toLowerCase()}
-                        {a.radar.ocorrencias > 1 && ` · ${a.radar.ocorrencias}x`}
+                        {a.radar.graves > 1 && ` · ${a.radar.graves} graves`}
+                        {a.radar.ocorrencias > a.radar.graves && ` · ${a.radar.ocorrencias} achados`}
                       </div>
                     </>
                   ) : (

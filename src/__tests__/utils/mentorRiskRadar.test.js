@@ -912,14 +912,14 @@ describe('faixaDeAtencao — a ordem da lista da turma', () => {
   });
 
   it('SUMIU vem antes de risco alto — é o problema real desta turma', () => {
-    const sumido = faixaDeAtencao(aluno({ diasSemOperar: 18, radar: { severity: 'HIGH' } }));
+    const sumido = faixaDeAtencao(aluno({ diasSemOperar: 18, radar: { severity: 'HIGH', graves: 2 } }));
     expect(sumido.faixa).toBe(FAIXA.SUMIU);
     expect(sumido.motivo).toBe('18 dias sem operar');
     expect(FAIXA.SUMIU).toBeLessThan(FAIXA.RISCO_ALTO);
   });
 
   it('risco alto vem antes de fora do plano', () => {
-    const r = faixaDeAtencao(aluno({ radar: { severity: 'HIGH' }, foraDoPlanoSemana: { pct: 50 } }));
+    const r = faixaDeAtencao(aluno({ radar: { severity: 'HIGH', graves: 1 }, foraDoPlanoSemana: { pct: 50 } }));
     expect(r.faixa).toBe(FAIXA.RISCO_ALTO);
   });
 
@@ -1067,5 +1067,32 @@ describe('emailsDoRadar', () => {
 
   it('base vazia não explode', () => {
     expect(emailsDoRadar(null, null).size).toBe(0);
+  });
+});
+
+describe('Risco alto diz QUANTOS achados graves', () => {
+  const f = (family, severity, quandoMs) => ({
+    code: family, family, severity, peso: { HIGH: 3, MEDIUM: 2, LOW: 1 }[severity], quandoMs, tradeId: 't',
+  });
+
+  it('conta só os graves, não o total de achados', () => {
+    // Caso real do Marcio em 24-25/08: UNPROTECTED_SIZE/HIGH, EARLY_EXIT/HIGH,
+    // RISK_OVER_RO/HIGH, mais HESITATION/LOW, CHASE_REENTRY/LOW e UNDECLARED_MODEL/MEDIUM.
+    const r = linhaDeRadar([
+      f('UNPROTECTED_SIZE', 'HIGH', 1), f('EARLY_EXIT', 'HIGH', 2), f('RISK_OVER_RO', 'HIGH', 5),
+      f('HESITATION', 'LOW', 3), f('CHASE_REENTRY', 'LOW', 4), f('UNDECLARED_MODEL', 'MEDIUM', 6),
+    ]);
+    expect(r.graves).toBe(3);
+    expect(r.ocorrencias).toBe(6);
+  });
+
+  it('um episódio isolado não vira "padrão"', () => {
+    const aluno = { radar: linhaDeRadar([f('TILT', 'HIGH', 1)]), diasSemOperar: 1 };
+    expect(faixaDeAtencao(aluno).motivo).toBe('1 achado grave na semana');
+  });
+
+  it('vários graves viram número, não adjetivo', () => {
+    const aluno = { radar: linhaDeRadar([f('TILT', 'HIGH', 1), f('RISK_OVER_RO', 'HIGH', 2)]), diasSemOperar: 1 };
+    expect(faixaDeAtencao(aluno).motivo).toBe('2 achados graves na semana');
   });
 });
