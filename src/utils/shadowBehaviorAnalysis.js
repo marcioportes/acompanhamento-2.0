@@ -831,7 +831,18 @@ export const detectEarlyExit = (trade, orders, config = DEFAULT_CONFIG.earlyExit
 
   return {
     code: PATTERN_CODES.EARLY_EXIT,
-    severity: rrRatio < planRR * 0.25 ? SEVERITY.HIGH : rrRatio < planRR * 0.40 ? SEVERITY.MEDIUM : SEVERITY.LOW,
+    // #101 (29/08/2026) — SEMPRE BAIXA. A régua anterior escalava por distância do
+    // alvo (< 25% virava alta), e Marcio corrigiu a premissa: "sair abaixo do RR não
+    // é grave, é baixo. Contribui para diminuir a esperança matemática, mas pode ser
+    // lido como condução de um trade perdido".
+    //
+    // O detector só dispara em trade VENCEDOR, e é justamente aí que a leitura é
+    // ambígua: sair em +25 pode ser medo cortando o lucro OU proteção de uma posição
+    // que ia virar. Sem saber o que o preço fez DEPOIS da saída, o sistema não tem
+    // como distinguir — e chamar de "grave" o que pode ser gestão correta é acusar
+    // sem prova. A distinção só existirá com o apontador pós-saída (issue própria):
+    // teria dado stop ou teria dado alvo? Aí sim a severidade pode voltar a variar.
+    severity: SEVERITY.LOW,
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT,
     layer: orders && orders.length > 0 ? 2 : 1,
