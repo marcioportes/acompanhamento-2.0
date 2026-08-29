@@ -70,13 +70,15 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
     if (!modoTurma) return { trades: 0, dias: 0, flags: 0 };
     const ano = currentDate.getFullYear();
     const mes = currentDate.getMonth();
-    let trades = 0, dias = 0, flags = 0;
+    let trades = 0, dias = 0, flags = 0, gains = 0, losses = 0, r = 0, comR = 0;
     for (const [data, d] of Object.entries(daysMeta)) {
       const [y, m] = data.split('-').map(Number);
       if (y !== ano || m - 1 !== mes) continue;
       trades += d.trades; flags += d.flags; dias += 1;
+      gains += d.gains ?? 0; losses += d.losses ?? 0;
+      r += d.r ?? 0; comR += d.comR ?? 0;
     }
-    return { trades, dias, flags };
+    return { trades, dias, flags, gains, losses, r: Math.round(r * 10) / 10, comR };
   }, [modoTurma, daysMeta, currentDate]);
 
   // --- NAVEGAÇÃO ---
@@ -109,9 +111,23 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
         </div>
         
         {modoTurma ? (
-          <div className="text-xs font-mono text-slate-400">
-            {mesTurma.trades} {mesTurma.trades === 1 ? 'trade' : 'trades'} · {mesTurma.dias} {mesTurma.dias === 1 ? 'dia' : 'dias'}
-            {mesTurma.flags > 0 && <span className="text-amber-400"> · {mesTurma.flags} fora do plano</span>}
+          <div className="flex items-center gap-3 text-xs font-mono">
+            {/* Stop × Gain do mês, no próprio card do calendário: um gráfico de
+                barras por dia da semana era um calendário com menos informação. */}
+            <span className="text-emerald-400">{mesTurma.gains}<span className="text-slate-600">g</span></span>
+            <span className="text-red-400">{mesTurma.losses}<span className="text-slate-600">p</span></span>
+            {mesTurma.comR > 0 && (
+              <span
+                className={`font-bold px-2 py-0.5 rounded border ${
+                  mesTurma.r >= 0
+                    ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+                    : 'text-red-300 border-red-500/30 bg-red-500/10'
+                }`}
+                title="Líquido do mês em múltiplos do risco autorizado de cada aluno"
+              >
+                {mesTurma.r >= 0 ? '+' : ''}{mesTurma.r.toFixed(1)}R
+              </span>
+            )}
           </div>
         ) : (
           <div className={`text-sm font-mono font-bold ${monthStats >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -184,7 +200,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                 title={
                   modoTurma && meta
                     ? [
-                        `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.trades} ${meta.trades === 1 ? 'trade' : 'trades'}`,
+                        `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.gains} ${meta.gains === 1 ? 'ganho' : 'ganhos'} · ${meta.losses} ${meta.losses === 1 ? 'perda' : 'perdas'}${meta.comR ? ` · ${meta.r >= 0 ? '+' : ''}${meta.r.toFixed(1)}R` : ''}`,
                         ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
                       ].join('\n')
                     : undefined
@@ -206,14 +222,24 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                   </span>
                 )}
                 
-                {/* Valor do dia: dinheiro na tela do aluno; alunos que operaram na da turma */}
-                {data && (
+                {/* Valor do dia: dinheiro na tela do aluno. Na da turma, a marcação
+                    de ganho × perda — verde e vermelho — com quantos operaram embaixo. */}
+                {data && (modoTurma ? (
+                  <div className="mt-3 flex flex-col items-center leading-none">
+                    <span className="text-[11px] md:text-xs font-bold">
+                      <span className={meta.gains ? 'text-emerald-400' : 'text-slate-700'}>{meta.gains}</span>
+                      <span className="text-slate-700 mx-0.5">·</span>
+                      <span className={meta.losses ? 'text-red-400' : 'text-slate-700'}>{meta.losses}</span>
+                    </span>
+                    <span className="text-[9px] text-slate-500 mt-0.5">
+                      {meta.alunos} {meta.alunos === 1 ? 'aluno' : 'alunos'}
+                    </span>
+                  </div>
+                ) : (
                   <span className={`text-[10px] md:text-xs font-bold mt-3 truncate max-w-full px-1 ${textClass}`}>
-                    {modoTurma
-                      ? `${meta.alunos} ${meta.alunos === 1 ? 'aluno' : 'alunos'}`
-                      : formatCurrency(data.pnl)}
+                    {formatCurrency(data.pnl)}
                   </span>
-                )}
+                ))}
               </button>
             );
           })}

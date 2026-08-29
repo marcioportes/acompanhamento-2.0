@@ -385,12 +385,9 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
     .filter((a) => a.foraDoPlanoSemana && a.foraDoPlanoSemana.pct > 0)
     .sort((a, b) => b.foraDoPlanoSemana.pct - a.foraDoPlanoSemana.pct);
 
-  // S5 — a semana da turma inteira, em contagem de trades e líquido em R.
-  const stopGain = stopVsGain(byStudent.flatMap((a) => a.tradesSemana), planoPorId);
-
   return {
     dia, janelaDias, semanaComecaEm: segundaAtual,
-    header, byStudent, turma, priority, radar, foraPlano, stopGain,
+    header, byStudent, turma, priority, radar, foraPlano,
   };
 }
 
@@ -410,16 +407,33 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
  * @param {Set<string>} [emailsNoRadar] — quando presente, ignora quem saiu do radar
  * @returns {Object} { 'YYYY-MM-DD': { trades, alunos, flags } }
  */
-export function buildCalendarDays(trades, emailsNoRadar = null) {
+export function buildCalendarDays(trades, emailsNoRadar = null, planoPorId = null) {
   const dias = {};
   for (const t of trades ?? []) {
     if (!t?.date) continue;
     const email = String(t.studentEmail ?? '').toLowerCase();
     if (emailsNoRadar && emailsNoRadar.size > 0 && !emailsNoRadar.has(email)) continue;
-    const d = (dias[t.date] ??= { trades: 0, flags: 0, porAluno: new Map() });
+    const d = (dias[t.date] ??= { trades: 0, flags: 0, gains: 0, losses: 0, r: 0, comR: 0, porAluno: new Map() });
     const flags = effectiveRedFlags(t).length;
     d.trades += 1;
     d.flags += flags;
+
+    // Ganho/perda por dia — a marcação que vivia num gráfico de barras separado.
+    // Barra por dia da semana é um calendário com menos informação: o dia já existe
+    // aqui, com data real, em vez de "Seg..Sex" agregando semanas diferentes.
+    const res = num(t.result);
+    if (res > 0) d.gains += 1;
+    else if (res < 0) d.losses += 1; // breakeven não é ganho nem perda
+
+    // Líquido do dia em R — única unidade que soma alunos de moedas diferentes (D14).
+    const plano = planoPorId?.get?.(t.planId) ?? null;
+    const ro = plano?.pl > 0 && plano?.riskPerOperation > 0
+      ? plano.pl * (plano.riskPerOperation / 100)
+      : null;
+    if (res != null && ro) {
+      d.r += res / ro;
+      d.comR += 1;
+    }
 
     const chave = email || t.studentName || '(sem dono)';
     const aluno = d.porAluno.get(chave) ?? {
@@ -440,7 +454,16 @@ export function buildCalendarDays(trades, emailsNoRadar = null) {
     const alunos = [...d.porAluno.values()].sort(
       (a, b) => b.trades - a.trades || a.nome.localeCompare(b.nome),
     );
-    saida[data] = { trades: d.trades, alunos: alunos.length, flags: d.flags, nomes: alunos };
+    saida[data] = {
+      trades: d.trades,
+      alunos: alunos.length,
+      flags: d.flags,
+      gains: d.gains,
+      losses: d.losses,
+      r: Math.round(d.r * 100) / 100,
+      comR: d.comR,
+      nomes: alunos,
+    };
   }
   return saida;
 }
@@ -663,62 +686,6 @@ export function foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior) {
     direcao,
     trades: tradesSemana?.length ?? 0,
     pctAnterior: anterior,
-  };
-}
-
-const DIAS_UTEIS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
-
-/**
- * MC-8 · Stop × Gain da semana (D6).
- *
- * Barras = CONTAGEM de trades por dia da semana, verde ganho / vermelho perda.
- * Contagem, e não dinheiro, porque a turma opera em duas moedas — a mesma razão
- * que tirou o dinheiro do calendário.
- *
- * O líquido, esse, é em **R**: `result / (plan.pl × riskPerOperation/100)`. R é
- * adimensional — é quantas vezes o próprio risco autorizado do aluno o resultado
- * representa. É a única unidade em que o dia de quem opera 30 mil em real e o de
- * quem opera 50 mil em dólar podem ser somados.
- *
- * Trade sem plano (ou com plano sem RO) fica FORA do líquido e é reportado em
- * `semR`: somar o que não tem unidade seria inventar número.
- */
-export function stopVsGain(tradesSemana, planoPorId) {
-  const dias = DIAS_UTEIS.map((label) => ({ label, gains: 0, losses: 0 }));
-  let liquidoR = 0;
-  let semR = 0;
-  let comR = 0;
-
-  for (const t of tradesSemana ?? []) {
-    const r = num(t?.result);
-    if (r == null || !t?.date) continue;
-
-    const [y, m, d] = t.date.split('-').map(Number);
-    const dow = new Date(y, m - 1, d, 12).getDay(); // 1..5 = Seg..Sex
-    const idx = dow - 1;
-    if (idx >= 0 && idx < 5) {
-      if (r > 0) dias[idx].gains += 1;
-      else if (r < 0) dias[idx].losses += 1; // breakeven não entra em nenhuma barra
-    }
-
-    const plano = planoPorId?.get?.(t.planId) ?? null;
-    const roValor = plano?.pl > 0 && plano?.riskPerOperation > 0
-      ? plano.pl * (plano.riskPerOperation / 100)
-      : null;
-    if (roValor) {
-      liquidoR += r / roValor;
-      comR += 1;
-    } else {
-      semR += 1;
-    }
-  }
-
-  return {
-    dias,
-    liquidoR: Math.round(liquidoR * 100) / 100,
-    comR,
-    semR,
-    total: (tradesSemana ?? []).length,
   };
 }
 

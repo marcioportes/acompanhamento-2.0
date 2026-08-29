@@ -36,7 +36,6 @@ import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
-import TorreStopGain from '../components/torre/TorreStopGain';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
@@ -148,9 +147,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     subscriptions: allSubscriptions,
   });
 
+  const planosPorId = useMemo(
+    () => new Map((plans ?? []).filter((p) => p?.id).map((p) => [p.id, p])),
+    [plans],
+  );
   const diasDaTurma = useMemo(
-    () => buildCalendarDays(allTrades, emailsDaMentoria),
-    [allTrades, emailsDaMentoria],
+    () => buildCalendarDays(allTrades, emailsDaMentoria, planosPorId),
+    [allTrades, emailsDaMentoria, planosPorId],
   );
   const tradesDoDia = useMemo(
     () => (diaSelecionado ? allTrades.filter((t) => t.date === diaSelecionado) : []),
@@ -493,15 +496,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               selectedDate={diaSelecionado}
               onSelectDate={(date) => setDiaSelecionado(date === diaSelecionado ? null : date)}
             />
-            {/* #101 Fase E — os Alertas Emocionais saíram: eram a terceira noção de
-                "alerta" na plataforma, sobre a mesma população que a lista da turma
-                já cobre com o motor unificado. No lugar, o que é diagnóstico. */}
-            <TorreStopGain stopGain={radar.stopGain} />
-          </div>
-
-          <div className="max-w-sm mb-8">
+            {/* #101 — o card de Stop × Gain sumiu daqui: a marcação de ganho e perda
+                vive DENTRO do calendário, no dia. Barra por dia da semana era um
+                calendário com menos informação, e dois cards para o mesmo fato era
+                justamente a confusão que esta fase veio desfazer. */}
             <TorreVisaoRapida byStudent={radar.byStudent} onAbrirAluno={abrirAluno} />
           </div>
+
           {/* #101 — a lista era os 20 trades mais recentes da turma, sem recorte
               nenhum. Agora só existe com um dia escolhido no calendário. */}
           {diaSelecionado ? (

@@ -23,7 +23,6 @@ import {
   segundaDa,
   diasAntes,
   foraDoPlanoDoAluno,
-  stopVsGain,
   visaoRapidaDoAluno,
   planoEmFoco,
   diasEntre,
@@ -374,6 +373,27 @@ describe('buildCalendarDays — o calendário do mentor não soma dinheiro', () 
     expect(chaves).not.toContain('pnl');
     expect(chaves).not.toContain('totalPL');
     expect(chaves).not.toContain('result');
+  });
+
+  it('marca ganho e perda por dia — a marcação que vivia num gráfico separado', () => {
+    const dias = buildCalendarDays([
+      t('a', 'ana@x.com', '2026-08-27', { result: 300 }),
+      t('b', 'ana@x.com', '2026-08-27', { result: -100 }),
+      t('c', 'bruno@x.com', '2026-08-27', { result: -100 }),
+      t('d', 'bruno@x.com', '2026-08-27', { result: 0 }),
+    ]);
+    expect(dias['2026-08-27']).toMatchObject({ gains: 1, losses: 2, trades: 4 });
+  });
+
+  it('o líquido do dia é em R, e só com plano que declara risco', () => {
+    const planos = new Map([['p1', { id: 'p1', pl: 30000, riskPerOperation: 1 }]]); // RO 300
+    const dias = buildCalendarDays([
+      t('a', 'ana@x.com', '2026-08-27', { result: 600, planId: 'p1' }),
+      t('b', 'ana@x.com', '2026-08-27', { result: -300, planId: 'p1' }),
+      t('c', 'bruno@x.com', '2026-08-27', { result: -9999, planId: 'sem-plano' }),
+    ], null, planos);
+    expect(dias['2026-08-27'].r).toBe(1); // +2R e −1R; o terceiro fica fora
+    expect(dias['2026-08-27'].comR).toBe(2);
   });
 
   it('flag revogada pelo #402 não pinta o dia', () => {
@@ -742,59 +762,6 @@ describe('foraDoPlanoDoAluno — MC-7', () => {
 
   it('semana sem trade não vira linha', () => {
     expect(foraDoPlanoDoAluno([], null)).toBeNull();
-  });
-});
-
-describe('stopVsGain — MC-8', () => {
-  const plano = new Map([
-    ['p1', { id: 'p1', pl: 30000, riskPerOperation: 1 }],   // RO = R$300
-    ['p2', { id: 'p2', pl: 50000, riskPerOperation: 0.75 }], // RO = US$375
-  ]);
-  const t = (date, result, planId = 'p1') => ({ id: `${date}-${result}`, date, result, planId });
-
-  it('conta ganhos e perdas por dia útil', () => {
-    const r = stopVsGain([
-      t('2026-08-24', 100), t('2026-08-24', -50), t('2026-08-26', -50),
-    ], plano);
-    expect(r.dias[0]).toEqual({ label: 'Seg', gains: 1, losses: 1 });
-    expect(r.dias[2]).toEqual({ label: 'Qua', gains: 0, losses: 1 });
-  });
-
-  it('breakeven não entra em barra nenhuma', () => {
-    const r = stopVsGain([t('2026-08-24', 0)], plano);
-    expect(r.dias[0]).toEqual({ label: 'Seg', gains: 0, losses: 0 });
-  });
-
-  it('sábado e domingo não têm barra', () => {
-    const r = stopVsGain([t('2026-08-29', -100), t('2026-08-30', 100)], plano);
-    expect(r.dias.every((d) => d.gains === 0 && d.losses === 0)).toBe(true);
-  });
-
-  it('o líquido em R soma moedas diferentes sem mentir', () => {
-    // +300 BRL num RO de 300 = +1R; −375 USD num RO de 375 = −1R. Líquido 0R.
-    const r = stopVsGain([t('2026-08-24', 300, 'p1'), t('2026-08-25', -375, 'p2')], plano);
-    expect(r.liquidoR).toBe(0);
-    expect(r.comR).toBe(2);
-  });
-
-  it('trade sem plano fica FORA do líquido e é reportado', () => {
-    const r = stopVsGain([t('2026-08-24', 300, 'p1'), t('2026-08-25', -9999, 'inexistente')], plano);
-    expect(r.liquidoR).toBe(1);
-    expect(r.semR).toBe(1);
-    expect(r.total).toBe(2);
-  });
-
-  it('plano sem RO não produz R', () => {
-    const semRo = new Map([['p3', { id: 'p3', pl: 30000, riskPerOperation: 0 }]]);
-    const r = stopVsGain([t('2026-08-24', 300, 'p3')], semRo);
-    expect(r.liquidoR).toBe(0);
-    expect(r.semR).toBe(1);
-  });
-
-  it('semana vazia não explode', () => {
-    const r = stopVsGain([], plano);
-    expect(r.total).toBe(0);
-    expect(r.dias).toHaveLength(5);
   });
 });
 
