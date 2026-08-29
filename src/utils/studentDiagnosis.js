@@ -17,6 +17,8 @@
  * já custou caro. Dinheiro só aparece quando o grupo inteiro está numa moeda.
  */
 
+import { rrBreakdown } from './rrBreakdown';
+
 const num = (v) => {
   const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v);
   return Number.isFinite(n) ? n : null;
@@ -171,6 +173,42 @@ export function fraseParaOFeedback(diag) {
 
 const TIPO = { OPERACIONAL: 'operacional', EMOCIONAL: 'emocional', PRESERVAR: 'preservar' };
 
+/**
+ * Quanto dos GANHOS chegou ao alvo que o plano define (`plan.rrTarget`).
+ *
+ * Só ganho entra: perda não alcança alvo positivo, e misturar os dois produziria um
+ * percentual que não descreve nada. O risco vem do `rrBreakdown` (#402) — mesma
+ * conversão de tick da compliance, sem fórmula nova.
+ *
+ * @returns {{alvo, vencedores, atingiram, pctAtingiu, rrMedio}|null}
+ */
+export function alcanceDoAlvo(trades, planoPorId) {
+  let vencedores = 0;
+  let atingiram = 0;
+  let somaRR = 0;
+  let alvo = null;
+
+  for (const t of trades ?? []) {
+    const plano = planoPorId?.get?.(t?.planId) ?? null;
+    if (!plano?.rrTarget) continue;
+    const b = rrBreakdown(t, plano);
+    if (b.rrTaken == null || !(num(t.result) > 0)) continue;
+    vencedores += 1;
+    somaRR += b.rrTaken;
+    if (b.rrTaken >= plano.rrTarget) atingiram += 1;
+    alvo = plano.rrTarget; // alvo do plano em que ele opera
+  }
+
+  if (!vencedores) return null;
+  return {
+    alvo,
+    vencedores,
+    atingiram,
+    pctAtingiu: Math.round((atingiram / vencedores) * 100),
+    rrMedio: somaRR / vencedores,
+  };
+}
+
 const duracaoMin = (t) => {
   if (!t?.entryTime || !t?.exitTime) return null;
   const ms = new Date(t.exitTime) - new Date(t.entryTime);
@@ -216,17 +254,17 @@ export function prescricoes(trades, planoPorId = null) {
 
   // ── OPERACIONAL ───────────────────────────────────────────────────────────
 
-  // Sem alvo declarado: sem isso não existe R:R para discutir, e a saída fica sem
-  // critério. Na base inteira são 0 de 381 — é a regra que mais muda a conversa.
-  const semAlvo = lista.filter((t) => t.takeProfit == null || t.takeProfit === '').length;
-  if (semAlvo / n >= 0.6) {
+  // O ALVO ESTÁ NO PLANO (Marcio, 29/08). Eu tinha escrito uma prescrição pedindo
+  // que o aluno declarasse alvo por trade porque `trade.takeProfit` está vazio nos
+  // 381 — mas o alvo nunca morou ali. Ele é `plan.rrTarget`, presente nos 28 planos
+  // da base. A pergunta certa não é "declarou?", é "chegou lá?".
+  const alvo = alcanceDoAlvo(lista, planoPorId);
+  if (alvo && alvo.vencedores >= 4 && alvo.pctAtingiu < 50) {
     out.push({
       tipo: TIPO.OPERACIONAL,
-      mudanca: 'Declarar o alvo antes de entrar',
-      evidencia: semAlvo === n
-        ? `nenhum dos ${n} trades tem alvo declarado`
-        : `${semAlvo} de ${n} trades sem alvo declarado`,
-      comoDizer: 'Sem alvo declarado eu não consigo avaliar se a saída foi decisão ou reação — e você também não. É o primeiro campo a preencher, antes do clique.',
+      mudanca: `Levar o ganho até o alvo do plano (${alvo.alvo}R)`,
+      evidencia: `${alvo.vencedores - alvo.atingiram} de ${alvo.vencedores} ganhos ficaram abaixo do alvo · R:R médio no ganho ${alvo.rrMedio.toFixed(2)}`,
+      comoDizer: `Seu plano define alvo de ${alvo.alvo}R e ${alvo.vencedores - alvo.atingiram} dos seus ${alvo.vencedores} ganhos saíram antes disso. O trade não está errado — a saída está sendo antecipada. O que te tira da posição antes do alvo?`,
     });
   }
 

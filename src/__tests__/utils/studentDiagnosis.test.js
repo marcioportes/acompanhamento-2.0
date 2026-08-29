@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   agruparImpacto, extremos, diagnosticoDoAluno, fraseParaOFeedback, chaveSetup, chaveEmocao,
   prescricoes,
+  alcanceDoAlvo,
 } from '../../utils/studentDiagnosis';
 
 const planos = new Map([
@@ -146,16 +147,41 @@ describe('prescricoes — o que mudar e o que preservar', () => {
   const tipos = (ps) => ps.map((p) => p.tipo);
   const acha = (ps, trecho) => ps.find((p) => p.mudanca.includes(trecho));
 
-  it('cobra alvo quando quase nada tem alvo declarado — 0 de 381 na base real', () => {
-    const ps = prescricoes(idz([base({ takeProfit: null }), base({ takeProfit: null }), base({ takeProfit: null })]), planos);
-    const p = acha(ps, 'Declarar o alvo');
-    expect(p.evidencia).toContain('nenhum dos 3');
-    expect(p.tipo).toBe('operacional');
+  // O ALVO ESTÁ NO PLANO (Marcio, 29/08), não no trade. `plan.rrTarget` existe nos
+  // 28 planos da base; `trade.takeProfit` em nenhum dos 381 — e nunca precisou.
+  const comAlvo = new Map([['p1', { id: 'p1', pl: 30000, riskPerOperation: 1, rrTarget: 2 }]]);
+  // entry 100 / stop 90 → risco 10 por contrato; qty 1. Ganho 10 = 1R, ganho 30 = 3R.
+  const trade = (result, extra = {}) => ({
+    date: '2026-08-24', entryTime: '2026-08-24T10:00:00-03:00', exitTime: '2026-08-24T10:20:00-03:00',
+    setup: 'X', emotionEntry: 'Calmo', planId: 'p1', currency: 'BRL',
+    entry: 100, stopLoss: 90, qty: 1, result, ...extra,
   });
 
-  it('não cobra alvo quando o aluno declara', () => {
-    const ps = prescricoes(idz([base(), base(), base()]), planos);
-    expect(acha(ps, 'Declarar o alvo')).toBeUndefined();
+  it('cobra a saída antecipada quando o ganho não chega ao alvo do plano', () => {
+    const ps = prescricoes(idz([trade(10), trade(10), trade(10), trade(30)]), comAlvo);
+    const p = acha(ps, 'Levar o ganho até o alvo do plano (2R)');
+    expect(p.tipo).toBe('operacional');
+    expect(p.evidencia).toContain('3 de 4 ganhos ficaram abaixo do alvo');
+  });
+
+  it('não cobra quando a maioria dos ganhos chega ao alvo', () => {
+    const ps = prescricoes(idz([trade(30), trade(30), trade(30), trade(10)]), comAlvo);
+    expect(acha(ps, 'Levar o ganho')).toBeUndefined();
+  });
+
+  it('não cobra com menos de 4 ganhos — amostra não sustenta a conversa', () => {
+    const ps = prescricoes(idz([trade(10), trade(10), trade(10)]), comAlvo);
+    expect(acha(ps, 'Levar o ganho')).toBeUndefined();
+  });
+
+  it('perda não entra na conta do alvo — não existe perda que alcance alvo positivo', () => {
+    const r = alcanceDoAlvo(idz([trade(30), trade(30), trade(30), trade(30), trade(-10), trade(-10)]), comAlvo);
+    expect(r.vencedores).toBe(4);
+    expect(r.pctAtingiu).toBe(100);
+  });
+
+  it('sem plano com alvo, não há o que medir', () => {
+    expect(alcanceDoAlvo(idz([trade(30)]), new Map())).toBeNull();
   });
 
   it('cobra stop a partir de 20% dos trades sem ele', () => {
