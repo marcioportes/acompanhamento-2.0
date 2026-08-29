@@ -65,6 +65,8 @@ function buildMaturityPayloads({
   lastTradeId,
   serverTimestamp,
   asOfTimestamp,
+  emCarencia = false,
+  stageHistory = [],
 }) {
   const engineOutput = evaluateMaturity({
     trades,
@@ -83,6 +85,7 @@ function buildMaturityPayloads({
     complianceRate100,
     executionEvents,
     tradesWithOrderData,
+    emCarencia,
   });
 
   const todayIso = isoDate(now);
@@ -96,7 +99,13 @@ function buildMaturityPayloads({
     ...engineOutput,
     currentStage: stageCurrent,
     baselineStage: baselineStage ?? stageCurrent,
-    stageHistory: [],
+    // #101 — aqui era `stageHistory: []` fixo, e `{merge: true}` NÃO protege array:
+    // o merge substitui o campo pelo valor novo. Todo recompute zerava o histórico
+    // de promoções — foi por isso que o Wilson apareceu com `stageHistory: []`
+    // minutos depois de ser promovido, sem registro de quem promoveu nem quando.
+    // Agora o histórico existente entra de volta no payload; o campo continua no
+    // schema, mas o recompute deixou de ser o lugar que o apaga.
+    stageHistory: Array.isArray(stageHistory) ? stageHistory : [],
     lastTradeId: lastTradeId ?? null,
     computedAt,
     asOf: asOfTimestamp ?? null,
@@ -196,6 +205,15 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       : baselineStage;
     const stageCurrent = Math.max(storedStage, baselineStage);
 
+    // #101 — desde quando o aluno está NESTE estágio. Sem esta marca não há como
+    // separar "regrediu" de "acabou de ser promovido", e o motor emitia regressão
+    // na primeira execução depois de toda promoção (o gatilho 3 compara métricas
+    // com o estágio atual, que subiu sem os dados mudarem).
+    // Grava na primeira vez que faltar: a carência começa hoje para quem já está
+    // no meio do caminho.
+    const dadosAtuais = currentSnap.exists ? currentSnap.data() : null;
+    const stageSince = dadosAtuais?.stageSince ?? null;
+
     // NOTA: query NÃO filtra por status (semântica de revisão, não execução).
     // O engine consume trades com resultado fechado; o filtro semântico de
     // execução é o `result` numérico finito, feito downstream em preComputeShapes.
@@ -203,6 +221,14 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .where('studentId', '==', studentId)
       .get();
     const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // Carência: enquanto a janela de avaliação não for INTEIRAMENTE posterior à
+    // entrada no estágio, ela ainda descreve o estágio anterior.
+    const desdeIso = stageSince?.toDate?.()?.toISOString?.().slice(0, 10)
+      ?? (typeof stageSince === 'string' ? stageSince.slice(0, 10) : null);
+    const tradesNoEstagio = desdeIso
+      ? trades.filter((t) => typeof t.date === 'string' && t.date >= desdeIso).length
+      : null;
 
     const plansSnap = await db.collection('plans')
       .where('studentId', '==', studentId)
@@ -255,6 +281,9 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       baseline,
       ...preComputed,
       lastTradeId,
+      emCarencia: desdeIso != null && tradesNoEstagio != null
+        && tradesNoEstagio < (preComputed?.windowSize ?? 20),
+      stageHistory: dadosAtuais?.stageHistory ?? [],
       serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
       asOfTimestamp: admin.firestore.Timestamp.fromDate(now),
     });
@@ -271,7 +300,13 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .collection('maturity').doc('_historyBucket')
       .collection('history').doc(payloads.historyDoc.date);
 
-    batch.set(currentRef, payloads.currentDoc, { merge: true });
+    // `stageSince` nasce aqui quando falta e NUNCA é sobrescrito depois: quem o
+    // move é a promoção (`promoteStudentStage`), não o recompute.
+    const docParaGravar = stageSince
+      ? payloads.currentDoc
+      : { ...payloads.currentDoc, stageSince: admin.firestore.FieldValue.serverTimestamp() };
+
+    batch.set(currentRef, docParaGravar, { merge: true });
     batch.set(historyRef, payloads.historyDoc, { merge: true });
     await batch.commit();
 

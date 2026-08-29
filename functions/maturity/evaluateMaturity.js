@@ -47,6 +47,9 @@ function evaluateMaturity({
   complianceRate100,
   executionEvents,
   tradesWithOrderData,
+  // #101 — true enquanto a janela ainda contém trades do estágio anterior a uma
+  // promoção. O caller decide; aqui só se propaga ao detector de regressão.
+  emCarencia = false,
 } = {}) {
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
 
@@ -184,6 +187,8 @@ function evaluateMaturity({
     F: financial.score,
     baseline,
     metrics,
+    // #101 — quem promoveu foi o mentor; a janela ainda descreve o estágio anterior.
+    emCarencia,
   });
 
   const confidence = computeConfidence({
