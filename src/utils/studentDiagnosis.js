@@ -331,7 +331,27 @@ export function prescricoes(trades, planoPorId = null) {
     });
   }
 
+  // Saída antecipada, com evidência do que o preço fez depois.
+  const saidas = leituraDasSaidas(lista);
+  if (saidas.cortou >= 2 && saidas.cortou > saidas.protegeu) {
+    out.push({
+      tipo: TIPO.OPERACIONAL,
+      mudanca: 'Segurar o vencedor até o alvo',
+      evidencia: `${saidas.cortou} ${saidas.cortou === 1 ? 'saída antecipada em que' : 'saídas antecipadas em que'} o preço seguiu e bateu o alvo${saidas.protegeu ? ` · ${saidas.protegeu} protegeram de stop` : ''}`,
+      comoDizer: `Em ${saidas.cortou} trades você saiu e o preço foi até o alvo depois. Não é regra geral — ${saidas.protegeu > 0 ? `em ${saidas.protegeu} a saída te salvou do stop` : 'quando você lê reversão, você acerta'}. A pergunta é o que separa um caso do outro na hora.`,
+    });
+  }
+
   // ── PRESERVAR ─────────────────────────────────────────────────────────────
+
+  if (saidas.protegeu >= 2 && saidas.protegeu >= saidas.cortou) {
+    out.push({
+      tipo: TIPO.PRESERVAR,
+      mudanca: 'Manter a leitura de reversão',
+      evidencia: `${saidas.protegeu} saídas antecipadas evitaram o stop${saidas.cortou ? ` · ${saidas.cortou} cortaram o alvo` : ''}`,
+      comoDizer: `Suas saídas antecipadas não são medo: em ${saidas.protegeu} delas o preço voltou e teria batido seu stop. Isso é leitura, e é raro. Não deixe ninguém te convencer de que sair cedo é sempre erro.`,
+    });
+  }
 
   const forcaSetup = diag.setups.forca;
   if (forcaSetup) {
@@ -475,4 +495,33 @@ export function contaPrincipal(trades) {
     (a, b) => b.trades - a.trades || b.ultima.localeCompare(a.ultima),
   )[0];
   return { planId: principal.planId, trades: principal.trades, fora: total - principal.trades };
+}
+
+/**
+ * Saídas antecipadas: quantas protegeram e quantas cortaram resultado.
+ *
+ * Regra de Marcio (29/08/2026): *"podemos analisar no final do ciclo, das vezes que
+ * ele saiu antecipado, quantas foram protetoras e quantas foram corte de
+ * resultado"*.
+ *
+ * A resposta vem de `trade.postExit`, gravado pelo enriquecimento de mercado com
+ * as barras posteriores à saída — mesma fonte do MEP/MEN. Sem esse dado o sistema
+ * não opina: o trade conta em `semDado`, e não vira nem elogio nem acusação.
+ *
+ * @returns {{protegeu:number, cortou:number, ambos:number, indefinido:number, semDado:number, total:number}}
+ */
+export function leituraDasSaidas(trades) {
+  const out = { protegeu: 0, cortou: 0, ambos: 0, indefinido: 0, semDado: 0, total: 0 };
+  for (const t of trades ?? []) {
+    // Só faz sentido no vencedor: é nele que a saída antecipada é ambígua.
+    if (!(num(t?.result) > 0)) continue;
+    const o = t?.postExit?.outcome;
+    if (!o || t.postExit?.source === 'unavailable') { out.semDado += 1; out.total += 1; continue; }
+    out.total += 1;
+    if (o === 'STOP') out.protegeu += 1;
+    else if (o === 'ALVO') out.cortou += 1;
+    else if (o === 'AMBOS') out.ambos += 1;
+    else out.indefinido += 1;
+  }
+  return out;
 }

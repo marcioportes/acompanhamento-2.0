@@ -13,6 +13,7 @@ import {
   alcanceDoAlvo,
   episodios,
   contaPrincipal,
+  leituraDasSaidas,
 } from '../../utils/studentDiagnosis';
 
 const planos = new Map([
@@ -397,5 +398,50 @@ describe('contaPrincipal — onde o aluno de fato opera', () => {
 
   it('sem trade não há conta', () => {
     expect(contaPrincipal([])).toBeNull();
+  });
+});
+
+describe('leituraDasSaidas — protetora ou corte de resultado', () => {
+  const venc = (id, outcome) => ({
+    id, date: '2026-08-24', entryTime: '2026-08-24T10:00:00-03:00', exitTime: '2026-08-24T10:20:00-03:00',
+    setup: 'X', emotionEntry: 'Calmo', stopLoss: 1, planId: 'p1', currency: 'BRL', result: 100,
+    ...(outcome ? { postExit: { outcome, source: 'yahoo' } } : {}),
+  });
+
+  it('separa o que protegeu do que cortou', () => {
+    const r = leituraDasSaidas([venc(1, 'STOP'), venc(2, 'STOP'), venc(3, 'ALVO')]);
+    expect(r).toMatchObject({ protegeu: 2, cortou: 1, total: 3 });
+  });
+
+  it('trade sem o apontador não vira elogio nem acusação', () => {
+    const r = leituraDasSaidas([venc(1, null), venc(2, 'ALVO')]);
+    expect(r.semDado).toBe(1);
+    expect(r.cortou).toBe(1);
+  });
+
+  it('ativo sem dado de mercado conta como sem dado', () => {
+    const semYahoo = { ...venc(1, 'NENHUM'), postExit: { outcome: 'NENHUM', source: 'unavailable' } };
+    expect(leituraDasSaidas([semYahoo]).semDado).toBe(1);
+  });
+
+  it('perdedor não entra — a ambiguidade só existe no vencedor', () => {
+    const perdedor = { ...venc(1, 'STOP'), result: -100 };
+    expect(leituraDasSaidas([perdedor]).total).toBe(0);
+  });
+
+  it('barra que tocou os dois fica no próprio balde', () => {
+    expect(leituraDasSaidas([venc(1, 'AMBOS')]).ambos).toBe(1);
+  });
+
+  it('quem corta o alvo repetidamente recebe a prescrição', () => {
+    const ps = prescricoes([venc(1, 'ALVO'), venc(2, 'ALVO'), venc(3, 'STOP')], planos);
+    expect(ps.find((p) => p.mudanca === 'Segurar o vencedor até o alvo')).toBeTruthy();
+  });
+
+  it('quem protege repetidamente é ELOGIADO, não corrigido', () => {
+    const ps = prescricoes([venc(1, 'STOP'), venc(2, 'STOP'), venc(3, 'ALVO')], planos);
+    const p = ps.find((x) => x.mudanca === 'Manter a leitura de reversão');
+    expect(p.tipo).toBe('preservar');
+    expect(p.comoDizer).toContain('não são medo');
   });
 });
