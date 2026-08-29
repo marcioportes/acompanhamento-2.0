@@ -104,6 +104,7 @@ function buildMaturityPayloads({
     complianceRate100,
     executionEvents,
     tradesWithOrderData,
+    baselineStage,
   });
 
   const todayIso = isoDate(now);

@@ -29,6 +29,7 @@ const DEFAULT_BASELINE = 50;
  * @param {{
  *   composite: number,
  *   stageCurrent: 1|2|3|4|5,
+ *   baselineStage?: 1|2|3|4|5,
  *   E: number,
  *   F: number,
  *   baseline?: { emotional?: number, financial?: number, operational?: number } | null,
@@ -41,7 +42,7 @@ const DEFAULT_BASELINE = 50;
  *   severity: 'LOW'|'MED'|'HIGH'|null,
  * }}
  */
-export function detectRegressionSignal({ composite, stageCurrent, E, F, baseline, metrics }) {
+export function detectRegressionSignal({ composite, stageCurrent, E, F, baseline, metrics, baselineStage }) {
   const stageBase = STAGE_BASES[stageCurrent] ?? 0;
   const baselineE = baseline?.emotional ?? DEFAULT_BASELINE;
   const baselineF = baseline?.financial ?? DEFAULT_BASELINE;
@@ -67,7 +68,12 @@ export function detectRegressionSignal({ composite, stageCurrent, E, F, baseline
     payoff: metrics?.payoff,
     maxDD: metrics?.maxDDPercent,
   });
-  if (mappedStage < stageCurrent) {
+  // #101 — a sugestão nunca desce abaixo do baseline do assessment. DEC-020, que o
+  // recompute já cita: "engine jamais coloca o aluno abaixo do stage diagnosticado".
+  // Medido em 29/08 com o motor antigo: sete dos oito alunos acusados de regressão
+  // eram exatamente isto, incluindo um com ZERO trades e gates 0/9.
+  const piso = Number.isFinite(baselineStage) ? baselineStage : 1;
+  if (mappedStage < stageCurrent && mappedStage >= piso) {
     reasons.push(`métricas mapeiam para stage ${mappedStage} (< ${stageCurrent})`);
   }
 

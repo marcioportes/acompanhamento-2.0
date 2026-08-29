@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
+import { regressaoVigente } from '../utils/maturityEngine/regressionVisibility';
 import { STAGE_NAMES } from '../utils/maturityEngine/constants';
 import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
 import DebugBadge from './DebugBadge';
@@ -132,6 +133,11 @@ const MentorMaturityAlert = ({
     for (const s of students) {
       const m = maturityMap.get(s.id);
       if (!m?.signalRegression?.detected) continue;
+      // #101 — filtro de LEITURA (mesmo espírito das red flags revogadas no #402):
+      // o doc fica como está, a tela é que deixa de aceitar acusação inválida.
+      // Sem isto, oito alunos apareciam aqui em 29/08 — sete sugerindo estágio
+      // abaixo do próprio baseline, e um deles sem ter feito um único trade.
+      if (!regressaoVigente(m).visivel) continue;
       out.push({ student: s, maturity: m });
     }
     out.sort(
