@@ -37,6 +37,8 @@ import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
+import FichaDiagnostico from '../components/Students/FichaDiagnostico';
+import { diagnosticoDoAluno } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
@@ -210,6 +212,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
   const selectedStudentTotals = useMemo(() => aggregateTradesByCurrency(selectedStudentTrades), [selectedStudentTrades]);
+  // #101 — o veredicto da ficha: o que dói e o que funciona, setup e emoção.
+  const diagnosticoAluno = useMemo(
+    () => diagnosticoDoAluno(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
+  );
   // Setups isolados por aluno selecionado — garante que targetRR de aluno X
   // não vaze para o cálculo de Aderência RR do aluno Y (issue #174, INV-27 spec-level).
   const selectedStudentSetups = useMemo(
@@ -339,6 +346,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           trades={selectedStudentTrades}
         />
 
+        <FichaDiagnostico diagnostico={diagnosticoAluno} nome={selectedStudent.name} />
+
+        {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
+            era uma pilha de cards de mesmo peso visual, e o mentor tinha que
+            garimpar a informação relevante em cada um. */}
+        <h4 className="text-[11px] uppercase tracking-widest text-slate-500 mb-3">Resultado</h4>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             title="P&L Total"
@@ -363,6 +376,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             onSelectDate={(date) => setDiaAluno(date === diaAluno ? null : date)}
           />
         </div>
+        <h4 className="text-[11px] uppercase tracking-widest text-slate-500 mb-3">Detalhamento</h4>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <SetupAnalysis trades={selectedStudentTrades} setupsMeta={selectedStudentSetups} />
           <EmotionAnalysis trades={selectedStudentTrades} />
@@ -470,10 +484,35 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             </>
           )}
           pendencias={(
-            <PendingReviewsCard
-              students={students}
-              onOpenReviewQueue={() => onViewChange('reviews')}
-            />
+            <div className="space-y-4">
+              <PendingReviewsCard
+                students={students}
+                onOpenReviewQueue={() => onViewChange('reviews')}
+              />
+              {/* #101 faixa 3 — o que EU devo. Contador que leva à tela onde o
+                  trabalho acontece; a lista não se repete aqui. */}
+              <button
+                onClick={() => onViewChange('pending')}
+                className="w-full glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare className={`w-5 h-5 ${pendingFeedback.length > 0 ? 'text-blue-400' : 'text-slate-600'}`} />
+                  <div>
+                    <div className="font-semibold text-white text-sm">Aguardando feedback</div>
+                    <div className="text-[11px] text-slate-500">
+                      {pendingFeedback.length === 0
+                        ? 'nenhum trade esperando por você'
+                        : `${pendingFeedback.length} ${pendingFeedback.length === 1 ? 'trade espera' : 'trades esperam'} por você`}
+                    </div>
+                  </div>
+                </div>
+                {pendingFeedback.length > 0 && (
+                  <span className="text-lg font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full">
+                    {pendingFeedback.length}
+                  </span>
+                )}
+              </button>
+            </div>
           )}
         />
       )}

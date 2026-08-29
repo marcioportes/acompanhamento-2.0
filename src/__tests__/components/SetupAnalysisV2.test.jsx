@@ -119,7 +119,7 @@ describe('SetupAnalysis V2 — E1 Aderência RR condicional', () => {
   });
 });
 
-describe('SetupAnalysis V2 — E2 ordenação + accordion esporádicos', () => {
+describe('SetupAnalysis V2 — E2 ordenação + amostra pequena', () => {
   const trades = [
     // Setup A: n=3, maior impacto negativo
     mk({ setup: 'A', result: -500 }),
@@ -137,33 +137,32 @@ describe('SetupAnalysis V2 — E2 ordenação + accordion esporádicos', () => {
   it('cards não-esporádicos vêm ordenados por |contribEV| desc', () => {
     render(<SetupAnalysis trades={trades} />);
     const cards = screen.getAllByTestId(/^setup-card-/);
-    // A (|-1500|) > B (|+300|) — C é esporádico, vai no accordion
+    // A (|-1500|) > B (|+300|); C tem amostra menor e vem depois, mas VISÍVEL
     const names = cards.map((c) => c.getAttribute('data-testid'));
     expect(names.indexOf('setup-card-A')).toBeLessThan(names.indexOf('setup-card-B'));
   });
 
-  it('setups com n<3 aparecem em accordion "Esporádicos (N)" colapsado', () => {
+  // #101 (29/08) — o accordion "Esporádicos" MORREU. Medido na base: escondia os
+  // três melhores setups da ficha do mentor (dois com 2 de 2 acertos) e deixava
+  // visíveis só os que perdiam. Amostra pequena virou etiqueta, não fole.
+  it('setup com n<3 aparece na tela, sem fole nenhum', () => {
     render(<SetupAnalysis trades={trades} />);
-    // accordion presente com label
-    expect(screen.getByText(/Esporádicos\s*\(1\)/i)).toBeInTheDocument();
-    // Card C não visível por default (colapsado)
-    expect(screen.queryByTestId('setup-card-C')).not.toBeInTheDocument();
-  });
-
-  it('expandir accordion revela cards esporádicos', () => {
-    render(<SetupAnalysis trades={trades} />);
-    fireEvent.click(screen.getByText(/Esporádicos\s*\(1\)/i));
     expect(screen.getByTestId('setup-card-C')).toBeInTheDocument();
+    expect(screen.queryByText(/Esporádicos/i)).not.toBeInTheDocument();
   });
 
-  it('accordion expandido por default quando nenhum setup atinge n≥3', () => {
+  it('a amostra pequena é declarada ao lado do card', () => {
+    render(<SetupAnalysis trades={trades} />);
+    expect(screen.getByText(/amostra 2/i)).toBeInTheDocument();
+  });
+
+  it('todos os setups aparecem mesmo quando nenhum atinge n≥3', () => {
     const tradesEsporadicos = [
       mk({ setup: 'A', result: 100 }),
       mk({ setup: 'A', result: 100 }),
       mk({ setup: 'B', result: 50 }),
     ];
     render(<SetupAnalysis trades={tradesEsporadicos} />);
-    // Todos esporádicos → accordion expandido
     expect(screen.getByTestId('setup-card-A')).toBeInTheDocument();
     expect(screen.getByTestId('setup-card-B')).toBeInTheDocument();
   });

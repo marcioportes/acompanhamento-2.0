@@ -365,25 +365,21 @@ const SetupAnalysis = ({ trades, setupsMeta, currency = 'BRL' }) => {
       )}
 
       {sporadics.length > 0 && (
-        <div className={regulars.length > 0 ? 'mt-4' : ''}>
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 font-semibold uppercase tracking-wider"
-          >
-            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            Esporádicos ({sporadics.length})
-            <span className="text-[10px] text-slate-600 normal-case tracking-normal">
-              setups com menos de 3 trades
-            </span>
-          </button>
-          {expanded && (
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
-              {sporadics.map((c) => (
-                <SetupCard key={c.setup} card={c} currency={currency} />
-              ))}
-            </div>
-          )}
+        <div className={regulars.length > 0 ? 'mt-3' : ''}>
+          {/* #101 — estes cards ficavam ESCONDIDOS atrás de um fole. Medido em
+              29/08: na ficha do mentor isso ocultava os três melhores setups
+              (dois deles 2 de 2 acertos) e deixava visíveis só os que perdiam.
+              A amostra pequena agora é etiqueta, não motivo para sonegar. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
+            {sporadics.map((c) => (
+              <div key={c.setup} className="relative">
+                <span className="absolute -top-1.5 right-2 z-10 text-[9px] uppercase tracking-wide text-slate-400 bg-slate-900 border border-slate-700 px-1.5 py-0.5 rounded-full">
+                  amostra {c.n}
+                </span>
+                <SetupCard card={c} currency={currency} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
