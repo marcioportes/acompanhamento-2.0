@@ -391,7 +391,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </button>
 
         {detalheAberto && (
-          <DetalheDoAluno diagnostico={diagnosticoAluno} episodios={episodiosAluno} />
+          <DetalheDoAluno
+            diagnostico={diagnosticoAluno}
+            episodios={episodiosAluno}
+            onEscolherDia={(data) => {
+              setDiaAluno(data);
+              setTimeout(() => document.getElementById('trades-do-dia')?.scrollIntoView({ behavior: 'smooth' }), 100);
+            }}
+          />
         )}
         {/* #101 — o Perfil Emocional saiu da ficha do mentor. Submetido ao teste da
             conversa, sobrou um item de seis: score 68/100 é nota de prova (gera
@@ -405,7 +412,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
             Marcio: "não quero todos os trades". O histórico inteiro numa página que
             serve para preparar revisão é ruído — o que se discute é um dia. */}
         {diaAluno ? (
-          <div className="glass-card">
+          <div className="glass-card" id="trades-do-dia">
             <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
               <h3 className="font-semibold text-white text-sm">
                 Trades de {diaAluno.split('-').reverse().join('/')}

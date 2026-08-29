@@ -50,9 +50,11 @@ const Tabela = ({ titulo, rotuloChave, grupos = [] }) => (
             <th className="px-3 py-2 font-bold text-right">Impacto</th>
           </tr>
         </thead>
+        {/* Sem hover nas linhas: elas não levam a lugar nenhum, e afordância que não
+            cumpre é o que faz a tela parecer quebrada. */}
         <tbody className="divide-y divide-slate-800/50 text-sm">
           {grupos.map((g) => (
-            <tr key={g.chave} className="hover:bg-slate-800/20">
+            <tr key={g.chave}>
               <td className="px-3 py-2 text-slate-200">
                 {g.chave}
                 {g.n < 3 && <span className="text-[10px] text-slate-600 ml-1.5">amostra {g.n}</span>}
@@ -70,18 +72,22 @@ const Tabela = ({ titulo, rotuloChave, grupos = [] }) => (
   </div>
 );
 
-const Episodios = ({ lista = [] }) => (
+const Episodios = ({ lista = [], onEscolherDia }) => (
   <div className="glass-card overflow-hidden">
     <div className="p-3 border-b border-slate-800/50 flex items-baseline justify-between">
       <h4 className="font-semibold text-white text-sm">Episódios</h4>
-      <span className="text-[10px] text-slate-500 uppercase tracking-wide">dias que saíram do trilho</span>
+      <span className="text-[10px] text-slate-500 uppercase tracking-wide">clique para abrir o dia</span>
     </div>
     {lista.length === 0 ? (
       <p className="p-6 text-center text-xs text-slate-600">nenhum episódio registrado</p>
     ) : (
       <div className="divide-y divide-slate-800/50 max-h-[280px] overflow-y-auto">
         {lista.map((e) => (
-          <div key={e.data} className="px-3 py-2 flex items-start justify-between gap-3">
+          <button
+            key={e.data}
+            onClick={() => onEscolherDia?.(e.data)}
+            className="w-full text-left px-3 py-2 flex items-start justify-between gap-3 hover:bg-slate-800/30 transition-colors cursor-pointer"
+          >
             <div className="min-w-0">
               <div className="text-sm text-slate-200 font-mono">
                 {e.data.split('-').reverse().join('/')}
@@ -96,20 +102,20 @@ const Episodios = ({ lista = [] }) => (
               )}
               <div className="text-[10px] text-slate-600">{e.trades} {e.trades === 1 ? 'trade' : 'trades'}</div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     )}
   </div>
 );
 
-const DetalheDoAluno = ({ diagnostico, episodios: listaEpisodios = [] }) => {
+const DetalheDoAluno = ({ diagnostico, episodios: listaEpisodios = [], onEscolherDia }) => {
   if (!diagnostico) return null;
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
       <Tabela titulo="Por setup" rotuloChave="Setup" grupos={diagnostico.setups.todos} />
       <Tabela titulo="Por estado emocional" rotuloChave="Estado na entrada" grupos={diagnostico.emocoes.todos} />
-      <Episodios lista={listaEpisodios} />
+      <Episodios lista={listaEpisodios} onEscolherDia={onEscolherDia} />
     </div>
   );
 };

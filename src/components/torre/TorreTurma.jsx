@@ -78,7 +78,11 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
           `${a.name?.split(' ')[0] ?? ''}, tudo bem? ${sumido ? 'Faz um tempo que não vejo operação sua.' : 'Podemos falar sobre seu dia?'}`,
         );
         return (
-          <div key={a.studentId} className="p-3">
+          <div
+            key={a.studentId}
+            onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
+            className="p-3 active:bg-slate-800/40 transition-colors cursor-pointer"
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="font-medium text-white truncate">{a.name}</div>
@@ -111,12 +115,13 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
               <span className="ml-auto flex items-center gap-1.5">
                 {wa && (
                   <a href={wa} target="_blank" rel="noopener noreferrer"
+                     onClick={(e) => e.stopPropagation()}
                      className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
                     <MessageCircle className="w-3.5 h-3.5" />
                   </a>
                 )}
                 <button
-                  onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
+                  onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId }); }}
                   className="p-1.5 rounded-lg border border-slate-700 text-slate-300"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -153,7 +158,11 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
             );
 
             return (
-              <tr key={a.studentId} className="hover:bg-slate-800/30 transition-colors">
+              <tr
+                key={a.studentId}
+                onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
+                className="hover:bg-slate-800/30 transition-colors cursor-pointer"
+              >
                 <td className="p-3">
                   <div className="font-medium text-white whitespace-nowrap">{a.name}</div>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -233,6 +242,7 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
                         href={wa}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                         title="Falar no WhatsApp"
                       >
@@ -240,7 +250,7 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
                       </a>
                     )}
                     <button
-                      onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
+                      onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId }); }}
                       className="p-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800/50 transition-colors"
                       title="Abrir ficha"
                     >

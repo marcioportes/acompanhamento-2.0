@@ -53,7 +53,11 @@ const TorrePrioridade = ({ priority = [], onAbrirAluno }) => (
           );
 
           return (
-            <div key={aluno.studentId} className="p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div
+              key={aluno.studentId}
+              onClick={() => onAbrirAluno?.({ email: aluno.email, name: aluno.name, studentId: aluno.studentId })}
+              className="p-4 flex items-center justify-between gap-4 flex-wrap hover:bg-slate-800/20 transition-colors cursor-pointer"
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
                   <Icon className="w-4 h-4 text-red-400" />
@@ -76,13 +80,14 @@ const TorrePrioridade = ({ priority = [], onAbrirAluno }) => (
                     href={wa}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                   >
                     <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                   </a>
                 )}
                 <button
-                  onClick={() => onAbrirAluno?.({ email: aluno.email, name: aluno.name, studentId: aluno.studentId })}
+                  onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: aluno.email, name: aluno.name, studentId: aluno.studentId }); }}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800/50 transition-colors"
                 >
                   Abrir ficha <ArrowRight className="w-3.5 h-3.5" />
