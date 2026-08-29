@@ -71,9 +71,15 @@ async function promoteStudentStage(db, admin, { studentId, promotedByEmail }) {
       // #101 — a proposta foi CONSUMIDA. Sem limpar, `isReadyForPromotion` continua
       // verdadeiro (proposta 'UP' + blockers vazios + gates 9/9, todos calculados
       // para o estágio ANTIGO) e o card "pronto para promoção" fica na tela do
-      // mentor depois de ele ter promovido — foi o que Marcio viu. O recompute
-      // abaixo regenera a proposta contra o estágio novo, se ela ainda couber.
+      // mentor depois de ele ter promovido — foi o que Marcio viu.
       proposedTransition: null,
+      // PROMOÇÃO ZERA TUDO (Marcio, 29/08): "é como se ele começasse de novo".
+      // `stageSince` é a data em que a vida nova começa; o recompute abaixo mede
+      // gates, métricas e regressão SÓ com trades a partir daqui. Sem essa marca,
+      // o motor comparava as métricas do estágio antigo com a régua do novo e
+      // acusava regressão em toda promoção.
+      stageSince: admin.firestore.FieldValue.serverTimestamp(),
+      signalRegression: null,
     },
     { merge: true },
   );

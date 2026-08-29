@@ -44,6 +44,26 @@ function tradeIsoDay(value) {
  * Lógica pura — recebe dados pré-fetched, retorna payloads para current+history.
  * Zero side-effects. Testável diretamente sem mocks de Firestore.
  */
+/**
+ * A janela do estágio atual — #101, "promoção zera tudo".
+ *
+ * Devolve só os trades a partir da entrada no estágio. Sem promoção registrada
+ * (`stageSince` ausente), a janela é o histórico inteiro: aluno que nunca foi
+ * promovido não teve vida nova.
+ *
+ * @param {Array} trades
+ * @param {any} stageSince — Timestamp do Firestore, Date ou 'YYYY-MM-DD'
+ * @returns {Array}
+ */
+function tradesDoEstagioAtual(trades, stageSince) {
+  const lista = Array.isArray(trades) ? trades : [];
+  const desde = stageSince?.toDate?.()?.toISOString?.().slice(0, 10)
+    ?? (stageSince instanceof Date ? stageSince.toISOString().slice(0, 10) : null)
+    ?? (typeof stageSince === 'string' ? stageSince.slice(0, 10) : null);
+  if (!desde) return lista;
+  return lista.filter((t) => typeof t?.date === 'string' && t.date >= desde);
+}
+
 function buildMaturityPayloads({
   trades,
   plans,
@@ -65,7 +85,6 @@ function buildMaturityPayloads({
   lastTradeId,
   serverTimestamp,
   asOfTimestamp,
-  emCarencia = false,
   stageHistory = [],
 }) {
   const engineOutput = evaluateMaturity({
@@ -85,7 +104,6 @@ function buildMaturityPayloads({
     complianceRate100,
     executionEvents,
     tradesWithOrderData,
-    emCarencia,
   });
 
   const todayIso = isoDate(now);
@@ -222,13 +240,18 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .get();
     const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-    // Carência: enquanto a janela de avaliação não for INTEIRAMENTE posterior à
-    // entrada no estágio, ela ainda descreve o estágio anterior.
-    const desdeIso = stageSince?.toDate?.()?.toISOString?.().slice(0, 10)
-      ?? (typeof stageSince === 'string' ? stageSince.slice(0, 10) : null);
-    const tradesNoEstagio = desdeIso
-      ? trades.filter((t) => typeof t.date === 'string' && t.date >= desdeIso).length
-      : null;
+    // #101 — PROMOÇÃO ZERA TUDO (Marcio, 29/08): "uma vez promovido, tudo deve ser
+    // zerado, é como se ele começasse de novo".
+    //
+    // O motor passa a enxergar SÓ os trades a partir da entrada no estágio. Não é
+    // filtro cosmético: gates, métricas, composite e regressão são recalculados
+    // sobre a vida nova. Sem isso o gatilho 3 do detector — que compara métricas
+    // com o estágio ATUAL — acusava regressão em toda promoção, porque o estágio
+    // subia e os dados eram os mesmos. Foi o que aconteceu com o Wilson.
+    //
+    // O histórico anterior não some do produto: continua nos trades, no extrato e
+    // no `_historyBucket`. O que muda é a régua — ela mede o estágio atual.
+    const tradesDoEstagio = tradesDoEstagioAtual(trades, stageSince);
 
     const plansSnap = await db.collection('plans')
       .where('studentId', '==', studentId)
@@ -270,10 +293,13 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
     }
 
     const now = new Date();
-    const preComputed = preComputeShapes({ trades, plans, now, emotions, orders });
+    // A partir daqui, a régua é a do ESTÁGIO ATUAL: `tradesDoEstagio`, não `trades`.
+    // O `recomputeBehaviorProfiles` acima continua vendo tudo de propósito — o perfil
+    // comportamental do trade é fato do trade, não da fase do aluno.
+    const preComputed = preComputeShapes({ trades: tradesDoEstagio, plans, now, emotions, orders });
 
     const payloads = buildMaturityPayloads({
-      trades,
+      trades: tradesDoEstagio,
       plans,
       now,
       stageCurrent,
@@ -281,8 +307,6 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       baseline,
       ...preComputed,
       lastTradeId,
-      emCarencia: desdeIso != null && tradesNoEstagio != null
-        && tradesNoEstagio < (preComputed?.windowSize ?? 20),
       stageHistory: dadosAtuais?.stageHistory ?? [],
       serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
       asOfTimestamp: admin.firestore.Timestamp.fromDate(now),
@@ -323,4 +347,4 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
   }
 }
 
-module.exports = { buildMaturityPayloads, runMaturityRecompute, recomputeForStudent };
+module.exports = { buildMaturityPayloads, runMaturityRecompute, recomputeForStudent, tradesDoEstagioAtual };
