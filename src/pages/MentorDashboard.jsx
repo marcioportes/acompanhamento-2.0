@@ -15,7 +15,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
   CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
@@ -55,7 +55,7 @@ import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
-  calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention,
+  calculateStats, identifyStudentsNeedingAttention,
   formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
@@ -86,7 +86,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [mentorClosureContext, setMentorClosureContext] = useState(null);
   const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
   const [showEmotionalDetail, setShowEmotionalDetail] = useState(null); // studentEmail or null
   // #101 — o calendário da turma é o seletor do dia; sem dia escolhido não há lista.
@@ -106,7 +105,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
+  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
@@ -138,7 +137,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     if (emailsAtivos.size === 0) return todos;
     return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
   }, [groupedTrades, emailsAtivos]);
-  const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
 
   // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
   // #101 Fase E — uma passada só, consumida pelas duas abas. A Torre é a home
@@ -200,8 +198,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const overallStats = useMemo(() => {
     const allStats = calculateStats(allTrades);
-    return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length, avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0 };
-  }, [allTrades, students, todayTrades, ranking]);
+    return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length };
+  }, [allTrades, students, todayTrades]);
 
   // Agregados multi-moeda (F2 issue #188): P&L nunca soma cross-currency.
   const overallTotalsByCurrency = useMemo(() => aggregateTradesByCurrency(allTrades), [allTrades]);
@@ -238,7 +236,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   // #101 — vários pontos abriam o aluno com `{email, name}` só. A tela de detalhe
   // usa `selectedStudent.studentId` para filtrar os PLANOS e para o fluxo de
-  // fechamento de ciclo: sem ele, abrir o aluno pelo alerta, pelo ranking ou pelo
+  // fechamento de ciclo: sem ele, abrir o aluno pelo alerta, pelo card de promoção ou pelo
   // card de promoção entregava a tela sem plano nenhum, enquanto abrir pela lista
   // de Alunos entregava completa. O id vem do próprio trade (getUniqueStudents).
   const abrirAluno = useCallback((student) => {
@@ -439,7 +437,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
-          { id: 'ranking', sidebarId: 'ranking', label: 'Ranking', icon: Trophy },
           { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
         ].map(tab => (
           <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
@@ -803,33 +800,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               </div>
             ))
           )}
-        </div>
-      )}
-
-      {activeView === 'ranking' && (
-        <div className="glass-card overflow-hidden">
-          <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
-            <h3 className="font-semibold text-white">Ranking da Turma</h3>
-            <select value={rankingSort} onChange={(e) => setRankingSort(e.target.value)} className="text-sm py-2">
-              <option value="totalPL">Por P&L</option><option value="winRate">Por Win Rate</option><option value="profitFactor">Por Profit Factor</option><option value="totalTrades">Por Total de Trades</option>
-            </select>
-          </div>
-          <div className="divide-y divide-slate-800/50">
-            {ranking.map((student, index) => {
-              const studentRankingTrades = groupedTrades[student.email] || [];
-              const studentTotalsByCurrency = aggregateTradesByCurrency(studentRankingTrades);
-              return (
-              <div key={student.email} onClick={() => abrirAluno({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>{index + 1}</div>
-                <div className="flex-1"><p className="font-medium text-white">{student.name}</p><p className="text-xs text-slate-500">{student.totalTrades} trades</p></div>
-                <div className="text-right min-w-[8rem]">
-                  <MultiCurrencyAmount totalsByCurrency={studentTotalsByCurrency} layout="stack" showSign className="font-semibold text-sm items-end" />
-                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p>
-                </div>
-              </div>
-              );
-            })}
-          </div>
         </div>
       )}
 

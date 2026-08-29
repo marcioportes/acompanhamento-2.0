@@ -24,18 +24,46 @@ const TorreVisaoRapida = ({ byStudent = [], currency = 'BRL', onAbrirAluno }) =>
   const comRetrato = byStudent.filter((a) => a.visaoRapida);
   const [selecionado, setSelecionado] = useState(null);
 
-  // Enquanto ninguém foi escolhido, mostra o primeiro que tiver retrato.
-  const emFoco = comRetrato.find((a) => a.studentId === selecionado) ?? comRetrato[0] ?? null;
+  // #101 — começa SEM aluno. Escolher o primeiro da lista por conta própria dá ao
+  // mentor um retrato que ele não pediu, sobre alguém que ele não escolheu — e o
+  // número fica lá parecendo o da turma. Quem escolhe é ele.
+  const emFoco = comRetrato.find((a) => a.studentId === selecionado) ?? null;
 
   useEffect(() => {
     if (selecionado && !comRetrato.some((a) => a.studentId === selecionado)) setSelecionado(null);
   }, [comRetrato, selecionado]);
 
+  const seletor = (
+    <div className="relative">
+      <select
+        value={emFoco?.studentId ?? ''}
+        onChange={(e) => setSelecionado(e.target.value || null)}
+        className="w-full appearance-none bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2 pr-8 text-sm text-white focus:outline-none focus:border-blue-500/50"
+      >
+        <option value="">Escolha um aluno…</option>
+        {comRetrato.map((a) => (
+          <option key={a.studentId} value={a.studentId}>
+            {a.name}{a.visaoRapida.planName ? ` · ${a.visaoRapida.planName}` : ''}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+    </div>
+  );
+
   if (!emFoco) {
     return (
-      <div className="glass-card p-8 text-center">
-        <User className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-        <p className="text-sm text-slate-500">Nenhum aluno com plano ativo.</p>
+      <div className="glass-card">
+        <div className="p-4 border-b border-slate-800/50">
+          <h3 className="font-semibold text-white text-sm mb-3">Visão Rápida por Aluno</h3>
+          {seletor}
+        </div>
+        <div className="p-8 text-center">
+          <User className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+          <p className="text-sm text-slate-500">
+            {comRetrato.length ? 'Escolha um aluno para ver o retrato.' : 'Nenhum aluno com plano ativo.'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -47,20 +75,7 @@ const TorreVisaoRapida = ({ byStudent = [], currency = 'BRL', onAbrirAluno }) =>
     <div className="glass-card">
       <div className="p-4 border-b border-slate-800/50">
         <h3 className="font-semibold text-white text-sm mb-3">Visão Rápida por Aluno</h3>
-        <div className="relative">
-          <select
-            value={emFoco.studentId}
-            onChange={(e) => setSelecionado(e.target.value)}
-            className="w-full appearance-none bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2 pr-8 text-sm text-white focus:outline-none focus:border-blue-500/50"
-          >
-            {comRetrato.map((a) => (
-              <option key={a.studentId} value={a.studentId}>
-                {a.name}{a.visaoRapida.planName ? ` · ${a.visaoRapida.planName}` : ''}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </div>
+        {seletor}
       </div>
 
       <div className="p-4">

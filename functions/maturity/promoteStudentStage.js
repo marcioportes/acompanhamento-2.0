@@ -68,9 +68,24 @@ async function promoteStudentStage(db, admin, { studentId, promotedByEmail }) {
     {
       currentStage: toStage,
       stageHistory: admin.firestore.FieldValue.arrayUnion(entrada),
+      // #101 — a proposta foi CONSUMIDA. Sem limpar, `isReadyForPromotion` continua
+      // verdadeiro (proposta 'UP' + blockers vazios + gates 9/9, todos calculados
+      // para o estágio ANTIGO) e o card "pronto para promoção" fica na tela do
+      // mentor depois de ele ter promovido — foi o que Marcio viu. O recompute
+      // abaixo regenera a proposta contra o estágio novo, se ela ainda couber.
+      proposedTransition: null,
     },
     { merge: true },
   );
+
+  // Gates e proposta precisam ser recalculados contra o estágio NOVO. Falha aqui
+  // não desfaz a promoção: o estágio já mudou, e o próximo trade recalcula.
+  try {
+    const { recomputeForStudent } = require('./recomputeMaturity');
+    await recomputeForStudent(db, studentId, { admin });
+  } catch (e) {
+    console.error('[promoteStudentStage] recompute pós-promoção falhou:', e?.message ?? e);
+  }
 
   return { ok: true, fromStage, toStage };
 }

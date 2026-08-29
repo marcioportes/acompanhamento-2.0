@@ -18,7 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
-  Trophy,
+
   AlertTriangle,
   Wallet,
   BookOpen,
@@ -110,7 +110,6 @@ const Sidebar = ({
       badge: closuresPendingCount > 0 ? closuresPendingCount : null,
       badgeColor: 'red',
     },
-    { id: 'ranking', label: 'Ranking', icon: Trophy },
     { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];

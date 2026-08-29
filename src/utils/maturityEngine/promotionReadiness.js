@@ -26,6 +26,15 @@ export function isReadyForPromotion(maturity) {
   const p = maturity.proposedTransition;
   if (p?.proposed !== 'UP') return false;
   if (Array.isArray(p.blockers) && p.blockers.length > 0) return false;
+  // #101 — a proposta já foi consumida? Depois de promover, o estágio sobe mas
+  // `proposedTransition`/gates só se atualizam no próximo recompute. Sem esta
+  // guarda o card "pronto para promoção" continua na tela depois da promoção
+  // feita — foi o que Marcio viu em 28/08. O servidor limpa a proposta ao
+  // promover; isto defende a leitura de qualquer doc que tenha ficado para trás.
+  const destino = p.nextStage;
+  const atual = maturity.currentStage;
+  if (Number.isFinite(destino) && Number.isFinite(atual) && destino <= atual) return false;
+
   const total = maturity.gatesTotal ?? 0;
   const met = maturity.gatesMet ?? 0;
   return total > 0 && met === total;
