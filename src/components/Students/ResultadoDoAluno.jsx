@@ -11,9 +11,10 @@
  * mesmo vocabulário técnico e o mesmo tooltip didático.
  *
  * UMA CONTA POR VEZ: o R depende do plano (`computeR`), e aluno com duas contas
- * tem dois R diferentes. Os tiles são do plano em foco — o do último trade
- * registrado —, nomeado no cabeçalho. Misturar contas produziria um R que não
- * existe, que é o erro que a D12 corrigiu no estado do dia.
+ * tem dois R diferentes. Os tiles são da conta PRINCIPAL — a de maior volume —,
+ * nomeada no cabeçalho, e o que ficou de fora é declarado ali mesmo. Misturar
+ * contas produziria um R que não existe, que é o erro que a D12 corrigiu no
+ * estado do dia; escolher pela mais recente mostrava 1 de 7 trades do Daniel.
  */
 import { useMemo } from 'react';
 import { Activity } from 'lucide-react';
@@ -48,7 +49,7 @@ const maxDrawdown = (trades, plan) => {
   return { value: pior, percent: piorPct };
 };
 
-const ResultadoDoAluno = ({ trades = [], plano }) => {
+const ResultadoDoAluno = ({ trades = [], plano, foraDaConta = 0 }) => {
   const doPlano = useMemo(
     () => (plano ? trades.filter((t) => t.planId === plano.id) : []),
     [trades, plano],
@@ -82,6 +83,9 @@ const ResultadoDoAluno = ({ trades = [], plano }) => {
         </h3>
         <span className="text-[10px] text-slate-500 uppercase tracking-wide">
           {plano.name ? `${plano.name} · ` : ''}{doPlano.length} trades · mesma régua do aluno
+          {foraDaConta > 0 && (
+            <span className="text-amber-400/80"> · {foraDaConta} em outra conta, fora desta medida</span>
+          )}
         </span>
       </div>
 

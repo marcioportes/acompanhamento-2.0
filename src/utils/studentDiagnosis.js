@@ -446,3 +446,33 @@ export function episodios(trades, planoPorId = null) {
     })
     .sort((a, b) => b.data.localeCompare(a.data));
 }
+
+/**
+ * A conta PRINCIPAL do aluno: aquela onde ele de fato opera.
+ *
+ * Difere do `planoEmFoco` da Torre, que é a conta DO DIA — lá a pergunta é "o que
+ * ele fez hoje". Aqui a pergunta é "onde está o histórico dele", e escolher pelo
+ * último trade dava resultado ruim: medido em 29/08, o Daniel apareceria com
+ * 1 de 7 trades porque o último trade dele foi numa conta quase vazia.
+ *
+ * Empate no volume decide pelo trade mais recente.
+ *
+ * @returns {{planId, trades, fora}|null} `fora` = trades do aluno em outras contas
+ */
+export function contaPrincipal(trades) {
+  const porPlano = new Map();
+  let total = 0;
+  for (const t of trades ?? []) {
+    if (!t?.planId) continue;
+    total += 1;
+    const g = porPlano.get(t.planId) ?? { planId: t.planId, trades: 0, ultima: '' };
+    g.trades += 1;
+    if ((t.date ?? '') > g.ultima) g.ultima = t.date ?? '';
+    porPlano.set(t.planId, g);
+  }
+  if (!porPlano.size) return null;
+  const principal = [...porPlano.values()].sort(
+    (a, b) => b.trades - a.trades || b.ultima.localeCompare(a.ultima),
+  )[0];
+  return { planId: principal.planId, trades: principal.trades, fora: total - principal.trades };
+}

@@ -37,7 +37,7 @@ import FichaDiagnostico from '../components/Students/FichaDiagnostico';
 import PlanoDeConversa from '../components/Students/PlanoDeConversa';
 import DetalheDoAluno from '../components/Students/DetalheDoAluno';
 import ResultadoDoAluno from '../components/Students/ResultadoDoAluno';
-import { diagnosticoDoAluno, prescricoes, episodios } from '../utils/studentDiagnosis';
+import { diagnosticoDoAluno, prescricoes, episodios, contaPrincipal } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
@@ -63,7 +63,7 @@ import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
-import { buildCalendarDays, emailsDoRadar, planoEmFoco } from '../utils/mentorRiskRadar';
+import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -228,10 +228,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     [selectedStudentTrades, planosPorId],
   );
   // O R depende do plano; aluno com duas contas tem dois R. A ficha mede a conta
-  // do último trade registrado, nomeada no cabeçalho do bloco.
+  // PRINCIPAL — a de maior volume —, não a do último trade: pelo último, o Daniel
+  // apareceria com 1 de 7 trades porque o último dele foi numa conta quase vazia.
+  const contaDaFicha = useMemo(() => contaPrincipal(selectedStudentTrades), [selectedStudentTrades]);
   const planoDaFicha = useMemo(
-    () => planosPorId.get(planoEmFoco([], selectedStudentTrades)) ?? null,
-    [planosPorId, selectedStudentTrades],
+    () => (contaDaFicha ? planosPorId.get(contaDaFicha.planId) ?? null : null),
+    [planosPorId, contaDaFicha],
   );
 
   const handleAddFeedback = async (tradeId, feedback) => {
@@ -354,7 +356,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
             era uma pilha de cards de mesmo peso visual, e o mentor tinha que
             garimpar a informação relevante em cada um. */}
-        <ResultadoDoAluno trades={selectedStudentTrades} plano={planoDaFicha} />
+        <ResultadoDoAluno trades={selectedStudentTrades} plano={planoDaFicha} foraDaConta={contaDaFicha?.fora ?? 0} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <EquityCurve trades={selectedStudentTrades} />

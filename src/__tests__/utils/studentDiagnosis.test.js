@@ -12,6 +12,7 @@ import {
   prescricoes,
   alcanceDoAlvo,
   episodios,
+  contaPrincipal,
 } from '../../utils/studentDiagnosis';
 
 const planos = new Map([
@@ -358,5 +359,43 @@ describe('episodios — o que sobrou do Perfil Emocional', () => {
 
   it('sem trade não há episódio', () => {
     expect(episodios([], planos)).toEqual([]);
+  });
+});
+
+describe('contaPrincipal — onde o aluno de fato opera', () => {
+  const t = (planId, date) => ({ id: `${planId}-${date}`, planId, date, result: 100 });
+
+  it('escolhe a conta de MAIOR VOLUME, não a do último trade', () => {
+    // Daniel, base real: o último trade dele foi numa conta com 1 trade, enquanto
+    // a principal tinha 6. Pela regra antiga a ficha media 1 de 7.
+    const c = contaPrincipal([
+      t('grande', '2026-07-01'), t('grande', '2026-07-02'), t('grande', '2026-07-03'),
+      t('pequena', '2026-08-30'),
+    ]);
+    expect(c.planId).toBe('grande');
+    expect(c.trades).toBe(3);
+    expect(c.fora).toBe(1);
+  });
+
+  it('empate no volume decide pelo mais recente', () => {
+    const c = contaPrincipal([t('velha', '2026-01-01'), t('nova', '2026-08-30')]);
+    expect(c.planId).toBe('nova');
+  });
+
+  it('declara quantos trades ficaram fora da medida', () => {
+    const c = contaPrincipal([t('a', '2026-08-01'), t('a', '2026-08-02'), t('b', '2026-08-03')]);
+    expect(c.fora).toBe(1);
+  });
+
+  it('uma conta só não deixa nada de fora', () => {
+    expect(contaPrincipal([t('a', '2026-08-01'), t('a', '2026-08-02')]).fora).toBe(0);
+  });
+
+  it('trade sem plano não cria conta fantasma', () => {
+    expect(contaPrincipal([{ id: 'x', date: '2026-08-01', result: 10 }])).toBeNull();
+  });
+
+  it('sem trade não há conta', () => {
+    expect(contaPrincipal([])).toBeNull();
   });
 });
