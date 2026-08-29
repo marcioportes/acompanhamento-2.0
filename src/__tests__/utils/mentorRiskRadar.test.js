@@ -940,10 +940,10 @@ describe('faixaDeAtencao — a ordem da lista da turma', () => {
     expect(faixaDeAtencao(aluno({ diasSemOperar: 3 })).motivo).toBe('operou há 3 dias');
   });
 
-  it('quem nunca operou é onboarding, não acompanhamento — mas NÃO some da lista', () => {
+  it('quem não tem histórico é onboarding, não acompanhamento — mas NÃO some da lista', () => {
     const r = faixaDeAtencao(aluno({ diasSemOperar: null }));
     expect(r.faixa).toBe(FAIXA.NUNCA_OPEROU);
-    expect(r.motivo).toBe('nunca registrou uma operação');
+    expect(r.motivo).toBe('sem operação registrada');
   });
 
   it('risco MÉDIO não sobe de faixa sozinho', () => {

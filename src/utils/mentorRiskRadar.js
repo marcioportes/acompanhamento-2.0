@@ -808,6 +808,8 @@ export const diasEntre = (de, ate) => {
  */
 export const FAIXA = {
   ACAO_HOJE: 0,
+  // Nome interno mantido; o rótulo da tela é "Inativo" (Marcio, 29/08: "sumiu é um
+  // termo infantiloide"). O fato exibido ao lado continua sendo o número de dias.
   SUMIU: 1,
   RISCO_ALTO: 2,
   FORA_DO_PLANO: 3,
@@ -818,12 +820,12 @@ export const FAIXA = {
 
 export const FAIXA_LABEL = {
   [FAIXA.ACAO_HOJE]: 'Ação hoje',
-  [FAIXA.SUMIU]: 'Sumiu',
+  [FAIXA.SUMIU]: 'Inativo',
   [FAIXA.RISCO_ALTO]: 'Risco alto',
   [FAIXA.FORA_DO_PLANO]: 'Fora do plano',
-  [FAIXA.ESFRIANDO]: 'Esfriando',
+  [FAIXA.ESFRIANDO]: 'Baixa atividade',
   [FAIXA.EM_DIA]: 'Em dia',
-  [FAIXA.NUNCA_OPEROU]: 'Nunca operou',
+  [FAIXA.NUNCA_OPEROU]: 'Sem histórico',
 };
 
 /** Dias sem operar a partir dos quais o silêncio vira assunto. */
@@ -841,7 +843,7 @@ export function faixaDeAtencao(a) {
   if (dias == null) {
     // Nunca operou é outro problema — é onboarding, não acompanhamento. Fica por
     // último para não empurrar quem opera pra baixo, mas NÃO some da lista.
-    return { faixa: FAIXA.NUNCA_OPEROU, motivo: 'nunca registrou uma operação' };
+    return { faixa: FAIXA.NUNCA_OPEROU, motivo: 'sem operação registrada' };
   }
   if (dias >= DIAS_SUMIU) return { faixa: FAIXA.SUMIU, motivo: `${dias} dias sem operar` };
 
