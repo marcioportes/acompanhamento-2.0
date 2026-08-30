@@ -21,7 +21,6 @@ import {
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import ExcursionDisplay from '../components/ExcursionDisplay';
-import StudentFeedbackCard from '../components/StudentFeedbackCard';
 import TradingCalendar from '../components/TradingCalendar';
 import EquityCurve from '../components/EquityCurve';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
@@ -36,6 +35,8 @@ import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
 import FichaDiagnostico from '../components/Students/FichaDiagnostico';
 import PlanoDeConversa from '../components/Students/PlanoDeConversa';
 import DetalheDoAluno from '../components/Students/DetalheDoAluno';
+import FilaDeFeedback from '../components/feedback/FilaDeFeedback';
+import { buildFilaDeFeedback } from '../utils/filaDeFeedback';
 import ResultadoDoAluno from '../components/Students/ResultadoDoAluno';
 import { diagnosticoDoAluno, prescricoes, episodios, contaPrincipal } from '../utils/studentDiagnosis';
 import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
@@ -85,7 +86,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [mentorClosureContext, setMentorClosureContext] = useState(null);
   const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [pendingFilter, setPendingFilter] = useState(null);
   // #101 — os memos de setups e de perfil emocional do aluno selecionado saíram
   // junto com os componentes que os consumiam. O detalhamento agora vem de
   // `diagnosticoDoAluno`/`episodios`, que já rodam para o Plano de Conversa.
@@ -164,44 +164,17 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     [allTrades, diaSelecionado],
   );
 
-  const studentsWithPending = useMemo(() => {
-    const studentMap = {};
-    pendingFeedback.forEach(trade => {
-      const email = trade.studentEmail;
-      if (!studentMap[email]) {
-        studentMap[email] = { email, name: trade.studentName || email.split('@')[0], studentId: trade.studentId, counts: { open: 0, question: 0, reviewed: 0, closed: 0 } };
-      }
-      if (trade.status === 'OPEN') studentMap[email].counts.open++;
-      if (trade.status === 'QUESTION') studentMap[email].counts.question++;
-    });
-    allTrades.forEach(trade => {
-      const email = trade.studentEmail;
-      if (studentMap[email]) {
-        // #333 — DISCUSSED (revisado + discutido em revisão publicada) conta como revisado;
-        // antes sumia do resumo "revisados" do card do mentor.
-        if (trade.status === 'REVIEWED' || trade.status === 'DISCUSSED') studentMap[email].counts.reviewed++;
-        if (trade.status === 'CLOSED') studentMap[email].counts.closed++;
-      }
-    });
-    return Object.values(studentMap).sort((a, b) => (b.counts.question * 10 + b.counts.open) - (a.counts.question * 10 + a.counts.open));
-  }, [pendingFeedback, allTrades]);
+  // #408 — a fila em árvore. `buildFilaDeFeedback` monta aluno → dia → plano sobre
+  // o `buildPeriodState` do #402; nada é recalculado aqui.
+  const filaDeFeedback = useMemo(
+    () => buildFilaDeFeedback({ pendentes: pendingFeedback, plans }),
+    [pendingFeedback, plans],
+  );
 
-  const filteredPendingTrades = useMemo(() => {
-    if (!pendingFilter) return [];
-    const trades = getTradesByStudentAndStatus(pendingFilter.studentEmail, pendingFilter.status);
-    // Sort decrescente: mais recente primeiro (date → entryTime → createdAt)
-    return [...trades].sort((a, b) => {
-      const dateA = a.date || '';
-      const dateB = b.date || '';
-      if (dateA !== dateB) return dateB.localeCompare(dateA);
-      const timeA = a.entryTime || '';
-      const timeB = b.entryTime || '';
-      if (timeA && timeB) return timeB.localeCompare(timeA);
-      const tsA = a.createdAt?.seconds || 0;
-      const tsB = b.createdAt?.seconds || 0;
-      return tsB - tsA;
-    });
-  }, [pendingFilter, getTradesByStudentAndStatus]);
+  // #408 — `studentsWithPending` e `filteredPendingTrades` morreram com a lista
+  // plana: a fila agora é a árvore de `buildFilaDeFeedback`, que já carrega dia,
+  // plano, período e contagens.
+
 
   const overallStats = useMemo(() => {
     const allStats = calculateStats(allTrades);
@@ -244,9 +217,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     } finally { setFeedbackLoading(false); }
   };
 
-  const handleClickStudentOpen = (student) => { setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name }); setSelectedTradeIds(new Set()); };
-  const handleClickStudentQuestion = (student) => { setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name }); setSelectedTradeIds(new Set()); };
-  const handleClickStudentAll = (student) => { setSelectedStudent(student); setPendingFilter(null); setSelectedTradeIds(new Set()); };
+  const handleClickStudentAll = (student) => { setSelectedStudent(student); setSelectedTradeIds(new Set()); };
 
   // #101 — vários pontos abriam o aluno com `{email, name}` só. A tela de detalhe
   // usa `selectedStudent.studentId` para filtrar os PLANOS e para o fluxo de
@@ -261,9 +232,20 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     );
     setSelectedStudent(conhecido ? { ...student, studentId: conhecido.studentId } : student);
   }, [students]);
-  const handleBackFromFilter = () => { setPendingFilter(null); setSelectedTradeIds(new Set()); };
 
   // === Bulk Feedback Handlers ===
+  // #408 — selecionar o dia inteiro: o recorte que gera um feedback só.
+  const handleSelectDay = (tradeIds) => {
+    setSelectedTradeIds((prev) => {
+      const novo = new Set(prev);
+      const todosJaSelecionados = tradeIds.every((id) => novo.has(id));
+      for (const id of tradeIds) {
+        if (todosJaSelecionados) novo.delete(id); else novo.add(id);
+      }
+      return novo;
+    });
+  };
+
   const handleToggleTradeSelection = (tradeId) => {
     setSelectedTradeIds(prev => {
       const next = new Set(prev);
@@ -273,14 +255,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     });
   };
 
-  const handleSelectAllOpen = () => {
-    const openTrades = filteredPendingTrades.filter(t => t.status === 'OPEN');
-    if (selectedTradeIds.size === openTrades.length) {
-      setSelectedTradeIds(new Set());
-    } else {
-      setSelectedTradeIds(new Set(openTrades.map(t => t.id)));
-    }
-  };
 
   const handleOpenBulkModal = () => {
     setBulkComment('');
@@ -477,7 +451,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
           { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
         ].map(tab => (
-          <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
+          <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setSelectedTradeIds(new Set()); }} 
             className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
             <tab.icon className="w-4 h-4" />{tab.label}
           </button>
@@ -666,180 +640,96 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       )}
 
+      {/* #408 — a fila deixou de ser lista plana por aluno e virou árvore
+          aluno → dia → plano → trade. O contexto que só existe no conjunto estava
+          invisível: a Sandra em 26/08 aparecia como cinco linhas soltas quando é UM
+          dia em que o plano autoriza uma operação, o stop foi atingido na primeira e
+          ela abriu mais três. O nível de PLANO é chave, não atributo — dois planos
+          no mesmo dia são dois períodos, com limiares e moeda próprios. */}
       {activeView === 'pending' && (
-        <>
-          {pendingFilter ? (
-            <div>
-              <button onClick={handleBackFromFilter} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
-                <ChevronLeft className="w-4 h-4" /> Voltar para cards
-              </button>
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">{pendingFilter.studentName?.charAt(0)?.toUpperCase() || '?'}</div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">{pendingFilter.studentName}</h2>
-                  <div className="flex items-center gap-2">
-                    {pendingFilter.status === 'OPEN' ? <span className="flex items-center gap-1 text-sm text-blue-400"><Clock className="w-4 h-4" /> Aguardando Feedback</span> : <span className="flex items-center gap-1 text-sm text-amber-400"><HelpCircle className="w-4 h-4" /> Dúvidas</span>}
-                    <span className="text-slate-500">•</span>
-                    <span className="text-sm text-slate-400">{filteredPendingTrades.length} trades</span>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {/* Select All (só para OPEN) */}
-                {pendingFilter.status === 'OPEN' && filteredPendingTrades.length > 1 && (
-                  <div className="flex items-center gap-3 px-1">
-                    <button onClick={handleSelectAllOpen} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors">
-                      {selectedTradeIds.size === filteredPendingTrades.filter(t => t.status === 'OPEN').length
-                        ? <CheckSquare className="w-4 h-4 text-blue-400" />
-                        : <Square className="w-4 h-4" />
-                      }
-                      {selectedTradeIds.size > 0 ? `${selectedTradeIds.size} selecionado(s)` : 'Selecionar todos'}
-                    </button>
-                  </div>
-                )}
-
-                {filteredPendingTrades.map(trade => (
-                  <div key={trade.id} className="glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
-                    <div className="flex items-center gap-4">
-                      {/* Checkbox — só para OPEN */}
-                      {pendingFilter.status === 'OPEN' && (
-                        <button onClick={() => handleToggleTradeSelection(trade.id)} className="flex-shrink-0 text-slate-400 hover:text-blue-400 transition-colors">
-                          {selectedTradeIds.has(trade.id)
-                            ? <CheckSquare className="w-5 h-5 text-blue-400" />
-                            : <Square className="w-5 h-5" />
-                          }
-                        </button>
-                      )}
-                      <div className={`p-2 rounded-lg ${trade.result >= 0 ? 'bg-emerald-500/20' : 'bg-red-500/20'}`}>
-                        <TrendingUp className={`w-5 h-5 ${trade.result >= 0 ? 'text-emerald-400' : 'text-red-400 rotate-180'}`} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-white">{trade.ticker}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded ${trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{trade.side}</span>
-                        </div>
-                        <p className="text-sm text-slate-500">
-                          {trade.date?.split('-').reverse().join('/')}
-                          {trade.entryTime && <span className="font-mono text-slate-600 ml-1">{fmtTradeTime(trade.entryTime)}</span>}
-                          {' • '}{trade.setup || 'Sem setup'}
-                        </p>
-                        <ExcursionDisplay trade={trade} variant="compact" className="mt-1" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <p className={`font-semibold ${trade.result >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{trade.result >= 0 ? '+' : ''}{formatCurrencyDynamic(trade.result, trade.currency)}</p>
-                      <button onClick={() => handleGoToFeedback(trade)} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4" />{pendingFilter.status === 'OPEN' ? 'Dar Feedback' : 'Responder'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Floating Action Bar — Bulk Feedback */}
-                {selectedTradeIds.size > 0 && (
-                  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-2xl px-6 py-4 shadow-2xl flex items-center gap-4">
-                    <span className="text-white font-medium">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''} selecionado{selectedTradeIds.size > 1 ? 's' : ''}</span>
-                    <button onClick={handleOpenBulkModal} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center gap-2">
-                      <MessageSquare className="w-4 h-4" />Feedback em Massa
-                    </button>
-                    <button onClick={() => setSelectedTradeIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-2">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Bulk Feedback Modal */}
-                {showBulkModal && (
-                  <>
-                    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50" onClick={handleCloseBulkModal} />
-                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg">
-                      <div className="glass-card border border-slate-700/50 p-6 space-y-5">
-                        <div>
-                          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            <MessageSquare className="w-5 h-5 text-blue-400" />
-                            Feedback em Massa
-                          </h3>
-                          <p className="text-sm text-slate-400 mt-1">
-                            Aplicar para {selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''} de {pendingFilter.studentName}
-                          </p>
-                        </div>
-
-                        {/* Resumo dos trades */}
-                        <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-800/30 rounded-xl p-3">
-                          {filteredPendingTrades.filter(t => selectedTradeIds.has(t.id)).map(t => (
-                            <div key={t.id} className="flex items-center justify-between text-sm">
-                              <span className="text-slate-300">
-                                {t.ticker}
-                                {' '}<span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span>
-                                {t.entryTime && <span className="text-slate-600 font-mono ml-1">{fmtTradeTime(t.entryTime)}</span>}
-                              </span>
-                              <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrencyDynamic(t.result, t.currency)}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Textarea */}
-                        <textarea
-                          value={bulkComment}
-                          onChange={(e) => setBulkComment(e.target.value)}
-                          placeholder="Escreva o feedback que será aplicado a todos os trades selecionados..."
-                          rows={4}
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none"
-                          autoFocus
-                        />
-
-                        {/* Confirmação */}
-                        <div className="flex items-start gap-3 cursor-pointer group" onClick={() => setBulkConfirmed(!bulkConfirmed)}>
-                          <div className="flex-shrink-0 mt-0.5">
-                            {bulkConfirmed
-                              ? <CheckSquare className="w-5 h-5 text-blue-400" />
-                              : <Square className="w-5 h-5 text-slate-500 group-hover:text-slate-300" />
-                            }
-                          </div>
-                          <span className="text-sm text-slate-400">
-                            Confirmo aplicar este feedback para <strong className="text-white">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''}</strong>. O texto será adicionado ao histórico de cada trade.
-                          </span>
-                        </div>
-
-                        {/* Botões */}
-                        <div className="flex gap-3 justify-end">
-                          <button onClick={handleCloseBulkModal} className="px-4 py-2.5 text-slate-400 hover:text-white transition-colors">
-                            Cancelar
-                          </button>
-                          <button
-                            onClick={handleApplyBulkFeedback}
-                            disabled={!bulkComment.trim() || !bulkConfirmed || bulkLoading}
-                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                          >
-                            {bulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
-                            {bulkLoading ? 'Aplicando...' : `Aplicar para ${selectedTradeIds.size} trade${selectedTradeIds.size > 1 ? 's' : ''}`}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              {studentsWithPending.length === 0 ? (
-                <div className="glass-card p-8 text-center">
-                  <MessageSquare className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-white mb-2">Tudo em dia!</h3>
-                  <p className="text-slate-500">Nenhum trade aguardando feedback.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {studentsWithPending.map(student => (
-                    <StudentFeedbackCard key={student.email} student={student} counts={student.counts} onClickOpen={() => handleClickStudentOpen(student)} onClickQuestion={() => handleClickStudentQuestion(student)} onClickAll={() => handleClickStudentAll(student)} />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </>
+        <FilaDeFeedback
+          fila={filaDeFeedback}
+          onAbrirTrade={handleGoToFeedback}
+          selecionados={selectedTradeIds}
+          onAlternarSelecao={handleToggleTradeSelection}
+          onSelecionarDia={handleSelectDay}
+          onAplicarEmMassa={() => setShowBulkModal(true)}
+        />
       )}
+
+      {/* #9 — feedback em massa. A seleção mudou de lugar (era a lista plana, agora
+          é a árvore), mas a capacidade continua: no novo desenho ela casa melhor,
+          porque o recorte natural é o DIA, e é o dia que gera um feedback só. */}
+{showBulkModal && (
+  <>
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50" onClick={handleCloseBulkModal} />
+    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg">
+      <div className="glass-card border border-slate-700/50 p-6 space-y-5">
+        <div>
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-blue-400" />
+            Feedback em Massa
+          </h3>
+          <p className="text-sm text-slate-400 mt-1">
+            Aplicar para {selectedTradeIds.size} {selectedTradeIds.size > 1 ? 'operações' : 'operação'}
+          </p>
+        </div>
+
+        {/* Resumo dos trades */}
+        <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-800/30 rounded-xl p-3">
+          {pendingFeedback.filter(t => selectedTradeIds.has(t.id)).map(t => (
+            <div key={t.id} className="flex items-center justify-between text-sm">
+              <span className="text-slate-300">
+                {t.ticker}
+                {' '}<span className="text-slate-500">{t.date?.split('-').reverse().join('/')}</span>
+                {t.entryTime && <span className="text-slate-600 font-mono ml-1">{fmtTradeTime(t.entryTime)}</span>}
+              </span>
+              <span className={t.result >= 0 ? 'text-emerald-400' : 'text-red-400'}>{t.result >= 0 ? '+' : ''}{formatCurrencyDynamic(t.result, t.currency)}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Textarea */}
+        <textarea
+          value={bulkComment}
+          onChange={(e) => setBulkComment(e.target.value)}
+          placeholder="Escreva o feedback que será aplicado a todos os trades selecionados..."
+          rows={4}
+          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 resize-none focus:border-blue-500 focus:outline-none"
+          autoFocus
+        />
+
+        {/* Confirmação */}
+        <div className="flex items-start gap-3 cursor-pointer group" onClick={() => setBulkConfirmed(!bulkConfirmed)}>
+          <div className="flex-shrink-0 mt-0.5">
+            {bulkConfirmed
+              ? <CheckSquare className="w-5 h-5 text-blue-400" />
+              : <Square className="w-5 h-5 text-slate-500 group-hover:text-slate-300" />
+            }
+          </div>
+          <span className="text-sm text-slate-400">
+            Confirmo aplicar este feedback para <strong className="text-white">{selectedTradeIds.size} trade{selectedTradeIds.size > 1 ? 's' : ''}</strong>. O texto será adicionado ao histórico de cada trade.
+          </span>
+        </div>
+
+        {/* Botões */}
+        <div className="flex gap-3 justify-end">
+          <button onClick={handleCloseBulkModal} className="px-4 py-2.5 text-slate-400 hover:text-white transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleApplyBulkFeedback}
+            disabled={!bulkComment.trim() || !bulkConfirmed || bulkLoading}
+            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+          >
+            {bulkLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+            {bulkLoading ? 'Aplicando...' : `Aplicar para ${selectedTradeIds.size} trade${selectedTradeIds.size > 1 ? 's' : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  </>
+)}
 
       {activeView === 'attention' && (
         <div className="space-y-4">
