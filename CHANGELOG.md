@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.84.0] - 29/08/2026 · #101 · PR #411
+
+**feat:** Torre de Controle — a tela que diz o que fazer
+
+- **O dia é por CONTA, não por aluno.** Aluno com duas contas tinha os trades somados contra o stop de uma delas — moedas diferentes inclusive.
+- **Promover virava regressão.** O detector compara métricas com o estágio atual; promover subia o estágio sem mudar os dados. Agora a promoção **zera a régua**: o motor mede só os trades a partir dela.
+- **O recompute apagava o histórico de promoções** — `stageHistory: []` fixo no payload, e `{merge:true}` não protege array.
+- **Regressão sugerindo abaixo do baseline** (DEC-020): 7 dos 8 alunos acusados, incluindo um com zero trades.
+- **Rebloqueio de login virou invariante**, não evento: desbloquear um inadimplente valia para sempre.
+- **Promoção não limpava a proposta consumida**, e o card ficava na tela depois de promovido.
+- **Saída antecipada nunca é violação grave** — sem dado de mercado pós-saída não há como separar medo de proteção, e futuros B3 não têm série de 1 minuto gratuita.
+- **Calendário do mentor renderizava vazio** — lia campos que o util não devolve mais.
+
+
 ## [1.83.33] - 27/08/2026 · #402 · PR #407
 
 **fix:** a caixa verde não pode contradizer a ressalva de abertura
