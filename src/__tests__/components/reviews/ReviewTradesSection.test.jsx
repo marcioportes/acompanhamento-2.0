@@ -7,6 +7,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ReviewTradesSection from '../../../components/reviews/ReviewTradesSection';
+import { avisosPorOperacao } from '../../../utils/filaDeFeedback';
 
 const makeTrade = (overrides = {}) => ({
   tradeId: 't1',
@@ -120,5 +121,44 @@ describe('<ReviewTradesSection />', () => {
     render(<ReviewTradesSection trades={trades} />);
     expect(screen.getByText('C')).toBeInTheDocument();
     expect(screen.getByText('V')).toBeInTheDocument();
+  });
+});
+
+/**
+ * #408 — a autorização é fato da OPERAÇÃO. Marcio, 30/08: *"como é atômica,
+ * precisa estar na operação, não na seção do dia"*.
+ */
+describe('<ReviewTradesSection /> — marca de autorização por operação', () => {
+  const plano = { id: 'ago', name: 'Ago', pl: 4000, periodStop: 1, periodGoal: 2, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const trade = (id, hora, pnl) => ({
+    id, tradeId: id, symbol: 'WINV26', side: 'LONG', qty: 1, pnl,
+    entryTime: `2026-08-26T${hora}:00-03:00`,
+    date: '2026-08-26', result: pnl, studentId: 'sa', planId: 'ago', currency: 'BRL',
+  });
+
+  const avisos = (trades) => avisosPorOperacao(trades, [plano]);
+
+  it('marca só a operação aberta sem previsão de stop', () => {
+    const trades = [trade('a', '10:00', -25), trade('b', '11:00', 5)];
+    render(<ReviewTradesSection trades={trades} currency="BRL" avisosPorTrade={avisos(trades)} />);
+    expect(screen.getAllByText('sem previsão de stop')).toHaveLength(1);
+    expect(screen.getByTitle(/Aberta sem previsão de stop —.*até o stop do período/)).toBeInTheDocument();
+  });
+
+  it('sem o mapa, a tabela é a de antes — nada é marcado', () => {
+    const trades = [trade('a', '10:00', -25), trade('b', '11:00', 5)];
+    render(<ReviewTradesSection trades={trades} currency="BRL" />);
+    expect(screen.queryByText('sem previsão de stop')).not.toBeInTheDocument();
+  });
+
+  it('dia agrupado abre sozinho quando esconde operação marcada', () => {
+    // 4 trades no mesmo dia passam do limiar de agrupamento e nasceriam colapsados.
+    const trades = [
+      trade('a', '09:07', -40), trade('b', '09:13', -40),
+      trade('c', '09:33', -10), trade('d', '10:00', -5),
+    ];
+    render(<ReviewTradesSection trades={trades} currency="BRL" avisosPorTrade={avisos(trades)} />);
+    expect(screen.getAllByText('WINV26').length).toBe(4);
+    expect(screen.getAllByText('depois do stop').length).toBeGreaterThan(0);
   });
 });

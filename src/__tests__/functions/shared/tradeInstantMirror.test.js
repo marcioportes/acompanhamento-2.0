@@ -94,6 +94,11 @@ describe('tradeInstant — paridade ESM↔CJS', () => {
       [CASOS[2].trade, { entryTime: '2026-08-25T11:00:00', date: '2026-08-25', exchange: 'B3' }], // todos naive
       [CASOS[0].trade, CASOS[2].trade], // misturado
       [CASOS[0].trade, CASOS[10].trade], // um sem hora
+      // #408 — empate ao segundo (caso Elza 22/05: duas entradas em MNQM6 às 11:37:15)
+      [
+        { entryTime: '2026-05-22T11:37:15-04:00', date: '2026-05-22' },
+        { entryTime: '2026-05-22T11:37:15-04:00', date: '2026-05-22' },
+      ],
     ];
     for (const c of cenarios) {
       expect(cjs.orderingConfidence(c)).toEqual(esmConfidence(c));

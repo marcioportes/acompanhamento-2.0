@@ -295,7 +295,7 @@ describe('R:R em dinheiro (#373)', () => {
 
 describe('#402 — a caixa verde não pode contradizer a ressalva de autorização', () => {
   // Caso real reportado em produção (27/08/2026): o painel dizia
-  // "Aberta sem orçamento — restavam R$ 0,00 de folga e o plano autoriza R$ 40,00"
+  // "Aberta sem previsão de stop — restavam R$ 0,00 até o stop do período, e o plano prevê R$ 40,00"
   // e, logo abaixo, "Nenhuma violação de plano nem padrão de risco — execução alinhada".
   const planoSemFolga = { pl: 4000, riskPerOperation: 1, periodStop: 1, rrTarget: 2 };
 
@@ -314,12 +314,12 @@ describe('#402 — a caixa verde não pode contradizer a ressalva de autorizaç�
 
   it('com ressalva de abertura, NÃO afirma "nenhuma violação de plano"', () => {
     const ps = buildPeriodState([anterior, tradeLimpo], planoSemFolga);
-    // sanidade do fixture: a 2ª operação abre sem orçamento
+    // sanidade do fixture: a 2ª operação abre sem previsão de stop
     expect(ps.rows[1].authorization).toBe('SEM_FOLGA');
 
     render(<BehaviorPanel trade={tradeLimpo} plan={planoSemFolga} periodState={ps} isMentor embedded />);
 
-    expect(screen.getByText(/Aberta sem orçamento/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aberta sem previsão de stop/i)).toBeInTheDocument();
     expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Nenhum padrão comportamental de risco na execução/i)).toBeInTheDocument();
@@ -337,5 +337,41 @@ describe('#402 — a caixa verde não pode contradizer a ressalva de autorizaç�
   it('sem periodState (modal do trade), nada muda — a verde segue como antes', () => {
     render(<BehaviorPanel trade={tradeLimpo} plan={planoSemFolga} isMentor embedded />);
     expect(screen.getByText(/execução alinhada/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * #408 — o silêncio da ordem não pode virar absolvição.
+ *
+ * Com instantes empatados, `authorizationNotice` cala (apontar uma das duas seria
+ * sorteio). Se as frases de ausência continuassem disparando, o painel afirmaria
+ * "nenhuma violação de plano" sobre um predicado que sequer foi avaliado.
+ */
+describe('#408 — ordem em dúvida não absolve', () => {
+  const plano = { pl: 4000, riskPerOperation: 1, periodStop: 1, rrTarget: 2 };
+  const base = {
+    ticker: 'MNQM6', side: 'LONG', entry: 100, exit: 90, qty: 1, currency: 'BRL',
+    redFlags: [], behaviorProfile: { families: [], gateInputs: [] },
+  };
+  const a = { ...base, id: 'a', date: '2026-05-22', result: -25, entryTime: '2026-05-22T11:37:15-04:00', exitTime: '2026-05-22T11:43:09-04:00' };
+  const b = { ...base, id: 'b', date: '2026-05-22', result: -25, entryTime: '2026-05-22T11:37:15-04:00', exitTime: '2026-05-22T11:45:04-04:00' };
+
+  it('declara a ressalva da sequência e NÃO afirma execução alinhada', () => {
+    const ps = buildPeriodState([a, b], plano);
+    expect(ps.ordering.reason).toBe('tied_instants');
+
+    render(<BehaviorPanel trade={b} plan={plano} periodState={ps} isMentor embedded />);
+
+    expect(screen.getByText(/Sequência do período não determinada/)).toBeInTheDocument();
+    expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nenhum padrão comportamental de risco na execução/i)).toBeInTheDocument();
+  });
+
+  it('com um segundo de diferença, o painel volta a se pronunciar', () => {
+    const ps = buildPeriodState([a, { ...b, entryTime: '2026-05-22T11:38:20-04:00' }], plano);
+    expect(ps.ordering.reliable).toBe(true);
+    render(<BehaviorPanel trade={b} plan={plano} periodState={ps} isMentor embedded />);
+    expect(screen.queryByText(/Sequência do período não determinada/)).not.toBeInTheDocument();
   });
 });
