@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.85.0] - 30/08/2026 · #408 · PR #412
+
+**feat:** Aguardando Feedback vira árvore aluno → dia → plano → trade
+
+- Apagado `trades/blS5d3FkJax0qR4CBcQK` — um documento com `behaviorProfile` e nada mais, resíduo de merge em trade apagado. A collection tem **380 trades, todos com plano**.
+- Criado `docs/data-dictionary.md`, gerado da produção com taxa de preenchimento por campo (`scripts/gerar-dicionario-dados.mjs`), e a regra de consultá-lo antes de escrever regra que dependa de campo.
+
+
 ## [1.84.0] - 29/08/2026 · #101 · PR #411
 
 **feat:** Torre de Controle — a tela que diz o que fazer

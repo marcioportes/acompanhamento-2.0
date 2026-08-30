@@ -5,4 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-16 | #408 | `feat/issue-408-fila-por-dia` | 29/08/2026 | Aguardando Feedback: aluno → dia → plano → trade |

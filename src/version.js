@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.85.0: #408 feat Aguardando Feedback agrupado por aluno → dia → plano → trade (em andamento)
+ * - 1.85.0: #408 feat Aguardando Feedback vira árvore aluno → dia → plano → trade (PR #412, 30/08/2026)
  * - 1.84.0: #101 feat Torre de Controle — a tela que diz o que fazer (PR #411, 29/08/2026)
  * - 1.83.33: #402 fix a caixa verde nao pode contradizer a ressalva de abertura (PR #407, 27/08/2026)
  * - 1.83.32: #402 fix separar o fato atômico (trade) do fato do dia (PR #403, 27/08/2026)
@@ -427,7 +427,7 @@
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
 const version = '1.85.0';
-const build = '20260829';
+const build = '20260830';
 
 const VERSION = {
   version,
