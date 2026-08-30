@@ -121,6 +121,8 @@ Ao mencionar issue / feature / fix / debt / arquitetura, iniciar imediatamente o
 
 **Regra inviolável:** shared files (PROJECT.md, CLAUDE.md, CHANGELOG.md, registry/*) editam no MAIN antes do worktree. Dentro do worktree, só deltas propostos no issue doc.
 
+**Dicionário de dados:** [`docs/data-dictionary.md`](docs/data-dictionary.md) — campos reais de `trades`, `plans`, `accounts`, `reviews`, `subscriptions` e das PROJEÇÕES (o `periodTrades` da revisão não é o trade), com **taxa de preenchimento**. Regenerar com `node scripts/gerar-dicionario-dados.mjs > docs/data-dictionary.md` antes de escrever regra que dependa de campo. Campo que existe no schema e está vazio na base não sustenta regra.
+
 **Cross-check de canonical names (spec author):** ao redigir memória de cálculo ou ESCOPO mencionando `<entity>.<field>` (ex.: `plan.targetRR`, `trade.entryPrice`, `review.frozenSnapshot.*`), `grep -rn "entity\.\w\+" src/ functions/` antes de canonizar o nome no spec. Inventar nome (ex.: `plan.targetRR` quando o canônico é `plan.rrTarget`) ou referenciar campo inexistente (ex.: `plan.expectedWinRate` que não existe no modelo) **vira AP-07 propagado** — worker segue spec literal (correto, defensivo) e o bug atravessa testes silenciosamente. Worker template `~/cc-mailbox/templates/worker-briefing.md` enforça o mesmo cross-check do lado oposto, mas a primeira responsabilidade é do spec author. Referência negativa: issue #235 task 06.
 
 ---
