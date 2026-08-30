@@ -177,7 +177,6 @@ export function lembretesDoPeriodo(trades, plans) {
         trades: p.linhas.length,
       };
       const aposStop = ps.tradesAfterStop ?? 0;
-      const semFolga = ps.rows.filter((r) => r.authorization === AUTHORIZATION.NO_ROOM).length;
 
       // Continuar operando depois do stop é o fato mais forte do dia: vem primeiro
       // e cala os outros, porque é dele que a conversa trata.
@@ -199,15 +198,6 @@ export function lembretesDoPeriodo(trades, plans) {
         });
         continue;
       }
-      if (semFolga > 0) {
-        out.push({
-          ...base,
-          tom: 'atencao',
-          titulo: 'Operação aberta sem orçamento',
-          detalhe: `${semFolga} ${semFolga === 1 ? 'operação abriu' : 'operações abriram'} com folga menor que o risco que o plano autoriza.`,
-        });
-        continue;
-      }
       if (ps.reachedGoal) {
         const depois = ps.goalHitIndex != null ? ps.count - ps.goalHitIndex - 1 : 0;
         out.push({
@@ -224,5 +214,71 @@ export function lembretesDoPeriodo(trades, plans) {
   return out;
 }
 
+/**
+ * Avisos de autorização POR OPERAÇÃO, indexados por id do trade.
+ *
+ * Marcio, 30/08: *"como é atômica, precisa estar na operação, não na seção do
+ * dia"*. "Aberta sem previsão de stop" é predicado da operação — depende de onde
+ * ELA caiu na sequência e de quanto restava naquele instante. Contá-las no
+ * lembrete do dia ("2 operações abriram sem folga") obriga o mentor a adivinhar
+ * QUAIS, e é o mesmo erro que `authorizationNotice` já proibia por escrito:
+ * *"fato atômico, mora no painel do trade — nunca no card do período"*.
+ *
+ * O que fica no dia é só o que é do dia: o stop atingido e o que veio depois.
+ *
+ * @returns {Map<string, {row, periodState, moeda}>} — a linha do #402 de cada
+ *   operação, para o componente pedir o texto a `authorizationNotice`.
+ */
+export function avisosPorOperacao(trades, plans) {
+  const mapa = new Map();
+  const [aluno] = buildFilaDeFeedback({ pendentes: trades, plans });
+  if (!aluno) return mapa;
+
+  for (const dia of aluno.dias) {
+    for (const p of dia.planos) {
+      for (const linha of p.linhas) {
+        if (!linha.tradeId || !linha.authorization) continue;
+        if (linha.authorization === AUTHORIZATION.AUTHORIZED) continue;
+        mapa.set(linha.tradeId, { row: linha, periodState: p.periodState, moeda: p.moeda });
+      }
+    }
+  }
+  return mapa;
+}
+
 const ORDINAIS_PT = ['1ª', '2ª', '3ª', '4ª', '5ª', '6ª', '7ª', '8ª', '9ª', '10ª'];
 const ordinalPt = (i) => (Number.isInteger(i) ? (ORDINAIS_PT[i] ?? `${i + 1}ª`) : '—');
+
+/**
+ * Adapta os trades PROJETADOS do snapshot da revisão para o shape que o motor do
+ * período espera.
+ *
+ * O `frozenSnapshot.periodTrades` não guarda o trade: guarda uma projeção
+ * (`weeklyReviewSnapshot.projectTrade`) com nomes próprios — `tradeId`, `pnl`,
+ * `symbol`, `closeTime` — e SEM `date` nem `planId`. Alimentar o motor com isso
+ * fazia a seção de lembretes descartar todos os trades em silêncio, porque a
+ * primeira coisa que ela exige é a data. Foi o que Marcio viu: a revisão dele tem
+ * 20 trades e três dias fora do trilho, e a seção aparecia vazia.
+ *
+ * A data vem do `entryTime` (local, com offset — `slice(0,10)` devolve o dia do
+ * aluno, não o UTC), e o plano vem da revisão, que é onde ele está declarado.
+ *
+ * A projeção também não traz o ALUNO — e a fila descarta trade sem dono, porque a
+ * árvore começa nele. Numa revisão o dono é um só, então entra como constante.
+ *
+ * @param {Array} periodTrades — `snapshot.periodTrades`
+ * @param {string|null} planId — `review.planId`
+ * @param {string|null} studentId — dono da revisão
+ */
+export function tradesDoSnapshotDaRevisao(periodTrades, planId = null, studentId = null) {
+  return (periodTrades ?? []).map((t) => ({
+    ...t,
+    id: t.tradeId ?? t.id ?? null,
+    result: t.pnl ?? t.result ?? null,
+    ticker: t.symbol ?? t.ticker ?? null,
+    exitTime: t.closeTime ?? t.exitTime ?? null,
+    date: t.date ?? (typeof t.entryTime === 'string' ? t.entryTime.slice(0, 10) : null),
+    planId: t.planId ?? planId ?? null,
+    studentId: t.studentId ?? studentId ?? 'revisao',
+  }));
+}

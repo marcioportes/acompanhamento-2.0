@@ -11,10 +11,18 @@
  * - currency: 'USD' | 'BRL' (default USD)
  * - weekStart / weekEnd: ISO YYYY-MM-DD; usados para marcar trades "fora do período" (apenas DRAFT)
  * - onNavigateToFeedback: ({ id, ticker, ...trade }) => void. Quando null ou omitido, coluna de ação não renderiza (aluno sem navegação contextual; embedded em modal; etc.).
+ * - avisosPorTrade: Map(tradeId -> {row, periodState, moeda}) de `avisosPorOperacao`.
+ *   Opcional: sem ele a tabela é exatamente a de antes (é o caso da tela do aluno).
+ *
+ * #408 — o que a operação decidiu ao abrir é fato ATÔMICO e mora aqui, na linha
+ * dela. Marcio, 30/08: *"como é atômica, precisa estar na operação, não na seção
+ * do dia"*. O dia agrupado abre sozinho quando esconde uma operação marcada —
+ * senão o aviso nasce invisível.
  */
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { MessageSquare, ClipboardCheck } from 'lucide-react';
+import { authorizationNotice } from '../metrics/dayMetricTiles';
 import ExcursionDisplay from '../ExcursionDisplay';
 import TradeReviewSection from '../Trades/TradeReviewSection';
 import {
@@ -31,6 +39,7 @@ const ReviewTradesSection = ({
   weekEnd = null,
   onNavigateToFeedback = null,
   showSelfReview = false,   // #269/#308 — exibe a auto-revisão (Espelho) read-only por trade na Sessão
+  avisosPorTrade = null,    // #408 — autorização por operação (fato atômico)
 }) => {
   const [expandedDays, setExpandedDays] = useState(new Set());
   const [expandedMirror, setExpandedMirror] = useState(new Set());
@@ -43,6 +52,21 @@ const ReviewTradesSection = ({
     });
   };
   const rows = useMemo(() => buildVisibleRows(trades, expandedDays), [trades, expandedDays]);
+
+  // Um dia agrupado que esconde operação marcada nasce aberto — o aviso não pode
+  // depender de o mentor adivinhar onde clicar. Depois disso ele recolhe à vontade:
+  // só abre os dias que ainda não foram vistos.
+  const [diasJaAbertos, setDiasJaAbertos] = useState(() => new Set());
+  useEffect(() => {
+    if (!avisosPorTrade?.size || !Array.isArray(trades)) return;
+    const marcados = trades
+      .filter((t) => avisosPorTrade.has(t.tradeId ?? t.id))
+      .map((t) => tradeDate(t))
+      .filter((d) => d && !diasJaAbertos.has(d));
+    if (marcados.length === 0) return;
+    setDiasJaAbertos((prev) => new Set([...prev, ...marcados]));
+    setExpandedDays((prev) => new Set([...prev, ...marcados]));
+  }, [avisosPorTrade, trades, diasJaAbertos]);
   const toggleDay = (date) => {
     setExpandedDays((prev) => {
       const next = new Set(prev);
@@ -125,6 +149,10 @@ const ReviewTradesSection = ({
             const emotionText = rawExit && rawExit !== rawEntry
               ? `${rawEntry || '—'} → ${rawExit}`
               : (rawEntry || '—');
+            // #408 — o texto vem da SSoT do #402 (`authorizationNotice`), a mesma que
+            // a fila de feedback usa: um fato, um texto, um lugar.
+            const marca = avisosPorTrade?.get(t.tradeId ?? t.id) ?? null;
+            const aviso = marca ? authorizationNotice(marca.row, marca.periodState, marca.moeda ?? currency) : null;
             const hasMirror = showSelfReview && !!t.selfReview;
             const mirrorOpen = hasMirror && expandedMirror.has(t.tradeId);
             return (
@@ -138,6 +166,16 @@ const ReviewTradesSection = ({
                     {outOfPeriod && (
                       <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30" title={`Trade de ${td} está fora do período do rascunho`}>
                         fora
+                      </span>
+                    )}
+                    {aviso && (
+                      <span
+                        className={`text-[9px] px-1 py-0.5 rounded border ${aviso.tone === 'alert'
+                          ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                          : 'bg-amber-500/15 text-amber-300 border-amber-500/30'}`}
+                        title={`${aviso.title} — ${aviso.detail}`}
+                      >
+                        {aviso.tone === 'alert' ? 'depois do stop' : 'sem previsão de stop'}
                       </span>
                     )}
                   </div>

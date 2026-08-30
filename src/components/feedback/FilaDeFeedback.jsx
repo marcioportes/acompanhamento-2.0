@@ -183,7 +183,7 @@ const LinhaDoAluno = ({ aluno, aberto, onAlternar, onAbrirTrade, selecionados, o
   const alertas = [
     aluno.diasAlemDoStop ? `${aluno.diasAlemDoStop} ${aluno.diasAlemDoStop === 1 ? 'dia ultrapassou' : 'dias ultrapassaram'} o stop` : null,
     aluno.opsAposStop ? `${aluno.opsAposStop} ${aluno.opsAposStop === 1 ? 'operação depois' : 'operações depois'} do stop` : null,
-    aluno.opsSemOrcamento ? `${aluno.opsSemOrcamento} sem orçamento` : null,
+    aluno.opsSemOrcamento ? `${aluno.opsSemOrcamento} sem previsão de stop` : null,
   ].filter(Boolean);
 
   return (

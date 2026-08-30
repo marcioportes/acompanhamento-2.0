@@ -173,7 +173,7 @@ describe('authorizationNotice — o fato ATÔMICO, no painel do trade', () => {
     const apertado = buildPeriodState([t('a', '09:00:00', -260), t('b', '10:00:00', -50)], PLANO);
     const n = authorizationNotice(apertado.rows[1], apertado, 'BRL');
     expect(n.tone).toBe('warn');
-    expect(n.title).toBe('Aberta sem orçamento');
+    expect(n.title).toBe('Aberta sem previsão de stop');
     expect(n.detail).toContain('241'); // folga que restava
     expect(n.detail).toContain('252'); // RO autorizado
   });

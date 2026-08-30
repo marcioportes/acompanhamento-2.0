@@ -273,10 +273,13 @@ export function authorizationNotice(row, ps, currency = 'BRL') {
   }
 
   if (row.authorization === 'SEM_FOLGA') {
+    // Marcio, 30/08: *"'orçamento' tá ruim — operação aberta sem previsão de stop"*.
+    // É o nome certo do fato: o que restava até o stop do período não comportava o
+    // stop desta operação. Se ela fosse até o stop, o período estourava.
     return {
       tone: 'warn',
-      title: 'Aberta sem orçamento',
-      detail: `quando esta operação abriu, restavam ${money(row.budgetBefore, currency)} de folga e o plano autoriza ${money(ps.roValue, currency)} por operação.`,
+      title: 'Aberta sem previsão de stop',
+      detail: `quando esta operação abriu, restavam ${money(row.budgetBefore, currency)} até o stop do período, e o plano prevê ${money(ps.roValue, currency)} de risco por operação — o stop dela não cabia no que restava.`,
     };
   }
 

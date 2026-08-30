@@ -36,7 +36,7 @@ import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
 import LembretesDaConversa from '../components/reviews/LembretesDaConversa';
 import TakeawaysSection from '../components/reviews/TakeawaysSection';
 import { rebuildReviewSnapshot } from '../utils/rebuildReviewSnapshot';
-import { lembretesDoPeriodo } from '../utils/filaDeFeedback';
+import { lembretesDoPeriodo, avisosPorOperacao, tradesDoSnapshotDaRevisao } from '../utils/filaDeFeedback';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateNotesText, validateReviewUrl, MAX_NOTES_LENGTH } from '../utils/reviewUrlValidator';
@@ -562,8 +562,23 @@ const WeeklyReviewPage = ({
   // Nada persiste: a revisão já congela os trades, e o cálculo acompanha o snapshot
   // que estiver valendo (`liveSnapshot` no rascunho, `frozenSnapshot` no publicado).
   const lembretesDaRevisao = useMemo(
-    () => lembretesDoPeriodo(effectiveSnapshot.periodTrades ?? [], plan ? [plan] : []),
-    [effectiveSnapshot.periodTrades, plan],
+    () => lembretesDoPeriodo(
+      // `periodTrades` é PROJEÇÃO, não o trade: sem `date` nem `planId`, e com
+      // `pnl`/`symbol`/`tradeId` no lugar dos nomes originais.
+      tradesDoSnapshotDaRevisao(effectiveSnapshot.periodTrades, planId, studentId),
+      plan ? [plan] : [],
+    ),
+    [effectiveSnapshot.periodTrades, plan, planId, studentId],
+  );
+
+  // O que a operação decidiu ao ABRIR é fato dela, não do dia (#408): vai para a
+  // linha do trade na seção 2, não para o lembrete.
+  const avisosDaRevisao = useMemo(
+    () => avisosPorOperacao(
+      tradesDoSnapshotDaRevisao(effectiveSnapshot.periodTrades, planId, studentId),
+      plan ? [plan] : [],
+    ),
+    [effectiveSnapshot.periodTrades, plan, planId, studentId],
   );
 
   // Stage 3: permissão + handlers SWOT / Notas.
@@ -782,6 +797,7 @@ const WeeklyReviewPage = ({
                 weekEnd={review.weekEnd}
                 onNavigateToFeedback={onNavigateToFeedback}
                 showSelfReview
+                avisosPorTrade={avisosDaRevisao}
               />
             </Section>
 

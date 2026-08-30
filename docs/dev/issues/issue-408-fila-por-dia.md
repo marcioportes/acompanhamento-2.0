@@ -57,8 +57,25 @@ O trabalho real é a árvore, o estado de expansão e o cabeçalho agregado.
 
 ## 6. Decisions
 
-(a preencher — DEC-AUTO-408-NN)
+- **DEC-AUTO-408-01** — Autorização de abertura é fato ATÔMICO: mora na linha da
+  operação, nunca no lembrete do dia. O lembrete do dia guarda só o que é do dia
+  (stop atingido, o que veio depois, meta). Já estava escrito no docstring de
+  `authorizationNotice`; o lembrete o violou e foi corrigido.
+- **DEC-AUTO-408-02** — O nome do fato é **"Aberta sem previsão de stop"**, não
+  "sem orçamento": o que restava até o stop do período não comportava o stop
+  desta operação.
+- **DEC-AUTO-408-03** — Dia agrupado abre sozinho quando esconde operação
+  marcada. Sem isso o aviso nasce invisível — e não se resolve devolvendo o fato
+  ao cabeçalho do dia.
+- **DEC-AUTO-408-04** — `frozenSnapshot.periodTrades` é PROJEÇÃO, não trade
+  (`tradeId`/`pnl`/`symbol`/`closeTime`, sem `date`/`planId`/`studentId`).
+  Adaptador `tradesDoSnapshotDaRevisao` na fronteira; vale para o snapshot
+  congelado e para o rebuild live, que usam o mesmo `projectTrade`.
 
 ## 7. Sessions
 
 - 29/08/2026 — abertura §4.0: lock + reserva no main, worktree, doc de controle.
+- 30/08/2026 — Fase A+B: `filaDeFeedback` + `FilaDeFeedback.jsx` + lembretes da
+  revisão. Correção do adaptador da projeção e mudança do fato atômico para a
+  linha da operação. Suíte verde, verificado contra a revisão real (20 ops:
+  1 fato de dia, 2 operações marcadas).

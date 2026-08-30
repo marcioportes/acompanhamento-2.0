@@ -6,7 +6,8 @@
  *   Sandra 26/08 — plano autoriza 1 operação/dia, stop na primeira, mais três depois.
  */
 import { describe, it, expect } from 'vitest';
-import { buildFilaDeFeedback, lembretesDoPeriodo } from '../../utils/filaDeFeedback';
+import { buildFilaDeFeedback, lembretesDoPeriodo, avisosPorOperacao, tradesDoSnapshotDaRevisao } from '../../utils/filaDeFeedback';
+import { authorizationNotice } from '../../components/metrics/dayMetricTiles';
 
 // Wilson: plano "1" (mesa, USD, RO=stop=US$375) e "WINFUT" (B3, BRL, stop R$1.032).
 const planos = [
@@ -193,5 +194,116 @@ describe('lembretesDoPeriodo — o que levar para a revisão', () => {
   it('sem trade não há lembrete', () => {
     expect(lembretesDoPeriodo([], [plano4k])).toEqual([]);
     expect(lembretesDoPeriodo()).toEqual([]);
+  });
+
+  // Marcio, 30/08: *"como é atômica, precisa estar na operação, não na seção do dia"*.
+  it('abrir sem previsão de stop NÃO vira lembrete do dia', () => {
+    // −25 deixa R$ 15 até o stop de R$ 40; a 2ª abre sem caber o próprio stop.
+    // O dia fecha em −20, dentro do limite: não há nada a dizer sobre o DIA.
+    const dia = [op('a', '10:00', -25), op('b', '11:00', 5)];
+    expect(avisosPorOperacao(dia, [plano4k]).has('b')).toBe(true);
+    expect(lembretesDoPeriodo(dia, [plano4k])).toEqual([]);
+  });
+});
+
+describe('avisosPorOperacao — o fato atômico mora na operação', () => {
+  const plano4k = { id: 'ago', name: 'Ago', pl: 4000, periodStop: 1, periodGoal: 2, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const op = (id, hora, result) => ({
+    id, studentId: 'sa', studentName: 'Sandra', date: '2026-08-26', status: 'REVIEWED',
+    ticker: 'WINV26', currency: 'BRL', planId: 'ago', result,
+    entryTime: `2026-08-26T${hora}:00-03:00`,
+  });
+
+  it('marca a operação sem previsão de stop e deixa a autorizada em paz', () => {
+    const avisos = avisosPorOperacao([op('a', '10:00', -25), op('b', '11:00', 5)], [plano4k]);
+    expect([...avisos.keys()]).toEqual(['b']);
+    expect(avisos.get('b').row.authorization).toBe('SEM_FOLGA');
+  });
+
+  it('a linha devolvida alimenta authorizationNotice com o texto novo', () => {
+    const { row, periodState, moeda } = avisosPorOperacao(
+      [op('a', '10:00', -25), op('b', '11:00', 5)], [plano4k],
+    ).get('b');
+    const aviso = authorizationNotice(row, periodState, moeda);
+    expect(aviso.title).toBe('Aberta sem previsão de stop');
+    expect(aviso.tone).toBe('warn');
+    // O número que sustenta o fato: o que restava quando ELA abriu.
+    expect(aviso.detail).toContain('até o stop do período');
+  });
+
+  it('operação aberta depois do stop também é atômica e entra no mapa', () => {
+    const avisos = avisosPorOperacao([op('a', '09:07', -40), op('b', '09:13', -40), op('c', '09:33', -10)], [plano4k]);
+    expect(avisos.get('c')?.row.authorization).toBe('APOS_STOP');
+    expect(authorizationNotice(avisos.get('c').row, avisos.get('c').periodState, 'BRL').title)
+      .toBe('Aberta depois do stop do período');
+  });
+
+  it('dia inteiro dentro do plano não marca operação nenhuma', () => {
+    expect(avisosPorOperacao([op('a', '10:00', 10)], [plano4k]).size).toBe(0);
+    expect(avisosPorOperacao([], [plano4k]).size).toBe(0);
+    expect(avisosPorOperacao().size).toBe(0);
+  });
+});
+
+describe('tradesDoSnapshotDaRevisao — a projeção do snapshot não é o trade', () => {
+  // Shape real de `frozenSnapshot.periodTrades` (weeklyReviewSnapshot.projectTrade):
+  // `tradeId`, `pnl`, `symbol`, `closeTime`, e SEM `date` nem `planId`.
+  const projetado = {
+    tradeId: 'abc', pnl: -265, symbol: 'WINV26', side: 'LONG', qty: 1,
+    entryTime: '2026-08-25T11:34:00-03:00', closeTime: '2026-08-25T11:41:00-03:00',
+    stopLoss: 177690, entry: 178190, setup: '4-Barras', emotionEntry: 'Ansioso',
+  };
+
+  it('devolve a data a partir do entryTime — sem ela o motor descarta tudo', () => {
+    const [t] = tradesDoSnapshotDaRevisao([projetado], 'p1');
+    expect(t.date).toBe('2026-08-25');
+  });
+
+  it('a data é a LOCAL do aluno, não a UTC', () => {
+    // 23:30 em Brasília é 02:30 UTC do dia seguinte; a data do trade é a de hoje.
+    const [t] = tradesDoSnapshotDaRevisao([{ ...projetado, entryTime: '2026-08-25T23:30:00-03:00' }], 'p1');
+    expect(t.date).toBe('2026-08-25');
+  });
+
+  it('traduz pnl → result, symbol → ticker, tradeId → id', () => {
+    const [t] = tradesDoSnapshotDaRevisao([projetado], 'p1');
+    expect(t.result).toBe(-265);
+    expect(t.ticker).toBe('WINV26');
+    expect(t.id).toBe('abc');
+  });
+
+  it('herda o plano e o aluno da revisão — a projeção não traz nenhum dos dois', () => {
+    const [t] = tradesDoSnapshotDaRevisao([projetado], 'plano-da-revisao', 'aluno-1');
+    expect(t.planId).toBe('plano-da-revisao');
+    expect(t.studentId).toBe('aluno-1');
+  });
+
+  it('sem aluno informado ainda entra na árvore — trade sem dono é descartado', () => {
+    const [t] = tradesDoSnapshotDaRevisao([projetado], 'p1');
+    expect(t.studentId).toBeTruthy();
+  });
+
+  it('não sobrescreve campo que já veio no trade', () => {
+    const [t] = tradesDoSnapshotDaRevisao([{ ...projetado, date: '2026-01-01', planId: 'proprio' }], 'p1');
+    expect(t.date).toBe('2026-01-01');
+    expect(t.planId).toBe('proprio');
+  });
+
+  it('a revisão inteira volta a produzir lembretes depois da adaptação', () => {
+    const plano = { id: 'p1', name: 'Ago-Plano', pl: 30000, periodStop: 1.67, riskPerOperation: 0.84, operationPeriod: 'Diário' };
+    const doisDoDia = [
+      { ...projetado, tradeId: 'a', pnl: -250, entryTime: '2026-08-25T10:51:00-03:00' },
+      { ...projetado, tradeId: 'b', pnl: -265, entryTime: '2026-08-25T11:34:00-03:00' },
+    ];
+    // Caso real do Marcio: −515 contra um stop de 501.
+    const semAdaptar = lembretesDoPeriodo(doisDoDia, [plano]);
+    const adaptado = lembretesDoPeriodo(tradesDoSnapshotDaRevisao(doisDoDia, 'p1', 'aluno-1'), [plano]);
+    expect(semAdaptar).toHaveLength(0);           // era isto que a tela mostrava
+    expect(adaptado).toHaveLength(1);
+    expect(adaptado[0].titulo).toBe('O dia fechou além do stop');
+  });
+
+  it('entrada vazia não explode', () => {
+    expect(tradesDoSnapshotDaRevisao(null, 'p1')).toEqual([]);
   });
 });

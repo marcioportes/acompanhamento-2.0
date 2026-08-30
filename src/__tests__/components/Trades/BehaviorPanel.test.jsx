@@ -295,7 +295,7 @@ describe('R:R em dinheiro (#373)', () => {
 
 describe('#402 — a caixa verde não pode contradizer a ressalva de autorização', () => {
   // Caso real reportado em produção (27/08/2026): o painel dizia
-  // "Aberta sem orçamento — restavam R$ 0,00 de folga e o plano autoriza R$ 40,00"
+  // "Aberta sem previsão de stop — restavam R$ 0,00 até o stop do período, e o plano prevê R$ 40,00"
   // e, logo abaixo, "Nenhuma violação de plano nem padrão de risco — execução alinhada".
   const planoSemFolga = { pl: 4000, riskPerOperation: 1, periodStop: 1, rrTarget: 2 };
 
@@ -314,12 +314,12 @@ describe('#402 — a caixa verde não pode contradizer a ressalva de autorizaç�
 
   it('com ressalva de abertura, NÃO afirma "nenhuma violação de plano"', () => {
     const ps = buildPeriodState([anterior, tradeLimpo], planoSemFolga);
-    // sanidade do fixture: a 2ª operação abre sem orçamento
+    // sanidade do fixture: a 2ª operação abre sem previsão de stop
     expect(ps.rows[1].authorization).toBe('SEM_FOLGA');
 
     render(<BehaviorPanel trade={tradeLimpo} plan={planoSemFolga} periodState={ps} isMentor embedded />);
 
-    expect(screen.getByText(/Aberta sem orçamento/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aberta sem previsão de stop/i)).toBeInTheDocument();
     expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Nenhum padrão comportamental de risco na execução/i)).toBeInTheDocument();
