@@ -6,7 +6,7 @@
  *   Sandra 26/08 — plano autoriza 1 operação/dia, stop na primeira, mais três depois.
  */
 import { describe, it, expect } from 'vitest';
-import { buildFilaDeFeedback } from '../../utils/filaDeFeedback';
+import { buildFilaDeFeedback, lembretesDoPeriodo } from '../../utils/filaDeFeedback';
 
 // Wilson: plano "1" (mesa, USD, RO=stop=US$375) e "WINFUT" (B3, BRL, stop R$1.032).
 const planos = [
@@ -130,5 +130,68 @@ describe('ordem de triagem e casos limites', () => {
   it('fila vazia não explode', () => {
     expect(buildFilaDeFeedback({ pendentes: [], plans: [] })).toEqual([]);
     expect(buildFilaDeFeedback()).toEqual([]);
+  });
+});
+
+describe('lembretesDoPeriodo — o que levar para a revisão', () => {
+  const plano4k = { id: 'ago', name: 'Ago', pl: 4000, periodStop: 1, periodGoal: 2, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const op = (id, hora, result, extra = {}) => ({
+    id, studentId: 'sa', studentName: 'Sandra', date: '2026-08-26', status: 'REVIEWED',
+    ticker: 'WINV26', currency: 'BRL', planId: 'ago', result,
+    entryTime: `2026-08-26T${hora}:00-03:00`, ...extra,
+  });
+
+  it('continuar operando depois do stop é o fato mais forte e cala os outros', () => {
+    const dia = [op('a', '09:07', -40), op('b', '09:13', -40), op('c', '09:33', -10)];
+    const [l] = lembretesDoPeriodo(dia, [plano4k]);
+    expect(l.titulo).toBe('Continuou operando depois do stop');
+    // A 2ª, não a 1ª: com a margem de manejo de 2% (#402), perder exatamente
+    // R$ 40 contra um stop de R$ 40 ainda não o atinge. O mockup do issue dizia
+    // "atingido na 1ª" — foi escrito antes de a margem existir.
+    expect(l.detalhe).toContain('2ª das 3 operações');
+    expect(l.tom).toBe('alerta');
+  });
+
+  it('fechar além do stop SEM abrir irregular tem texto próprio', () => {
+    // Duas operações autorizadas que, somadas, passam o limite.
+    const dia = [op('a', '10:00', -25), op('b', '11:00', -25)];
+    const [l] = lembretesDoPeriodo(dia, [plano4k]);
+    expect(l.titulo).toBe('O dia fechou além do stop');
+    expect(l.detalhe).toContain('nenhuma operação foi aberta fora das regras');
+  });
+
+  it('bater a meta e PARAR entra como lembrete bom — é o que ninguém diz', () => {
+    const dia = [op('a', '10:00', 90)]; // meta = 2% de 4.000 = 80
+    const [l] = lembretesDoPeriodo(dia, [plano4k]);
+    expect(l.titulo).toBe('Bateu a meta e parou');
+    expect(l.tom).toBe('bom');
+  });
+
+  it('bater a meta e continuar vira atenção, não elogio', () => {
+    const dia = [op('a', '10:00', 90), op('b', '11:00', -10)];
+    const [l] = lembretesDoPeriodo(dia, [plano4k]);
+    expect(l.titulo).toBe('Bateu a meta e continuou');
+    expect(l.tom).toBe('atencao');
+  });
+
+  it('dia dentro do plano não gera lembrete — silêncio é resultado', () => {
+    const dia = [op('a', '10:00', 10)];
+    expect(lembretesDoPeriodo(dia, [plano4k])).toEqual([]);
+  });
+
+  it('cada dia de cada plano rende o seu próprio lembrete', () => {
+    const outroPlano = { ...plano4k, id: 'p2', name: 'Mesa' };
+    const trades = [
+      op('a', '09:07', -40), op('b', '09:13', -40), op('c', '09:33', -10),
+      { ...op('d', '10:00', -80), planId: 'p2' },
+    ];
+    const ls = lembretesDoPeriodo(trades, [plano4k, outroPlano]);
+    expect(ls).toHaveLength(2);
+    expect(new Set(ls.map((l) => l.planName))).toEqual(new Set(['Ago', 'Mesa']));
+  });
+
+  it('sem trade não há lembrete', () => {
+    expect(lembretesDoPeriodo([], [plano4k])).toEqual([]);
+    expect(lembretesDoPeriodo()).toEqual([]);
   });
 });

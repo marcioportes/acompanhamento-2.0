@@ -33,8 +33,10 @@ import DebugBadge from '../components/DebugBadge';
 import MaturityComparisonSection from '../components/reviews/MaturityComparisonSection';
 import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
 import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
+import LembretesDaConversa from '../components/reviews/LembretesDaConversa';
 import TakeawaysSection from '../components/reviews/TakeawaysSection';
 import { rebuildReviewSnapshot } from '../utils/rebuildReviewSnapshot';
+import { lembretesDoPeriodo } from '../utils/filaDeFeedback';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
 import { validateNotesText, validateReviewUrl, MAX_NOTES_LENGTH } from '../utils/reviewUrlValidator';
@@ -556,6 +558,14 @@ const WeeklyReviewPage = ({
   // Snapshot efetivo: live para DRAFT (se recomputado), senão o frozenSnapshot do doc.
   const effectiveSnapshot = (isDraft && liveSnapshot) ? liveSnapshot : (review?.frozenSnapshot || {});
 
+  // #408 — os fatos do período, derivados dos trades da revisão com o motor do #402.
+  // Nada persiste: a revisão já congela os trades, e o cálculo acompanha o snapshot
+  // que estiver valendo (`liveSnapshot` no rascunho, `frozenSnapshot` no publicado).
+  const lembretesDaRevisao = useMemo(
+    () => lembretesDoPeriodo(effectiveSnapshot.periodTrades ?? [], plan ? [plan] : []),
+    [effectiveSnapshot.periodTrades, plan],
+  );
+
   // Stage 3: permissão + handlers SWOT / Notas.
   const canEdit = review?.status !== 'ARCHIVED';
   const swot = review?.swot || null;
@@ -753,7 +763,18 @@ const WeeklyReviewPage = ({
             )}
 
             {/* 1 — Trades do período */}
-            <Section num="1" title="Trades do período">
+            {/* #408 — os fatos do PERÍODO, que a lista de trades não carrega: qual
+                era o stop, o que o plano autorizava, e o que o aluno fez depois de
+                bater o limite. Vem antes dos trades porque é o que se leva para a
+                conversa; o detalhe trade a trade vem depois. */}
+            <Section num="1" title="Para lembrar na conversa">
+              <LembretesDaConversa
+                lembretes={lembretesDaRevisao}
+                multiplosPlanos={new Set((effectiveSnapshot.periodTrades ?? []).map((t) => t.planId)).size > 1}
+              />
+            </Section>
+
+            <Section num="2" title="Trades do período">
               <ReviewTradesSection
                 trades={effectiveSnapshot.periodTrades}
                 currency={currency}
@@ -765,7 +786,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 2 — Notas da sessão (logo abaixo dos trades, como contexto da revisão) */}
-            <Section num="2" title="Notas da sessão">
+            <Section num="3" title="Notas da sessão">
               <SessionNotesSection
                 value={sessionNotesDraft}
                 onChange={setSessionNotesDraft}
@@ -778,7 +799,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 3 — Reunião (issue #197) — links de Zoom/Meet/Loom editáveis em DRAFT e CLOSED */}
-            <Section num="3" title="Reunião">
+            <Section num="4" title="Reunião">
               <MeetingLinksSection
                 meetingLink={meetingLinkDraft}
                 videoLink={videoLinkDraft}
@@ -794,7 +815,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 4 — Snapshot KPIs congelados */}
-            <Section num="4" title="Snapshot de indicadores (congelado)">
+            <Section num="5" title="Snapshot de indicadores (congelado)">
               <ReviewKpiGrid
                 kpis={effectiveSnapshot.kpis}
                 prevKpis={previousReview?.frozenSnapshot?.kpis}
@@ -803,7 +824,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 5 — SWOT (gerado pela IA) */}
-            <Section num="5" title="SWOT do aluno (gerado pela IA)">
+            <Section num="6" title="SWOT do aluno (gerado pela IA)">
               <SwotSection
                 swot={swot}
                 canGenerate={canEdit && isDraft}
@@ -815,7 +836,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 6 — Takeaways (checklist) */}
-            <Section num="6" title="Takeaways">
+            <Section num="7" title="Takeaways">
               <TakeawaysSection
                 items={review.takeawayItems}
                 alunoDoneIds={review.alunoDoneIds}
@@ -829,7 +850,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 7 — Ranking */}
-            <Section num="7" title="Ranking de trades">
+            <Section num="8" title="Ranking de trades">
               <RankingSection
                 topTrades={effectiveSnapshot.topTrades}
                 bottomTrades={effectiveSnapshot.bottomTrades}
@@ -839,7 +860,7 @@ const WeeklyReviewPage = ({
             </Section>
 
             {/* 8 — Evolução maturidade */}
-            <Section num="8" title="Evolução de maturidade (4D vs marco zero)">
+            <Section num="9" title="Evolução de maturidade (4D vs marco zero)">
               <MaturitySection assessment={initialAssessment} />
             </Section>
 
@@ -854,7 +875,7 @@ const WeeklyReviewPage = ({
             )}
 
             {/* 9 — Navegação contextual */}
-            <Section num="9" title="Navegação contextual">
+            <Section num="10" title="Navegação contextual">
               <ContextNavSection
                 planId={planId}
                 studentId={studentId}

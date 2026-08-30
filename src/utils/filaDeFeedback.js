@@ -141,3 +141,88 @@ export function buildFilaDeFeedback({ pendentes, plans } = {}) {
 }
 
 export default buildFilaDeFeedback;
+
+/**
+ * Lembretes do período — o que levar para a conversa da revisão semanal.
+ *
+ * Marcio, 30/08: *"na revisão semanal seria interessante ter algo para lembrar o
+ * aluno na conversa"*.
+ *
+ * A revisão já lista os trades agrupados por dia, mas sem os FATOS do período:
+ * qual era o stop, o que o plano autorizava, e o que o aluno fez depois de bater
+ * o limite. Sem isso, a conversa volta a ser trade a trade — que é o problema que
+ * a fila resolveu do outro lado da tela.
+ *
+ * Cada lembrete é um DIA de um PLANO, com o fato e o número que o sustenta. Os
+ * bons entram junto com os ruins: "bateu a meta e parou" é o que se quer reforçar,
+ * e nunca é dito porque não gera alarme.
+ *
+ * @returns {Array<{data, planId, planName, moeda, tom, titulo, detalhe, net, trades}>}
+ *   mais recente primeiro.
+ */
+export function lembretesDoPeriodo(trades, plans) {
+  const [aluno] = buildFilaDeFeedback({ pendentes: trades, plans });
+  if (!aluno) return [];
+
+  const out = [];
+  for (const dia of aluno.dias) {
+    for (const p of dia.planos) {
+      const ps = p.periodState;
+      const base = {
+        data: dia.data,
+        planId: p.planId,
+        planName: p.planName,
+        moeda: p.moeda,
+        net: ps.net,
+        trades: p.linhas.length,
+      };
+      const aposStop = ps.tradesAfterStop ?? 0;
+      const semFolga = ps.rows.filter((r) => r.authorization === AUTHORIZATION.NO_ROOM).length;
+
+      // Continuar operando depois do stop é o fato mais forte do dia: vem primeiro
+      // e cala os outros, porque é dele que a conversa trata.
+      if (aposStop > 0) {
+        out.push({
+          ...base,
+          tom: 'alerta',
+          titulo: 'Continuou operando depois do stop',
+          detalhe: `o stop do dia foi atingido na ${ordinalPt(ps.stopHitIndex)} das ${ps.count} operações, e mais ${aposStop} ${aposStop === 1 ? 'foi aberta' : 'foram abertas'} depois.`,
+        });
+        continue;
+      }
+      if (ps.closedBeyondStop) {
+        out.push({
+          ...base,
+          tom: 'alerta',
+          titulo: 'O dia fechou além do stop',
+          detalhe: `nenhuma operação foi aberta fora das regras, mas o conjunto passou o limite do dia${ps.beyondStopBy != null ? ` por ${ps.beyondStopBy}` : ''}.`,
+        });
+        continue;
+      }
+      if (semFolga > 0) {
+        out.push({
+          ...base,
+          tom: 'atencao',
+          titulo: 'Operação aberta sem orçamento',
+          detalhe: `${semFolga} ${semFolga === 1 ? 'operação abriu' : 'operações abriram'} com folga menor que o risco que o plano autoriza.`,
+        });
+        continue;
+      }
+      if (ps.reachedGoal) {
+        const depois = ps.goalHitIndex != null ? ps.count - ps.goalHitIndex - 1 : 0;
+        out.push({
+          ...base,
+          tom: depois > 0 ? 'atencao' : 'bom',
+          titulo: depois > 0 ? 'Bateu a meta e continuou' : 'Bateu a meta e parou',
+          detalhe: depois > 0
+            ? `a meta do dia foi atingida na ${ordinalPt(ps.goalHitIndex)} operação, e vieram mais ${depois}.`
+            : 'meta do dia atingida e o dia encerrado — é o comportamento que o plano pede.',
+        });
+      }
+    }
+  }
+  return out;
+}
+
+const ORDINAIS_PT = ['1ª', '2ª', '3ª', '4ª', '5ª', '6ª', '7ª', '8ª', '9ª', '10ª'];
+const ordinalPt = (i) => (Number.isInteger(i) ? (ORDINAIS_PT[i] ?? `${i + 1}ª`) : '—');
