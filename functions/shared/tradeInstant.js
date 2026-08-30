@@ -196,6 +196,12 @@ function orderingConfidence(trades) {
   const fusos = {};
   for (let i = 0; i < infos.length; i++) fusos[String(infos[i].tz)] = true;
   if (Object.keys(fusos).length > 1) return { reliable: false, reason: 'mixed_offsets' };
+  // Ver nota no espelho ESM: instante repetido faz da sequência um sorteio.
+  const instantes = {};
+  for (let i = 0; i < infos.length; i++) instantes[String(infos[i].ms)] = true;
+  if (Object.keys(instantes).length < infos.length) {
+    return { reliable: false, reason: 'tied_instants' };
+  }
   return { reliable: true, reason: 'ok' };
 }
 

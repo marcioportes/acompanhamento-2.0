@@ -177,6 +177,19 @@ export function dayStopContent(ps, currency = 'BRL') {
       tooltip: DAY_STOP_TOOLTIP,
     };
   }
+  // Sem ordem confiável não há "na 2ª" nem "duas vieram depois": as duas frases
+  // são predicados de SEQUÊNCIA. O fato do conjunto — ultrapassou, e por quanto —
+  // não depende da ordem e continua dito.
+  if (ps.ordering?.reliable === false) {
+    return {
+      value: ps.closedBeyondStop
+        ? `Ultrapassado por ${money(ps.beyondStopBy, currency)}`
+        : 'Atingido',
+      theme: ps.closedBeyondStop ? RED : AMBER,
+      caption: 'sequência não determinada',
+      tooltip: DAY_STOP_TOOLTIP,
+    };
+  }
   const ordinal = ps.stopHitIndex != null ? `${ps.stopHitIndex + 1}ª` : null;
   const partes = [];
   if (ordinal) partes.push(`atingido na ${ordinal} operação`);
@@ -244,6 +257,12 @@ export function dayOrderingNotice(ps) {
       tooltip: 'Alguma operação deste período não tem horário de entrada registrado, então a ordem entre elas foi inferida pela data. Os totais estão corretos; a sequência pode não estar.',
     };
   }
+  if (ps.ordering.reason === 'tied_instants') {
+    return {
+      text: 'operações no mesmo instante',
+      tooltip: 'Duas ou mais operações deste período têm o mesmo horário de entrada, ao segundo. Os totais estão corretos, mas qual veio antes não se sabe — por isso a sequência não é afirmada.',
+    };
+  }
   return {
     text: 'horários com fusos diferentes',
     tooltip: 'Este período mistura operações com fuso registrado e sem fuso registrado. A ordem foi resolvida pelo instante absoluto, assumindo o fuso da bolsa para as que não o têm.',
@@ -263,6 +282,10 @@ export function dayOrderingNotice(ps) {
  */
 export function authorizationNotice(row, ps, currency = 'BRL') {
   if (!row?.authorization || !ps) return null;
+  // O que restava quando ESTA operação abriu depende de quais vieram antes. Com a
+  // ordem em dúvida, apontar uma operação específica é sorteio — e sorteio que
+  // acusa. O aviso da ordem (`dayOrderingNotice`) explica o silêncio.
+  if (ps.ordering?.reliable === false) return null;
 
   if (row.authorization === 'APOS_STOP') {
     return {

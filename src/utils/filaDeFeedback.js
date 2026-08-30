@@ -177,10 +177,14 @@ export function lembretesDoPeriodo(trades, plans) {
         trades: p.linhas.length,
       };
       const aposStop = ps.tradesAfterStop ?? 0;
+      // Sem ordem confiável, "continuou operando depois do stop" não se sustenta:
+      // qual operação veio depois é justamente o que não se sabe. Sobra o fato do
+      // conjunto, que independe da ordem.
+      const ordemFirme = ps.ordering?.reliable !== false;
 
       // Continuar operando depois do stop é o fato mais forte do dia: vem primeiro
       // e cala os outros, porque é dele que a conversa trata.
-      if (aposStop > 0) {
+      if (aposStop > 0 && ordemFirme) {
         out.push({
           ...base,
           tom: 'alerta',
@@ -193,12 +197,29 @@ export function lembretesDoPeriodo(trades, plans) {
         out.push({
           ...base,
           tom: 'alerta',
-          titulo: 'O dia fechou além do stop',
-          detalhe: `nenhuma operação foi aberta fora das regras, mas o conjunto passou o limite do dia${ps.beyondStopBy != null ? ` por ${ps.beyondStopBy}` : ''}.`,
+          titulo: ordemFirme
+            ? 'O dia fechou além do stop'
+            : 'O dia fechou além do stop — sequência não determinada',
+          detalhe: ordemFirme
+            ? `nenhuma operação foi aberta fora das regras, mas o conjunto passou o limite do dia${ps.beyondStopBy != null ? ` por ${ps.beyondStopBy}` : ''}.`
+            : `o conjunto passou o limite do dia${ps.beyondStopBy != null ? ` por ${ps.beyondStopBy}` : ''}. Duas operações têm o mesmo horário de entrada, então qual veio antes não se sabe — a conversa é sobre o dia, não sobre uma delas.`,
         });
         continue;
       }
       if (ps.reachedGoal) {
+        // "Parou" e "continuou" são claims sobre a SEQUÊNCIA. Sem ordem confiável
+        // sobra o que o fechamento prova sozinho: o dia terminou na meta ou acima.
+        if (!ordemFirme) {
+          if (ps.goalValue != null && ps.net >= ps.goalValue) {
+            out.push({
+              ...base,
+              tom: 'bom',
+              titulo: 'Fechou na meta do dia',
+              detalhe: 'o dia terminou na meta ou acima dela. Se ele parou ao batê-la não dá para afirmar — duas operações têm o mesmo horário de entrada.',
+            });
+          }
+          continue;
+        }
         const depois = ps.goalHitIndex != null ? ps.count - ps.goalHitIndex - 1 : 0;
         out.push({
           ...base,
@@ -236,6 +257,8 @@ export function avisosPorOperacao(trades, plans) {
 
   for (const dia of aluno.dias) {
     for (const p of dia.planos) {
+      // A ordem em dúvida invalida o predicado, não só o texto: nada é marcado.
+      if (p.periodState.ordering?.reliable === false) continue;
       for (const linha of p.linhas) {
         if (!linha.tradeId || !linha.authorization) continue;
         if (linha.authorization === AUTHORIZATION.AUTHORIZED) continue;

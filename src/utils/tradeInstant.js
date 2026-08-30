@@ -181,7 +181,13 @@ export function sortTradesChrono(trades) {
  * aplicado a todas e a ordem relativa se preserva (é o caso de 74 dos 75 dias
  * com mais de um trade na base). O risco é o dia MISTURADO e o trade sem hora.
  *
- * @returns {{ reliable: boolean, reason: 'ok'|'single'|'missing_entry_time'|'mixed_offsets' }}
+ * O terceiro risco é o EMPATE: duas operações com o mesmo instante ao segundo.
+ * A ordenação as devolve numa ordem qualquer (desempate por criação e por id),
+ * e qualquer frase de sequência sobre elas — "a 2ª das 3", "aberta depois do
+ * stop" — é sorteio com cara de fato. Um caso na base (Elza, 22/05, duas
+ * entradas em MNQM6 às 11:37:15, importadas do mesmo CSV).
+ *
+ * @returns {{ reliable: boolean, reason: 'ok'|'single'|'missing_entry_time'|'mixed_offsets'|'tied_instants' }}
  */
 export function orderingConfidence(trades) {
   const lista = Array.isArray(trades) ? trades : [];
@@ -198,5 +204,9 @@ export function orderingConfidence(trades) {
   // combate na direção oposta.
   const fusos = new Set(infos.map((i) => i.tz));
   if (fusos.size > 1) return { reliable: false, reason: 'mixed_offsets' };
+  const instantes = infos.map((i) => i.ms);
+  if (new Set(instantes).size < instantes.length) {
+    return { reliable: false, reason: 'tied_instants' };
+  }
   return { reliable: true, reason: 'ok' };
 }

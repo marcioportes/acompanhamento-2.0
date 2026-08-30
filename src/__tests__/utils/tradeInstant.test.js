@@ -13,6 +13,7 @@ import {
   tradeInstantMs,
   compareTradesChrono,
   sortTradesChrono,
+  orderingConfidence,
 } from '../../utils/tradeInstant';
 
 const ms = (iso) => Date.parse(iso);
@@ -176,5 +177,37 @@ describe('sortTradesChrono', () => {
     expect(sortTradesChrono([])).toEqual([]);
     expect(sortTradesChrono(null)).toEqual([]);
     expect(sortTradesChrono(undefined)).toEqual([]);
+  });
+});
+
+/**
+ * #408 — o empate de instante.
+ *
+ * Elza, 22/05: duas entradas em MNQM6 às 11:37:15, do mesmo CSV. A ordenação
+ * devolve uma ordem qualquer (desempate por criação e por id) e toda frase de
+ * sequência sobre elas vira sorteio com cara de fato.
+ */
+describe('orderingConfidence — instante repetido', () => {
+  const t = (hora, id) => ({ id, date: '2026-05-22', entryTime: `2026-05-22T${hora}-04:00` });
+
+  it('duas operações no mesmo segundo tornam a ordem não confiável', () => {
+    const c = orderingConfidence([t('11:37:15', 'a'), t('11:37:15', 'b')]);
+    expect(c).toEqual({ reliable: false, reason: 'tied_instants' });
+  });
+
+  it('um segundo de diferença já basta para afirmar a ordem', () => {
+    expect(orderingConfidence([t('11:37:15', 'a'), t('11:37:16', 'b')]))
+      .toEqual({ reliable: true, reason: 'ok' });
+  });
+
+  it('o empate é detectado mesmo com uma terceira operação distinta no meio', () => {
+    const c = orderingConfidence([t('10:50:31', 'a'), t('11:37:15', 'b'), t('11:37:15', 'c')]);
+    expect(c.reliable).toBe(false);
+    expect(c.reason).toBe('tied_instants');
+  });
+
+  it('a falta de horário continua ganhando do empate — é o defeito mais grave', () => {
+    const c = orderingConfidence([{ id: 'a', date: '2026-05-22' }, t('11:37:15', 'b'), t('11:37:15', 'c')]);
+    expect(c.reason).toBe('missing_entry_time');
   });
 });

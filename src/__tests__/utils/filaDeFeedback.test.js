@@ -307,3 +307,82 @@ describe('tradesDoSnapshotDaRevisao — a projeção do snapshot não é o trade
     expect(tradesDoSnapshotDaRevisao(null, 'p1')).toEqual([]);
   });
 });
+
+/**
+ * #408 Fase C — casos limites.
+ */
+describe('fila: ordem em dúvida e documento que não é trade', () => {
+  const plano = { id: 'p', name: 'Mesa', pl: 4000, periodStop: 1, periodGoal: 2, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const t = (id, hora, result) => ({
+    id, studentId: 'el', studentName: 'Elza', date: '2026-05-22', status: 'REVIEWED',
+    ticker: 'MNQM6', currency: 'USD', planId: 'p', result,
+    entryTime: `2026-05-22T${hora}-04:00`,
+  });
+
+  const empatado = [t('a', '11:37:15', -25), t('b', '11:37:15', -25)];
+
+  it('com instantes empatados, nenhuma operação é marcada', () => {
+    expect(avisosPorOperacao(empatado, [plano]).size).toBe(0);
+    // um segundo de diferença e a marca volta
+    expect(avisosPorOperacao([t('a', '11:37:15', -25), t('b', '11:38:20', -25)], [plano]).size).toBe(1);
+  });
+
+  it('o lembrete do dia sobrevive, sem afirmar quem veio depois', () => {
+    const [l] = lembretesDoPeriodo(empatado, [plano]);
+    expect(l.titulo).toMatch(/sequência não determinada/);
+    expect(l.detalhe).toMatch(/qual veio antes não se sabe/);
+    expect(l.detalhe).not.toMatch(/\dª/);
+  });
+
+  it('"continuou operando depois do stop" não é dito sem ordem confiável', () => {
+    // três perdas no mesmo segundo: com ordem firme isto seria o fato mais forte
+    const tresEmpatadas = [t('a', '11:37:15', -40), t('b', '11:37:15', -40), t('c', '11:37:15', -10)];
+    const [l] = lembretesDoPeriodo(tresEmpatadas, [plano]);
+    expect(l.titulo).not.toMatch(/Continuou operando/);
+    expect(l.titulo).toMatch(/além do stop/);
+  });
+
+  it('documento sem data e sem aluno não entra na fila', () => {
+    // o fantasma real: um doc de `trades` com um campo só, resíduo de merge em
+    // trade apagado. Apagado da base em 30/08 — a guarda fica.
+    const fantasma = { id: 'x', behaviorProfile: { families: [] } };
+    expect(buildFilaDeFeedback({ pendentes: [fantasma], plans: [plano] })).toEqual([]);
+    expect(buildFilaDeFeedback({ pendentes: [{ ...t('a', '10:00', -10), studentId: null, studentEmail: null }], plans: [plano] })).toEqual([]);
+  });
+
+  it('trade sem plano não é escondido — aparece com o período sem limiar', () => {
+    // Marcio, 30/08: *"aluno sem plano não tem trade. ponto"*. Se um aparecer, é
+    // defeito de dado; sumir com ele em silêncio seria pior que mostrá-lo.
+    const [aluno] = buildFilaDeFeedback({ pendentes: [{ ...t('a', '10:00', -10), planId: null }], plans: [plano] });
+    expect(aluno.totalPendentes).toBe(1);
+    expect(aluno.dias[0].planos[0].planId).toBeNull();
+  });
+});
+
+describe('a meta também é claim de sequência', () => {
+  const plano = { id: 'p', name: 'Mesa', pl: 4000, periodStop: 1, periodGoal: 2, riskPerOperation: 1, operationPeriod: 'Diário' };
+  const t = (id, hora, result) => ({
+    id, studentId: 'el', studentName: 'Elza', date: '2026-05-22', status: 'REVIEWED',
+    ticker: 'MNQM6', currency: 'USD', planId: 'p', result,
+    entryTime: `2026-05-22T${hora}-04:00`,
+  });
+
+  it('com ordem firme, "parou" e "continuou" são afirmáveis', () => {
+    // meta = 2% de 4.000 = 80
+    expect(lembretesDoPeriodo([t('a', '10:00:00', 90)], [plano])[0].titulo).toBe('Bateu a meta e parou');
+    expect(lembretesDoPeriodo([t('a', '10:00:00', 90), t('b', '11:00:00', -5)], [plano])[0].titulo)
+      .toBe('Bateu a meta e continuou');
+  });
+
+  it('com empate, só o fechamento é afirmado', () => {
+    const [l] = lembretesDoPeriodo([t('a', '11:37:15', 90), t('b', '11:37:15', -5)], [plano]);
+    expect(l.titulo).toBe('Fechou na meta do dia');
+    expect(l.detalhe).toMatch(/não dá para afirmar/);
+  });
+
+  it('com empate e o dia devolvendo o ganho, nada é dito sobre a meta', () => {
+    // tocou a meta em algum ponto, mas fechou abaixo: sem ordem, não há o que provar
+    const ls = lembretesDoPeriodo([t('a', '11:37:15', 90), t('b', '11:37:15', -85)], [plano]);
+    expect(ls.filter((l) => /meta/i.test(l.titulo))).toEqual([]);
+  });
+});

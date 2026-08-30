@@ -99,8 +99,13 @@ const CardDoPlano = ({ plano, colapsado, onAbrirTrade, selecionados, onAlternarS
                    bandLabel={t.bandLabel} caption={t.caption} tooltip={t.tooltip} />
         ))}
       </div>
+      {/* `dayOrderingNotice` devolve {text, tooltip} — não {title, detail}. O código
+          anterior lia campos inexistentes e o aviso nunca aparecia. */}
       {ordem && (
-        <p className="text-[11px] text-amber-400/80 mb-2">{ordem.detail ?? ordem.title}</p>
+        <p className="text-[11px] text-amber-400/80 mb-2 flex items-center gap-1" title={ordem.tooltip}>
+          <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+          {ordem.text}
+        </p>
       )}
       <div className="space-y-0.5">
         {plano.linhas.map((l) => (

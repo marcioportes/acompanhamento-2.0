@@ -339,3 +339,39 @@ describe('#402 — a caixa verde não pode contradizer a ressalva de autorizaç�
     expect(screen.getByText(/execução alinhada/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * #408 — o silêncio da ordem não pode virar absolvição.
+ *
+ * Com instantes empatados, `authorizationNotice` cala (apontar uma das duas seria
+ * sorteio). Se as frases de ausência continuassem disparando, o painel afirmaria
+ * "nenhuma violação de plano" sobre um predicado que sequer foi avaliado.
+ */
+describe('#408 — ordem em dúvida não absolve', () => {
+  const plano = { pl: 4000, riskPerOperation: 1, periodStop: 1, rrTarget: 2 };
+  const base = {
+    ticker: 'MNQM6', side: 'LONG', entry: 100, exit: 90, qty: 1, currency: 'BRL',
+    redFlags: [], behaviorProfile: { families: [], gateInputs: [] },
+  };
+  const a = { ...base, id: 'a', date: '2026-05-22', result: -25, entryTime: '2026-05-22T11:37:15-04:00', exitTime: '2026-05-22T11:43:09-04:00' };
+  const b = { ...base, id: 'b', date: '2026-05-22', result: -25, entryTime: '2026-05-22T11:37:15-04:00', exitTime: '2026-05-22T11:45:04-04:00' };
+
+  it('declara a ressalva da sequência e NÃO afirma execução alinhada', () => {
+    const ps = buildPeriodState([a, b], plano);
+    expect(ps.ordering.reason).toBe('tied_instants');
+
+    render(<BehaviorPanel trade={b} plan={plano} periodState={ps} isMentor embedded />);
+
+    expect(screen.getByText(/Sequência do período não determinada/)).toBeInTheDocument();
+    expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nenhum padrão comportamental de risco na execução/i)).toBeInTheDocument();
+  });
+
+  it('com um segundo de diferença, o painel volta a se pronunciar', () => {
+    const ps = buildPeriodState([a, { ...b, entryTime: '2026-05-22T11:38:20-04:00' }], plano);
+    expect(ps.ordering.reliable).toBe(true);
+    render(<BehaviorPanel trade={b} plan={plano} periodState={ps} isMentor embedded />);
+    expect(screen.queryByText(/Sequência do período não determinada/)).not.toBeInTheDocument();
+  });
+});

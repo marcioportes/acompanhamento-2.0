@@ -67,6 +67,20 @@ O trabalho real é a árvore, o estado de expansão e o cabeçalho agregado.
 - **DEC-AUTO-408-03** — Dia agrupado abre sozinho quando esconde operação
   marcada. Sem isso o aviso nasce invisível — e não se resolve devolvendo o fato
   ao cabeçalho do dia.
+- **DEC-AUTO-408-05** — Instante repetido invalida a ordem. `orderingConfidence`
+  passa a devolver `tied_instants`: duas operações com o mesmo horário ao segundo
+  fazem da sequência um sorteio, e o desempate por criação/id não é evidência.
+- **DEC-AUTO-408-06** — Ordem em dúvida cala o PREDICADO DE SEQUÊNCIA, não o dia:
+  sem ordinal, sem autorização por operação, sem "continuou depois do stop". O
+  líquido, o "ultrapassou por quanto" e a meta não dependem da ordem e continuam
+  ditos.
+- **DEC-AUTO-408-07** — O silêncio não absolve. Com a ordem em dúvida, o
+  `BehaviorPanel` declara a ressalva e deixa de afirmar "nenhuma violação de
+  plano" / "execução alinhada" — senão o predicado não avaliado vira atestado de
+  inocência (mesma contradição que o #402 removeu).
+- **DEC-AUTO-408-08** — Trade sem plano não existe (Marcio, 30/08). Não há
+  tratamento especial: se um aparecer, é defeito de dado e a fila o mostra num
+  balde sem limiar, porque sumir com ele em silêncio seria pior.
 - **DEC-AUTO-408-04** — `frozenSnapshot.periodTrades` é PROJEÇÃO, não trade
   (`tradeId`/`pnl`/`symbol`/`closeTime`, sem `date`/`planId`/`studentId`).
   Adaptador `tradesDoSnapshotDaRevisao` na fronteira; vale para o snapshot
@@ -79,3 +93,8 @@ O trabalho real é a árvore, o estado de expansão e o cabeçalho agregado.
   revisão. Correção do adaptador da projeção e mudança do fato atômico para a
   linha da operação. Suíte verde, verificado contra a revisão real (20 ops:
   1 fato de dia, 2 operações marcadas).
+- 30/08/2026 — Fase C: colapso do nível de plano (já entregue na B, coberto por
+  teste), empate de instante, silêncio honesto na sequência e passagem para a
+  `FeedbackPage` travada por teste. Apagado o doc fantasma
+  `trades/blS5d3FkJax0qR4CBcQK` (só `behaviorProfile`, resíduo de merge em trade
+  apagado) — base com 380 trades, todos com plano.

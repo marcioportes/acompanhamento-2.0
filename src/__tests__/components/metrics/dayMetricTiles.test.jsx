@@ -252,3 +252,59 @@ describe('tradePositionInPeriod — situar a operação no dia, sem virar painel
     expect(r.tooltip).toContain('Revisão');
   });
 });
+
+/**
+ * #408 — ordem em dúvida cala a sequência, não o dia.
+ *
+ * Elza, 22/05: duas entradas em MNQM6 no mesmo segundo. Toda frase de sequência
+ * sobre elas seria sorteio; os totais do dia não dependem da ordem e continuam
+ * ditos.
+ */
+describe('empate de instante — a tela para de afirmar a sequência', () => {
+  const PLANO_E = { pl: 4000, riskPerOperation: 1, periodStop: 1 };
+  const emp = (id, hora, result) => ({
+    id, date: '2026-05-22', ticker: 'MNQM6', side: 'LONG', result,
+    entryTime: `2026-05-22T${hora}-04:00`,
+  });
+
+  // −25 depois −25: o dia passa o stop de R$ 40 e a 2ª abriria sem folga.
+  const empatado = buildPeriodState(
+    [emp('a', '11:37:15', -25), emp('b', '11:37:15', -25)], PLANO_E,
+  );
+  const firme = buildPeriodState(
+    [emp('a', '11:37:15', -25), emp('b', '11:38:20', -25)], PLANO_E,
+  );
+
+  it('o veredicto da ordem chega ao periodState', () => {
+    expect(empatado.ordering).toEqual({ reliable: false, reason: 'tied_instants' });
+    expect(firme.ordering.reliable).toBe(true);
+  });
+
+  it('authorizationNotice cala: apontar uma das duas seria sorteio', () => {
+    expect(firme.rows[1].authorization).toBe('SEM_FOLGA');
+    expect(authorizationNotice(firme.rows[1], firme, 'BRL')).not.toBeNull();
+    // mesma linha, mesmo predicado — e ainda assim nada é afirmado
+    expect(authorizationNotice(empatado.rows[1], empatado, 'BRL')).toBeNull();
+  });
+
+  it('dayStopContent mantém o fato do conjunto e larga a ordinal', () => {
+    const c = dayStopContent(empatado, 'BRL');
+    expect(c.value).toMatch(/Ultrapassado por/);
+    expect(c.caption).toBe('sequência não determinada');
+    expect(JSON.stringify(c)).not.toMatch(/2ª|1ª/);
+    // com a ordem firme, a ordinal volta
+    expect(JSON.stringify(dayStopContent(firme, 'BRL'))).toMatch(/ª operação/);
+  });
+
+  it('dayOrderingNotice explica o silêncio com o motivo certo', () => {
+    const n = dayOrderingNotice(empatado);
+    expect(n.text).toBe('operações no mesmo instante');
+    expect(n.tooltip).toMatch(/mesmo horário de entrada/);
+    expect(dayOrderingNotice(firme)).toBeNull();
+  });
+
+  it('tradePositionInPeriod não afirma posição', () => {
+    const t = tradePositionInPeriod(empatado.rows[1], empatado, 'BRL');
+    expect(t.text).toMatch(/Uma das 2 operações/);
+  });
+});

@@ -15,7 +15,7 @@ import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
 import { rrBreakdown } from '../../utils/rrBreakdown';
 import { authorizationFor } from '../../utils/dayState';
-import { authorizationNotice, tradePositionInPeriod } from '../metrics/dayMetricTiles';
+import { authorizationNotice, tradePositionInPeriod, dayOrderingNotice } from '../metrics/dayMetricTiles';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import {
   familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
@@ -228,6 +228,12 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
   // e o que o PERÍODO fez (fato do período). Coisas diferentes, blocos diferentes.
   const periodRow = authorizationFor(trade, periodState);
   const authNotice = authorizationNotice(periodRow, periodState, currency);
+  // #408 — com a ordem do período em dúvida, `authorizationNotice` cala (apontar
+  // uma operação específica seria sorteio). O silêncio NÃO pode virar absolvição:
+  // as duas frases de ausência abaixo passariam a afirmar "nenhuma violação" sobre
+  // um predicado que não foi avaliado. É a mesma contradição que o #402 removeu.
+  const ordemEmDuvida = periodState?.ordering?.reliable === false;
+  const ordemNotice = dayOrderingNotice(periodState);
   // Onde ESTA operação cai no período. Predicado sobre o trade, não painel do dia.
   const posicao = tradePositionInPeriod(periodRow, periodState, currency);
 
@@ -291,7 +297,17 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
             </div>
           )}
 
-          {effective.length === 0 && !authNotice && (
+          {ordemEmDuvida && (
+            <div className="rounded-lg p-3 mb-2 border border-amber-500/25 bg-amber-500/[0.04]">
+              <p className="text-xs font-semibold mb-0.5 text-amber-300">Sequência do período não determinada</p>
+              <p className="text-[11px] opacity-80 leading-relaxed text-amber-200/80">
+                {ordemNotice?.tooltip
+                  ?? 'A ordem das operações deste período não pôde ser estabelecida, então o que restava quando esta abriu não é afirmável.'}
+              </p>
+            </div>
+          )}
+
+          {effective.length === 0 && !authNotice && !ordemEmDuvida && (
             <p className="text-xs text-emerald-300/80 mb-2">Nenhuma violação de plano nesta operação.</p>
           )}
 
@@ -330,7 +346,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
               {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
               {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
             </div>
-          ) : (effective.length === 0 && cleared.length === 0 && !authNotice) ? (
+          ) : (effective.length === 0 && cleared.length === 0 && !authNotice && !ordemEmDuvida) ? (
             // Motor rodou, nada negativo, sem violação E sem ressalva de autorização
             // → só aqui cabe afirmar execução alinhada.
             //
@@ -344,10 +360,11 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
               <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
               <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
             </div>
-          ) : (effective.length === 0 && cleared.length === 0 && authNotice) ? (
-            // Há ressalva de autorização em ①. O motor não achou padrão de risco na
-            // EXECUÇÃO, e é só isso que pode ser afirmado — sem estender para "nenhuma
-            // violação de plano", que é o pedaço que mentia.
+          ) : (effective.length === 0 && cleared.length === 0 && (authNotice || ordemEmDuvida)) ? (
+            // Há ressalva em ① — de autorização, ou da ordem que não se pôde
+            // estabelecer. O motor não achou padrão de risco na EXECUÇÃO, e é só isso
+            // que pode ser afirmado — sem estender para "nenhuma violação de plano",
+            // que é o pedaço que mentia.
             <p className="text-xs text-zinc-500">Nenhum padrão comportamental de risco na execução — veja a ressalva sobre a abertura, acima.</p>
           ) : (
             // Motor rodou, sem padrão comportamental, mas há violação de plano em ①.
