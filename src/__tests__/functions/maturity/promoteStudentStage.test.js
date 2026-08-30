@@ -18,7 +18,16 @@ const maturidadePronta = {
   proposedTransition: { proposed: 'UP', nextStage: 3, blockers: [] },
 };
 
-const fakeAdmin = { firestore: { FieldValue: { arrayUnion: (x) => ({ __arrayUnion: x }) } } };
+// #101 — a promoção passou a carimbar `stageSince`: é a data em que a vida nova
+// começa, e o recompute mede o aluno só a partir dela ("promoção zera tudo").
+const fakeAdmin = {
+  firestore: {
+    FieldValue: {
+      arrayUnion: (x) => ({ __arrayUnion: x }),
+      serverTimestamp: () => ({ __serverTimestamp: true }),
+    },
+  },
+};
 
 const fakeDb = (dados) => {
   const set = vi.fn(async () => {});
@@ -97,5 +106,30 @@ describe('promoteStudentStage — callable', () => {
     await expect(
       chamar({ auth: { uid: 'mentor', token: { email: 'marcio.portes@me.com' } }, data: { studentId: 'a1' } }, promote),
     ).rejects.toMatchObject({ code: 'failed-precondition' });
+  });
+});
+
+describe('promoção zera a régua (#101)', () => {
+  it('carimba stageSince, limpa a proposta consumida e o sinal de regressão', async () => {
+    const db = fakeDb(maturidadePronta);
+    await promoteStudentStage(db, fakeAdmin, {
+      studentId: 'aluno1',
+      promotedByEmail: 'marcio.portes@me.com',
+    });
+    const gravado = db._set.mock.calls[0][0];
+    expect(gravado.stageSince).toEqual({ __serverTimestamp: true });
+    expect(gravado.proposedTransition).toBeNull();
+    expect(gravado.signalRegression).toBeNull();
+  });
+
+  it('o histórico de promoções é acrescentado, nunca substituído', async () => {
+    const db = fakeDb(maturidadePronta);
+    await promoteStudentStage(db, fakeAdmin, {
+      studentId: 'aluno1',
+      promotedByEmail: 'marcio.portes@me.com',
+    });
+    const gravado = db._set.mock.calls[0][0];
+    expect(gravado.stageHistory.__arrayUnion).toBeTruthy();
+    expect(gravado.stageHistory.__arrayUnion.promotedBy).toBe('marcio.portes@me.com');
   });
 });

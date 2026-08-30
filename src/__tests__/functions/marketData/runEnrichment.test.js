@@ -367,3 +367,4 @@ describe('runEnrichment — issue #285 (entryTime com offset explícito do fuso 
     expect(url).toContain(`period2=${expectedT2}`);
   });
 });
+

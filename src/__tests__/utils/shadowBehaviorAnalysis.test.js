@@ -1227,3 +1227,42 @@ describe('analyzeShadowBatch', () => {
     expect(shadow.orderCount).toBe(1);
   });
 });
+
+describe('#101 — saída antecipada é sempre severidade BAIXA', () => {
+  // Marcio, 29/08: "sair abaixo do RR não é grave, é baixo. Contribui para diminuir
+  // a esperança matemática, mas pode ser lido como condução de um trade perdido".
+  // A régua antiga escalava por distância do alvo: < 25% do alvo virava HIGH.
+  const vencedorQueSaiuCedo = (rr) => ({
+    id: 't1', side: 'LONG', entry: 100, stopLoss: 90, exit: 100 + rr * 10, qty: 1,
+    result: rr * 10, date: '2026-08-24',
+    entryTime: '2026-08-24T10:00:00-03:00', exitTime: '2026-08-24T10:30:00-03:00',
+    rrAssumed: false, planId: 'p1',
+  });
+  // `planRrTargetOf` lê `trade.planRrTarget`, com 2 como padrão.
+  const comAlvo = (rr) => ({ ...vencedorQueSaiuCedo(rr), planRrTarget: 2 });
+
+  it('saída muito distante do alvo continua BAIXA, não alta', () => {
+    // 0,2R contra alvo 2R = 10% do alvo. Pela régua antiga: HIGH.
+    const r = detectEarlyExit(comAlvo(0.2), null, { rrThresholdPct: 0.5 });
+    expect(r).toBeTruthy();
+    expect(r.severity).toBe('LOW');
+  });
+
+  it('saída a meio caminho do alvo dispara e também é BAIXA', () => {
+    // 0,9R = 45% do alvo, abaixo do corte de 50% que define "saiu cedo".
+    // Pela régua antiga seria MEDIUM.
+    const r = detectEarlyExit(comAlvo(0.9), null, { rrThresholdPct: 0.5 });
+    expect(r).toBeTruthy();
+    expect(r.severity).toBe('LOW');
+  });
+
+  it('saída perto do alvo não é saída antecipada', () => {
+    // 1,2R = 60% do alvo, acima do corte: o trade foi conduzido.
+    expect(detectEarlyExit(comAlvo(1.2), null, { rrThresholdPct: 0.5 })).toBeNull();
+  });
+
+  it('trade perdedor não é saída antecipada — é stop ou condução', () => {
+    const perdedor = { ...comAlvo(0.2), result: -100, exit: 90 };
+    expect(detectEarlyExit(perdedor, null, { rrThresholdPct: 0.5 })).toBeNull();
+  });
+});

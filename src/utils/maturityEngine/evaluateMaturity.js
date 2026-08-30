@@ -82,6 +82,8 @@ export function evaluateMaturity({
   complianceRate100,
   executionEvents,
   tradesWithOrderData,
+  // #101 — piso da regressão: DEC-020 proíbe sugerir abaixo do assessment.
+  baselineStage,
 } = {}) {
   // 1. Janela
   const { window: W, windowSize, sparseSample } = resolveWindow(trades, stageCurrent, now);
@@ -229,6 +231,7 @@ export function evaluateMaturity({
     F: financial.score,
     baseline,
     metrics,
+    baselineStage,
   });
 
   // 8. Confidence agregado

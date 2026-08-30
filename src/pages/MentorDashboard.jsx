@@ -11,32 +11,34 @@
  * - 1.2.0: Cards por aluno com contadores clicáveis (OPEN/QUESTION)
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Trophy, Eye, ChevronRight, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
-  CheckSquare, Square, Loader2, X
+  Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
-import StatCard from '../components/StatCard';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import StudentFeedbackCard from '../components/StudentFeedbackCard';
-import CalendarHeatmap from '../components/CalendarHeatmap';
+import TradingCalendar from '../components/TradingCalendar';
 import EquityCurve from '../components/EquityCurve';
-import SetupAnalysis from '../components/SetupAnalysis';
-import EmotionAnalysis from '../components/EmotionAnalysis';
 import StudentEmotionalCard from '../components/StudentEmotionalCard';
-import EmotionalProfileDetail from '../components/EmotionalProfileDetail';
-import MentorAlerts from '../components/MentorAlerts';
 import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
-import SubscriptionSummaryCard from '../components/SubscriptionSummaryCard';
 import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
+import TorreDeControle from '../components/torre/TorreDeControle';
+import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
+import FichaDiagnostico from '../components/Students/FichaDiagnostico';
+import PlanoDeConversa from '../components/Students/PlanoDeConversa';
+import DetalheDoAluno from '../components/Students/DetalheDoAluno';
+import ResultadoDoAluno from '../components/Students/ResultadoDoAluno';
+import { diagnosticoDoAluno, prescricoes, episodios, contaPrincipal } from '../utils/studentDiagnosis';
+import useMentorRiskRadar from '../hooks/useMentorRiskRadar';
 import MentorClosuresInbox from '../components/cycleClosure/MentorClosuresInbox';
 import MentorClosureView from '../components/cycleClosure/MentorClosureView';
 import CycleExpiredGuard from '../components/cycleClosure/CycleExpiredGuard';
@@ -53,15 +55,15 @@ import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
-  calculateStats, calculateStudentRanking, identifyStudentsNeedingAttention,
+  calculateStats, identifyStudentsNeedingAttention,
   formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
-import { filterSetupsForStudent } from '../utils/setupsFilter';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
+import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -83,9 +85,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const [mentorClosureContext, setMentorClosureContext] = useState(null);
   const { pendingCount: closuresPendingCount } = useMentorClosureInbox();
   const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [rankingSort, setRankingSort] = useState('totalPL');
   const [pendingFilter, setPendingFilter] = useState(null);
+  // #101 — os memos de setups e de perfil emocional do aluno selecionado saíram
+  // junto com os componentes que os consumiam. O detalhamento agora vem de
+  // `diagnosticoDoAluno`/`episodios`, que já rodam para o Plano de Conversa.
   const [showEmotionalDetail, setShowEmotionalDetail] = useState(null); // studentEmail or null
+  // #101 — o calendário da turma é o seletor do dia; sem dia escolhido não há lista.
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [diaAluno, setDiaAluno] = useState(null);
+  const [detalheAberto, setDetalheAberto] = useState(false);
 
   // === Bulk Feedback State ===
   const [selectedTradeIds, setSelectedTradeIds] = useState(new Set());
@@ -100,7 +108,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  const viewMapping = { 'dashboard': 'overview', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'ranking': 'ranking', 'closures': 'closures' };
+  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
@@ -117,6 +125,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     [allStudents, allSubscriptions],
   );
 
+  // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
+  // Alpha). `emailsAtivos` continua sendo o escopo de Acompanhamento/Contas, que é
+  // mais largo e vale para as outras superfícies.
+  const emailsDaMentoria = useMemo(
+    () => emailsDoRadar(allStudents, allSubscriptions),
+    [allStudents, allSubscriptions],
+  );
+
   const studentsNeedingAttention = useMemo(() => {
     const todos = identifyStudentsNeedingAttention(groupedTrades);
     // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
@@ -124,7 +140,29 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     if (emailsAtivos.size === 0) return todos;
     return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
   }, [groupedTrades, emailsAtivos]);
-  const ranking = useMemo(() => calculateStudentRanking(groupedTrades, rankingSort), [groupedTrades, rankingSort]);
+
+  // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
+  // #101 Fase E — uma passada só, consumida pelas duas abas. A Torre é a home
+  // (triagem); Análises recebe o que é diagnóstico.
+  const radar = useMentorRiskRadar({
+    allTrades,
+    plans,
+    students: allStudents,
+    subscriptions: allSubscriptions,
+  });
+
+  const planosPorId = useMemo(
+    () => new Map((plans ?? []).filter((p) => p?.id).map((p) => [p.id, p])),
+    [plans],
+  );
+  const diasDaTurma = useMemo(
+    () => buildCalendarDays(allTrades, emailsDaMentoria, planosPorId),
+    [allTrades, emailsDaMentoria, planosPorId],
+  );
+  const tradesDoDia = useMemo(
+    () => (diaSelecionado ? allTrades.filter((t) => t.date === diaSelecionado) : []),
+    [allTrades, diaSelecionado],
+  );
 
   const studentsWithPending = useMemo(() => {
     const studentMap = {};
@@ -167,8 +205,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
   const overallStats = useMemo(() => {
     const allStats = calculateStats(allTrades);
-    return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length, avgWinRate: ranking.length > 0 ? ranking.reduce((acc, s) => acc + s.winRate, 0) / ranking.length : 0 };
-  }, [allTrades, students, todayTrades, ranking]);
+    return { ...allStats, studentsCount: students.length, todayTrades: todayTrades.length };
+  }, [allTrades, students, todayTrades]);
 
   // Agregados multi-moeda (F2 issue #188): P&L nunca soma cross-currency.
   const overallTotalsByCurrency = useMemo(() => aggregateTradesByCurrency(allTrades), [allTrades]);
@@ -176,20 +214,27 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
   const selectedStudentTotals = useMemo(() => aggregateTradesByCurrency(selectedStudentTrades), [selectedStudentTrades]);
-  // Setups isolados por aluno selecionado — garante que targetRR de aluno X
-  // não vaze para o cálculo de Aderência RR do aluno Y (issue #174, INV-27 spec-level).
-  const selectedStudentSetups = useMemo(
-    () => filterSetupsForStudent(allSetups, selectedStudent?.studentId),
-    [allSetups, selectedStudent?.studentId],
+  // #101 — o veredicto da ficha: o que dói e o que funciona, setup e emoção.
+  const diagnosticoAluno = useMemo(
+    () => diagnosticoDoAluno(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
   );
-
-  // Perfil emocional do aluno selecionado
-  const selectedStudentEmotional = useEmotionalProfile({
-    trades: selectedStudentTrades,
-    detectionConfig,
-    statusThresholds
-  });
-
+  const planoDeConversa = useMemo(
+    () => prescricoes(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
+  );
+  const episodiosAluno = useMemo(
+    () => episodios(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
+  );
+  // O R depende do plano; aluno com duas contas tem dois R. A ficha mede a conta
+  // PRINCIPAL — a de maior volume —, não a do último trade: pelo último, o Daniel
+  // apareceria com 1 de 7 trades porque o último dele foi numa conta quase vazia.
+  const contaDaFicha = useMemo(() => contaPrincipal(selectedStudentTrades), [selectedStudentTrades]);
+  const planoDaFicha = useMemo(
+    () => (contaDaFicha ? planosPorId.get(contaDaFicha.planId) ?? null : null),
+    [planosPorId, contaDaFicha],
+  );
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -202,6 +247,20 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const handleClickStudentOpen = (student) => { setPendingFilter({ studentEmail: student.email, status: 'OPEN', studentName: student.name }); setSelectedTradeIds(new Set()); };
   const handleClickStudentQuestion = (student) => { setPendingFilter({ studentEmail: student.email, status: 'QUESTION', studentName: student.name }); setSelectedTradeIds(new Set()); };
   const handleClickStudentAll = (student) => { setSelectedStudent(student); setPendingFilter(null); setSelectedTradeIds(new Set()); };
+
+  // #101 — vários pontos abriam o aluno com `{email, name}` só. A tela de detalhe
+  // usa `selectedStudent.studentId` para filtrar os PLANOS e para o fluxo de
+  // fechamento de ciclo: sem ele, abrir o aluno pelo alerta, pelo card de promoção ou pelo
+  // card de promoção entregava a tela sem plano nenhum, enquanto abrir pela lista
+  // de Alunos entregava completa. O id vem do próprio trade (getUniqueStudents).
+  const abrirAluno = useCallback((student) => {
+    if (!student?.email) return setSelectedStudent(student);
+    if (student.studentId) return setSelectedStudent(student);
+    const conhecido = students.find(
+      (s) => String(s.email).toLowerCase() === String(student.email).toLowerCase(),
+    );
+    setSelectedStudent(conhecido ? { ...student, studentId: conhecido.studentId } : student);
+  }, [students]);
   const handleBackFromFilter = () => { setPendingFilter(null); setSelectedTradeIds(new Set()); };
 
   // === Bulk Feedback Handlers ===
@@ -291,40 +350,93 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           trades={selectedStudentTrades}
         />
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            title="P&L Total"
-            value={<MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="stack" showSign />}
-            icon={DollarSign}
-            color={selectedStudentTotals.size <= 1 ? (selectedStudentStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
-          />
-          <StatCard title="Win Rate" value={formatPercent(selectedStudentStats.winRate)} icon={Target} color={selectedStudentStats.winRate >= 50 ? 'green' : 'red'} />
-          <StatCard title="Total Trades" value={selectedStudentStats.totalTrades} icon={Activity} color="blue" />
-          <StatCard title="Profit Factor" value={selectedStudentStats.profitFactor === Infinity ? '∞' : selectedStudentStats.profitFactor.toFixed(2)} icon={TrendingUp} color={selectedStudentStats.profitFactor >= 1 ? 'green' : 'red'} />
+        {/* #101 — diagnóstico e plano lado a lado a partir de xl (1280px): abaixo
+            disso cada coluna ficaria estreita demais para as frases do plano, e os
+            dois empilham como antes. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8 items-start">
+          <FichaDiagnostico diagnostico={diagnosticoAluno} nome={selectedStudent.name} compacto />
+          <PlanoDeConversa prescricoes={planoDeConversa} nome={selectedStudent.name} compacto />
         </div>
+
+        {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
+            era uma pilha de cards de mesmo peso visual, e o mentor tinha que
+            garimpar a informação relevante em cada um. */}
+        <ResultadoDoAluno trades={selectedStudentTrades} plano={planoDaFicha} foraDaConta={contaDaFicha?.fora ?? 0} />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <EquityCurve trades={selectedStudentTrades} />
-          <CalendarHeatmap trades={selectedStudentTrades} />
+          {/* #101 — mesmo defeito do calendário da turma: o CalendarHeatmap lia
+              `dayOfWeek`/`pl`, campos que `generateCalendarData` não devolve, e
+              pintava uma grade vazia. Aqui é um aluno só, então o dia mostra
+              dinheiro, na moeda dominante dele. */}
+          <TradingCalendar
+            trades={selectedStudentTrades}
+            currency={[...selectedStudentTotals.keys()][0] || 'BRL'}
+            selectedDate={diaAluno}
+            onSelectDate={(date) => setDiaAluno(date === diaAluno ? null : date)}
+          />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <SetupAnalysis trades={selectedStudentTrades} setupsMeta={selectedStudentSetups} />
-          <EmotionAnalysis trades={selectedStudentTrades} />
-        </div>
-        {/* Perfil Emocional v2 */}
-        {selectedStudentEmotional.isReady && (
-          <div className="mb-8">
-            <EmotionalProfileDetail
-              analysis={selectedStudentEmotional.analysis}
-              status={selectedStudentEmotional.status}
-              metrics={selectedStudentEmotional.metrics}
-              alerts={selectedStudentEmotional.alerts}
-              dailyScores={selectedStudentEmotional.dailyScores}
+        {/* #101 — o detalhamento vira fole. Marcio: "deixa embaixo todo o emaranhado
+            de resultados soltos, eu não preciso disso". O dado não sumiu: saiu do
+            caminho de quem abre a ficha para preparar uma revisão em cinco minutos. */}
+        <button
+          onClick={() => setDetalheAberto(!detalheAberto)}
+          className="w-full flex items-center gap-2 text-[11px] uppercase tracking-widest text-slate-500 hover:text-slate-300 mb-3 transition-colors"
+        >
+          {detalheAberto ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Detalhamento
+          <span className="normal-case tracking-normal text-slate-600">
+            setup, emocional e perfil — o material bruto por trás do plano
+          </span>
+        </button>
+
+        {detalheAberto && (
+          <DetalheDoAluno
+            diagnostico={diagnosticoAluno}
+            episodios={episodiosAluno}
+            onEscolherDia={(data) => {
+              setDiaAluno(data);
+              setTimeout(() => document.getElementById('trades-do-dia')?.scrollIntoView({ behavior: 'smooth' }), 100);
+            }}
+          />
+        )}
+        {/* #101 — o Perfil Emocional saiu da ficha do mentor. Submetido ao teste da
+            conversa, sobrou um item de seis: score 68/100 é nota de prova (gera
+            defesa no aluno, não muda comportamento), a distribuição descreve sem
+            cruzar com resultado, a evolução diária é gráfico de um número sem
+            alavanca e o top de emoções é frequência sem consequência. O que
+            sobreviveu — evento com data — virou a coluna "Episódios", e o cruzamento
+            estado × resultado virou a tabela ao lado. A seção continua inteira na
+            tela do ALUNO, onde o autoconhecimento é o produto. */}
+        {/* #101 — a lista de trades só existe com um dia escolhido no calendário.
+            Marcio: "não quero todos os trades". O histórico inteiro numa página que
+            serve para preparar revisão é ruído — o que se discute é um dia. */}
+        {diaAluno ? (
+          <div className="glass-card" id="trades-do-dia">
+            <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+              <h3 className="font-semibold text-white text-sm">
+                Trades de {diaAluno.split('-').reverse().join('/')}
+              </h3>
+              <button
+                onClick={() => setDiaAluno(null)}
+                className="text-xs text-slate-400 hover:text-white px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-800/50 transition-colors"
+              >
+                Limpar dia
+              </button>
+            </div>
+            <TradesList
+              trades={selectedStudentTrades.filter((t) => t.date === diaAluno)}
+              plans={plans}
+              onViewTrade={setViewingTrade}
+              showStudent={false}
+              showStatus={true}
             />
           </div>
+        ) : (
+          <div className="glass-card p-6 text-center">
+            <p className="text-sm text-slate-500">Escolha um dia no calendário para ver os trades.</p>
+          </div>
         )}
-        <div className="glass-card">
-          <TradesList trades={selectedStudentTrades} plans={plans} onViewTrade={setViewingTrade} showStudent={false} showStatus={true} />
-        </div>
         <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={selectedStudentTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
 
         {/* Flow C — modal do wizard em modo mentor */}
@@ -356,11 +468,13 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
         {[
-          { id: 'overview', sidebarId: 'dashboard', label: 'Visão Geral', icon: Activity },
+          // #101 Fase E — a Torre é a home: é ela que diz o que fazer. Análises (ex-Visão
+          // Geral) é o nível de baixo, para investigar depois de escolher a pessoa.
+          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
+          { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
           { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
           { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
           { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
-          { id: 'ranking', sidebarId: 'ranking', label: 'Ranking', icon: Trophy },
           { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
         ].map(tab => (
           <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setPendingFilter(null); }} 
@@ -370,58 +484,136 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         ))}
       </div>
 
+      {activeView === 'torre' && (
+        <TorreDeControle
+          radar={radar}
+          onAbrirAluno={abrirAluno}
+          extrasAcao={(
+            <>
+              {/* #376 — promoção vem antes da regressão: é a notícia boa, e era a
+                  que não existia em lugar nenhum. Ambas somem quando vazias. */}
+              <MentorPromotionAlert
+                students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+                maturityMap={maturityByStudentId}
+                onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
+              />
+              <MentorMaturityAlert
+                students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
+                maturityMap={maturityByStudentId}
+                onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
+              />
+            </>
+          )}
+          pendencias={(
+            <div className="space-y-4">
+              <PendingReviewsCard
+                students={students}
+                onOpenReviewQueue={() => onViewChange('reviews')}
+              />
+              {/* #101 faixa 3 — o que EU devo. Contador que leva à tela onde o
+                  trabalho acontece; a lista não se repete aqui. */}
+              <button
+                onClick={() => onViewChange('pending')}
+                className="w-full glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare className={`w-5 h-5 ${pendingFeedback.length > 0 ? 'text-blue-400' : 'text-slate-600'}`} />
+                  <div>
+                    <div className="font-semibold text-white text-sm">Aguardando feedback</div>
+                    <div className="text-[11px] text-slate-500">
+                      {pendingFeedback.length === 0
+                        ? 'nenhum trade esperando por você'
+                        : `${pendingFeedback.length} ${pendingFeedback.length === 1 ? 'trade espera' : 'trades esperam'} por você`}
+                    </div>
+                  </div>
+                </div>
+                {pendingFeedback.length > 0 && (
+                  <span className="text-lg font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full">
+                    {pendingFeedback.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        />
+      )}
+
       {activeView === 'overview' && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              title="P&L Total Turma"
-              value={<MultiCurrencyAmount totalsByCurrency={overallTotalsByCurrency} layout="stack" showSign />}
-              icon={DollarSign}
-              color={overallTotalsByCurrency.size <= 1 ? (overallStats.totalPL >= 0 ? 'green' : 'red') : 'slate'}
-            />
-            <StatCard title="Win Rate Médio" value={formatPercent(overallStats.avgWinRate)} icon={Target} color={overallStats.avgWinRate >= 50 ? 'green' : 'yellow'} />
-            <StatCard title="Alunos Ativos" value={students.length} icon={Users} color="blue" />
-            <StatCard title="Trades Hoje" value={todayTrades.length} icon={Activity} color="purple" />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <EquityCurve trades={allTrades} />
-            <CalendarHeatmap trades={allTrades} />
-          </div>
-          {/* #376 — alunos prontos para promoção. Vem ANTES do alerta de regressão:
-              é a notícia boa, e era a que não existia em lugar nenhum. */}
-          <MentorPromotionAlert
-            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
-            maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
-          />
-          {/* Alertas de regressão de maturidade — issue #119 task 18 */}
-          <MentorMaturityAlert
-            students={students.map((s) => ({ id: s.studentId, name: s.name, email: s.email }))}
-            maturityMap={maturityByStudentId}
-            onSelectStudent={(student) => setSelectedStudent({ email: student.email, name: student.name })}
-          />
-          {/* Revisões Pendentes — trigger secundário G8 (Fase D issue #102) */}
-          <PendingReviewsCard
-            students={students}
-            onOpenReviewQueue={() => onViewChange('reviews')}
-          />
-          {/* Alertas Emocionais (Fase 1.5.0) */}
-          <div className="mb-8">
-            <MentorAlerts
-              students={students}
-              activeEmails={emailsAtivos}
-              getTradesByStudent={getTradesByStudent}
-              onViewStudent={setSelectedStudent}
+          {/* #101 Fase E — os quatro StatCards de média de turma (P&L Total · Win Rate
+              Médio · Alunos Ativos · Trades Hoje) saíram: média de turma não gera
+              decisão, e "Alunos Ativos" valia 17 aqui e 12 na Torre. Esta aba passa a
+              ser DIAGNÓSTICO — o lugar de investigar depois de escolher a pessoa. */}
+          {/* #101 — a curva de patrimônio saiu: somava o dinheiro de doze pessoas em
+              duas moedas numa linha só. O calendário passou a ser o do aluno
+              (TradingCalendar) em modo turma — o CalendarHeatmap lia campos que
+              `generateCalendarData` não devolve mais (dayOfWeek, pl) e renderizava
+              uma grade de quadrados vazios. */}
+          {/* #101 — o calendário ocupa a linha inteira: é a peça de diagnóstico
+              desta aba, e espremido em meia tela a célula do dia virava planilha. */}
+          <div className="mb-6">
+            <TradingCalendar
+              trades={allTrades}
+              daysMeta={diasDaTurma}
+              selectedDate={diaSelecionado}
+              onSelectDate={(date) => setDiaSelecionado(date === diaSelecionado ? null : date)}
             />
           </div>
-          {/* Card Assinaturas (issue #094) */}
-          <div className="mb-8 max-w-sm">
-            <SubscriptionSummaryCard onNavigate={() => onViewChange('subscriptions')} />
-          </div>
-          <div className="glass-card">
-            <TradesList trades={allTrades.slice(0, 20)} plans={plans} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
-          </div>
+
+          {/* #101 — a lista era os 20 trades mais recentes da turma, sem recorte
+              nenhum. Agora só existe com um dia escolhido no calendário. */}
+          {diaSelecionado ? (
+            <div className="glass-card">
+              <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-white">
+                    Trades de {diaSelecionado.split('-').reverse().join('/')}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {tradesDoDia.length} {tradesDoDia.length === 1 ? 'trade' : 'trades'}
+                    {diasDaTurma[diaSelecionado] && ` · ${diasDaTurma[diaSelecionado].alunos} ${diasDaTurma[diaSelecionado].alunos === 1 ? 'aluno' : 'alunos'}`}
+                    {diasDaTurma[diaSelecionado]?.flags > 0 && (
+                      <span className="text-amber-400"> · {diasDaTurma[diaSelecionado].flags} fora do plano</span>
+                    )}
+                  </p>
+                  {/* Quem operou no dia, do que mais operou pro que menos. */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(diasDaTurma[diaSelecionado]?.nomes ?? []).map((a) => (
+                      <span
+                        key={a.email || a.nome}
+                        className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                          a.flags > 0
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            : 'border-slate-700 bg-slate-800/50 text-slate-300'
+                        }`}
+                        title={a.flags > 0 ? `${a.flags} fora do plano` : 'dentro do plano'}
+                      >
+                        {a.nome} <span className="text-slate-500">{a.trades}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDiaSelecionado(null)}
+                  className="text-xs text-slate-400 hover:text-white px-3 py-1 rounded-lg border border-slate-700 hover:bg-slate-800/50 transition-colors"
+                >
+                  Limpar dia
+                </button>
+              </div>
+              <TradesList trades={tradesDoDia} plans={plans} onViewTrade={setViewingTrade} showStudent={true} showStatus={true} />
+            </div>
+          ) : (
+            <div className="glass-card p-8 text-center">
+              <p className="text-sm text-slate-500">Escolha um dia no calendário para ver os trades.</p>
+            </div>
+          )}
         </>
+      )}
+
+      {activeView === 'overview' && (
+        <div className="max-w-sm mb-8">
+          <TorreVisaoRapida byStudent={radar.byStudent} onAbrirAluno={abrirAluno} />
+        </div>
       )}
 
       {activeView === 'students' && (
@@ -667,38 +859,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                       {student.reasons.map((reason, i) => <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>)}
                     </div>
                   </div>
-                  <button onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
+                  <button onClick={() => abrirAluno({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
                 </div>
               </div>
             ))
           )}
-        </div>
-      )}
-
-      {activeView === 'ranking' && (
-        <div className="glass-card overflow-hidden">
-          <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
-            <h3 className="font-semibold text-white">Ranking da Turma</h3>
-            <select value={rankingSort} onChange={(e) => setRankingSort(e.target.value)} className="text-sm py-2">
-              <option value="totalPL">Por P&L</option><option value="winRate">Por Win Rate</option><option value="profitFactor">Por Profit Factor</option><option value="totalTrades">Por Total de Trades</option>
-            </select>
-          </div>
-          <div className="divide-y divide-slate-800/50">
-            {ranking.map((student, index) => {
-              const studentRankingTrades = groupedTrades[student.email] || [];
-              const studentTotalsByCurrency = aggregateTradesByCurrency(studentRankingTrades);
-              return (
-              <div key={student.email} onClick={() => setSelectedStudent({ email: student.email, name: student.name })} className="p-4 flex items-center gap-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${index === 0 ? 'bg-yellow-500/20 text-yellow-400' : index === 1 ? 'bg-slate-400/20 text-slate-400' : index === 2 ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-800 text-slate-500'}`}>{index + 1}</div>
-                <div className="flex-1"><p className="font-medium text-white">{student.name}</p><p className="text-xs text-slate-500">{student.totalTrades} trades</p></div>
-                <div className="text-right min-w-[8rem]">
-                  <MultiCurrencyAmount totalsByCurrency={studentTotalsByCurrency} layout="stack" showSign className="font-semibold text-sm items-end" />
-                  <p className="text-xs text-slate-500">WR: {formatPercent(student.winRate)}</p>
-                </div>
-              </div>
-              );
-            })}
-          </div>
         </div>
       )}
 

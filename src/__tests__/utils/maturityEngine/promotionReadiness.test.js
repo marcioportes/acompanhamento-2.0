@@ -72,3 +72,32 @@ describe('isReadyForPromotion', () => {
     }
   });
 });
+
+describe('#101 — proposta já consumida não reacende o card', () => {
+  // Marcio, 28/08: "fiz a promoção e ainda assim os alarmes continuam na tela".
+  // Promover grava `currentStage`; a proposta e os gates seguem descrevendo o
+  // estágio ANTIGO até o próximo recompute.
+  const prontoPara = (nextStage, currentStage) => ({
+    currentStage,
+    gatesMet: 9,
+    gatesTotal: 9,
+    proposedTransition: { proposed: 'UP', blockers: [], nextStage },
+  });
+
+  it('some quando o aluno já está no estágio proposto', () => {
+    expect(isReadyForPromotion(prontoPara(3, 3))).toBe(false);
+  });
+
+  it('some quando o aluno já passou do estágio proposto', () => {
+    expect(isReadyForPromotion(prontoPara(2, 4))).toBe(false);
+  });
+
+  it('continua valendo quando a promoção ainda não aconteceu', () => {
+    expect(isReadyForPromotion(prontoPara(3, 2))).toBe(true);
+  });
+
+  it('proposta sem estágio de destino segue pelo caminho antigo', () => {
+    const m = { currentStage: 2, gatesMet: 9, gatesTotal: 9, proposedTransition: { proposed: 'UP', blockers: [] } };
+    expect(isReadyForPromotion(m)).toBe(true);
+  });
+});

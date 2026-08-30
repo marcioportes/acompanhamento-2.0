@@ -434,7 +434,11 @@ const detectEarlyExit = (trade, orders) => {
   if (orders && orders.some(o => o.isStopOrder && o.status === 'FILLED')) return null;
   return {
     code: 'EARLY_EXIT',
-    severity: rr < planRR * 0.25 ? 'HIGH' : rr < planRR * 0.40 ? 'MEDIUM' : 'LOW',
+    // #101 — BAIXA, fixo. Espelho de src/utils/shadowBehaviorAnalysis.js: sair
+    // abaixo do RR reduz a esperança matemática, mas pode ser proteção de um trade
+    // que ia virar. Distinguir exigiria dado de mercado pós-saída, que não existe
+    // para futuros B3. NÃO REESCALAR sem resolver a fonte.
+    severity: 'LOW',
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT, layer: orders && orders.length > 0 ? 2 : 1,
     evidence: { actualRR: rr, planRR, rrAchievedPct: Math.round((rr / planRR) * 100) }

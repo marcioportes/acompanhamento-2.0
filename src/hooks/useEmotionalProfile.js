@@ -212,7 +212,13 @@ export const useEmotionalProfile = ({
         type: 'STATUS_CRITICAL',
         severity: 'CRITICAL',
         message: `Score emocional crítico: ${status.adjustedScore}/100`,
-        timestamp: new Date().toISOString(),
+        // #101 — era `new Date().toISOString()`: o alerta nascia com hora nova a
+        // cada recomputo, e qualquer consumidor que guardasse a lista em estado (o
+        // painel do mentor) enxergava mudança onde não houve. O carimbo passa a ser
+        // o do último trade do período — a hora do fato, não a da leitura.
+        timestamp: trades?.length
+          ? (trades[trades.length - 1]?.entryTime || trades[trades.length - 1]?.date || null)
+          : null,
         details: status
       });
     }
@@ -224,7 +230,7 @@ export const useEmotionalProfile = ({
     );
 
     return allAlerts;
-  }, [analysis, complianceEmotional, status]);
+  }, [analysis, complianceEmotional, status, trades]);
 
   // ==================== RETORNO ====================
 

@@ -9,6 +9,7 @@
  * mentor-only (isMentor) — #315: o dump de campos do schema não tem leitura pro aluno.
  */
 import React, { useState } from 'react';
+import { severidadeVigente } from '../../constants/behavioralTaxonomy';
 import { AlertTriangle, Lock } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
@@ -50,7 +51,12 @@ const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolati
           <span className={`text-sm font-medium ${cleared ? 'line-through' : ''}`}>{isPositive ? '✦' : '⚠'} {label}</span>
           {!isPositive && (
             <span className={`text-xs px-1.5 py-0.5 rounded border ${familyStyle(family)}`}>
-              {SEVERITY_LABELS[family.severity] ?? family.severity}
+              {/* #101 — teto de leitura: `EARLY_EXIT` gravado como alta por uma régua
+                  abandonada continua no Firestore, mas não é exibido como grave. */}
+              {(() => {
+                const sev = severidadeVigente(family.canonicalCode, family.severity);
+                return SEVERITY_LABELS[sev] ?? sev;
+              })()}
             </span>
           )}
           {family.isGate && !cleared && (

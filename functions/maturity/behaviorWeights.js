@@ -3,7 +3,7 @@
  * behaviorWeights (CJS) — agrega `trade.behaviorProfile.families` em penalidade/bônus por
  * dimensão 4D + `ruleViolationRate`. Rate-normalized (Fase D). Ver fonte ESM p/ doc.
  */
-const { getPattern } = require('./behavioralTaxonomyMirror');
+const { getPattern, severidadeVigente } = require('./behavioralTaxonomyMirror');
 
 const SEVERITY_WEIGHT = Object.freeze({ HIGH: 3, MEDIUM: 2, LOW: 1 });
 const POSITIVE_WEIGHT = 1;
@@ -45,12 +45,14 @@ function aggregateBehaviorWeights(trades = []) {
       // nem alimenta gate: o gate mede posição descoberta, e essa foi coberta. Continua
       // no card, porque o fato é verdadeiro e o mentor precisa ver. Ver
       // functions/shared/gateEligibility.
-      const elegivel = !(code === 'UNPROTECTED_SIZE' && f.severity !== 'HIGH');
+      // Teto de leitura (#101): a severidade gravada não sobrepõe o limite do padrão.
+      const sev = severidadeVigente(code, f.severity);
+      const elegivel = !(code === 'UNPROTECTED_SIZE' && sev !== 'HIGH');
       const dims = Array.isArray(p.dimensao) ? p.dimensao : [];
       if (f.valence === 'positive') {
         for (const d of dims) if (wbon[d] != null) wbon[d] += POSITIVE_WEIGHT;
       } else {
-        const w = SEVERITY_WEIGHT[f.severity] ?? SEVERITY_WEIGHT.LOW;
+        const w = SEVERITY_WEIGHT[sev] ?? SEVERITY_WEIGHT.LOW;
         for (const d of dims) if (wpen[d] != null) wpen[d] += w;
         if (elegivel) {
           hasViolation = true;

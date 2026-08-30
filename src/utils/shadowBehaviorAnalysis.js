@@ -831,7 +831,23 @@ export const detectEarlyExit = (trade, orders, config = DEFAULT_CONFIG.earlyExit
 
   return {
     code: PATTERN_CODES.EARLY_EXIT,
-    severity: rrRatio < planRR * 0.25 ? SEVERITY.HIGH : rrRatio < planRR * 0.40 ? SEVERITY.MEDIUM : SEVERITY.LOW,
+    // #101 (29/08/2026) — SEVERIDADE FIXA EM BAIXA, e não é provisório.
+    //
+    // Marcio: "sair abaixo do RR não é grave, é baixo. Contribui para diminuir a
+    // esperança matemática, mas pode ser lido como condução de um trade perdido...
+    // ele também pode estar protegendo o loss".
+    //
+    // O detector só dispara em trade VENCEDOR, e é aí que a leitura é ambígua: sair
+    // em +25 pode ser medo cortando o lucro OU proteção de posição que ia virar.
+    // Distinguir exigiria saber o que o preço fez DEPOIS da saída — e a fonte não
+    // existe: futuros B3 (WIN/WDO), que são 121 dos 131 trades elegíveis da base,
+    // não têm série de 1 minuto gratuita (ver `marketData/symbolMapper.js`). Sem
+    // fonte, o sistema não tem como provar, e não acusa o que não pode provar.
+    //
+    // NÃO REESCALAR sem resolver a fonte de dados primeiro. A régua anterior
+    // escalava por distância do alvo (abaixo de 25% dele virava ALTA) e colocou o
+    // próprio mentor em "risco alto" por uma saída de +25.
+    severity: SEVERITY.LOW,
     confidence: orders && orders.length > 0 ? 0.85 : 0.65,
     emotionMapping: EMOTION_MAPPING.EARLY_EXIT,
     layer: orders && orders.length > 0 ? 2 : 1,

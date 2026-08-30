@@ -18,7 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
-  Trophy,
+
   AlertTriangle,
   Wallet,
   BookOpen,
@@ -110,7 +110,6 @@ const Sidebar = ({
       badge: closuresPendingCount > 0 ? closuresPendingCount : null,
       badgeColor: 'red',
     },
-    { id: 'ranking', label: 'Ranking', icon: Trophy },
     { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
     { id: 'settings', label: 'Configurações', icon: Settings },
   ];
@@ -168,7 +167,9 @@ const Sidebar = ({
               key={item.id}
               onClick={() => onViewChange(item.id)}
               className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                currentView === item.id
+                // #101 — a Torre é ABA do Dashboard, não item de sidebar: estando
+                // nela, o Dashboard continua aceso.
+                (currentView === 'torre' ? 'dashboard' : currentView) === item.id
                   ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
               }`}

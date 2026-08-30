@@ -44,6 +44,26 @@ function tradeIsoDay(value) {
  * Lógica pura — recebe dados pré-fetched, retorna payloads para current+history.
  * Zero side-effects. Testável diretamente sem mocks de Firestore.
  */
+/**
+ * A janela do estágio atual — #101, "promoção zera tudo".
+ *
+ * Devolve só os trades a partir da entrada no estágio. Sem promoção registrada
+ * (`stageSince` ausente), a janela é o histórico inteiro: aluno que nunca foi
+ * promovido não teve vida nova.
+ *
+ * @param {Array} trades
+ * @param {any} stageSince — Timestamp do Firestore, Date ou 'YYYY-MM-DD'
+ * @returns {Array}
+ */
+function tradesDoEstagioAtual(trades, stageSince) {
+  const lista = Array.isArray(trades) ? trades : [];
+  const desde = stageSince?.toDate?.()?.toISOString?.().slice(0, 10)
+    ?? (stageSince instanceof Date ? stageSince.toISOString().slice(0, 10) : null)
+    ?? (typeof stageSince === 'string' ? stageSince.slice(0, 10) : null);
+  if (!desde) return lista;
+  return lista.filter((t) => typeof t?.date === 'string' && t.date >= desde);
+}
+
 function buildMaturityPayloads({
   trades,
   plans,
@@ -65,6 +85,7 @@ function buildMaturityPayloads({
   lastTradeId,
   serverTimestamp,
   asOfTimestamp,
+  stageHistory = [],
 }) {
   const engineOutput = evaluateMaturity({
     trades,
@@ -83,6 +104,7 @@ function buildMaturityPayloads({
     complianceRate100,
     executionEvents,
     tradesWithOrderData,
+    baselineStage,
   });
 
   const todayIso = isoDate(now);
@@ -96,7 +118,13 @@ function buildMaturityPayloads({
     ...engineOutput,
     currentStage: stageCurrent,
     baselineStage: baselineStage ?? stageCurrent,
-    stageHistory: [],
+    // #101 — aqui era `stageHistory: []` fixo, e `{merge: true}` NÃO protege array:
+    // o merge substitui o campo pelo valor novo. Todo recompute zerava o histórico
+    // de promoções — foi por isso que o Wilson apareceu com `stageHistory: []`
+    // minutos depois de ser promovido, sem registro de quem promoveu nem quando.
+    // Agora o histórico existente entra de volta no payload; o campo continua no
+    // schema, mas o recompute deixou de ser o lugar que o apaga.
+    stageHistory: Array.isArray(stageHistory) ? stageHistory : [],
     lastTradeId: lastTradeId ?? null,
     computedAt,
     asOf: asOfTimestamp ?? null,
@@ -196,6 +224,15 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       : baselineStage;
     const stageCurrent = Math.max(storedStage, baselineStage);
 
+    // #101 — desde quando o aluno está NESTE estágio. Sem esta marca não há como
+    // separar "regrediu" de "acabou de ser promovido", e o motor emitia regressão
+    // na primeira execução depois de toda promoção (o gatilho 3 compara métricas
+    // com o estágio atual, que subiu sem os dados mudarem).
+    // Grava na primeira vez que faltar: a carência começa hoje para quem já está
+    // no meio do caminho.
+    const dadosAtuais = currentSnap.exists ? currentSnap.data() : null;
+    const stageSince = dadosAtuais?.stageSince ?? null;
+
     // NOTA: query NÃO filtra por status (semântica de revisão, não execução).
     // O engine consume trades com resultado fechado; o filtro semântico de
     // execução é o `result` numérico finito, feito downstream em preComputeShapes.
@@ -203,6 +240,19 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .where('studentId', '==', studentId)
       .get();
     const trades = tradesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // #101 — PROMOÇÃO ZERA TUDO (Marcio, 29/08): "uma vez promovido, tudo deve ser
+    // zerado, é como se ele começasse de novo".
+    //
+    // O motor passa a enxergar SÓ os trades a partir da entrada no estágio. Não é
+    // filtro cosmético: gates, métricas, composite e regressão são recalculados
+    // sobre a vida nova. Sem isso o gatilho 3 do detector — que compara métricas
+    // com o estágio ATUAL — acusava regressão em toda promoção, porque o estágio
+    // subia e os dados eram os mesmos. Foi o que aconteceu com o Wilson.
+    //
+    // O histórico anterior não some do produto: continua nos trades, no extrato e
+    // no `_historyBucket`. O que muda é a régua — ela mede o estágio atual.
+    const tradesDoEstagio = tradesDoEstagioAtual(trades, stageSince);
 
     const plansSnap = await db.collection('plans')
       .where('studentId', '==', studentId)
@@ -244,10 +294,13 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
     }
 
     const now = new Date();
-    const preComputed = preComputeShapes({ trades, plans, now, emotions, orders });
+    // A partir daqui, a régua é a do ESTÁGIO ATUAL: `tradesDoEstagio`, não `trades`.
+    // O `recomputeBehaviorProfiles` acima continua vendo tudo de propósito — o perfil
+    // comportamental do trade é fato do trade, não da fase do aluno.
+    const preComputed = preComputeShapes({ trades: tradesDoEstagio, plans, now, emotions, orders });
 
     const payloads = buildMaturityPayloads({
-      trades,
+      trades: tradesDoEstagio,
       plans,
       now,
       stageCurrent,
@@ -255,6 +308,7 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       baseline,
       ...preComputed,
       lastTradeId,
+      stageHistory: dadosAtuais?.stageHistory ?? [],
       serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
       asOfTimestamp: admin.firestore.Timestamp.fromDate(now),
     });
@@ -271,7 +325,13 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
       .collection('maturity').doc('_historyBucket')
       .collection('history').doc(payloads.historyDoc.date);
 
-    batch.set(currentRef, payloads.currentDoc, { merge: true });
+    // `stageSince` nasce aqui quando falta e NUNCA é sobrescrito depois: quem o
+    // move é a promoção (`promoteStudentStage`), não o recompute.
+    const docParaGravar = stageSince
+      ? payloads.currentDoc
+      : { ...payloads.currentDoc, stageSince: admin.firestore.FieldValue.serverTimestamp() };
+
+    batch.set(currentRef, docParaGravar, { merge: true });
     batch.set(historyRef, payloads.historyDoc, { merge: true });
     await batch.commit();
 
@@ -288,4 +348,4 @@ async function recomputeForStudent(db, studentId, { lastTradeId = null, admin: a
   }
 }
 
-module.exports = { buildMaturityPayloads, runMaturityRecompute, recomputeForStudent };
+module.exports = { buildMaturityPayloads, runMaturityRecompute, recomputeForStudent, tradesDoEstagioAtual };
