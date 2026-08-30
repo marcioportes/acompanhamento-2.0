@@ -12,6 +12,14 @@ Version source of truth: `src/version.js`.
 
 **feat:** Aguardando Feedback vira árvore aluno → dia → plano → trade
 
+- **A fila deixou de ser lista plana.** Cada operação chegava sem passado e o mentor reconstruía o contexto de cabeça. Agora é árvore aluno → dia → plano → trade sobre o `buildPeriodState` do #402 — sem cálculo novo, sem persistência nova.
+- **O nível de plano é chave, não atributo.** O período é medido por plano, com limiares e moeda próprios: aluno com B3 e mesa no mesmo dia tem dois períodos independentes. Com um plano só, o nível colapsa.
+- **A revisão semanal ganhou "Para lembrar na conversa"** — os fatos do período que a lista de trades não carrega. Os lembretes bons entram junto com os ruins: "bateu a meta e parou" nunca é dito porque não gera alarme.
+- **A revisão aparecia vazia.** `frozenSnapshot.periodTrades` é projeção, não trade: renomeia campos e omite `date`, `planId` e `studentId`, e o motor descartava a revisão inteira em silêncio.
+- **"Aberta sem previsão de stop"** substitui "aberta sem orçamento", e o fato desceu do lembrete do dia para a linha da operação — é atômico: depende de onde ela caiu na sequência e de quanto restava naquele instante.
+- **Duas operações no mesmo segundo tornam a ordem um sorteio.** `orderingConfidence` não via o empate. Com a ordem em dúvida a tela cala tudo que depende dela (a ordinal, a autorização por operação, "continuou depois do stop", "bateu a meta e parou") e mantém o que o fechamento prova sozinho.
+- **O silêncio não absolve** — ao calar o aviso, a caixa verde do painel de comportamento afirmava "execução alinhada" sobre um predicado que sequer foi avaliado.
+- **O aviso de ordem nunca apareceu na tela da fila** — lia `ordem.detail ?? ordem.title`, campos que `dayOrderingNotice` não devolve.
 - Apagado `trades/blS5d3FkJax0qR4CBcQK` — um documento com `behaviorProfile` e nada mais, resíduo de merge em trade apagado. A collection tem **380 trades, todos com plano**.
 - Criado `docs/data-dictionary.md`, gerado da produção com taxa de preenchimento por campo (`scripts/gerar-dicionario-dados.mjs`), e a regra de consultá-lo antes de escrever regra que dependa de campo.
 
