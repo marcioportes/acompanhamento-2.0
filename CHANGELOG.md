@@ -12,9 +12,14 @@ Version source of truth: `src/version.js`.
 
 **feat:** relatório do mês substitui o Diário na área do aluno
 
-- **Chunks:** CHUNK-02 (escrita) · CHUNK-04 e CHUNK-08 (leitura)
-- **Versão:** v1.86.0 (reservada em `f752b01f`)
-- **Controle:** `docs/dev/issues/issue-414-relatorio-mes.md`
+- **O Diário era segunda via do Dashboard.** `TradesList`, `AddTradeModal`, `CsvImportWizard`, `CsvImportManager`, `CsvImportCard` e `useCsvStaging` já estavam todos no `StudentDashboard`. O que ele acrescentava era uma barra de filtros — e não respondia a pergunta de fim de mês do aluno: o que eu escrevi na entrada, e o que o mentor respondeu.
+- **A rota `journal` passa a servir o Relatório do Mês.** Uma linha por trade **com feedback do mentor**: o trade · a observação de entrada com as refs HTF/LTF em miniatura · o feedback do mentor. Clique na linha abre a conversa, clique na miniatura abre o gráfico. Leitura pura — registrar, editar e importar seguem no Dashboard.
+- **"Tem feedback" lê os dois campos, com dedup.** `mentorFeedback` (legado) e `feedbackHistory` repetem a primeira mensagem em trade novo: ler um esconde metade da base, somar duplica. Mesma conciliação que o `FeedbackThread` já fazia para exibir a conversa.
+- **O recorte é `trade.date`, não `feedbackDate`** — o mês é o do trade, não o da resposta. Feedback que chegou em setembro sobre trade de agosto aparece em agosto. Comparação de prefixo em string, sem `Date` e sem fuso: aqui o recorte **é** o dia, não o instante (o oposto do #375/#292, de propósito).
+- **`currentMonthKey` é hora local.** `new Date('2026-08-01')` é UTC e vira julho em Brasília — 01/01 às 00:30 abriria o relatório em dezembro.
+- **Nunca um total único:** o resumo usa `aggregateTradesByCurrency` e imprime uma linha por moeda. O teste assere que a soma cross-currency não existe em lugar nenhum da tela (#289/#408).
+- Apagado `src/pages/TradesJournal.jsx` (322 linhas). Menu do aluno: "Diário"/`BookOpen` → "Relatório"/`FileText`.
+- Sem persistência nova — todos os campos já existiam e estão preenchidos (`notes` 84%, `htfUrl`/`ltfUrl` 85%). 25 testes novos (16 de regra + 9 de render em jsdom).
 
 
 ## [1.85.0] - 30/08/2026 · #408 · PR #412
