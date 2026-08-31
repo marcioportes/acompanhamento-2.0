@@ -80,7 +80,7 @@ describe('AddTradeModal — hidratação não descarta entrada do aluno (#347)',
     fireEvent.change(getNotes(), { target: { value: 'Entrada no rompimento, stop abaixo da mínima.' } });
     expect(getNotes().value).toBe('Entrada no rompimento, stop abaixo da mínima.');
 
-    // Exatamente o que StudentDashboard/TradesJournal fazem em handleSubmitReview:
+    // Exatamente o que o StudentDashboard faz em handleSubmitReview:
     // novo objeto, mesmo id.
     rerender(
       <AddTradeModal

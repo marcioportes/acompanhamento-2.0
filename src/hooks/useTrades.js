@@ -216,7 +216,7 @@ export const useTrades = (overrideStudentId = null) => {
     if (!user) throw new Error('Usuário não autenticado');
     // NÃO mexer no `loading` global — o listener onSnapshot re-emite quando o
     // doc aparece. Toggle de loading durante writes faz a página inteira virar
-    // fullscreen "Carregando..." (TradesJournal:156, StudentDashboard:187),
+    // fullscreen "Carregando..." (TradeReportPage, StudentDashboard:187),
     // gerando 1 piscada por trade ativado em loop (CsvImportManager).
     setError(null);
 
