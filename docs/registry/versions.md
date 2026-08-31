@@ -101,4 +101,4 @@
 | 1.83.32 | #402 | `fix/issue-402-dia-vs-trade` + `-card-dia-compacto` + `-trade-no-dia` | 25/08/2026 | consumida (PRs #403 `56c0dea8` / #404 `761145b4` / #405 `298a3245`) |
 | 1.83.33 | #402 (reaberta) | `fix/issue-402-verde-coerente` | 27/08/2026 | consumida (PR #407 squash `2b1250bd`) |
 | 1.85.0 | #408 | `feat/issue-408-fila-por-dia` | 29/08/2026 | consumida (PR #412 squash `94dbeee5`) |
-| 1.86.0 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | reservada |
+| 1.86.0 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | consumida (PR #415 squash `503c7739`) |

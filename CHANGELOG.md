@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.86.0] - 31/08/2026 · #414 · PR #415
+
+**feat:** relatório do mês substitui o Diário na área do aluno
+
+- **Chunks:** CHUNK-02 (escrita) · CHUNK-04 e CHUNK-08 (leitura)
+- **Versão:** v1.86.0 (reservada em `f752b01f`)
+- **Controle:** `docs/dev/issues/issue-414-relatorio-mes.md`
+
+
 ## [1.85.0] - 30/08/2026 · #408 · PR #412
 
 **feat:** Aguardando Feedback vira árvore aluno → dia → plano → trade

@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.86.0: #414 feat relatório do mês no lugar do Diário — trade + observação de entrada + feedback do mentor (em andamento)
+ * - 1.86.0: #414 feat relatório do mês substitui o Diário na área do aluno (PR #415, 31/08/2026)
  * - 1.85.0: #408 feat Aguardando Feedback vira árvore aluno → dia → plano → trade (PR #412, 30/08/2026)
  * - 1.84.0: #101 feat Torre de Controle — a tela que diz o que fazer (PR #411, 29/08/2026)
  * - 1.83.33: #402 fix a caixa verde nao pode contradizer a ressalva de abertura (PR #407, 27/08/2026)
