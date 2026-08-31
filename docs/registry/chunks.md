@@ -5,3 +5,4 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
+| CHUNK-02 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | Relatório do mês substitui o Diário (CHUNK-04/08 leitura) |
