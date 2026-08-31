@@ -5,7 +5,7 @@
  * 
  * CHANGELOG:
  * - 1.4.0: StudentFeedbackPage self-contained (master-detail interno)
- * - 1.3.0: TradesJournal navega para FeedbackPage, View As Student
+ * - 1.3.0: Diário navegava para FeedbackPage, View As Student (Diário aposentado no #414)
  * - 2.2.1: Fix login carregando na tela errada
  * - 2.2.0: FeedbackPage com trade selecionado
  * - 2.1.0: Adicionado FeedbackPage para alunos
@@ -23,7 +23,7 @@ import PropFirmPage from './pages/PropFirmPage';
 import MentorDashboard from './pages/MentorDashboard';
 import AccountsPage from './pages/AccountsPage';
 import SettingsPage from './pages/SettingsPage';
-import TradesJournal from './pages/TradesJournal';
+import TradeReportPage from './pages/TradeReportPage';
 import StudentsManagement from './pages/StudentsManagement';
 import FeedbackPage from './pages/FeedbackPage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
@@ -444,7 +444,9 @@ const AppContent = () => {
       // Aluno
       switch (currentView) {
         case 'journal':
-          return <TradesJournal onNavigateToFeedback={handleNavigateToFeedback} />;
+          // #414 — a rota do antigo Diário serve o Relatório do Mês. Registro/edição/import
+          // de trade seguem no StudentDashboard, que sempre teve os mesmos componentes.
+          return <TradeReportPage onNavigateToFeedback={handleNavigateToFeedback} />;
         case 'feedback':
           // v2.0.0: StudentFeedbackPage é self-contained (master-detail)
           return <StudentFeedbackPage />;

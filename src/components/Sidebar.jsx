@@ -21,7 +21,6 @@ import {
 
   AlertTriangle,
   Wallet,
-  BookOpen,
   Settings,
   Brain,
   CreditCard,
@@ -68,7 +67,8 @@ const Sidebar = ({
     },
     { id: 'student-reviews', label: 'Revisões', icon: ClipboardCheck },
     { id: 'closures', label: 'Ciclos Fechados', icon: History },
-    { id: 'journal', label: 'Diário', icon: BookOpen },
+    // #414 — o Diário virou o Relatório do Mês (leitura: trade + observação + feedback).
+    { id: 'journal', label: 'Relatório', icon: FileText },
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).
     { id: 'accounts', label: 'Contas', icon: Wallet },
