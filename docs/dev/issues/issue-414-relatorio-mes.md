@@ -4,8 +4,8 @@
 
 - [x] Mockup apresentado — no body do issue #414 e no chat de 31/08/2026
 - [x] Memória de cálculo apresentada — no body do issue #414 (sem fórmula nova: dois filtros + agregação por moeda)
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou — 31/08/2026, "go"
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -31,7 +31,7 @@ Ver issue body no GitHub: #414. Mockup e memória de cálculo estão lá.
 
 ## Sessions
 
-_(1 linha por task)_
+- `task 01 [relatorio-mes] commit 15e19187 ok — A1..A5 numa tacada; 25 testes (16 util + 9 render)`
 
 ## Shared Deltas
 
