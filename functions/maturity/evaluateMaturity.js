@@ -96,7 +96,9 @@ function evaluateMaturity({
   // Medido em produção: Rafael Perilo marcava 6 na janela e 11 no histórico; Elza, 7 e
   // 10. Os dois passam o gate de 8 sem que o número do gate mude — o defeito era a conta.
   const strategyConsWks = computeStrategyConsistencyWeeks(trades, safePlans);
-  const strategyConsMonths = computeStrategyConsistencyMonths(trades, safePlans);
+  // #416 C2 — não recebe mais `trades`: a métrica passou a medir meses sem mudança nos
+  // parâmetros de risco do plano, não setup dominante do mês (DEC-AUTO-416-18).
+  const strategyConsMonths = computeStrategyConsistencyMonths(safePlans, { now });
   const stopUsageRate = computeStopUsageRate(W);
   const dailyReturns = computeDailyReturns(W, initialBalance);
   const monthlySharpe = computeSharpe(dailyReturns, { periodicity: 'monthly' });

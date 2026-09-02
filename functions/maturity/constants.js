@@ -47,7 +47,7 @@ const GATES_BY_TRANSITION = {
     { id: 'emotional-75', label: 'Emocional ≥ 65', dim: 'emo', metric: 'E', op: '>=', threshold: 65},
     { id: 'financial-fortified', label: 'Financial ≥ 70', dim: 'fin', metric: 'F', op: '>=', threshold: 70},
     { id: 'operational-80', label: 'Operacional ≥ 70', dim: 'op', metric: 'O', op: '>=', threshold: 70},
-    { id: 'strategy-12-months', label: '6 meses com a mesma estratégia', dim: 'op', metric: 'strategyConsMonths', op: '>=', threshold: 6},
+    { id: 'strategy-12-months', label: '6 meses sem mudar os parâmetros de risco do plano', dim: 'op', metric: 'strategyConsMonths', op: '>=', threshold: 6},
     { id: 'advanced-metrics', label: 'MEP/MEN/Sharpe rastreados', dim: 'op', metric: 'advancedMetricsPresent', op: '==', threshold: true },
     { id: 'compliance-100', label: 'Compliance ≥ 85%', dim: 'op', metric: 'complianceRate100', op: '>=', threshold: 85},
     { id: 'winrate-55', label: 'Win rate ≥ 48%', dim: 'fin', metric: 'winRate', op: '>=', threshold: 48},

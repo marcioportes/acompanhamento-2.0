@@ -98,8 +98,20 @@ describe('#376 — buraco de calendário quebra a sequência', () => {
     expect(computeStrategyConsistencyWeeks(pulaDuas.map((d) => t(d)), [])).toBe(2);
   });
 
-  it('meses: janeiro + julho não valem 2 consecutivos', () => {
+  // #416 C2 — REESCRITO. O cenário antigo ("janeiro + julho não valem 2 meses
+  // consecutivos") media run de setup dominante por mês. A métrica mensal deixou de olhar
+  // trade: passa a contar meses desde a última mudança de parâmetro de risco do plano
+  // (DEC-AUTO-416-18). A tolerância de buraco no calendário segue valendo — só para a
+  // versão SEMANAL, testada acima, que é a do gate `strategy-8-weeks` do #376.
+  it('meses: a métrica não olha mais trade nenhum, só o plano', () => {
     const trades = [...JAN, ...JUL].map((d) => t(d));
-    expect(computeStrategyConsistencyMonths(trades, [])).toBe(1);
+    const plano = [{ active: true, createdAt: new Date('2026-01-15T00:00:00Z') }];
+    const now = new Date('2026-07-15T12:00:00Z');
+
+    // trade não entra na conta: mesma resposta com e sem histórico de operação.
+    expect(computeStrategyConsistencyMonths(plano, { now })).toBe(6);
+    expect(computeStrategyConsistencyMonths(plano, { now, trades })).toBe(6);
+    // e sem plano não há o que medir, por mais trade que exista.
+    expect(computeStrategyConsistencyMonths([], { now })).toBe(0);
   });
 });
