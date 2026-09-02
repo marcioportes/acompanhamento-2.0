@@ -12,9 +12,42 @@ Version source of truth: `src/version.js`.
 
 **fix:** a esteira de fechamento para de mentir — 13 correções
 
-- **`feedsGates` não estava morto.** A redação original do issue afirmava que o flag não era lido em lugar nenhum; a busca foi pelo nome literal e não viu a via derivada `GATE_CODES`, consumida em `behavioralDetection`. O defeito real era mais estreito: só `aggregateBehaviorWeights` ignorava. Body do issue corrigido.
-- **`handleMentorSavePlan` nunca passou `changedFields`** — o caminho do mentor gravava `fields: []` em `editHistory` desde sempre, e a métrica nova jamais veria uma edição de mentor. Corrigido no hook (DEC-AUTO-416-23).
-- **Segundo caller não previsto:** `ResultadoDoAluno.jsx:58` (entrou em `4ab2c3eb`/#411, depois da redação do spec) consome `computeRuleAdherenceRate` cru. Trocar o contrato apagaria o tile de Aderência do MentorDashboard sem erro e sem teste vermelho — em CHUNK-16, que este issue não detém. Resolvido mantendo o retorno `number | null` e expondo a cobertura por `computeAdherenceCoverage`, função irmã com predicado compartilhado: o denominador correto chega às duas telas sem tocar CHUNK-16 (DEC-AUTO-416-15).
+A leitura passo a passo do fechamento real do ciclo de agosto/2026 mostrou números e textos que não correspondiam ao dado. Causa raiz da maioria: **texto ou número derivado de um proxy em vez do dado** — faixa de pontuação, taxa, constante fixa, string fixa, sinal do P&L, outlier.
+
+### Expressão
+
+- **Monte Carlo errava por 30×.** A projeção do próximo ciclo exibia mediana **+40,5%** e p10 **−135,5%** — o segundo é impossível, significaria capital negativo. O divisor era a constante `1000` hardcoded, na mesma linha do JSX que imprimia `baseCapital`. Os valores reais eram **+1,3%** e **−4,5%**. O motor (`monteCarlo.js`) estava **correto** o tempo todo: bootstrap aditivo em R$, sem composição nem alavancagem — os testes passavam porque verificavam os percentis em R$. Nasce `pctOfBase`, helper puro; base ausente ou ≤ 0 exibe em moeda e omite o percentual.
+- **"Base = últimos 100 trades"** era string fixa com pool de 20. Passa a exibir `samplePoolSize`.
+- **Hints do TPS chaveados por faixa de pontos.** Com payoff 1,18 o card afirmava *"ganhos médios menores que perdas"* — o oposto do dado. Com drawdown de 3,9% mandava *"reduzir size ou parar antes"* enquanto a tela anterior dizia que nem meta nem stop foram tocados: o denominador era um cap fixo de 5%, sem relação com `plan.cycleStop`. Cada fator passa a ter predicado sobre o dado.
+- **"Detectado: 4 violações de regras"** era `(1 − aderência) × total` — contava trades não-aderentes e chamava de violação, contradizendo a aba 1 do mesmo fechamento. Passa a contar `compliance.violations`.
+- **Custo emocional colorido pelo sinal do P&L.** O dia com vingança rendeu +R$ 560 e apareceu **em verde**, com o ícone da seção trocando para carinha sorrindo, contra dias limpos em vermelho. A UI ensinava que perder o controle paga — reforço intermitente escrito em CSS. Cor por valência comportamental; ícone por `tiltDaysCount`, nunca por resultado.
+- **"Dias limpos"** contava só tilt e vingança: hesitação e perseguição caíam dentro dos limpos. Renomeado para "dias sem tilt/vingança" nos três pontos onde aparecia.
+
+### Recomendação
+
+- **SUSTENTAR sugeria "replicar a configuração de entrada"** do melhor trade em ciclo com vingança detectada, e propagava para o SWOT do mentor como Força. O guard comportamental existia seis linhas acima, aplicado ao sustain de aderência, e não aos de outlier. O sustain do melhor dia limpo também passa a exigir que a soma dos dias limpos seja positiva — pinçava +R$ 500 de um conjunto que somou −R$ 134.
+
+### Motor
+
+- **`ruleViolationRate` ignorava `feedsGates`.** O mapa de pesos aprovado em 01/06/2026 é explícito por padrão sobre quais entram na taxa: `TILT` entra, `EARLY_EXIT`, `LATE_EXIT` e `HESITATION` só penalizam score. `behavioralDetection` já respeitava via `GATE_CODES`; `aggregateBehaviorWeights` contava toda família negativa. Alinhado nos dois lados (ESM + espelho CJS). Saída antecipada deixa de reprovar num gate onde o #101 decidiu que ela não pesa.
+- **Aderência penalizava dado ausente.** Trade sem objeto `compliance` caía no denominador como não-aderente, alimentando o TPS com peso 20. Sai do denominador, com linha de cobertura na tela — mesmo padrão do MEP/MEN.
+- **Gate "6 meses com a mesma estratégia" não media estratégia.** `computeStrategyConsistencyMonths` descartava o parâmetro `plans` na primeira linha e contava meses em que um único `trade.setup` dominava >60% — punia por construção quem opera mais de um setup, e `setup` está preenchido em 98% da base. Passa a medir meses sem mudança em `RISK_FIELDS`, lidos de `plan.editHistory`. `RISK_FIELDS` promovido a SSoT em `src/utils/planRiskFields.js`.
+
+### Latentes
+
+- `maxDD` ordenava só por data: com trades no mesmo dia, o peak-to-trough variava com a ordem do array, tornando o fator de maior peso do TPS (25) não determinístico. Passa por `sortTradesChrono`.
+- `planTrades` fazia `.slice(-200)` sobre array ordenado `desc` — pegava os 200 mais antigos. Inócuo abaixo de 200 trades no plano, silencioso acima.
+
+### Achados durante a execução
+
+- **`feedsGates` não estava morto.** A redação original do issue afirmava que o flag não era lido em lugar nenhum; a busca foi pelo nome literal e não viu a via derivada `GATE_CODES`. O defeito real era mais estreito. Body do issue corrigido.
+- **`handleMentorSavePlan` nunca passou `changedFields`** — o caminho do mentor gravava `fields: []` em `editHistory` desde sempre, e a métrica nova jamais veria uma edição de mentor (DEC-AUTO-416-23). `Object.keys(planData)` é o formulário inteiro e não o diff: salvar o modal sem mudar nada reseta a contagem — follow-up nomeado.
+- **Segundo caller não previsto:** `ResultadoDoAluno.jsx:58`, que entrou em `4ab2c3eb`/#411 depois da redação do spec, consome `computeRuleAdherenceRate` cru. Trocar o contrato apagaria o tile de Aderência do MentorDashboard sem erro e sem teste vermelho — em CHUNK-16, que este issue não detém. Resolvido mantendo `number | null` e expondo a cobertura por `computeAdherenceCoverage`, função irmã com predicado compartilhado: o denominador correto chega às duas telas sem tocar CHUNK-16 (DEC-AUTO-416-15).
+- **Ciclo sem nenhum trade com `compliance.roStatus` passa a ficar sem nota de TPS** (DEC-AUTO-416-16). Corrige premissa errada da própria spec: `rule` é fator obrigatório em `computeTPS` e não renormaliza. Pontuar sobre um zero fabricado é a mentira que este issue ataca; impacto de cauda (376/381 trades).
+
+**Fora de escopo, para issue de decisão de produto:** pesos e escalas do TPS, gates estatísticos com n mínimo ou IC, redundância Sharpe × CV, ranking de erros por custo em R, Kelly simétrico, histograma real do Monte Carlo e `bestTradeId`.
+
+Sem persistência nova (INV-15 não acionada) — `editHistory` já existia e passa a ser gravado também na edição do aluno. 23 DEC-AUTO. 4.646 testes no front, 260 em `functions/`. CFs deployadas no passo 0a. Executado em modo autônomo (§13), 8 tasks, um `STOP: INVARIANT` levantado e resolvido sem intervenção humana.
 
 
 ## [1.86.0] - 31/08/2026 · #414 · PR #415
