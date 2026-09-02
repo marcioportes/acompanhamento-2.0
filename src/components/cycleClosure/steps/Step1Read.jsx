@@ -21,6 +21,7 @@ import {
   computeTPS,
   cvToConsistencyNorm,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
+import { buildTpsHints } from '../../../utils/cycleClosure/tpsHints';
 import {
   MetricTile,
   expectancyContent, winRateContent, payoffContent, profitFactorContent, drawdownContent, adherenceContent,
@@ -92,7 +93,9 @@ function TPSComponentCard({ label, ptsGot, ptsMax, filled, hint, missing }) {
           sem dados suficientes — peso redistribuído nos demais fatores
         </p>
       ) : (
-        hint && filled < 0.5 && (
+        // #416 (A3) — o hint aparece se e somente se o predicado sobre o DADO for
+        // verdadeiro (buildTpsHints). Não há mais gate por faixa de pontos.
+        hint && (
           <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">{hint}</p>
         )
       )}
@@ -116,6 +119,12 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   const metrics = useMemo(() => computeCycleMetrics(cycleTrades, plan), [cycleTrades, plan]);
   const ruleAdherenceRate = useMemo(() => computeRuleAdherenceRate(cycleTrades), [cycleTrades]);
   const top3Errors = useMemo(() => topErrors(cycleTrades, 3), [cycleTrades]);
+  // #416 (A3) — total de violações DECLARADAS no ciclo (todas, não só o top 3).
+  // Predicado do hint de Aderência: violação declarada de fato, não taxa baixa.
+  const violationsCount = useMemo(
+    () => topErrors(cycleTrades, Number.MAX_SAFE_INTEGER).reduce((sum, e) => sum + e.count, 0),
+    [cycleTrades],
+  );
   const stopBreach = useMemo(() => computeStopBreach(cycleTrades, plan), [cycleTrades, plan]);
 
   // #282 — mesmas métricas de consistência do dashboard (display-time, não congela no frozenSnapshot).
@@ -177,6 +186,18 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   }), [metrics, maxDD, ruleAdherenceRate, consistency.cvNormalized]);
 
   const tps = useMemo(() => computeTPS(tpsInput), [tpsInput]);
+
+  // #416 (A3) — hints dos cards de composição por predicado sobre o dado.
+  // `maxDD.percent` é fração decimal; `plan.cycleStop` é percentual — o helper concilia.
+  const tpsHints = useMemo(() => buildTpsHints({
+    avgWinR: metrics.avgWinR,
+    avgLossR: metrics.avgLossR,
+    maxDDPercent: maxDD.percent,
+    cycleStopPercent: plan?.cycleStop ?? null,
+    expectancy_R: metrics.expectancy_R,
+    cvNormalized: consistency.cvNormalized?.value ?? null,
+    violationsCount,
+  }), [metrics, maxDD, plan, consistency.cvNormalized, violationsCount]);
 
   // Bubble up to draft (only when ready)
   useEffect(() => {
@@ -387,17 +408,12 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
             </summary>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
               {[
-                { key: 'pf', label: 'Profit Factor', missKey: 'profitFactor',
-                  hint: 'ganhos médios menores que perdas — alvo escalonado ou alvo maior' },
-                { key: 'dd', label: 'Max Drawdown', missKey: 'maxDDPercent',
-                  hint: 'ficou perto/passou do stop — reduzir size ou parar antes' },
-                { key: 'exp', label: 'Expectancy (R)', missKey: 'expectancy_R',
-                  hint: '< 0,5R por trade — saiu cedo dos vencedores' },
-                { key: 'consistency', label: 'Consistência', missKey: 'winRateConsistency',
-                  hint: 'retornos oscilando além do plano — buscar regime mais estável' },
-                { key: 'rule', label: 'Aderência', missKey: 'ruleAdherenceRate',
-                  hint: 'violações de RO/RR — gate na entrada antes do envio' },
-              ].map(({ key, label, missKey, hint }) => {
+                { key: 'pf', label: 'Profit Factor', missKey: 'profitFactor' },
+                { key: 'dd', label: 'Max Drawdown', missKey: 'maxDDPercent' },
+                { key: 'exp', label: 'Expectancy (R)', missKey: 'expectancy_R' },
+                { key: 'consistency', label: 'Consistência', missKey: 'winRateConsistency' },
+                { key: 'rule', label: 'Aderência', missKey: 'ruleAdherenceRate' },
+              ].map(({ key, label, missKey }) => {
                 const w = tps.weights?.[key] ?? 0;
                 return (
                   <TPSComponentCard
@@ -407,7 +423,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
                     ptsMax={w * 100}
                     filled={w > 0 ? tps.breakdown[key] / w : 0}
                     missing={tps.missing.includes(missKey)}
-                    hint={hint}
+                    hint={tpsHints[key]}
                   />
                 );
               })}
