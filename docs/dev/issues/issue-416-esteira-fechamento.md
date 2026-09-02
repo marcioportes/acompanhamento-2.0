@@ -65,6 +65,45 @@ Não duplicar aqui (R4).
 - **C1 — `feedsGates`:** honrar o flag em `aggregateBehaviorWeights` (recomendado) ou removê-lo da taxonomia. Não pode ficar declarado e não lido.
 - **C2 — gate de estratégia:** o que "manter a mesma estratégia" significa. (1) setup dominante com limiar menor que 60%, (2) estabilidade do conjunto de setups, ou (3) ausência de mudança nos parâmetros do plano — o `plans` que hoje é descartado por `void plans`.
 
+## §3.1 Decisões Antecipadas
+
+Fechadas antes do loop. Worker aplica sem perguntar.
+
+- **D-01 (A1)** — `baseCapital` ausente, não-finito ou ≤ 0 → exibir o valor em R$ e **omitir** o percentual. Nunca cair em divisor alternativo.
+- **D-02 (A1)** — a conversão vira helper puro exportado e testado; o JSX não faz aritmética inline.
+- **D-03 (A3)** — predicado por fator, avaliado sobre o dado (nomes canônicos a confirmar no cross-check):
+  - `pf` → hint só se o payoff realizado for < 1 (ganho médio menor que perda média de fato)
+  - `dd` → hint só se o drawdown do ciclo alcançou ≥ 80% do stop de ciclo do plano. Atenção à unidade: `maxDD.percent` é fração decimal, `plan.cycleStop` é percentual — cross-check obrigatório
+  - `exp` → hint só se a expectância for ≤ 0. Estar abaixo do teto da escala não é defeito
+  - `consistency` → hint só se o CV normalizado indicar errático pela banda já usada em `cvTheme`
+  - `rule` → hint só se houver violação declarada de fato
+  - Fator sem predicado verdadeiro não exibe hint, mesmo com pontuação baixa
+- **D-04 (A4)** — contar `compliance.violations` como `topErrors` já faz. Aderência abaixo do limiar **sem** violação declarada → usar o texto de evidência `weak` que já existe. Nunca derivar contagem de taxa.
+- **D-05 (A6)** — renomear o rótulo, **não** redefinir o que suja um dia. Incluir eventos de execução na definição de dia sujo é decisão de produto e está fora deste issue.
+- **D-06 (B1)** — o guard é exatamente o `hasCriticalSignal` já calculado em `Step3Reflect.jsx:131`. Não criar condição nova.
+- **D-07 (C3)** — zero trades avaliáveis → retorna `null` (o TPS já renormaliza o peso desde o #337). Retorno passa a carregar o que a UI precisa para a linha de cobertura.
+- **D-08 (D1)** — desempate por horário de entrada; empate remanescente resolve pela ordem estável do array.
+- **D-09** — nenhuma task cria campo, collection ou subcollection. INV-15 não é acionada em lugar nenhum deste issue.
+
+## §3.2 Decisões Autônomas
+
+_(coord consolida DEC-AUTO-416-XX aqui)_
+
+## Plano de tasks
+
+| # | Task | Bloco | Depende de |
+|---|------|-------|------------|
+| 01 | Monte Carlo: percentual sobre `baseCapital` + pool real | A1, A2 | — |
+| 02 | Custo emocional: cor por valência, ícone fixo, rótulo honesto | A5, A6 | — |
+| 03 | Hints do TPS por predicado sobre o dado | A3 | — |
+| 04 | Contagem real de violações + guard nos sustains de outlier | A4, B1 | — |
+| 05 | `maxDD` com desempate por hora + `slice` do pool | D1, D2 | — |
+| 06 | Aderência exclui trade sem `compliance` + cobertura na UI | C3 | 03, 04 (tocam os mesmos arquivos) |
+| 07 | Honrar `feedsGates` em `aggregateBehaviorWeights` + espelho CJS | C1 | **decisão humana** |
+| 08 | Gate `strategy-12-months` conforme decisão | C2 | **decisão humana** |
+
+Tasks 07 e 08 não são despachadas até a resposta do gate humano. As 01-06 rodam independentes dela.
+
 ## Phases
 
 - **A — expressão (não depende de decisão)**
