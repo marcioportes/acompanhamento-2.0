@@ -427,8 +427,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.86.0';
-const build = '20260831';
+const version = '1.86.1';
+const build = '20260901';
 
 const VERSION = {
   version,
