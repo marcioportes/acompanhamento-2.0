@@ -14,6 +14,7 @@ import { useCycleConsistency } from '../../../hooks/useCycleConsistency';
 import {
   computeCycleMetrics,
   computeRuleAdherenceRate,
+  computeAdherenceCoverage,
   computeStopBreach,
   topErrors,
 } from '../../../utils/cycleClosure/cycleMetrics';
@@ -119,6 +120,13 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
 
   const metrics = useMemo(() => computeCycleMetrics(cycleTrades, plan), [cycleTrades, plan]);
   const ruleAdherenceRate = useMemo(() => computeRuleAdherenceRate(cycleTrades), [cycleTrades]);
+  // #416 (C3) — cobertura da amostra de aderência. Só a taxa é persistida em onMetrics;
+  // isto aqui existe para a UI declarar quantos trades entraram no denominador.
+  const adherenceCoverage = useMemo(() => computeAdherenceCoverage(cycleTrades), [cycleTrades]);
+  const showAdherenceCoverage = adherenceCoverage.evaluated < adherenceCoverage.total;
+  const adherenceCoverageLabel = `⚠ Aderência em ${adherenceCoverage.evaluated} de ${adherenceCoverage.total} ${
+    adherenceCoverage.total === 1 ? 'trade' : 'trades'
+  } (${adherenceCoverage.total - adherenceCoverage.evaluated} sem compliance)`;
   const top3Errors = useMemo(() => topErrors(cycleTrades, 3), [cycleTrades]);
   // #416 (A3) — total de violações DECLARADAS no ciclo (todas, não só o top 3).
   // Predicado do hint de Aderência: violação declarada de fato, não taxa baixa.
@@ -285,7 +293,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
       <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4" /> Performance
       </h4>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className={`grid grid-cols-3 gap-4 ${showAdherenceCoverage ? 'mb-2' : 'mb-6'}`}>
         {[
           { label: 'Expectancy (R)', tooltip: EXPECTANCY_TOOLTIP, ...expectancyContent(metrics.expectancy_R) },
           { label: 'Win Rate', tooltip: WIN_RATE_TOOLTIP, ...winRateContent(metrics.winRate, metrics.winners, metrics.count) },
@@ -301,6 +309,9 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
           />
         ))}
       </div>
+      {showAdherenceCoverage && (
+        <p className="text-[10px] text-amber-400/80 mb-6">{adherenceCoverageLabel}</p>
+      )}
 
       <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4" /> Consistência Operacional

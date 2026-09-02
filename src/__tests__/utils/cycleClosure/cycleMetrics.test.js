@@ -13,6 +13,7 @@ import {
   computeTradeRMultiple,
   computeCycleMetrics,
   computeRuleAdherenceRate,
+  computeAdherenceCoverage,
   computeStopBreach,
   topErrors,
 } from '../../../utils/cycleClosure/cycleMetrics';
@@ -153,11 +154,90 @@ describe('computeRuleAdherenceRate', () => {
     ];
     expect(computeRuleAdherenceRate(trades)).toBe(0.5);
   });
-  it('trade sem compliance → não conforme (0)', () => {
-    expect(computeRuleAdherenceRate([{}, {}])).toBe(0);
+  // #416 — cenário preservado, comportamento invertido: trade sem compliance não é
+  // violação do aluno, é dado que o pipeline não produziu. Sai do denominador; se
+  // NENHUM trade tem compliance, não há amostra e a resposta é null (não 0).
+  it('trade sem compliance → fora da amostra (null quando nenhum é avaliável)', () => {
+    expect(computeRuleAdherenceRate([{}, {}])).toBeNull();
   });
   it('zero trades → null', () => {
     expect(computeRuleAdherenceRate([])).toBeNull();
+  });
+  it('não-array → null', () => {
+    expect(computeRuleAdherenceRate(null)).toBeNull();
+    expect(computeRuleAdherenceRate(undefined)).toBeNull();
+  });
+  it('#416 — 18 avaliados de 20, 16 CONFORME → 0,889 (não 0,80)', () => {
+    const trades = [
+      ...Array.from({ length: 16 }, () => ({ compliance: { roStatus: 'CONFORME' } })),
+      ...Array.from({ length: 2 }, () => ({ compliance: { roStatus: 'FORA_DO_PLANO' } })),
+      ...Array.from({ length: 2 }, () => ({ result: 10 })), // sem compliance
+    ];
+    expect(computeRuleAdherenceRate(trades)).toBeCloseTo(16 / 18, 10);
+    expect(computeRuleAdherenceRate(trades)).not.toBeCloseTo(0.8, 10);
+  });
+  it('roStatus presente e não-CONFORME conta no denominador (violação declarada ≠ dado ausente)', () => {
+    const trades = [
+      { compliance: { roStatus: 'CONFORME' } },
+      { compliance: { roStatus: 'NAO_CONFORME' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO' } },
+      { compliance: { roStatus: 'CONFORME' } },
+    ];
+    expect(computeRuleAdherenceRate(trades)).toBe(0.5);
+  });
+  it('todos avaliáveis → inalterado pelo #416', () => {
+    const trades = [
+      { compliance: { roStatus: 'CONFORME' } },
+      { compliance: { roStatus: 'CONFORME' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO' } },
+    ];
+    expect(computeRuleAdherenceRate(trades)).toBe(0.5);
+  });
+  // Guarda de regressão do gate do #416: o contrato de retorno é number|null.
+  // ResultadoDoAluno.jsx (CHUNK-16) passa o retorno cru para adherenceContent —
+  // devolver objeto apagaria o tile de Aderência sem erro e sem teste vermelho.
+  it('retorno é number (não objeto) sempre que há avaliáveis', () => {
+    expect(typeof computeRuleAdherenceRate([{ compliance: { roStatus: 'CONFORME' } }])).toBe('number');
+    expect(typeof computeRuleAdherenceRate([{ compliance: { roStatus: 'FORA_DO_PLANO' } }])).toBe('number');
+    expect(typeof computeRuleAdherenceRate([
+      { compliance: { roStatus: 'CONFORME' } },
+      {},
+    ])).toBe('number');
+  });
+});
+
+describe('computeAdherenceCoverage', () => {
+  it('18 de 20 quando 2 trades não têm compliance', () => {
+    const trades = [
+      ...Array.from({ length: 18 }, () => ({ compliance: { roStatus: 'CONFORME' } })),
+      ...Array.from({ length: 2 }, () => ({ result: 10 })),
+    ];
+    expect(computeAdherenceCoverage(trades)).toEqual({ evaluated: 18, total: 20 });
+  });
+  it('cobertura total', () => {
+    const trades = Array.from({ length: 3 }, () => ({ compliance: { roStatus: 'FORA_DO_PLANO' } }));
+    expect(computeAdherenceCoverage(trades)).toEqual({ evaluated: 3, total: 3 });
+  });
+  it('cobertura zero', () => {
+    expect(computeAdherenceCoverage([{}, { compliance: {} }, null])).toEqual({ evaluated: 0, total: 3 });
+  });
+  it('lista vazia', () => {
+    expect(computeAdherenceCoverage([])).toEqual({ evaluated: 0, total: 0 });
+  });
+  it('não-array', () => {
+    expect(computeAdherenceCoverage(null)).toEqual({ evaluated: 0, total: 0 });
+    expect(computeAdherenceCoverage(undefined)).toEqual({ evaluated: 0, total: 0 });
+  });
+  it('usa o mesmo predicado da taxa — amostra nunca diverge', () => {
+    const trades = [
+      { compliance: { roStatus: 'CONFORME' } },
+      { compliance: { roStatus: 'FORA_DO_PLANO' } },
+      {},
+    ];
+    const { evaluated } = computeAdherenceCoverage(trades);
+    expect(evaluated).toBe(2);
+    expect(computeRuleAdherenceRate(trades)).toBe(1 / evaluated);
   });
 });
 

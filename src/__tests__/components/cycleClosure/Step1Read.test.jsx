@@ -87,14 +87,22 @@ describe('Step1Read — paridade de indicadores (#282)', () => {
 // e drawdown de 3,68% contra um stop de ciclo de 8,5% (nota baixa).
 // Os dois cards ficam abaixo de 50% dos pontos e nenhum dos dois hints é verdadeiro.
 const LOW_SCORE_PLAN = { id: 'p1', pl: 10000, riskPerOperation: 1, rrTarget: 2, cycleGoal: 10, cycleStop: 8.5 };
+//
+// #416 (C3) — a fixture não tinha compliance nenhum e a aderência caía a 0 por
+// ausência de dado; era desse 0 acidental que vinha o score do TPS (computeTPS
+// exige PF e Rule para pontuar). Com o denominador corrigido, "sem compliance"
+// virou "sem amostra" (null) e o bloco de composição — onde os hints moram —
+// deixava de renderizar. O roStatus abaixo declara o que a fixture já assumia:
+// aderência 0 por violação, não por buraco no dado. Score e hints inalterados.
+const semAderencia = { roStatus: 'FORA_DO_PLANO' };
 const LOW_SCORE_TRADES = [
-  { id: 'a1', planId: 'p1', date: '2026-04-01', result: 110 },
-  { id: 'a2', planId: 'p1', date: '2026-04-02', result: -93 },
-  { id: 'a3', planId: 'p1', date: '2026-04-03', result: -93 },
-  { id: 'a4', planId: 'p1', date: '2026-04-06', result: -93 },
-  { id: 'a5', planId: 'p1', date: '2026-04-07', result: -93 },
-  { id: 'a6', planId: 'p1', date: '2026-04-08', result: 110 },
-  { id: 'a7', planId: 'p1', date: '2026-04-09', result: 110 },
+  { id: 'a1', planId: 'p1', date: '2026-04-01', result: 110, compliance: semAderencia },
+  { id: 'a2', planId: 'p1', date: '2026-04-02', result: -93, compliance: semAderencia },
+  { id: 'a3', planId: 'p1', date: '2026-04-03', result: -93, compliance: semAderencia },
+  { id: 'a4', planId: 'p1', date: '2026-04-06', result: -93, compliance: semAderencia },
+  { id: 'a5', planId: 'p1', date: '2026-04-07', result: -93, compliance: semAderencia },
+  { id: 'a6', planId: 'p1', date: '2026-04-08', result: 110, compliance: semAderencia },
+  { id: 'a7', planId: 'p1', date: '2026-04-09', result: 110, compliance: semAderencia },
 ];
 
 describe('Step1Read — hints do TPS por predicado (#416 A3)', () => {
@@ -107,8 +115,7 @@ describe('Step1Read — hints do TPS por predicado (#416 A3)', () => {
     expect(screen.queryByText(TPS_HINT_TEXTS.pf)).toBeNull();
     // Drawdown 3,68% (< 50% dos pontos) contra stop de 8,5% → sem hint.
     expect(screen.queryByText(TPS_HINT_TEXTS.dd)).toBeNull();
-    // Nenhum trade tem compliance → aderência 0 (nota zero) mas zero violações
-    // declaradas → sem hint.
+    // Aderência 0 (nota zero) mas zero violações declaradas → sem hint.
     expect(screen.queryByText(TPS_HINT_TEXTS.rule)).toBeNull();
   });
 
@@ -209,5 +216,80 @@ describe('Step1Read — maxDD determinístico dentro do dia (#416 D1)', () => {
     const permutado = renderMaxDD([semHorario[2], semHorario[0], semHorario[1]]);
     expect(permutado.value).toBe(dd.value);
     expect(permutado.percent).toBe(dd.percent);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #416 (C3) — cobertura da amostra de aderência
+//
+// O denominador da aderência passou a ser só o trade com compliance avaliado.
+// Isso corrige o número, mas cria um silêncio novo: a taxa não diz mais sobre
+// quantos trades ela foi medida. A linha de cobertura declara o denominador,
+// no mesmo padrão visual do coverageLabel de MEP/MEN logo abaixo.
+// ─────────────────────────────────────────────────────────────────────────────
+const COV_PLAN = { id: 'p1', pl: 10000, riskPerOperation: 1, rrTarget: 2, cycleGoal: 10, cycleStop: 10 };
+const conforme = (id, date, result) => ({
+  id, planId: 'p1', date, result, compliance: { roStatus: 'CONFORME' },
+});
+
+/** Texto do tile de Aderência do grupo Performance (o do TPS não tem tooltip). */
+function adherenceTileText() {
+  const label = screen.getAllByText('Aderência').find((el) => el.parentElement?.getAttribute('title'));
+  return label.parentElement.textContent;
+}
+
+describe('Step1Read — cobertura da aderência (#416 C3)', () => {
+  it('mostra a linha de cobertura quando há trade sem compliance', () => {
+    tradesOverride = [
+      conforme('c1', '2026-04-01', 100),
+      conforme('c2', '2026-04-02', 100),
+      { id: 'c3', planId: 'p1', date: '2026-04-03', result: -50 }, // sem compliance
+    ];
+    planOverride = COV_PLAN;
+    render(<Step1Read {...baseProps} />);
+    expect(screen.getByText('⚠ Aderência em 2 de 3 trades (1 sem compliance)')).toBeTruthy();
+    // e a taxa é sobre os 2 avaliados, não sobre os 3
+    expect(adherenceTileText()).toContain('100.0%');
+  });
+
+  it('não mostra a linha quando a cobertura é total', () => {
+    tradesOverride = [
+      conforme('c1', '2026-04-01', 100),
+      conforme('c2', '2026-04-02', -50),
+    ];
+    planOverride = COV_PLAN;
+    render(<Step1Read {...baseProps} />);
+    expect(screen.queryByText(/Aderência em \d+ de \d+/)).toBeNull();
+  });
+
+  it('singular quando o ciclo tem um único trade', () => {
+    tradesOverride = [{ id: 'c1', planId: 'p1', date: '2026-04-01', result: 100 }];
+    planOverride = COV_PLAN;
+    render(<Step1Read {...baseProps} />);
+    expect(screen.getByText('⚠ Aderência em 0 de 1 trade (1 sem compliance)')).toBeTruthy();
+  });
+
+  it('cobertura zero → tile "—" e fator rule ausente do TPS', () => {
+    tradesOverride = LOW_SCORE_TRADES.map(({ id, planId, date, result }) => ({ id, planId, date, result }));
+    planOverride = LOW_SCORE_PLAN;
+    render(<Step1Read {...baseProps} />);
+    expect(adherenceTileText()).toContain('—');
+    expect(screen.getByText(/Faltam dados para:/).textContent).toContain('ruleAdherenceRate');
+  });
+
+  it('publica a taxa em onMetrics como número, nunca como objeto', () => {
+    tradesOverride = [
+      conforme('c1', '2026-04-01', 100),
+      { id: 'c2', planId: 'p1', date: '2026-04-02', result: -50 },
+    ];
+    planOverride = COV_PLAN;
+    const onMetrics = vi.fn();
+    render(<Step1Read {...baseProps} onMetrics={onMetrics} />);
+    const last = onMetrics.mock.calls.at(-1)[0];
+    expect(typeof last.ruleAdherenceRate).toBe('number');
+    expect(last.ruleAdherenceRate).toBe(1);
+    // nenhum campo de cobertura vaza para o objeto persistido (INV-15 / D-09)
+    expect(last).not.toHaveProperty('adherenceCoverage');
+    expect(last).not.toHaveProperty('adherenceEvaluated');
   });
 });
