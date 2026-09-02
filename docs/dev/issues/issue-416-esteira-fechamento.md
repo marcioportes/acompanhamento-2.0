@@ -84,6 +84,23 @@ Fechadas antes do loop. Worker aplica sem perguntar.
 - **D-07 (C3)** — zero trades avaliáveis → retorna `null` (o TPS já renormaliza o peso desde o #337). Retorno passa a carregar o que a UI precisa para a linha de cobertura.
 - **D-08 (D1)** — desempate por horário de entrada; empate remanescente resolve pela ordem estável do array.
 - **D-09** — nenhuma task cria campo, collection ou subcollection. INV-15 não é acionada em lugar nenhum deste issue.
+- **D-10 (C1) — resolvida pelo registro, não é decisão nova.** O body do #416 afirma que `feedsGates` "não é lido em lugar nenhum". **Está errado.** Ele é lido pela via derivada `GATE_CODES` (`behavioralTaxonomy.js:266`), consumida em `behavioralDetection/index.js:170` para montar `gateInputs` (DEC-AUTO-301-03). Existem **duas vias de gate** e só uma honra o flag:
+  1. `gateInputs` via `GATE_CODES` → honra `feedsGates`. Alimenta os gates `count==0`.
+  2. `ruleViolationRate` via `aggregateBehaviorWeights` → conta toda família negativa, ignora o flag.
+
+  O mapa de pesos aprovado (`docs/dev/behavioral-weight-map.md`, aprovado 01/06/2026, recalibrado 05/06/2026 no #305) é explícito por padrão sobre qual efeito cada um tem: `TILT` (linha 54) diz "penalidade E alta; **entra na rule-violation rate**; gate 4→5"; `EARLY_EXIT` (linha 60) diz **apenas** "penalidade E+F"; `LATE_EXIT` (59) e `HESITATION` (67), idem. O mapa nunca colocou esses três na taxa.
+
+  Portanto a task 07 **não escolhe semântica** — ela alinha `aggregateBehaviorWeights` ao mapa já aprovado, usando `GATE_CODES` como fonte, exatamente como `behavioralDetection` já faz. `byDimension`/`bonusByDimension` seguem contando tudo (governados por `feedsScore`). Corrigir também a afirmação errada no body do issue.
+- **D-11 (C2) — Marcio decidiu: parâmetros do plano.** Verificado que o histórico necessário **existe parcialmente**:
+  - `plan.editHistory[]` (`usePlans.js:200-206`) grava `{by, email, fields[], timestamp}` por edição — presente em 9/28 planos (32%); ausência = nenhuma edição registrada, o que é informação válida.
+  - `RISK_FIELDS = ['riskPerOperation','rrTarget','periodStop','cycleStop']` (`usePlans.js:34`) já é a constante canônica dos parâmetros de risco.
+  - `plan.updatedAt` é sobrescrito a cada escrita — serve como carimbo, não como série.
+
+  **Métrica:** `strategyConsMonths` = meses decorridos desde a entrada mais recente de `editHistory` cujo `fields ∩ RISK_FIELDS ≠ ∅`. Sem entrada qualificada → conta desde a criação do plano. Vários planos ativos → o menor valor entre eles (a mudança mais recente manda).
+
+  **Ponto cego e correção junto:** hoje `editHistory` só é escrito quando `auditInfo.editedBy === 'mentor'`. Edição do próprio aluno bumpa só `updatedAt` e some do histórico — o que faria a métrica mentir em 68% dos planos daqui pra frente. A task 08 passa a gravar `editHistory` também na edição do aluno (`by: 'student'`), mesmo shape. Campo já existe, INV-15 não é acionada. Ampliação deliberada de escopo, registrada aqui porque sem ela a semântica escolhida não se sustenta.
+
+  **Limitação declarada:** o histórico começa onde os dados começam. Planos sem `editHistory` contam desde a criação; mudanças de parâmetro anteriores ao campo existir são invisíveis. O gate fica honesto daqui pra frente, não retroativamente.
 
 ## §3.2 Decisões Autônomas
 
@@ -99,10 +116,10 @@ _(coord consolida DEC-AUTO-416-XX aqui)_
 | 04 | Contagem real de violações + guard nos sustains de outlier | A4, B1 | — |
 | 05 | `maxDD` com desempate por hora + `slice` do pool | D1, D2 | — |
 | 06 | Aderência exclui trade sem `compliance` + cobertura na UI | C3 | 03, 04 (tocam os mesmos arquivos) |
-| 07 | Honrar `feedsGates` em `aggregateBehaviorWeights` + espelho CJS | C1 | **decisão humana** |
-| 08 | Gate `strategy-12-months` conforme decisão | C2 | **decisão humana** |
+| 07 | `ruleViolationRate` alinhado ao mapa aprovado via `GATE_CODES` + espelho CJS | C1 | D-10 (resolvida) |
+| 08 | Gate de estratégia = meses sem mudança de parâmetro de risco do plano | C2 | D-11 (resolvida) |
 
-Tasks 07 e 08 não são despachadas até a resposta do gate humano. As 01-06 rodam independentes dela.
+Gate humano respondido em 01/09/2026 — ver D-10 e D-11. Todas as 8 tasks liberadas; 07 e 08 entram depois das 01-06 por tocarem os mesmos motores.
 
 ## Phases
 
