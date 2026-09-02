@@ -32,17 +32,25 @@ describe('#394 — exposição fechada pelo aluno', () => {
     expect(r.ruleViolationRate).toBe(1);
   });
 
-  it('outros padrões seguem intocados — não é mudança de política de severidade', () => {
-    for (const [code, sev] of [['SUB_SIZING', 'LOW'], ['IMPULSE_CLUSTER', 'LOW'],
-      ['LOSS_CHASING', 'MEDIUM'], ['EARLY_EXIT', 'LOW'], ['TILT', 'HIGH']]) {
+  it('outros padrões de gate seguem intocados — não é mudança de política de severidade', () => {
+    for (const [code, sev] of [['SUB_SIZING', 'LOW'], ['LOSS_CHASING', 'MEDIUM'], ['TILT', 'HIGH']]) {
       const r = aggregateBehaviorWeights([trade('t1', [fam(code, sev)])]);
       expect(r.violationTrades).toBe(1);
     }
+    // #416 C1 — IMPULSE_CLUSTER e EARLY_EXIT saíram da TAXA por `feedsGates: false`, não por
+    // severidade: a penalidade por dimensão continua inteira. O guard do #394 segue sendo o
+    // único corte por severidade.
+    for (const [code, sev] of [['IMPULSE_CLUSTER', 'LOW'], ['EARLY_EXIT', 'LOW']]) {
+      const r = aggregateBehaviorWeights([trade('t1', [fam(code, sev)])]);
+      expect(r.violationTrades).toBe(0);
+      expect(r.byDimension.E).toBeGreaterThan(0);
+    }
   });
 
-  it('trade com exposição fechada E outro padrão continua sendo violação pelo outro', () => {
+  it('trade com exposição fechada E outro padrão de gate continua sendo violação pelo outro', () => {
+    // companheiro tem que alimentar gate (#416 C1); com EARLY_EXIT a taxa hoje é 0.
     const r = aggregateBehaviorWeights([
-      trade('t1', [fam('UNPROTECTED_SIZE', 'MEDIUM'), fam('EARLY_EXIT', 'HIGH')]),
+      trade('t1', [fam('UNPROTECTED_SIZE', 'MEDIUM'), fam('TILT', 'HIGH')]),
     ]);
     expect(r.violationTrades).toBe(1);
   });
