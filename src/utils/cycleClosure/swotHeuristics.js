@@ -316,7 +316,7 @@ export function buildThreats({ trades, maxDDPercent, cycleStopPercent, patterns,
     const dirtyStr = typeof dirtyPnl === 'number' ? `R$${dirtyPnl.toFixed(0)}` : '—';
     const cleanStr = typeof cleanPnl === 'number' ? `R$${cleanPnl.toFixed(0)}` : '—';
     out.push(
-      `Tilt sistêmico em ${counts.tiltDaysCount} dia(s). Performance em dias-tilt: ${dirtyStr} vs limpos ${cleanStr}.`,
+      `Tilt sistêmico em ${counts.tiltDaysCount} dia(s). Performance em dias-tilt: ${dirtyStr} vs sem tilt/vingança ${cleanStr}.`,
     );
   }
 
