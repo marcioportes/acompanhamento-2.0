@@ -132,8 +132,13 @@ export function buildStrengths({ metrics, patterns, snapshot }) {
     );
   }
 
-  // Best trade R alto (saída boa)
-  if (typeof metrics?.bestTradeR === 'number' && metrics.bestTradeR >= 1.5) {
+  // Best trade R alto (saída boa) — mesmo guard do sustain de aderência: com
+  // tilt/vingança/stop deslocado no ciclo, o outlier pode ser o próprio trade de
+  // vingança, e o SWOT levaria "replicar" ao mentor como Força (#416 B1).
+  if (
+    typeof metrics?.bestTradeR === 'number' && metrics.bestTradeR >= 1.5 &&
+    !hasBehavioralRedFlag
+  ) {
     out.push(
       `Melhor trade rendeu ${metrics.bestTradeR.toFixed(1)}R — entender a configuração e replicar`,
     );
@@ -150,9 +155,18 @@ export function buildStrengths({ metrics, patterns, snapshot }) {
     );
   }
 
-  // Melhor dia limpo com pnl positivo significativo (sinal de capacidade quando calmo)
+  // Melhor dia limpo com pnl positivo significativo (sinal de capacidade quando calmo).
+  // Só sustenta se o conjunto dos dias limpos também for positivo — senão o SWOT
+  // pinça o outlier (+R$500) de um conjunto que somou −R$134 (#416 B1). A soma
+  // canônica é `patterns.correlation.performanceOnCleanDays` (DEC-AUTO-416-10);
+  // valor ausente/não-numérico não vira elogio.
   const bestClean = patterns?.dayBreakdown?.bestCleanDay;
-  if (bestClean && typeof bestClean.pnl === 'number' && bestClean.pnl >= CLEAN_PNL_OPPORTUNITY_MIN) {
+  const cleanDaysPnl = patterns?.correlation?.performanceOnCleanDays;
+  if (
+    bestClean && typeof bestClean.pnl === 'number' && bestClean.pnl >= CLEAN_PNL_OPPORTUNITY_MIN &&
+    typeof cleanDaysPnl === 'number' && cleanDaysPnl > 0 &&
+    !hasBehavioralRedFlag
+  ) {
     out.push(
       `Em ${bestClean.date}, sem tilt/vingança: +R$${bestClean.pnl.toFixed(0)} em ${bestClean.trades} trade(s). A versão sob controle existe.`,
     );
