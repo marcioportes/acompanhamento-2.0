@@ -119,8 +119,12 @@ export default function Step6Adjust({
   }, [plExceedsBalance, onBlockSeal]);
 
   // Pool pra Kelly: histórico do plano (max útil)
+  // #416 (D2) — `useTrades` entrega orderBy('date','desc'), então cortar pela
+  // CAUDA pegava os 200 mais ANTIGOS: acima de 200 trades no plano, Kelly e
+  // Monte Carlo projetariam o próximo ciclo pelo histórico mais velho
+  // disponível. `slice(0, 200)` são os 200 mais recentes e não reordena.
   const planTrades = useMemo(
-    () => trades.filter((t) => t.planId === planId).slice(-200),
+    () => trades.filter((t) => t.planId === planId).slice(0, 200),
     [trades, planId],
   );
 

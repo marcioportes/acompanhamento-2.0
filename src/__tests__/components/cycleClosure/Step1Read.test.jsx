@@ -142,3 +142,72 @@ describe('Step1Read — hints do TPS por predicado (#416 A3)', () => {
     expect(screen.getByText(TPS_HINT_TEXTS.rule)).toBeTruthy();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #416 (D1) — maxDD determinístico
+//
+// Peak-to-trough é path-dependent. Ordenar só por `date` deixava a ordem
+// intradiária por conta do array, e o array vem da ordem de ESCRITA em lote:
+// permutar a importação mudava o fator de maior peso do TPS (25 pontos).
+// ─────────────────────────────────────────────────────────────────────────────
+const DD_PLAN = { id: 'p1', pl: 10000, riskPerOperation: 1, rrTarget: 2, cycleGoal: 10, cycleStop: 10 };
+
+// Mesmo dia, três horários. Na ordem real: +500 (pico 10.500) → -300 → -400,
+// drawdown -700. Na ordem [b, a, c] do array, o pico nunca chega a 10.500 antes
+// da queda e o drawdown vira -400 — a nota do aluno mudava com a ordenação.
+const SAME_DAY = {
+  a: { id: 'dd-a', planId: 'p1', date: '2026-04-01', result: 500, entryTime: '2026-04-01T09:00:00' },
+  b: { id: 'dd-b', planId: 'p1', date: '2026-04-01', result: -300, entryTime: '2026-04-01T10:00:00' },
+  c: { id: 'dd-c', planId: 'p1', date: '2026-04-01', result: -400, entryTime: '2026-04-01T11:00:00' },
+};
+
+/** Renderiza e devolve o maxDrawdown que o Passo 1 publica no draft. */
+function renderMaxDD(trades, plan = DD_PLAN) {
+  tradesOverride = trades;
+  planOverride = plan;
+  const onMetrics = vi.fn();
+  const { unmount } = render(<Step1Read {...baseProps} onMetrics={onMetrics} />);
+  const last = onMetrics.mock.calls.at(-1)?.[0];
+  unmount();
+  return last?.maxDrawdown;
+}
+
+describe('Step1Read — maxDD determinístico dentro do dia (#416 D1)', () => {
+  it('é invariante a permutação do array de trades', () => {
+    const { a, b, c } = SAME_DAY;
+    const permutacoes = [
+      [a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a],
+    ];
+    const resultados = permutacoes.map((p) => renderMaxDD(p));
+    resultados.forEach((r) => {
+      expect(r.value).toBe(resultados[0].value);
+      expect(r.percent).toBe(resultados[0].percent);
+    });
+  });
+
+  it('usa a ordem cronológica real, não a ordem do array', () => {
+    const { a, b, c } = SAME_DAY;
+    // [b, a, c] é exatamente a permutação que o sort por `date` preservava.
+    const dd = renderMaxDD([b, a, c]);
+    expect(dd.value).toBe(-700);              // antes: -400
+    expect(dd.percent).toBeCloseTo(-700 / 10500, 10);
+  });
+
+  it('trade sem entryTime cai no meio-dia local — não vai para o fim do dia', () => {
+    // -400 às 09:00, +500 sem horário (meio-dia), -300 às 14:00 → pior DD -400.
+    // Se o sem-horário fosse jogado para o fim, o DD seria -700.
+    const semHorario = [
+      { id: 'nt-a', planId: 'p1', date: '2026-04-01', result: -400, entryTime: '2026-04-01T09:00:00' },
+      { id: 'nt-b', planId: 'p1', date: '2026-04-01', result: 500 },
+      { id: 'nt-c', planId: 'p1', date: '2026-04-01', result: -300, entryTime: '2026-04-01T14:00:00' },
+    ];
+    const dd = renderMaxDD(semHorario);
+    expect(dd.value).toBe(-400);
+    expect(dd.percent).toBeCloseTo(-0.04, 10);
+
+    // e segue invariante a permutação
+    const permutado = renderMaxDD([semHorario[2], semHorario[0], semHorario[1]]);
+    expect(permutado.value).toBe(dd.value);
+    expect(permutado.percent).toBe(dd.percent);
+  });
+});

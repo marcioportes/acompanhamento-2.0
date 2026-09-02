@@ -4,6 +4,9 @@
  * O card de projeção do próximo ciclo dividia as somas do Monte Carlo pela
  * constante `1000` em vez do capital base — errava por ~30× num número
  * forward-looking. E anunciava o pool amostral com string fixa.
+ *
+ * #416 (D2) — o pool que alimenta Kelly e Monte Carlo pegava os 200 trades mais
+ * ANTIGOS do plano (`slice(-200)` sobre a lista desc do `useTrades`).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -24,17 +27,20 @@ const MC = {
   min: -4000, max: 6000, mean: 420, reason: null,
 };
 
-vi.mock('../../../hooks/useTrades', () => ({ useTrades: () => ({ trades: MOCK_TRADES, loading: false }) }));
+const tradesMock = { trades: MOCK_TRADES };
+vi.mock('../../../hooks/useTrades', () => ({ useTrades: () => ({ trades: tradesMock.trades, loading: false }) }));
 vi.mock('../../../hooks/useAccounts', () => ({ useAccounts: () => ({ accounts: [], loading: false }) }));
 
 const plansMock = { plans: [MOCK_PLAN] };
 vi.mock('../../../hooks/usePlans', () => ({ usePlans: () => ({ plans: plansMock.plans, loading: false }) }));
 
 // projectNextCycle é estocástico — fixamos a saída. pctOfBase (o que está sob
-// teste) segue sendo o real.
+// teste) segue sendo o real. Os argumentos ficam guardados pra inspecionar o
+// pool que o Passo 6 monta (#416 D2).
+const mcCalls = [];
 vi.mock('../../../utils/cycleClosure/monteCarlo', async (importOriginal) => ({
   ...(await importOriginal()),
-  projectNextCycle: () => MC,
+  projectNextCycle: (args) => { mcCalls.push(args); return MC; },
 }));
 
 import Step6Adjust from '../../../components/cycleClosure/steps/Step6Adjust';
@@ -52,7 +58,11 @@ const baseProps = {
 };
 
 describe('Step6Adjust — Monte Carlo sobre o capital base (#416 A1)', () => {
-  beforeEach(() => { plansMock.plans = [MOCK_PLAN]; });
+  beforeEach(() => {
+    plansMock.plans = [MOCK_PLAN];
+    tradesMock.trades = MOCK_TRADES;
+    mcCalls.length = 0;
+  });
 
   it('converte os percentis sobre baseCapital, não sobre a constante 1000', () => {
     render(<Step6Adjust {...baseProps} />);
@@ -99,5 +109,73 @@ describe('Step6Adjust — Monte Carlo sobre o capital base (#416 A1)', () => {
     expect(screen.queryByText('+40.5%')).toBeNull();
     expect(container.textContent).not.toContain('NaN');
     expect(container.textContent).not.toContain('Infinity');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #416 (D2) — pool dos 200 trades MAIS RECENTES
+//
+// `useTrades` entrega orderBy('date','desc') (useTrades.js:124,150,176), então
+// `.slice(-200)` cortava pela cauda: acima de 200 trades no plano, a projeção do
+// próximo ciclo passaria a se basear no histórico mais velho disponível.
+// ─────────────────────────────────────────────────────────────────────────────
+const DIA_MS = 86400000;
+const FIM = Date.UTC(2026, 7, 31);
+
+// 250 trades em ordem desc: índice 0 é o mais recente, 249 o mais antigo.
+const POOL_250 = Array.from({ length: 250 }, (_, i) => ({
+  id: `pool-${String(i).padStart(3, '0')}`,
+  planId: 'p1',
+  date: new Date(FIM - i * DIA_MS).toISOString().slice(0, 10),
+  result: i % 3 === 0 ? -180 : 140,
+}));
+
+/** Pool que o Passo 6 entregou ao Monte Carlo no último render. */
+function poolDoUltimoRender() {
+  return mcCalls.at(-1)?.allTrades;
+}
+
+describe('Step6Adjust — pool dos 200 trades mais recentes (#416 D2)', () => {
+  beforeEach(() => {
+    plansMock.plans = [MOCK_PLAN];
+    tradesMock.trades = MOCK_TRADES;
+    mcCalls.length = 0;
+  });
+
+  it('com 250 trades no plano, leva os 200 mais recentes', () => {
+    tradesMock.trades = POOL_250;
+    render(<Step6Adjust {...baseProps} />);
+
+    const pool = poolDoUltimoRender();
+    const ids = pool.map((t) => t.id);
+    expect(pool).toHaveLength(200);
+    expect(ids).toContain('pool-000');   // o mais recente
+    expect(ids).not.toContain('pool-249'); // o mais antigo — antes era o inverso
+    expect(ids).not.toContain('pool-200');
+    expect(ids.at(-1)).toBe('pool-199');
+  });
+
+  it('preserva a ordem desc do hook — slice não reordena', () => {
+    tradesMock.trades = POOL_250;
+    render(<Step6Adjust {...baseProps} />);
+
+    const datas = poolDoUltimoRender().map((t) => t.date);
+    expect(datas).toEqual([...datas].sort().reverse());
+  });
+
+  it('ignora trades de outros planos ao montar o pool', () => {
+    tradesMock.trades = [
+      ...POOL_250.slice(0, 5),
+      { id: 'outro-plano', planId: 'p2', date: '2026-08-31', result: 999 },
+    ];
+    render(<Step6Adjust {...baseProps} />);
+    expect(poolDoUltimoRender().map((t) => t.id)).not.toContain('outro-plano');
+  });
+
+  it('com menos de 200 trades, o pool segue inalterado', () => {
+    render(<Step6Adjust {...baseProps} />);
+    const pool = poolDoUltimoRender();
+    expect(pool).toHaveLength(MOCK_TRADES.length);
+    expect(pool.map((t) => t.id)).toEqual(MOCK_TRADES.map((t) => t.id));
   });
 });

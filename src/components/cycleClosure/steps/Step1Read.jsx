@@ -22,6 +22,7 @@ import {
   cvToConsistencyNorm,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
 import { buildTpsHints } from '../../../utils/cycleClosure/tpsHints';
+import { sortTradesChrono } from '../../../utils/tradeInstant';
 import {
   MetricTile,
   expectancyContent, winRateContent, payoffContent, profitFactorContent, drawdownContent, adherenceContent,
@@ -159,7 +160,11 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   // Drawdown — peak-to-trough simples sobre cumulative result
   const maxDD = useMemo(() => {
     if (cycleTrades.length === 0 || !plan?.pl) return { value: 0, percent: 0 };
-    const sorted = [...cycleTrades].sort((a, b) => a.date.localeCompare(b.date));
+    // #416 (D1) — peak-to-trough é path-dependent: ordenar só por `date` deixava
+    // a ordem intradiária por conta do array, e permutar a ordem de escrita em
+    // lote mudava o maxDD (fator de maior peso do TPS). `sortTradesChrono` é a
+    // SSoT do #402 e desempata até o `id` — saída invariante a permutação.
+    const sorted = sortTradesChrono(cycleTrades);
     let peak = plan.pl;
     let running = plan.pl;
     let worstDD = 0;
