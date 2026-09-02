@@ -103,3 +103,23 @@ export function projectNextCycle({ priorCycleTrades, allTrades, nPerSim, options
   const result = runMonteCarloBootstrap(pool, nPerSim, options);
   return { ...result, samplePool: source };
 }
+
+/**
+ * Converte um valor absoluto em moeda para percentual sobre uma base de capital.
+ *
+ * Existe porque a projeção do Monte Carlo devolve somas em R$ (bootstrap aditivo
+ * de `trade.result`), e a UI precisa expressá-las como % do capital base do
+ * próximo ciclo. Antes do #416 o divisor era a constante `1000` — errava por
+ * ~30× num número forward-looking.
+ *
+ * @param {number} value — valor em moeda (pode ser negativo)
+ * @param {number} base — capital base; precisa ser finito e > 0
+ * @returns {number|null} percentual, ou null quando a base não sustenta a conversão
+ *   (ausente, não-numérica, não-finita ou ≤ 0) ou o valor não é número finito.
+ *   Chamador com null exibe o valor em R$ e omite o percentual (D-01, issue #416).
+ */
+export function pctOfBase(value, base) {
+  if (typeof base !== 'number' || !Number.isFinite(base) || base <= 0) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return (value / base) * 100;
+}

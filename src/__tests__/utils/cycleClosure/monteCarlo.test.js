@@ -7,6 +7,7 @@ import {
   selectSamplePool,
   runMonteCarloBootstrap,
   projectNextCycle,
+  pctOfBase,
 } from '../../../utils/cycleClosure/monteCarlo';
 
 // RNG determinístico (mulberry32) pra testes reprodutíveis
@@ -111,5 +112,54 @@ describe('projectNextCycle — convenience wrapper', () => {
     expect(r.samplePool).toBe('priorCycle');
     expect(r.samplePoolSize).toBe(30);
     expect(r.p50).toBe(500);   // 5 × 100, todos iguais
+  });
+});
+
+describe('pctOfBase — conversão R$ → % sobre o capital base (#416 A1)', () => {
+  it('converte sobre base positiva', () => {
+    // ciclo de agosto/2026: p50 R$ 405 sobre capital base R$ 30.426
+    expect(pctOfBase(405, 30426)).toBeCloseTo(1.331, 3);
+  });
+
+  it('preserva o sinal de valor negativo', () => {
+    expect(pctOfBase(-1355, 30426)).toBeCloseTo(-4.453, 3);
+  });
+
+  it('devolve 0 para valor zero sobre base válida', () => {
+    expect(pctOfBase(0, 30426)).toBe(0);
+  });
+
+  it('devolve null para base zero', () => {
+    expect(pctOfBase(405, 0)).toBeNull();
+  });
+
+  it('devolve null para base negativa', () => {
+    expect(pctOfBase(405, -30426)).toBeNull();
+  });
+
+  it('devolve null para base null / undefined / NaN / Infinity', () => {
+    expect(pctOfBase(405, null)).toBeNull();
+    expect(pctOfBase(405, undefined)).toBeNull();
+    expect(pctOfBase(405, NaN)).toBeNull();
+    expect(pctOfBase(405, Infinity)).toBeNull();
+    expect(pctOfBase(405, '30426')).toBeNull();
+  });
+
+  it('devolve null para valor não-finito — nunca NaN%/Infinity%', () => {
+    expect(pctOfBase(null, 30426)).toBeNull();
+    expect(pctOfBase(undefined, 30426)).toBeNull();
+    expect(pctOfBase(NaN, 30426)).toBeNull();
+    expect(pctOfBase(Infinity, 30426)).toBeNull();
+  });
+
+  it('nunca devolve NaN ou Infinity em nenhuma combinação de entrada', () => {
+    const values = [405, -1355, 0, null, undefined, NaN, Infinity, '405'];
+    const bases = [30426, 0, -1, null, undefined, NaN, Infinity, '30426'];
+    for (const v of values) {
+      for (const b of bases) {
+        const out = pctOfBase(v, b);
+        expect(out === null || Number.isFinite(out)).toBe(true);
+      }
+    }
   });
 });
