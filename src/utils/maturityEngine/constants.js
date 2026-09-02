@@ -193,10 +193,13 @@ export const GATES_BY_TRANSITION = {
       dim: 'op', metric: 'O', op: '>=', threshold: 70,
     },
     {
-      id: 'strategy-12-months', label: '6 meses com a mesma estratégia',
-      friendlyLabel: 'Manter a mesma estratégia por 6 meses', unit: 'meses',
-      whatIs: 'Edge se prova com ciclos longos. 6 meses seguidos já cobrem regimes diferentes — alta, correção, lateral.',
-      howTo: 'Refinar parâmetros sim, trocar paradigma não. Mudança de estratégia exige fundamentação documentada.',
+      // #416 C2 / DEC-AUTO-416-19 — `id` e `threshold` intactos (id é chave persistida
+      // no histórico de gates). O texto passa a descrever o que a métrica mede de fato:
+      // meses sem mudar os parâmetros de risco do plano.
+      id: 'strategy-12-months', label: '6 meses sem mudar os parâmetros de risco do plano',
+      friendlyLabel: 'Manter os parâmetros de risco do plano por 6 meses', unit: 'meses',
+      whatIs: 'Conta os meses desde a última mudança em risco por operação, alvo de R:R, stop do período ou stop do ciclo. Edge se prova com ciclos longos: 6 meses com o mesmo contrato de risco já cobrem regimes diferentes — alta, correção, lateral.',
+      howTo: 'Deixar o risco por operação, o R:R alvo e os stops parados por 6 meses. Mexer em qualquer um zera a contagem — mudança de parâmetro de risco exige fundamentação documentada.',
       dim: 'op', metric: 'strategyConsMonths', op: '>=', threshold: 6,
     },
     {

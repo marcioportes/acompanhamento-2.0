@@ -193,11 +193,92 @@ describe('buildStrengths — R2 (sustain só com sinal positivo MEDIDO)', () => 
   it('sustenta dia limpo positivo (versão sob controle existe)', () => {
     const out = buildStrengths({
       metrics: {},
-      patterns: { dayBreakdown: { bestCleanDay: { date: '2026-03-15', pnl: 450, trades: 3 } } },
+      patterns: {
+        dayBreakdown: { bestCleanDay: { date: '2026-03-15', pnl: 450, trades: 3 } },
+        correlation: { performanceOnCleanDays: 700 },
+      },
       snapshot: {},
     });
     expect(out.some((s) => /2026-03-15/.test(s))).toBe(true);
     expect(out.some((s) => /450/.test(s))).toBe(true);
+  });
+});
+
+/**
+ * #416 B1 — os sustains de outlier (melhor trade / melhor dia limpo) tinham
+ * guard nenhum, enquanto os vizinhos (aderência, edge real) já filtravam sinal
+ * comportamental. O SWOT ia ao mentor sugerindo replicar a configuração de
+ * entrada de um ciclo com vingança detectada.
+ */
+describe('buildStrengths — #416 B1 (guard comportamental nos sustains de outlier)', () => {
+  const cleanPatterns = (extra = {}) => ({
+    eventCounts: { tilt: 0, revenge: 0, stopTampering: 0 },
+    ...extra,
+  });
+
+  it('melhor trade 2,0R vira Força em ciclo limpo', () => {
+    const out = buildStrengths({
+      metrics: { bestTradeR: 2.0 },
+      patterns: cleanPatterns(),
+      snapshot: { stopBreach: { stopBreachIndex: -1 } },
+    });
+    expect(out.some((s) => /Melhor trade rendeu 2\.0R/.test(s))).toBe(true);
+  });
+
+  it.each([
+    ['vingança', { revenge: 2 }],
+    ['tilt', { tilt: 1 }],
+    ['stop deslocado', { stopTampering: 1 }],
+  ])('melhor trade NÃO vira Força com %s no ciclo', (_label, counts) => {
+    const out = buildStrengths({
+      metrics: { bestTradeR: 2.0 },
+      patterns: { eventCounts: counts },
+      snapshot: { stopBreach: { stopBreachIndex: -1 } },
+    });
+    expect(out.some((s) => /Melhor trade/.test(s))).toBe(false);
+  });
+
+  it.each([
+    ['vingança', { revenge: 2 }],
+    ['tilt', { tilt: 1 }],
+    ['stop deslocado', { stopTampering: 1 }],
+  ])('melhor dia limpo NÃO vira Força com %s no ciclo', (_label, counts) => {
+    const out = buildStrengths({
+      metrics: {},
+      patterns: {
+        eventCounts: counts,
+        dayBreakdown: { bestCleanDay: { date: '2026-08-12', pnl: 500, trades: 2 } },
+        correlation: { performanceOnCleanDays: 700 },
+      },
+      snapshot: { stopBreach: { stopBreachIndex: -1 } },
+    });
+    expect(out.some((s) => /2026-08-12/.test(s))).toBe(false);
+  });
+
+  it('melhor dia +500 NÃO vira Força se a soma dos dias limpos é −134 (agosto real)', () => {
+    const out = buildStrengths({
+      metrics: {},
+      patterns: cleanPatterns({
+        dayBreakdown: { bestCleanDay: { date: '2026-08-12', pnl: 500, trades: 2 } },
+        correlation: { performanceOnCleanDays: -134 },
+      }),
+      snapshot: { stopBreach: { stopBreachIndex: -1 } },
+    });
+    expect(out.some((s) => /2026-08-12/.test(s))).toBe(false);
+  });
+
+  it('soma dos dias limpos ausente/não-numérica não vira elogio', () => {
+    for (const correlation of [undefined, {}, { performanceOnCleanDays: null }]) {
+      const out = buildStrengths({
+        metrics: {},
+        patterns: cleanPatterns({
+          dayBreakdown: { bestCleanDay: { date: '2026-08-12', pnl: 500, trades: 2 } },
+          correlation,
+        }),
+        snapshot: { stopBreach: { stopBreachIndex: -1 } },
+      });
+      expect(out.some((s) => /2026-08-12/.test(s))).toBe(false);
+    }
   });
 });
 

@@ -44,6 +44,7 @@ const windowOne = (count, families) => [makeTrade('F1', 0, families), ...Array.f
 
 const greed = [{ canonicalCode: 'GREED_CLUSTER', severity: 'MEDIUM', valence: 'negative' }]; // F, MED
 const averaging = [{ canonicalCode: 'AVERAGING_DOWN', severity: 'HIGH', valence: 'negative' }]; // E+F, HIGH
+const revenge = [{ canonicalCode: 'LOSS_CHASING', severity: 'HIGH', valence: 'negative' }]; // E, HIGH, feedsGates
 
 describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
   it('janela SEM behaviorProfile não muda F/O (baseline intacta)', () => {
@@ -67,13 +68,23 @@ describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
     expect(withA.dimensionScores.financial).toBe(plain.dimensionScores.financial - 2); // F sim
   });
 
-  it('gate ruleViolationRate: janela com padrões (rate alto) reprova o gate (B2)', () => {
-    // 12 trades, todos com finding → ruleViolationRate = 1.0 (≥ floor 10)
-    const all = Array.from({ length: 12 }, (_, i) => makeTrade(`T${i + 1}`, i, greed));
+  it('gate ruleViolationRate: janela com padrões DE GATE (rate alto) reprova o gate (B2)', () => {
+    // 12 trades, todos com finding de gate → ruleViolationRate = 1.0 (≥ floor 10)
+    const all = Array.from({ length: 12 }, (_, i) => makeTrade(`T${i + 1}`, i, revenge));
     const out = esm(baseInput({ trades: all })); // stage 3 → gate rule-violation-rate-5 (≤0.05)
     const gate = out.gates.find((g) => g.id === 'rule-violation-rate-5');
     expect(gate).toBeTruthy();
     expect(gate.met).toBe(false);
+  });
+
+  it('#416 C1 — janela de padrão NÃO-gate baixa o score mas não reprova o gate da taxa', () => {
+    // GREED_CLUSTER tem feedsGates: false. Antes do C1 essa janela reprovava o gate da taxa
+    // por um padrão que o mapa de pesos nunca colocou nela — era o motivo de gate inalcançável.
+    const all = Array.from({ length: 12 }, (_, i) => makeTrade(`T${i + 1}`, i, greed));
+    const out = esm(baseInput({ trades: all }));
+    expect(out.gates.find((g) => g.id === 'rule-violation-rate-5').met).toBe(true);
+    // ...e o score financeiro segue penalizado: `feedsScore` é outro plano.
+    expect(out.breakdown.financial.behavioralNet).toBeLessThan(0);
   });
 
   it('gate ruleViolationRate: janela limpa (profiled, sem finding) passa o gate (B2)', () => {

@@ -13,21 +13,23 @@ import { useTrades } from '../../../hooks/useTrades';
 import { usePlans } from '../../../hooks/usePlans';
 import { useAccounts } from '../../../hooks/useAccounts';
 import { computeKelly } from '../../../utils/cycleClosure/kellyCalculator';
-import { projectNextCycle } from '../../../utils/cycleClosure/monteCarlo';
+import { projectNextCycle, pctOfBase } from '../../../utils/cycleClosure/monteCarlo';
 import { advisePlanAdjustment } from '../../../utils/cycleClosure/closurePlanAdvisor';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
 
-function fmtPct(v, digits = 2) {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return `${v.toFixed(digits)}%`;
-}
 function fmtR(v) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`;
 }
+// Percentual com sinal explícito. Usado nos números forward-looking do Monte
+// Carlo, onde omitir o sinal (ou fixá-lo em '+') esconde o cenário real.
+function fmtSignedPct(v, digits = 1) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+}
 
-function McHistogram({ mc }) {
+function McHistogram({ mc, baseCapital, fmtCurrency }) {
   // Histograma simples baseado nos percentis (16 bars)
   if (!mc || mc.reason) return null;
   const { p10, p50, p90, min, max } = mc;
@@ -46,9 +48,12 @@ function McHistogram({ mc }) {
         })}
       </div>
       <div className="flex justify-between text-[10px] text-slate-600 mono">
-        <span>p10 {fmtPct((p10 / 1000) * 100, 1)}</span>
-        <span>p50 {fmtPct((p50 / 1000) * 100, 1)}</span>
-        <span>p90 {fmtPct((p90 / 1000) * 100, 1)}</span>
+        {[['p10', p10], ['p50', p50], ['p90', p90]].map(([label, v]) => {
+          const pct = pctOfBase(v, baseCapital);
+          // Sem base utilizável, o valor sai em moeda — nunca num divisor
+          // alternativo, nunca como NaN%/Infinity% (D-01, issue #416).
+          return <span key={label}>{label} {pct != null ? fmtSignedPct(pct) : fmtCurrency(v)}</span>;
+        })}
       </div>
     </div>
   );
@@ -114,8 +119,12 @@ export default function Step6Adjust({
   }, [plExceedsBalance, onBlockSeal]);
 
   // Pool pra Kelly: histórico do plano (max útil)
+  // #416 (D2) — `useTrades` entrega orderBy('date','desc'), então cortar pela
+  // CAUDA pegava os 200 mais ANTIGOS: acima de 200 trades no plano, Kelly e
+  // Monte Carlo projetariam o próximo ciclo pelo histórico mais velho
+  // disponível. `slice(0, 200)` são os 200 mais recentes e não reordena.
   const planTrades = useMemo(
-    () => trades.filter((t) => t.planId === planId).slice(-200),
+    () => trades.filter((t) => t.planId === planId).slice(0, 200),
     [trades, planId],
   );
 
@@ -380,16 +389,28 @@ export default function Step6Adjust({
           ) : (
             <div className="bg-slate-800/40 rounded-lg p-3">
               <p className="text-[11px] text-slate-500 mb-2">
-                Distribuição (base = {mc.samplePool === 'priorCycle' ? 'ciclo anterior' : 'últimos 100 trades'})
+                Distribuição (base = {mc.samplePoolSize} {mc.samplePoolSize === 1 ? 'trade' : 'trades'}{' '}
+                {mc.samplePool === 'priorCycle' ? 'do ciclo anterior' : 'do plano'})
               </p>
-              <McHistogram mc={mc} />
-              {typeof baseCapital === 'number' && typeof mc.p50 === 'number' && (
-                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                  Sobre o capital base R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}:{' '}
-                  mediana <span className="text-slate-200 mono">{((mc.p50 / 1000) * 100) >= 0 ? '+' : ''}{((mc.p50 / 1000) * 100).toFixed(1)}%</span>,
-                  cenário ruim (p10) <span className="text-red-300 mono">{((mc.p10 / 1000) * 100).toFixed(1)}%</span>,
-                  cenário bom (p90) <span className="text-emerald-300 mono">+{((mc.p90 / 1000) * 100).toFixed(1)}%</span>.
-                </p>
+              <McHistogram mc={mc} baseCapital={baseCapital} fmtCurrency={currencyFmt} />
+              {typeof mc.p50 === 'number' && (
+                pctOfBase(mc.p50, baseCapital) != null ? (
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    Sobre o capital base {currencyFmt(baseCapital)}:{' '}
+                    mediana <span className="text-slate-200 mono">{fmtSignedPct(pctOfBase(mc.p50, baseCapital))}</span>,
+                    cenário ruim (p10) <span className="text-red-300 mono">{fmtSignedPct(pctOfBase(mc.p10, baseCapital))}</span>,
+                    cenário bom (p90) <span className="text-emerald-300 mono">{fmtSignedPct(pctOfBase(mc.p90, baseCapital))}</span>.
+                  </p>
+                ) : (
+                  // Sem capital base utilizável não há percentual honesto a exibir:
+                  // a projeção sai em moeda (D-01, issue #416).
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    Projeção em valor (capital base indisponível):{' '}
+                    mediana <span className="text-slate-200 mono">{currencyFmt(mc.p50)}</span>,
+                    cenário ruim (p10) <span className="text-red-300 mono">{currencyFmt(mc.p10)}</span>,
+                    cenário bom (p90) <span className="text-emerald-300 mono">{currencyFmt(mc.p90)}</span>.
+                  </p>
+                )
               )}
             </div>
           )}

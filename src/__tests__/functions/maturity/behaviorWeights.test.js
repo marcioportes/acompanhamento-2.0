@@ -80,6 +80,71 @@ describe('aggregateBehaviorWeights', () => {
     expect(cjs(trades)).toEqual(esm(trades));
   });
 
+  // #416 C1 — a TAXA é de violação que alimenta gate (`feedsGates`, via GATE_CODES), a
+  // PENALIDADE por dimensão é de tudo que pesa no score (`feedsScore`). Dois planos, dois
+  // flags. É o que o mapa de pesos aprovado sempre descreveu: TILT "entra na rule-violation
+  // rate"; EARLY_EXIT/LATE_EXIT/HESITATION são só "penalidade E+F".
+  describe('#416 C1 — taxa por feedsGates, penalidade por feedsScore', () => {
+    const bothEngines = [['ESM', esm], ['CJS', cjs]];
+
+    for (const [nome, agg] of bothEngines) {
+      it(`[${nome}] só HESITATION (não-gate): taxa 0, mas penaliza E`, () => {
+        const r = agg([trade('T1', [fam('HESITATION', 'MEDIUM')])]);
+        expect(r.ruleViolationRate).toBe(0);
+        expect(r.violationTrades).toBe(0);
+        expect(r.byDimension.E).toBe(16); // penalidade intacta: feedsScore não mudou
+      });
+
+      it(`[${nome}] TILT (gate) conta na taxa`, () => {
+        const r = agg([trade('T1', [fam('TILT', 'HIGH')])]);
+        expect(r.ruleViolationRate).toBe(1);
+        expect(r.gateCounts.tiltRevenge).toBe(1);
+      });
+
+      it(`[${nome}] TILT + EARLY_EXIT no mesmo trade conta UMA violação (taxa é por trade)`, () => {
+        const r = agg([trade('T1', [fam('TILT', 'HIGH'), fam('EARLY_EXIT', 'HIGH')])]);
+        expect(r.violationTrades).toBe(1);
+        expect(r.ruleViolationRate).toBe(1);
+        expect(r.byDimension.F).toBe(8); // EARLY_EXIT segue penalizando F (teto LOW, #101)
+      });
+
+      it(`[${nome}] UNPROTECTED_SIZE MEDIUM segue fora — guard do #394 preservado`, () => {
+        const r = agg([trade('T1', [fam('UNPROTECTED_SIZE', 'MEDIUM')])]);
+        expect(r.ruleViolationRate).toBe(0);
+        expect(r.byDimension.O).toBe(16);
+      });
+
+      it(`[${nome}] código em mentorClearedViolations segue fora`, () => {
+        const r = agg([trade('T1', [fam('TILT', 'HIGH')], ['TILT:T1'])]);
+        expect(r.ruleViolationRate).toBe(0);
+        expect(r.gateCounts.tiltRevenge).toBe(0);
+      });
+    }
+
+    // Fixture de regressão: números conferidos contra o código anterior ao C1 — só a taxa
+    // muda (0.75 → 0.25); dimensões, bônus, net e gateCounts ficam idênticos.
+    const fixtureMista = [
+      trade('T1', [fam('TILT', 'HIGH')]),                                          // gate
+      trade('T2', [fam('EARLY_EXIT', 'HIGH'), fam('HESITATION', 'MEDIUM')]),        // só score
+      trade('T3', [fam('GREED_CLUSTER', 'MEDIUM'), fam('UNPROTECTED_SIZE', 'MEDIUM')]), // score + #394
+      trade('T4', [fam('CLEAN_EXECUTION', null, 'positive')]),                     // limpo
+    ];
+
+    it('penalidade/bônus/net/gateCounts não se mexem; só a taxa cai', () => {
+      const r = esm(fixtureMista);
+      expect(r.byDimension).toEqual({ E: 12, F: 6, O: 4 });
+      expect(r.bonusByDimension).toEqual({ E: 2, F: 0, O: 0 });
+      expect(r.netByDimension).toEqual({ E: -10, F: -6, O: -4 });
+      expect(r.gateCounts).toEqual({ tampering: 0, chase: 0, sizing: 0, tiltRevenge: 1 });
+      expect(r.ruleViolationRate).toBe(0.25); // era 0.75 antes do C1: só T1 alimenta gate
+    });
+
+    it('paridade ESM≡CJS na fixture mista (espelho não apodreceu)', () => {
+      expect(cjs(fixtureMista)).toEqual(esm(fixtureMista));
+      expect(cjs(fixtureMista).ruleViolationRate).toBe(esm(fixtureMista).ruleViolationRate);
+    });
+  });
+
   // Trava a calibração rate-normalized (Fase D) — guarda contra drift dos números.
   describe('calibração (Fase D) — tabela de impacto do mapa de pesos', () => {
     const win = (n, fams) => Array.from({ length: n }, (_, i) => trade(`T${i}`, fams));

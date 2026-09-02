@@ -29,9 +29,11 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { calculateTradeCompliance } from '../utils/compliance';
+// Campos do plano que afetam compliance — mudança dispara recálculo em cascata.
+// #416 C2: a mesma lista alimenta o gate `strategy-12-months` (meses sem mudança de
+// parâmetro de risco). SSoT única — duas listas que podem divergir era o defeito.
+import { RISK_FIELDS } from '../utils/planRiskFields';
 
-/** Campos do plano que afetam compliance — mudança dispara recálculo */
-const RISK_FIELDS = ['riskPerOperation', 'rrTarget', 'periodStop', 'cycleStop'];
 
 /**
  * @param {string|null} overrideStudentId - UID do aluno para View As Student
@@ -196,22 +198,27 @@ export const usePlans = (overrideStudentId = null) => {
 
       await updateDoc(planRef, updateData);
 
-      // Se mentor, registra no editHistory via arrayUnion separado
-      if (auditInfo && auditInfo.editedBy === 'mentor') {
-        const historyEntry = {
-          by: 'mentor',
-          email: auditInfo.email,
-          fields: auditInfo.changedFields || [],
-          timestamp: new Date().toISOString()
-        };
-        await updateDoc(planRef, {
-          editHistory: arrayUnion(historyEntry)
-        });
-        console.log(`[usePlans] Mentor edit audit: ${auditInfo.email} → ${planId}`);
-      }
+      const changedFields = auditInfo?.changedFields || Object.keys(planData);
+
+      // #416 C2 — editHistory agora registra as DUAS mãos. Até aqui só a edição do
+      // mentor entrava; a do aluno bumpava `updatedAt` e sumia do histórico. Como o gate
+      // `strategy-12-months` passou a medir meses desde a última mudança de parâmetro de
+      // risco, esse ponto cego faria a métrica mentir em 68% dos planos (D-11).
+      // Campo já existente → INV-15 não é acionada.
+      // `lastEditedBy*` continua trilha exclusiva de mentor — não é auditoria de aluno.
+      const by = auditInfo?.editedBy === 'mentor' ? 'mentor' : 'student';
+      const historyEntry = {
+        by,
+        email: auditInfo?.email || user?.email || 'unknown',
+        fields: changedFields,
+        timestamp: new Date().toISOString()
+      };
+      await updateDoc(planRef, {
+        editHistory: arrayUnion(historyEntry)
+      });
+      console.log(`[usePlans] Plan edit audit (${by}): ${historyEntry.email} → ${planId}`);
 
       // B1: Se campos de risco foram alterados, recalcular compliance em cascata
-      const changedFields = auditInfo?.changedFields || Object.keys(planData);
       const riskChanged = changedFields.some(f => RISK_FIELDS.includes(f));
       if (riskChanged) {
         try {
@@ -228,7 +235,7 @@ export const usePlans = (overrideStudentId = null) => {
       console.error('[usePlans] Erro atualizar:', err);
       throw err;
     }
-  }, []);
+  }, [user]);
 
   /**
    * Deletar plano com CASCADE DELETE

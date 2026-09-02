@@ -12,8 +12,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-// Reproduz a constante RISK_FIELDS do usePlans.js
-const RISK_FIELDS = ['riskPerOperation', 'rrTarget', 'periodStop', 'cycleStop'];
+// #416 C2 — importa a SSoT em vez de reproduzir a lista. Cópia em teste é cópia que
+// pode divergir do código que ela promete cobrir.
+import { RISK_FIELDS } from '../../utils/planRiskFields';
 
 describe('B1: RISK_FIELDS detection', () => {
 

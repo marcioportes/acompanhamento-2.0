@@ -297,59 +297,92 @@ function resolveWindow(trades, stageCurrent, now) {
   };
 }
 
-function computeStrategyConsistencyMonths(trades, plans) {
-  void plans;
-  if (!Array.isArray(trades) || trades.length === 0) return 0;
+// #416 C2 / D-11 — espelho de src/utils/planRiskFields.js. CJS não importa de src/
+// (functions/ é deployado sozinho); a divergência é travada pelo teste de paridade
+// em src/__tests__/functions/maturity/helpers.strategyConsistencyMonths.parity.test.js.
+const RISK_FIELDS = Object.freeze([
+  'riskPerOperation',
+  'rrTarget',
+  'periodStop',
+  'cycleStop',
+]);
 
-  const byMonth = new Map();
-  for (const t of trades) {
-    const iso = parseDateToISO(t?.date);
-    const setup = t?.setup;
-    if (iso === null || typeof setup !== 'string' || setup.length === 0) continue;
-    const monthKey = iso.slice(0, 7);
-    let setupMap = byMonth.get(monthKey);
-    if (!setupMap) {
-      setupMap = new Map();
-      byMonth.set(monthKey, setupMap);
-    }
-    setupMap.set(setup, (setupMap.get(setup) ?? 0) + 1);
+// #416 C2 — a métrica media setup dominante > 60% do mês e descartava `plans`. Passa a
+// medir meses desde a última mudança nos parâmetros de risco do plano. Ver a nota longa
+// no espelho ESM. Assinatura (plans, options) — DEC-AUTO-416-18/20.
+function planInstantToMs(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
   }
-
-  if (byMonth.size === 0) return 0;
-
-  const sortedMonths = Array.from(byMonth.keys()).sort();
-  const dominants = sortedMonths.map((m) => {
-    const setupMap = byMonth.get(m);
-    let total = 0;
-    for (const c of setupMap.values()) total += c;
-    for (const [setup, count] of setupMap) {
-      if (count / total > 0.6) return setup;
-    }
-    return null;
-  });
-
-  let maxRun = 0;
-  let currentRun = 0;
-  let currentSetup = null;
-  let mesAnterior = null;
-  for (let i = 0; i < dominants.length; i += 1) {
-    const dom = dominants[i];
-    const atual = sortedMonths[i];
-    const vizinho = mesAnterior !== null && mesesEntre(mesAnterior, atual) <= MAX_BURACO + 1;
-    if (dom !== null && dom === currentSetup && vizinho) {
-      currentRun += 1;
-    } else if (dom !== null) {
-      currentSetup = dom;
-      currentRun = 1;
-    } else {
-      currentSetup = null;
-      currentRun = 0;
-    }
-    mesAnterior = atual;
-    if (currentRun > maxRun) maxRun = currentRun;
+  if (typeof value === 'string') {
+    const iso = parseDateToISO(value);
+    const ms = iso !== null ? Date.parse(`${iso}T00:00:00Z`) : Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
   }
+  if (typeof value === 'object') {
+    try {
+      if (typeof value.toMillis === 'function') {
+        const ms = value.toMillis();
+        return typeof ms === 'number' && Number.isFinite(ms) ? ms : null;
+      }
+      if (typeof value.toDate === 'function') {
+        const d = value.toDate();
+        const ms = Object.prototype.toString.call(d) === '[object Date]' ? d.getTime() : NaN;
+        return Number.isFinite(ms) ? ms : null;
+      }
+      const secs = typeof value.seconds === 'number' ? value.seconds : value._seconds;
+      if (typeof secs === 'number' && Number.isFinite(secs)) return secs * 1000;
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
 
-  return maxRun;
+function chaveMes(ms) {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function mesesDecorridos(fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return 0;
+  let meses = mesesEntre(chaveMes(fromMs), chaveMes(toMs));
+  if (new Date(toMs).getUTCDate() < new Date(fromMs).getUTCDate()) meses -= 1;
+  return meses > 0 ? meses : 0;
+}
+
+function ultimaMudancaDeRisco(plan) {
+  const historico = Array.isArray(plan && plan.editHistory) ? plan.editHistory : [];
+  let maisRecente = null;
+  for (const entrada of historico) {
+    const fields = Array.isArray(entrada && entrada.fields) ? entrada.fields : [];
+    if (!fields.some((f) => RISK_FIELDS.includes(f))) continue;
+    const ms = planInstantToMs(entrada && entrada.timestamp);
+    if (ms === null) continue;
+    if (maisRecente === null || ms > maisRecente) maisRecente = ms;
+  }
+  return maisRecente !== null ? maisRecente : planInstantToMs(plan && plan.createdAt);
+}
+
+function computeStrategyConsistencyMonths(plans, options = {}) {
+  const ativos = Array.isArray(plans)
+    ? plans.filter((p) => p != null && typeof p === 'object' && p.active !== false)
+    : [];
+  if (ativos.length === 0) return 0;
+
+  const nowMs = planInstantToMs(options && options.now) ?? Date.now();
+
+  let menor = null;
+  for (const plan of ativos) {
+    const refMs = ultimaMudancaDeRisco(plan);
+    const meses = refMs === null ? 0 : mesesDecorridos(refMs, nowMs);
+    if (menor === null || meses < menor) menor = meses;
+    if (menor === 0) return 0;
+  }
+  return menor ?? 0;
 }
 
 function computeStopUsageRate(trades) {
@@ -373,6 +406,7 @@ function computeConfidence(dimConfidences) {
 }
 
 module.exports = {
+  RISK_FIELDS,
   clip01,
   norm,
   normInverted,

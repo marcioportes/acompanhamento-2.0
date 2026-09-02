@@ -9,6 +9,7 @@
  */
 
 import { STAGE_WINDOWS } from './constants.js';
+import { RISK_FIELDS } from '../planRiskFields.js';
 
 // ---------------------------------------------------------------------------
 // 1.0 Helpers de normalização (escala 0-100)
@@ -445,71 +446,131 @@ export function resolveWindow(trades, stageCurrent, now) {
 }
 
 // ---------------------------------------------------------------------------
-// 1.8 computeStrategyConsistencyMonths (§3.1 D8)
+// 1.8 computeStrategyConsistencyMonths (§3.1 D8 · #416 C2 / D-11)
 // ---------------------------------------------------------------------------
 
-/**
- * Paralelo ao `computeStrategyConsistencyWeeks` agrupando por mês calendário
- * (YYYY-MM). Setup dominante: > 60% dos trades do mês. Retorna run máximo
- * consecutivo de meses com mesmo dominante não-null.
+/*
+ * #416 C2 — a função se chamava "constância de estratégia" e media setup dominante
+ * > 60% dos trades do mês. `setup` está preenchido em 372/381 trades (98%), então o
+ * `0` universal na base não era campo vazio: o critério PUNIA playbook multi-setup e
+ * era inatingível por construção pra quem opera mais de uma coisa, por mais estável
+ * que a estratégia fosse. Mesma família do gate impossível do #376/#377.
  *
- * @param {Array<{date:string, setup?:string}>} trades
- * @param {Array<any>} plans  recebido para paridade com a versão semanal.
- * @returns {number}
+ * Passa a medir o que o nome promete: meses desde a última mudança nos PARÂMETROS DE
+ * RISCO do plano (`RISK_FIELDS`) — o contrato que o aluno assinou com ele mesmo.
+ *
+ * Limitação declarada (D-11): o histórico começa onde os dados começam. Plano sem
+ * `editHistory` conta desde `createdAt`; mudança anterior ao campo existir é
+ * invisível. O gate fica honesto daqui pra frente, não retroativamente.
  */
-export function computeStrategyConsistencyMonths(trades, plans) {
-  void plans;
-  if (!Array.isArray(trades) || trades.length === 0) return 0;
 
-  const byMonth = new Map();
-  for (const t of trades) {
-    const iso = parseDateToISO(t?.date);
-    const setup = t?.setup;
-    if (iso === null || typeof setup !== 'string' || setup.length === 0) continue;
-    const monthKey = iso.slice(0, 7); // YYYY-MM
-    let setupMap = byMonth.get(monthKey);
-    if (!setupMap) {
-      setupMap = new Map();
-      byMonth.set(monthKey, setupMap);
-    }
-    setupMap.set(setup, (setupMap.get(setup) ?? 0) + 1);
+/**
+ * Coerção defensiva de data. Separada do `toEpochMs` do `resolveWindow` de propósito:
+ * aquele é estrito por contrato (só `trade.date` string/Date; número em campo de data de
+ * trade é erro, não valor). Este aceita as formas em que um PLANO chega.
+ *
+ * Roda nos DOIS ambientes: `editHistory[].timestamp` é string ISO (`usePlans.js`),
+ * `plan.createdAt` é Timestamp do Firestore (client) ou do admin SDK (CF), e um plano
+ * serializado traz `{seconds}` cru. Qualquer outra coisa → null.
+ *
+ * @param {*} value
+ * @returns {number|null} epoch ms
+ */
+function planInstantToMs(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
   }
-
-  if (byMonth.size === 0) return 0;
-
-  const sortedMonths = Array.from(byMonth.keys()).sort();
-  const dominants = sortedMonths.map((m) => {
-    const setupMap = byMonth.get(m);
-    let total = 0;
-    for (const c of setupMap.values()) total += c;
-    for (const [setup, count] of setupMap) {
-      if (count / total > 0.6) return setup;
-    }
-    return null;
-  });
-
-  let maxRun = 0;
-  let currentRun = 0;
-  let currentSetup = null;
-  let mesAnterior = null;
-  for (let i = 0; i < dominants.length; i += 1) {
-    const dom = dominants[i];
-    const mes = sortedMonths[i];
-    const vizinho = mesAnterior !== null && mesesEntre(mesAnterior, mes) <= MAX_BURACO + 1;
-    if (dom !== null && dom === currentSetup && vizinho) {
-      currentRun += 1;
-    } else if (dom !== null) {
-      currentSetup = dom;
-      currentRun = 1;
-    } else {
-      currentSetup = null;
-      currentRun = 0;
-    }
-    mesAnterior = mes;
-    if (currentRun > maxRun) maxRun = currentRun;
+  if (typeof value === 'string') {
+    const iso = parseDateToISO(value);
+    const ms = iso !== null ? Date.parse(`${iso}T00:00:00Z`) : Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
   }
+  if (typeof value === 'object') {
+    try {
+      if (typeof value.toMillis === 'function') {
+        const ms = value.toMillis();
+        return typeof ms === 'number' && Number.isFinite(ms) ? ms : null;
+      }
+      if (typeof value.toDate === 'function') {
+        const d = value.toDate();
+        const ms = Object.prototype.toString.call(d) === '[object Date]' ? d.getTime() : NaN;
+        return Number.isFinite(ms) ? ms : null;
+      }
+      const secs = typeof value.seconds === 'number' ? value.seconds : value._seconds;
+      if (typeof secs === 'number' && Number.isFinite(secs)) return secs * 1000;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
-  return maxRun;
+const chaveMes = (ms) => {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * Meses INTEIROS decorridos entre dois instantes (aniversário, não diferença de
+ * calendário). 30/06 → 01/09 são 2 meses decorridos, não 3: arredondar pra cima
+ * afrouxaria um gate de promoção em até um mês.
+ */
+function mesesDecorridos(fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) return 0;
+  let meses = mesesEntre(chaveMes(fromMs), chaveMes(toMs));
+  if (new Date(toMs).getUTCDate() < new Date(fromMs).getUTCDate()) meses -= 1;
+  return meses > 0 ? meses : 0;
+}
+
+/**
+ * Instante de referência de um plano: a entrada mais recente de `editHistory` que
+ * tocou um `RISK_FIELDS`; sem nenhuma, a criação do plano. Ausência de histórico é
+ * informação válida (nenhuma edição registrada), não buraco.
+ */
+function ultimaMudancaDeRisco(plan) {
+  const historico = Array.isArray(plan?.editHistory) ? plan.editHistory : [];
+  let maisRecente = null;
+  for (const entrada of historico) {
+    const fields = Array.isArray(entrada?.fields) ? entrada.fields : [];
+    if (!fields.some((f) => RISK_FIELDS.includes(f))) continue;
+    const ms = planInstantToMs(entrada?.timestamp);
+    if (ms === null) continue;
+    if (maisRecente === null || ms > maisRecente) maisRecente = ms;
+  }
+  return maisRecente !== null ? maisRecente : planInstantToMs(plan?.createdAt);
+}
+
+/**
+ * Meses sem mudança nos parâmetros de risco do plano.
+ *
+ * Assinatura `(plans, options)` — DEC-AUTO-416-18. Manter `trades` só pra "paridade
+ * com a versão semanal" e descartá-lo com `void` seria o mesmo anti-padrão que esta
+ * task corrige. As duas métricas passam a medir coisas diferentes.
+ *
+ * @param {Array<object>} plans planos do aluno; inativos (`active === false`) fora.
+ * @param {{now?: Date|string|number}} [options] `now` injetável (DEC-AUTO-416-20) —
+ *        sem ele o teste passa hoje e quebra na virada do mês.
+ * @returns {number} menor valor entre os planos ativos (a mudança mais recente manda).
+ */
+export function computeStrategyConsistencyMonths(plans, options = {}) {
+  const ativos = Array.isArray(plans)
+    ? plans.filter((p) => p != null && typeof p === 'object' && p.active !== false)
+    : [];
+  if (ativos.length === 0) return 0;
+
+  const nowMs = planInstantToMs(options?.now) ?? Date.now();
+
+  let menor = null;
+  for (const plan of ativos) {
+    const refMs = ultimaMudancaDeRisco(plan);
+    const meses = refMs === null ? 0 : mesesDecorridos(refMs, nowMs);
+    if (menor === null || meses < menor) menor = meses;
+    if (menor === 0) return 0;
+  }
+  return menor ?? 0;
 }
 
 // ---------------------------------------------------------------------------

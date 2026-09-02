@@ -14,6 +14,7 @@ import { useCycleConsistency } from '../../../hooks/useCycleConsistency';
 import {
   computeCycleMetrics,
   computeRuleAdherenceRate,
+  computeAdherenceCoverage,
   computeStopBreach,
   topErrors,
 } from '../../../utils/cycleClosure/cycleMetrics';
@@ -21,6 +22,8 @@ import {
   computeTPS,
   cvToConsistencyNorm,
 } from '../../../utils/cycleClosure/tradingPerformanceScore';
+import { buildTpsHints } from '../../../utils/cycleClosure/tpsHints';
+import { sortTradesChrono } from '../../../utils/tradeInstant';
 import {
   MetricTile,
   expectancyContent, winRateContent, payoffContent, profitFactorContent, drawdownContent, adherenceContent,
@@ -92,7 +95,9 @@ function TPSComponentCard({ label, ptsGot, ptsMax, filled, hint, missing }) {
           sem dados suficientes — peso redistribuído nos demais fatores
         </p>
       ) : (
-        hint && filled < 0.5 && (
+        // #416 (A3) — o hint aparece se e somente se o predicado sobre o DADO for
+        // verdadeiro (buildTpsHints). Não há mais gate por faixa de pontos.
+        hint && (
           <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">{hint}</p>
         )
       )}
@@ -115,7 +120,20 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
 
   const metrics = useMemo(() => computeCycleMetrics(cycleTrades, plan), [cycleTrades, plan]);
   const ruleAdherenceRate = useMemo(() => computeRuleAdherenceRate(cycleTrades), [cycleTrades]);
+  // #416 (C3) — cobertura da amostra de aderência. Só a taxa é persistida em onMetrics;
+  // isto aqui existe para a UI declarar quantos trades entraram no denominador.
+  const adherenceCoverage = useMemo(() => computeAdherenceCoverage(cycleTrades), [cycleTrades]);
+  const showAdherenceCoverage = adherenceCoverage.evaluated < adherenceCoverage.total;
+  const adherenceCoverageLabel = `⚠ Aderência em ${adherenceCoverage.evaluated} de ${adherenceCoverage.total} ${
+    adherenceCoverage.total === 1 ? 'trade' : 'trades'
+  } (${adherenceCoverage.total - adherenceCoverage.evaluated} sem compliance)`;
   const top3Errors = useMemo(() => topErrors(cycleTrades, 3), [cycleTrades]);
+  // #416 (A3) — total de violações DECLARADAS no ciclo (todas, não só o top 3).
+  // Predicado do hint de Aderência: violação declarada de fato, não taxa baixa.
+  const violationsCount = useMemo(
+    () => topErrors(cycleTrades, Number.MAX_SAFE_INTEGER).reduce((sum, e) => sum + e.count, 0),
+    [cycleTrades],
+  );
   const stopBreach = useMemo(() => computeStopBreach(cycleTrades, plan), [cycleTrades, plan]);
 
   // #282 — mesmas métricas de consistência do dashboard (display-time, não congela no frozenSnapshot).
@@ -150,7 +168,11 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   // Drawdown — peak-to-trough simples sobre cumulative result
   const maxDD = useMemo(() => {
     if (cycleTrades.length === 0 || !plan?.pl) return { value: 0, percent: 0 };
-    const sorted = [...cycleTrades].sort((a, b) => a.date.localeCompare(b.date));
+    // #416 (D1) — peak-to-trough é path-dependent: ordenar só por `date` deixava
+    // a ordem intradiária por conta do array, e permutar a ordem de escrita em
+    // lote mudava o maxDD (fator de maior peso do TPS). `sortTradesChrono` é a
+    // SSoT do #402 e desempata até o `id` — saída invariante a permutação.
+    const sorted = sortTradesChrono(cycleTrades);
     let peak = plan.pl;
     let running = plan.pl;
     let worstDD = 0;
@@ -177,6 +199,18 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
   }), [metrics, maxDD, ruleAdherenceRate, consistency.cvNormalized]);
 
   const tps = useMemo(() => computeTPS(tpsInput), [tpsInput]);
+
+  // #416 (A3) — hints dos cards de composição por predicado sobre o dado.
+  // `maxDD.percent` é fração decimal; `plan.cycleStop` é percentual — o helper concilia.
+  const tpsHints = useMemo(() => buildTpsHints({
+    avgWinR: metrics.avgWinR,
+    avgLossR: metrics.avgLossR,
+    maxDDPercent: maxDD.percent,
+    cycleStopPercent: plan?.cycleStop ?? null,
+    expectancy_R: metrics.expectancy_R,
+    cvNormalized: consistency.cvNormalized?.value ?? null,
+    violationsCount,
+  }), [metrics, maxDD, plan, consistency.cvNormalized, violationsCount]);
 
   // Bubble up to draft (only when ready)
   useEffect(() => {
@@ -259,7 +293,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
       <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4" /> Performance
       </h4>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className={`grid grid-cols-3 gap-4 ${showAdherenceCoverage ? 'mb-2' : 'mb-6'}`}>
         {[
           { label: 'Expectancy (R)', tooltip: EXPECTANCY_TOOLTIP, ...expectancyContent(metrics.expectancy_R) },
           { label: 'Win Rate', tooltip: WIN_RATE_TOOLTIP, ...winRateContent(metrics.winRate, metrics.winners, metrics.count) },
@@ -275,6 +309,9 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
           />
         ))}
       </div>
+      {showAdherenceCoverage && (
+        <p className="text-[10px] text-amber-400/80 mb-6">{adherenceCoverageLabel}</p>
+      )}
 
       <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
         <Activity className="w-4 h-4" /> Consistência Operacional
@@ -387,17 +424,12 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
             </summary>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
               {[
-                { key: 'pf', label: 'Profit Factor', missKey: 'profitFactor',
-                  hint: 'ganhos médios menores que perdas — alvo escalonado ou alvo maior' },
-                { key: 'dd', label: 'Max Drawdown', missKey: 'maxDDPercent',
-                  hint: 'ficou perto/passou do stop — reduzir size ou parar antes' },
-                { key: 'exp', label: 'Expectancy (R)', missKey: 'expectancy_R',
-                  hint: '< 0,5R por trade — saiu cedo dos vencedores' },
-                { key: 'consistency', label: 'Consistência', missKey: 'winRateConsistency',
-                  hint: 'retornos oscilando além do plano — buscar regime mais estável' },
-                { key: 'rule', label: 'Aderência', missKey: 'ruleAdherenceRate',
-                  hint: 'violações de RO/RR — gate na entrada antes do envio' },
-              ].map(({ key, label, missKey, hint }) => {
+                { key: 'pf', label: 'Profit Factor', missKey: 'profitFactor' },
+                { key: 'dd', label: 'Max Drawdown', missKey: 'maxDDPercent' },
+                { key: 'exp', label: 'Expectancy (R)', missKey: 'expectancy_R' },
+                { key: 'consistency', label: 'Consistência', missKey: 'winRateConsistency' },
+                { key: 'rule', label: 'Aderência', missKey: 'ruleAdherenceRate' },
+              ].map(({ key, label, missKey }) => {
                 const w = tps.weights?.[key] ?? 0;
                 return (
                   <TPSComponentCard
@@ -407,7 +439,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
                     ptsMax={w * 100}
                     filled={w > 0 ? tps.breakdown[key] / w : 0}
                     missing={tps.missing.includes(missKey)}
-                    hint={hint}
+                    hint={tpsHints[key]}
                   />
                 );
               })}

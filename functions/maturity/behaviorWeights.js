@@ -2,8 +2,11 @@
 /**
  * behaviorWeights (CJS) — agrega `trade.behaviorProfile.families` em penalidade/bônus por
  * dimensão 4D + `ruleViolationRate`. Rate-normalized (Fase D). Ver fonte ESM p/ doc.
+ *
+ * `ruleViolationRate` = trades com violação QUE ALIMENTA GATE / trades com profile (#416 C1):
+ * `feedsGates` (via GATE_CODES) governa a taxa, `feedsScore` governa a penalidade por dimensão.
  */
-const { getPattern, severidadeVigente } = require('./behavioralTaxonomyMirror');
+const { getPattern, severidadeVigente, GATE_CODES } = require('./behavioralTaxonomyMirror');
 
 const SEVERITY_WEIGHT = Object.freeze({ HIGH: 3, MEDIUM: 2, LOW: 1 });
 const POSITIVE_WEIGHT = 1;
@@ -48,13 +51,20 @@ function aggregateBehaviorWeights(trades = []) {
       // Teto de leitura (#101): a severidade gravada não sobrepõe o limite do padrão.
       const sev = severidadeVigente(code, f.severity);
       const elegivel = !(code === 'UNPROTECTED_SIZE' && sev !== 'HIGH');
+      // #416 C1 — a taxa é de violação QUE ALIMENTA GATE, não de "toda família negativa".
+      // A fonte é `feedsGates` via GATE_CODES, o mesmo flag que `behavioralDetection` usa
+      // pra montar `gateInputs`. O mapa de pesos aprovado é explícito por padrão: TILT
+      // "entra na rule-violation rate"; EARLY_EXIT/LATE_EXIT/HESITATION são só "penalidade
+      // E+F" e nunca entraram na taxa. Lê `p.code` (canônico) e não `code`, pra código
+      // legado alias não escapar do flag.
+      const alimentaGate = GATE_CODES.includes(p.code);
       const dims = Array.isArray(p.dimensao) ? p.dimensao : [];
       if (f.valence === 'positive') {
         for (const d of dims) if (wbon[d] != null) wbon[d] += POSITIVE_WEIGHT;
       } else {
         const w = SEVERITY_WEIGHT[sev] ?? SEVERITY_WEIGHT.LOW;
         for (const d of dims) if (wpen[d] != null) wpen[d] += w;
-        if (elegivel) {
+        if (alimentaGate && elegivel) {
           hasViolation = true;
           const gc = GATE_COUNT_MAP[code];
           if (gc) gateCounts[gc] += 1;

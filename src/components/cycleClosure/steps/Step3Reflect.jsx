@@ -41,11 +41,12 @@ function buildAttributionEvidence(key, { metrics, patterns, snapshot }) {
   switch (key) {
     case 'error': {
       const errors = [];
-      const adherence = metrics?.ruleAdherenceRate;
+      // Violação declarada só vem de `patterns.topErrors` (trade.compliance.violations).
+      // Derivar contagem da taxa de aderência contava trades não-aderentes e os rotulava
+      // como violações — a aba 1 dizia "sem violações" e o Q3 reportava "4 violações"
+      // no mesmo fechamento (#416 A4 / DEC-AUTO-416-09).
       const violations = Array.isArray(patterns?.topErrors) ? patterns.topErrors.length : 0;
-      if (typeof adherence === 'number' && adherence < 0.9) {
-        errors.push(`${Math.round((1 - adherence) * (metrics?.count || 0))} violações de regras`);
-      } else if (violations > 0) {
+      if (violations > 0) {
         errors.push(`${violations} tipo(s) de violação`);
       }
       if ((counts.tiltDaysCount || 0) > 0) errors.push(`${counts.tiltDaysCount} dia(s) com tilt`);
@@ -134,14 +135,25 @@ function buildSuggestions({ metrics, patterns, snapshot }) {
   ) {
     sustain.push(`Aderência ${(metrics.ruleAdherenceRate * 100).toFixed(0)}% — disciplina pré-trade firme`);
   }
-  if (metrics?.bestTradeR != null && metrics.bestTradeR >= 1.5) {
+  // Sem o guard, ciclo com vingança/tilt sugeria replicar a configuração de entrada
+  // do trade outlier — que pode ser justamente o trade de vingança (#416 B1).
+  if (metrics?.bestTradeR != null && metrics.bestTradeR >= 1.5 && !hasCriticalSignal) {
     sustain.push(`Melhor trade ${metrics.bestTradeR.toFixed(1)}R — replicar a configuração de entrada`);
   }
   if (typeof metrics?.profitFactor === 'number' && metrics.profitFactor >= 2) {
     sustain.push(`Profit factor ${metrics.profitFactor.toFixed(2)} — vantagem matemática sustentada`);
   }
+  // O melhor dia limpo só sustenta se o conjunto dos dias limpos também for positivo:
+  // pinçar +R$500 de um conjunto que somou −R$134 é elogiar o outlier (#416 B1).
+  // Soma canônica = `patterns.correlation.performanceOnCleanDays` (DEC-AUTO-416-10);
+  // valor ausente/não-numérico não vira elogio.
   const bestClean = patterns?.dayBreakdown?.bestCleanDay;
-  if (bestClean && typeof bestClean.pnl === 'number' && bestClean.pnl > 0) {
+  const cleanDaysPnl = patterns?.correlation?.performanceOnCleanDays;
+  if (
+    bestClean && typeof bestClean.pnl === 'number' && bestClean.pnl > 0 &&
+    typeof cleanDaysPnl === 'number' && cleanDaysPnl > 0 &&
+    !hasCriticalSignal
+  ) {
     sustain.push(`Dia ${bestClean.date} sem tilt/vingança: +R$${bestClean.pnl.toFixed(0)} — versão sob controle existe`);
   }
 

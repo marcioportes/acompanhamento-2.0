@@ -286,12 +286,14 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
       {/* Correlação tilt vs clean */}
       <section>
         <h4 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
-          {correlation.performanceOnTiltDays < 0 ? <Frown className="w-4 h-4" /> : <Smile className="w-4 h-4" />}
+          {correlation.tiltDaysCount === 0
+            ? <Smile className="w-4 h-4" aria-label="Ciclo sem dias em tilt/vingança" />
+            : <Frown className="w-4 h-4" aria-label="Ciclo com dias em tilt/vingança" />}
           Custo emocional do ciclo
         </h4>
         {correlation.tiltDaysCount === 0 ? (
           <p className="text-sm text-slate-500 italic">
-            Sem dias em tilt/vingança — resultado dos {correlation.cleanDaysCount} dias limpos:{' '}
+            Sem dias em tilt/vingança — resultado dos {correlation.cleanDaysCount} dias sem tilt/vingança:{' '}
             <span className={`mono font-semibold ${correlation.performanceOnCleanDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {correlation.performanceOnCleanDays >= 0 ? '+' : ''}R$ {correlation.performanceOnCleanDays.toFixed(0)}
             </span>
@@ -300,12 +302,12 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-800/30 rounded-xl p-3 border border-red-500/20">
               <p className="text-[11px] text-slate-500 mb-1">Em dias com tilt/vingança ({correlation.tiltDaysCount})</p>
-              <p className={`text-xl font-bold mono ${correlation.performanceOnTiltDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <p className="text-xl font-bold mono text-red-400">
                 {correlation.performanceOnTiltDays >= 0 ? '+' : ''}R$ {correlation.performanceOnTiltDays.toFixed(0)}
               </p>
             </div>
             <div className="bg-slate-800/30 rounded-xl p-3 border border-emerald-500/20">
-              <p className="text-[11px] text-slate-500 mb-1">Em dias limpos ({correlation.cleanDaysCount})</p>
+              <p className="text-[11px] text-slate-500 mb-1">Em dias sem tilt/vingança ({correlation.cleanDaysCount})</p>
               <p className={`text-xl font-bold mono ${correlation.performanceOnCleanDays >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                 {correlation.performanceOnCleanDays >= 0 ? '+' : ''}R$ {correlation.performanceOnCleanDays.toFixed(0)}
               </p>

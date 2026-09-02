@@ -125,14 +125,25 @@ export function computeCycleMetrics(trades, plan) {
 }
 
 /**
- * ruleAdherenceRate = trades com (compliance.roStatus='OK' E compliance.rrStatus='OK') / total
+ * Predicado único de "trade avaliável para aderência": o compliance foi de fato
+ * calculado e gravou um roStatus. Compartilhado por computeRuleAdherenceRate e
+ * computeAdherenceCoverage para que taxa e cobertura nunca divirjam de amostra.
  *
- * Mark Douglas: "the only KPI that matters". Trades sem objeto compliance são
- * considerados não conformes (defensivo — força preenchimento upstream).
+ * Mesmo predicado de scoreRiscoPorOperacao (maturityEngine/computeFinancial.js).
+ */
+export function isComplianceEvaluated(t) {
+  return typeof t?.compliance?.roStatus === 'string';
+}
+
+/**
+ * ruleAdherenceRate = trades com compliance.roStatus='CONFORME' / trades AVALIADOS
+ *
+ * Mark Douglas: "the only KPI that matters".
+ *
+ * @returns {number|null} taxa em [0,1], ou null quando não há trade avaliável.
  */
 export function computeRuleAdherenceRate(trades) {
   const list = Array.isArray(trades) ? trades : [];
-  if (list.length === 0) return null;
 
   // #376 — comparava com 'OK', valor que NUNCA existiu nos dados: o domínio é
   // CONFORME / NAO_CONFORME / FORA_DO_PLANO (compliance.js). A função devolvia 0 para
@@ -143,12 +154,39 @@ export function computeRuleAdherenceRate(trades) {
   //
   // R:R saiu do critério junto (Marcio, 23/08: abaixo do alvo é comportamento, não
   // violação) — aderência aqui é risco por operação.
+  //
+  // #416 — o denominador era `list.length`, sob a premissa de que trade sem objeto
+  // compliance conta como não conforme ("defensivo — força preenchimento upstream").
+  // A premissa é falsa e o resultado é uma mentira: ausência de dado virava violação
+  // do aluno, e a taxa caía sem que ninguém tivesse quebrado regra alguma (ciclo de
+  // agosto: 0,80 exibido para 16 conformes em 18 avaliados = 0,889). Denominador
+  // passa a ser só o avaliável; amostra vazia devolve null (o TPS renormaliza o peso
+  // desde o #337) e a UI mostra a cobertura em vez de esconder o buraco no número.
   let conform = 0;
+  let evaluated = 0;
   for (const t of list) {
-    const c = t?.compliance;
-    if (c && c.roStatus === 'CONFORME') conform++;
+    if (!isComplianceEvaluated(t)) continue;
+    evaluated++;
+    if (t.compliance.roStatus === 'CONFORME') conform++;
   }
-  return conform / list.length;
+  if (evaluated === 0) return null;
+  return conform / evaluated;
+}
+
+/**
+ * Cobertura da amostra de aderência — quantos trades do ciclo têm compliance
+ * avaliado, de quantos. Não recalcula taxa: existe só para a UI declarar o
+ * denominador de computeRuleAdherenceRate.
+ *
+ * @returns {{evaluated: number, total: number}}
+ */
+export function computeAdherenceCoverage(trades) {
+  const list = Array.isArray(trades) ? trades : [];
+  let evaluated = 0;
+  for (const t of list) {
+    if (isComplianceEvaluated(t)) evaluated++;
+  }
+  return { evaluated, total: list.length };
 }
 
 /**
