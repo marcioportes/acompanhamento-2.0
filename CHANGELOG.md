@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.86.1] - 02/09/2026 · #416 · PR #417
+
+**fix:** a esteira de fechamento para de mentir — 13 correções
+
+- **`feedsGates` não estava morto.** A redação original do issue afirmava que o flag não era lido em lugar nenhum; a busca foi pelo nome literal e não viu a via derivada `GATE_CODES`, consumida em `behavioralDetection`. O defeito real era mais estreito: só `aggregateBehaviorWeights` ignorava. Body do issue corrigido.
+- **`handleMentorSavePlan` nunca passou `changedFields`** — o caminho do mentor gravava `fields: []` em `editHistory` desde sempre, e a métrica nova jamais veria uma edição de mentor. Corrigido no hook (DEC-AUTO-416-23).
+- **Segundo caller não previsto:** `ResultadoDoAluno.jsx:58` (entrou em `4ab2c3eb`/#411, depois da redação do spec) consome `computeRuleAdherenceRate` cru. Trocar o contrato apagaria o tile de Aderência do MentorDashboard sem erro e sem teste vermelho — em CHUNK-16, que este issue não detém. Resolvido mantendo o retorno `number | null` e expondo a cobertura por `computeAdherenceCoverage`, função irmã com predicado compartilhado: o denominador correto chega às duas telas sem tocar CHUNK-16 (DEC-AUTO-416-15).
+
+
 ## [1.86.0] - 31/08/2026 · #414 · PR #415
 
 **feat:** relatório do mês substitui o Diário na área do aluno

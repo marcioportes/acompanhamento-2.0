@@ -102,4 +102,4 @@
 | 1.83.33 | #402 (reaberta) | `fix/issue-402-verde-coerente` | 27/08/2026 | consumida (PR #407 squash `2b1250bd`) |
 | 1.85.0 | #408 | `feat/issue-408-fila-por-dia` | 29/08/2026 | consumida (PR #412 squash `94dbeee5`) |
 | 1.86.0 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | consumida (PR #415 squash `503c7739`) |
-| 1.86.1 | #416 | `fix/issue-416-esteira-fechamento` | 01/09/2026 | RESERVADA — correções nítidas da esteira de fechamento (Monte Carlo /1000, sustain sem guard, feedsGates, gate de estratégia, aderência sem compliance) |
+| 1.86.1 | #416 | `fix/issue-416-esteira-fechamento` | 01/09/2026 | consumida (PR #417 squash `f12e147e`) |

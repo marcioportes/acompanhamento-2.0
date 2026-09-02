@@ -354,3 +354,26 @@
 - **DEC-AUTO-408-06** (30/08/2026): **Ordem em dúvida cala o predicado de sequência, não o dia.** Sem ordinal, sem autorização por operação, sem "continuou operando depois do stop" e sem "bateu a meta e parou" — que afirma o comportamento da última operação. Permanece o que o fechamento prova sozinho: líquido, "ultrapassou por quanto", "fechou na meta do dia". Se o dia tocou a meta e devolveu, nada é dito.
 - **DEC-AUTO-408-07** (30/08/2026): **O silêncio não absolve.** Com a ordem em dúvida, `authorizationNotice` cala — e as frases de ausência do `BehaviorPanel` ("nenhuma violação de plano", "execução alinhada") passariam a atestar inocência sobre predicado não avaliado. O painel declara a ressalva e afirma só o que pode: "nenhum padrão comportamental de risco na execução". É a contradição do #402 (DEC-AUTO-402-12) na direção oposta.
 - **DEC-AUTO-408-08** (30/08/2026): **Trade sem plano não existe** (Marcio: *"aluno sem plano não tem trade. ponto"*). Confirmado na base: 380 trades, todos com plano; a única exceção era um documento com `behaviorProfile` e nada mais — resíduo de merge em trade apagado, removido. Não há tratamento especial: se um aparecer, é defeito de dado e a fila o mostra num balde sem limiar, porque sumir com ele em silêncio seria pior.
+- **DEC-AUTO-416-01** (01/09/2026): `pctOfBase` rejeita `value` não-finito além da base.
+- **DEC-AUTO-416-02** (01/09/2026): separador decimal do percentual fica **ponto** (`+1.3%`), não vírgula.
+- **DEC-AUTO-416-03** (01/09/2026): texto "Sobre o capital base" passa a usar `currencyFmt`, respeitando `account.currency` em vez de hardcodar "R$".
+- **DEC-AUTO-416-04** (01/09/2026): sinal explícito nos três percentis do Monte Carlo.
+- **DEC-AUTO-416-05** (01/09/2026): ícone do cabeçalho do custo emocional condicionado à presença de dias sujos (`tiltDaysCount === 0 ? Smile : Frown`), não a um ícone literalmente constante.
+- **DEC-AUTO-416-06** (01/09/2026): predicados dos hints do TPS vão para helper puro exportado e testado (`src/utils/cycleClosure/tpsHints.js`), não inline no JSX.
+- **DEC-AUTO-416-07** (01/09/2026): fronteira de "errático" do fator consistência é a banda de `cvTheme` (`> 1.5`), não constante nova.
+- **DEC-AUTO-416-08** (01/09/2026): CV `< 0.5` (banda "Suspeito") não dispara hint.
+- **DEC-AUTO-416-09** (01/09/2026): hint de `rule` passou de "violações de RO/RR" para "violações declaradas no ciclo", e `violationsCount` conta **todas** as violações (`topErrors(trades, MAX)`), não o `top3Errors`.
+- **DEC-AUTO-416-10** (01/09/2026): o A4 se resolve **removendo** o ramo derivado da taxa, não somando um total de violações no `Step3Reflect`.
+- **DEC-AUTO-416-11** (01/09/2026): a soma dos dias limpos é `patterns.correlation.performanceOnCleanDays`, não `dayBreakdown.cleanPnl` como diz o body do #416.
+- **DEC-AUTO-416-12** (01/09/2026): desempate do `maxDD` usa `sortTradesChrono`/`compareTradesChrono` (`src/utils/tradeInstant.js`), não comparador local por `entryTime`.
+- **DEC-AUTO-416-13** (01/09/2026): o **campo persistido** `metrics.ruleAdherenceRate` continua `number | null`; quem muda de contrato é só o util `computeRuleAdherenceRate` (passa a devolver `{rate, evaluated, total}` ou `null`).
+- **DEC-AUTO-416-14** (01/09/2026): a linha de cobertura da aderência fica **fora** do tile, espelhando o `coverageLabel` do MEP/MEN (`Step1Read.jsx:333-334`); `adherenceContent` não é tocada.
+- **DEC-AUTO-416-15** (01/09/2026): `computeRuleAdherenceRate` **mantém** o retorno `number | null`; a cobertura sai por `computeAdherenceCoverage`, função irmã que compartilha o predicado `isComplianceEvaluated`. **Supersede DEC-AUTO-416-13.**.
+- **DEC-AUTO-416-16** (01/09/2026): aceito o efeito de ciclo **sem nenhum** trade com `compliance.roStatus` passar a ficar **sem nota de TPS**, em vez de pontuar sobre um zero falso. **Corrige premissa de D-07 e da própria spec do #416**, que afirmam "o TPS já renormaliza o peso": `computeTPS:112-114` trata `rule` como fator **obrigatório** (junto com `pf`) e devolve `score: null` — não há renormalização para este fator.
+- **DEC-AUTO-416-17** (01/09/2026): o corte do `ruleViolationRate` é por **código canônico** (`p.code` resolvido por `getPattern`, cobrindo alias legado `STOP_TAMPERING` → `STOP_PANIC`), não por família.
+- **DEC-AUTO-416-18** (01/09/2026): `computeStrategyConsistencyMonths` passa a `(plans, options)`.
+- **DEC-AUTO-416-19** (01/09/2026): label do gate `strategy-12-months` passa a descrever a métrica; `id`, `metric` e `threshold` intactos.
+- **DEC-AUTO-416-20** (01/09/2026): `options.now` injetável (default `new Date()`).
+- **DEC-AUTO-416-21** (01/09/2026): além do `label`, mudou `friendlyLabel`, `whatIs` e `howTo` do gate.
+- **DEC-AUTO-416-22** (01/09/2026): `planInstantToMs` é função nova, não extensão do `toEpochMs` do `resolveWindow`.
+- **DEC-AUTO-416-23** (01/09/2026): `fields` = `changedFields || Object.keys(planData)` nas duas mãos.

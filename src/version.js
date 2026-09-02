@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.86.1: #416 fix a esteira de fechamento para de mentir — 13 correções (PR #417, 02/09/2026)
  * - 1.86.0: #414 feat relatório do mês substitui o Diário na área do aluno (PR #415, 31/08/2026)
  * - 1.85.0: #408 feat Aguardando Feedback vira árvore aluno → dia → plano → trade (PR #412, 30/08/2026)
  * - 1.84.0: #101 feat Torre de Controle — a tela que diz o que fazer (PR #411, 29/08/2026)
@@ -428,7 +429,7 @@
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
 const version = '1.86.1';
-const build = '20260901';
+const build = '20260902';
 
 const VERSION = {
   version,
