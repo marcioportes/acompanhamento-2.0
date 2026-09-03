@@ -74,6 +74,12 @@ Estados do explicador: fechado (default) → header com rótulo amigável + núm
 
 ## Sessions
 
+- `A [motor] commit a478a343 ok — histogram + pLoss aditivos, 12 testes`
+- `B [cópia] commit 3ee87559 ok — adjustExplainers + 25 testes`
+- `C [desenho] commit 44a43b6e ok — McDistribution SVG + ExplainerCard, 7 testes`
+- `D [tela] commit 456e18e3 ok — Step6Adjust reordenado + limpeza, suíte 4696`
+- PR #419 aberto
+
 ## Shared Deltas
 
 - `docs/PROJECT.md` — entrada de encerramento v0.40.40
@@ -83,6 +89,9 @@ Estados do explicador: fechado (default) → header com rótulo amigável + núm
 - `CHANGELOG.md` — entrada `[1.87.0]`
 
 ## Decisions
+
+- Risks do advisor também vazavam jargão ("Sample 20 insuficiente — esperar n ≥ 50 antes de escalar"): `buildAdviceCopy` passou a devolver `risks` do aluno; `advice.risks` cru segue para o mentor.
+- `formatRiskPct`: abaixo de 0,1% mostra duas casas — Kelly de 0,0285% saía como "0.0%".
 
 ## Chunks
 
