@@ -10,12 +10,32 @@ Version source of truth: `src/version.js`.
 
 ## [1.87.0] - 03/09/2026 · #418 · PR #419
 
-**feat:** a etapa Ajustar explica Kelly e Monte Carlo — e o histograma passa a ser o rea
+**feat:** a etapa Ajustar explica Kelly e Monte Carlo — e o histograma passa a ser o real
 
-- `R$` hardcoded em dois pontos: conta em dólar mostrava R$.
-- Kelly de `0,0285%` era exibido como `0.0%` — lido ao pé da letra, manda parar de operar.
+A etapa 6 do fechamento era a única das oito sem título, sem frase de abertura e sem explicação clicável: o aluno caía num card "Risco ótimo (Kelly ¼)" com badge `matemática` e percentis crus `p10/p50/p90`.
+
+### Tela
+
+- **Ordem nova:** veredito em uma linha → *De onde vem esse número* (Kelly e Monte Carlo expansíveis) → *A recomendação* → *Sua decisão*. Quem confia decide na primeira linha; quem quer entender encontra os modelos antes dos botões. A faixa de resultado e a conta do Kelly ficam visíveis com o card **fechado**.
+- **Explicação em três partes por modelo** — o que é / por que existe / o que muda na sua decisão — em `adjustExplainers.js` (puro, testável; precedente `tpsHints.js` do #416). Kelly vira *até quanto dá pra arriscar sem se tirar do jogo*; Monte Carlo, *que faixa de resultado esperar*.
+- **"Em N dos 1000 cenários o próximo ciclo termina no vermelho"** é a manchete do Monte Carlo, qualificada pelo tamanho do pool quando a amostra é pequena.
+
+### Motor
+
+- **O histograma era decorativo desde o #259.** `McHistogram` derivava a altura das barras do índice (`Math.abs(i - bars/2)`), com o comentário "não temos os outcomes brutos" — que sempre existiram. `runMonteCarloBootstrap` passa a devolver `histogram` e `pLoss`, **aditivos**: teste de não-regressão compara a saída campo a campo com e sem `histogramBins`. Bin vazio não vira barra; pool homogêneo colapsa em bin único sem `NaN`.
+
+### Jargão
+
+- Saem da tela do aluno: badge `matemática`, `heurística v1.58`, `[em v1.59 vira IA real]`, `Decisão registrada: suggestion_accepted` e os textos de risco do advisor (`Sample 20 insuficiente — esperar n ≥ 50 antes de escalar`). `rationale` e `risks` crus seguem para o Firestore e o `MentorClosureView`. A cópia lê `triggeredRule` e números, nunca re-deriva regra.
+
+### Bugs no caminho
+
+- `R$` hardcoded em dois pontos — conta em dólar mostrava R$.
+- Kelly de `0,0285%` exibido como `0.0%`: lido ao pé da letra, manda parar de operar (`formatRiskPct`).
 - "Vitória vale × perda" e "RR alvo": mesmo dado com dois nomes na mesma tela.
 - `fmtR(kelly.expectancy_R * 1)` e `min, max` destruturados sem uso.
+
+Kelly, bootstrap e `closurePlanAdvisor` intactos. Sem persistência nova (`histogram`/`pLoss` são display-time, fora do draft — política do #282). Sem CFs. **4.696 testes** (+50 sobre a baseline 4.646).
 
 
 ## [1.86.1] - 02/09/2026 · #416 · PR #417
