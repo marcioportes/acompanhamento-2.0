@@ -10,6 +10,7 @@
  */
 
 const DEFAULT_N_SIMS = 1000;
+const DEFAULT_HISTOGRAM_BINS = 24;
 const PRIOR_CYCLE_MIN_TRADES = 30;
 const FALLBACK_POOL_SIZE = 100;
 
@@ -33,6 +34,38 @@ export function selectSamplePool(priorCycleTrades, allTrades) {
 }
 
 /**
+ * Agrupa os outcomes em bins de largura uniforme, para desenhar a distribuição
+ * de verdade.
+ *
+ * Existe porque até o #418 o histograma da etapa Ajustar era decorativo: as
+ * barras tinham altura derivada do ÍNDICE da barra (`Math.abs(i - bars/2)`),
+ * não dos 1000 resultados — que este motor sempre calculou e descartava. O
+ * aluno lia aquilo como se fosse a distribuição dele.
+ *
+ * @param {number[]} sorted — outcomes já ordenados asc
+ * @param {number} bins
+ * @returns {{ bins: number, binWidth: number, min: number, max: number, counts: number[] }}
+ *   Σ counts === sorted.length, sempre.
+ */
+function buildHistogram(sorted, bins) {
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  // Pool homogêneo (todo trade com o mesmo result) colapsa a distribuição num
+  // ponto: binWidth seria 0 e todo índice viraria NaN. Um bin com tudo dentro.
+  if (!(max > min)) {
+    return { bins: 1, binWidth: 0, min, max, counts: [sorted.length] };
+  }
+  const binWidth = (max - min) / bins;
+  const counts = new Array(bins).fill(0);
+  for (let i = 0; i < sorted.length; i++) {
+    // Clamp: v === max cairia no índice `bins`, fora do array.
+    const idx = Math.min(bins - 1, Math.floor((sorted[i] - min) / binWidth));
+    counts[idx] += 1;
+  }
+  return { bins, binWidth, min, max, counts };
+}
+
+/**
  * Bootstrap simulator: sorteia com reposição N_per_sim trades do pool, soma os results,
  * repete N_sims vezes. Calcula percentis das somas.
  *
@@ -41,24 +74,34 @@ export function selectSamplePool(priorCycleTrades, allTrades) {
  * @param {Object} [options]
  * @param {number} [options.nSims=1000]
  * @param {() => number} [options.rng=Math.random] — seedable em testes
+ * @param {number} [options.histogramBins=24] — bins do histograma
  * @returns {Object|null}
  *   {
  *     samplePoolSize, nSims, nPerSim,
  *     p10, p25, p50, p75, p90,
  *     min, max, mean,
+ *     histogram: { bins, binWidth, min, max, counts[] } | null,
+ *     pLoss: number | null,   — fração dos cenários que termina no vermelho
  *     reason: null | 'empty_pool' | 'invalid_n_per_sim',
  *   }
+ *
+ * `histogram` e `pLoss` são ADITIVOS (#418): derivam do mesmo array `outcomes`
+ * e não alteram um único percentil. Ambos vêm null nos early-returns de erro,
+ * pra o shape do retorno ser uniforme para o chamador.
  */
 export function runMonteCarloBootstrap(pool, nPerSim, options = {}) {
   const nSims = Number.isInteger(options.nSims) && options.nSims > 0 ? options.nSims : DEFAULT_N_SIMS;
   const rng = typeof options.rng === 'function' ? options.rng : Math.random;
+  const histogramBins = Number.isInteger(options.histogramBins) && options.histogramBins > 0
+    ? options.histogramBins
+    : DEFAULT_HISTOGRAM_BINS;
 
   const list = Array.isArray(pool) ? pool : [];
   if (list.length === 0) {
-    return { samplePoolSize: 0, nSims, nPerSim, p10: null, p25: null, p50: null, p75: null, p90: null, min: null, max: null, mean: null, reason: 'empty_pool' };
+    return { samplePoolSize: 0, nSims, nPerSim, p10: null, p25: null, p50: null, p75: null, p90: null, min: null, max: null, mean: null, histogram: null, pLoss: null, reason: 'empty_pool' };
   }
   if (!Number.isInteger(nPerSim) || nPerSim <= 0) {
-    return { samplePoolSize: list.length, nSims, nPerSim, p10: null, p25: null, p50: null, p75: null, p90: null, min: null, max: null, mean: null, reason: 'invalid_n_per_sim' };
+    return { samplePoolSize: list.length, nSims, nPerSim, p10: null, p25: null, p50: null, p75: null, p90: null, min: null, max: null, mean: null, histogram: null, pLoss: null, reason: 'invalid_n_per_sim' };
   }
 
   const outcomes = new Array(nSims);
@@ -78,6 +121,11 @@ export function runMonteCarloBootstrap(pool, nPerSim, options = {}) {
     return outcomes[idx];
   };
   const sum = outcomes.reduce((s, v) => s + v, 0);
+  // outcomes está ordenado asc: o primeiro índice não-negativo é a contagem
+  // de cenários no vermelho. Busca linear é irrelevante em 1000 elementos e
+  // dispensa binária com empate em zero.
+  let lossCount = 0;
+  while (lossCount < outcomes.length && outcomes[lossCount] < 0) lossCount += 1;
 
   return {
     samplePoolSize: list.length,
@@ -91,6 +139,8 @@ export function runMonteCarloBootstrap(pool, nPerSim, options = {}) {
     min: outcomes[0],
     max: outcomes[outcomes.length - 1],
     mean: sum / outcomes.length,
+    histogram: buildHistogram(outcomes, histogramBins),
+    pLoss: lossCount / outcomes.length,
     reason: null,
   };
 }
