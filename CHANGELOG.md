@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.87.0] - 03/09/2026 · #418 · PR #419
+
+**feat:** a etapa Ajustar explica Kelly e Monte Carlo — e o histograma passa a ser o rea
+
+- `R$` hardcoded em dois pontos: conta em dólar mostrava R$.
+- Kelly de `0,0285%` era exibido como `0.0%` — lido ao pé da letra, manda parar de operar.
+- "Vitória vale × perda" e "RR alvo": mesmo dado com dois nomes na mesma tela.
+- `fmtR(kelly.expectancy_R * 1)` e `min, max` destruturados sem uso.
+
+
 ## [1.86.1] - 02/09/2026 · #416 · PR #417
 
 **fix:** a esteira de fechamento para de mentir — 13 correções

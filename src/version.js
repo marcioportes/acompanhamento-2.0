@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.87.0: #418 feat etapa Ajustar explica Kelly e Monte Carlo + histograma real (RESERVADA)
+ * - 1.87.0: #418 feat a etapa Ajustar explica Kelly e Monte Carlo — e o histograma passa a ser o rea (PR #419, 03/09/2026)
  * - 1.86.1: #416 fix a esteira de fechamento para de mentir — 13 correções (PR #417, 02/09/2026)
  * - 1.86.0: #414 feat relatório do mês substitui o Diário na área do aluno (PR #415, 31/08/2026)
  * - 1.85.0: #408 feat Aguardando Feedback vira árvore aluno → dia → plano → trade (PR #412, 30/08/2026)
@@ -430,7 +430,7 @@
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
 const version = '1.87.0';
-const build = '20260902';
+const build = '20260903';
 
 const VERSION = {
   version,
