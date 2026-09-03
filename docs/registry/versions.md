@@ -103,3 +103,4 @@
 | 1.85.0 | #408 | `feat/issue-408-fila-por-dia` | 29/08/2026 | consumida (PR #412 squash `94dbeee5`) |
 | 1.86.0 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | consumida (PR #415 squash `503c7739`) |
 | 1.86.1 | #416 | `fix/issue-416-esteira-fechamento` | 01/09/2026 | consumida (PR #417 squash `f12e147e`) |
+| 1.87.0 | #418 | `feat/issue-418-ajustar-explica` | 02/09/2026 | RESERVADA — etapa Ajustar explica Kelly e Monte Carlo + histograma real e pLoss |
