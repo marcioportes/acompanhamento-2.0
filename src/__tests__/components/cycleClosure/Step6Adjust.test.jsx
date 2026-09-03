@@ -9,7 +9,7 @@
  * ANTIGOS do plano (`slice(-200)` sobre a lista desc do `useTrades`).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 const MOCK_PLAN = { id: 'p1', pl: 29000, riskPerOperation: 0.5, rrTarget: 2, cycleGoal: 10, cycleStop: 10 };
 const MOCK_TRADES = Array.from({ length: 20 }, (_, i) => ({
@@ -177,5 +177,92 @@ describe('Step6Adjust — pool dos 200 trades mais recentes (#416 D2)', () => {
     const pool = poolDoUltimoRender();
     expect(pool).toHaveLength(MOCK_TRADES.length);
     expect(pool.map((t) => t.id)).toEqual(MOCK_TRADES.map((t) => t.id));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #418 — a etapa explica os modelos antes de pedir a decisão
+//
+// O mock de `projectNextCycle` acima devolve MC SEM `histogram` e SEM `pLoss`:
+// é de propósito. Garante que a tela sobrevive a uma projeção sem os campos
+// novos (draft antigo, motor em early-return) sem quebrar nem imprimir NaN.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Step6Adjust — etapa explicativa (#418)', () => {
+  beforeEach(() => {
+    plansMock.plans = [MOCK_PLAN];
+    tradesMock.trades = MOCK_TRADES;
+    mcCalls.length = 0;
+  });
+
+  it('abre com título, frase de enquadramento e o veredito em uma linha', () => {
+    const { container } = render(<Step6Adjust {...baseProps} />);
+    expect(screen.getByText('Quanto arriscar por trade no próximo ciclo')).toBeTruthy();
+    expect(container.textContent).toContain('A decisão sugerida');
+    expect(container.textContent).toContain('De onde vem esse número');
+  });
+
+  it('os dois modelos aparecem pela pergunta que respondem, não pelo nome', () => {
+    const { container } = render(<Step6Adjust {...baseProps} />);
+    expect(container.textContent).toContain('Até quanto dá pra arriscar sem se tirar do jogo');
+    expect(container.textContent).toContain('Que faixa de resultado esperar do próximo ciclo');
+  });
+
+  it('a explicação só aparece depois do clique — e some no clique seguinte', () => {
+    const { container } = render(<Step6Adjust {...baseProps} />);
+    const trecho = 'Arriscar pouco demais deixa dinheiro na mesa';
+    expect(container.textContent).not.toContain(trecho);
+
+    const botao = screen.getByText('Até quanto dá pra arriscar sem se tirar do jogo').closest('button');
+    fireEvent.click(botao);
+    expect(container.textContent).toContain(trecho);
+    expect(container.textContent).toContain('O que muda na sua decisão');
+
+    fireEvent.click(botao);
+    expect(container.textContent).not.toContain(trecho);
+  });
+
+  it('a faixa de resultado fica visível com o card fechado', () => {
+    render(<Step6Adjust {...baseProps} />);
+    expect(screen.getByText('+1.3%')).toBeTruthy();
+    expect(screen.getByText('-4.5%')).toBeTruthy();
+  });
+
+  it('nenhum jargão de motor sobra na tela do aluno', () => {
+    const { container } = render(<Step6Adjust {...baseProps} />);
+    for (const termo of ['heurística v1.58', 'v1.59 vira IA real', 'matemática', 'Sample ', 'suggestion_accepted', 'Risco ótimo']) {
+      expect(container.textContent).not.toContain(termo);
+    }
+  });
+
+  it('a decisão registrada é lida em português', () => {
+    const { container } = render(
+      <Step6Adjust {...baseProps} forward={{ planAdjustment: { decisionSource: 'suggestion_accepted' } }} />,
+    );
+    expect(container.textContent).toContain('você aceitou a recomendação');
+  });
+
+  it('projeção sem histograma não quebra a tela nem imprime NaN', () => {
+    const { container } = render(<Step6Adjust {...baseProps} />);
+    expect(container.querySelector('svg[role="img"]')).toBeNull();
+    expect(container.textContent).not.toContain('NaN');
+  });
+
+  it('com histograma, desenha a distribuição dentro do card aberto', () => {
+    MC.histogram = { bins: 4, binWidth: 1000, min: -2000, max: 2000, counts: [50, 400, 450, 100] };
+    MC.pLoss = 0.38;
+    try {
+      const { container } = render(<Step6Adjust {...baseProps} />);
+      expect(container.textContent).toContain('38% dos cenários no vermelho');
+      expect(container.querySelector('svg[role="img"]')).toBeNull();
+
+      fireEvent.click(screen.getByText('Que faixa de resultado esperar do próximo ciclo').closest('button'));
+      const svg = container.querySelector('svg[role="img"]');
+      expect(svg).toBeTruthy();
+      expect(svg.querySelectorAll('rect')).toHaveLength(4);
+    } finally {
+      delete MC.histogram;
+      delete MC.pLoss;
+    }
   });
 });

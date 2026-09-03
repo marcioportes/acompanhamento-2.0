@@ -1,20 +1,32 @@
 /**
- * Step6Adjust.jsx — Etapa 6: Plan Adjustment (Kelly + MC + IA stub)
+ * Step6Adjust.jsx — Etapa 6: quanto arriscar por trade no próximo ciclo.
  *
- * Coração matemático do ritual. Calcula Kelly real, Monte Carlo bootstrap, IA stub
- * recommendation. Aluno escolhe: Aceitar / Editar manualmente / Manter.
+ * Kelly, Monte Carlo e a recomendação do advisor, com a decisão do aluno.
  *
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
+ * Issue #418 — a etapa era a única das oito sem título, sem frase de abertura e
+ * sem uma linha explicando os modelos: o aluno caía num card "Risco ótimo
+ * (Kelly ¼)" com badge `matemática` e percentis crus. Ordem nova: veredito em
+ * uma linha → de onde vem o número (dois modelos expansíveis) → a recomendação
+ * completa → a decisão. Quem confia decide na primeira linha; quem quer
+ * entender encontra a matemática ANTES dos botões. O texto mora em
+ * `adjustExplainers.js` (puro e testável), e o histograma passou a ser o real.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Edit3, MinusCircle, CheckCircle, Zap, BarChart2, AlertOctagon } from 'lucide-react';
+import { Sparkles, Edit3, MinusCircle, CheckCircle, AlertOctagon } from 'lucide-react';
 import { useTrades } from '../../../hooks/useTrades';
 import { usePlans } from '../../../hooks/usePlans';
 import { useAccounts } from '../../../hooks/useAccounts';
 import { computeKelly } from '../../../utils/cycleClosure/kellyCalculator';
 import { projectNextCycle, pctOfBase } from '../../../utils/cycleClosure/monteCarlo';
 import { advisePlanAdjustment } from '../../../utils/cycleClosure/closurePlanAdvisor';
+import {
+  EXPLAINERS, DECISION_LABELS, formatRiskPct,
+  buildKellyReading, buildMcReading, buildAdviceCopy,
+} from '../../../utils/cycleClosure/adjustExplainers';
+import ExplainerCard from '../ExplainerCard';
+import McDistribution from '../McDistribution';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
 
@@ -27,36 +39,6 @@ function fmtR(v) {
 function fmtSignedPct(v, digits = 1) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
   return `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
-}
-
-function McHistogram({ mc, baseCapital, fmtCurrency }) {
-  // Histograma simples baseado nos percentis (16 bars)
-  if (!mc || mc.reason) return null;
-  const { p10, p50, p90, min, max } = mc;
-  // Distribuição estilizada — não temos os outcomes brutos, mas mostramos a "forma"
-  const bars = 17;
-  return (
-    <div>
-      <div className="flex items-end h-16 mb-1">
-        {Array.from({ length: bars }, (_, i) => {
-          const dist = Math.abs(i - bars / 2) / (bars / 2);
-          const h = Math.max(8, Math.round((1 - dist * 0.95) * 100));
-          const isPeak = Math.abs(i - bars / 2) < 1.5;
-          const isTail = dist > 0.7;
-          const cls = isPeak ? 'bg-blue-500' : isTail ? 'bg-red-500/40' : 'bg-blue-500/50';
-          return <span key={i} className={`inline-block w-2 mr-px rounded-t ${cls}`} style={{ height: `${h}%` }} />;
-        })}
-      </div>
-      <div className="flex justify-between text-[10px] text-slate-600 mono">
-        {[['p10', p10], ['p50', p50], ['p90', p90]].map(([label, v]) => {
-          const pct = pctOfBase(v, baseCapital);
-          // Sem base utilizável, o valor sai em moeda — nunca num divisor
-          // alternativo, nunca como NaN%/Infinity% (D-01, issue #416).
-          return <span key={label}>{label} {pct != null ? fmtSignedPct(pct) : fmtCurrency(v)}</span>;
-        })}
-      </div>
-    </div>
-  );
 }
 
 export default function Step6Adjust({
@@ -186,6 +168,14 @@ export default function Step6Adjust({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kelly, mc, advice, plan]);
 
+  // Padrão da etapa 5 (Step5Check.jsx:251): Set de ids abertos.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpand = (id) => setExpandedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   const [editing, setEditing] = useState(false);
   const [editPl, setEditPl] = useState('');
   const [editRisk, setEditRisk] = useState('');
@@ -252,14 +242,41 @@ export default function Step6Adjust({
 
   const decision = forward?.planAdjustment?.decisionSource;
 
+  const kellyReading = buildKellyReading(kelly, plan.riskPerOperation);
+  const adviceCopy = buildAdviceCopy(advice, plan.riskPerOperation);
+
   const currencyFmt = (v) => {
     const code = account?.currency || 'BRL';
     const sym = code === 'USD' ? 'US$' : code === 'EUR' ? '€' : 'R$';
     return `${sym} ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const p50Pct = pctOfBase(mc.p50, baseCapital);
+  const mcReading = buildMcReading(mc, { p50Pct, formatCurrency: currencyFmt });
+  const mcLossPct = typeof mc.pLoss === 'number' ? Math.round(mc.pLoss * 100) : null;
+
   return (
     <div className="space-y-4">
+      <div>
+        <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-blue-400" />
+          Quanto arriscar por trade no próximo ciclo
+        </h3>
+        <p className="text-sm text-slate-400">
+          Duas contas olham o seu histórico e respondem perguntas diferentes: até onde dá pra ir sem se
+          tirar do jogo, e que faixa de resultado esperar. Clique em cada uma pra ver o que ela faz e no
+          que ela ajuda na sua decisão.
+        </p>
+      </div>
+
+      {/* Veredito — a resposta antes da matemática, pra quem não vai atravessá-la */}
+      {!isCritical && (
+        <div className="glass-card p-4 border border-blue-500/30 bg-blue-500/5">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">A decisão sugerida</p>
+          <p className="text-lg font-semibold text-slate-100">{adviceCopy.headline}</p>
+        </div>
+      )}
+
       {/* Banner de saldo insuficiente — PL efetivo excede o equity do ciclo.
           Servidor (closeCycle) rejeita o fechamento; aviso visual aqui força recalibrar. */}
       {plExceedsBalance && (
@@ -292,13 +309,13 @@ export default function Step6Adjust({
             </div>
             <div className="flex-1">
               <div className="flex items-baseline gap-2 mb-1">
-                <h4 className="text-lg font-bold text-red-200">🚨 PAUSAR antes de operar o próximo ciclo</h4>
+                <h4 className="text-lg font-bold text-red-200">{adviceCopy.headline}</h4>
                 <span className="badge bg-red-500/30 text-red-200 border border-red-500/60 text-[10px]">crítico</span>
               </div>
-              <p className="text-sm text-slate-200 leading-relaxed">{advice.rationale}</p>
-              {advice.risks?.length > 0 && (
+              <p className="text-sm text-slate-200 leading-relaxed">{adviceCopy.body}</p>
+              {adviceCopy.risks?.length > 0 && (
                 <ul className="mt-3 space-y-1 text-xs text-red-200/80 pl-4 list-disc">
-                  {advice.risks.map((r, i) => (<li key={i}>{r}</li>))}
+                  {adviceCopy.risks.map((r, i) => (<li key={i}>{r}</li>))}
                 </ul>
               )}
               <p className="text-[11px] text-red-200/70 mt-3">
@@ -329,91 +346,86 @@ export default function Step6Adjust({
         </div>
       )}
 
-      {/* Kelly + MC */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="glass-card p-5">
-          <div className="flex items-baseline justify-between mb-3">
-            <h4 className="font-semibold text-slate-200 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-purple-400" /> Risco ótimo (Kelly ¼)
-            </h4>
-            <span className="badge badge-purple text-[10px]">matemática</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-            Quanto do capital arriscar por trade, calculado do seu histórico. Versão fracionada (¼) — mais conservadora que o Kelly puro.
-          </p>
-          {kelly.reason ? (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
-              {kelly.reason === 'insufficient_sample' && `Amostra muito pequena (${kelly.sampleSize} trades < 10) — aguarde mais trades.`}
-              {kelly.reason === 'no_trades' && 'Sem trades históricos no plano.'}
-              {kelly.reason === 'no_plan' && 'Plano sem capital ou risco definido.'}
-              {kelly.reason === 'zero_variance' && 'Todos os trades têm o mesmo resultado — amostra suspeita.'}
-            </div>
-          ) : (
-            <>
-              <div className="bg-slate-800/40 rounded-lg p-3 mb-3">
-                <p className="text-[11px] text-slate-500">Recomendado por trade</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-bold text-purple-400 mono">
-                    {(kelly.kellySafe * 100).toFixed(1)}%
-                  </p>
-                  <p className="text-xs text-slate-500">vs atual <span className="mono text-slate-300">{plan.riskPerOperation}%</span></p>
-                </div>
-                {typeof baseCapital === 'number' && (
-                  <p className="text-[11px] text-slate-400 mt-1 mono">
-                    R$ {baseCapital.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} × {(kelly.kellySafe * 100).toFixed(1)}% = R$ {Math.round(baseCapital * kelly.kellySafe).toLocaleString('pt-BR')} por trade
-                  </p>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500 mono">
-                ganho médio {fmtR(kelly.expectancy_R * 1)} · base de {kelly.sampleSize} trades
-              </p>
-            </>
-          )}
-        </div>
+      {/* De onde vem esse número — os dois modelos, explicáveis */}
+      <div className="glass-card p-5">
+        <h4 className="text-sm font-semibold text-slate-200 mb-1">De onde vem esse número</h4>
+        <p className="text-[11px] text-slate-500 mb-3">
+          Clique em cada modelo pra ver o que ele faz, por que existe e no que ele muda a sua decisão.
+        </p>
 
-        <div className="glass-card p-5">
-          <div className="flex items-baseline justify-between mb-3">
-            <h4 className="font-semibold text-slate-200 flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-sky-400" /> Simulação do próximo ciclo
-            </h4>
-            <span className="badge badge-sky text-[10px]">{mc.nSims || '—'} cenários</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-            Projeta milhares de cenários possíveis para o próximo ciclo, sorteando dos seus trades reais. Mostra a faixa esperada de resultado.
-          </p>
-          {mc.reason ? (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
-              {mc.reason === 'empty_pool' && 'Sem trades suficientes para projetar cenários.'}
-              {mc.reason === 'invalid_n_per_sim' && 'Configuração inválida (trades por cenário).'}
-            </div>
-          ) : (
-            <div className="bg-slate-800/40 rounded-lg p-3">
-              <p className="text-[11px] text-slate-500 mb-2">
-                Distribuição (base = {mc.samplePoolSize} {mc.samplePoolSize === 1 ? 'trade' : 'trades'}{' '}
-                {mc.samplePool === 'priorCycle' ? 'do ciclo anterior' : 'do plano'})
+        <div className="space-y-3">
+          <ExplainerCard
+            explainer={EXPLAINERS.kelly}
+            reading={kellyReading}
+            keyValue={kelly.reason ? null : `${formatRiskPct(kelly.kellySafe * 100)} por trade`}
+            expanded={expandedIds.has('kelly')}
+            onToggle={() => toggleExpand('kelly')}
+            preview={!kelly.reason && typeof baseCapital === 'number' ? (
+              <p className="text-[11px] text-slate-400 mono">
+                {currencyFmt(baseCapital)} × {formatRiskPct(kelly.kellySafe * 100)}
+                {' = '}{currencyFmt(baseCapital * kelly.kellySafe)} por trade
               </p>
-              <McHistogram mc={mc} baseCapital={baseCapital} fmtCurrency={currencyFmt} />
-              {typeof mc.p50 === 'number' && (
-                pctOfBase(mc.p50, baseCapital) != null ? (
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                    Sobre o capital base {currencyFmt(baseCapital)}:{' '}
-                    mediana <span className="text-slate-200 mono">{fmtSignedPct(pctOfBase(mc.p50, baseCapital))}</span>,
-                    cenário ruim (p10) <span className="text-red-300 mono">{fmtSignedPct(pctOfBase(mc.p10, baseCapital))}</span>,
-                    cenário bom (p90) <span className="text-emerald-300 mono">{fmtSignedPct(pctOfBase(mc.p90, baseCapital))}</span>.
-                  </p>
-                ) : (
-                  // Sem capital base utilizável não há percentual honesto a exibir:
-                  // a projeção sai em moeda (D-01, issue #416).
-                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-                    Projeção em valor (capital base indisponível):{' '}
-                    mediana <span className="text-slate-200 mono">{currencyFmt(mc.p50)}</span>,
-                    cenário ruim (p10) <span className="text-red-300 mono">{currencyFmt(mc.p10)}</span>,
-                    cenário bom (p90) <span className="text-emerald-300 mono">{currencyFmt(mc.p90)}</span>.
-                  </p>
-                )
-              )}
-            </div>
-          )}
+            ) : null}
+          >
+            {!kelly.reason && (
+              <p className="text-[11px] text-slate-500 mono">
+                ganho médio {fmtR(kelly.expectancy_R)} por trade · base de {kelly.sampleSize} trades do plano
+              </p>
+            )}
+          </ExplainerCard>
+
+          <ExplainerCard
+            explainer={EXPLAINERS.monteCarlo}
+            reading={mcReading}
+            keyValue={mc.reason ? null : (mcLossPct != null ? `${mcLossPct}% dos cenários no vermelho` : null)}
+            expanded={expandedIds.has('monteCarlo')}
+            onToggle={() => toggleExpand('monteCarlo')}
+            preview={mc.reason ? null : (
+              <div className="text-[11px] text-slate-400 leading-relaxed">
+                {typeof mc.p50 === 'number' && (
+                  p50Pct != null ? (
+                    <p>
+                      Sobre o capital base {currencyFmt(baseCapital)}:{' '}
+                      cenário ruim <span className="text-red-300 mono">{fmtSignedPct(pctOfBase(mc.p10, baseCapital))}</span>,
+                      mediana <span className="text-slate-200 mono">{fmtSignedPct(p50Pct)}</span>,
+                      cenário bom <span className="text-emerald-300 mono">{fmtSignedPct(pctOfBase(mc.p90, baseCapital))}</span>.
+                    </p>
+                  ) : (
+                    // Sem capital base utilizável não há percentual honesto a
+                    // exibir: a projeção sai em moeda (D-01, issue #416).
+                    <p>
+                      Projeção em valor (capital base indisponível):{' '}
+                      cenário ruim <span className="text-red-300 mono">{currencyFmt(mc.p10)}</span>,
+                      mediana <span className="text-slate-200 mono">{currencyFmt(mc.p50)}</span>,
+                      cenário bom <span className="text-emerald-300 mono">{currencyFmt(mc.p90)}</span>.
+                    </p>
+                  )
+                )}
+                <p className="text-slate-500 mt-0.5">
+                  base = {mc.samplePoolSize} {mc.samplePoolSize === 1 ? 'trade' : 'trades'}{' '}
+                  {mc.samplePool === 'priorCycle' ? 'do ciclo anterior' : 'do plano'}
+                </p>
+              </div>
+            )}
+          >
+            {/* Sem histograma (projeção antiga, ou motor em early-return) o card
+                não desenha nada e mantém a faixa acima. */}
+            {mc.histogram && (
+              <div>
+                <McDistribution
+                  histogram={mc.histogram}
+                  p10={mc.p10}
+                  p50={mc.p50}
+                  p90={mc.p90}
+                  ariaSummary={mcReading.headline}
+                />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Cada barra é a quantidade de cenários que terminou naquele resultado. A linha clara
+                  marca o zero; os tracinhos, o cenário ruim, a mediana e o cenário bom.
+                </p>
+              </div>
+            )}
+          </ExplainerCard>
         </div>
       </div>
 
@@ -424,14 +436,8 @@ export default function Step6Adjust({
             <Sparkles className="w-5 h-5" />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-semibold text-slate-100">Recomendação para o próximo ciclo</h4>
-              <span className="badge badge-purple text-[10px]">heurística v1.58</span>
-              <span className="text-[10px] text-slate-600 italic">[em v1.59 vira IA real]</span>
-            </div>
-            <p className="text-sm text-slate-300 mb-4 leading-relaxed">
-              {advice.rationale}
-            </p>
+            <h4 className="font-semibold text-slate-100 mb-1">A recomendação</h4>
+            <p className="text-sm text-slate-300 mb-4 leading-relaxed">{adviceCopy.body}</p>
 
             <div className="grid grid-cols-3 gap-3 mb-3">
               <div className="bg-slate-800/40 rounded-lg p-3">
@@ -446,27 +452,28 @@ export default function Step6Adjust({
                 <p className="font-mono text-slate-100">
                   {advice.newRiskPerOp ?? plan.riskPerOperation}%
                   {typeof advice.newRiskRS === 'number' && advice.newRiskRS > 0 && (
-                    <span className="text-slate-400 text-xs ml-1 mono">· R$ {advice.newRiskRS.toLocaleString('pt-BR')}</span>
+                    <span className="text-slate-400 text-xs ml-1 mono">· {currencyFmt(advice.newRiskRS)}</span>
                   )}
                   <span className="text-slate-500 text-xs ml-1 block">{advice.changed && advice.newRiskPerOp !== plan.riskPerOperation ? (advice.newRiskPerOp === 0 ? '⛔ pausa' : '↺ alterar') : '→ manter'}</span>
                 </p>
               </div>
               <div className="bg-slate-800/40 rounded-lg p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Vitória vale × perda</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Alvo por trade (RR)</p>
                 <p className="font-mono text-slate-100">
                   {advice.newRRTarget ?? plan.rrTarget}×
-                  <span className="text-slate-500 text-xs ml-1">{advice.changed && advice.newRRTarget !== plan.rrTarget ? '↺' : '→ manter'}</span>
+                  <span className="text-slate-500 text-xs ml-1">{advice.changed && advice.newRRTarget !== plan.rrTarget ? '↺ alterar' : '→ manter'}</span>
                 </p>
+                <p className="text-[10px] text-slate-500">a vitória vale {advice.newRRTarget ?? plan.rrTarget}× a perda</p>
               </div>
             </div>
 
-            {advice.risks?.length > 0 && (
+            {adviceCopy.risks?.length > 0 && (
               <details>
                 <summary className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
-                  ⚠️ Riscos identificados ({advice.risks.length})
+                  ⚠️ O que observar ({adviceCopy.risks.length})
                 </summary>
                 <ul className="mt-2 space-y-1 text-xs text-slate-400 pl-4 list-disc">
-                  {advice.risks.map((r, i) => (<li key={i}>{r}</li>))}
+                  {adviceCopy.risks.map((r, i) => (<li key={i}>{r}</li>))}
                 </ul>
               </details>
             )}
@@ -493,7 +500,7 @@ export default function Step6Adjust({
                   <input value={editRisk} onChange={(e) => setEditRisk(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" step="0.1" />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">RR alvo</label>
+                  <label className="text-[11px] text-slate-500 block mb-1">Alvo por trade (RR)</label>
                   <input value={editRR} onChange={(e) => setEditRR(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" step="0.1" />
                 </div>
               </div>
@@ -532,7 +539,7 @@ export default function Step6Adjust({
 
           {decision && (
             <p className="text-[11px] text-slate-500 mt-3 text-right">
-              Decisão registrada: <span className="text-slate-300 mono">{decision}</span>
+              Registrado: <span className="text-slate-300">{DECISION_LABELS[decision] || decision}</span>
             </p>
           )}
         </div>

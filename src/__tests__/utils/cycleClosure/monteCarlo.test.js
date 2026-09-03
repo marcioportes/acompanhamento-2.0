@@ -163,3 +163,99 @@ describe('pctOfBase — conversão R$ → % sobre o capital base (#416 A1)', () 
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #418 — histograma real + probabilidade de perda
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runMonteCarloBootstrap — histogram (#418)', () => {
+  it('Σ counts === nSims e counts.length === bins', () => {
+    const pool = Array.from({ length: 50 }, (_, i) => ({ result: i - 25 }));
+    const r = runMonteCarloBootstrap(pool, 10, { nSims: 500, rng: seedRng(7) });
+    expect(r.histogram.counts).toHaveLength(r.histogram.bins);
+    expect(r.histogram.counts.reduce((s, v) => s + v, 0)).toBe(500);
+  });
+
+  it('bins configurável, default 24', () => {
+    const pool = Array.from({ length: 20 }, (_, i) => ({ result: i - 10 }));
+    expect(runMonteCarloBootstrap(pool, 10, { nSims: 100, rng: seedRng(1) }).histogram.bins).toBe(24);
+    expect(
+      runMonteCarloBootstrap(pool, 10, { nSims: 100, rng: seedRng(1), histogramBins: 12 }).histogram.bins,
+    ).toBe(12);
+  });
+
+  it('histogram.min/max coincidem com min/max dos outcomes', () => {
+    const pool = Array.from({ length: 40 }, (_, i) => ({ result: i - 20 }));
+    const r = runMonteCarloBootstrap(pool, 12, { nSims: 300, rng: seedRng(9) });
+    expect(r.histogram.min).toBe(r.min);
+    expect(r.histogram.max).toBe(r.max);
+  });
+
+  it('pool homogêneo → um único bin com tudo dentro, sem NaN', () => {
+    const pool = Array.from({ length: 50 }, () => ({ result: 500 }));
+    const r = runMonteCarloBootstrap(pool, 18, { nSims: 100 });
+    expect(r.histogram).toEqual({ bins: 1, binWidth: 0, min: 9000, max: 9000, counts: [100] });
+    expect(r.histogram.counts.some((c) => Number.isNaN(c))).toBe(false);
+  });
+
+  it('early-returns de erro → histogram e pLoss null', () => {
+    const empty = runMonteCarloBootstrap([], 18);
+    expect(empty.histogram).toBeNull();
+    expect(empty.pLoss).toBeNull();
+    const invalid = runMonteCarloBootstrap([{ result: 1 }], 0);
+    expect(invalid.histogram).toBeNull();
+    expect(invalid.pLoss).toBeNull();
+  });
+
+  it('não-regressão do motor: percentis idênticos com e sem histogramBins', () => {
+    const pool = Array.from({ length: 60 }, (_, i) => ({ result: (i % 7) - 3 }));
+    const base = runMonteCarloBootstrap(pool, 15, { nSims: 400, rng: seedRng(2026) });
+    const withBins = runMonteCarloBootstrap(pool, 15, { nSims: 400, rng: seedRng(2026), histogramBins: 8 });
+    expect(withBins.p10).toBe(base.p10);
+    expect(withBins.p25).toBe(base.p25);
+    expect(withBins.p50).toBe(base.p50);
+    expect(withBins.p75).toBe(base.p75);
+    expect(withBins.p90).toBe(base.p90);
+    expect(withBins.min).toBe(base.min);
+    expect(withBins.max).toBe(base.max);
+    expect(withBins.mean).toBe(base.mean);
+  });
+});
+
+describe('runMonteCarloBootstrap — pLoss (#418)', () => {
+  it('pool só de ganho → pLoss 0; pool só de perda → pLoss 1', () => {
+    const win = runMonteCarloBootstrap(Array.from({ length: 20 }, () => ({ result: 300 })), 10, { nSims: 100 });
+    expect(win.pLoss).toBe(0);
+    const loss = runMonteCarloBootstrap(Array.from({ length: 20 }, () => ({ result: -300 })), 10, { nSims: 100 });
+    expect(loss.pLoss).toBe(1);
+  });
+
+  it('pool misto → pLoss em [0,1] e determinístico com RNG seedado', () => {
+    const pool = Array.from({ length: 40 }, (_, i) => ({ result: i % 2 === 0 ? 250 : -240 }));
+    const a = runMonteCarloBootstrap(pool, 20, { nSims: 500, rng: seedRng(31) });
+    const b = runMonteCarloBootstrap(pool, 20, { nSims: 500, rng: seedRng(31) });
+    expect(a.pLoss).toBeGreaterThan(0);
+    expect(a.pLoss).toBeLessThan(1);
+    expect(a.pLoss).toBe(b.pLoss);
+  });
+
+  it('zero não conta como vermelho: pool +100/−100 em 2 trades → pLoss ≈ 0,25', () => {
+    // Outcomes possíveis: −200 (ambos perdem, p=0,25), 0 (um de cada, p=0,50),
+    // +200 (ambos ganham, p=0,25). Só o −200 é vermelho — se o empate em zero
+    // entrasse na conta, pLoss iria para ~0,75.
+    const pool = [{ result: 100 }, { result: -100 }];
+    const r = runMonteCarloBootstrap(pool, 2, { nSims: 2000, rng: seedRng(5) });
+    expect(r.pLoss).toBeGreaterThan(0.20);
+    expect(r.pLoss).toBeLessThan(0.30);
+  });
+});
+
+describe('projectNextCycle — propaga campos novos (#418)', () => {
+  it('histogram e pLoss atravessam o spread', () => {
+    const all = Array.from({ length: 50 }, (_, i) => ({ result: i - 25 }));
+    const r = projectNextCycle({ priorCycleTrades: [], allTrades: all, nPerSim: 10, options: { nSims: 200, rng: seedRng(3) } });
+    expect(r.samplePool).toBe('last100');
+    expect(r.histogram.counts.reduce((s, v) => s + v, 0)).toBe(200);
+    expect(typeof r.pLoss).toBe('number');
+  });
+});
