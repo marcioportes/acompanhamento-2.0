@@ -30,6 +30,20 @@ const SMALL_POOL = 30;
 // Abaixo disso os dois números são o mesmo dentro do erro da amostra.
 const KELLY_SLACK_RATIO = 1.15;
 
+/**
+ * Percentual de risco por trade com a precisão que o número exige.
+ *
+ * Kelly em amostra ruim devolve frações de décimo (0,0285%); com uma casa
+ * decimal isso vira "0.0%", que lido ao pé da letra manda o aluno parar de
+ * operar. Abaixo de 0,1% mostra duas casas.
+ */
+export function formatRiskPct(pct) {
+  if (!isNum(pct)) return '—';
+  const abs = Math.abs(pct);
+  if (abs > 0 && abs < 0.1) return `${pct.toFixed(2)}%`;
+  return `${pct.toFixed(1)}%`;
+}
+
 export const EXPLAINERS = Object.freeze({
   kelly: Object.freeze({
     id: 'kelly',
@@ -111,7 +125,7 @@ export function buildKellyReading(kelly, currentRisk) {
   }
 
   const safePct = k.kellySafe * 100;
-  const safeStr = `${safePct.toFixed(1)}%`;
+  const safeStr = formatRiskPct(safePct);
   const curStr = `${currentRisk}%`;
 
   if (safePct > currentRisk * KELLY_SLACK_RATIO) {
@@ -163,14 +177,6 @@ export function buildMcReading(mc, opts = {}) {
   if (m.reason) {
     return { headline: 'Ainda não dá pra projetar o próximo ciclo.', tone: 'unavailable', note: null };
   }
-  if (!isNum(m.pLoss) || !isNum(m.nSims)) {
-    return { headline: 'Ainda não dá pra projetar o próximo ciclo.', tone: 'unavailable', note: null };
-  }
-
-  const lossSims = Math.round(m.pLoss * m.nSims);
-  const lossPct = Math.round(m.pLoss * 100);
-  const headline = `Em ${lossSims} dos ${m.nSims} cenários o próximo ciclo termina no vermelho — ${lossPct}%.`;
-
   const notes = [];
   if (isNum(m.samplePoolSize) && m.samplePoolSize < SMALL_POOL) {
     notes.push(
@@ -178,12 +184,30 @@ export function buildMcReading(mc, opts = {}) {
       + 'Amostra pequena: a faixa é uma indicação, não uma previsão.',
     );
   }
-  if (isNum(opts.p50Pct)) {
-    notes.push(`O ciclo mediano fecha em ${opts.p50Pct >= 0 ? '+' : ''}${opts.p50Pct.toFixed(1)}% do capital base.`);
-  } else if (isNum(m.p50)) {
-    // Sem capital base utilizável não há percentual honesto a exibir (D-01, #416).
-    notes.push(`O ciclo mediano fecha em ${fmt(m.p50)}.`);
+
+  // Mediana: em % do capital base quando há base; em moeda quando não há
+  // (D-01, #416: sem base utilizável não existe percentual honesto).
+  const medianStr = isNum(opts.p50Pct)
+    ? `${opts.p50Pct >= 0 ? '+' : ''}${opts.p50Pct.toFixed(1)}% do capital base`
+    : (isNum(m.p50) ? fmt(m.p50) : null);
+
+  // Sem `pLoss` — draft antigo, ou projeção vinda de fora do motor atual — a
+  // leitura cai na faixa em vez de sumir da tela.
+  if (!isNum(m.pLoss) || !isNum(m.nSims)) {
+    if (!medianStr) {
+      return { headline: 'Ainda não dá pra projetar o próximo ciclo.', tone: 'unavailable', note: null };
+    }
+    return {
+      headline: `O ciclo mediano fecha em ${medianStr} — mas a faixa abaixo é o que a sua operação realmente produz.`,
+      tone: 'neutral',
+      note: notes.length ? notes.join(' ') : null,
+    };
   }
+
+  const lossSims = Math.round(m.pLoss * m.nSims);
+  const lossPct = Math.round(m.pLoss * 100);
+  const headline = `Em ${lossSims} dos ${m.nSims} cenários o próximo ciclo termina no vermelho — ${lossPct}%.`;
+  if (medianStr) notes.push(`O ciclo mediano fecha em ${medianStr}.`);
 
   const tone = m.pLoss >= 0.5 ? 'caution' : m.pLoss <= 0.3 ? 'positive' : 'neutral';
   return { headline, tone, note: notes.length ? notes.join(' ') : null };
@@ -199,7 +223,8 @@ export function buildMcReading(mc, opts = {}) {
  *
  * @param {Object} advice — saída de `advisePlanAdjustment`
  * @param {number} [currentRisk] — `plan.riskPerOperation` vigente, em pontos percentuais
- * @returns {{ headline: string, body: string }}
+ * @returns {{ headline: string, body: string, risks: string[] }}
+ *   `risks` é a versão do aluno; `advice.risks` cru continua indo ao mentor.
  */
 export function buildAdviceCopy(advice, currentRisk) {
   const a = advice || {};
@@ -212,6 +237,11 @@ export function buildAdviceCopy(advice, currentRisk) {
   switch (rule) {
     case 'pause_restructure':
       return {
+        risks: [
+          'Repetir no próximo ciclo o padrão que quebrou este',
+          'Perder mais capital do que já perdeu aqui',
+          'Entrar na espiral de tentar recuperar o que saiu',
+        ],
         headline: 'Pausar antes de operar o próximo ciclo',
         body:
           'O ciclo teve sinais de descontrole graves o bastante para que continuar no tamanho atual '
@@ -220,6 +250,7 @@ export function buildAdviceCopy(advice, currentRisk) {
       };
     case 'insufficient_sample':
       return {
+        risks: ['Com poucos trades, o que parece método ainda pode ser sequência de sorte'],
         headline: 'Manter o plano e acumular mais trades',
         body:
           'Ainda são poucos trades para saber se o resultado veio do método ou do acaso. Enquanto a '
@@ -228,6 +259,10 @@ export function buildAdviceCopy(advice, currentRisk) {
       };
     case 'scale_up':
       return {
+        risks: [
+          'Posição maior faz a perda funda do ciclo ficar maior também — acompanhe o recuo máximo',
+          'Se a aderência cair, voltar ao tamanho anterior na hora',
+        ],
         headline: next != null && cur != null ? `Subir o risco por trade de ${cur}% para ${next}%` : 'Subir o risco por trade',
         body:
           'O histórico sustenta um tamanho maior, não houve retrocesso na sua maturidade e o ciclo '
@@ -236,6 +271,7 @@ export function buildAdviceCopy(advice, currentRisk) {
       };
     case 'scale_down':
       return {
+        risks: ['Posição menor rende menos no ciclo — é troca deliberada por estabilidade'],
         headline: next != null && cur != null ? `Reduzir o risco por trade de ${cur}% para ${next}%` : 'Reduzir o risco por trade',
         body:
           'O ciclo deixou marcas — perda funda demais, regras quebradas ou episódios de descontrole. '
@@ -244,6 +280,7 @@ export function buildAdviceCopy(advice, currentRisk) {
       };
     case 'regression':
       return {
+        risks: ['Uma dimensão da sua avaliação andou para trás — crescer agora empilha risco sobre instabilidade'],
         headline: 'Manter o plano e recuperar o terreno perdido',
         body:
           'Alguma dimensão da sua avaliação andou para trás neste ciclo. Antes de mexer em tamanho, o '
@@ -252,6 +289,7 @@ export function buildAdviceCopy(advice, currentRisk) {
     case 'observe':
     default:
       return {
+        risks: [],
         headline: 'Manter o plano como está',
         body:
           'Nada no ciclo pede mudança de tamanho e nada pede recuo. O próximo ciclo é de observação: '

@@ -20,7 +20,7 @@ const TONE = {
 };
 
 export default function ExplainerCard({
-  explainer, reading, keyValue, expanded, onToggle, children,
+  explainer, reading, keyValue, preview, expanded, onToggle, children,
 }) {
   const tone = TONE[reading?.tone] || TONE.neutral;
 
@@ -41,6 +41,10 @@ export default function ExplainerCard({
           {reading?.headline && (
             <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{reading.headline}</p>
           )}
+          {/* `preview` fica visível com o card FECHADO: é o número que o aluno
+              precisa ver sem ter de abrir nada. Só texto — conteúdo interativo
+              aqui dentro seria botão dentro de botão. */}
+          {preview && <div className="mt-1.5">{preview}</div>}
         </div>
         {expanded
           ? <ChevronDown className="w-4 h-4 text-slate-500 flex-shrink-0 mt-1" />

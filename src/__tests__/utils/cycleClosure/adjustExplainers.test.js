@@ -13,6 +13,7 @@ import {
   buildKellyReading,
   buildMcReading,
   buildAdviceCopy,
+  formatRiskPct,
 } from '../../../utils/cycleClosure/adjustExplainers';
 
 const ADVISOR_RULES = [
@@ -118,7 +119,16 @@ describe('buildMcReading', () => {
   it('sem capital base a mediana sai em moeda, nunca como NaN%', () => {
     const r = buildMcReading(mc, { p50Pct: null, formatCurrency: (v) => `R$ ${v.toFixed(2)}` });
     expect(r.note).toContain('R$ 410.00');
-    expect(r.note).not.toMatch(/NaN|Infinity|%/);
+    expect(r.note).not.toMatch(/NaN|Infinity/);
+    expect(r.note).not.toMatch(/% do capital/);
+  });
+
+  it('projeção sem pLoss (draft antigo) cai na faixa em vez de sumir da tela', () => {
+    const { pLoss, ...semPLoss } = mc;
+    const r = buildMcReading(semPLoss, { p50Pct: 1.3 });
+    expect(r.tone).toBe('neutral');
+    expect(r.headline).toContain('+1.3%');
+    expect(r.headline).not.toMatch(/vermelho/);
   });
 
   it('tom acompanha a probabilidade de perda', () => {
@@ -175,5 +185,32 @@ describe('DECISION_LABELS', () => {
     for (const key of ['suggestion_accepted', 'manual_edit', 'kept']) {
       expect(DECISION_LABELS[key]).toMatch(/^você /);
     }
+  });
+});
+
+describe('buildAdviceCopy — riscos na língua do aluno', () => {
+  it('nenhum risco carrega jargão do advisor', () => {
+    for (const rule of ADVISOR_RULES) {
+      for (const r of buildAdviceCopy({ triggeredRule: rule }, 0.84).risks) {
+        for (const term of ['Sample', 'n ≥', 'size', 'DD', 'blow-up', 'Regressão em']) {
+          expect(r).not.toContain(term);
+        }
+      }
+    }
+  });
+
+  it('pausa lista riscos; manter sem trigger não inventa nenhum', () => {
+    expect(buildAdviceCopy({ triggeredRule: 'pause_restructure' }, 0.84).risks.length).toBe(3);
+    expect(buildAdviceCopy({ triggeredRule: 'observe' }, 0.84).risks).toEqual([]);
+  });
+});
+
+describe('formatRiskPct', () => {
+  it('abaixo de 0,1% mostra duas casas — 0.0% mandaria parar de operar', () => {
+    expect(formatRiskPct(0.0285)).toBe('0.03%');
+    expect(formatRiskPct(0.84)).toBe('0.8%');
+    expect(formatRiskPct(2.44)).toBe('2.4%');
+    expect(formatRiskPct(0)).toBe('0.0%');
+    expect(formatRiskPct(null)).toBe('—');
   });
 });
