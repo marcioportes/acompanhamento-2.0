@@ -12,10 +12,28 @@ Version source of truth: `src/version.js`.
 
 **fix:** o menu do mentor recupera os destinos; pendências acima da dobra
 
-- **Voltam ao menu, com badge:** Análises, Fila de Revisão, Aguardando Feedback, Precisam Atenção, Fechamentos.
-- **Minhas Pendências sobe** para antes de A Turma.
-- **Link de rodapé de Análises sai.**
-- **"Precisam Atenção" volta como tela**, com os critérios originais.
+Regressão de **desenho** do #144, corrigida no mesmo dia. Marcio, ao usar a v1.88.1: *"ficou uma bosta, cadê o resto das coisas? cadê o dashboard?"*
+
+### O que tinha acontecido
+
+O menu do mentor foi de 9 para 5 itens e os destinos removidos (Análises, Fila de Revisão, Aguardando Feedback, Fechamentos) passaram a existir **só dentro da Torre**. O que o mockup escondeu: a faixa "A Turma" renderiza a turma **inteira**, sem limite de linhas. A ordem real na tela era `tiles → Prioridade do Dia → alertas → A TURMA (n linhas) → Minhas Pendências → rodapé`. Com 12 alunos, tudo que o mentor usa todo dia caía **abaixo da dobra**, e Análises virou o elemento visualmente mais fraco da página — um link cinza de 12px no pé.
+
+O mockup aprovado desenhou a Torre como caixa compacta. Ela não é compacta, e a aprovação foi dada sobre um desenho que não representava a tela.
+
+### Correção
+
+- **Voltam ao menu, com badge:** Análises, Fila de Revisão, Aguardando Feedback, Precisam Atenção, Fechamentos. O contador é o que faz o item ser procurado.
+- **"Minhas Pendências" sobe** para antes de A Turma: decide o dia, enquanto a lista da turma é consulta e cresce com o tamanho dela.
+- **O link de rodapé de Análises sai** — voltou a ser item de menu.
+- **"Precisam Atenção" volta como tela**, com os critérios originais (prejuízo acumulado, win rate < 40%, profit factor < 0,8).
+
+DEC-423-01..05 revogam DEC-144-01/02/04: **a Torre é a home, não a única porta.** Item de menu é onde se procura o que se usa todo dia; enterrar destino dentro de uma página de altura variável não é hierarquia, é esconder.
+
+### O que do #144 fica de pé
+
+Roteador (URL, back do browser, deep link, fim dos oito contextos de retorno), casca única (`AppShell` + `PageHeader`) e a escala do design system. A Torre segue como primeiro item do menu e destino do login — essa parte da decisão estava certa.
+
+O teste de mount criado no #421 se pagou já: apontou na hora a dependência que faltava ao religar a tela de atenção. Sem persistência nova, sem CF tocada. 4.778 testes.
 
 
 ## [1.88.1] - 04/09/2026 · #421 · PR #422
