@@ -104,3 +104,4 @@
 | 1.86.0 | #414 | `feat/issue-414-relatorio-mes` | 31/08/2026 | consumida (PR #415 squash `503c7739`) |
 | 1.86.1 | #416 | `fix/issue-416-esteira-fechamento` | 01/09/2026 | consumida (PR #417 squash `f12e147e`) |
 | 1.87.0 | #418 | `feat/issue-418-ajustar-explica` | 02/09/2026 | consumida (PR #419 squash `51f5ccbf`) |
+| 1.88.0 | #144 | `arch/issue-144-torre-unica-porta` | 03/09/2026 | RESERVADA — roteador real + Torre como única porta do mentor + shell/design system |
