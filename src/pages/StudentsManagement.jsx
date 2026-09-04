@@ -21,14 +21,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
-  Mail, Loader2, RefreshCw, AlertTriangle, Eye, Pencil, UserPlus, Lock,
+  Mail, Users, Loader2, RefreshCw, AlertTriangle, Eye, Pencil, UserPlus, Lock,
 } from 'lucide-react';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import StudentDetailDrawer from '../components/Students/StudentDetailDrawer';
 import CandidatosRitualModal from '../components/Acompanhamento/CandidatosRitualModal';
-import PageHeader from '../components/PageHeader';
 import { useStudents } from '../hooks/useStudents';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import {
@@ -186,11 +185,17 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <PageHeader
-        titulo="Acompanhamento"
-        linha="Workspace do mentor · Alpha e Espelho com dashboard ativo."
-        acoes={(
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-20">
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
+            <Users className="w-7 h-7 text-blue-400" />Acompanhamento
+          </h1>
+          <p className="text-slate-400 mt-1 text-sm">
+            Workspace do mentor · Alpha e Espelho com dashboard ativo.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setShowCandidatos(true)}
@@ -205,8 +210,7 @@ const StudentsManagement = ({ onViewAsStudent }) => {
             </span>
           )}
         </button>
-        )}
-      />
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

@@ -20,7 +20,6 @@ import {
 import { useTrades } from '../hooks/useTrades';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
-import PageHeader from '../components/PageHeader';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import {
@@ -157,11 +156,16 @@ const TradeReportPage = ({ onNavigateToFeedback }) => {
   const openTrade = (trade) => onNavigateToFeedback?.(trade);
 
   return (
-    <div className="animate-in fade-in">
-      <PageHeader
-        titulo="Relatório do Mês"
-        linha="Os trades que o mentor comentou — o que você escreveu na entrada e o que ele respondeu."
-        acoes={(
+    <div className="min-h-screen p-6 lg:p-8 pb-20 animate-in fade-in">
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Relatório do Mês</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Os trades que o mentor comentou — o que você escreveu na entrada e o que ele respondeu.
+          </p>
+        </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMonth((m) => shiftMonth(m, -1))}
@@ -182,8 +186,7 @@ const TradeReportPage = ({ onNavigateToFeedback }) => {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        )}
-      />
+      </div>
 
       {/* RESUMO — total por moeda, nunca um número só (#289/#408) */}
       {report.count > 0 && (

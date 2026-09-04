@@ -47,7 +47,6 @@ import { fmtTradeDateTime } from '../utils/tradeTimezone';
 import ReviewNoteField from '../components/reviews/ReviewNoteField';
 import MentorEditPanel from '../components/feedback/MentorEditPanel';
 import MentorClassificationPanel from '../components/feedback/MentorClassificationPanel';
-import PageHeader from '../components/PageHeader';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import useOrders from '../hooks/useOrders';
 import { useTrades } from '../hooks/useTrades';
@@ -635,7 +634,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
   if (!trade) {
     if (embedded) return null;
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-screen p-6 lg:p-8 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-4" />
           <p className="text-slate-400">Trade não encontrado</p>
@@ -834,17 +833,19 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
 
   // ========== MODO STANDALONE (tela cheia, original) ==========
   return (
-    <div>
+    <div className="min-h-screen p-6 lg:p-8">
+      {/* Header */}
       <div className="mb-6">
-        <PageHeader
-          titulo="Feedback do Trade"
-          linha={`${trade.ticker} • ${formatDate(trade.date)} • ${trade.studentName || trade.studentEmail?.split('@')[0]}`}
-          voltar={(
-            <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-4">
-              <ChevronLeft className="w-4 h-4" /> Voltar
-            </button>
-          )}
-          acoes={(
+        <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-4">
+          <ChevronLeft className="w-4 h-4" /> Voltar
+        </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
+              <MessageSquare className="w-6 h-6 text-blue-400" /> Feedback do Trade
+            </h1>
+            <p className="text-slate-400 mt-1">{trade.ticker} • {formatDate(trade.date)} • {trade.studentName || trade.studentEmail?.split('@')[0]}</p>
+          </div>
           <div className="flex items-center gap-3">
             {userIsMentor && (
               <>
@@ -861,8 +862,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
             )}
             <StatusBadge status={status} />
           </div>
-          )}
-        />
+        </div>
         {shadowMessage && (
           <div className={`mt-3 text-xs px-3 py-2 rounded-lg ${shadowMessage.type === 'success' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/10 text-red-300 border border-red-500/30'}`}>
             {shadowMessage.text}

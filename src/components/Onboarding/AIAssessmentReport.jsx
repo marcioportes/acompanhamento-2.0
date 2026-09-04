@@ -100,7 +100,7 @@ function OpenResponseCard({ response }) {
       )}
 
       {/* Resposta do aluno */}
-      <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+      <div className="p-2.5 rounded-md bg-white/[0.03] border border-white/5">
         <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">
           Resposta do aluno
         </p>
@@ -256,7 +256,7 @@ function ProbingQuestionCard({ question, index }) {
       {/* Resposta do aluno */}
       {hasResponse ? (
         <div className="ml-7 space-y-2">
-          <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/5">
+          <div className="p-2.5 rounded-md bg-white/[0.03] border border-white/5">
             <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">
               Resposta do aluno
             </p>

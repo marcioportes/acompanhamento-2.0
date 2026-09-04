@@ -35,7 +35,7 @@ export default function WizardFooter({
         )}
         <button
           type="button"
-          className="text-xs text-slate-500 hover:text-slate-200 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-800/40 transition"
+          className="text-xs text-slate-500 hover:text-slate-200 flex items-center gap-1 px-2 py-1.5 rounded-md hover:bg-slate-800/40 transition"
           onClick={onCancel}
           title="Sair do fechamento"
         >

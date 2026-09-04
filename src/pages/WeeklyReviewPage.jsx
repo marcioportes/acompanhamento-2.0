@@ -723,8 +723,8 @@ const WeeklyReviewPage = ({
   }, [review?.sequenceNumber, review?.status]);
 
   return (
-    <div>
-      <div className="max-w-[720px] mx-auto">
+    <div className="min-h-screen bg-slate-950 py-6">
+      <div className="max-w-[720px] mx-auto px-6">
         {/* Back */}
         <button
           onClick={onBack}

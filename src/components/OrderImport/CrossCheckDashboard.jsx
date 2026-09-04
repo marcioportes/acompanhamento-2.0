@@ -97,7 +97,7 @@ const CrossCheckDashboard = ({ analysis }) => {
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Proteção */}
-        <div className="panel p-3">
+        <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
           <div className="flex items-center gap-1.5 mb-2">
             <Shield className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-[10px] font-semibold text-slate-400 uppercase">Proteção</span>
@@ -109,7 +109,7 @@ const CrossCheckDashboard = ({ analysis }) => {
         </div>
 
         {/* Tempo */}
-        <div className="panel p-3">
+        <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
           <div className="flex items-center gap-1.5 mb-2">
             <Clock className="w-3.5 h-3.5 text-purple-400" />
             <span className="text-[10px] font-semibold text-slate-400 uppercase">Hold Time</span>
@@ -120,7 +120,7 @@ const CrossCheckDashboard = ({ analysis }) => {
         </div>
 
         {/* Comportamento */}
-        <div className="panel p-3">
+        <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingDown className="w-3.5 h-3.5 text-red-400" />
             <span className="text-[10px] font-semibold text-slate-400 uppercase">Padrões</span>
@@ -132,7 +132,7 @@ const CrossCheckDashboard = ({ analysis }) => {
 
         {/* KPI Validation */}
         {kpi && (
-          <div className="panel p-3">
+          <div className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
             <div className="flex items-center gap-1.5 mb-2">
               <Activity className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-[10px] font-semibold text-slate-400 uppercase">KPI Validation</span>

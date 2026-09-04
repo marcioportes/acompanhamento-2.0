@@ -945,7 +945,7 @@ const OrderImportPage = ({
               )}
 
               {/* Fuso do lote (#292): em que fuso estão os horários das ordens */}
-              <div className="panel p-3">
+              <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
                   Fuso dos horários do arquivo
                 </label>

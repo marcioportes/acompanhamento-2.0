@@ -559,7 +559,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   if (viewAs && accounts.length === 0) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-screen p-8 flex items-center justify-center">
         <div className="text-center max-w-md">
           <Wallet className="w-20 h-20 mx-auto mb-6 text-slate-600" />
           <h2 className="text-xl font-bold text-white mb-2">{viewAs.name || viewAs.email} ainda não tem contas</h2>
@@ -571,7 +571,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   // === Render ===
   return (
-    <div className="space-y-6">
+    <div className="p-6 lg:p-8 space-y-6">
       {/* Header (título + ações) */}
       <DashboardHeader
         viewAs={viewAs}

@@ -201,15 +201,15 @@ const AccountStatement = ({ account, movements = [], onClose }) => {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <div className="panel-solid p-3">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
               <p className="text-[10px] text-slate-500 uppercase font-bold">Entradas (Período)</p>
               <p className="text-lg font-mono font-bold text-emerald-400">+{formatCurrency(periodTotals.in, account.currency)}</p>
             </div>
-            <div className="panel-solid p-3">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
               <p className="text-[10px] text-slate-500 uppercase font-bold">Saídas (Período)</p>
               <p className="text-lg font-mono font-bold text-red-400">-{formatCurrency(periodTotals.out, account.currency)}</p>
             </div>
-            <div className="panel-solid p-3">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
               <p className="text-[10px] text-slate-500 uppercase font-bold">Resultado Líquido</p>
               <p className={`text-lg font-mono font-bold ${periodTotals.in - periodTotals.out >= 0 ? 'text-blue-400' : 'text-amber-400'}`}>
                 {formatCurrency(periodTotals.in - periodTotals.out, account.currency)}

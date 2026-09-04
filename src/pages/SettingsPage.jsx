@@ -10,7 +10,7 @@ import { useState, useMemo } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirmDialog } from '../components/ConfirmDialog';
 import { 
-  TrendingUp, Building2, Landmark, DollarSign, Heart,
+  Settings, TrendingUp, Building2, Landmark, DollarSign, Heart,
   Plus, Edit2, Trash2, X, Check, Loader2, AlertCircle, Shield,
   Database, RefreshCw, Zap, Search, Smile, BarChart3, Download,
   ChevronDown, Info
@@ -23,7 +23,6 @@ import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import ComplianceConfigPage from './ComplianceConfigPage';
 import PropFirmConfigPage from './PropFirmConfigPage';
 import DebugBadge from '../components/DebugBadge';
-import PageHeader from '../components/PageHeader';
 
 const TABS = [
   { id: 'setups', label: 'Setups', icon: TrendingUp, color: 'blue' },
@@ -142,7 +141,7 @@ const SettingsPage = () => {
 
   if (!isMentor()) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center p-6">
         <div className="text-center">
           <Shield className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-white mb-2">Acesso Negado</h1>
@@ -511,8 +510,17 @@ const SettingsPage = () => {
   // ==================== JSX RENDER ====================
 
   return (
-    <div>
-      <PageHeader titulo="Configurações" linha="Gerencie os dados mestres do sistema" />
+    <div className="min-h-screen p-6 lg:p-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            <Settings className="w-8 h-8 text-blue-400" />
+            Configurações
+          </h1>
+          <p className="text-slate-400 mt-1">Gerencie os dados mestres do sistema</p>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
