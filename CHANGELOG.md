@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.88.0] - 04/09/2026 · #144 · PR #420
+
+**arch:** a Torre é a única porta — roteador real, shell e design system adotado
+
+- Bloco `activeView === 'students'` ("Lista de Alunos"): **inalcançável** desde que o App interceptava a view antes de o dashboard montar. Com ele saiu o `StudentEmotionalCardWrapper`, seu único consumidor.
+- `AddTradeModal` do nível do App: **um segundo modal, órfão** — só abria com `currentView === 'add-trade'`, id que nenhum menu emitia. O registro de trade sempre foi o do StudentDashboard.
+- `useMentorClosureInbox` no Sidebar: listener do Firestore assinado só para pintar um número no menu.
+
+
 ## [1.87.0] - 03/09/2026 · #418 · PR #419
 
 **feat:** a etapa Ajustar explica Kelly e Monte Carlo — e o histograma passa a ser o real
