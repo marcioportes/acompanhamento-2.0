@@ -5,6 +5,3 @@
 
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
-| CHUNK-01 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | Rollback do #144 — src/ volta ao estado be8657e8 |
-| CHUNK-02 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | idem |
-| CHUNK-16 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | idem |

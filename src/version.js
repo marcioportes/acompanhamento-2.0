@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.89.0: #425 revert interface volta ao estado da v1.87.0 (RESERVADA)
+ * - 1.89.0: #425 revert a interface volta ao estado da v1.87.0 (PR #426, 04/09/2026)
  * - 1.88.2: #423 fix o menu do mentor recupera os destinos; pendências acima da dobra (PR #424, 04/09/2026)
  * - 1.88.1: #421 fix tela do mentor não subia — TDZ em selectedStudent (PR #422, 04/09/2026)
  * - 1.88.0: #144 arch a Torre é a única porta — roteador real, shell e design system adotado (PR #420, 04/09/2026)

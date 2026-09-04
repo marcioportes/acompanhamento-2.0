@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.89.0] - 04/09/2026 · #425 · PR #426
+
+**revert:** a interface volta ao estado da v1.87.0
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.88.2] - 04/09/2026 · #423 · PR #424
 
 **fix:** o menu do mentor recupera os destinos; pendências acima da dobra
