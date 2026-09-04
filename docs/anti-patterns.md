@@ -30,3 +30,12 @@ Claude afirma algo sobre fluxo de dados, origem de campos ou estado de implement
 
 ---
 
+
+### Nota de incidente — AP-08, 04/09/2026 (#421)
+
+A v1.88.0 subiu com a tela do mentor quebrada (TDZ em `selectedStudent`) tendo passado por build, lint e 4.768 testes verdes. O que faltou não foi teste **de mais**, foi teste **do lugar certo**: nenhum montava o `MentorDashboard`, e o teste de rotas do #144 stubava a página.
+
+Duas regras práticas que saem daí:
+
+1. **Página exercitada só por teste de rota com stub não tem cobertura de render.** Se a suíte nunca executa o corpo do componente, erro de ordem de declaração, hook condicional e acesso a prop indefinida passam ilesos.
+2. **Trocar `useState` por valor derivado move a declaração** — e em componente React mover declaração é mudar ordem de execução. Refatoração desse tipo exige que a página seja montada em teste antes do merge.

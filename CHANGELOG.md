@@ -12,7 +12,21 @@ Version source of truth: `src/version.js`.
 
 **fix:** tela do mentor não subia — TDZ em selectedStudent
 
-- _(decisões/testes/files — ajustar antes do commit)_
+Hotfix da v1.88.0, que ficou ~40 minutos no ar com a tela do mentor em branco: `Uncaught ReferenceError: Cannot access 'K' before initialization`, depois de os listeners subirem — ou seja, no render do `MentorDashboard`.
+
+### Causa
+
+`selectedStudent` era `useState` declarado no topo do componente. No #144 virou **derivado da rota** (`useMemo` sobre `studentIdSelecionado`) e foi parar na linha 238 — mas `selectedStudentTrades` o lê na **187**, durante o render. `const` em TDZ: acessar antes da inicialização é `ReferenceError`, e derruba a árvore inteira. A declaração volta para logo depois de `students`, com o porquê escrito ao lado.
+
+### Por que atravessou os gates
+
+Build verde, lint sem erro novo e 4.768 testes verdes — e nada disso tocava a tela. **Nenhum teste montava o `MentorDashboard`:** a suíte cobre utilitários, hooks e componentes pequenos, e o teste de rotas do próprio #144 *stuba* a página. Erro de ordem de declaração só aparece executando o corpo do componente. AP-08 (Build Verde, App Quebrada) em estado puro — e o gate que falhou foi de verificação, não de código: "suíte verde" foi reportado como se fosse cobertura da tela.
+
+### O que impede a repetição
+
+`__tests__/pages/MentorDashboardMount.test.jsx` monta a página de verdade nas quatro views (torre, análises, aguardando feedback, fechamentos) e nos três casos da ficha (studentId, email, id inexistente). **Verificado contra o código quebrado que estava em produção:** falha com `ReferenceError: Cannot access 'selectedStudent' before initialization`, a mensagem exata do incidente.
+
+Sem mudança de comportamento, de UI ou de persistência. Nenhuma CF tocada.
 
 
 ## [1.88.0] - 04/09/2026 · #144 · PR #420
