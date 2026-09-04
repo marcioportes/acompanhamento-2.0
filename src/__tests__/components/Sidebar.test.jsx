@@ -1,15 +1,13 @@
 /**
- * Sidebar.test.jsx — issue #119 task 26 (Fase J2); reescrito no #144 Fase A1.
+ * Sidebar.test.jsx — issue #119 task 26 (Fase J2).
  *
- * Cobre a ordem do menu do aluno ("Revisões" logo após "Feedback") e a separação
- * de papéis (o menu do mentor não tem item de aluno). O que mudou no #144: os
- * itens deixaram de emitir id por callback e viraram LINK — a asserção passa a
- * ser sobre o `href`, que é o contrato novo.
+ * Cobre a inserção do item "Revisões" no menu do aluno (id `student-reviews`,
+ * logo após "Feedback") e garante que o menu do mentor permanece intacto
+ * (sem item aluno; "Fila de Revisão" do mentor continua presente).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 
 let mockAuthState = {
   user: { email: 'aluno@example.com', displayName: 'Aluno' },
@@ -37,17 +35,11 @@ vi.mock('../../hooks/useMentorClosureInbox', () => ({
 import Sidebar from '../../components/Sidebar';
 
 const baseProps = {
+  currentView: 'dashboard',
+  onViewChange: vi.fn(),
   collapsed: false,
   onToggle: vi.fn(),
 };
-
-/** O menu é feito de NavLink: precisa de Router para montar. */
-const renderSidebar = (props = {}) =>
-  render(
-    <MemoryRouter>
-      <Sidebar {...baseProps} {...props} />
-    </MemoryRouter>,
-  );
 
 describe('Sidebar — menu do aluno', () => {
   beforeEach(() => {
@@ -59,11 +51,11 @@ describe('Sidebar — menu do aluno', () => {
   });
 
   it('renderiza item "Revisões" logo após "Feedback"', () => {
-    const { container } = renderSidebar();
+    const { container } = render(<Sidebar {...baseProps} />);
 
     const nav = container.querySelector('nav');
-    const links = within(nav).getAllByRole('link');
-    const labels = links.map((b) => b.textContent);
+    const buttons = within(nav).getAllByRole('button');
+    const labels = buttons.map((b) => b.textContent);
 
     const feedbackIdx = labels.findIndex((l) => /Feedback/.test(l));
     const reviewsIdx = labels.findIndex((l) => /^Revisões/.test(l));
@@ -72,9 +64,14 @@ describe('Sidebar — menu do aluno', () => {
     expect(reviewsIdx).toBe(feedbackIdx + 1);
   });
 
-  it('"Revisões" do aluno aponta para /revisoes', () => {
-    renderSidebar();
-    expect(screen.getByText('Revisões').closest('a')).toHaveAttribute('href', '/revisoes');
+  it('clique em "Revisões" chama onViewChange com id "student-reviews"', () => {
+    const onViewChange = vi.fn();
+    render(<Sidebar {...baseProps} onViewChange={onViewChange} />);
+
+    const btn = screen.getByText('Revisões').closest('button');
+    btn.click();
+
+    expect(onViewChange).toHaveBeenCalledWith('student-reviews');
   });
 });
 
@@ -87,42 +84,21 @@ describe('Sidebar — menu do mentor', () => {
     };
   });
 
-  it('não mostra item de aluno', () => {
-    renderSidebar();
+  it('não mostra item "Revisões" (aluno) mas mostra "Fila de Revisão" (mentor)', () => {
+    render(<Sidebar {...baseProps} />);
+
     expect(screen.queryByText('Revisões')).toBeNull();
-    expect(screen.queryByText('Ciclos Fechados')).toBeNull();
+    expect(screen.getByText('Fila de Revisão')).toBeInTheDocument();
   });
 
-  it('a Torre é o primeiro item e o destino do login', () => {
-    const { container } = renderSidebar();
-    const links = within(container.querySelector('nav')).getAllByRole('link');
-    expect(links[0]).toHaveTextContent('Torre de Controle');
-    expect(links[0]).toHaveAttribute('href', '/torre');
-  });
+  it('clique em "Fila de Revisão" chama onViewChange com id "reviews" (não "student-reviews")', () => {
+    const onViewChange = vi.fn();
+    render(<Sidebar {...baseProps} onViewChange={onViewChange} />);
 
-  it('#423 — os destinos de trabalho estão no menu, não só dentro da Torre', () => {
-    const { container } = renderSidebar();
-    const labels = within(container.querySelector('nav')).getAllByRole('link').map((l) => l.textContent);
+    const btn = screen.getByText('Fila de Revisão').closest('button');
+    btn.click();
 
-    // O #144 tirou os quatro daqui apostando que a Torre os cobria. Na tela real
-    // eles caíam abaixo da faixa "A Turma", que cresce com o tamanho da turma.
-    // Menu é onde se procura o que se usa todo dia.
-    expect(labels.map((l) => l.replace(/\d+$/, ''))).toEqual([
-      'Torre de Controle',
-      'Análises',
-      'Fila de Revisão',
-      'Acompanhamento',
-      'Contas',
-      'Aguardando Feedback',
-      'Precisam Atenção',
-      'Fechamentos',
-      'Assinaturas',
-      'Configurações',
-    ]);
-  });
-
-  it('#423 — Análises tem endereço próprio no menu, não é link de rodapé', () => {
-    renderSidebar();
-    expect(screen.getByText('Análises').closest('a')).toHaveAttribute('href', '/analises');
+    expect(onViewChange).toHaveBeenCalledWith('reviews');
+    expect(onViewChange).not.toHaveBeenCalledWith('student-reviews');
   });
 });

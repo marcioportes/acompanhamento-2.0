@@ -363,7 +363,7 @@ const TradeDetailModal = ({
                 <button
                   type="button"
                   onClick={() => onRecalcMepMen(trade.id)}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+                  className="text-xs px-3 py-1.5 rounded-md bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
                   title="Zera MEP/MEN e busca os candles novamente para a janela atual"
                 >
                   🔄 Recalcular MEP/MEN

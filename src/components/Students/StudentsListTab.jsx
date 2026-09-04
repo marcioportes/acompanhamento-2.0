@@ -107,7 +107,7 @@ export default function StudentsListTab({ students, subscriptions, loading }) {
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-white hover:bg-slate-700/50 rounded-md transition-colors"
               aria-label="Limpar busca"
             >
               <X className="w-3.5 h-3.5" />

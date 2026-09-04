@@ -76,7 +76,7 @@ const CalendarHeatmap = ({ trades, weeks = 8 }) => {
                     return (
                       <div 
                         key={dayIndex} 
-                        className="w-7 h-7 rounded-lg bg-slate-900/30"
+                        className="w-7 h-7 rounded-md bg-slate-900/30"
                       />
                     );
                   }
@@ -85,7 +85,7 @@ const CalendarHeatmap = ({ trades, weeks = 8 }) => {
                     <div
                       key={dayIndex}
                       className={`
-                        w-7 h-7 rounded-lg cursor-pointer transition-all duration-200
+                        w-7 h-7 rounded-md cursor-pointer transition-all duration-200
                         ${getIntensityClass(day.pl, day.count)}
                         hover:ring-2 hover:ring-white/30 hover:scale-110
                       `}

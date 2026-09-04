@@ -20,7 +20,6 @@ import DebugBadge from '../components/DebugBadge';
 import MaturityComparisonSection from '../components/reviews/MaturityComparisonSection';
 import ReviewKpiGrid from '../components/reviews/ReviewKpiGrid';
 import ReviewTradesSection from '../components/reviews/ReviewTradesSection';
-import PageHeader from '../components/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
 import { useWeeklyReviews } from '../hooks/useWeeklyReviews';
 import { useReviewMaturitySnapshot } from '../hooks/useReviewMaturitySnapshot';
@@ -298,17 +297,27 @@ const StudentReviewsPage = ({ onNavigateToFeedback = null } = {}) => {
 
   if (mentor) {
     return (
-      <div className="max-w-[720px] mx-auto">
-        <PageHeader titulo="Minhas revisões" linha="Esta tela é do aluno. Mentor use a Fila de Revisão." />
+      <div className="min-h-screen bg-slate-950 py-6 pb-32">
+        <div className="max-w-[720px] mx-auto px-6">
+          <h1 className="text-xl font-semibold text-white mb-2">Minhas revisões</h1>
+          <p className="text-sm text-slate-400">
+            Esta tela é do aluno. Mentor use a Fila de Revisão.
+          </p>
+        </div>
         <DebugBadge component="StudentReviewsPage" />
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="max-w-[720px] mx-auto">
-        <PageHeader titulo="Minhas revisões" linha="Revisões semanais publicadas pelo seu mentor." />
+    <div className="min-h-screen bg-slate-950 py-6 pb-32">
+      <div className="max-w-[720px] mx-auto px-6">
+        <header className="mb-4">
+          <h1 className="text-xl font-semibold text-white">Minhas revisões</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Revisões semanais publicadas pelo seu mentor.
+          </p>
+        </header>
 
         {isLoading && (
           <div className="flex items-center gap-2 text-sm text-slate-400 py-8">

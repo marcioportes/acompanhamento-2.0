@@ -14,23 +14,24 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
-  DollarSign, Target, Activity, MessageSquare, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
-  CheckSquare, Square, Loader2, X, AlertTriangle, Eye
+  Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
+  Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradingCalendar from '../components/TradingCalendar';
 import EquityCurve from '../components/EquityCurve';
-import TorrePendencias from '../components/torre/TorrePendencias';
-import PageHeader from '../components/PageHeader';
+import StudentEmotionalCard from '../components/StudentEmotionalCard';
+import PendingReviewsCard from '../components/reviews/PendingReviewsCard';
+import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
 import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
-import usePendingReviewsCount from '../hooks/usePendingReviewsCount';
 import FichaDiagnostico from '../components/Students/FichaDiagnostico';
 import PlanoDeConversa from '../components/Students/PlanoDeConversa';
 import DetalheDoAluno from '../components/Students/DetalheDoAluno';
@@ -46,49 +47,30 @@ import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { Inbox } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
+import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
+import { useComplianceRules } from '../hooks/useComplianceRules';
 import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
   calculateStats, identifyStudentsNeedingAttention,
-  filterTradesByPeriod
+  formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
-import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
+import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 
-/**
- * #144 B3 — cada endereço do mentor tem nome próprio. Enquanto o dashboard for
- * container de várias telas, o título mora aqui; na Fase C1 sobe para o shell.
- */
-const CABECALHO = {
-  torre: { titulo: 'Torre de Controle', linha: 'O que precisa de você hoje' },
-  overview: { titulo: 'Análises', linha: 'Calendário da turma e trades por dia' },
-  pending: { titulo: 'Aguardando Feedback', linha: 'Trades que esperam sua resposta' },
-  attention: { titulo: 'Precisam Atenção', linha: 'Prejuízo acumulado, win rate ou profit factor abaixo do aceitável' },
-  closures: { titulo: 'Fechamentos', linha: 'Ciclos fechados esperando sua leitura' },
-};
-
-const MentorDashboard = ({
-  currentView = 'torre',
-  onViewChange,
-  onNavigateToFeedback,
-  // #144 A1 — a ficha do aluno deixa de ser estado interno e passa a ser
-  // endereço (`/alunos/:studentId`). O parâmetro pode ser o studentId ou o
-  // email: vários pontos abrem o aluno tendo só o email em mãos.
-  studentIdSelecionado = null,
-  onAbrirAluno,
-  onVoltarDaFicha,
-}) => {
+const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
   const { 
     allTrades, loading, addFeedback, 
-    getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents,
+    getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
     getTradesAwaitingFeedback, getTradesByStudentAndStatus,
     addBulkFeedback
   } = useTrades();
@@ -96,6 +78,7 @@ const MentorDashboard = ({
   const { orders } = useOrders();
   const { setups: allSetups } = useSetups();
 
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [viewingTrade, setViewingTrade] = useState(null);
   // Issue #259 — view do closure (lateral panel + comment)
   const [viewingClosure, setViewingClosure] = useState(null);
@@ -119,48 +102,37 @@ const MentorDashboard = ({
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkConfirmed, setBulkConfirmed] = useState(false);
 
+  // Compliance rules do mentor (para detecção configurável)
+  const { detectionConfig, statusThresholds } = useComplianceRules();
 
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
-  // #144 A1 — a view vem da ROTA. O dicionário que traduzia id-de-sidebar para
-  // id-interno (e que era a cola entre os dois sistemas de navegação) morreu com ele.
-  const activeView = currentView;
+  const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'closures': 'closures' };
+  const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
-
-  // #144 — a ficha do aluno é rota (`/alunos/:studentId`), e o parâmetro pode ser
-  // o studentId OU o email: vários pontos abrem o aluno tendo só o email em mãos.
-  //
-  // Fica AQUI, logo depois de `students`, porque `selectedStudentTrades` (abaixo)
-  // lê `selectedStudent` durante o render. Declarado mais para baixo, o `const`
-  // estourava TDZ — `Cannot access before initialization` — e derrubava a tela do
-  // mentor inteira. Era `useState` no topo antes do #144; ao virar derivado da
-  // rota, foi parar depois do primeiro uso.
-  const selectedStudent = useMemo(() => {
-    if (!studentIdSelecionado) return null;
-    const chave = String(studentIdSelecionado).toLowerCase();
-    return students.find(
-      (s) => String(s.studentId).toLowerCase() === chave || String(s.email).toLowerCase() === chave,
-    ) ?? null;
-  }, [students, studentIdSelecionado]);
+  const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
-  const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
-  const revisoesPendentes = usePendingReviewsCount(students);
-  const { subscriptions: allSubscriptions, students: allStudents } = useSubscriptions();
-
   // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
-  // visibilidade em Contas/Acompanhamento: 203 dos 588 alarmes da base eram de
-  // seis alunos sem assinatura ativa.
+  // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
+  // "Precisam Atenção" e os alertas do cockpit listavam gente que já tinha saído:
+  // 203 dos 588 alarmes da base eram de seis alunos sem assinatura ativa.
+  const { subscriptions: allSubscriptions, students: allStudents } = useSubscriptions();
   const emailsAtivos = useMemo(
     () => visibleStudentEmails(allStudents, allSubscriptions),
     [allStudents, allSubscriptions],
   );
 
-  // #423 — "Precisam Atenção" volta como tela. O #144 a removeu apostando que o
-  // tile "atenção" da Torre cobria o caso, mas os critérios são outros: aqui é
-  // performance acumulada (prejuízo, WR < 40%, PF < 0,8), lá é conduta e presença.
+  // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
+  // Alpha). `emailsAtivos` continua sendo o escopo de Acompanhamento/Contas, que é
+  // mais largo e vale para as outras superfícies.
+  const emailsDaMentoria = useMemo(
+    () => emailsDoRadar(allStudents, allSubscriptions),
+    [allStudents, allSubscriptions],
+  );
+
   const studentsNeedingAttention = useMemo(() => {
     const todos = identifyStudentsNeedingAttention(groupedTrades);
     // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
@@ -168,16 +140,6 @@ const MentorDashboard = ({
     if (emailsAtivos.size === 0) return todos;
     return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
   }, [groupedTrades, emailsAtivos]);
-
-  // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
-  // Alpha). O recorte mais largo (`visibleStudentEmails`) vale para Acompanhamento
-  // e Contas, que são outras superfícies.
-  // #144 B2 — `emailsAtivos` saiu daqui junto com a tela "Precisam Atenção": era a
-  // única consumidora neste arquivo.
-  const emailsDaMentoria = useMemo(
-    () => emailsDoRadar(allStudents, allSubscriptions),
-    [allStudents, allSubscriptions],
-  );
 
   // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
   // #101 Fase E — uma passada só, consumida pelas duas abas. A Torre é a home
@@ -255,7 +217,7 @@ const MentorDashboard = ({
     } finally { setFeedbackLoading(false); }
   };
 
-  const handleClickStudentAll = (student) => { abrirAluno(student); setSelectedTradeIds(new Set()); };
+  const handleClickStudentAll = (student) => { setSelectedStudent(student); setSelectedTradeIds(new Set()); };
 
   // #101 — vários pontos abriam o aluno com `{email, name}` só. A tela de detalhe
   // usa `selectedStudent.studentId` para filtrar os PLANOS e para o fluxo de
@@ -263,13 +225,13 @@ const MentorDashboard = ({
   // card de promoção entregava a tela sem plano nenhum, enquanto abrir pela lista
   // de Alunos entregava completa. O id vem do próprio trade (getUniqueStudents).
   const abrirAluno = useCallback((student) => {
-    if (!student) return;
-    if (student.studentId) return onAbrirAluno?.(student);
+    if (!student?.email) return setSelectedStudent(student);
+    if (student.studentId) return setSelectedStudent(student);
     const conhecido = students.find(
       (s) => String(s.email).toLowerCase() === String(student.email).toLowerCase(),
     );
-    onAbrirAluno?.(conhecido ? { ...student, studentId: conhecido.studentId } : student);
-  }, [students, onAbrirAluno]);
+    setSelectedStudent(conhecido ? { ...student, studentId: conhecido.studentId } : student);
+  }, [students]);
 
   // === Bulk Feedback Handlers ===
   // #408 — selecionar o dia inteiro: o recorte que gera um feedback só.
@@ -336,40 +298,22 @@ const MentorDashboard = ({
 
   if (loading) return <Loading fullScreen text="Carregando dados..." />;
 
-  // #144 A1 — a ficha é rota (`/alunos/:studentId`). O aluno vem da lista, que
-  // deriva dos trades: com a lista ainda vazia o endereço é válido e o dado não
-  // chegou; com a lista carregada e nada casando, o endereço é que está errado.
-  if (activeView === 'ficha' && !selectedStudent) {
-    if (students.length === 0) return <Loading fullScreen text="Carregando aluno..." />;
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="glass-card p-8 text-center max-w-md">
-          <h1 className="text-xl font-display font-bold text-white">Aluno não encontrado</h1>
-          <p className="text-sm text-slate-400 mt-2">Nenhum aluno com esse identificador aparece nos seus trades.</p>
-          <button onClick={() => onVoltarDaFicha?.()} className="btn-primary mt-6">Voltar</button>
-        </div>
-      </div>
-    );
-  }
-
   // Vista de aluno específico
   if (selectedStudent) {
     return (
-      <div>
-        <PageHeader
-          titulo={selectedStudent.name}
-          linha={selectedStudent.email}
-          voltar={(
-            <button onClick={() => onVoltarDaFicha?.()} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
-              <ChevronLeft className="w-4 h-4" /> Voltar
-            </button>
-          )}
-          acoes={(
-            <div className="px-4 py-2 rounded-xl bg-slate-800/50">
-              <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
-            </div>
-          )}
-        />
+      <div className="min-h-screen p-6 lg:p-8">
+        <button onClick={() => setSelectedStudent(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
+          <ChevronLeft className="w-4 h-4" /> Voltar para lista
+        </button>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-white">{selectedStudent.name}</h1>
+            <p className="text-slate-400">{selectedStudent.email}</p>
+          </div>
+          <div className="px-4 py-2 rounded-xl bg-slate-800/50">
+            <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
+          </div>
+        </div>
         {/* Issue #259 A8 — Flow C: mentor inicia closure pelo aluno (sessão 1:1) */}
         <CycleExpiredGuard
           studentId={selectedStudent.studentId}
@@ -490,12 +434,29 @@ const MentorDashboard = ({
   }
 
   return (
-    <div>
-      {/* #144 B3 — a barra de abas morreu. Ela era o SEGUNDO sistema de navegação:
-          os mesmos destinos existiam como item de menu e como aba, colados por um
-          dicionário de tradução. Agora cada endereço é uma tela, e o título diz
-          qual é — em vez de "Dashboard do Mentor · Visão geral da turma" em todas. */}
-      <PageHeader titulo={CABECALHO[activeView]?.titulo} linha={CABECALHO[activeView]?.linha} />
+    <div className="min-h-screen p-6 lg:p-8">
+      <div className="mb-8">
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">Dashboard do Mentor</h1>
+        <p className="text-slate-400 mt-1">Visão geral da turma</p>
+      </div>
+
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+        {[
+          // #101 Fase E — a Torre é a home: é ela que diz o que fazer. Análises (ex-Visão
+          // Geral) é o nível de baixo, para investigar depois de escolher a pessoa.
+          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
+          { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
+          { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
+          { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
+          { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
+          { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setSelectedTradeIds(new Set()); }} 
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
+            <tab.icon className="w-4 h-4" />{tab.label}
+          </button>
+        ))}
+      </div>
 
       {activeView === 'torre' && (
         <TorreDeControle
@@ -518,14 +479,35 @@ const MentorDashboard = ({
             </>
           )}
           pendencias={(
-            <TorrePendencias
-              revisoes={revisoesPendentes}
-              feedbacksPendentes={pendingFeedback.length}
-              fechamentosPendentes={closuresPendingCount}
-              onAbrirRevisoes={() => onViewChange('reviews')}
-              onAbrirFeedback={() => onViewChange('pending')}
-              onAbrirFechamentos={() => onViewChange('closures')}
-            />
+            <div className="space-y-4">
+              <PendingReviewsCard
+                students={students}
+                onOpenReviewQueue={() => onViewChange('reviews')}
+              />
+              {/* #101 faixa 3 — o que EU devo. Contador que leva à tela onde o
+                  trabalho acontece; a lista não se repete aqui. */}
+              <button
+                onClick={() => onViewChange('pending')}
+                className="w-full glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <MessageSquare className={`w-5 h-5 ${pendingFeedback.length > 0 ? 'text-blue-400' : 'text-slate-600'}`} />
+                  <div>
+                    <div className="font-semibold text-white text-sm">Aguardando feedback</div>
+                    <div className="text-[11px] text-slate-500">
+                      {pendingFeedback.length === 0
+                        ? 'nenhum trade esperando por você'
+                        : `${pendingFeedback.length} ${pendingFeedback.length === 1 ? 'trade espera' : 'trades esperam'} por você`}
+                    </div>
+                  </div>
+                </div>
+                {pendingFeedback.length > 0 && (
+                  <span className="text-lg font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full">
+                    {pendingFeedback.length}
+                  </span>
+                )}
+              </button>
+            </div>
           )}
         />
       )}
@@ -608,11 +590,55 @@ const MentorDashboard = ({
         </div>
       )}
 
-      {/* #144 A1 — o bloco `activeView === 'students'` ("Lista de Alunos") foi
-          removido: era INALCANÇÁVEL. O App interceptava `currentView === 'students'`
-          e renderizava StudentsManagement antes de o dashboard montar, desde que os
-          dois sistemas de navegação passaram a coexistir. A lista de alunos vive em
-          `/alunos` (StudentsManagement) e a triagem vive na Torre. */}
+      {activeView === 'students' && (
+        <div className="glass-card overflow-hidden">
+          <div className="p-4 border-b border-slate-800/50"><h3 className="font-semibold text-white">Lista de Alunos</h3></div>
+          <div className="divide-y divide-slate-800/50">
+            {students.map(student => {
+              const studentTrades = getTradesByStudent(student.email);
+              const stats = calculateStats(studentTrades);
+              const studentTotalsByCurrency = aggregateTradesByCurrency(studentTrades);
+              // Map keyed by uid (parent.parent.id de students/{uid}/maturity/current).
+              // Fallback a undefined → semáforo UNKNOWN quando aluno sem studentId ou sem doc.
+              const studentMaturity = student.studentId ? maturityByStudentId.get(student.studentId) : undefined;
+              return (
+                <div key={student.email} className="p-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
+                  <div onClick={() => setSelectedStudent(student)} className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-white">{student.name}</p>
+                          <MaturitySemaphoreBadge maturity={studentMaturity} />
+                        </div>
+                        <p className="text-sm text-slate-500">{student.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right min-w-[8rem]">
+                        <MultiCurrencyAmount totalsByCurrency={studentTotalsByCurrency} layout="stack" showSign className="font-semibold text-sm items-end" />
+                        <p className="text-xs text-slate-500">{stats.totalTrades} trades</p>
+                      </div>
+                      <div className="text-right"><p className={`font-semibold ${stats.winRate >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{formatPercent(stats.winRate)}</p><p className="text-xs text-slate-500">Win Rate</p></div>
+                      <ChevronRight className="w-5 h-5 text-slate-500" />
+                    </div>
+                  </div>
+                  {/* Emotional mini-card (só mostra se tem trades) */}
+                  {studentTrades.length > 0 && (
+                    <StudentEmotionalCardWrapper 
+                      trades={studentTrades} 
+                      studentName={student.name}
+                      detectionConfig={detectionConfig}
+                      statusThresholds={statusThresholds}
+                      onClick={() => setSelectedStudent(student)} 
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* #408 — a fila deixou de ser lista plana por aluno e virou árvore
           aluno → dia → plano → trade. O contexto que só existe no conjunto estava
@@ -755,9 +781,30 @@ const MentorDashboard = ({
   );
 };
 
-/* #144 A1 — `StudentEmotionalCardWrapper` saiu junto com o bloco "Lista de Alunos":
-   era o único consumidor dele, e o bloco era inalcançável. Com ele saem
-   `useComplianceRules` e `useEmotionalProfile` deste arquivo — o painel emocional
-   por aluno vive na ficha (`FichaDiagnostico`/`PlanoDeConversa`) desde o #101. */
+/**
+ * Wrapper que usa useEmotionalProfile para cada aluno na lista
+ * Isolado para que cada instância tenha seu próprio hook
+ */
+const StudentEmotionalCardWrapper = ({ trades, studentName, detectionConfig, statusThresholds, onClick }) => {
+  const { metrics, status, alerts, isReady } = useEmotionalProfile({
+    trades,
+    detectionConfig,
+    statusThresholds
+  });
+
+  if (!isReady) return null;
+
+  return (
+    <div className="mt-2 ml-14">
+      <StudentEmotionalCard
+        metrics={metrics}
+        status={status}
+        alerts={alerts}
+        studentName={studentName}
+        onClick={onClick}
+      />
+    </div>
+  );
+};
 
 export default MentorDashboard;

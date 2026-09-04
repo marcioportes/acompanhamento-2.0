@@ -8,10 +8,7 @@
  *   2. A TURMA — uma linha por aluno, todos, ordenada por quem precisa de você.
  *      É a espinha dorsal, e substitui Radar de Risco, Fora do Plano e o painel
  *      de Alertas Emocionais, que recortavam a mesma população três vezes.
- *   3. MINHAS PENDÊNCIAS — o que EU devo: revisões, feedbacks e fechamentos.
- *      (#144 trouxe os fechamentos para cá; #423 subiu a faixa para antes da
- *      turma — o que decide o dia não pode ficar abaixo de uma lista que cresce
- *      com o tamanho da turma.)
+ *   3. MINHAS PENDÊNCIAS — o que EU devo: feedbacks e revisões.
  *
  * O que era diagnóstico (calendário, Stop × Gain, retrato do aluno) saiu daqui e
  * foi para a aba Análises: gráfico serve para investigar DEPOIS de escolher a
@@ -26,7 +23,7 @@ import TorrePrioridade from './TorrePrioridade';
 import TorreTurma from './TorreTurma';
 import { FAIXA } from '../../utils/mentorRiskRadar';
 
-const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = null, rodape = null }) => {
+const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = null }) => {
   const { dia, header, priority = [], turma = [] } = radar ?? {};
 
   // O número do tile clica e recorta a lista — contador que não filtra é decoração.
@@ -53,11 +50,6 @@ const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = 
       <TorrePrioridade priority={priority} onAbrirAluno={onAbrirAluno} />
       {extrasAcao}
 
-      {/* #423 — as pendências sobem para antes da turma. Elas decidem o dia; a
-          lista da turma é consulta e tem tamanho variável (renderiza a turma
-          inteira), então tudo que ficava depois dela caía abaixo da dobra. */}
-      {pendencias}
-
       <TorreTurma
         turma={turmaVisivel}
         total={turma.length}
@@ -66,7 +58,7 @@ const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = 
         onAbrirAluno={onAbrirAluno}
       />
 
-      {rodape}
+      {pendencias}
     </div>
   );
 };

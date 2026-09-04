@@ -35,7 +35,6 @@ import AIAssessmentReport from '../components/Onboarding/AIAssessmentReport.jsx'
 import MentorValidation from '../components/Onboarding/MentorValidation.jsx';
 import BaselineReport from '../components/Onboarding/BaselineReport.jsx';
 import DebugBadge from '../components/DebugBadge.jsx';
-import PageHeader from '../components/PageHeader';
 
 const STATUS_LABELS = {
   lead: 'Novo Aluno',
@@ -578,16 +577,17 @@ export default function StudentOnboardingPage({ studentId: studentIdProp, isMent
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <PageHeader
-        titulo="Onboarding"
-        linha="Assessment 4D — Trader Evolution Framework"
-        acoes={(
-          <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${STATUS_COLORS[effectiveStatus] || STATUS_COLORS.lead}`}>
-            {STATUS_LABELS[effectiveStatus] || effectiveStatus}
-          </div>
-        )}
-      />
+    <div className="max-w-4xl mx-auto p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Onboarding</h1>
+          <p className="text-sm text-gray-500 mt-1">Assessment 4D — Trader Evolution Framework</p>
+        </div>
+        <div className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${STATUS_COLORS[effectiveStatus] || STATUS_COLORS.lead}`}>
+          {STATUS_LABELS[effectiveStatus] || effectiveStatus}
+        </div>
+      </div>
 
       {/* Tabs (when past lead) */}
       {availableTabs.length > 0 && (

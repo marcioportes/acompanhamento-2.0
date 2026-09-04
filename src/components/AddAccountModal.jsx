@@ -527,7 +527,7 @@ const AddAccountModal = ({
                             type="button"
                             onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
                             title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade(s)/dia\n${p.idealFor}\n\nMonte Carlo (${selectedTemplate.name} · stop-on-win · 100k iter)\n${mcLine}\nFormato: PASS / BUST / dias médios`}
-                            className={`p-1.5 rounded-lg border text-[10px] font-semibold transition-all ${
+                            className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
                               selected
                                 ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
                                 : 'bg-slate-800/50 border-slate-700/50 text-slate-400 hover:bg-slate-700/50'
