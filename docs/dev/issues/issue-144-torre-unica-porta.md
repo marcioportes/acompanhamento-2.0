@@ -153,7 +153,9 @@ ALUNO
 
 - `fase A+B [roteador + Torre única porta] commit c4228f30 ok` — App.jsx 562→28 linhas
 - `fase C [shell + design system] commit 8f66f9f2 ok` — 14 páginas sem container próprio
-- `fase C [testes de rota + invariante de chrome] commit <sha> ok`
+- `fase C [testes de rota + invariante de chrome] commit 3c743fd7 ok`
+- `limpeza [resíduos mortos do shell] commit d76d978d ok`
+- `PR #420 aberto` — suíte 4768/301 arquivos · lint sem erro novo · build ok · aguardando revisão visual de Marcio
 
 ## Shared Deltas
 
