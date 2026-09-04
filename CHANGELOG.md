@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.88.1] - 04/09/2026 · #421 · PR #422
+
+**fix:** tela do mentor não subia — TDZ em selectedStudent
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.88.0] - 04/09/2026 · #144 · PR #420
 
 **arch:** a Torre é a única porta — roteador real, shell e design system adotado

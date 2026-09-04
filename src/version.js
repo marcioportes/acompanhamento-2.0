@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.88.1: #421 fix tela do mentor não subia — TDZ em selectedStudent (RESERVADA)
+ * - 1.88.1: #421 fix tela do mentor não subia — TDZ em selectedStudent (PR #422, 04/09/2026)
  * - 1.88.0: #144 arch a Torre é a única porta — roteador real, shell e design system adotado (PR #420, 04/09/2026)
  * - 1.87.0: #418 feat a etapa Ajustar explica Kelly e Monte Carlo — histograma real (PR #419, 03/09/2026)
  * - 1.86.1: #416 fix a esteira de fechamento para de mentir — 13 correções (PR #417, 02/09/2026)
