@@ -126,6 +126,22 @@ const MentorDashboard = ({
   const activeView = currentView;
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
+
+  // #144 — a ficha do aluno é rota (`/alunos/:studentId`), e o parâmetro pode ser
+  // o studentId OU o email: vários pontos abrem o aluno tendo só o email em mãos.
+  //
+  // Fica AQUI, logo depois de `students`, porque `selectedStudentTrades` (abaixo)
+  // lê `selectedStudent` durante o render. Declarado mais para baixo, o `const`
+  // estourava TDZ — `Cannot access before initialization` — e derrubava a tela do
+  // mentor inteira. Era `useState` no topo antes do #144; ao virar derivado da
+  // rota, foi parar depois do primeiro uso.
+  const selectedStudent = useMemo(() => {
+    if (!studentIdSelecionado) return null;
+    const chave = String(studentIdSelecionado).toLowerCase();
+    return students.find(
+      (s) => String(s.studentId).toLowerCase() === chave || String(s.email).toLowerCase() === chave,
+    ) ?? null;
+  }, [students, studentIdSelecionado]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
   const revisoesPendentes = usePendingReviewsCount(students);
@@ -232,16 +248,6 @@ const MentorDashboard = ({
     );
     onAbrirAluno?.(conhecido ? { ...student, studentId: conhecido.studentId } : student);
   }, [students, onAbrirAluno]);
-
-  // A ficha resolve o parâmetro da rota contra a lista de alunos. Aceita id ou
-  // email pelo mesmo motivo do comentário acima.
-  const selectedStudent = useMemo(() => {
-    if (!studentIdSelecionado) return null;
-    const chave = String(studentIdSelecionado).toLowerCase();
-    return students.find(
-      (s) => String(s.studentId).toLowerCase() === chave || String(s.email).toLowerCase() === chave,
-    ) ?? null;
-  }, [students, studentIdSelecionado]);
 
   // === Bulk Feedback Handlers ===
   // #408 — selecionar o dia inteiro: o recorte que gera um feedback só.
