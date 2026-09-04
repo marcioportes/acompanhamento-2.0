@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.88.2: #423 fix menu do mentor recupera destinos + pendências acima da dobra (RESERVADA)
  * - 1.88.1: #421 fix tela do mentor não subia — TDZ em selectedStudent (PR #422, 04/09/2026)
  * - 1.88.0: #144 arch a Torre é a única porta — roteador real, shell e design system adotado (PR #420, 04/09/2026)
  * - 1.87.0: #418 feat a etapa Ajustar explica Kelly e Monte Carlo — histograma real (PR #419, 03/09/2026)
@@ -431,7 +432,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.88.1';
+const version = '1.88.2';
 const build = '20260904';
 
 const VERSION = {
