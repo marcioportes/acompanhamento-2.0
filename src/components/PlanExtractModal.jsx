@@ -91,8 +91,8 @@ const PlanExtractModal = ({ isOpen, onClose, plan, trades }) => {
           
           <div className="flex justify-between items-center">
             <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
-              <button onClick={() => setViewScope('period')} className={`px-4 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${viewScope === 'period' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Período ({plan.operationPeriod})</button>
-              <button onClick={() => setViewScope('cycle')} className={`px-4 py-1.5 rounded-md text-xs font-bold flex items-center gap-2 transition-all ${viewScope === 'cycle' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><RefreshCw className="w-3 h-3" /> Ciclo ({plan.adjustmentCycle})</button>
+              <button onClick={() => setViewScope('period')} className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${viewScope === 'period' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><Calendar className="w-3 h-3" /> Período ({plan.operationPeriod})</button>
+              <button onClick={() => setViewScope('cycle')} className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${viewScope === 'cycle' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}><RefreshCw className="w-3 h-3" /> Ciclo ({plan.adjustmentCycle})</button>
             </div>
             <div>{getStatusBadge(audit.status)}</div>
           </div>

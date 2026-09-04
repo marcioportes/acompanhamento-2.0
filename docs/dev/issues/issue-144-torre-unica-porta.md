@@ -3,11 +3,9 @@
 ## Autorização (OBRIGATÓRIA — sem isto é PROIBIDO iniciar desenvolvimento)
 
 - [x] Mockup apresentado — 03/09/2026 (seção Mockup abaixo)
-- [ ] Memória de cálculo — **não se aplica**: nenhuma fórmula, score ou agregação nova. A ordenação da turma e os três gatilhos de prioridade são os do #101 (`mentorRiskRadar`), intactos. Aguardando concordância.
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
-
-**Autorização parcial já dada (03/09/2026):** *"a Torre é a única porta de entrada, abre o #144"* — autoriza a abertura e a decisão de produto. **Não** autoriza código: falta o aceite do mockup abaixo.
+- [x] Memória de cálculo — **não se aplica**: nenhuma fórmula, score ou agregação nova. A ordenação da turma e os três gatilhos de prioridade são os do #101 (`mentorRiskRadar`), intactos.
+- [x] Marcio autorizou — 03/09/2026: *"a Torre é a única porta de entrada, abre o #144"* e, sobre o mockup, *"autorizado, pode ir"*.
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -134,7 +132,8 @@ ALUNO
 
 ## Sessions
 
-_(log linear; 1 linha por task)_
+- `fase A+B [roteador + Torre única porta] commit c4228f30 ok` — suíte 4711 (baseline 4696)
+- `fase C [shell + design system] commit <sha> ok`
 
 ## Shared Deltas
 

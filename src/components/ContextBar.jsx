@@ -229,7 +229,7 @@ const ContextBar = ({ accounts = [], plans = [], trades = [], embedded = false }
         />
 
         {isReadOnlyCycle && (
-          <span className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+          <span className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
             <Lock className="w-3 h-3" />
             Ciclo finalizado (somente leitura)
           </span>

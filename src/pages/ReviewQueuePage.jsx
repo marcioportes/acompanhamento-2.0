@@ -13,11 +13,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ClipboardCheck, ChevronDown, ChevronRight, Clock, CheckCircle2, Archive, Loader2, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, CheckCircle2, Archive, Loader2, Search, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentIds } from '../utils/mentorAccountsVisibility';
 import DebugBadge from '../components/DebugBadge';
+import PageHeader from '../components/PageHeader';
 
 const statusColor = {
   DRAFT: 'text-amber-400',
@@ -218,18 +219,12 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
         <StudentStatusProbe key={`probe-c-${s.id}`} studentId={s.id} status="CLOSED" onCount={handleStatusCount} />
       ))}
 
-      <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 bg-emerald-500/10 rounded-lg">
-          <ClipboardCheck className="w-5 h-5 text-emerald-400" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-white">Fila de Revisão</h1>
-          <p className="text-xs text-slate-400">
-            {includePublished
-              ? 'Alunos com rascunho aberto ou revisões publicadas. Atualize links de reunião/gravação direto na revisão.'
-              : 'Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.'}
-          </p>
-        </div>
+      <PageHeader
+        titulo="Fila de Revisão"
+        linha={includePublished
+          ? 'Alunos com rascunho aberto ou revisões publicadas. Atualize links de reunião/gravação direto na revisão.'
+          : 'Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.'}
+        acoes={(
         <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none whitespace-nowrap">
           <input
             type="checkbox"
@@ -239,7 +234,8 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
           />
           Incluir publicadas
         </label>
-      </div>
+        )}
+      />
 
       {!loading && studentsToShow.length > 0 && (
         <div className="relative mb-3">

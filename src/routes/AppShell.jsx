@@ -132,8 +132,14 @@ const AppShell = () => {
         hasPropAccount={hasPropAccount}
       />
 
+      {/* #144 C1 — o container é do shell. Era declarado por cada página, e cada
+          uma escolhia o seu: `p-6 lg:p-8`, `py-6 pb-32`, `p-6`, `p-6 lg:p-8 pb-20`.
+          O `pb-20` vale para todas por causa do DebugBadge, que é `fixed bottom-2`
+          e cobria conteúdo em toda página com scroll. */}
       <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
-        <Outlet context={contexto} />
+        <div className="min-h-screen px-6 lg:px-8 py-6 pb-20">
+          <Outlet context={contexto} />
+        </div>
       </main>
 
       {!isMentor() && (

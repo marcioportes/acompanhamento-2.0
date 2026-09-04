@@ -6,7 +6,7 @@
  * abriu o link direto — do WhatsApp, em aba nova — não tem para onde voltar, e
  * aí o botão precisa levar à porta do papel em vez de tirar a pessoa do app.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, Link } from 'react-router-dom';
 import { useVoltar } from '../../routes/useVoltar';

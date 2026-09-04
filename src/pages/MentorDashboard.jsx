@@ -14,18 +14,16 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
-  Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
-  CheckSquare, Square, Loader2, X, Radar
+  DollarSign, Target, Activity, MessageSquare, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  CheckSquare, Square, Loader2, X
 } from 'lucide-react';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import TradingCalendar from '../components/TradingCalendar';
 import EquityCurve from '../components/EquityCurve';
-import StudentEmotionalCard from '../components/StudentEmotionalCard';
 import TorrePendencias from '../components/torre/TorrePendencias';
-import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
+import PageHeader from '../components/PageHeader';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
@@ -48,17 +46,14 @@ import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Inbox } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
-import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
-import { useComplianceRules } from '../hooks/useComplianceRules';
 import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
   calculateStats,
-  formatPercent, filterTradesByPeriod
+  filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
@@ -122,8 +117,6 @@ const MentorDashboard = ({
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkConfirmed, setBulkConfirmed] = useState(false);
 
-  // Compliance rules do mentor (para detecção configurável)
-  const { detectionConfig, statusThresholds } = useComplianceRules();
 
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
@@ -321,7 +314,7 @@ const MentorDashboard = ({
   if (activeView === 'ficha' && !selectedStudent) {
     if (students.length === 0) return <Loading fullScreen text="Carregando aluno..." />;
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <div className="glass-card p-8 text-center max-w-md">
           <h1 className="text-xl font-display font-bold text-white">Aluno não encontrado</h1>
           <p className="text-sm text-slate-400 mt-2">Nenhum aluno com esse identificador aparece nos seus trades.</p>
@@ -334,19 +327,21 @@ const MentorDashboard = ({
   // Vista de aluno específico
   if (selectedStudent) {
     return (
-      <div className="min-h-screen p-6 lg:p-8">
-        <button onClick={() => onVoltarDaFicha?.()} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
-          <ChevronLeft className="w-4 h-4" /> Voltar
-        </button>
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-white">{selectedStudent.name}</h1>
-            <p className="text-slate-400">{selectedStudent.email}</p>
-          </div>
-          <div className="px-4 py-2 rounded-xl bg-slate-800/50">
-            <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
-          </div>
-        </div>
+      <div>
+        <PageHeader
+          titulo={selectedStudent.name}
+          linha={selectedStudent.email}
+          voltar={(
+            <button onClick={() => onVoltarDaFicha?.()} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
+              <ChevronLeft className="w-4 h-4" /> Voltar
+            </button>
+          )}
+          acoes={(
+            <div className="px-4 py-2 rounded-xl bg-slate-800/50">
+              <MultiCurrencyAmount totalsByCurrency={selectedStudentTotals} layout="inline" showSign className="font-semibold" />
+            </div>
+          )}
+        />
         {/* Issue #259 A8 — Flow C: mentor inicia closure pelo aluno (sessão 1:1) */}
         <CycleExpiredGuard
           studentId={selectedStudent.studentId}
@@ -467,15 +462,12 @@ const MentorDashboard = ({
   }
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
+    <div>
       {/* #144 B3 — a barra de abas morreu. Ela era o SEGUNDO sistema de navegação:
           os mesmos destinos existiam como item de menu e como aba, colados por um
           dicionário de tradução. Agora cada endereço é uma tela, e o título diz
           qual é — em vez de "Dashboard do Mentor · Visão geral da turma" em todas. */}
-      <div className="mb-8">
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">{CABECALHO[activeView]?.titulo}</h1>
-        <p className="text-slate-400 mt-1">{CABECALHO[activeView]?.linha}</p>
-      </div>
+      <PageHeader titulo={CABECALHO[activeView]?.titulo} linha={CABECALHO[activeView]?.linha} />
 
       {activeView === 'torre' && (
         <TorreDeControle
@@ -729,30 +721,9 @@ const MentorDashboard = ({
   );
 };
 
-/**
- * Wrapper que usa useEmotionalProfile para cada aluno na lista
- * Isolado para que cada instância tenha seu próprio hook
- */
-const StudentEmotionalCardWrapper = ({ trades, studentName, detectionConfig, statusThresholds, onClick }) => {
-  const { metrics, status, alerts, isReady } = useEmotionalProfile({
-    trades,
-    detectionConfig,
-    statusThresholds
-  });
-
-  if (!isReady) return null;
-
-  return (
-    <div className="mt-2 ml-14">
-      <StudentEmotionalCard
-        metrics={metrics}
-        status={status}
-        alerts={alerts}
-        studentName={studentName}
-        onClick={onClick}
-      />
-    </div>
-  );
-};
+/* #144 A1 — `StudentEmotionalCardWrapper` saiu junto com o bloco "Lista de Alunos":
+   era o único consumidor dele, e o bloco era inalcançável. Com ele saem
+   `useComplianceRules` e `useEmotionalProfile` deste arquivo — o painel emocional
+   por aluno vive na ficha (`FichaDiagnostico`/`PlanoDeConversa`) desde o #101. */
 
 export default MentorDashboard;

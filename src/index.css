@@ -56,8 +56,35 @@
 
 /* Component styles */
 @layer components {
+  /* ------------------------------------------------------------------
+   * Escala de superfície e de raio (issue #144, Fase C2)
+   *
+   * A escala existia de fato mas não estava escrita, e por isso quatro raios
+   * conviviam sem regra (`rounded-lg` 524x, `xl` 314x, `2xl` 31x, `md` 19x) e
+   * a mesma superfície aparecia com oito opacidades de slate diferentes.
+   *
+   *   rounded-2xl  card de primeiro nível  -> .glass-card
+   *   rounded-xl   controle de formulário  -> .input-field / .input-field-sm
+   *   rounded-lg   painel aninhado, dentro de um card -> .panel / .panel-solid
+   *   rounded-full só chip, badge e avatar
+   *
+   * Painel aninhado é mais claro que o card que o contém — de propósito. Trocar
+   * .panel por .glass-card empilha dois vidros e apaga a hierarquia.
+   * ------------------------------------------------------------------ */
   .glass-card {
     @apply bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 rounded-2xl shadow-xl;
+  }
+
+  /* Painel aninhado. Existia escrito à mão em duas ordens de classe diferentes
+     (`p-3 rounded-lg bg-slate-800/30 border ...` e `bg-slate-800/30 rounded-lg
+     p-3 border ...`), o que escondia que era a mesma coisa. Padding fica com
+     quem usa: o painel não sabe quanto respiro o conteúdo precisa. */
+  .panel {
+    @apply bg-slate-800/30 border border-slate-700/30 rounded-lg;
+  }
+
+  .panel-solid {
+    @apply bg-slate-800/50 border border-slate-700/50 rounded-lg;
   }
 
   .glass-card-hover {
@@ -74,6 +101,14 @@
 
   .btn-primary {
     @apply bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 shadow-lg hover:shadow-blue-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Mesma identidade do .btn-primary, um degrau menor — barra de ferramentas e
+     linha densa, onde px-6 py-3 empurra o resto da linha. Existia escrito à mão
+     como `bg-blue-600 hover:bg-blue-500 px-4 py-2.5`, um SEGUNDO idioma de botão
+     primário (19 usos contra 35 do gradiente) convivendo sem regra. */
+  .btn-primary-sm {
+    @apply bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-medium px-4 py-2.5 rounded-xl transition-all duration-300 shadow-lg hover:shadow-blue-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {

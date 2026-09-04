@@ -13,7 +13,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import {
-  CreditCard, Search, Plus, Receipt,
+  Search, Plus, Receipt,
   CheckCircle, AlertTriangle, Clock, XCircle, Pause, X,
   DollarSign, Loader2, UserPlus, UserCog, FlaskConical, Trash2, Edit2, Crown, RotateCcw,
   MessageCircle
@@ -25,6 +25,7 @@ import { useStudents } from '../hooks/useStudents';
 import DebugBadge from '../components/DebugBadge';
 import RenewalForecast from '../components/RenewalForecast';
 import StudentsListTab from '../components/Students/StudentsListTab';
+import PageHeader from '../components/PageHeader';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
 
 // ── Helpers ──────────────────────────────────────────────
@@ -509,22 +510,17 @@ const SubscriptionsPage = () => {
 
   // ── Render ──
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>;
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>;
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl lg:text-3xl font-display font-bold text-white flex items-center gap-3"><CreditCard className="w-8 h-8 text-blue-400" />Assinaturas</h1>
-            <p className="text-slate-400 mt-1">Gestao de assinaturas da mentoria</p>
-          </div>
-          {activeTab === 'subs' && (
-            <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"><Plus className="w-4 h-4" />Nova Assinatura</button>
-          )}
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        titulo="Assinaturas"
+        linha="Gestão de assinaturas da mentoria"
+        acoes={activeTab === 'subs' && (
+          <button onClick={openNew} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" />Nova Assinatura</button>
+        )}
+      />
 
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 border-b border-slate-800/50">
@@ -589,7 +585,7 @@ const SubscriptionsPage = () => {
               type="button"
               onClick={() => { setSearchTerm(''); setPage(0); }}
               title="Limpar busca"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-white hover:bg-slate-700/50 rounded-md transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -808,16 +804,16 @@ const SubscriptionsPage = () => {
           <div className="mb-4 p-3 bg-slate-800/50 rounded-xl"><p className="text-sm font-medium text-white">{selectedSub.studentName}</p></div>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Plano vigente</label><select value={paymentForm.plan} onChange={(e) => setPaymentForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={paymentForm.billingPeriodMonths} onChange={(e) => setPaymentForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Plano vigente</label><select value={paymentForm.plan} onChange={(e) => setPaymentForm(f => ({ ...f, plan: e.target.value }))} className="input-field-sm"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={paymentForm.billingPeriodMonths} onChange={(e) => setPaymentForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="input-field-sm"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Data</label><DateInputBR id="payment-date" value={paymentForm.date} onChange={(iso) => setPaymentForm(f => ({ ...f, date: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))} className="input-field-sm" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Data</label><DateInputBR id="payment-date" value={paymentForm.date} onChange={(iso) => setPaymentForm(f => ({ ...f, date: iso }))} className="input-field-sm" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Referencia</label><input type="text" value={paymentForm.reference} onChange={(e) => setPaymentForm(f => ({ ...f, reference: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Metodo</label><select value={paymentForm.method} onChange={(e) => setPaymentForm(f => ({ ...f, method: e.target.value }))} className="input-field-sm">{PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Referencia</label><input type="text" value={paymentForm.reference} onChange={(e) => setPaymentForm(f => ({ ...f, reference: e.target.value }))} className="input-field-sm placeholder-slate-600" /></div>
             </div>
             <ReceiptUpload receiptFile={receiptFile} setReceiptFile={setReceiptFile} />
           </div>
@@ -863,15 +859,15 @@ const SubscriptionsPage = () => {
               </div>
               {newForm.alunoMode === 'new' ? (
                 <div className="space-y-2">
-                  <input type="text" placeholder="Nome *" value={newForm.newAlunoName} onChange={(e) => setNewForm(f => ({ ...f, newAlunoName: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
-                  <input type="text" placeholder="Celular (+5521...)" value={newForm.newAlunoWhatsapp} onChange={(e) => setNewForm(f => ({ ...f, newAlunoWhatsapp: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
-                  <input type="email" placeholder="Email (opcional)" value={newForm.newAlunoEmail} onChange={(e) => setNewForm(f => ({ ...f, newAlunoEmail: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/50" />
+                  <input type="text" placeholder="Nome *" value={newForm.newAlunoName} onChange={(e) => setNewForm(f => ({ ...f, newAlunoName: e.target.value }))} className="input-field-sm" />
+                  <input type="text" placeholder="Celular (+5521...)" value={newForm.newAlunoWhatsapp} onChange={(e) => setNewForm(f => ({ ...f, newAlunoWhatsapp: e.target.value }))} className="input-field-sm" />
+                  <input type="email" placeholder="Email (opcional)" value={newForm.newAlunoEmail} onChange={(e) => setNewForm(f => ({ ...f, newAlunoEmail: e.target.value }))} className="input-field-sm" />
                   <p className="text-[10px] text-slate-500">Aluno pré-Alpha (sem Auth/dashboard até virar Alpha)</p>
                 </div>
               ) : studentsWithoutSubscription.length === 0 ? (
                 <div className="px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-slate-500 text-sm">Todos os alunos ja possuem assinatura</div>
               ) : (
-                <select value={newForm.studentId} onChange={(e) => setNewForm(f => ({ ...f, studentId: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50">
+                <select value={newForm.studentId} onChange={(e) => setNewForm(f => ({ ...f, studentId: e.target.value }))} className="input-field-sm">
                   <option value="">Selecione um aluno...</option>
                   {studentsWithoutSubscription.map(s => <option key={s.id} value={s.id}>{s.name ?? s.email}</option>)}
                 </select>
@@ -885,21 +881,21 @@ const SubscriptionsPage = () => {
                 ))}
               </div>
             </div>
-            {newForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
-            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR id="new-start-date" value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            {newForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={newForm.plan} onChange={(e) => setNewForm(f => ({ ...f, plan: e.target.value }))} className="input-field-sm"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
+            <div><label className="block text-sm text-slate-400 mb-1">Data de inicio</label><DateInputBR id="new-start-date" value={newForm.startDate} onChange={(iso) => setNewForm(f => ({ ...f, startDate: iso }))} className="input-field-sm" /></div>
             {newForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" placeholder="0,00" /></div>
-                <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={newForm.currency} onChange={(e) => setNewForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={newForm.amount} onChange={(e) => setNewForm(f => ({ ...f, amount: e.target.value }))} className="input-field-sm" placeholder="0,00" /></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={newForm.currency} onChange={(e) => setNewForm(f => ({ ...f, currency: e.target.value }))} className="input-field-sm"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
               </div>
-              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={newForm.billingPeriodMonths} onChange={(e) => setNewForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={newForm.billingPeriodMonths} onChange={(e) => setNewForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="input-field-sm"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
               <ReceiptUpload receiptFile={receiptFile} setReceiptFile={setReceiptFile} />
             </>}
             {newForm.type === 'vip' && <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-400">VIP — sem cobrança, sem acesso ao sistema</div>}
-            {newForm.type === 'trial' && <div><label className="block text-sm text-slate-400 mb-1">Duracao do trial (dias)</label><input type="number" value={newForm.trialDays} onChange={(e) => setNewForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /><p className="text-xs text-slate-600 mt-1">Expira em {(() => { const d = new Date(newForm.startDate); d.setDate(d.getDate() + (parseInt(newForm.trialDays) || 30)); return formatBrDate(d); })()}</p></div>}
-            <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={newForm.notes} onChange={(e) => setNewForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" placeholder="Opcional" /></div>
+            {newForm.type === 'trial' && <div><label className="block text-sm text-slate-400 mb-1">Duracao do trial (dias)</label><input type="number" value={newForm.trialDays} onChange={(e) => setNewForm(f => ({ ...f, trialDays: e.target.value }))} className="input-field-sm" /><p className="text-xs text-slate-600 mt-1">Expira em {(() => { const d = new Date(newForm.startDate); d.setDate(d.getDate() + (parseInt(newForm.trialDays) || 30)); return formatBrDate(d); })()}</p></div>}
+            <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={newForm.notes} onChange={(e) => setNewForm(f => ({ ...f, notes: e.target.value }))} className="input-field-sm placeholder-slate-600" placeholder="Opcional" /></div>
           </div>
-          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleCreateSubscription} disabled={actionLoading || (newForm.alunoMode === 'existing' && !newForm.studentId) || (newForm.alunoMode === 'new' && !newForm.newAlunoName?.trim()) || !newForm.plan} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Criar Assinatura</button></div>
+          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleCreateSubscription} disabled={actionLoading || (newForm.alunoMode === 'existing' && !newForm.studentId) || (newForm.alunoMode === 'new' && !newForm.newAlunoName?.trim()) || !newForm.plan} className="flex-1 btn-primary-sm flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Criar Assinatura</button></div>
         </div></div>
       )}
 
@@ -908,12 +904,12 @@ const SubscriptionsPage = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"><div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
           <div className="flex items-center justify-between mb-6"><h3 className="text-lg font-semibold text-white flex items-center gap-2"><UserCog className="w-5 h-5 text-blue-400" />Editar Aluno</h3><button onClick={closeModal} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button></div>
           <div className="space-y-4">
-            <div><label className="block text-sm text-slate-400 mb-1">Nome *</label><input type="text" value={studentForm.name} onChange={(e) => setStudentForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-            <div><label className="block text-sm text-slate-400 mb-1">Celular</label><input type="text" placeholder="+5521997118900" value={studentForm.whatsappNumber} onChange={(e) => setStudentForm(f => ({ ...f, whatsappNumber: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-            <div><label className="block text-sm text-slate-400 mb-1">Email</label><input type="email" value={studentForm.email} onChange={(e) => setStudentForm(f => ({ ...f, email: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Nome *</label><input type="text" value={studentForm.name} onChange={(e) => setStudentForm(f => ({ ...f, name: e.target.value }))} className="input-field-sm" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Celular</label><input type="text" placeholder="+5521997118900" value={studentForm.whatsappNumber} onChange={(e) => setStudentForm(f => ({ ...f, whatsappNumber: e.target.value }))} className="input-field-sm" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Email</label><input type="email" value={studentForm.email} onChange={(e) => setStudentForm(f => ({ ...f, email: e.target.value }))} className="input-field-sm" /></div>
             {studentError && <div className="text-sm text-red-400">{studentError}</div>}
           </div>
-          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveStudent} disabled={actionLoading || !studentForm.name?.trim()} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
+          <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveStudent} disabled={actionLoading || !studentForm.name?.trim()} className="flex-1 btn-primary-sm flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>
         </div></div>
       )}
 
@@ -925,8 +921,8 @@ const SubscriptionsPage = () => {
           <div className="space-y-4">
             {/* Tipo — trial pode converter para paid */}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Tipo</label><select value={editForm.type} onChange={(e) => setEditForm(f => ({ ...f, type: e.target.value, plan: e.target.value === 'vip' ? 'vip' : (f.plan === 'vip' ? 'alpha' : f.plan) }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="trial">Trial</option><option value="paid">Pago</option><option value="vip">VIP</option></select></div>
-              {editForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
+              <div><label className="block text-sm text-slate-400 mb-1">Tipo</label><select value={editForm.type} onChange={(e) => setEditForm(f => ({ ...f, type: e.target.value, plan: e.target.value === 'vip' ? 'vip' : (f.plan === 'vip' ? 'alpha' : f.plan) }))} className="input-field-sm"><option value="trial">Trial</option><option value="paid">Pago</option><option value="vip">VIP</option></select></div>
+              {editForm.type !== 'vip' && <div><label className="block text-sm text-slate-400 mb-1">Plano</label><select value={editForm.plan} onChange={(e) => setEditForm(f => ({ ...f, plan: e.target.value }))} className="input-field-sm"><option value="alpha">Mentoria Alpha</option><option value="self_service">Espelho</option></select></div>}
             </div>
             {/* Banner de conversão */}
             {selectedSub.type === 'trial' && editForm.type === 'paid' && (
@@ -943,24 +939,24 @@ const SubscriptionsPage = () => {
             )}
             {/* Dias de trial (só quando tipo = trial) */}
             {editForm.type === 'trial' && (
-              <div><label className="block text-sm text-slate-400 mb-1">Dias de trial (a partir de hoje)</label><input type="number" value={editForm.trialDays} onChange={(e) => setEditForm(f => ({ ...f, trialDays: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Dias de trial (a partir de hoje)</label><input type="number" value={editForm.trialDays} onChange={(e) => setEditForm(f => ({ ...f, trialDays: e.target.value }))} className="input-field-sm" /></div>
             )}
             {/* VIP info */}
             {editForm.type === 'vip' && (
               <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-400">VIP — sem cobrança, sem acesso ao sistema</div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm text-slate-400 mb-1">Data inicio</label><DateInputBR id="edit-start" value={editForm.startDate} onChange={(iso) => setEditForm(f => ({ ...f, startDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-              <div><label className="block text-sm text-slate-400 mb-1">Vencimento</label><DateInputBR id="edit-renewal" value={editForm.renewalDate} onChange={(iso) => setEditForm(f => ({ ...f, renewalDate: iso }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Data inicio</label><DateInputBR id="edit-start" value={editForm.startDate} onChange={(iso) => setEditForm(f => ({ ...f, startDate: iso }))} className="input-field-sm" /></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Vencimento</label><DateInputBR id="edit-renewal" value={editForm.renewalDate} onChange={(iso) => setEditForm(f => ({ ...f, renewalDate: iso }))} className="input-field-sm" /></div>
             </div>
             {editForm.type === 'paid' && <>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50" /></div>
-                <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={editForm.currency} onChange={(e) => setEditForm(f => ({ ...f, currency: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Valor</label><input type="number" value={editForm.amount} onChange={(e) => setEditForm(f => ({ ...f, amount: e.target.value }))} className="input-field-sm" /></div>
+                <div><label className="block text-sm text-slate-400 mb-1">Moeda</label><select value={editForm.currency} onChange={(e) => setEditForm(f => ({ ...f, currency: e.target.value }))} className="input-field-sm"><option value="BRL">BRL</option><option value="USD">USD</option></select></div>
               </div>
-              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={editForm.billingPeriodMonths} onChange={(e) => setEditForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:border-blue-500/50"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
+              <div><label className="block text-sm text-slate-400 mb-1">Periodicidade</label><select value={editForm.billingPeriodMonths} onChange={(e) => setEditForm(f => ({ ...f, billingPeriodMonths: e.target.value }))} className="input-field-sm"><option value="1">Mensal</option><option value="2">Bimestral</option><option value="3">Trimestral</option><option value="6">Semestral</option><option value="12">Anual</option></select></div>
             </>}
-            <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={editForm.notes} onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))} className="w-full px-3 py-2.5 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50" /></div>
+            <div><label className="block text-sm text-slate-400 mb-1">Observacoes</label><input type="text" value={editForm.notes} onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))} className="input-field-sm placeholder-slate-600" /></div>
           </div>
           {editError && <div className="mt-4 p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">{editError}</div>}
           <div className="flex gap-3 mt-6"><button onClick={closeModal} className="flex-1 px-4 py-2.5 text-slate-400 hover:text-white border border-slate-700 rounded-xl transition-colors">Cancelar</button><button onClick={handleSaveEdit} disabled={actionLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">{actionLoading && <Loader2 className="w-4 h-4 animate-spin" />}Salvar</button></div>

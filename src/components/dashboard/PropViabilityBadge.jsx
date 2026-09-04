@@ -32,7 +32,7 @@ const PropViabilityBadge = ({ plan, phase = 'EVALUATION' }) => {
   const classes = COLOR_CLASSES[color] ?? COLOR_CLASSES.gray;
 
   return (
-    <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${classes}`}>
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${classes}`}>
       <Icon size={14} className="shrink-0 mt-0.5" />
       <div className="flex-1 space-y-0.5">
         <div className="font-medium leading-tight">{text}</div>

@@ -94,14 +94,14 @@ export default function MentorClosuresInbox({ students = [], plansById = {}, onO
           <button
             type="button"
             onClick={() => setMode('pending')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mode === 'pending' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3 py-1.5 text-xs rounded-lg transition ${mode === 'pending' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
           >
             Pendentes{pendingCount > 0 && ` (${pendingCount})`}
           </button>
           <button
             type="button"
             onClick={() => setMode('all')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mode === 'all' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-3 py-1.5 text-xs rounded-lg transition ${mode === 'all' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
           >
             Todos
           </button>

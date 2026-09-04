@@ -13,7 +13,7 @@ const NaoEncontrado = ({ titulo = 'Página não encontrada', detalhe = null }) =
   const destino = homePath(isMentor());
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="min-h-[60vh] flex items-center justify-center">
       <div className="glass-card p-8 text-center max-w-md">
         <h1 className="text-xl font-display font-bold text-white">{titulo}</h1>
         {detalhe && <p className="text-sm text-slate-400 mt-2">{detalhe}</p>}
