@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.88.2] - 04/09/2026 · #423 · PR #424
+
+**fix:** o menu do mentor recupera os destinos; pendências acima da dobra
+
+- **Voltam ao menu, com badge:** Análises, Fila de Revisão, Aguardando Feedback, Precisam Atenção, Fechamentos.
+- **Minhas Pendências sobe** para antes de A Turma.
+- **Link de rodapé de Análises sai.**
+- **"Precisam Atenção" volta como tela**, com os critérios originais.
+
+
 ## [1.88.1] - 04/09/2026 · #421 · PR #422
 
 **fix:** tela do mentor não subia — TDZ em selectedStudent
