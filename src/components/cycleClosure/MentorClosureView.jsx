@@ -255,7 +255,7 @@ export default function MentorClosureView({
                 placeholder={expectedConfirmLabel}
                 disabled={reopening}
                 autoComplete="off"
-                className="flex-1 max-w-[220px] bg-slate-800/50 border border-slate-700/50 rounded-md px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50"
+                className="flex-1 max-w-[220px] bg-slate-800/50 border border-slate-700/50 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50"
               />
               <button
                 type="button"

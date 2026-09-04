@@ -164,7 +164,7 @@ const PropFirmPageBody = ({ viewAs }) => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <ContextBar accounts={accounts} plans={plans} />
 
       {/* Zona 1 — STATUS AGORA */}

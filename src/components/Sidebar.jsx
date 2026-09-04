@@ -1,9 +1,15 @@
 /**
  * Sidebar
- * @version 1.4.0
+ * @version 2.0.0
  * @description Menu lateral com navegação, versão, badges alertas emocionais e feedback aluno
- * 
+ *
  * CHANGELOG:
+ * - 2.0.0: #144 — o menu deixa de emitir ids (`onViewChange('pending')`) e passa a
+ *   ser LINK. Item aceso é o que casa com a URL, não uma comparação de string com
+ *   exceção escrita à mão para a Torre. A Torre vira o primeiro item e o destino
+ *   do login do mentor, e as quatro filas saem do menu (viram Minhas Pendências
+ *   dentro dela). Some com elas o `useMentorClosureInbox` daqui: era um listener
+ *   do Firestore assinado só para pintar um número no menu.
  * - 1.4.0: Item "Marco Zero" no menu do aluno — visível apenas quando hasBaseline=true (assessment concluído)
  * - 1.3.0: Badge de revisões não trabalhadas (REVIEWED) no menu do aluno
  * - 1.2.0: Badge de alertas emocionais no menu mentor — Fase 1.5.0
@@ -14,12 +20,12 @@ import {
   LayoutDashboard,
   Users,
   User,
+  Radar,
   LogOut,
   ChevronLeft,
   ChevronRight,
   MessageSquare,
 
-  AlertTriangle,
   Wallet,
   Settings,
   Brain,
@@ -28,90 +34,58 @@ import {
   Shield,
   FileText,
   History,
-  Inbox,
 } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { EspelhoMark } from './EspelhoLogo';
-import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { VERSION } from '../version';
+import { MENTOR_PATHS, SHARED_PATHS, STUDENT_PATHS } from '../routes/paths';
 
-const Sidebar = ({ 
-  currentView, 
-  onViewChange, 
-  collapsed = false, 
+const Sidebar = ({
+  collapsed = false,
   onToggle,
-  pendingFeedback = 0,
-  studentsNeedingAttention = 0,
-  emotionalAlerts = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
   hasPropAccount = false,
-  hasPlans = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
   const isMentorRole = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
-  // Hook subscreve closures pendentes (janela 7d sem comentário). Só faz sentido
-  // pro mentor — rules bloqueiam read pro aluno (e ele só vê os próprios). Passa
-  // `enabled` pra evitar firebase call desnecessário (e quebrar tests jsdom).
-  const { pendingCount: closuresPendingCount } = useMentorClosureInbox({ enabled: isMentorRole });
 
   // Menu do Aluno
   const studentMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: STUDENT_PATHS.painel, label: 'Dashboard', icon: LayoutDashboard },
     {
-      id: 'feedback',
+      to: STUDENT_PATHS.feedback,
       label: 'Feedback',
       icon: MessageSquare,
       badge: unreviewedFeedback > 0 ? unreviewedFeedback : null,
       badgeColor: 'green'
     },
-    { id: 'student-reviews', label: 'Revisões', icon: ClipboardCheck },
-    { id: 'closures', label: 'Ciclos Fechados', icon: History },
+    { to: STUDENT_PATHS.revisoes, label: 'Revisões', icon: ClipboardCheck },
+    { to: STUDENT_PATHS.ciclos, label: 'Ciclos Fechados', icon: History },
     // #414 — o Diário virou o Relatório do Mês (leitura: trade + observação + feedback).
-    { id: 'journal', label: 'Relatório', icon: FileText },
+    { to: STUDENT_PATHS.relatorio, label: 'Relatório', icon: FileText },
     // Extrato do Plano NÃO mora no sidebar — entrada é exclusivamente pelo
     // pergaminho do PlanCardGrid (precisa de contexto de plano específico).
-    { id: 'accounts', label: 'Contas', icon: Wallet },
+    { to: SHARED_PATHS.contas, label: 'Contas', icon: Wallet },
     // Mesa Prop — só aparece se aluno tem conta type PROP
-    ...(hasPropAccount ? [{ id: 'propfirm', label: 'Mesa Prop', icon: Shield }] : []),
+    ...(hasPropAccount ? [{ to: STUDENT_PATHS.mesaProp, label: 'Mesa Prop', icon: Shield }] : []),
     // Perfil de Maturidade — só aparece após assessment concluído pelo mentor
-    ...(hasBaseline ? [{ id: 'baseline', label: 'Perfil de Maturidade', icon: Brain }] : []),
+    ...(hasBaseline ? [{ to: STUDENT_PATHS.maturidade, label: 'Perfil de Maturidade', icon: Brain }] : []),
   ];
 
   // Menu do Mentor
+  // #144 Fase B1 — a Torre é a ÚNICA porta. As quatro filas que eram itens irmãos
+  // (Fila de Revisão, Aguardando Feedback, Precisam Atenção, Fechamentos) saíram
+  // daqui: três viraram a faixa "Minhas Pendências" dentro da Torre e a quarta
+  // virou filtro da faixa "A Turma" (D1). O que sobra no menu é o que NÃO é
+  // trabalho do dia: administração e configuração.
   const mentorMenuItems = [
-    { 
-      id: 'dashboard', 
-      label: 'Dashboard', 
-      icon: LayoutDashboard,
-      badge: emotionalAlerts > 0 ? emotionalAlerts : null,
-      badgeColor: 'purple'
-    },
-    { id: 'reviews', label: 'Fila de Revisão', icon: ClipboardCheck },
-    { id: 'students', label: 'Acompanhamento', icon: Users },
-    { id: 'accounts', label: 'Contas', icon: Wallet },
-    {
-      id: 'pending',
-      label: 'Aguardando Feedback',
-      icon: MessageSquare,
-      badge: pendingFeedback > 0 ? pendingFeedback : null,
-    },
-    {
-      id: 'attention',
-      label: 'Precisam Atenção',
-      icon: AlertTriangle,
-      badge: studentsNeedingAttention > 0 ? studentsNeedingAttention : null,
-      badgeColor: 'red'
-    },
-    {
-      id: 'closures',
-      label: 'Fechamentos',
-      icon: Inbox,
-      badge: closuresPendingCount > 0 ? closuresPendingCount : null,
-      badgeColor: 'red',
-    },
-    { id: 'subscriptions', label: 'Assinaturas', icon: CreditCard },
-    { id: 'settings', label: 'Configurações', icon: Settings },
+    { to: MENTOR_PATHS.torre, label: 'Torre de Controle', icon: Radar },
+    { to: MENTOR_PATHS.alunos, label: 'Acompanhamento', icon: Users },
+    { to: SHARED_PATHS.contas, label: 'Contas', icon: Wallet },
+    { to: MENTOR_PATHS.assinaturas, label: 'Assinaturas', icon: CreditCard },
+    { to: MENTOR_PATHS.configuracoes, label: 'Configurações', icon: Settings },
   ];
 
   const menuItems = isMentorRole ? mentorMenuItems : studentMenuItems;
@@ -163,13 +137,11 @@ const Sidebar = ({
         {/* Menu */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                // #101 — a Torre é ABA do Dashboard, não item de sidebar: estando
-                // nela, o Dashboard continua aceso.
-                (currentView === 'torre' ? 'dashboard' : currentView) === item.id
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                isActive
                   ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
               }`}
@@ -198,7 +170,7 @@ const Sidebar = ({
                   {item.badge > 9 ? '9+' : item.badge}
                 </span>
               )}
-            </button>
+            </NavLink>
           ))}
         </nav>
 

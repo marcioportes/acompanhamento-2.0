@@ -50,6 +50,7 @@ import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
 import PlanManagementModal from '../components/PlanManagementModal';
 import DebugBadge from '../components/DebugBadge';
+import PageHeader from '../components/PageHeader';
 import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -625,7 +626,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Carregando contas...</div>;
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-500">Carregando contas...</div>;
 
   if (selectedAccount) {
     const mergedAccount = { ...selectedAccount, currentBalance: balancesByAccountId[selectedAccount.id] ?? selectedAccount.currentBalance ?? 0 };
@@ -633,12 +634,15 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   }
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
+    <div>
+      <PageHeader
+        titulo={isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}
+        linha={isMentor() ? 'Visualize as contas de trading de seus alunos' : 'Gerencie suas contas de trading'}
+        acoes={!isMentor() && (
+          <button onClick={() => openModal()} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Conta</button>
+        )}
+      />
       <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <div><h1 className="text-2xl lg:text-3xl font-display font-bold text-white">{isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}</h1><p className="text-slate-400 mt-1">{isMentor() ? 'Visualize as contas de trading de seus alunos' : 'Gerencie suas contas de trading'}</p></div>
-          {!isMentor() && (<button onClick={() => openModal()} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Conta</button>)}
-        </div>
         {isMentor() && (<div className="relative max-w-md"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500/50 transition-colors" /></div>)}
       </div>
 
@@ -765,7 +769,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
                                 type="button"
                                 onClick={() => setPropFirmData(prev => ({ ...prev, attackProfile: p.code }))}
                                 title={`${p.name} — ${p.description}\nRO: ${(p.roPct * 100).toFixed(0)}% do DD · ${p.maxTradesPerDay} trade${p.maxTradesPerDay > 1 ? 's' : ''}/dia\n${p.idealFor}\n\nMonte Carlo (${mcLabel} · stop-on-win · 100k iter)\n${mcLine}\nFormato: PASS / BUST / dias médios`}
-                                className={`p-1.5 rounded-md border text-[10px] font-semibold transition-all ${
+                                className={`p-1.5 rounded-lg border text-[10px] font-semibold transition-all ${
                                   selected
                                     ? (isCons ? 'bg-blue-500/20 border-blue-500/60 text-blue-200' : 'bg-orange-500/20 border-orange-500/60 text-orange-200')
                                     : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'

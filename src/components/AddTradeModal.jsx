@@ -1060,7 +1060,7 @@ const AddTradeModal = ({
                   </div>
 
                   {/* #285/#292 — Fuso de referência. Novo = em branco (aluno elege); edição = do banco. Grava ISO+offset. */}
-                  <div className={`flex items-center gap-2 px-2 py-1.5 bg-slate-900/40 rounded-md border mb-1 ${errors.timezone ? 'border-red-500/60' : 'border-slate-700/30'}`}>
+                  <div className={`flex items-center gap-2 px-2 py-1.5 bg-slate-900/40 rounded-lg border mb-1 ${errors.timezone ? 'border-red-500/60' : 'border-slate-700/30'}`}>
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Fuso *</span>
                     <select
                       value={selectedTz}

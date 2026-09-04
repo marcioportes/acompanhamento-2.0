@@ -57,7 +57,7 @@ const renderStateBadge = (badge) => {
 
   const colors = COLOR_MAP[badge.colorClass] || COLOR_MAP.slate;
   const Icon = ICON_MAP[badge.icon] || Activity;
-  const baseClass = "flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-sm shadow-sm";
+  const baseClass = "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wide border backdrop-blur-sm shadow-sm";
 
   return (
     <div

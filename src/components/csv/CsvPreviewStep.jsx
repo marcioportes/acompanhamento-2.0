@@ -128,19 +128,19 @@ const CsvPreviewStep = ({
         const grossLoss = effectiveTrades.filter(t => (t.result ?? 0) < 0).reduce((s, t) => s + t.result, 0);
         return (
           <div className="grid grid-cols-4 gap-3">
-            <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
+            <div className="panel p-2.5">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Operações</p>
               <p className="text-sm font-mono font-bold text-white">{effectiveTrades.length}</p>
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
+            <div className="panel p-2.5">
               <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider mb-0.5">Lucro Bruto</p>
               <p className="text-sm font-mono font-bold text-emerald-400">+{grossProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
+            <div className="panel p-2.5">
               <p className="text-[10px] text-red-500/70 uppercase tracking-wider mb-0.5">Prejuízo Bruto</p>
               <p className="text-sm font-mono font-bold text-red-400">{grossLoss.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </div>
-            <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-700/20">
+            <div className="panel p-2.5">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Resultado</p>
               <p className={`text-sm font-mono font-bold ${totalResult >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{totalResult >= 0 ? '+' : ''}{totalResult.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </div>

@@ -107,7 +107,7 @@ const CsvMappingStep = ({
       {/* ====================================== */}
       <div className="grid grid-cols-3 gap-4">
         {/* Exchange — obrigatório, vazio por default */}
-        <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+        <div className="panel p-3">
           <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
             <Globe className="w-3 h-3" /> Bolsa / Exchange *
           </label>
@@ -133,7 +133,7 @@ const CsvMappingStep = ({
         </div>
 
         {/* Formato de data */}
-        <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+        <div className="panel p-3">
           <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
             <Calendar className="w-3 h-3" /> Formato de Data
           </label>
@@ -150,7 +150,7 @@ const CsvMappingStep = ({
         </div>
 
         {/* Fuso do lote (#292) — horários do arquivo são interpretados neste fuso */}
-        <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
+        <div className="panel p-3">
           <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
             <Clock className="w-3 h-3" /> Fuso dos horários
           </label>
