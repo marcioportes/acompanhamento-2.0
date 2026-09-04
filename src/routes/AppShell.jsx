@@ -16,7 +16,6 @@ import { Outlet, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { installCleanupUtils } from '../utils/cleanupOrphans';
 import Sidebar from '../components/Sidebar';
-import AddTradeModal from '../components/AddTradeModal';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useAccounts } from '../hooks/useAccounts';
@@ -28,15 +27,12 @@ export const useAppData = () => useOutletContext();
 const AppShell = () => {
   const { user, isMentor } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [showAddTradeModal, setShowAddTradeModal] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Em dev, expõe window.__cleanup com findOrphans/deleteOrphans pra purga
   // pontual do passivo de docs órfãos. Em build de produção é no-op.
   useEffect(() => { installCleanupUtils(); }, []);
 
   const {
-    addTrade,
     trades,
     allTrades,
     loading: tradesLoading,
@@ -61,48 +57,24 @@ const AppShell = () => {
     [isMentor, studentAccounts],
   );
 
-  // Badges do menu. O do mentor conta trades esperando resposta; o do aluno,
-  // trades já revisados que ele ainda não trabalhou (usa `trades`, porque no
-  // modo aluno o listener só popula essa lista).
-  const pendingFeedbackCount = useMemo(() => {
-    if (!isMentor()) return 0;
-    return (getTradesAwaitingFeedback?.() || []).length;
-  }, [isMentor, allTrades, getTradesAwaitingFeedback]);
-
+  // #144 B1 — os badges do MENTOR saíram junto com os itens de menu: as filas
+  // agora são a faixa "Minhas Pendências" da Torre, e é lá que os números vivem.
+  // Sobra o do aluno — trades já revisados que ele ainda não trabalhou (usa
+  // `trades`, porque no modo aluno o listener só popula essa lista).
   const unreviewedFeedbackCount = useMemo(() => {
     if (isMentor()) return 0;
     return (trades || []).filter((t) => t.status === 'REVIEWED').length;
   }, [isMentor, trades]);
 
-  // Badge de "Precisam Atenção". Sai do menu na Fase B2 (D1 — vira filtro da
-  // Torre); enquanto o item existe, o número continua sendo o mesmo.
-  const studentsNeedingAttention = useMemo(() => {
-    if (!isMentor()) return 0;
-    const grouped = getTradesGroupedByStudent?.() || {};
-    return Object.values(grouped).filter((lista) => {
-      if (lista.length < 5) return false;
-      const wins = lista.filter((t) => t.result > 0).length;
-      return (wins / lista.length) * 100 < 40;
-    }).length;
-  }, [isMentor, allTrades, getTradesGroupedByStudent]);
-
-  const handleAddTrade = async (tradeData, htfFile, ltfFile) => {
-    setIsSubmitting(true);
-    try {
-      await addTrade(tradeData, htfFile, ltfFile);
-      setShowAddTradeModal(false);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const contexto = {
+  // Identidade estável: no #387 um objeto recriado a cada render fez um hook
+  // reentrar a cada snapshot do Firestore e a tela pular de altura. Aqui o
+  // contexto desce para TODA rota — é o pior lugar possível para churn.
+  const contexto = useMemo(() => ({
     trades,
     allTrades,
     tradesLoading,
     plans,
     accounts,
-    addTrade,
     addFeedbackComment,
     updateTradeStatus,
     getPartials,
@@ -111,8 +83,12 @@ const AppShell = () => {
     getTradesGroupedByStudent,
     getTradesByStudent,
     studentInitialAssessment,
-    onAddTrade: () => setShowAddTradeModal(true),
-  };
+  }), [
+    trades, allTrades, tradesLoading, plans, accounts,
+    addFeedbackComment, updateTradeStatus, getPartials, uploadFeedbackImage,
+    getTradesAwaitingFeedback, getTradesGroupedByStudent, getTradesByStudent,
+    studentInitialAssessment,
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-950">
@@ -125,8 +101,6 @@ const AppShell = () => {
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        pendingFeedback={pendingFeedbackCount}
-        studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={!!studentInitialAssessment}
         hasPropAccount={hasPropAccount}
@@ -142,15 +116,9 @@ const AppShell = () => {
         </div>
       </main>
 
-      {!isMentor() && (
-        <AddTradeModal
-          isOpen={showAddTradeModal}
-          onClose={() => setShowAddTradeModal(false)}
-          onSubmit={handleAddTrade}
-          loading={isSubmitting}
-          plans={plans}
-        />
-      )}
+      {/* #144 A1 — o AddTradeModal que vivia aqui era um SEGUNDO modal, órfão: só
+          abria com `currentView === 'add-trade'`, e nenhum item de menu emitia esse
+          id. O registro de trade sempre foi o modal do próprio StudentDashboard. */}
     </div>
   );
 };
