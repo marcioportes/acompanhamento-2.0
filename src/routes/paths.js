@@ -31,6 +31,7 @@ export const MENTOR_PATHS = {
   pendenciasRevisoes: '/pendencias/revisoes',
   pendenciasFeedback: '/pendencias/feedback',
   pendenciasFechamentos: '/pendencias/fechamentos',
+  pendenciasAtencao: '/pendencias/atencao',
   assinaturas: '/assinaturas',
   configuracoes: '/configuracoes',
 };

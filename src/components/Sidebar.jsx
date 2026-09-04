@@ -21,6 +21,9 @@ import {
   Users,
   User,
   Radar,
+  Activity,
+  AlertTriangle,
+  Inbox,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -36,6 +39,7 @@ import {
   History,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { useAuth } from '../contexts/AuthContext';
 import { EspelhoMark } from './EspelhoLogo';
 import { VERSION } from '../version';
@@ -44,12 +48,17 @@ import { MENTOR_PATHS, SHARED_PATHS, STUDENT_PATHS } from '../routes/paths';
 const Sidebar = ({
   collapsed = false,
   onToggle,
+  pendingFeedback = 0,
+  studentsNeedingAttention = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
   hasPropAccount = false,
 }) => {
   const { user, logout, isMentor } = useAuth();
   const isMentorRole = typeof isMentor === 'function' ? isMentor() : Boolean(isMentor);
+  // Contador de fechamentos pendentes (janela 7d sem comentário). Só o mentor lê —
+  // `enabled` evita chamada de Firestore para o aluno e quebra em jsdom.
+  const { pendingCount: closuresPendingCount } = useMentorClosureInbox({ enabled: isMentorRole });
 
   // Menu do Aluno
   const studentMenuItems = [
@@ -75,15 +84,40 @@ const Sidebar = ({
   ];
 
   // Menu do Mentor
-  // #144 Fase B1 — a Torre é a ÚNICA porta. As quatro filas que eram itens irmãos
-  // (Fila de Revisão, Aguardando Feedback, Precisam Atenção, Fechamentos) saíram
-  // daqui: três viraram a faixa "Minhas Pendências" dentro da Torre e a quarta
-  // virou filtro da faixa "A Turma" (D1). O que sobra no menu é o que NÃO é
-  // trabalho do dia: administração e configuração.
+  // Menu do mentor. O #144 cortou de 9 para 5 itens, empurrando Análises, Fila de
+  // Revisão, Aguardando Feedback e Fechamentos para dentro da Torre. Na tela real
+  // isso os colocou ABAIXO da faixa "A Turma", que renderiza a turma inteira sem
+  // limite de linhas — ou seja, abaixo da dobra, e o Dashboard virou um link cinza
+  // de rodapé. O mockup desenhou a Torre como caixa compacta e escondeu isso (#423).
+  //
+  // O que fica do #144: a Torre é o primeiro item e o destino do login. O que volta:
+  // os destinos, porque menu é onde se procura o que se usa todo dia.
   const mentorMenuItems = [
     { to: MENTOR_PATHS.torre, label: 'Torre de Controle', icon: Radar },
+    { to: MENTOR_PATHS.analises, label: 'Análises', icon: Activity },
+    { to: MENTOR_PATHS.pendenciasRevisoes, label: 'Fila de Revisão', icon: ClipboardCheck },
     { to: MENTOR_PATHS.alunos, label: 'Acompanhamento', icon: Users },
     { to: SHARED_PATHS.contas, label: 'Contas', icon: Wallet },
+    {
+      to: MENTOR_PATHS.pendenciasFeedback,
+      label: 'Aguardando Feedback',
+      icon: MessageSquare,
+      badge: pendingFeedback > 0 ? pendingFeedback : null,
+    },
+    {
+      to: MENTOR_PATHS.pendenciasAtencao,
+      label: 'Precisam Atenção',
+      icon: AlertTriangle,
+      badge: studentsNeedingAttention > 0 ? studentsNeedingAttention : null,
+      badgeColor: 'red',
+    },
+    {
+      to: MENTOR_PATHS.pendenciasFechamentos,
+      label: 'Fechamentos',
+      icon: Inbox,
+      badge: closuresPendingCount > 0 ? closuresPendingCount : null,
+      badgeColor: 'red',
+    },
     { to: MENTOR_PATHS.assinaturas, label: 'Assinaturas', icon: CreditCard },
     { to: MENTOR_PATHS.configuracoes, label: 'Configurações', icon: Settings },
   ];

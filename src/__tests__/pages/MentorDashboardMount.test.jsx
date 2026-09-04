@@ -37,6 +37,7 @@ vi.mock('../../hooks/useTrades', () => ({
     addFeedback: vi.fn(),
     addBulkFeedback: vi.fn(),
     getTradesByStudent: () => TRADES,
+    getTradesGroupedByStudent: () => ({ 'aluno@ex.com': TRADES }),
     getUniqueStudents: () => [{ email: 'aluno@ex.com', name: 'Aluno Um', studentId: 'u9' }],
     getTradesAwaitingFeedback: () => [],
     getTradesByStudentAndStatus: () => [],
@@ -107,6 +108,7 @@ describe('MentorDashboard — monta sem estourar', () => {
     ['overview', 'Análises'],
     ['pending', 'Aguardando Feedback'],
     ['closures', 'Fechamentos'],
+    ['attention', 'Precisam Atenção'],
   ])('a view %s renderiza', (view, titulo) => {
     montar({ currentView: view });
     expect(screen.getByText(titulo)).toBeInTheDocument();

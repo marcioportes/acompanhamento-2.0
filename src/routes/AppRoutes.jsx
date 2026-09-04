@@ -138,6 +138,7 @@ const AppRoutes = () => (
           <Route path={MENTOR_PATHS.pendenciasRevisoes} element={<ReviewQueueRoute />} />
           <Route path={MENTOR_PATHS.pendenciasFeedback} element={<MentorViewRoute view="pending" />} />
           <Route path={MENTOR_PATHS.pendenciasFechamentos} element={<MentorViewRoute view="closures" />} />
+          <Route path={MENTOR_PATHS.pendenciasAtencao} element={<MentorViewRoute view="attention" />} />
           <Route path={MENTOR_PATHS.assinaturas} element={<SubscriptionsPage />} />
           <Route path={MENTOR_PATHS.configuracoes} element={<SettingsPage />} />
         </Route>

@@ -20,6 +20,8 @@ const PATH_POR_VIEW = {
   torre: MENTOR_PATHS.torre,
   pending: MENTOR_PATHS.pendenciasFeedback,
   closures: MENTOR_PATHS.pendenciasFechamentos,
+  attention: MENTOR_PATHS.pendenciasAtencao,
+  students: MENTOR_PATHS.alunos,
   reviews: MENTOR_PATHS.pendenciasRevisoes,
   accounts: SHARED_PATHS.contas,
 };
