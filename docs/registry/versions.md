@@ -107,3 +107,4 @@
 | 1.88.0 | #144 | `arch/issue-144-torre-unica-porta` | 03/09/2026 | consumida (PR #420 squash `c0ad32e3`) |
 | 1.88.1 | #421 | `fix/issue-421-tdz-selected-student` | 04/09/2026 | consumida (PR #422 squash `abb5fd8e`) |
 | 1.88.2 | #423 | `fix/issue-423-menu-do-mentor` | 04/09/2026 | consumida (PR #424 squash `764ab550`) |
+| 1.89.0 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | RESERVADA — rollback do #144: interface volta ao estado da v1.87.0 |
