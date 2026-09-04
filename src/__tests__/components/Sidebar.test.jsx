@@ -100,21 +100,29 @@ describe('Sidebar — menu do mentor', () => {
     expect(links[0]).toHaveAttribute('href', '/torre');
   });
 
-  it('#144 D1 — as quatro filas não são itens irmãos da Torre', () => {
+  it('#423 — os destinos de trabalho estão no menu, não só dentro da Torre', () => {
     const { container } = renderSidebar();
     const labels = within(container.querySelector('nav')).getAllByRole('link').map((l) => l.textContent);
 
-    // Elas continuam existindo como TELA (rotas /pendencias/*), mas a porta é a
-    // Torre: no menu elas competiam com a triagem e contradiziam a premissa dela.
-    for (const fila of ['Fila de Revisão', 'Aguardando Feedback', 'Precisam Atenção', 'Fechamentos']) {
-      expect(labels).not.toContain(fila);
-    }
-    expect(labels).toEqual([
+    // O #144 tirou os quatro daqui apostando que a Torre os cobria. Na tela real
+    // eles caíam abaixo da faixa "A Turma", que cresce com o tamanho da turma.
+    // Menu é onde se procura o que se usa todo dia.
+    expect(labels.map((l) => l.replace(/\d+$/, ''))).toEqual([
       'Torre de Controle',
+      'Análises',
+      'Fila de Revisão',
       'Acompanhamento',
       'Contas',
+      'Aguardando Feedback',
+      'Precisam Atenção',
+      'Fechamentos',
       'Assinaturas',
       'Configurações',
     ]);
+  });
+
+  it('#423 — Análises tem endereço próprio no menu, não é link de rodapé', () => {
+    renderSidebar();
+    expect(screen.getByText('Análises').closest('a')).toHaveAttribute('href', '/analises');
   });
 });

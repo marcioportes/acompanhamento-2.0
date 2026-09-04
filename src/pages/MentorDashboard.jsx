@@ -15,7 +15,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   DollarSign, Target, Activity, MessageSquare, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
-  CheckSquare, Square, Loader2, X
+  CheckSquare, Square, Loader2, X, AlertTriangle, Eye
 } from 'lucide-react';
 import TradesList from '../components/TradesList';
 import TradeDetailModal from '../components/TradeDetailModal';
@@ -52,7 +52,7 @@ import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
-  calculateStats,
+  calculateStats, identifyStudentsNeedingAttention,
   filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
@@ -60,6 +60,7 @@ import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
+import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
 
 /**
  * #144 B3 — cada endereço do mentor tem nome próprio. Enquanto o dashboard for
@@ -69,6 +70,7 @@ const CABECALHO = {
   torre: { titulo: 'Torre de Controle', linha: 'O que precisa de você hoje' },
   overview: { titulo: 'Análises', linha: 'Calendário da turma e trades por dia' },
   pending: { titulo: 'Aguardando Feedback', linha: 'Trades que esperam sua resposta' },
+  attention: { titulo: 'Precisam Atenção', linha: 'Prejuízo acumulado, win rate ou profit factor abaixo do aceitável' },
   closures: { titulo: 'Fechamentos', linha: 'Ciclos fechados esperando sua leitura' },
 };
 
@@ -86,7 +88,7 @@ const MentorDashboard = ({
   const toast = useToast();
   const { 
     allTrades, loading, addFeedback, 
-    getTradesByStudent, getUniqueStudents,
+    getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents,
     getTradesAwaitingFeedback, getTradesByStudentAndStatus,
     addBulkFeedback
   } = useTrades();
@@ -144,8 +146,28 @@ const MentorDashboard = ({
   }, [students, studentIdSelecionado]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
+  const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
   const revisoesPendentes = usePendingReviewsCount(students);
   const { subscriptions: allSubscriptions, students: allStudents } = useSubscriptions();
+
+  // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
+  // visibilidade em Contas/Acompanhamento: 203 dos 588 alarmes da base eram de
+  // seis alunos sem assinatura ativa.
+  const emailsAtivos = useMemo(
+    () => visibleStudentEmails(allStudents, allSubscriptions),
+    [allStudents, allSubscriptions],
+  );
+
+  // #423 — "Precisam Atenção" volta como tela. O #144 a removeu apostando que o
+  // tile "atenção" da Torre cobria o caso, mas os critérios são outros: aqui é
+  // performance acumulada (prejuízo, WR < 40%, PF < 0,8), lá é conduta e presença.
+  const studentsNeedingAttention = useMemo(() => {
+    const todos = identifyStudentsNeedingAttention(groupedTrades);
+    // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
+    // que aparecer e sumir.
+    if (emailsAtivos.size === 0) return todos;
+    return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
+  }, [groupedTrades, emailsAtivos]);
 
   // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
   // Alpha). O recorte mais largo (`visibleStudentEmails`) vale para Acompanhamento
@@ -505,19 +527,6 @@ const MentorDashboard = ({
               onAbrirFechamentos={() => onViewChange('closures')}
             />
           )}
-          rodape={(
-            /* #144 B3 — Análises sai do menu e vira saída de rodapé: é diagnóstico,
-               serve DEPOIS de escolher a pessoa, e como item irmão competia com a
-               triagem. */
-            <button
-              onClick={() => onViewChange('dashboard')}
-              className="w-full text-left text-xs text-slate-500 hover:text-slate-300 transition-colors border-t border-slate-800/50 pt-4 flex items-center gap-2"
-            >
-              <Activity className="w-4 h-4" />
-              Calendário da turma e trades por dia
-              <span className="text-slate-600">— Análises</span>
-            </button>
-          )}
         />
       )}
 
@@ -696,12 +705,31 @@ const MentorDashboard = ({
   </>
 )}
 
-      {/* #144 B2/D1 — a tela "Precisam Atenção" saiu. Ela recortava a turma por
-          PERFORMANCE acumulada (prejuízo, win rate < 40%, profit factor < 0,8),
-          enquanto a faixa "A Turma" da Torre já ordena todo mundo por conduta e
-          presença — que é o critério que o produto adotou em #376 ("mede conduta de
-          risco, não performance"). O tile "atenção" do header da Torre é o recorte
-          que sobrou, e ele filtra a lista no lugar. */}
+      {activeView === 'attention' && (
+        <div className="space-y-4">
+          {studentsNeedingAttention.length === 0 ? (
+            <div className="glass-card p-8 text-center">
+              <AlertTriangle className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-white mb-2">Tudo sob controle!</h3>
+              <p className="text-slate-500">Nenhum aluno precisa de atenção especial.</p>
+            </div>
+          ) : (
+            studentsNeedingAttention.map(student => (
+              <div key={student.email} className="glass-card p-4 border-l-4 border-red-500">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-white">{student.name}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {student.reasons.map((reason, i) => <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>)}
+                    </div>
+                  </div>
+                  <button onClick={() => abrirAluno({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {activeView === 'closures' && !viewingClosure && (
         <MentorClosuresInbox

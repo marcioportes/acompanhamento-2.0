@@ -57,9 +57,24 @@ const AppShell = () => {
     [isMentor, studentAccounts],
   );
 
-  // #144 B1 — os badges do MENTOR saíram junto com os itens de menu: as filas
-  // agora são a faixa "Minhas Pendências" da Torre, e é lá que os números vivem.
-  // Sobra o do aluno — trades já revisados que ele ainda não trabalhou (usa
+  // #423 — os badges do mentor voltam com os itens de menu. O número no menu é o
+  // que faz o item ser procurado; sem ele o mentor não sabe que tem trabalho ali.
+  const pendingFeedbackCount = useMemo(() => {
+    if (!isMentor()) return 0;
+    return (getTradesAwaitingFeedback?.() || []).length;
+  }, [isMentor, getTradesAwaitingFeedback]);
+
+  const studentsNeedingAttention = useMemo(() => {
+    if (!isMentor()) return 0;
+    const grouped = getTradesGroupedByStudent?.() || {};
+    return Object.values(grouped).filter((lista) => {
+      if (lista.length < 5) return false;
+      const wins = lista.filter((t) => t.result > 0).length;
+      return (wins / lista.length) * 100 < 40;
+    }).length;
+  }, [isMentor, getTradesGroupedByStudent]);
+
+  // Badge do aluno — trades já revisados que ele ainda não trabalhou (usa
   // `trades`, porque no modo aluno o listener só popula essa lista).
   const unreviewedFeedbackCount = useMemo(() => {
     if (isMentor()) return 0;
@@ -101,6 +116,8 @@ const AppShell = () => {
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        pendingFeedback={pendingFeedbackCount}
+        studentsNeedingAttention={studentsNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={!!studentInitialAssessment}
         hasPropAccount={hasPropAccount}

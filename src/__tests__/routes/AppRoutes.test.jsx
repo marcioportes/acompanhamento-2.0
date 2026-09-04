@@ -81,6 +81,7 @@ describe('AppRoutes — mentor', () => {
     ['/analises', 'mentor:overview'],
     ['/pendencias/feedback', 'mentor:pending'],
     ['/pendencias/fechamentos', 'mentor:closures'],
+    ['/pendencias/atencao', 'mentor:attention'],
     ['/pendencias/revisoes', 'fila-de-revisao'],
     ['/alunos', 'acompanhamento'],
     ['/alunos/u9', 'mentor:ficha'],
@@ -96,8 +97,8 @@ describe('AppRoutes — mentor', () => {
     expect(screen.getByText(esperado)).toBeInTheDocument();
   });
 
-  it('#144 D1 — /pendencias/atencao não existe mais e cai no não-encontrado', () => {
-    irPara('/pendencias/atencao');
+  it('endereço inexistente do mentor não vira tela em branco', () => {
+    irPara('/pendencias/nao-existe');
     expect(screen.getByText('Página não encontrada')).toBeInTheDocument();
   });
 });
