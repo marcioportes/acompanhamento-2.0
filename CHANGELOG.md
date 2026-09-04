@@ -12,9 +12,38 @@ Version source of truth: `src/version.js`.
 
 **arch:** a Torre é a única porta — roteador real, shell e design system adotado
 
-- Bloco `activeView === 'students'` ("Lista de Alunos"): **inalcançável** desde que o App interceptava a view antes de o dashboard montar. Com ele saiu o `StudentEmotionalCardWrapper`, seu único consumidor.
+Marcio, 03/09: *"minha torre e dashboard de mentor não parece nada com um SaaS profissional, não há encaixe e naturalidade de navegação, não consigo competir."* Um sintoma, três causas.
+
+### Endereço
+
+- **O app passa a ter URL.** A navegação inteira era uma string em `App.jsx` (`currentView`): sem link compartilhável, sem back do browser, e F5 devolvia o usuário ao início. `react-router-dom` estava instalado desde sempre e era usado em **um** lugar.
+- **Os oito estados de contexto de retorno morreram.** Como não havia rota, cada travessia entre telas tinha regra própria escrita à mão — `feedbackReturnPlanId`, `ledgerReturnReviewContext`, e flags penduradas no objeto do trade (`_fromLedgerPlanId`, `_fromReviewContext`). Voltar agora é o histórico; o único caso que precisa de fallback é quem abriu o link direto e não tem para onde voltar (`useVoltar`).
+- **`App.jsx`: 562 → 28 linhas.** Providers e a tabela de rotas. A casca virou `AppShell`, o papel virou guard de rota (em vez de `&& isMentor()` repetido em cada ramo) e o endereço virou SSoT em `routes/paths.js`.
+- **Dois "abrir aluno" viraram dois endereços:** a ficha (`/alunos/:id`, que era estado interno do dashboard) e o ver-como-aluno (`/alunos/:id/como-aluno`, que era estado global sequestrando o render do App inteiro, com banner `fixed` que obrigava o shell a compensar com `pt-12`).
+
+### A Torre é a única porta
+
+- **O mentor logava em Análises.** A Torre não tinha item de menu e não era destino padrão — embora o código a declarasse *"a home: é ela que diz o que fazer"*. Agora é a primeira coisa do menu e o destino do login.
+- **Menu de 9 para 5 itens.** Sobra o que não é trabalho do dia: Torre, Acompanhamento, Contas, Assinaturas, Configurações. Sai o **segundo sistema de navegação** — as 6 abas do dashboard e o dicionário que traduzia id-de-sidebar para id-de-aba.
+- **Minhas Pendências vira a caixa única**, com **Fechamentos** incluído (só existia como item de menu). Três linhas iguais, e nenhuma some: contador zerado fica cinza, porque caixa vazia é informação.
+- **"Precisam Atenção" deixou de ser tela.** Recortava por performance acumulada (prejuízo, win rate < 40%, profit factor < 0,8); a faixa "A Turma" já ordena todo mundo por conduta e presença, que é o critério adotado em #376. **Não são a mesma população** — o critério de performance não sobreviveu.
+- **Análises vira saída de rodapé da Torre:** é diagnóstico, serve depois de escolher a pessoa.
+
+### Uma casca só
+
+- **Container e título saem das 14 páginas.** Conviviam seis paddings (`p-6 lg:p-8`, `py-6 pb-32`, `p-6`, `p-8`, ...) e seis tratamentos de `<h1>`; o topo mudava de altura e de peso a cada navegação. Agora o container é do `AppShell` e a tipografia do `PageHeader`. O `pb-20` do DebugBadge passa a valer para todas de uma vez, em vez de cada página lembrar.
+- **A escala do design system foi escrita** (existia de fato, sem regra): `2xl` card · `xl` controle · `lg` painel · `full` chip. `rounded-md` absorvido — a escala tem três degraus, não quatro. 44 superfícies idênticas viraram primitiva (`.input-field-sm`, `.panel`, `.panel-solid`), incluindo 15 painéis escritos em **duas ordens de classe diferentes**, o que escondia que eram a mesma coisa.
+- **Invariante de chrome** (`__tests__/invariants/pageChrome.test.js`) segura a drift, que volta sozinha porque tela nova copia a anterior.
+
+### Código morto revelado pela mudança
+
+- Bloco `activeView === 'students'` ("Lista de Alunos"): **inalcançável** desde que o App interceptava a view antes de o dashboard montar. Com ele saiu o `StudentEmotionalCardWrapper`, seu único consumidor, e `useComplianceRules`/`useEmotionalProfile` do arquivo.
 - `AddTradeModal` do nível do App: **um segundo modal, órfão** — só abria com `currentView === 'add-trade'`, id que nenhum menu emitia. O registro de trade sempre foi o do StudentDashboard.
 - `useMentorClosureInbox` no Sidebar: listener do Firestore assinado só para pintar um número no menu.
+
+**Fora de escopo (segue aberto):** decomposição de componentes (AddTradeModal 1008 linhas, AccountsPage, SettingsPage) e listeners duplicados. E os **dois idiomas de botão primário** que convivem — gradiente `.btn-primary` (35 usos) e azul chapado à mão (19): `.btn-primary-sm` foi criado e o que casava exatamente foi convertido, mas escolher qual é O primário do produto é decisão de Marcio.
+
+Sem persistência nova, sem CF tocada. 4.768 testes (baseline 4.696).
 
 
 ## [1.87.0] - 03/09/2026 · #418 · PR #419
