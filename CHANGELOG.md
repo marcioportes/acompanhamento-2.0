@@ -12,7 +12,29 @@ Version source of truth: `src/version.js`.
 
 **revert:** a interface volta ao estado da v1.87.0
 
-- _(decisões/testes/files — ajustar antes do commit)_
+Marcio, depois de usar a v1.88.2: *"não houve modificação como eu esperava, gostaria de um face lift completo para competir com SaaS top de linha, mas não houve essa entrega. Pode fazer rollback e deixar como estava."*
+
+### Por que
+
+O pedido de 03/09 era **qualidade visual**. O #144 entregou **arquitetura de navegação** — roteador, casca única, escala de tokens. Higiene de código real, e invisível para quem usa. O diagnóstico traduziu o problema para vocabulário técnico em vez de atacar o que foi pedido, e o saldo do dia foi negativo: duas regressões em produção (#421 tela branca por TDZ, #423 menu esvaziado) e nenhuma mudança de aparência.
+
+### Método
+
+Rollback **por conteúdo**, não `git revert` — os três squashes (#420, #422, #424) se empilham e o revert encadeado conflita, verificado antes de escolher o caminho. `src/` restaurado a partir de `be8657e8`, preservando apenas `src/version.js`: **`git diff be8657e8 -- src/` acusa esse único arquivo.** Os 63 arquivos alterados no período vieram todos de #144/#421/#423 — nenhuma outra frente tocou `src/`, então a restauração é verificável por diff e não por confiança.
+
+### Volta a valer
+
+`App.jsx` com `currentView`, menu de 9 itens, barra de abas do dashboard, tela "Precisam Atenção", `PendingReviewsCard`. E os defeitos conhecidos junto: sem URL, sem back do browser, sem deep link.
+
+### Morre junto
+
+`src/routes/*`, `PageHeader`, `TorrePendencias`, `usePendingReviewsCount` e os testes `routes/*`, `invariants/pageChrome`, `pages/MentorDashboardMount`. **A perda que vale nomear é a última:** era o único teste que montava a tela do mentor, escrito depois do #421 justamente para fechar essa lacuna. Ela reabre — registrada em DEC-425-02.
+
+### Fica
+
+Todo o histórico documental: CHANGELOG, PROJECT.md, DEC-144-*, DEC-423-* e a nota de incidente no AP-08. O código volta; o que foi aprendido não volta com ele.
+
+4.696 testes / 296 arquivos — exatamente a linha de base pré-#144.
 
 
 ## [1.88.2] - 04/09/2026 · #423 · PR #424
