@@ -87,24 +87,34 @@ describe('Sidebar — menu do mentor', () => {
     };
   });
 
-  it('não mostra item "Revisões" (aluno) mas mostra "Fila de Revisão" (mentor)', () => {
+  it('não mostra item de aluno', () => {
     renderSidebar();
-
     expect(screen.queryByText('Revisões')).toBeNull();
-    expect(screen.getByText('Fila de Revisão')).toBeInTheDocument();
+    expect(screen.queryByText('Ciclos Fechados')).toBeNull();
   });
 
-  it('"Fila de Revisão" do mentor aponta para a fila, não para as revisões do aluno', () => {
-    renderSidebar();
-    const href = screen.getByText('Fila de Revisão').closest('a').getAttribute('href');
-    expect(href).toBe('/pendencias/revisoes');
-    expect(href).not.toBe('/revisoes');
-  });
-
-  it('a Torre é o primeiro item do menu do mentor', () => {
+  it('a Torre é o primeiro item e o destino do login', () => {
     const { container } = renderSidebar();
     const links = within(container.querySelector('nav')).getAllByRole('link');
     expect(links[0]).toHaveTextContent('Torre de Controle');
     expect(links[0]).toHaveAttribute('href', '/torre');
+  });
+
+  it('#144 D1 — as quatro filas não são itens irmãos da Torre', () => {
+    const { container } = renderSidebar();
+    const labels = within(container.querySelector('nav')).getAllByRole('link').map((l) => l.textContent);
+
+    // Elas continuam existindo como TELA (rotas /pendencias/*), mas a porta é a
+    // Torre: no menu elas competiam com a triagem e contradiziam a premissa dela.
+    for (const fila of ['Fila de Revisão', 'Aguardando Feedback', 'Precisam Atenção', 'Fechamentos']) {
+      expect(labels).not.toContain(fila);
+    }
+    expect(labels).toEqual([
+      'Torre de Controle',
+      'Acompanhamento',
+      'Contas',
+      'Assinaturas',
+      'Configurações',
+    ]);
   });
 });

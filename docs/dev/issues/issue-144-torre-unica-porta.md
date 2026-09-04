@@ -125,15 +125,35 @@ ALUNO
 - **C1** — `AppShell` assume header/padding/título; as 10 páginas param de declarar `min-h-screen p-6` e `<h1>`.
 - **C2** — Adoção do design system: 227 superfícies cruas → `glass-card`; botões → `btn-*`; escala de raio única.
 
+## Entregue × mockup
+
+| Mockup | Entregue |
+|---|---|
+| Menu do mentor 9 → 5 itens | sim |
+| Torre como destino do login | sim |
+| Minhas Pendências com Fechamentos | sim — três linhas iguais, contador zerado fica cinza |
+| D1 "Precisam Atenção" vira filtro | sim — a TELA saiu; ver ressalva abaixo |
+| D2 Análises sai do menu, vira rodapé da Torre | sim |
+| Mapa de rotas | sim, com um ajuste: a ficha do aluno (`/alunos/:id`) e o "ver como aluno" (`/alunos/:id/como-aluno`) eram DUAS coisas diferentes no código antigo (`selectedStudent` interno do dashboard × `viewingAsStudent` global do App) e viraram dois endereços |
+
+**Ressalva do D1 (a decisão que merece o olho de Marcio):** a tela "Precisam Atenção" recortava por **performance acumulada** — prejuízo, win rate < 40%, profit factor < 0,8 (`identifyStudentsNeedingAttention`). O tile "atenção" da Torre recorta por **conduta e presença** (`faixaDeAtencao` ≤ FORA_DO_PLANO). **Não são a mesma população.** Removi a tela como o mockup aprovado dizia, e o critério de performance não sobreviveu em lugar nenhum. É coerente com #376 ("Financeiro mede conduta de risco, não performance"), mas é uma perda real de sinal — se fizer falta, volta como tile.
+
+## Decisão aberta (não bloqueia)
+
+**Qual é o botão primário do produto?** Existem dois idiomas convivendo: o gradiente azul→ciano do `.btn-primary` (35 usos) e um azul chapado escrito à mão (19 usos, em 8 combinações de padding). Criei `.btn-primary-sm` e converti o que casava exatamente, mas escolher entre gradiente e chapado muda a cara de toda ação principal — e o `ConfirmDialog` tem um argumento a favor do chapado: lá o azul é uma variante ao lado de vermelho e âmbar, e um gradiente sozinho no meio de dois botões chapados fica pior. Decidido isso, é uma linha em `index.css`.
+
 ## Achados a resolver no caminho
 
 - `MentorDashboard.jsx:596` — o bloco `activeView === 'students'` ("Lista de Alunos") é **inalcançável**: `App.jsx:394` intercepta `currentView === 'students'` e renderiza `StudentsManagement` antes. Código morto desde que as duas navegações passaram a coexistir. Sai na B3.
-- `StudentOnboardingPage.jsx:15` usa `useParams` sem Router montado. Verificar se está inerte hoje; passa a funcionar de verdade na A1.
+- `StudentOnboardingPage.jsx:15` usava `useParams` sem Router montado — inerte até agora, passa a funcionar de verdade.
+- `StudentEmotionalCardWrapper` (MentorDashboard) era consumido só pelo bloco morto; saiu, e com ele `useComplianceRules`/`useEmotionalProfile` do arquivo.
+- `useMentorClosureInbox` no Sidebar: listener do Firestore assinado só para pintar um número no menu. Saiu com o item.
 
 ## Sessions
 
-- `fase A+B [roteador + Torre única porta] commit c4228f30 ok` — suíte 4711 (baseline 4696)
-- `fase C [shell + design system] commit <sha> ok`
+- `fase A+B [roteador + Torre única porta] commit c4228f30 ok` — App.jsx 562→28 linhas
+- `fase C [shell + design system] commit 8f66f9f2 ok` — 14 páginas sem container próprio
+- `fase C [testes de rota + invariante de chrome] commit <sha> ok`
 
 ## Shared Deltas
 
