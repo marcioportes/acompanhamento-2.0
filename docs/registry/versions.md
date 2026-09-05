@@ -108,3 +108,4 @@
 | 1.88.1 | #421 | `fix/issue-421-tdz-selected-student` | 04/09/2026 | consumida (PR #422 squash `abb5fd8e`) |
 | 1.88.2 | #423 | `fix/issue-423-menu-do-mentor` | 04/09/2026 | consumida (PR #424 squash `764ab550`) |
 | 1.89.0 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | consumida (PR #426 squash `f93f7a18`) |
+| 1.89.1 | #427 | `chore/issue-427-harness-visual` | 04/09/2026 | RESERVADA — harness de render visual + 24 screenshots do estado atual |

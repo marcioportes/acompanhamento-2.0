@@ -76,3 +76,7 @@ codigo-fonte.zip
 # Scripts: logs de run-once (issue #183 e afins)
 # ==============================
 scripts/logs/
+
+# Screenshots do harness de verificação visual (#427)
+.screenshots/
+test-results/
