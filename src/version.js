@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.90.1: #430 fix rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, t (PR #431, 07/09/2026)
+ * - 1.90.1: #430 fix rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento (PR #431, 07/09/2026)
  * - 1.90.0: #427 feat a Torre vira agenda de trabalho + harness de render visual (#427) (PR #429, 06/09/2026)
  * - 1.89.1: #427 pulada — saiu junto do face lift, que é minor
  * - 1.89.0: #425 revert a interface volta ao estado da v1.87.0 (PR #426, 04/09/2026)

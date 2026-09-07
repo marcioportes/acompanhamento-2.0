@@ -10,14 +10,45 @@ Version source of truth: `src/version.js`.
 
 ## [1.90.1] - 07/09/2026 · #430 · PR #431
 
-**fix:** rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, t
+**fix:** rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento
 
-- **Abre no Alpha.** O trabalho do mentor é o track Alpha; a base inteira é a exceção, e segue a um clique.
-- **Sem régua sob cada aluno.** Marcio, sobre a tela real: *"linhas abaixo de cada aluno, não gostei disso"*. Vinte e cinco alunos viravam vinte e cinco traços — o olho lia a grade, não a turma. Fundo alternado no lugar.
-- **Nome e etiqueta na mesma linha.** Com `flex-wrap`, quem tem nome longo empurrava a etiqueta para baixo e aquela linha ficava com o dobro da altura das vizinhas.
-- `PropAccountCard`: "Drawdown utilizado −73,6%" com "Margem: US$ 4.340,00 de US$ 2.500,00" — margem maior que o limite. Família dos bugs de drawdown do #413.
-- A aba chama `Closures`, o menu chama `Fechamentos`. É copy, e o #428 fechou que face lift não mexe em copy.
-- Acompanhamento em 1024: a coluna `Ações` cai fora da área visível.
+### A contagem de `Precisam Atenção` tinha duas fontes
+
+O menu dizia 2 e a aba dizia 6, com o mesmo rótulo na mesma tela. O `App.jsx` reimplementava a regra na mão — `trades >= 5 && winRate < 40`, sem filtro de assinatura — enquanto a aba usava a regra inteira (prejuízo, win rate, profit factor) restrita a quem ainda tem assinatura ativa (#402).
+
+O comentário no `MentorDashboard` já nomeava o defeito antes deste issue: *"reimplementar a regra aqui é como o número acima e a lista abaixo passam a discordar"*. Agora a fonte é `src/utils/studentsAttention.js`, e quem precisa do número importa em vez de recalcular.
+
+### A barra de abas escondia trabalho em 1024
+
+Seis abas com rolagem lateral: `Fechamentos` — **com contagem** — saía da vista sem nenhum indício de existir. Pendência que o mentor não vê é pendência que, para ele, não existe. Quebra linha em vez de rolar; o mesmo valia para as nove abas de Configurações, onde `Admin` era o cortado.
+
+### Telas que pegaram a paleta sem nunca terem sido fotografadas
+
+Roteiro do harness de 20 para 27 telas (60 fotos): Configurações, Configurações/Compliance, Revisão Semanal, Mesa Prop, Import de Ordens e Novo Trade. Para as que não têm item de menu, âncoras `data-*` — não texto, pelo mesmo motivo do #427.
+
+**Configurações** e **Mesa Prop** ainda abriam com o título de 30px e subtítulo que o #428 tirou de todas as outras. Adotam o `PageHeader`.
+
+**E o harness estava mentindo sobre uma tela.** `getInviteStatusBatch` é uma callable de LEITURA que o Acompanhamento dispara ao montar, e o fake devolvia vazio: `hasAuth` era false para todo mundo e a foto mostrava doze candidatos a registro de doze — justamente o estado que decide etiqueta e filete de cada linha. Leituras agora são respondidas com dado plausível.
+
+### Acompanhamento
+
+Abre no **Alpha**: o trabalho do mentor é o track Alpha, e a base inteira é a exceção, a um clique.
+
+Saiu a régua sob cada aluno. Marcio, olhando a tela real: *"linhas abaixo de cada aluno, não gostei disso"* — vinte e cinco alunos viravam vinte e cinco traços, e o olho lia a grade em vez da turma. O fundo alternado separa a linha sem desenhar nada. Nome e etiqueta voltaram para a mesma linha: com `flex-wrap`, nome longo empurrava a etiqueta para baixo e aquela linha ficava com o dobro da altura das vizinhas.
+
+**Não havia mockup para comparar.** #427 e #428 rodaram sem documento de controle e sem desenho — o gate que a DEC-423-05 criou depois do #144. A referência acabou sendo a foto do antes (`Temp/espelho-antes-427`, v1.89.1), e foi ela que mostrou que o filete lateral trocou de mecanismo (`border-l-2` a 60% no `<tr>`, que quase não pintava, por `inset box-shadow` em tinta cheia).
+
+### Decisões
+
+DEC-430-01..05
+
+### Verificação
+
+4.706 testes (298 arquivos) · 60 fotos nos dois viewports, zero erro de console · lint sem regressão · `functions/` intocado · sem persistência nova
+
+### Segue aberto
+
+`PropAccountCard` mostra "Drawdown utilizado −73,6%" com "Margem: US$ 4.340,00 de US$ 2.500,00" — margem maior que o próprio limite, família dos bugs de drawdown do #413. A aba chama `Closures` e o menu chama `Fechamentos`, mesmo destino com dois nomes (é copy). Em 1024 a coluna `Ações` do Acompanhamento cai fora da área visível.
 
 
 ## [1.90.0] - 06/09/2026 · #427 + #428 · PR #429

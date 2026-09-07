@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 
+_(sem locks ativos)_
