@@ -287,7 +287,11 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                   <th className="text-right font-semibold px-3 py-2 whitespace-nowrap" style={{ borderBottom: '1px solid var(--line)' }}>Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--line)' }}>
+              {/* #430 — sem régua sob cada aluno. Vinte e cinco linhas viravam
+                  vinte e cinco traços, e o olho lia a grade em vez de ler a
+                  turma. O que separa a linha agora é o fundo alternado, que
+                  guia a leitura pela largura sem desenhar nada. */}
+              <tbody className="tabela-zebra">
                 {filteredStudents.map((s) => {
                   const bucket = studentBucket.get(s.id);
                   const tier = TIER_CONFIG[bucket];
@@ -312,11 +316,15 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                   return (
                     <tr
                       key={s.id}
-                      className="transition-colors hover:bg-[var(--surface-2)]"
+                      className="transition-colors hover:bg-[var(--surface-3)]"
                       style={filete ? { boxShadow: `inset 2px 0 0 ${filete}` } : undefined}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--ink)' }}>
-                        <div className="flex items-center gap-2 flex-wrap">
+                      {/* #430 — nome e etiqueta na MESMA linha. Com `flex-wrap`, a
+                          etiqueta caía para baixo do nome em quem tem nome longo, e
+                          a linha daquele aluno ficava com o dobro da altura das
+                          vizinhas — a tabela passava a ter dois ritmos. */}
+                      <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: 'var(--ink)' }}>
+                        <div className="flex items-center gap-2">
                           {isBlocked && (
                             <span title="Login bloqueado" style={{ color: 'var(--neg)' }}>
                               <Lock className="w-3.5 h-3.5" strokeWidth={1.75} />
