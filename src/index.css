@@ -123,6 +123,13 @@
     border-color: var(--line-strong);
   }
 
+  /* Tabela longa: fundo alternado no lugar de uma régua por linha. Com vinte e
+     cinco alunos, vinte e cinco traços desenham a grade e não a turma; a faixa
+     conduz o olho pela largura sem acrescentar traço nenhum. */
+  .tabela-zebra > tr:nth-child(even) {
+    background: var(--surface-2);
+  }
+
   /* Cabeçalho de painel — o ritmo é o mesmo em toda seção da tela. */
   .panel-head {
     @apply flex items-center justify-between gap-3 px-4 py-3;

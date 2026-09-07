@@ -88,6 +88,7 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
   return (
     <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/40">
       <button
+        data-aluno-fila={student.id}
         onClick={onToggle}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/40"
       >
@@ -122,6 +123,7 @@ const StudentRow = ({ student, expanded, onToggle, onOpenReview }) => {
                 return (
                   <button
                     key={r.id}
+                    data-revisao={r.id}
                     onClick={() => onOpenReview(student, r)}
                     className="w-full flex items-center justify-between py-2 text-xs hover:bg-slate-800/30 px-1 rounded"
                   >

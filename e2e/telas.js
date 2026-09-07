@@ -29,6 +29,15 @@ export const TELAS = [
   { id: 'contas-mentor',        cenario: 'cheio',  menu: 'accounts' },
   { id: 'assinaturas',          cenario: 'cheio',  menu: 'subscriptions' },
 
+  // #430 — telas que pegaram a paleta do #428 sem nunca terem sido fotografadas.
+  // `cliques` é a escada até as que não têm item de menu próprio: cada seletor é
+  // um atributo `data-*`, não texto, pelo mesmo motivo de sempre (rótulo muda).
+  { id: 'configuracoes',        cenario: 'cheio',  menu: 'settings' },
+  { id: 'configuracoes-compliance', cenario: 'cheio', menu: 'settings',
+    cliques: ['[data-tab-settings="compliance"]'] },
+  { id: 'revisao-semanal',      cenario: 'cheio',  menu: 'reviews',
+    cliques: ['[data-aluno-fila]', '[data-revisao]'] },
+
   // O lado do aluno. Mesma fixture, mesmo `hoje` — o que muda é o email
   // entregue no `onAuthStateChanged`, e daí em diante o AuthProvider real
   // decide tudo. Sem estas, metade do produto seguia sem foto.
@@ -39,4 +48,9 @@ export const TELAS = [
   { id: 'aluno-ciclos',         cenario: 'cheio',  papel: 'aluno', fecharPendencias: true, menu: 'closures' },
   { id: 'aluno-relatorio',      cenario: 'cheio',  papel: 'aluno', fecharPendencias: true, menu: 'journal' },
   { id: 'aluno-contas',         cenario: 'cheio',  papel: 'aluno', fecharPendencias: true, menu: 'accounts' },
+  { id: 'aluno-mesa-prop',      cenario: 'cheio',  papel: 'aluno', fecharPendencias: true, menu: 'propfirm' },
+  { id: 'aluno-import-ordens',  cenario: 'cheio',  papel: 'aluno', fecharPendencias: true,
+    cliques: ['[data-acao="order-import"]'] },
+  { id: 'aluno-novo-trade',     cenario: 'cheio',  papel: 'aluno', fecharPendencias: true,
+    cliques: ['[data-acao="novo-trade"]'] },
 ];

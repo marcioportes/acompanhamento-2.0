@@ -41,6 +41,9 @@ import PendencyGuard from './components/PendencyGuard';
 import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
 import { useAccounts } from './hooks/useAccounts';
+import { useSubscriptions } from './hooks/useSubscriptions';
+import { visibleStudentEmails } from './utils/mentorAccountsVisibility';
+import { studentsNeedingAttention as computeStudentsNeedingAttention } from './utils/studentsAttention';
 import { getPlanCurrency } from './utils/currency';
 import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
 import { useAssessment } from './hooks/useAssessment';
@@ -165,22 +168,22 @@ const AppContent = () => {
     }
   }, [isMentor, viewingAsStudent, trades]);
 
+  // #430 — o badge do menu e a aba "Precisam Atenção" leem a MESMA fonte. Este
+  // bloco reimplementava a regra na mão (só win rate, sem filtro de assinatura) e
+  // por isso o menu dizia 2 enquanto a aba dizia 6.
+  const { subscriptions: mentorSubscriptions, students: mentorStudents } = useSubscriptions();
+  const emailsAtivos = useMemo(
+    () => visibleStudentEmails(mentorStudents, mentorSubscriptions),
+    [mentorStudents, mentorSubscriptions],
+  );
   const studentsNeedingAttention = useMemo(() => {
     if (!isMentor() || viewingAsStudent) return 0;
     try {
-      const grouped = getTradesGroupedByStudent?.() || {};
-      let count = 0;
-      Object.values(grouped).forEach(trades => {
-        if (trades.length >= 5) {
-          const wins = trades.filter(t => t.result > 0).length;
-          if ((wins / trades.length) * 100 < 40) count++;
-        }
-      });
-      return count;
+      return computeStudentsNeedingAttention(getTradesGroupedByStudent?.() || {}, emailsAtivos).length;
     } catch (e) {
       return 0;
     }
-  }, [isMentor, viewingAsStudent, allTrades, getTradesGroupedByStudent]);
+  }, [isMentor, viewingAsStudent, allTrades, getTradesGroupedByStudent, emailsAtivos]);
 
   if (loading) return <Loading fullScreen text="Carregando..." />;
   if (!user) return <LoginPage />;

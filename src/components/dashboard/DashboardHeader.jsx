@@ -47,13 +47,13 @@ const DashboardHeader = ({
             </button>
             {!viewAs && (
               <>
-                <button onClick={onCsvImport} className="btn-secondary">
+                <button data-acao="csv-import" onClick={onCsvImport} className="btn-secondary">
                   <Upload className="w-3.5 h-3.5" strokeWidth={1.75} /> Importar Performance
                 </button>
-                <button onClick={onOrderImport} className="btn-secondary">
+                <button data-acao="order-import" onClick={onOrderImport} className="btn-secondary">
                   <Upload className="w-3.5 h-3.5" strokeWidth={1.75} /> Importar Ordens
                 </button>
-                <button onClick={onNewTrade} className="btn-primary">
+                <button data-acao="novo-trade" onClick={onNewTrade} className="btn-primary">
                   <PlusCircle className="w-3.5 h-3.5" strokeWidth={1.75} /> Novo Trade
                 </button>
               </>
