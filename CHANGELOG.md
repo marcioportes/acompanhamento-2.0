@@ -8,11 +8,41 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.90.0] - 06/09/2026 · #427 · PR #429
+## [1.90.0] - 06/09/2026 · #427 + #428 · PR #429
 
-**feat:** a Torre vira agenda de trabalho + harness de render visual (#427)
+**feat:** a Torre vira agenda de trabalho, sobre um harness que fotografa as telas
 
-- _(decisões/testes/files — ajustar antes do commit)_
+### A Torre vira agenda (#428)
+
+O pedido do #425 era qualidade visual. A primeira tentativa entregou paleta, tipografia e densidade, e Marcio cortou: *"você está mudando corzinha? por que não está pensando em hierarquia, navegação, organização para o mentor entender o que precisa atacar primeiro, ter uma agenda e seguir essa agenda."*
+
+O que fazer estava espalhado em seis lugares que não se falavam — três tiles, Prioridade do Dia, lista da turma, duas faixas de pendência, mais três abas e três itens de menu. Cada um recortava a mesma pergunta e nenhum respondia inteiro; o mentor montava a fila de cabeça, todo dia.
+
+Agora são quatro blocos ordenados por **custo de não fazer**: está queimando agora (o prejuízo de hoje) · sumiu (churn que só aparece no boleto) · você deve (alguém parado esperando) · decisão sua. Cada linha é um ato — quem, motivo, evidência, e um botão que abre onde o trabalho acontece.
+
+`A turma` continua a um clique, e **nada saiu do menu** — foi o que o #423 teve que consertar no #144.
+
+### Harness de render visual (#427)
+
+As telas passam a ser fotografáveis fora de produção, com fixture, sem auth e sem rede. O corte é em `firebase/*` e **não** nos hooks: `AuthProvider` e todos os hooks rodam reais, então a foto mostra o código de produção. 20 telas × 2 viewports, mentor e aluno.
+
+**Pagou o próprio custo antes do merge:** derrubou um TDZ em `students` no `MentorDashboard` — o defeito idêntico ao do #421, que foi a produção com build verde e 4.768 testes passando.
+
+### Sistema visual
+
+Tokens de superfície e tinta no `:root`; a escala `slate` do Tailwind remapeada para a paleta (alinha ~20 telas num lugar só); primitivas em `src/components/ui/` (`PageHeader`, `PageBody`, `StatTile`, `Chip`); etiqueta de estado com fundo neutro e cor num ponto de 5px; botões e badges globais sem gradiente.
+
+### Decisões
+
+DEC-427-01..05 · DEC-428-01..04
+
+### Verificação
+
+4.699 testes (297 arquivos) · 48 fotos nos dois viewports, zero erro de console · build sem vazamento do harness · `functions/` intocado
+
+### Sem persistência nova
+
+INV-15 preservada: a agenda é derivada do que já existe. O item sai da fila quando o fato que o gerou deixa de existir — não há campo de "feito".
 
 
 ## [1.89.0] - 04/09/2026 · #425 · PR #426
