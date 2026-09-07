@@ -390,7 +390,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
       )}
 
       {/* TPS gauge */}
-      <div className="bg-gradient-to-br from-blue-500/5 to-purple-500/5 rounded-xl p-4 border border-blue-500/20">
+      <div className="bg-[var(--surface-2)] rounded-[10px] p-4 border border-[var(--line)]">
         <div className="flex items-center justify-between mb-2">
           <div>
             <h4 className="text-sm font-semibold text-slate-200">Nota geral do ciclo</h4>
@@ -405,7 +405,7 @@ export default function Step1Read({ studentId, planId, cycleStart, cycleEnd, onS
         </div>
         <div className="gauge-bar">
           <div
-            className="gauge-fill bg-gradient-to-r from-blue-500 to-cyan-400"
+            className="gauge-fill bg-[var(--accent)]"
             style={{ width: `${tps.score ?? 0}%` }}
           />
         </div>

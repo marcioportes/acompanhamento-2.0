@@ -197,7 +197,8 @@ export default function StudentsListTab({ students, subscriptions, loading }) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${accessCfg.pill}`}>
+                      <span className={accessCfg.pill}>
+                        <span className="chip-dot" style={{ background: accessCfg.cor }} />
                         {s._isBlocked ? 'login bloqueado' : accessCfg.label}
                       </span>
                     </td>

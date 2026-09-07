@@ -7,6 +7,29 @@ export default {
   theme: {
     extend: {
       colors: {
+        /**
+         * A escala `slate` do Tailwind é o cinza de fato do produto: quase toda
+         * tela usa `bg-slate-900`, `border-slate-800`, `text-slate-400`.
+         * Remapeá-la para a paleta do face lift alinha o app inteiro de uma vez,
+         * em vez de reescrever vinte telas classe por classe — e mantém um único
+         * lugar para ajustar o tom depois.
+         *
+         * Os valores são os mesmos tokens de `index.css`; a duplicação existe
+         * porque o Tailwind resolve cor em build e não lê `var()` com opacidade.
+         */
+        slate: {
+          50:  '#f5f7fa',
+          100: '#e7ebf0',
+          200: '#dde3ea',
+          300: '#c3ccd8',
+          400: '#9aa5b3',
+          500: '#6a7484',
+          600: '#47505e',
+          700: '#2a323d',
+          800: '#1e242c',
+          900: '#101318',
+          950: '#0a0c0f',
+        },
         primary: {
           50: '#f0f9ff',
           100: '#e0f2fe',

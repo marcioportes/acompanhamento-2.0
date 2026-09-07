@@ -193,29 +193,34 @@ const LinhaDoAluno = ({ aluno, aberto, onAlternar, onAbrirTrade, selecionados, o
 
   return (
     <div className="glass-card overflow-hidden">
-      <button onClick={onAlternar} className="w-full p-4 flex items-center justify-between gap-3 hover:bg-slate-800/30 transition-colors text-left">
-        <div className="flex items-center gap-3 min-w-0">
-          {aberto ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  : <ChevronRight className="w-4 h-4 text-slate-500 flex-shrink-0" />}
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-            {(aluno.name || '?').charAt(0).toUpperCase()}
-          </div>
+      {/* Fila de triagem: cada aluno é uma LINHA, não um cartão. Com cartão de
+          88px, cinco alunos enchiam a tela inteira e a fila deixava de ser
+          legível de uma vez — que é a única coisa que uma fila precisa ser. */}
+      <button onClick={onAlternar} className="w-full px-4 py-2.5 flex items-center justify-between gap-3 transition-colors text-left hover:bg-[var(--surface-2)]">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {aberto ? <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink-3)' }} />
+                  : <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink-4)' }} />}
           <div className="min-w-0">
-            <div className="font-semibold text-white truncate">{aluno.name}</div>
-            <div className="text-[11px] text-slate-500">{resumo}</div>
-            {alertas.length > 0 && (
-              <div className="text-[11px] text-amber-400 mt-0.5">⚠ {alertas.join(' · ')}</div>
-            )}
+            <div className="text-[13px] font-medium truncate" style={{ color: 'var(--ink)' }}>{aluno.name}</div>
+            <div className="text-[11px]" style={{ color: 'var(--ink-4)' }}>
+              {resumo}
+              {alertas.length > 0 && (
+                <>
+                  {' · '}
+                  <span style={{ color: 'var(--warn)' }}>{alertas.join(' · ')}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 text-sm font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-2.5 py-1 rounded-full flex-shrink-0">
-          <MessageSquare className="w-3.5 h-3.5" />
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold tabular flex-shrink-0" style={{ color: 'var(--info)' }}>
+          <MessageSquare className="w-3.5 h-3.5" strokeWidth={1.75} />
           {aluno.totalPendentes}
         </span>
       </button>
 
       {aberto && (
-        <div className="px-4 pb-4 space-y-3">
+        <div className="px-4 pb-4 pt-1 space-y-3" style={{ borderTop: '1px solid var(--line)' }}>
           {aluno.dias.map((d) => (
             <CardDoDia key={d.data} dia={d} onAbrirTrade={onAbrirTrade}
                        selecionados={selecionados} onAlternarSelecao={onAlternarSelecao} onSelecionarDia={onSelecionarDia} />
@@ -232,16 +237,16 @@ const FilaDeFeedback = ({ fila = [], onAbrirTrade, selecionados, onAlternarSelec
 
   if (fila.length === 0) {
     return (
-      <div className="glass-card p-10 text-center">
-        <MessageSquare className="w-10 h-10 text-emerald-400/50 mx-auto mb-3" />
-        <p className="text-sm text-slate-400">Nenhum trade esperando feedback.</p>
-        <p className="text-xs text-slate-600 mt-1">A fila está limpa.</p>
+      <div className="glass-card px-4 py-10 text-center">
+        <MessageSquare className="w-6 h-6 mx-auto mb-2" strokeWidth={1.5} style={{ color: 'var(--pos)' }} />
+        <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Nenhum trade esperando feedback.</p>
+        <p className="text-[11px] mt-1" style={{ color: 'var(--ink-4)' }}>A fila está limpa.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {fila.map((aluno) => (
         <LinhaDoAluno
           key={aluno.studentId ?? aluno.email}

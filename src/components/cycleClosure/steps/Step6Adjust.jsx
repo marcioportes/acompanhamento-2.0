@@ -430,7 +430,7 @@ export default function Step6Adjust({
       </div>
 
       {/* IA suggestion */}
-      <div className="glass-card p-6 border border-blue-500/30 bg-gradient-to-br from-blue-500/5 to-transparent">
+      <div className="glass-card p-6 border border-blue-500/30 bg-[var(--surface-2)]">
         <div className="flex items-start gap-3 mb-4">
           <div className="bg-blue-500/20 text-blue-400 rounded-xl p-2.5">
             <Sparkles className="w-5 h-5" />

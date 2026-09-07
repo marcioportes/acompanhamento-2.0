@@ -55,7 +55,9 @@ describe('cliques da Torre', () => {
     const abrir = vi.fn();
     const priority = [{ ...aluno, prioridade: { trigger: TRIGGER.FURIA, motivo: 'reatividade após perda' } }];
     const { container } = render(<TorrePrioridade priority={priority} onAbrirAluno={abrir} />);
-    fireEvent.click(container.querySelector('.divide-y > div'));
+    // `data-prioridade` e não classe de estilo: o seletor precisa sobreviver ao
+    // redesign, que é justamente quando o clique corre mais risco de sumir.
+    fireEvent.click(container.querySelector('[data-prioridade]'));
     expect(abrir).toHaveBeenCalledTimes(1);
   });
 });

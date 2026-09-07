@@ -24,6 +24,9 @@ import {
   Mail, Users, Loader2, RefreshCw, AlertTriangle, Eye, Pencil, UserPlus, Lock,
 } from 'lucide-react';
 import { formatWhatsappDisplay } from '../utils/whatsappValidation';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
+import StatTile from '../components/ui/StatTile';
 import DebugBadge from '../components/DebugBadge';
 import AssessmentToggle from '../components/Onboarding/AssessmentToggle';
 import StudentDetailDrawer from '../components/Students/StudentDetailDrawer';
@@ -185,57 +188,50 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   ];
 
   return (
-    <div className="p-6 lg:p-8 max-w-6xl mx-auto pb-20">
-      {/* Header */}
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-white flex items-center gap-3">
-            <Users className="w-7 h-7 text-blue-400" />Acompanhamento
-          </h1>
-          <p className="text-slate-400 mt-1 text-sm">
-            Workspace do mentor · Alpha e Espelho com dashboard ativo.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowCandidatos(true)}
-          disabled={candidatosCount === 0}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex-shrink-0"
-          title={candidatosCount === 0 ? 'Nenhum candidato no momento' : 'Alunos com Alpha/Espelho em dia que ainda não estão na plataforma'}
+    <>
+      <PageHeader
+        titulo="Acompanhamento"
+        icone={Users}
+        contexto="Workspace do mentor · Alpha e Espelho com dashboard ativo."
+        acoes={(
+          <button
+            type="button"
+            onClick={() => setShowCandidatos(true)}
+            disabled={candidatosCount === 0}
+            className="inline-flex items-center gap-2 px-3 h-8 text-[12px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              borderRadius: 'var(--r-sm)',
+              border: '1px solid var(--accent-line)',
+              background: 'var(--accent-soft)',
+              color: 'var(--accent)',
+            }}
+            title={candidatosCount === 0 ? 'Nenhum candidato no momento' : 'Alunos com Alpha/Espelho em dia que ainda não estão na plataforma'}
+          >
+            <UserPlus className="w-3.5 h-3.5" strokeWidth={1.75} /> Candidatos a Registro
+            {candidatosCount > 0 && <span className="tabular font-semibold">{candidatosCount}</span>}
+          </button>
+        )}
+      />
+
+    <PageBody className="max-w-6xl mx-auto">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <StatTile valor={counts.alpha} rotulo="Alpha" />
+        <StatTile valor={counts.espelho} rotulo="Espelho" />
+        <StatTile valor={counts.trial} rotulo="Trial" />
+        <StatTile
+          valor={counts.expiringSoon}
+          rotulo="Vencendo ≤7d"
+          tom={counts.expiringSoon > 0 ? 'atencao' : 'neutro'}
+        />
+      </div>
+
+      {/* Filtro por plano — segmented control, o mesmo padrão das abas do mentor. */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="eyebrow flex-shrink-0">Plano</span>
+        <div
+          className="inline-flex items-center gap-0.5 p-0.5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
         >
-          <UserPlus className="w-4 h-4" /> Candidatos a Registro
-          {candidatosCount > 0 && (
-            <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-white/20 rounded-full text-[11px] font-semibold">
-              {candidatosCount}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-purple-400 font-mono">{counts.alpha}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Alpha</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-cyan-400 font-mono">{counts.espelho}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Espelho</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-amber-400 font-mono">{counts.trial}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Trial</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-2xl font-bold text-yellow-400 font-mono">{counts.expiringSoon}</p>
-          <p className="text-[11px] uppercase tracking-wider text-slate-500 mt-1">Vencendo ≤7d</p>
-        </div>
-      </div>
-
-      {/* Chips de filtro — 3 buckets visíveis (Trial agrega trial-alpha + trial-espelho) */}
-      <div className="glass-card p-3 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-wide text-slate-500 w-16 flex-shrink-0">Plano</span>
           {tierChips.map((f) => {
             const active = tierFilter === f.value;
             return (
@@ -243,10 +239,16 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                 key={f.value}
                 type="button"
                 onClick={() => setTierFilter(f.value)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-colors border ${active ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/50 border-slate-700/30'}`}
+                className="flex items-center gap-1.5 px-3 h-7 text-[12px] whitespace-nowrap transition-colors"
+                style={{
+                  borderRadius: 'var(--r-sm)',
+                  background: active ? 'var(--surface-3)' : 'transparent',
+                  color: active ? 'var(--ink)' : 'var(--ink-3)',
+                  fontWeight: active ? 600 : 400,
+                }}
               >
                 {f.label}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-blue-500/30' : 'bg-slate-700/50'}`}>{f.count}</span>
+                <span className="text-[11px] tabular" style={{ color: 'var(--ink-4)' }}>{f.count}</span>
               </button>
             );
           })}
@@ -259,29 +261,31 @@ const StudentsManagement = ({ onViewAsStudent }) => {
 
       {/* Tabela */}
       <div className="glass-card overflow-hidden">
-        <div className="px-4 py-2 border-b border-slate-800/50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Alunos cadastrados</h3>
-          <p className="text-xs text-slate-500">{filteredStudents.length} resultado{filteredStudents.length !== 1 ? 's' : ''}</p>
+        <div className="panel-head">
+          <h3 className="panel-title">Alunos cadastrados</h3>
+          <p className="meta tabular">{filteredStudents.length} resultado{filteredStudents.length !== 1 ? 's' : ''}</p>
         </div>
 
         {filteredStudents.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            <Mail className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>{managedStudents.length === 0 ? 'Nenhum aluno na gestão' : 'Nenhum aluno neste filtro'}</p>
+          <div className="px-4 py-10 text-center">
+            <Mail className="w-6 h-6 mx-auto mb-2" strokeWidth={1.5} style={{ color: 'var(--ink-4)' }} />
+            <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+              {managedStudents.length === 0 ? 'Nenhum aluno na gestão' : 'Nenhum aluno neste filtro'}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-800/50 text-[11px] uppercase tracking-wider text-slate-500">
-                  <th className="text-left font-semibold px-4 py-3">Nome</th>
-                  <th className="text-left font-semibold px-4 py-3 whitespace-nowrap">Celular</th>
-                  <th className="text-left font-semibold px-4 py-3">Email</th>
-                  <th className="text-left font-semibold px-4 py-3 whitespace-nowrap">Status</th>
-                  <th className="text-right font-semibold px-4 py-3 whitespace-nowrap">Ações</th>
+                <tr className="text-[10px] uppercase" style={{ letterSpacing: '0.06em', color: 'var(--ink-4)' }}>
+                  <th className="text-left font-semibold px-3 py-2" style={{ borderBottom: '1px solid var(--line)' }}>Nome</th>
+                  <th className="text-left font-semibold px-3 py-2 whitespace-nowrap" style={{ borderBottom: '1px solid var(--line)' }}>Celular</th>
+                  <th className="text-left font-semibold px-3 py-2" style={{ borderBottom: '1px solid var(--line)' }}>Email</th>
+                  <th className="text-left font-semibold px-3 py-2 whitespace-nowrap" style={{ borderBottom: '1px solid var(--line)' }}>Status</th>
+                  <th className="text-right font-semibold px-3 py-2 whitespace-nowrap" style={{ borderBottom: '1px solid var(--line)' }}>Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/30">
+              <tbody className="divide-y" style={{ borderColor: 'var(--line)' }}>
                 {filteredStudents.map((s) => {
                   const bucket = studentBucket.get(s.id);
                   const tier = TIER_CONFIG[bucket];
@@ -297,37 +301,29 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                   // já renderizado). Definição alinhada 2026-05-11.
                   const isCandidato = !hasAuth(s);
                   const isBlocked = Boolean(s.loginBlocked);
-                  // Borda lateral: candidato Alpha = laranja (urgente);
-                  // candidato Espelho = amarelo (neutro); bloqueado = vermelho.
-                  const sideBorder = isBlocked
-                    ? 'border-l-2 border-l-red-500/60'
-                    : isCandidato
-                      ? (isAlphaBucket ? 'border-l-2 border-l-orange-500/60' : 'border-l-2 border-l-yellow-500/40')
-                      : 'border-l-2 border-l-transparent';
+                  // Filete lateral só para o que exige ato: bloqueio e candidato
+                  // Alpha. Candidato Espelho já se declara na etiqueta — listra em
+                  // doze de doze linhas não distingue ninguém, só risca a tabela.
+                  const filete = isBlocked
+                    ? 'var(--neg)'
+                    : (isCandidato && isAlphaBucket) ? 'var(--warn)' : null;
                   return (
                     <tr
                       key={s.id}
-                      className={`transition-colors hover:bg-slate-800/20 ${sideBorder}`}
+                      className="transition-colors hover:bg-[var(--surface-2)]"
+                      style={filete ? { boxShadow: `inset 2px 0 0 ${filete}` } : undefined}
                     >
-                      <td className="px-4 py-3 font-medium text-white">
+                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--ink)' }}>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {isCandidato && (
-                            <span title="Candidato — sem Auth user, registrar via lápis" className="text-yellow-400">
-                              <UserPlus className="w-3.5 h-3.5" />
-                            </span>
-                          )}
                           {isBlocked && (
-                            <span title="Login bloqueado" className="text-red-400">
-                              <Lock className="w-3.5 h-3.5" />
+                            <span title="Login bloqueado" style={{ color: 'var(--neg)' }}>
+                              <Lock className="w-3.5 h-3.5" strokeWidth={1.75} />
                             </span>
                           )}
-                          <span>{s.name || <span className="italic text-slate-500">(sem nome)</span>}</span>
+                          <span>{s.name || <span className="italic" style={{ color: 'var(--ink-4)' }}>(sem nome)</span>}</span>
                           {isCandidato && (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border ${
-                              isAlphaBucket
-                                ? 'bg-orange-500/15 text-orange-300 border-orange-500/30'
-                                : 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30'
-                            }`}>
+                            <span className="chip" title="Candidato — sem Auth user, registrar via lápis">
+                              <span className="chip-dot" style={{ background: isAlphaBucket ? 'var(--warn)' : 'var(--ink-4)' }} />
                               Candidato{isAlphaBucket ? ' · prioritário' : ''}
                             </span>
                           )}
@@ -341,25 +337,23 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                       <td className="px-4 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">
                         {s.whatsappNumber ? formatWhatsappDisplay(s.whatsappNumber) : <span className="italic text-slate-600">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-slate-400">
+                      <td className="px-3 py-2.5" style={{ color: 'var(--ink-2)' }}>
                         {s.email || <span className="italic text-slate-600">—</span>}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${tier.pill}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${tier.dot}`} />
+                          <span className={tier.pill}>
+                            <span className="chip-dot" style={{ background: tier.cor }} />
                             {tier.label}
                           </span>
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] ${accessCfg.pill}`}
-                            title="Acesso à plataforma"
-                          >
+                          <span className={accessCfg.pill} title="Acesso à plataforma">
+                            <span className="chip-dot" style={{ background: accessCfg.cor }} />
                             {accessCfg.label}
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1">
                           {(isAlphaBucket || isPending) && (
                             <AssessmentToggle
                               studentId={s.id}
@@ -371,35 +365,32 @@ const StudentsManagement = ({ onViewAsStudent }) => {
                             <button
                               onClick={(e) => handleResendInvite(s.email, e)}
                               disabled={resending === s.email}
-                              className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded"
+                              className="icon-btn"
                               title="Reenviar email"
                             >
-                              {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                              {resending === s.email ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.75} />}
                             </button>
                           )}
                           <button
                             onClick={() => setEditingStudentId(s.id)}
-                            className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded"
+                            className="icon-btn"
                             title="Editar aluno"
                             aria-label={`Editar ${s.name || s.email || 'aluno'}`}
                           >
-                            <Pencil className="w-4 h-4" />
+                            <Pencil className="w-3.5 h-3.5" strokeWidth={1.75} />
                           </button>
                           {canEnterDashboard ? (
                             <button
                               onClick={() => handleViewAs(s)}
-                              className="p-1.5 text-slate-500 hover:text-purple-400 hover:bg-purple-500/10 rounded"
+                              className="icon-btn"
                               title="Entrar no dashboard deste aluno"
                               aria-label={`Entrar no dashboard de ${s.name || s.email}`}
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5" strokeWidth={1.75} />
                             </button>
                           ) : (
-                            <span
-                              className="p-1.5 text-slate-700 cursor-not-allowed"
-                              title="Sem email — não tem dashboard"
-                            >
-                              <Eye className="w-4 h-4" />
+                            <span className="icon-btn opacity-30 cursor-not-allowed" title="Sem email — não tem dashboard">
+                              <Eye className="w-3.5 h-3.5" strokeWidth={1.75} />
                             </span>
                           )}
                         </div>
@@ -433,7 +424,8 @@ const StudentsManagement = ({ onViewAsStudent }) => {
       )}
 
       <DebugBadge component="StudentsManagement" />
-    </div>
+    </PageBody>
+    </>
   );
 };
 

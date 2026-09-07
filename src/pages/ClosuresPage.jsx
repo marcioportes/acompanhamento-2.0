@@ -9,6 +9,8 @@
 
 import React from 'react';
 import { History } from 'lucide-react';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
 import DebugBadge from '../components/DebugBadge';
 import ClosureTimeline from '../components/cycleClosure/ClosureTimeline';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,25 +20,23 @@ export default function ClosuresPage({ viewAs = null }) {
   const studentId = viewAs?.uid || user?.uid;
 
   return (
-    <div className="min-h-screen p-6 lg:p-8 pb-20">
+    <div className="min-h-screen">
       <DebugBadge component="ClosuresPage" />
 
-      <div className="mb-6 flex items-center gap-3">
-        <div className="bg-blue-500/20 text-blue-400 rounded-lg p-2">
-          <History className="w-5 h-5" />
-        </div>
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">Ciclos Fechados</h1>
-          <p className="text-sm text-slate-400">Histórico de capítulos selados — clique pra ver detalhe</p>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Ciclos Fechados"
+        icone={History}
+        contexto="Histórico de capítulos selados — clique pra ver detalhe"
+      />
 
+    <PageBody>
       <ClosureTimeline
         studentId={studentId}
         studentName={viewAs?.name}
         role={viewAs ? 'mentor' : 'student'}
         collapsedDefault={false}
       />
+    </PageBody>
     </div>
   );
 }

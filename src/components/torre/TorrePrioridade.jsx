@@ -26,24 +26,29 @@ const linkWhatsapp = (numero, texto) => {
 };
 
 const TorrePrioridade = ({ priority = [], onAbrirAluno }) => (
-  <div className="glass-card border border-red-500/20">
-    <div className="p-4 border-b border-slate-800/50 flex items-center gap-2">
-      <Flame className="w-5 h-5 text-red-400" />
-      <h3 className="font-semibold text-white">Prioridade do Dia</h3>
+  /* Antes o painel inteiro vinha com borda vermelha e um selo "AÇÃO IMEDIATA":
+     quando a moldura grita, o conteúdo dela para de ser lido. Agora o alarme é
+     uma barra de 2px na lateral de cada linha — presente sem ser estridente. */
+  <div className="glass-card overflow-hidden">
+    <div className="panel-head">
+      <div className="flex items-center gap-2">
+        <Flame className="w-3.5 h-3.5" strokeWidth={1.75} style={{ color: 'var(--neg)' }} />
+        <h3 className="panel-title">Prioridade do Dia</h3>
+      </div>
       {priority.length > 0 && (
-        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
-          Ação imediata
-        </span>
+        <span className="meta tabular">{priority.length} {priority.length === 1 ? 'pessoa' : 'pessoas'}</span>
       )}
     </div>
 
     {priority.length === 0 ? (
-      <div className="p-8 text-center">
-        <p className="text-sm text-slate-500">Ninguém exige ação imediata hoje.</p>
-        <p className="text-xs text-slate-600 mt-1">Fúria, estouro de stop e risco acima do autorizado — nenhum deles apareceu.</p>
+      <div className="px-4 py-7 text-center">
+        <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Ninguém exige ação imediata hoje.</p>
+        <p className="text-[11px] mt-1" style={{ color: 'var(--ink-4)' }}>
+          Fúria, estouro de stop e risco acima do autorizado — nenhum deles apareceu.
+        </p>
       </div>
     ) : (
-      <div className="divide-y divide-slate-800/50">
+      <div>
         {priority.map((aluno) => {
           const cfg = GATILHO[aluno.prioridade.trigger] ?? GATILHO[TRIGGER.RISCO];
           const Icon = cfg.icon;
@@ -55,24 +60,24 @@ const TorrePrioridade = ({ priority = [], onAbrirAluno }) => (
           return (
             <div
               key={aluno.studentId}
+              data-prioridade={aluno.studentId}
               onClick={() => onAbrirAluno?.({ email: aluno.email, name: aluno.name, studentId: aluno.studentId })}
-              className="p-4 flex items-center justify-between gap-4 flex-wrap hover:bg-slate-800/20 transition-colors cursor-pointer"
+              className="px-4 py-3 flex items-center justify-between gap-4 flex-wrap cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
+              style={{ borderTop: '1px solid var(--line)', boxShadow: 'inset 2px 0 0 var(--neg)' }}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-4 h-4 text-red-400" />
-                </div>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Icon className="w-4 h-4 flex-shrink-0" strokeWidth={1.75} style={{ color: 'var(--neg)' }} />
                 <div className="min-w-0">
-                  <div className="font-semibold text-white truncate">{aluno.name}</div>
-                  <div className="text-xs text-slate-400">
-                    <span className="text-red-400 font-medium">{cfg.titulo}</span>
+                  <div className="text-[13px] font-semibold truncate" style={{ color: 'var(--ink)' }}>{aluno.name}</div>
+                  <div className="text-[11px] truncate" style={{ color: 'var(--ink-3)' }}>
+                    <span style={{ color: 'var(--neg)' }}>{cfg.titulo}</span>
                     {' · '}{aluno.prioridade.motivo}
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wide hidden sm:inline">
+                <span className="text-[11px] hidden sm:inline" style={{ color: 'var(--ink-4)' }}>
                   {cfg.acao}
                 </span>
                 {wa && (
@@ -81,16 +86,27 @@ const TorrePrioridade = ({ priority = [], onAbrirAluno }) => (
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                    className="flex items-center gap-1.5 text-[12px] px-2.5 h-7 transition-colors"
+                    style={{
+                      borderRadius: 'var(--r-sm)',
+                      border: '1px solid var(--line-strong)',
+                      color: 'var(--ink-2)',
+                    }}
                   >
-                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                    <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.75} /> WhatsApp
                   </a>
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: aluno.email, name: aluno.name, studentId: aluno.studentId }); }}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800/50 transition-colors"
+                  className="flex items-center gap-1.5 text-[12px] px-2.5 h-7 transition-colors"
+                  style={{
+                    borderRadius: 'var(--r-sm)',
+                    border: '1px solid var(--accent-line)',
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                  }}
                 >
-                  Abrir ficha <ArrowRight className="w-3.5 h-3.5" />
+                  Abrir ficha <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                 </button>
               </div>
             </div>

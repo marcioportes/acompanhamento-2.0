@@ -97,7 +97,7 @@ const StudentAccountGroup = ({
     <div className="glass-card p-4 transition-all hover:border-slate-600">
       {/* Header: Avatar + Nome + Métricas resumidas */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+        <div className="w-10 h-10 rounded-full bg-[var(--surface-3)] border border-[var(--line-strong)] flex items-center justify-center text-[var(--ink-2)] font-semibold text-sm flex-shrink-0">
           {initials || <User className="w-5 h-5" />}
         </div>
         <div className="flex-1 min-w-0">

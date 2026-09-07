@@ -183,7 +183,7 @@ const TradesList = ({
                 {showStudent && (
                   <td className="p-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[11px] text-white font-bold flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-[var(--surface-3)] border border-[var(--line-strong)] flex items-center justify-center text-[11px] text-[var(--ink-2)] font-semibold flex-shrink-0">
                         {(trade.studentName || trade.studentEmail || '?').charAt(0).toUpperCase()}
                       </div>
                       <span className="text-white text-sm font-medium whitespace-nowrap">

@@ -125,24 +125,28 @@ const Sidebar = ({
   };
 
   return (
-    <aside 
-      className={`fixed left-0 top-0 h-screen bg-slate-900/80 backdrop-blur-xl border-r border-slate-800/50 z-40 transition-all duration-300 ${
-        collapsed ? 'w-20' : 'w-64'
+    <aside
+      className={`fixed left-0 top-0 h-screen z-40 transition-all duration-200 ${
+        collapsed ? 'w-[68px]' : 'w-[228px]'
       }`}
+      style={{ background: 'var(--surface)', borderRight: '1px solid var(--line)' }}
     >
       <div className="flex flex-col h-full">
-        {/* Logo */}
-        <div className="p-6 border-b border-slate-800/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800/60 border border-teal-500/20 flex items-center justify-center flex-shrink-0">
-              <EspelhoMark className="w-6 h-6" />
+        {/* Logo — altura casada com o cabeçalho da página (56px), para que o
+            topo da marca e o topo do título fiquem na mesma linha. */}
+        <div className="h-14 px-4 flex items-center" style={{ borderBottom: '1px solid var(--line)' }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-7 h-7 flex items-center justify-center flex-shrink-0"
+              style={{ borderRadius: 'var(--r-sm)', background: 'var(--accent-soft)', border: '1px solid var(--accent-line)' }}
+            >
+              <EspelhoMark className="w-4 h-4" />
             </div>
             {!collapsed && (
-              <div className="overflow-hidden">
-                <h1 className="font-display font-bold text-white truncate leading-tight">
+              <div className="min-w-0 leading-none">
+                <span className="font-display font-semibold text-[14px] tracking-tight" style={{ color: 'var(--ink)' }}>
                   Espelho
-                </h1>
-                <p className="text-xs uppercase tracking-[0.2em] text-teal-400/80">do Trader</p>
+                </span>
               </div>
             )}
           </div>
@@ -151,91 +155,97 @@ const Sidebar = ({
         {/* Toggle button */}
         <button
           onClick={onToggle}
-          className="absolute -right-3 top-20 w-6 h-6 bg-slate-800 border border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+          className="absolute -right-2.5 top-[46px] w-5 h-5 rounded-full flex items-center justify-center transition-colors z-10"
+          style={{ background: 'var(--surface-3)', border: '1px solid var(--line-strong)', color: 'var(--ink-3)' }}
         >
           {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3 h-3" />
           ) : (
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3 h-3" />
           )}
         </button>
 
         {/* Menu */}
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => onViewChange(item.id)}
-              className={`menu-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                // #101 — a Torre é ABA do Dashboard, não item de sidebar: estando
-                // nela, o Dashboard continua aceso.
-                (currentView === 'torre' ? 'dashboard' : currentView) === item.id
-                  ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <item.icon className="w-5 h-5 flex-shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="flex-1 text-left truncate">{item.label}</span>
-                  {item.badge && (
-                    <span className={`min-w-[20px] h-5 flex items-center justify-center text-xs font-semibold rounded-full ${
-                      item.badgeColor === 'red' 
-                        ? 'bg-red-500/20 text-red-400' 
-                        : item.badgeColor === 'purple'
-                        ? 'bg-purple-500/20 text-purple-400'
-                        : item.badgeColor === 'green'
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    }`}>
-                      {item.badge}
-                    </span>
-                  )}
-                </>
-              )}
-              {collapsed && item.badge && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-semibold rounded-full bg-red-500 text-white">
-                  {item.badge > 9 ? '9+' : item.badge}
-                </span>
-              )}
-            </button>
-          ))}
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+          {menuItems.map((item) => {
+            // #101 — a Torre é ABA do Dashboard, não item de sidebar: estando
+            // nela, o Dashboard continua aceso.
+            const ativo = (currentView === 'torre' ? 'dashboard' : currentView) === item.id;
+            return (
+              <button
+                key={item.id}
+                data-view={item.id}
+                onClick={() => onViewChange(item.id)}
+                title={collapsed ? item.label : undefined}
+                className={`menu-item relative w-full ${collapsed ? 'justify-center px-0' : ''} ${ativo ? 'active' : ''}`}
+              >
+                <item.icon className="w-[17px] h-[17px] flex-shrink-0" strokeWidth={1.75} />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left truncate">{item.label}</span>
+                    {/* Contador é informação, não alarme: number tabular em tinta
+                        secundária. Vermelho fica reservado para o que exige ação. */}
+                    {item.badge && (
+                      <span
+                        className="text-[11px] font-semibold tabular flex-shrink-0"
+                        style={{ color: item.badgeColor === 'red' ? 'var(--neg)' : 'var(--ink-3)' }}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && item.badge && (
+                  <span
+                    className="absolute top-1 right-2 w-1.5 h-1.5 rounded-full"
+                    style={{ background: item.badgeColor === 'red' ? 'var(--neg)' : 'var(--ink-3)' }}
+                  />
+                )}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* User Info + Version */}
-        <div className="p-4 border-t border-slate-800/50">
-          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center flex-shrink-0">
-              <User className="w-5 h-5 text-white" />
+        {/* Rodapé: quem está logado, saída e versão numa faixa só. Três blocos
+            separados por filete gastavam 160px de altura para dizer isto. */}
+        <div className="px-2 py-2" style={{ borderTop: '1px solid var(--line)' }}>
+          <div className={`flex items-center gap-2.5 px-2 py-2 ${collapsed ? 'justify-center px-0' : ''}`}>
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--surface-3)', border: '1px solid var(--line-strong)' }}
+            >
+              <User className="w-3 h-3" style={{ color: 'var(--ink-3)' }} />
             </div>
             {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
+              <div className="flex-1 min-w-0 leading-tight">
+                <p className="text-[12px] font-medium truncate" style={{ color: 'var(--ink)' }}>
                   {user?.displayName || user?.email?.split('@')[0]}
                 </p>
-                <p className={`text-xs ${
-                  isMentor() ? 'text-purple-400' : 'text-slate-500'
-                }`}>
+                <p className="text-[10px]" style={{ color: 'var(--ink-4)' }}>
                   {isMentor() ? 'Mentor' : 'Aluno'}
                 </p>
               </div>
             )}
+            {!collapsed && (
+              <button
+                onClick={handleLogout}
+                title="Sair"
+                className="icon-btn flex-shrink-0"
+              >
+                <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />
+              </button>
+            )}
           </div>
 
-          <button
-            onClick={handleLogout}
-            className={`mt-4 w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span>Sair</span>}
-          </button>
+          {collapsed && (
+            <button onClick={handleLogout} title="Sair" className="menu-item w-full justify-center px-0">
+              <LogOut className="w-[17px] h-[17px]" strokeWidth={1.75} />
+            </button>
+          )}
 
-          {/* Version Display - Padrão de mercado no footer */}
           {!collapsed && (
-            <div className="mt-4 pt-4 border-t border-slate-800/30 text-center">
-              <span className="text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors cursor-default">
+            <div className="px-2 pb-1">
+              <span className="text-[10px] font-mono" style={{ color: 'var(--ink-4)' }}>
                 {VERSION.display}
               </span>
             </div>

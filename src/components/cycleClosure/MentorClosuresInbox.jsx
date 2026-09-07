@@ -72,36 +72,55 @@ export default function MentorClosuresInbox({ students = [], plansById = {}, onO
     <div className="space-y-4">
       <div className="flex items-baseline justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-            <Inbox className="w-5 h-5" /> {mode === 'pending' ? 'Ciclos aguardando comentário' : 'Todos os ciclos fechados'}
+          <h2 className="text-[15px] font-semibold flex items-center gap-2" style={{ color: 'var(--ink)' }}>
+            <Inbox className="w-4 h-4" strokeWidth={1.75} style={{ color: 'var(--ink-3)' }} />
+            {mode === 'pending' ? 'Ciclos aguardando comentário' : 'Todos os ciclos fechados'}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-[11px] mt-0.5" style={{ color: 'var(--ink-4)' }}>
             {mode === 'pending'
               ? 'Janela: 7 dias após o aluno selar. Depois disso, marca "sem comentário" automaticamente.'
               : 'Histórico completo — todos os ciclos selados, sem filtro de janela.'}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          {mode === 'pending' && counts.red > 0 && <span className="badge bg-red-500/20 text-red-300 border border-red-500/30 text-[10px]">{counts.red} crítico</span>}
-          {mode === 'pending' && counts.amber > 0 && <span className="badge bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px]">{counts.amber} atenção</span>}
-          {mode === 'pending' && counts.emerald > 0 && <span className="badge bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px]">{counts.emerald} folga</span>}
+          {mode === 'pending' && counts.red > 0 && (
+            <span className="chip" style={{ color: 'var(--neg)' }}><span className="chip-dot" style={{ background: 'var(--neg)' }} />{counts.red} crítico</span>
+          )}
+          {mode === 'pending' && counts.amber > 0 && (
+            <span className="chip"><span className="chip-dot" style={{ background: 'var(--warn)' }} />{counts.amber} atenção</span>
+          )}
+          {mode === 'pending' && counts.emerald > 0 && (
+            <span className="chip"><span className="chip-dot" style={{ background: 'var(--pos)' }} />{counts.emerald} folga</span>
+          )}
         </div>
       </div>
 
       {/* Toggle modo + filtro por aluno */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="inline-flex bg-slate-800/40 rounded-lg p-1 border border-slate-700/40">
+        <div className="inline-flex items-center gap-0.5 p-0.5" style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}>
           <button
             type="button"
             onClick={() => setMode('pending')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mode === 'pending' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
+            className="px-3 h-7 text-[12px] transition-colors"
+            style={{
+              borderRadius: 'var(--r-sm)',
+              background: mode === 'pending' ? 'var(--surface-3)' : 'transparent',
+              color: mode === 'pending' ? 'var(--ink)' : 'var(--ink-3)',
+              fontWeight: mode === 'pending' ? 600 : 400,
+            }}
           >
             Pendentes{pendingCount > 0 && ` (${pendingCount})`}
           </button>
           <button
             type="button"
             onClick={() => setMode('all')}
-            className={`px-3 py-1.5 text-xs rounded-md transition ${mode === 'all' ? 'bg-blue-500/20 text-blue-300' : 'text-slate-400 hover:text-slate-200'}`}
+            className="px-3 h-7 text-[12px] transition-colors"
+            style={{
+              borderRadius: 'var(--r-sm)',
+              background: mode === 'all' ? 'var(--surface-3)' : 'transparent',
+              color: mode === 'all' ? 'var(--ink)' : 'var(--ink-3)',
+              fontWeight: mode === 'all' ? 600 : 400,
+            }}
           >
             Todos
           </button>
@@ -164,7 +183,7 @@ export default function MentorClosuresInbox({ students = [], plansById = {}, onO
             if ((behavioral?.tiltDaysCount || 0) >= 3) triggers.push(`${behavioral.tiltDaysCount}d tilt`);
             if ((behavioral?.revenge || 0) >= 2) triggers.push(`${behavioral.revenge}× vingança`);
             if ((behavioral?.stopTampering || 0) >= 1) triggers.push(`stop deslocado ${behavioral.stopTampering}×`);
-            signal = `🚨 CRÍTICO — pausa sugerida${triggers.length ? `: ${triggers.slice(0, 2).join(', ')}` : ''}`;
+            signal = `CRÍTICO — pausa sugerida${triggers.length ? `: ${triggers.slice(0, 2).join(', ')}` : ''}`;
             if (behavioral?.denialFlag) {
               signal += ' · ⚠ atribuição externa apesar de erros detectados';
             }
@@ -227,8 +246,11 @@ export default function MentorClosuresInbox({ students = [], plansById = {}, onO
                 )}
               </div>
               <div className="col-span-1 text-right">
-                <span className="btn-primary text-xs px-3 py-1.5 inline-flex items-center gap-1 group-hover:translate-x-0.5 transition">
-                  Ver <ChevronRight className="w-3.5 h-3.5" />
+                <span
+                  className="inline-flex items-center gap-1 text-[12px] px-2.5 h-7 transition-colors"
+                  style={{ borderRadius: 'var(--r-sm)', border: '1px solid var(--accent-line)', background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                >
+                  Ver <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                 </span>
               </div>
             </button>

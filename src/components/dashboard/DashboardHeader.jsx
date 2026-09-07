@@ -9,6 +9,7 @@
 
 import { PlusCircle, Filter, Upload } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
+import PageHeader from '../ui/PageHeader';
 
 /**
  * @param {Object} props
@@ -28,37 +29,40 @@ const DashboardHeader = ({
   onOrderImport,
 }) => {
   return (
-    <div className="flex flex-col gap-4 relative">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">
-            {viewAs ? `Dashboard de ${viewAs.name || viewAs.email}` : 'Meu Dashboard'}
-          </h1>
-          <p className="text-slate-400 mt-1">
-            {viewAs ? 'Visualização do mentor' : 'Acompanhe sua performance de trading'}
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={onToggleFilters} className={`btn-secondary flex items-center gap-2 ${showFilters ? 'bg-blue-500/20 border-blue-500/50' : ''}`}>
-            <Filter className="w-4 h-4" /> Filtros
-          </button>
-          {!viewAs && (
-            <>
-              <button onClick={onCsvImport} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:border-amber-500/50 hover:bg-amber-500/20 text-xs font-bold text-amber-400 hover:text-amber-300 transition-all">
-                <Upload className="w-3.5 h-3.5" /> Importar Performance
-              </button>
-              <button onClick={onOrderImport} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:border-blue-500/50 hover:bg-blue-500/20 text-xs font-bold text-blue-400 hover:text-blue-300 transition-all">
-                <Upload className="w-3.5 h-3.5" /> Importar Ordens
-              </button>
-              <button onClick={onNewTrade} className="btn-primary flex items-center gap-2">
-                <PlusCircle className="w-5 h-5" /> Novo Trade
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+    /* Três ações com três cores (âmbar, azul, verde) e um título de 30px: o topo
+       gritava mais que o saldo do plano logo abaixo. Ação secundária é secundária
+       — só "Novo Trade", que é o que o aluno vem fazer, guarda o acento. */
+    <>
+      <PageHeader
+        titulo={viewAs ? `Dashboard de ${viewAs.name || viewAs.email}` : 'Meu Dashboard'}
+        contexto={viewAs ? 'Visualização do mentor' : 'Acompanhe sua performance de trading'}
+        acoes={(
+          <>
+            <button
+              onClick={onToggleFilters}
+              className="btn-secondary"
+              style={showFilters ? { background: 'var(--surface-3)', color: 'var(--ink)' } : undefined}
+            >
+              <Filter className="w-3.5 h-3.5" strokeWidth={1.75} /> Filtros
+            </button>
+            {!viewAs && (
+              <>
+                <button onClick={onCsvImport} className="btn-secondary">
+                  <Upload className="w-3.5 h-3.5" strokeWidth={1.75} /> Importar Performance
+                </button>
+                <button onClick={onOrderImport} className="btn-secondary">
+                  <Upload className="w-3.5 h-3.5" strokeWidth={1.75} /> Importar Ordens
+                </button>
+                <button onClick={onNewTrade} className="btn-primary">
+                  <PlusCircle className="w-3.5 h-3.5" strokeWidth={1.75} /> Novo Trade
+                </button>
+              </>
+            )}
+          </>
+        )}
+      />
       <DebugBadge component="DashboardHeader" embedded />
-    </div>
+    </>
   );
 };
 

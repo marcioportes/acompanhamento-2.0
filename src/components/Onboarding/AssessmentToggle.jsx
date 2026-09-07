@@ -129,7 +129,7 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] uppercase tracking-wider text-slate-500">Assessment</span>
+      <span className="eyebrow">Assessment</span>
       <button
         onClick={handleToggle}
         disabled={loading || isInProgress}
@@ -142,20 +142,20 @@ export default function AssessmentToggle({ studentId, currentValue = false, onbo
                 ? 'Clique para desativar o assessment'
                 : 'Clique para ativar o assessment deste aluno'
         }
-        className={`
-          relative w-9 h-5 rounded-full transition-all duration-200
-          ${loading || isInProgress ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-          ${currentValue || isActive
-            ? 'bg-blue-600'
-            : 'bg-white/10'
-          }
-        `}
+        className={`relative w-7 h-4 rounded-full transition-colors duration-150 ${
+          loading || isInProgress ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+        }`}
+        style={{ background: currentValue || isActive ? 'var(--accent)' : 'var(--surface-3)' }}
       >
+        {/* Botão de 28x16: o de 36x20 com pastilha branca pesava mais que o nome
+            do aluno ao lado — controle secundário não pode ser o objeto mais
+            brilhante da linha. */}
         <div
-          className={`
-            absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200
-            ${currentValue || isActive ? 'translate-x-4' : 'translate-x-0.5'}
-          `}
+          className="absolute top-[2px] w-3 h-3 rounded-full transition-transform duration-150"
+          style={{
+            background: currentValue || isActive ? 'var(--bg)' : 'var(--ink-3)',
+            transform: currentValue || isActive ? 'translateX(14px)' : 'translateX(2px)',
+          }}
         />
       </button>
       {statusLabel && (

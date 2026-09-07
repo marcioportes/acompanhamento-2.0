@@ -67,37 +67,32 @@ const PendencyGuard = ({ studentId, onNavigateToFeedback = null, onNavigateToRev
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      style={{ background: 'rgba(4, 6, 8, 0.72)' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="pendency-guard-title"
     >
-      <div className="glass-card max-w-2xl w-full max-h-[85vh] flex flex-col rounded-2xl border border-slate-700 shadow-2xl">
-        <div className="flex-none p-5 border-b border-slate-800 flex justify-between items-center">
+      <div className="glass-card max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="flex-none panel-head">
           <div>
-            <h2 id="pendency-guard-title" className="text-lg font-bold text-white">
+            <h2 id="pendency-guard-title" className="panel-title">
               Você tem pendências
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="meta mt-0.5">
               {totalPendencies} {totalPendencies === 1 ? 'item esperando sua atenção' : 'itens esperando sua atenção'}
             </p>
           </div>
-          <button
-            onClick={dismiss}
-            className="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-800 rounded-full"
-            aria-label="Dispensar"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={dismiss} className="icon-btn" aria-label="Dispensar" data-fechar-pendencias>
+            <X className="w-3.5 h-3.5" strokeWidth={1.75} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {pendingTrades.length > 0 && (
-            <section className="border border-amber-500/30 bg-amber-500/5 rounded-xl p-4">
+            <section className="p-4" style={{ border: '1px solid var(--line)', borderRadius: 'var(--r)', background: 'var(--surface-2)' }}>
               <div className="flex items-center gap-2 mb-3">
-                <div className="p-1.5 bg-amber-500/15 rounded-lg">
-                  <AlertTriangle className="w-4 h-4 text-amber-400" />
-                </div>
+                <AlertTriangle className="w-4 h-4" strokeWidth={1.75} style={{ color: 'var(--warn)' }} />
                 <h3 className="text-sm font-semibold text-white">
                   Trades com feedback do mentor
                 </h3>
@@ -186,11 +181,8 @@ const PendencyGuard = ({ studentId, onNavigateToFeedback = null, onNavigateToRev
           )}
         </div>
 
-        <div className="flex-none p-4 border-t border-slate-800 bg-slate-900/50 flex justify-end items-center rounded-b-2xl">
-          <button
-            onClick={dismiss}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-lg text-sm font-bold transition-all"
-          >
+        <div className="flex-none px-4 py-3 flex justify-end items-center" style={{ borderTop: '1px solid var(--line)' }}>
+          <button onClick={dismiss} className="btn-primary" data-fechar-pendencias>
             OK, entendi
           </button>
         </div>

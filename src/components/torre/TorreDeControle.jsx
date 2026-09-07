@@ -19,12 +19,28 @@
  */
 import { useState, useMemo } from 'react';
 import TorreHeader from './TorreHeader';
-import TorrePrioridade from './TorrePrioridade';
+import TorreAgenda from './TorreAgenda';
 import TorreTurma from './TorreTurma';
 import { FAIXA } from '../../utils/mentorRiskRadar';
 
-const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = null }) => {
-  const { dia, header, priority = [], turma = [] } = radar ?? {};
+const TorreDeControle = ({
+  radar,
+  onAbrirAluno,
+  extrasAcao = null,
+  totalDecisoes = 0,
+  rascunhos = 0,
+  fechamentosPendentes = 0,
+  onIrParaFeedback,
+  onIrParaRevisoes,
+  onIrParaFechamentos,
+}) => {
+  const { dia, header, turma = [] } = radar ?? {};
+
+  // Agenda é o padrão: a pergunta do dia é "o que eu faço agora", e a lista da
+  // turma responde outra ("como está cada um"). A segunda continua a um clique,
+  // porque ver todo mundo — inclusive quem está quieto — é o que impede a tela
+  // de só enxergar quem faz barulho.
+  const [visao, setVisao] = useState('agenda');
 
   // O número do tile clica e recorta a lista — contador que não filtra é decoração.
   const [filtro, setFiltro] = useState(null);
@@ -38,27 +54,58 @@ const TorreDeControle = ({ radar, onAbrirAluno, extrasAcao = null, pendencias = 
   const [ano, mes, diaDoMes] = String(dia ?? '').split('-');
 
   return (
-    <div className="mb-8 space-y-6">
-      <div className="flex items-center justify-end">
-        <span className="text-[11px] text-slate-600 font-mono">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div
+          className="inline-flex items-center gap-0.5 p-0.5"
+          style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
+        >
+          {[['agenda', 'Agenda'], ['turma', 'A turma']].map(([id, rotulo]) => (
+            <button
+              key={id}
+              data-visao={id}
+              onClick={() => setVisao(id)}
+              className="px-3 h-7 text-[12px] transition-colors"
+              style={{
+                borderRadius: 'var(--r-sm)',
+                background: visao === id ? 'var(--surface-3)' : 'transparent',
+                color: visao === id ? 'var(--ink)' : 'var(--ink-3)',
+                fontWeight: visao === id ? 600 : 400,
+              }}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] font-mono tabular" style={{ color: 'var(--ink-4)' }}>
           {ano ? `hoje · ${diaDoMes}/${mes}/${ano}` : ''}
         </span>
       </div>
 
-      <TorreHeader header={header} filtro={filtro} onFiltrar={setFiltro} />
-
-      <TorrePrioridade priority={priority} onAbrirAluno={onAbrirAluno} />
-      {extrasAcao}
-
-      <TorreTurma
-        turma={turmaVisivel}
-        total={turma.length}
-        filtro={filtro}
-        onLimparFiltro={() => setFiltro(null)}
-        onAbrirAluno={onAbrirAluno}
-      />
-
-      {pendencias}
+      {visao === 'agenda' ? (
+        <TorreAgenda
+          radar={radar}
+          onAbrirAluno={onAbrirAluno}
+          onIrParaFeedback={onIrParaFeedback}
+          onIrParaRevisoes={onIrParaRevisoes}
+          onIrParaFechamentos={onIrParaFechamentos}
+          rascunhos={rascunhos}
+          fechamentosPendentes={fechamentosPendentes}
+          totalDecisoes={totalDecisoes}
+          decisoes={extrasAcao}
+        />
+      ) : (
+        <>
+          <TorreHeader header={header} filtro={filtro} onFiltrar={setFiltro} />
+          <TorreTurma
+            turma={turmaVisivel}
+            total={turma.length}
+            filtro={filtro}
+            onLimparFiltro={() => setFiltro(null)}
+            onAbrirAluno={onAbrirAluno}
+          />
+        </>
+      )}
     </div>
   );
 };
