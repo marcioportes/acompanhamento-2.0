@@ -17,6 +17,7 @@
  * que é correto e documentado.
  */
 import { FakeTimestamp } from '../../../harness/store';
+import { DEFAULT_TEMPLATES } from '../../../constants/propFirmDefaults';
 
 const DIA = 86400000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -118,6 +119,17 @@ export const buildMentorDataset = ({ hoje = '2026-09-03', cenario = 'cheio' } = 
       type: 'REAL', currency: moeda, currentBalance: 100000, active: true,
     });
 
+    // #430 — uma mesa prop na turma: sem conta PROP, `PropFirmPage` não tinha
+    // como ser fotografada (o item de menu do aluno só aparece com ela).
+    if (perfil.n === 1) {
+      accounts.push({
+        id: `conta-prop-${perfil.n}`, studentId: id, studentEmail: email,
+        name: 'Apex · Avaliação', type: 'PROP', currency: 'USD',
+        initialBalance: 50000, currentBalance: 51840, active: true,
+        propFirm: { firm: 'Apex', templateId: 'apex-eod-50k', phase: 'EVALUATION' },
+      });
+    }
+
     const planoId = `plano-${perfil.n}`;
     plans.push({
       id: planoId, name: `Ciclo Set/26 — ${perfil.nome.split(' ')[0]}`,
@@ -202,6 +214,9 @@ export const buildMentorDataset = ({ hoje = '2026-09-03', cenario = 'cheio' } = 
       currencies: [{ id: 'BRL', code: 'BRL', symbol: 'R$' }, { id: 'USD', code: 'USD', symbol: '$' }],
       emotions: ['Confiante', 'Ansioso', 'Neutro', 'Frustrado'].map((e, i) => ({ id: `em-${i}`, name: e, active: true })),
       notifications: [], movements: [], brokers: [], users: [],
+      // Os templates são dado de catálogo, não de aluno: vêm do próprio
+      // `propFirmDefaults` para a foto não inventar uma forma que a produção não tem.
+      propFirmTemplates: DEFAULT_TEMPLATES.filter((t) => t.id === 'apex-eod-50k'),
     },
     subcollections,
   };

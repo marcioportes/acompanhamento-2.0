@@ -13,6 +13,7 @@
  */
 
 import { useMemo } from 'react';
+import { Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import StudentContextProvider from '../contexts/StudentContextProvider';
@@ -37,6 +38,7 @@ import PropHistoricalKPIs from '../components/dashboard/PropHistoricalKPIs';
 import TemplateCard from '../components/dashboard/TemplateCard';
 import PlanoMecanicoCard from '../components/dashboard/PlanoMecanicoCard';
 import DebugBadge from '../components/DebugBadge';
+import PageHeader from '../components/ui/PageHeader';
 
 const ZoneHeader = ({ number, title, subtitle }) => (
   <div className="flex items-baseline gap-2 pt-2">
@@ -141,13 +143,16 @@ const PropFirmPageBody = ({ viewAs }) => {
   // Early return AFTER all hooks
   if (!selectedAccount) {
     return (
-      <div className="p-6">
+      <>
+      <PageHeader titulo="Mesa Prop" icone={Shield} contexto="Contrato da mesa e execução" />
+      <div className="px-6 pt-5 pb-10">
         <ContextBar accounts={accounts} plans={plans} />
         <div className="mt-8 text-center text-slate-500">
           Nenhuma conta PROP encontrada. Crie uma conta tipo "Mesa Proprietária" na página de Contas.
         </div>
         <DebugBadge component="PropFirmPage" />
       </div>
+      </>
     );
   }
 
@@ -164,7 +169,11 @@ const PropFirmPageBody = ({ viewAs }) => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <>
+    {/* #430 — a tela ficou fora do roteiro do #427 e por isso abria sem a barra
+        de identificação que todas as outras passaram a ter no #428. */}
+    <PageHeader titulo="Mesa Prop" icone={Shield} contexto={`${propFirm?.firm ?? 'Mesa'} · ${currency}`} />
+    <div className="px-6 pt-5 pb-10 space-y-6">
       <ContextBar accounts={accounts} plans={plans} />
 
       {/* Zona 1 — STATUS AGORA */}
@@ -224,6 +233,7 @@ const PropFirmPageBody = ({ viewAs }) => {
 
       <DebugBadge component="PropFirmPage" />
     </div>
+    </>
   );
 };
 

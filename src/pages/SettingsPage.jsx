@@ -23,6 +23,7 @@ import { seedTestExtract, cleanupTestExtract } from '../utils/seedTestExtract';
 import ComplianceConfigPage from './ComplianceConfigPage';
 import PropFirmConfigPage from './PropFirmConfigPage';
 import DebugBadge from '../components/DebugBadge';
+import PageHeader from '../components/ui/PageHeader';
 
 const TABS = [
   { id: 'setups', label: 'Setups', icon: TrendingUp, color: 'blue' },
@@ -510,23 +511,19 @@ const SettingsPage = () => {
   // ==================== JSX RENDER ====================
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <Settings className="w-8 h-8 text-blue-400" />
-            Configurações
-          </h1>
-          <p className="text-slate-400 mt-1">Gerencie os dados mestres do sistema</p>
-        </div>
-      </div>
+    <>
+      {/* #430 — a tela ficou de fora do roteiro do #427 e por isso manteve o
+          título de 30px com subtítulo que o #428 tirou de todas as outras. */}
+      <PageHeader titulo="Configurações" icone={Settings} contexto="Dados mestres do sistema" />
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+    <div className="px-6 pt-5 pb-10">
+      {/* Tabs — quebram linha em vez de rolar: com nove abas, `Admin` saía da
+          vista em 1440 e não havia nada dizendo que existia mais alguma. */}
+      <div className="flex flex-wrap gap-2 mb-6">
         {TABS.map(tab => (
           <button
             key={tab.id}
+            data-tab-settings={tab.id}
             onClick={() => { setActiveTab(tab.id); setSearchTerm(''); setTickerExchangeFilter(''); }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all whitespace-nowrap ${
               activeTab === tab.id
@@ -930,6 +927,7 @@ const SettingsPage = () => {
       <DebugBadge component="SettingsPage" />
       {confirmDialog}
     </div>
+    </>
   );
 };
 

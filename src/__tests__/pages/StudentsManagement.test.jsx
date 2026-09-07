@@ -172,8 +172,29 @@ describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
 
     // Candidato sem email APARECE em Acompanhamento — Marcio: "Acompanhamento
     // é o lugar do registro" (2026-05-09). Mentor cadastra email no drawer
-    // durante o ritual.
+    // durante o ritual. #430: ele é Espelho, então só sob `Todos` — a tela
+    // abre no Alpha.
+    fireEvent.click(screen.getByRole('button', { name: /Todos\s*2/i }));
     expect(screen.getByText('Sem Email')).toBeInTheDocument();
+  });
+
+  // #430 — a tela abre no track de trabalho do mentor, não na base inteira.
+  it('abre filtrada em Alpha; Todos continua a um clique', () => {
+    mockStudents = [
+      stu({ id: 'a', name: 'João Alpha', email: 'j@x.com' }),
+      stu({ id: 'e', name: 'Mat Espelho', email: 'm@x.com' }),
+    ];
+    mockSubscriptions = [
+      sub({ studentId: 'a', plan: 'alpha', type: 'paid' }),
+      sub({ studentId: 'e', plan: 'self_service', type: 'paid' }),
+    ];
+    render(<StudentsManagement onViewAsStudent={vi.fn()} />);
+
+    expect(screen.getByText('João Alpha')).toBeInTheDocument();
+    expect(screen.queryByText('Mat Espelho')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Todos\s*2/i }));
+    expect(screen.getByText('Mat Espelho')).toBeInTheDocument();
   });
 
   it('click em AssessmentToggle não dispara View As', () => {

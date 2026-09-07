@@ -42,7 +42,9 @@ const StudentsManagement = ({ onViewAsStudent }) => {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [resending, setResending] = useState(null);
-  const [tierFilter, setTierFilter] = useState('all');
+  // #430 — abre no Alpha. O trabalho do mentor é o track Alpha; a base inteira
+  // é a exceção, e continua a um clique no chip `Todos`.
+  const [tierFilter, setTierFilter] = useState('alpha');
   // editingStudent é DERIVADO de students[] (real-time) via id — quando o
   // callable muda algo (loginBlocked, accessStatus, etc.), o drawer reflete
   // automaticamente. Snapshot direto causava UI desatualizada.

@@ -51,6 +51,13 @@ test.describe('telas do mentor', () => {
       if (tela.cliqueLinhaAluno) {
         await page.locator('tbody tr').first().click().catch(() => {});
       }
+      // #430 — escada até as telas sem item de menu próprio (aba de Configurações,
+      // revisão semanal a partir da fila, modais do aluno). Sem `.catch()`: se o
+      // caminho sumiu, a foto seria de outra tela e o roteiro passaria mentindo.
+      for (const seletor of tela.cliques ?? []) {
+        await page.locator(seletor).first().click();
+        await page.waitForTimeout(400);
+      }
 
       await page.waitForTimeout(tela.semEspera ? 300 : 1200);
       await esperarGraficoParar(page);

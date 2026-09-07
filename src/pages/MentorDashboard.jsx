@@ -57,13 +57,14 @@ import { useMentorMaturityOverview } from '../hooks/useMentorMaturityOverview';
 import useOrders from '../hooks/useOrders';
 import { useSetups } from '../hooks/useSetups';
 import {
-  calculateStats, identifyStudentsNeedingAttention,
+  calculateStats,
   formatPercent, filterTradesByPeriod
 } from '../utils/calculations';
 import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/currency';
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
+import { studentsNeedingAttention as computeStudentsNeedingAttention } from '../utils/studentsAttention';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
 import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 import { isReadyForPromotion } from '../utils/maturityEngine/promotionReadiness';
@@ -154,13 +155,12 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     [allStudents, allSubscriptions],
   );
 
-  const studentsNeedingAttention = useMemo(() => {
-    const todos = identifyStudentsNeedingAttention(groupedTrades);
-    // Enquanto as assinaturas não carregaram, não esconde nada — some depois é pior
-    // que aparecer e sumir.
-    if (emailsAtivos.size === 0) return todos;
-    return todos.filter((s) => s?.email && emailsAtivos.has(String(s.email).toLowerCase()));
-  }, [groupedTrades, emailsAtivos]);
+  // #430 — mesma fonte do badge do menu (`App.jsx`). Enquanto as assinaturas não
+  // carregaram, o helper não esconde nada: some depois é pior que aparecer e sumir.
+  const studentsNeedingAttention = useMemo(
+    () => computeStudentsNeedingAttention(groupedTrades, emailsAtivos),
+    [groupedTrades, emailsAtivos],
+  );
 
   // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
   // #101 Fase E — uma passada só, consumida pelas duas abas. A Torre é a home
@@ -476,9 +476,14 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       <div className="px-6 pt-4">
         {/* Segmented control de verdade: um trilho, o ativo é uma pastilha
-            elevada. Antes eram seis botões soltos com um azul no meio. */}
+            elevada. Antes eram seis botões soltos com um azul no meio.
+
+            #430 — quebra de linha, não rolagem lateral. Em 1024 as seis abas não
+            cabem, e com `overflow-x-auto` a última (`Fechamentos`, com contagem)
+            saía da vista sem nenhum indício de que existia: pendência que o mentor
+            não vê é pendência que, para ele, não existe. */}
         <div
-          className="inline-flex items-center gap-0.5 p-0.5 max-w-full overflow-x-auto"
+          className="inline-flex flex-wrap items-center gap-0.5 p-0.5 max-w-full"
           style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
         >
           {abas.map(tab => {
