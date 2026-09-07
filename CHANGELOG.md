@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.0] - 06/09/2026 · #427 · PR #429
+
+**feat:** a Torre vira agenda de trabalho + harness de render visual (#427)
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.89.0] - 04/09/2026 · #425 · PR #426
 
 **revert:** a interface volta ao estado da v1.87.0
