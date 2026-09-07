@@ -22,9 +22,13 @@ Ver issue body: #430.
 - B — barra de abas do mentor deixa de esconder aba em 1024
 - C — Acompanhamento abre no Alpha
 - D — telas fora do roteiro entram no harness e são conferidas foto a foto
-- E — divergência da linha da tabela do Acompanhamento (aguarda Marcio dizer o que o desenho tinha)
+- E — divergência da linha da tabela do Acompanhamento — **resolvida**: era a régua sob cada aluno (`divide-y`), mais a etiqueta caindo para baixo do nome. Não existia mockup: #427/#428 rodaram sem documento de controle e sem desenho, e a referência acabou sendo a foto do antes (`Temp/espelho-antes-427`).
 
 ## Sessions
+
+- `fix 78e7b521` — fonte única da contagem, abas que quebram linha, Acompanhamento no Alpha, 6 telas novas no harness, PageHeader em Configurações/Mesa Prop
+- `fix 4affee3e` — harness responde `getInviteStatusBatch`; a foto do Acompanhamento mostrava 12 candidatos de 12
+- `fix dcffb429` — tabela sem régua por linha (fundo alternado); nome e etiqueta na mesma linha
 
 ## Shared Deltas
 
@@ -35,6 +39,12 @@ Ver issue body: #430.
 - `CHANGELOG.md` — entrada `[1.90.1]`
 
 ## Decisions
+
+- DEC-430-01 — contagem de "precisa de atenção" tem fonte única (`studentsAttention.js`); superfície que precisa do número importa, não reimplementa
+- DEC-430-02 — barra de abas quebra linha, nunca rola: aba escondida com contagem é pendência que, para o mentor, não existe
+- DEC-430-03 — Acompanhamento abre no Alpha; `Todos` é exceção a um clique
+- DEC-430-04 — callable de LEITURA que uma tela dispara ao montar é respondida pelo harness com dado plausível; sem isso a foto mente sobre o estado que decide a linha
+- DEC-430-05 — tabela longa separa linha por fundo alternado, não por régua; uma régua por linha desenha a grade e não o conteúdo
 
 ## Chunks
 
