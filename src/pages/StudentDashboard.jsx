@@ -571,7 +571,9 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
   // === Render ===
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    /* O DashboardHeader agora é a barra fixa da tela (PageHeader), então ele sai
+       do fluxo com padding e o corpo começa logo abaixo. */
+    <div>
       {/* Header (título + ações) */}
       <DashboardHeader
         viewAs={viewAs}
@@ -582,6 +584,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         onOrderImport={() => setShowOrderImport(true)}
       />
 
+      <div className="px-6 pt-5 pb-10 space-y-5">
       {/* Barra de Contexto Unificado (#118 — DEC-047). Fica logo abaixo do header
           para que os dropdowns (que abrem com top-full) caiam sobre o conteúdo
           neutro abaixo, e não sobre o título/botões. */}
@@ -940,6 +943,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
 
       <DebugBadge component="StudentDashboard" />
       {confirmDialog}
+      </div>
     </div>
   );
 };

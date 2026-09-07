@@ -228,7 +228,8 @@ export default function StudentDetailDrawer({ student, subscriptions, onClose, o
               {student.name || <span className="italic text-slate-500">(sem nome)</span>}
             </h2>
             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${accessCfg.pill}`}>
+              <span className={accessCfg.pill}>
+                <span className="chip-dot" style={{ background: accessCfg.cor }} />
                 {accessCfg.label}
               </span>
               {student.email && (

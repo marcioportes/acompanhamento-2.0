@@ -36,7 +36,12 @@ const StudentDraftProbe = ({ studentId, onCount }) => {
   return null;
 };
 
-const PendingReviewsCard = ({ students = [], onOpenReviewQueue }) => {
+/**
+ * `silencioso` — os probes continuam vivos e a contagem sai por `onTotal`, mas o
+ * card não desenha. É como a Agenda recebe o número de rascunhos sem duplicar
+ * dez listeners do Firestore só para contar a mesma coisa duas vezes.
+ */
+const PendingReviewsCard = ({ students = [], onOpenReviewQueue, silencioso = false, onTotal }) => {
   const [counts, setCounts] = useState({});
 
   const handleCount = (studentId, n) => {
@@ -53,6 +58,10 @@ const PendingReviewsCard = ({ students = [], onOpenReviewQueue }) => {
     <StudentDraftProbe key={s.studentId} studentId={s.studentId} onCount={handleCount} />
   ));
 
+  useEffect(() => { onTotal?.(total); }, [total, onTotal]);
+
+  if (silencioso) return <>{probes}</>;
+
   // Zero-state silencioso: se nenhum aluno tem DRAFT, só mantém os probes vivos
   // (para reagir a novo rascunho em tempo real) e não renderiza o card.
   if (studentsWithDraft.length === 0) return <>{probes}</>;
@@ -62,25 +71,23 @@ const PendingReviewsCard = ({ students = [], onOpenReviewQueue }) => {
       {probes}
       <button
         onClick={onOpenReviewQueue}
-        className="glass-card w-full p-4 mb-8 flex items-center gap-3 hover:bg-slate-800/40 transition text-left"
+        className="glass-card-hover w-full px-4 py-3 flex items-center gap-3 text-left"
       >
-        <div className="p-2 bg-amber-500/10 rounded-lg shrink-0">
-          <FileText className="w-5 h-5 text-amber-400" />
-        </div>
-        <div className="flex-1">
+        <FileText className="w-4 h-4 shrink-0" strokeWidth={1.75} style={{ color: 'var(--warn)' }} />
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-white">Revisões pendentes</span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium">
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>Revisões pendentes</span>
+            <span className="text-[11px] tabular" style={{ color: 'var(--ink-3)' }}>
               {total} {total === 1 ? 'rascunho' : 'rascunhos'}
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">
+          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--ink-4)' }}>
             {studentsWithDraft.length === 1
               ? `${studentsWithDraft[0].name || studentsWithDraft[0].email} · ${counts[studentsWithDraft[0].studentId]} rascunho(s) para publicar`
               : `${studentsWithDraft.length} alunos com rascunhos — abrir Fila de Revisão para continuar`}
           </div>
         </div>
-        <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
+        <ChevronRight className="w-4 h-4 shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink-4)' }} />
       </button>
     </>
   );

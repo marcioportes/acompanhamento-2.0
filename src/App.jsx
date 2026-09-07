@@ -533,7 +533,10 @@ const AppContent = () => {
       />
 
       {/* Conteúdo principal */}
-      <main className={`transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'} ${viewingAsStudent ? 'pt-12' : ''}`}>
+      <main
+        className={`transition-all duration-200 ${viewingAsStudent ? 'pt-12' : ''}`}
+        style={{ marginLeft: sidebarCollapsed ? '68px' : '228px' }}
+      >
         {renderContent()}
       </main>
 

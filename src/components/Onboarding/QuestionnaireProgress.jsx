@@ -35,7 +35,7 @@ export default function QuestionnaireProgress({ progressByDimension, currentQues
       {/* Overall bar */}
       <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500 ease-out"
+          className="h-full bg-[var(--accent)] rounded-full transition-all duration-500 ease-out"
           style={{ width: `${overallProgress}%` }}
         />
       </div>

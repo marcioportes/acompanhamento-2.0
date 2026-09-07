@@ -18,6 +18,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentIds } from '../utils/mentorAccountsVisibility';
 import DebugBadge from '../components/DebugBadge';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
 
 const statusColor = {
   DRAFT: 'text-amber-400',
@@ -209,7 +211,7 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
   );
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <>
       {/* Probes invisíveis — 1 por aluno por status. Alimentam draftCounts/closedCounts. */}
       {students.map(s => (
         <StudentStatusProbe key={`probe-d-${s.id}`} studentId={s.id} status="DRAFT" onCount={handleStatusCount} />
@@ -218,28 +220,27 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
         <StudentStatusProbe key={`probe-c-${s.id}`} studentId={s.id} status="CLOSED" onCount={handleStatusCount} />
       ))}
 
-      <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 bg-emerald-500/10 rounded-lg">
-          <ClipboardCheck className="w-5 h-5 text-emerald-400" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-bold text-white">Fila de Revisão</h1>
-          <p className="text-xs text-slate-400">
-            {includePublished
-              ? 'Alunos com rascunho aberto ou revisões publicadas. Atualize links de reunião/gravação direto na revisão.'
-              : 'Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.'}
-          </p>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none whitespace-nowrap">
-          <input
-            type="checkbox"
-            checked={includePublished}
-            onChange={(e) => setIncludePublished(e.target.checked)}
-            className="w-3.5 h-3.5 accent-emerald-500"
-          />
-          Incluir publicadas
-        </label>
-      </div>
+      <PageHeader
+        titulo="Fila de Revisão"
+        icone={ClipboardCheck}
+        contexto={includePublished
+          ? 'Alunos com rascunho aberto ou revisões publicadas. Atualize links de reunião/gravação direto na revisão.'
+          : 'Apenas alunos com rascunho aberto. Crie novas revisões a partir do extrato do plano.'}
+        acoes={(
+          <label className="flex items-center gap-2 text-[12px] cursor-pointer select-none whitespace-nowrap" style={{ color: 'var(--ink-2)' }}>
+            <input
+              type="checkbox"
+              checked={includePublished}
+              onChange={(e) => setIncludePublished(e.target.checked)}
+              className="w-3.5 h-3.5"
+              style={{ accentColor: 'var(--accent)' }}
+            />
+            Incluir publicadas
+          </label>
+        )}
+      />
+
+    <PageBody className="max-w-5xl mx-auto">
 
       {!loading && studentsToShow.length > 0 && (
         <div className="relative mb-3">
@@ -249,7 +250,8 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar aluno por nome ou email..."
-            className="w-full pl-9 pr-9 py-2 text-xs bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:border-emerald-500/50 focus:outline-none"
+            className="w-full pl-9 pr-9 h-9 text-[13px] focus:outline-none"
+            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
           />
           {search && (
             <button
@@ -329,7 +331,8 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
       })()}
 
       <DebugBadge component="ReviewQueuePage" />
-    </div>
+    </PageBody>
+    </>
   );
 };
 

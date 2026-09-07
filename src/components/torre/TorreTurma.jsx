@@ -20,18 +20,36 @@ import { MessageCircle, ArrowRight, TrendingUp, TrendingDown, Minus } from 'luci
 import { FAIXA, FAIXA_LABEL } from '../../utils/mentorRiskRadar';
 import { BEHAVIOR_LABELS, SEVERITY_LABELS } from '../Trades/behaviorDisplay';
 
-const ESTILO_FAIXA = {
-  [FAIXA.ACAO_HOJE]: 'bg-red-500/20 text-red-300 border-red-500/40',
-  [FAIXA.SUMIU]: 'bg-red-500/10 text-red-300 border-red-500/30',
-  [FAIXA.RISCO_ALTO]: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  [FAIXA.FORA_DO_PLANO]: 'bg-amber-500/10 text-amber-200 border-amber-500/20',
-  [FAIXA.ESFRIANDO]: 'bg-slate-700/50 text-slate-300 border-slate-600',
-  [FAIXA.EM_DIA]: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
-  [FAIXA.NUNCA_OPEROU]: 'bg-slate-800 text-slate-500 border-slate-700',
+/**
+ * Cor da faixa. Ela vive num ponto de 5px, não num fundo: numa turma de doze
+ * onde nove estão fora do "em dia", nove etiquetas coloridas empatam e a tela
+ * volta a não ter foco. O ponto ordena sem gritar.
+ */
+const COR_FAIXA = {
+  [FAIXA.ACAO_HOJE]: 'var(--neg)',
+  [FAIXA.SUMIU]: 'var(--neg)',
+  [FAIXA.RISCO_ALTO]: 'var(--warn)',
+  [FAIXA.FORA_DO_PLANO]: 'var(--warn)',
+  [FAIXA.ESFRIANDO]: 'var(--ink-3)',
+  [FAIXA.EM_DIA]: 'var(--pos)',
+  [FAIXA.NUNCA_OPEROU]: 'var(--ink-4)',
 };
 
+/** Só as duas faixas que exigem ato ganham tinta no texto. */
+const TEXTO_FAIXA = {
+  [FAIXA.ACAO_HOJE]: 'var(--neg)',
+  [FAIXA.SUMIU]: 'var(--neg)',
+};
+
+const Faixa = ({ faixa }) => (
+  <span className="chip" style={{ color: TEXTO_FAIXA[faixa] ?? 'var(--ink-2)' }}>
+    <span className="chip-dot" style={{ background: COR_FAIXA[faixa] }} />
+    {FAIXA_LABEL[faixa]}
+  </span>
+);
+
 const SETA = { up: TrendingUp, down: TrendingDown, flat: Minus };
-const COR_SETA = { up: 'text-red-400', down: 'text-emerald-400', flat: 'text-slate-600' };
+const COR_SETA = { up: 'var(--neg)', down: 'var(--pos)', flat: 'var(--ink-4)' };
 
 /** "hoje", "há 3 dias", "176 dias", "nunca". */
 const desdeQuandoOperou = (dias) => {
@@ -47,15 +65,19 @@ const linkWhatsapp = (numero, texto) => {
 };
 
 const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, onAbrirAluno }) => (
-  <div className="glass-card">
-    <div className="p-4 border-b border-slate-800/50 flex items-center justify-between">
-      <h3 className="font-semibold text-white">A turma</h3>
-      <div className="flex items-center gap-3">
-        <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+  <div className="glass-card overflow-hidden">
+    <div className="panel-head">
+      <h3 className="panel-title">A turma</h3>
+      <div className="flex items-center gap-2.5">
+        <span className="meta tabular">
           {filtro ? `${turma.length} de ${total}` : `${turma.length} ${turma.length === 1 ? 'aluno' : 'alunos'}`} · ordem de atenção
         </span>
         {filtro && (
-          <button onClick={onLimparFiltro} className="text-[11px] text-slate-400 hover:text-white px-2 py-0.5 rounded border border-slate-700">
+          <button
+            onClick={onLimparFiltro}
+            className="text-[11px] px-2 h-6 transition-colors"
+            style={{ borderRadius: 'var(--r-sm)', border: '1px solid var(--line-strong)', color: 'var(--ink-2)' }}
+          >
             ver todos
           </button>
         )}
@@ -63,12 +85,12 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
     </div>
 
     {turma.length === 0 ? (
-      <div className="p-8 text-center text-sm text-slate-500">Nenhum aluno neste recorte.</div>
+      <div className="px-4 py-8 text-center text-[13px]" style={{ color: 'var(--ink-3)' }}>Nenhum aluno neste recorte.</div>
     ) : (
     <>
     {/* Celular: cartão por aluno. Tabela de sete colunas rolando lateralmente é
         ilegível no telefone, e esta é a tela onde o mentor bate o olho. */}
-    <div className="sm:hidden divide-y divide-slate-800/50">
+    <div className="sm:hidden divide-y" style={{ borderColor: 'var(--line)' }}>
       {turma.map((a) => {
         const semana = a.resultadoSemanaR;
         const fora = a.foraDoPlanoSemana;
@@ -81,54 +103,52 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
           <div
             key={a.studentId}
             onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
-            className="p-3 active:bg-slate-800/40 transition-colors cursor-pointer"
+            className="px-3 py-2.5 transition-colors cursor-pointer active:bg-[var(--surface-2)]"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="font-medium text-white truncate">{a.name}</div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[13px] font-medium truncate" style={{ color: 'var(--ink)' }}>{a.name}</div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-4)' }}>
                   {a.atencao.faixa === FAIXA.RISCO_ALTO && a.radar
                     ? `${BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family} · ${a.atencao.motivo}`
                     : a.atencao.motivo}
                 </div>
               </div>
-              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border flex-shrink-0 ${ESTILO_FAIXA[a.atencao.faixa]}`}>
-                {FAIXA_LABEL[a.atencao.faixa]}
-              </span>
+              <span className="flex-shrink-0"><Faixa faixa={a.atencao.faixa} /></span>
             </div>
 
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               {semana?.comR ? (
-                <span className={`text-xs font-mono font-bold ${semana.valor >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className="text-[12px] font-semibold tabular" style={{ color: semana.valor >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                   {semana.valor >= 0 ? '+' : ''}{semana.valor.toFixed(1)}R
-                  <span className="text-slate-600 font-normal"> · {a.tradesSemana.length}t</span>
+                  <span className="font-normal" style={{ color: 'var(--ink-4)' }}> · {a.tradesSemana.length}t</span>
                 </span>
               ) : null}
               {fora?.pct > 0 && (
-                <span className="text-xs text-amber-400">{Math.round(fora.pct)}% fora</span>
+                <span className="text-[12px] tabular" style={{ color: 'var(--warn)' }}>{Math.round(fora.pct)}% fora</span>
               )}
               {a.radar && (
-                <span className="text-[11px] text-slate-400 truncate">
+                <span className="text-[11px] truncate" style={{ color: 'var(--ink-3)' }}>
                   {BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family}
                 </span>
               )}
               {a.pendencias?.feedback > 0 && (
-                <span className="text-[11px] text-blue-300">{a.pendencias.feedback} feedback</span>
+                <span className="text-[11px] tabular" style={{ color: 'var(--info)' }}>{a.pendencias.feedback} feedback</span>
               )}
 
               <span className="ml-auto flex items-center gap-1.5">
                 {wa && (
                   <a href={wa} target="_blank" rel="noopener noreferrer"
                      onClick={(e) => e.stopPropagation()}
-                     className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-                    <MessageCircle className="w-3.5 h-3.5" />
+                     className="icon-btn">
+                    <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
                   </a>
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId }); }}
-                  className="p-1.5 rounded-lg border border-slate-700 text-slate-300"
+                  className="icon-btn"
                 >
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                 </button>
               </span>
             </div>
@@ -140,17 +160,19 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
     <div className="hidden sm:block w-full overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="border-b border-slate-800 text-[10px] text-slate-500 uppercase tracking-wider">
-            <th className="p-3 font-bold">Aluno</th>
-            <th className="p-3 font-bold">Última operação</th>
-            <th className="p-3 font-bold text-right">Semana</th>
-            <th className="p-3 font-bold text-right">Fora do plano</th>
-            <th className="p-3 font-bold">Comportamento</th>
-            <th className="p-3 font-bold text-center">Devo</th>
-            <th className="p-3 font-bold text-right">Ações</th>
+          <tr>
+            {['Aluno', 'Última operação', 'Semana', 'Fora do plano', 'Comportamento', 'Devo', ''].map((h, i) => (
+              <th
+                key={h || i}
+                className={`px-3 py-2 text-[10px] font-semibold uppercase ${i >= 2 && i <= 3 ? 'text-right' : ''} ${i === 5 ? 'text-center' : ''}`}
+                style={{ letterSpacing: '0.06em', color: 'var(--ink-4)', borderBottom: '1px solid var(--line)' }}
+              >
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800/50 text-sm">
+        <tbody className="text-[13px]">
           {turma.map((a) => {
             const semana = a.resultadoSemanaR;
             const fora = a.foraDoPlanoSemana;
@@ -165,105 +187,113 @@ const TorreTurma = ({ turma = [], total = null, filtro = null, onLimparFiltro, o
               <tr
                 key={a.studentId}
                 onClick={() => onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId })}
-                className="hover:bg-slate-800/30 transition-colors cursor-pointer"
+                className="group cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
+                style={{ borderTop: '1px solid var(--line)' }}
               >
-                <td className="p-3">
-                  <div className="font-medium text-white whitespace-nowrap">{a.name}</div>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${ESTILO_FAIXA[a.atencao.faixa]}`}>
-                      {FAIXA_LABEL[a.atencao.faixa]}
-                    </span>
-                    {a.visaoRapida?.planName && (
-                      <span className="text-[10px] text-slate-600">{a.visaoRapida.planName}</span>
-                    )}
+                {/* Nome e estado na mesma linha: empilhados, cada aluno ocupava
+                    56px e a turma de doze não cabia na tela. */}
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium whitespace-nowrap" style={{ color: 'var(--ink)' }}>{a.name}</span>
+                    <Faixa faixa={a.atencao.faixa} />
                   </div>
+                  {a.visaoRapida?.planName && (
+                    <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--ink-4)' }}>{a.visaoRapida.planName}</div>
+                  )}
                 </td>
 
-                <td className="p-3 whitespace-nowrap">
-                  <span className={sumido ? 'text-red-400 font-bold' : a.diasSemOperar == null ? 'text-slate-600' : 'text-slate-300'}>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <span style={{ color: sumido ? 'var(--neg)' : a.diasSemOperar == null ? 'var(--ink-4)' : 'var(--ink-2)' }}>
                     {desdeQuandoOperou(a.diasSemOperar)}
                   </span>
-                  <div className="text-[10px] text-slate-600">
+                  <div className="text-[11px] truncate max-w-[220px]" style={{ color: 'var(--ink-4)' }}>
                     {a.atencao.faixa === FAIXA.RISCO_ALTO && a.radar
                       ? `${BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family} · ${a.atencao.motivo}`
                       : a.atencao.motivo}
                   </div>
                 </td>
 
-                <td className="p-3 text-right whitespace-nowrap font-mono">
+                <td className="px-3 py-2.5 text-right whitespace-nowrap tabular">
                   {semana?.comR ? (
                     <>
-                      <span className={semana.valor >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      <span className="font-medium" style={{ color: semana.valor >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
                         {semana.valor >= 0 ? '+' : ''}{semana.valor.toFixed(1)}R
                       </span>
-                      <div className="text-[10px] text-slate-600">
+                      <div className="text-[11px]" style={{ color: 'var(--ink-4)' }}>
                         {a.tradesSemana.length} {a.tradesSemana.length === 1 ? 'trade' : 'trades'}
                       </div>
                     </>
                   ) : (
-                    <span className="text-slate-700">—</span>
+                    <span style={{ color: 'var(--ink-4)' }}>—</span>
                   )}
                 </td>
 
-                <td className="p-3 text-right whitespace-nowrap">
+                <td className="px-3 py-2.5 text-right whitespace-nowrap tabular">
                   {fora ? (
                     <span className="inline-flex items-center gap-1">
-                      <span className={fora.pct >= 30 ? 'text-red-400 font-bold' : fora.pct > 0 ? 'text-amber-400' : 'text-slate-400'}>
+                      <span
+                        className={fora.pct >= 30 ? 'font-semibold' : ''}
+                        style={{ color: fora.pct >= 30 ? 'var(--neg)' : fora.pct > 0 ? 'var(--warn)' : 'var(--ink-2)' }}
+                      >
                         {Math.round(fora.pct)}%
                       </span>
-                      {Seta && <Seta className={`w-3 h-3 ${COR_SETA[fora.direcao]}`} />}
+                      {Seta && <Seta className="w-3 h-3" strokeWidth={2} style={{ color: COR_SETA[fora.direcao] }} />}
                     </span>
                   ) : (
-                    <span className="text-slate-700">—</span>
+                    <span style={{ color: 'var(--ink-4)' }}>—</span>
                   )}
-                  {fora?.regraPior && <div className="text-[10px] text-slate-600 truncate max-w-[140px]">{fora.regraPior}</div>}
+                  {fora?.regraPior && (
+                    <div className="text-[11px] truncate max-w-[140px] ml-auto" style={{ color: 'var(--ink-4)' }}>{fora.regraPior}</div>
+                  )}
                 </td>
 
-                <td className="p-3">
+                <td className="px-3 py-2.5">
                   {a.radar ? (
                     <>
-                      <span className="text-slate-300 text-xs">{BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family}</span>
-                      <div className="text-[10px] text-slate-600">
+                      <span style={{ color: 'var(--ink-2)' }}>{BEHAVIOR_LABELS[a.radar.code] ?? a.radar.family}</span>
+                      <div className="text-[11px]" style={{ color: 'var(--ink-4)' }}>
                         severidade {String(SEVERITY_LABELS[a.radar.severity] ?? a.radar.severity).toLowerCase()}
                         {a.radar.graves > 1 && ` · ${a.radar.graves} graves`}
                         {a.radar.ocorrencias > a.radar.graves && ` · ${a.radar.ocorrencias} achados`}
                       </div>
                     </>
                   ) : (
-                    <span className="text-slate-700">—</span>
+                    <span style={{ color: 'var(--ink-4)' }}>—</span>
                   )}
                 </td>
 
-                <td className="p-3 text-center">
+                <td className="px-3 py-2.5 text-center tabular">
                   {a.pendencias?.feedback > 0 ? (
-                    <span className="text-[11px] font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded-full">
+                    <span className="text-[12px] font-semibold" style={{ color: 'var(--info)' }}>
                       {a.pendencias.feedback}
                     </span>
                   ) : (
-                    <span className="text-slate-700">—</span>
+                    <span style={{ color: 'var(--ink-4)' }}>—</span>
                   )}
                 </td>
 
-                <td className="p-3">
-                  <div className="flex items-center justify-end gap-1.5">
+                {/* As ações só aparecem na linha sob o cursor. Vinte botões
+                    permanentes numa lista de dez é ruído em toda a coluna. */}
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                     {wa && (
                       <a
                         href={wa}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                        className="icon-btn"
                         title="Falar no WhatsApp"
                       >
-                        <MessageCircle className="w-3.5 h-3.5" />
+                        <MessageCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
                       </a>
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); onAbrirAluno?.({ email: a.email, name: a.name, studentId: a.studentId }); }}
-                      className="p-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800/50 transition-colors"
+                      className="icon-btn"
                       title="Abrir ficha"
                     >
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.75} />
                     </button>
                   </div>
                 </td>

@@ -2,6 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Tokens de superfície e tinta — face lift 2026-09
+   ------------------------------------------------------------
+   Uma escala de luminância, não sete cinzas do Tailwind escolhidos
+   a esmo. Profundidade vem de UM passo de luz + fio de 1px, não de
+   blur e sombra: blur em tudo achata a hierarquia porque tudo passa
+   a ter o mesmo peso.
+   ============================================================ */
+:root {
+  --bg:            #0a0c0f;
+  --surface:       #101318;
+  --surface-2:     #161b21;
+  --surface-3:     #1c222a;
+
+  --line:          #1e242c;
+  --line-strong:   #2a323d;
+
+  --ink:           #e7ebf0;
+  --ink-2:         #9aa5b3;
+  --ink-3:         #6a7484;
+  --ink-4:         #47505e;
+
+  --accent:        #2dd4bf;
+  --accent-soft:   rgba(45, 212, 191, 0.10);
+  --accent-line:   rgba(45, 212, 191, 0.28);
+
+  --pos:           #34d399;
+  --neg:           #f87171;
+  --warn:          #fbbf24;
+  --info:          #60a5fa;
+
+  --r:             10px;
+  --r-sm:          7px;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -9,17 +44,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.5);
-  border-radius: 4px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.3);
+  background: var(--line-strong);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.5);
+  background: var(--ink-4);
 }
 
 /* Base styles */
@@ -29,12 +63,29 @@
   }
   
   body {
-    @apply bg-slate-950 text-slate-100;
+    background: var(--bg);
+    color: var(--ink);
     font-family: 'DM Sans', system-ui, sans-serif;
+    /* Texto pequeno em fundo escuro engorda sem isto. */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  /* Sora só nos títulos de página. Em rótulo de 11px a display font vira
+     ruído — ali quem lê melhor é a DM Sans. */
+  h1, h2 {
     font-family: 'Sora', system-ui, sans-serif;
+    letter-spacing: -0.015em;
+  }
+
+  h3, h4, h5, h6 {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    letter-spacing: -0.005em;
+  }
+
+  /* Número que muda de largura ao atualizar faz a coluna dançar. */
+  .tabular, table td, table th {
+    font-variant-numeric: tabular-nums;
   }
 
   input, textarea, select {
@@ -56,12 +107,44 @@
 
 /* Component styles */
 @layer components {
+  /* Painel. Um passo de luz acima do fundo + fio de 1px. Sem blur: o que
+     estava atrás de um card opaco nunca precisou ser insinuado. */
   .glass-card {
-    @apply bg-slate-900/60 backdrop-blur-xl border border-slate-800/50 rounded-2xl shadow-xl;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
   }
 
   .glass-card-hover {
-    @apply glass-card hover:bg-slate-800/60 hover:border-slate-700/50 transition-all duration-300;
+    @apply glass-card transition-colors duration-150;
+  }
+  .glass-card-hover:hover {
+    background: var(--surface-2);
+    border-color: var(--line-strong);
+  }
+
+  /* Cabeçalho de painel — o ritmo é o mesmo em toda seção da tela. */
+  .panel-head {
+    @apply flex items-center justify-between gap-3 px-4 py-3;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-title {
+    @apply text-[13px] font-semibold;
+    color: var(--ink);
+  }
+
+  /* Rótulo de apoio. 11px com tracking curto — não 9px em caixa alta
+     espremida, que é ilegível e some. */
+  .meta {
+    @apply text-[11px];
+    color: var(--ink-3);
+  }
+
+  .eyebrow {
+    @apply text-[10px] font-semibold uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-4);
   }
 
   .gradient-text {
@@ -72,29 +155,51 @@
     @apply relative before:absolute before:inset-0 before:rounded-2xl before:p-[1px] before:bg-gradient-to-r before:from-blue-500/50 before:via-purple-500/50 before:to-cyan-500/50 before:-z-10;
   }
 
+  /* Botões. O primário era um gradiente azul→ciano com sombra colorida e
+     `active:scale-95` — chamativo o bastante para competir com o dado da tela em
+     que ele aparece. Agora é o acento da marca, chapado, num único raio. */
   .btn-primary {
-    @apply bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 shadow-lg hover:shadow-blue-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 text-[13px] font-medium px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    border-radius: var(--r-sm);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    color: var(--accent);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: rgba(45, 212, 191, 0.16);
   }
 
   .btn-secondary {
-    @apply bg-slate-800/80 hover:bg-slate-700/80 text-white font-medium px-6 py-3 rounded-xl border border-slate-700/50 transition-all duration-300 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 text-[13px] font-medium px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    border-radius: var(--r-sm);
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-3);
+    color: var(--ink);
   }
 
   .btn-danger {
-    @apply bg-red-500/20 hover:bg-red-500/30 text-red-400 font-medium px-6 py-3 rounded-xl border border-red-500/30 transition-all duration-300 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 text-[13px] font-medium px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    border-radius: var(--r-sm);
+    background: rgba(248, 113, 113, 0.10);
+    border: 1px solid rgba(248, 113, 113, 0.28);
+    color: var(--neg);
   }
 
   .btn-success {
-    @apply bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 font-medium px-6 py-3 rounded-xl border border-emerald-500/30 transition-all duration-300 active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 text-[13px] font-medium px-4 py-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    border-radius: var(--r-sm);
+    background: rgba(52, 211, 153, 0.10);
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    color: var(--pos);
   }
 
+  /* Sem o véu azul→roxo por cima: ele tingia todo número de toda tela. */
   .stat-card {
-    @apply glass-card p-6 relative overflow-hidden;
-  }
-
-  .stat-card::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5;
+    @apply glass-card p-4 relative overflow-hidden;
   }
 
   .input-group {
@@ -109,16 +214,51 @@
     @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold;
   }
 
+  /* Etiqueta de estado. Fundo neutro sempre; a cor entra num ponto de 5px.
+     Dez etiquetas coloridas numa lista de dez alunos = nenhum destaque. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-[3px];
+    border-radius: var(--r-sm);
+    background: var(--surface-3);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+
+  .chip-dot {
+    @apply w-[5px] h-[5px] rounded-full flex-shrink-0;
+    background: currentColor;
+  }
+
+  /* Botão-ícone das ações de linha. */
+  .icon-btn {
+    @apply inline-flex items-center justify-center w-7 h-7 transition-colors;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--line);
+    color: var(--ink-3);
+  }
+  .icon-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+
   .badge-win {
-    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+    background: rgba(52, 211, 153, 0.10);
+    color: var(--pos);
+    border: 1px solid rgba(52, 211, 153, 0.24);
   }
 
   .badge-loss {
-    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+    background: rgba(248, 113, 113, 0.10);
+    color: var(--neg);
+    border: 1px solid rgba(248, 113, 113, 0.24);
   }
 
   .badge-neutral {
-    @apply bg-slate-500/20 text-slate-400 border border-slate-500/30;
+    background: var(--surface-3);
+    color: var(--ink-2);
+    border: 1px solid var(--line);
   }
 
   .table-row {
@@ -126,11 +266,21 @@
   }
 
   .menu-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 cursor-pointer;
+    @apply flex items-center gap-3 px-3 py-2 text-[13px] transition-colors duration-150 cursor-pointer;
+    border-radius: var(--r-sm);
+    color: var(--ink-2);
+  }
+  .menu-item:hover {
+    background: var(--surface-2);
+    color: var(--ink);
   }
 
+  /* Item ativo: superfície + filete de acento na borda esquerda. O gradiente
+     azul→roxo dizia "2021" e competia com o conteúdo da tela. */
   .menu-item.active {
-    @apply text-white bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30;
+    background: var(--surface-3);
+    color: var(--ink);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 
   .tooltip {

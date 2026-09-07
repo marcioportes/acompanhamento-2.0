@@ -55,10 +55,9 @@ const sub = (over = {}) => ({
   id: 'su1', studentId: 's1', plan: 'alpha', type: 'paid', status: 'active', renewalDate: new Date(Date.now() + 60 * 86_400_000), ...over,
 });
 
-const getStatCardByLabel = (label) => {
-  const labelEl = screen.getAllByText(label).find((el) => el.tagName === 'P');
-  return labelEl.closest('div');
-};
+// `data-tile` é a âncora do StatTile: sobrevive a mudança de markup, que um
+// seletor por tag não sobrevive.
+const getStatCardByLabel = (label) => document.querySelector(`[data-tile="${label}"]`);
 
 describe('StudentsManagement — 3 buckets (Alpha / Espelho / Trial)', () => {
   beforeEach(() => {

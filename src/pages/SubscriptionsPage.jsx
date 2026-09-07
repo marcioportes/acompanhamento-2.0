@@ -22,6 +22,9 @@ import { doc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { useStudents } from '../hooks/useStudents';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
+import StatTile from '../components/ui/StatTile';
 import DebugBadge from '../components/DebugBadge';
 import RenewalForecast from '../components/RenewalForecast';
 import StudentsListTab from '../components/Students/StudentsListTab';
@@ -512,19 +515,17 @@ const SubscriptionsPage = () => {
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-400 animate-spin" /></div>;
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl lg:text-3xl font-display font-bold text-white flex items-center gap-3"><CreditCard className="w-8 h-8 text-blue-400" />Assinaturas</h1>
-            <p className="text-slate-400 mt-1">Gestao de assinaturas da mentoria</p>
-          </div>
-          {activeTab === 'subs' && (
-            <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium transition-colors"><Plus className="w-4 h-4" />Nova Assinatura</button>
-          )}
-        </div>
-      </div>
+    <div className="min-h-screen">
+      <PageHeader
+        titulo="Assinaturas"
+        icone={CreditCard}
+        contexto="Gestão de assinaturas da mentoria"
+        acoes={activeTab === 'subs' ? (
+          <button onClick={openNew} className="btn-primary"><Plus className="w-3.5 h-3.5" strokeWidth={1.75} />Nova Assinatura</button>
+        ) : null}
+      />
+
+    <PageBody>
 
       {/* Tabs */}
       <div className="flex items-center gap-1 mb-6 border-b border-slate-800/50">
@@ -565,7 +566,7 @@ const SubscriptionsPage = () => {
             { value: `${live.filter(s => s.type === 'paid').length} / ${live.filter(s => s.type === 'trial').length} / ${live.filter(s => s.type === 'vip').length}`, label: 'Pagantes / Trial / VIP', icon: DollarSign, color: 'blue', isText: true },
           ];
         })().map((card, i) => (
-          <div key={i} className="glass-card p-4"><div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl bg-${card.color}-500/15 flex items-center justify-center`}><card.icon className={`w-5 h-5 text-${card.color}-400`} /></div><div><p className="text-2xl font-bold text-white">{card.isText ? card.value : card.value}</p><p className="text-xs text-slate-400">{card.label}</p></div></div></div>
+          <StatTile key={i} icone={card.icon} valor={card.value} rotulo={card.label} />
         ))}
       </div>
 
@@ -971,6 +972,7 @@ const SubscriptionsPage = () => {
       )}
 
       <DebugBadge component="SubscriptionsPage" />
+    </PageBody>
     </div>
   );
 };

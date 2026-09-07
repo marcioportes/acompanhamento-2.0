@@ -226,7 +226,7 @@ const AccountSetupWizard = ({ onComplete }) => {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--surface-3)] border border-[var(--line-strong)] flex items-center justify-center">
             <Wallet className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-display font-bold text-white mb-2">

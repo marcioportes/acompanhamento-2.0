@@ -49,6 +49,8 @@ import { getAllowedInstrumentsForFirm, getInstrument } from '../constants/instru
 import AccountDetailPage from './AccountDetailPage';
 import StudentAccountGroup from '../components/StudentAccountGroup';
 import PlanManagementModal from '../components/PlanManagementModal';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
 import DebugBadge from '../components/DebugBadge';
 import { collection, query, where, onSnapshot, getDocs, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -633,14 +635,30 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
   }
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <div><h1 className="text-2xl lg:text-3xl font-display font-bold text-white">{isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}</h1><p className="text-slate-400 mt-1">{isMentor() ? 'Visualize as contas de trading de seus alunos' : 'Gerencie suas contas de trading'}</p></div>
-          {!isMentor() && (<button onClick={() => openModal()} className="btn-primary flex items-center gap-2"><Plus className="w-4 h-4" /> Nova Conta</button>)}
+    <div className="min-h-screen">
+      <PageHeader
+        titulo={isMentor() ? 'Contas dos Alunos' : 'Minhas Contas'}
+        icone={Wallet}
+        contexto={isMentor() ? 'Visualize as contas de trading de seus alunos' : 'Gerencie suas contas de trading'}
+        acoes={!isMentor() ? (
+          <button onClick={() => openModal()} className="btn-primary"><Plus className="w-3.5 h-3.5" strokeWidth={1.75} /> Nova Conta</button>
+        ) : null}
+      />
+
+    <PageBody>
+      {isMentor() && (
+        <div className="relative max-w-md mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={14} style={{ color: 'var(--ink-4)' }} />
+          <input
+            type="text"
+            placeholder="Buscar..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 h-9 text-[13px] focus:outline-none"
+            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
+          />
         </div>
-        {isMentor() && (<div className="relative max-w-md"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500/50 transition-colors" /></div>)}
-      </div>
+      )}
 
       {isMentor() ? (
         <MentorAccountsGrid
@@ -1037,6 +1055,7 @@ const AccountsPage = ({ initialAccount = null, onInitialConsumed } = {}) => {
       )}
       <DebugBadge component="AccountsPage" />
       {confirmDialog}
+    </PageBody>
     </div>
   );
 };

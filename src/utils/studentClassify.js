@@ -139,10 +139,15 @@ export const lacksAuthUser = (student) => {
   return false;
 };
 
+/**
+ * `pill` é a classe da etiqueta; `cor` é o ponto de 5px que carrega o significado.
+ * Fundo neutro em todas: numa lista onde quase todo mundo tem etiqueta, fundo
+ * colorido em cada linha vira listra e nenhuma se destaca.
+ */
 export const ACCESS_STATUS_CONFIG = {
-  none:    { label: 'sem acesso',          pill: 'bg-slate-500/15 text-slate-400 border border-slate-500/30' },
-  pending: { label: 'aguardando 1º login', pill: 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30' },
-  active:  { label: 'ativo',               pill: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' },
+  none:    { label: 'sem acesso',          pill: 'chip', cor: 'var(--ink-4)' },
+  pending: { label: 'aguardando 1º login', pill: 'chip', cor: 'var(--warn)' },
+  active:  { label: 'ativo',               pill: 'chip', cor: 'var(--pos)' },
 };
 
 export const isExpiringSoon = (sub, now = new Date()) => {
@@ -156,8 +161,8 @@ export const isExpiringSoon = (sub, now = new Date()) => {
 };
 
 export const TIER_CONFIG = {
-  alpha:              { label: 'Alpha',             pill: 'bg-purple-500/15 text-purple-300 border border-purple-500/30', dot: 'bg-purple-400' },
-  espelho:            { label: 'Espelho',           pill: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',       dot: 'bg-cyan-400' },
-  'trial-alpha':      { label: 'Trial · Alpha',     pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
-  'trial-espelho':    { label: 'Trial · Espelho',   pill: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',    dot: 'bg-amber-400' },
+  alpha:              { label: 'Alpha',           pill: 'chip', cor: 'var(--accent)', dot: 'bg-teal-400' },
+  espelho:            { label: 'Espelho',         pill: 'chip', cor: 'var(--info)',   dot: 'bg-sky-400' },
+  'trial-alpha':      { label: 'Trial · Alpha',   pill: 'chip', cor: 'var(--warn)',   dot: 'bg-amber-400' },
+  'trial-espelho':    { label: 'Trial · Espelho', pill: 'chip', cor: 'var(--warn)',   dot: 'bg-amber-400' },
 };

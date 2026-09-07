@@ -15,10 +15,11 @@
 import { useState, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, CalendarDays, MessageSquare,
-  Maximize2, X, ArrowRight, ImageOff,
-} from 'lucide-react';
+  Maximize2, X, ArrowRight, ImageOff, FileText } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import Loading from '../components/Loading';
+import PageHeader from '../components/ui/PageHeader';
+import PageBody from '../components/ui/PageBody';
 import DebugBadge from '../components/DebugBadge';
 import { formatCurrencyDynamic } from '../utils/currency';
 import { fmtTradeTime } from '../utils/tradeTimezone';
@@ -156,38 +157,28 @@ const TradeReportPage = ({ onNavigateToFeedback }) => {
   const openTrade = (trade) => onNavigateToFeedback?.(trade);
 
   return (
-    <div className="min-h-screen p-6 lg:p-8 pb-20 animate-in fade-in">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Relatório do Mês</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Os trades que o mentor comentou — o que você escreveu na entrada e o que ele respondeu.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
-            className="p-2 rounded-lg border border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all"
-            aria-label="Mês anterior"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-2 min-w-[10rem] justify-center">
-            <CalendarDays className="w-4 h-4 text-slate-500" />
-            <span className="font-semibold text-white capitalize">{monthLabel(month)}</span>
+    <div className="min-h-screen">
+      <PageHeader
+        titulo="Relatório do Mês"
+        icone={FileText}
+        contexto="Os trades que o mentor comentou — o que você escreveu na entrada e o que ele respondeu."
+        acoes={(
+          <div className="flex items-center gap-1">
+            <button onClick={() => setMonth((m) => shiftMonth(m, -1))} className="icon-btn" aria-label="Mês anterior">
+              <ChevronLeft className="w-3.5 h-3.5" strokeWidth={1.75} />
+            </button>
+            <span className="flex items-center gap-1.5 px-2 text-[13px] font-medium capitalize min-w-[9rem] justify-center" style={{ color: 'var(--ink)' }}>
+              <CalendarDays className="w-3.5 h-3.5" strokeWidth={1.75} style={{ color: 'var(--ink-4)' }} />
+              {monthLabel(month)}
+            </span>
+            <button onClick={() => setMonth((m) => shiftMonth(m, 1))} className="icon-btn" aria-label="Próximo mês">
+              <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+            </button>
           </div>
-          <button
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-            className="p-2 rounded-lg border border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all"
-            aria-label="Próximo mês"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+        )}
+      />
 
+    <PageBody>
       {/* RESUMO — total por moeda, nunca um número só (#289/#408) */}
       {report.count > 0 && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-5 text-sm">
@@ -262,6 +253,7 @@ const TradeReportPage = ({ onNavigateToFeedback }) => {
       )}
 
       <DebugBadge component="TradeReportPage" />
+    </PageBody>
     </div>
   );
 };

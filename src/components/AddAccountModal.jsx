@@ -335,7 +335,7 @@ const AddAccountModal = ({
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-slate-800/50">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-[var(--surface-3)] flex items-center justify-center">
                 <Wallet className="w-5 h-5 text-blue-400" />
               </div>
               <div>

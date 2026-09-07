@@ -29,6 +29,7 @@ import MaturitySemaphoreBadge from '../components/MaturitySemaphoreBadge';
 import MentorMaturityAlert from '../components/MentorMaturityAlert';
 import MentorPromotionAlert from '../components/MentorPromotionAlert';
 import Loading from '../components/Loading';
+import PageHeader from '../components/ui/PageHeader';
 import DebugBadge from '../components/DebugBadge';
 import TorreDeControle from '../components/torre/TorreDeControle';
 import TorreVisaoRapida from '../components/torre/TorreVisaoRapida';
@@ -47,7 +48,7 @@ import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Inbox } from 'lucide-react';
+import { Inbox, Check } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -65,6 +66,8 @@ import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
 import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
+import { isReadyForPromotion } from '../utils/maturityEngine/promotionReadiness';
+import { regressaoVigente } from '../utils/maturityEngine/regressionVisibility';
 
 const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateToFeedback }) => {
   const toast = useToast();
@@ -108,13 +111,31 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // Overview de maturidade de todos os alunos (semáforo na lista) — issue #119 task 17
   const { map: maturityByStudentId } = useMentorMaturityOverview(true);
 
+
   const viewMapping = { 'dashboard': 'overview', 'torre': 'torre', 'students': 'students', 'pending': 'pending', 'attention': 'attention', 'closures': 'closures' };
   const activeView = viewMapping[currentView] || 'overview';
 
   const students = useMemo(() => getUniqueStudents(), [getUniqueStudents]);
+  // O contador do bloco "Decisão sua" usa EXATAMENTE os predicados que fazem cada
+  // alerta aparecer. Reimplementar a regra aqui é como o número acima e a lista
+  // abaixo passam a discordar — que é o defeito que já existe hoje entre o menu
+  // e a aba "Precisam Atenção".
+  const totalDecisoes = useMemo(() => {
+    let n = 0;
+    for (const s of students) {
+      const m = maturityByStudentId.get(s.studentId);
+      if (!m) continue;
+      if (isReadyForPromotion(m)) n += 1;
+      if (regressaoVigente(m).visivel) n += 1;
+    }
+    return n;
+  }, [students, maturityByStudentId]);
   const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
+  // Contagem de rascunhos: sobe dos probes do PendingReviewsCard (um listener por
+  // aluno, os mesmos de sempre) para o bloco "Você deve" da Agenda.
+  const [rascunhosPendentes, setRascunhosPendentes] = useState(0);
   // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
   // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
   // "Precisam Atenção" e os alertas do cockpit listavam gente que já tinha saído:
@@ -433,37 +454,78 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     );
   }
 
+  // Rótulo e contagem separados: o número vai num badge próprio, alinhado e
+  // tabular. "Aguardando Feedback (14)" dentro do texto faz a aba mudar de
+  // largura a cada escrita do Firestore.
+  const abas = [
+    // #101 Fase E — a Torre é a home: é ela que diz o que fazer. Análises (ex-Visão
+    // Geral) é o nível de baixo, para investigar depois de escolher a pessoa.
+    { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
+    { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
+    { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
+    { id: 'pending', sidebarId: 'pending', label: 'Aguardando Feedback', icon: MessageSquare, contagem: pendingFeedback.length },
+    { id: 'attention', sidebarId: 'attention', label: 'Precisam Atenção', icon: AlertTriangle, contagem: studentsNeedingAttention.length },
+    { id: 'closures', sidebarId: 'closures', label: 'Closures', icon: Inbox, contagem: closuresPendingCount },
+  ];
+
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl lg:text-3xl font-display font-bold text-white">Dashboard do Mentor</h1>
-        <p className="text-slate-400 mt-1">Visão geral da turma</p>
+    <div className="min-h-screen">
+      {/* Cabeçalho fino e fixo. O título de 30px com subtítulo embaixo comia
+          120px da dobra para dizer em que tela você já sabia que estava. */}
+      <PageHeader titulo="Mentor" contexto="Visão geral da turma" />
+
+      <div className="px-6 pt-4">
+        {/* Segmented control de verdade: um trilho, o ativo é uma pastilha
+            elevada. Antes eram seis botões soltos com um azul no meio. */}
+        <div
+          className="inline-flex items-center gap-0.5 p-0.5 max-w-full overflow-x-auto"
+          style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
+        >
+          {abas.map(tab => {
+            const ativo = activeView === tab.id;
+            return (
+              <button
+                key={tab.id}
+                data-tab={tab.id}
+                onClick={() => { onViewChange(tab.sidebarId); setSelectedTradeIds(new Set()); }}
+                className="flex items-center gap-2 px-3 h-8 text-[13px] whitespace-nowrap transition-colors flex-shrink-0"
+                style={{
+                  borderRadius: 'var(--r-sm)',
+                  background: ativo ? 'var(--surface-3)' : 'transparent',
+                  color: ativo ? 'var(--ink)' : 'var(--ink-3)',
+                  fontWeight: ativo ? 600 : 400,
+                }}
+              >
+                <tab.icon className="w-3.5 h-3.5" strokeWidth={1.75} />
+                {tab.label}
+                {tab.contagem > 0 && (
+                  <span
+                    className="text-[11px] tabular font-semibold px-1.5 rounded"
+                    style={{ background: 'var(--surface-2)', color: 'var(--ink-2)' }}
+                  >
+                    {tab.contagem}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
-        {[
-          // #101 Fase E — a Torre é a home: é ela que diz o que fazer. Análises (ex-Visão
-          // Geral) é o nível de baixo, para investigar depois de escolher a pessoa.
-          { id: 'torre', sidebarId: 'torre', label: 'Torre de Controle', icon: Radar },
-          { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
-          { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
-          { id: 'pending', sidebarId: 'pending', label: `Aguardando Feedback (${pendingFeedback.length})`, icon: MessageSquare },
-          { id: 'attention', sidebarId: 'attention', label: `Precisam Atenção (${studentsNeedingAttention.length})`, icon: AlertTriangle },
-          { id: 'closures', sidebarId: 'closures', label: `Closures${closuresPendingCount > 0 ? ` (${closuresPendingCount})` : ''}`, icon: Inbox },
-        ].map(tab => (
-          <button key={tab.id} onClick={() => { onViewChange(tab.sidebarId); setSelectedTradeIds(new Set()); }} 
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${activeView === tab.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}>
-            <tab.icon className="w-4 h-4" />{tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="px-6 pt-6 pb-8">
 
       {activeView === 'torre' && (
         <TorreDeControle
           radar={radar}
           onAbrirAluno={abrirAluno}
+          rascunhos={rascunhosPendentes}
+          fechamentosPendentes={closuresPendingCount}
+          totalDecisoes={totalDecisoes}
+          onIrParaFeedback={() => onViewChange('pending')}
+          onIrParaRevisoes={() => onViewChange('reviews')}
+          onIrParaFechamentos={() => onViewChange('closures')}
           extrasAcao={(
-            <>
+            <div className="px-4 py-3" style={{ borderTop: '1px solid var(--line)' }}>
               {/* #376 — promoção vem antes da regressão: é a notícia boa, e era a
                   que não existia em lugar nenhum. Ambas somem quando vazias. */}
               <MentorPromotionAlert
@@ -476,39 +538,18 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                 maturityMap={maturityByStudentId}
                 onSelectStudent={(student) => abrirAluno({ email: student.email, name: student.name })}
               />
-            </>
-          )}
-          pendencias={(
-            <div className="space-y-4">
-              <PendingReviewsCard
-                students={students}
-                onOpenReviewQueue={() => onViewChange('reviews')}
-              />
-              {/* #101 faixa 3 — o que EU devo. Contador que leva à tela onde o
-                  trabalho acontece; a lista não se repete aqui. */}
-              <button
-                onClick={() => onViewChange('pending')}
-                className="w-full glass-card p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <MessageSquare className={`w-5 h-5 ${pendingFeedback.length > 0 ? 'text-blue-400' : 'text-slate-600'}`} />
-                  <div>
-                    <div className="font-semibold text-white text-sm">Aguardando feedback</div>
-                    <div className="text-[11px] text-slate-500">
-                      {pendingFeedback.length === 0
-                        ? 'nenhum trade esperando por você'
-                        : `${pendingFeedback.length} ${pendingFeedback.length === 1 ? 'trade espera' : 'trades esperam'} por você`}
-                    </div>
-                  </div>
-                </div>
-                {pendingFeedback.length > 0 && (
-                  <span className="text-lg font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full">
-                    {pendingFeedback.length}
-                  </span>
-                )}
-              </button>
             </div>
           )}
+        />
+      )}
+
+      {/* Probes de rascunho vivos fora da Agenda: a contagem alimenta o bloco 3 e
+          o card antigo deixou de existir como faixa solta no rodapé. */}
+      {activeView === 'torre' && (
+        <PendingReviewsCard
+          silencioso
+          students={students}
+          onTotal={setRascunhosPendentes}
         />
       )}
 
@@ -605,7 +646,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
                 <div key={student.email} className="p-4 hover:bg-slate-800/30 cursor-pointer transition-colors">
                   <div onClick={() => setSelectedStudent(student)} className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
+                      <div className="w-10 h-10 rounded-full bg-[var(--surface-3)] border border-[var(--line-strong)] flex items-center justify-center text-[var(--ink-2)] font-semibold">{student.name?.charAt(0)?.toUpperCase() || '?'}</div>
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-white">{student.name}</p>
@@ -732,25 +773,47 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 )}
 
       {activeView === 'attention' && (
-        <div className="space-y-4">
+        /* Lista, não seis cartões de 100px com moldura vermelha. Quando todo item
+           da tela está circundado de vermelho, o vermelho deixa de significar
+           alguma coisa — e a lista deixa de caber numa olhada. */
+        <div className="glass-card overflow-hidden">
+          <div className="panel-head">
+            <h3 className="panel-title">Precisam atenção</h3>
+            <span className="meta tabular">
+              {studentsNeedingAttention.length} {studentsNeedingAttention.length === 1 ? 'aluno' : 'alunos'} · prejuízo, win rate ou profit factor
+            </span>
+          </div>
+
           {studentsNeedingAttention.length === 0 ? (
-            <div className="glass-card p-8 text-center">
-              <AlertTriangle className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-white mb-2">Tudo sob controle!</h3>
-              <p className="text-slate-500">Nenhum aluno precisa de atenção especial.</p>
+            <div className="px-4 py-10 text-center">
+              <Check className="w-6 h-6 mx-auto mb-2" strokeWidth={1.5} style={{ color: 'var(--pos)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Tudo sob controle!</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--ink-4)' }}>Nenhum aluno precisa de atenção especial.</p>
             </div>
           ) : (
             studentsNeedingAttention.map(student => (
-              <div key={student.email} className="glass-card p-4 border-l-4 border-red-500">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-white">{student.name}</p>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {student.reasons.map((reason, i) => <span key={i} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full">{reason}</span>)}
-                    </div>
-                  </div>
-                  <button onClick={() => abrirAluno({ email: student.email, name: student.name })} className="btn-secondary py-2 px-4"><Eye className="w-4 h-4 mr-2" />Ver</button>
+              <div
+                key={student.email}
+                onClick={() => abrirAluno({ email: student.email, name: student.name })}
+                className="group px-4 py-2.5 flex items-center justify-between gap-4 cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
+                style={{ borderTop: '1px solid var(--line)', boxShadow: 'inset 2px 0 0 var(--neg)' }}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>{student.name}</span>
+                  {student.reasons.map((reason, i) => (
+                    <span key={i} className="chip" style={{ color: 'var(--neg)' }}>
+                      <span className="chip-dot" style={{ background: 'var(--neg)' }} />
+                      {reason}
+                    </span>
+                  ))}
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); abrirAluno({ email: student.email, name: student.name }); }}
+                  className="icon-btn opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-shrink-0"
+                  title="Abrir ficha"
+                >
+                  <Eye className="w-3.5 h-3.5" strokeWidth={1.75} />
+                </button>
               </div>
             ))
           )}
@@ -777,6 +840,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
       <DebugBadge component="MentorDashboard" />
+      </div>
     </div>
   );
 };

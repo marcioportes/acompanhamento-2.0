@@ -29,6 +29,7 @@ import { useTrades } from '../hooks/useTrades';
 import { useAuth } from '../contexts/AuthContext';
 import FeedbackPage from './FeedbackPage';
 import Loading from '../components/Loading';
+import PageHeader from '../components/ui/PageHeader';
 import DebugBadge from '../components/DebugBadge';
 import ExcursionDisplay from '../components/ExcursionDisplay';
 import { fmtTradeTime } from '../utils/tradeTimezone';
@@ -37,13 +38,14 @@ import { fmtTradeTime } from '../utils/tradeTimezone';
 // CONSTANTS
 // ============================================
 
+/** `cor` é o ponto de 5px da etiqueta; o fundo é sempre neutro. */
 const STATUS_CONFIG = {
-  QUESTION: { label: 'Dúvida', shortLabel: 'Dúvidas', icon: HelpCircle, bg: 'bg-amber-500/20', text: 'text-amber-400', ring: 'ring-amber-500/50', priority: 1 },
-  REVIEWED: { label: 'Revisado', shortLabel: 'Revisados', icon: CheckCircle, bg: 'bg-emerald-500/20', text: 'text-emerald-400', ring: 'ring-emerald-500/50', priority: 2 },
+  QUESTION: { label: 'Dúvida', shortLabel: 'Dúvidas', icon: HelpCircle, cor: 'var(--warn)', priority: 1 },
+  REVIEWED: { label: 'Revisado', shortLabel: 'Revisados', icon: CheckCircle, cor: 'var(--pos)', priority: 2 },
   // #333 — status terminal do #269 v2 (revisado + discutido em revisão publicada). Antes caía no fallback OPEN → "Pendente".
-  DISCUSSED: { label: 'Discutido', shortLabel: 'Discutidos', icon: MessageSquare, bg: 'bg-indigo-500/20', text: 'text-indigo-300', ring: 'ring-indigo-500/50', priority: 3 },
-  OPEN: { label: 'Pendente', shortLabel: 'Pendentes', icon: Clock, bg: 'bg-blue-500/20', text: 'text-blue-400', ring: 'ring-blue-500/50', priority: 4 },
-  CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, bg: 'bg-slate-500/20', text: 'text-slate-400', ring: 'ring-slate-500/50', priority: 5 }
+  DISCUSSED: { label: 'Discutido', shortLabel: 'Discutidos', icon: MessageSquare, cor: 'var(--info)', priority: 3 },
+  OPEN: { label: 'Pendente', shortLabel: 'Pendentes', icon: Clock, cor: 'var(--ink-3)', priority: 4 },
+  CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, cor: 'var(--ink-4)', priority: 5 }
 };
 
 const PERIOD_OPTIONS = [
@@ -93,10 +95,9 @@ const filterByPeriod = (trades, period) => {
 
 const StatusBadge = ({ status }) => {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OPEN;
-  const Icon = cfg.icon;
   return (
-    <span className={`inline-flex items-center rounded-full font-medium px-2 py-0.5 text-xs gap-1 ${cfg.bg} ${cfg.text}`}>
-      <Icon className="w-3 h-3" />
+    <span className="chip">
+      <span className="chip-dot" style={{ background: cfg.cor }} />
       {cfg.label}
     </span>
   );
@@ -109,17 +110,17 @@ const StatusPill = ({ statusKey, count, isActive, onClick }) => {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-all ${
-        isActive 
-          ? `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` 
-          : count > 0
-            ? `bg-slate-800/60 ${cfg.text} hover:${cfg.bg}`
-            : 'bg-slate-800/40 text-slate-600'
-      }`}
+      className="flex items-center gap-1.5 px-2.5 h-7 text-[12px] transition-colors"
+      style={{
+        borderRadius: 'var(--r-sm)',
+        background: isActive ? 'var(--surface-3)' : 'transparent',
+        color: isActive ? 'var(--ink)' : count > 0 ? 'var(--ink-2)' : 'var(--ink-4)',
+        fontWeight: isActive ? 600 : 400,
+      }}
     >
-      <Icon className="w-4 h-4" />
-      <span>{count}</span>
-      <span className="text-xs hidden sm:inline opacity-80">{cfg.shortLabel}</span>
+      <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
+      <span className="tabular">{count}</span>
+      <span className="hidden sm:inline">{cfg.shortLabel}</span>
     </button>
   );
 };
@@ -131,22 +132,20 @@ const TradeListItem = ({ trade, isSelected, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className={`flex items-center gap-3 p-3 cursor-pointer transition-all border-l-2 ${
-        isSelected 
-          ? 'bg-blue-500/10 border-l-blue-500' 
-          : 'hover:bg-slate-800/50 border-l-transparent'
-      }`}
+      className="flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors"
+      style={{
+        background: isSelected ? 'var(--surface-3)' : undefined,
+        boxShadow: isSelected ? 'inset 2px 0 0 var(--accent)' : undefined,
+        borderTop: '1px solid var(--line)',
+      }}
     >
-      <div className={`w-1 h-10 rounded-full flex-shrink-0 ${isWin ? 'bg-emerald-500' : 'bg-red-500'}`} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-white text-sm">{trade.ticker}</span>
-          <span className={`text-[10px] px-1 py-0.5 rounded ${
-            trade.side === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-          }`}>{trade.side}</span>
+          <span className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>{trade.ticker}</span>
+          <span className="text-[11px]" style={{ color: 'var(--ink-4)' }}>{trade.side}</span>
           <StatusBadge status={trade.status || 'OPEN'} />
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500">
+        <div className="flex items-center gap-1.5 mt-0.5 text-[11px]" style={{ color: 'var(--ink-4)' }}>
           <span>{formatDateShort(trade.date)}</span>
           {trade.entryTime && (
             <span className="font-mono text-slate-600">
@@ -283,14 +282,15 @@ const StudentFeedbackPage = () => {
   return (
     <div className="h-[calc(100vh-0px)] flex flex-col">
       {/* ===== HEADER: Título + Pills à esquerda, Filtros abaixo ===== */}
-      <div className="flex-none p-4 lg:p-5 border-b border-slate-800/50">
-        {/* Linha 1: Título grande + Status pills */}
-        <div className="flex items-center gap-4 mb-3">
-          <MessageSquare className="w-5 h-5 text-blue-400 flex-shrink-0" />
-          <h1 className="text-lg lg:text-xl font-display font-bold text-white">
-            Meus Feedbacks
-          </h1>
-          <div className="flex items-center gap-1.5 ml-2">
+      <div className="flex-none">
+        <PageHeader
+          titulo="Meus Feedbacks"
+          icone={MessageSquare}
+          acoes={(
+            <div
+              className="flex items-center gap-0.5 p-0.5"
+              style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
+            >
             {(['QUESTION', 'REVIEWED', 'DISCUSSED', 'OPEN', 'CLOSED']).map(key => (
               <StatusPill
                 key={key}
@@ -300,15 +300,17 @@ const StudentFeedbackPage = () => {
                 onClick={() => handleStatusCardClick(key)}
               />
             ))}
-          </div>
-        </div>
+            </div>
+          )}
+        />
 
-        {/* Linha 2: Filtros */}
-        <div className="flex flex-wrap gap-2 items-center">
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-2 items-center px-6 py-3" style={{ borderBottom: '1px solid var(--line)' }}>
           <select
             value={tickerFilter}
             onChange={(e) => setTickerFilter(e.target.value)}
-            className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+            className="px-3 h-8 text-[13px] focus:outline-none"
+            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
           >
             <option value="all">Todos os ativos</option>
             {availableTickers.map(t => <option key={t} value={t}>{t}</option>)}
@@ -317,7 +319,8 @@ const StudentFeedbackPage = () => {
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value)}
-            className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+            className="px-3 h-8 text-[13px] focus:outline-none"
+            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
           >
             {PERIOD_OPTIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>

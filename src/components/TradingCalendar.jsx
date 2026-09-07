@@ -98,16 +98,16 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   return (
-    <div className="glass-card flex flex-col h-full min-h-[420px]">
+    <div className="glass-card flex flex-col h-full">
       
       {/* HEADER */}
-      <div className="p-3 sm:p-4 border-b border-slate-800/50 flex items-center justify-between gap-2 flex-wrap">
+      <div className="panel-head flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="flex bg-slate-800/50 rounded-lg p-0.5 border border-slate-700/50">
+          <div className="flex p-0.5" style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }}>
             <button onClick={prevMonth} className="p-1 hover:text-white text-slate-400 transition-colors"><ChevronLeft className="w-4 h-4" /></button>
             <button onClick={nextMonth} className="p-1 hover:text-white text-slate-400 transition-colors"><ChevronRight className="w-4 h-4" /></button>
           </div>
-          <span className="text-sm font-bold text-white capitalize">{formattedTitle}</span>
+          <span className="panel-title capitalize">{formattedTitle}</span>
         </div>
         
         {modoTurma ? (
@@ -179,7 +179,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
             if (modoTurma) {
               if (!meta) {
                 return (
-                  <div key={dateString} className="rounded-xl border border-transparent min-h-[46px] sm:min-h-[74px] p-1 sm:p-2">
+                  <div key={dateString} className="rounded-xl border border-transparent min-h-[38px] sm:min-h-[52px] p-1 sm:p-1.5">
                     <span className="text-[10px] sm:text-[11px] text-slate-700">{day}</span>
                   </div>
                 );
@@ -206,7 +206,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                     `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')} · ${meta.gains} ${meta.gains === 1 ? 'ganho' : 'ganhos'} · ${meta.losses} ${meta.losses === 1 ? 'perda' : 'perdas'}${meta.comR ? ` · ${meta.r >= 0 ? '+' : ''}${meta.r.toFixed(1)}R` : ''}`,
                     ...meta.nomes.map((a) => `${a.nome} (${a.trades}${a.flags ? `, ${a.flags} fora do plano` : ''})`),
                   ].join('\n')}
-                  className={`group relative rounded-lg sm:rounded-xl border p-1 sm:p-2 min-h-[46px] sm:min-h-[74px] flex flex-col justify-between gap-1 text-left transition-all duration-150 ${moldura}`}
+                  className={`group relative rounded-lg sm:rounded-xl border p-1 sm:p-1.5 min-h-[38px] sm:min-h-[52px] flex flex-col justify-between gap-0.5 text-left transition-all duration-150 ${moldura}`}
                 >
                   <div className="flex items-start justify-between">
                     <span className={`text-[10px] sm:text-[11px] leading-none ${isSelected ? 'text-white' : 'text-slate-400'}`}>{day}</span>
