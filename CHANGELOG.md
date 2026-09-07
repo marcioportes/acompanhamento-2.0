@@ -8,6 +8,18 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.1] - 07/09/2026 · #430 · PR #431
+
+**fix:** rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, t
+
+- **Abre no Alpha.** O trabalho do mentor é o track Alpha; a base inteira é a exceção, e segue a um clique.
+- **Sem régua sob cada aluno.** Marcio, sobre a tela real: *"linhas abaixo de cada aluno, não gostei disso"*. Vinte e cinco alunos viravam vinte e cinco traços — o olho lia a grade, não a turma. Fundo alternado no lugar.
+- **Nome e etiqueta na mesma linha.** Com `flex-wrap`, quem tem nome longo empurrava a etiqueta para baixo e aquela linha ficava com o dobro da altura das vizinhas.
+- `PropAccountCard`: "Drawdown utilizado −73,6%" com "Margem: US$ 4.340,00 de US$ 2.500,00" — margem maior que o limite. Família dos bugs de drawdown do #413.
+- A aba chama `Closures`, o menu chama `Fechamentos`. É copy, e o #428 fechou que face lift não mexe em copy.
+- Acompanhamento em 1024: a coluna `Ações` cai fora da área visível.
+
+
 ## [1.90.0] - 06/09/2026 · #427 + #428 · PR #429
 
 **feat:** a Torre vira agenda de trabalho, sobre um harness que fotografa as telas
