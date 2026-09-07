@@ -110,3 +110,4 @@
 | 1.89.0 | #425 | `revert/issue-425-volta-v1870` | 04/09/2026 | consumida (PR #426 squash `f93f7a18`) |
 | 1.89.1 | — | `chore/issue-427-harness-visual` | 04/09/2026 | pulada — reservada para #427, mas o harness saiu no mesmo PR do face lift, que é minor |
 | 1.90.0 | #427 | `chore/issue-427-harness-visual` | 06/09/2026 | consumida (PR #429 squash `89a2deb7`) |
+| 1.90.1 | #430 | `fix/issue-430-rescaldo-face-lift` | 07/09/2026 | reservada |

@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.90.1: #430 fix rescaldo do face lift — contagem de Precisam Atenção, abas em 1024, telas sem foto, Acompanhamento (RESERVADA)
  * - 1.90.0: #427 feat a Torre vira agenda de trabalho + harness de render visual (#427) (PR #429, 06/09/2026)
  * - 1.89.1: #427 pulada — saiu junto do face lift, que é minor
  * - 1.89.0: #425 revert a interface volta ao estado da v1.87.0 (PR #426, 04/09/2026)
@@ -435,8 +436,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.90.0';
-const build = '20260906';
+const version = '1.90.1';
+const build = '20260907';
 
 const VERSION = {
   version,
