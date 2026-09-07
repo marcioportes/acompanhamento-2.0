@@ -80,3 +80,6 @@ scripts/logs/
 # Screenshots do harness de verificação visual (#427)
 .screenshots/
 test-results/
+
+# Screenshots do "depois" durante o face lift (#428) — artefato de olhar, regenerável
+.screenshots-depois/
