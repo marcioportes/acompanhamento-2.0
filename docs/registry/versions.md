@@ -112,3 +112,4 @@
 | 1.90.0 | #427 | `chore/issue-427-harness-visual` | 06/09/2026 | consumida (PR #429 squash `89a2deb7`) |
 | 1.90.1 | #430 | `fix/issue-430-rescaldo-face-lift` | 07/09/2026 | consumida (PR #431 squash `4370e886`) |
 | 1.90.2 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | reservada |
+| 1.90.3 | #432 | `fix/issue-432-janela-do-card-financeiro` | 09/09/2026 | reservada (1.90.2 reservada por #406, pendente) |

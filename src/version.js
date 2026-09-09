@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.90.3: #432 fix card Financeiro e card de plano leem a janela da ContextBar, não o saldo de agora (RESERVADA)
  * - 1.90.2: #406 chore harness de avaliação para feedback escrito por IA — Fase 0, decide go/no-go (RESERVADA)
  * - 1.90.1: #430 fix rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento (PR #431, 07/09/2026)
  * - 1.90.0: #427 feat a Torre vira agenda de trabalho + harness de render visual (#427) (PR #429, 06/09/2026)
@@ -437,8 +438,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.90.2';
-const build = '20260907';
+const version = '1.90.3';
+const build = '20260909';
 
 const VERSION = {
   version,
