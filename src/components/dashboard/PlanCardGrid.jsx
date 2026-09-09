@@ -1,7 +1,10 @@
 /**
  * PlanCardGrid
- * @version 2.1.0 (v1.19.1)
+ * @version 3.0.0 (v1.90.3)
  * @description Grid de cards de planos operacionais.
+ *   v3.0.0: O card obedece o CICLO selecionado na ContextBar (#432). Antes fixava o ciclo
+ *           ABERTO: escolher um ciclo fechado deixava o card mostrando o resultado do ciclo
+ *           corrente — dois cards da mesma tela discordando sobre o mesmo período.
  *   v2.1.0: Botão de auditoria (ShieldCheck) — recalcula PL + compliance cascata.
  *   v2.0.0: Integra planStateMachine para badges e sentiment icons.
  *   v1.0.0: Extraído do StudentDashboard (v1.15.0).
@@ -24,6 +27,21 @@ import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculati
 import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
 import { getOpenCycleStart } from '../../utils/planBalance';
 import DebugBadge from '../DebugBadge';
+
+/**
+ * PL inicial do ciclo exibido. Fechamento tem prioridade: `cycleBaseline.plInicial` e o
+ * ground truth gravado na transaction do servidor; closures pre-C3 (schemaVersion=2) nao
+ * tem cycleBaseline mas tem `snapshot.plStart`. Sem fechamento (ciclo aberto) e `plan.pl`.
+ */
+const resolveCycleInitialPl = (closure, plan) => {
+  if (closure) {
+    const fromBaseline = Number(closure.cycleBaseline?.plInicial);
+    if (Number.isFinite(fromBaseline) && fromBaseline > 0) return fromBaseline;
+    const fromSnapshot = Number(closure.snapshot?.plStart);
+    if (Number.isFinite(fromSnapshot) && fromSnapshot > 0) return fromSnapshot;
+  }
+  return Number(plan?.pl) || 0;
+};
 
 const MiniProgressBar = ({ current, target, isLoss }) => {
   const percent = target > 0 ? Math.min(Math.abs(current) / target * 100, 100) : 0;
@@ -84,6 +102,8 @@ const PlanCardGrid = ({
   trades,
   selectedPlanId,
   contextSelection = null,
+  cycleWindow = null,
+  closures = [],
   viewAs,
   onSelectPlan,
   onOpenLedger,
@@ -103,18 +123,38 @@ const PlanCardGrid = ({
         // já foi para o capital base.
         const allPlanTrades = trades.filter(t => t.planId === plan.id);
         const openCycleStart = getOpenCycleStart(plan);
-        const planTrades = openCycleStart === null
-          ? allPlanTrades
-          : allPlanTrades.filter(t => typeof t.date === 'string' && t.date >= openCycleStart);
+
+        // #432 — o ciclo da ContextBar manda. Sem `cycleWindow` (ou em "Todos os ciclos")
+        // cai no ciclo ABERTO, que é o comportamento historico: somar todos os trades
+        // dupla-conta o que ja rolou para `plan.pl` no fechamento (contrato C2 do #259).
+        const windowStart = cycleWindow?.startISO || null;
+        const windowEnd = cycleWindow?.endISO || null;
+        const useWindow = Boolean(windowStart && windowEnd);
+
+        // Ciclo fechado tem PL inicial proprio, congelado no fechamento. `plan.pl` e o PL
+        // do ciclo CORRENTE (rolou no close) — usa-lo para um ciclo passado mostra o
+        // capital errado. Mesma precedencia do PlanLedgerExtract (C3 #259).
+        const matchedClosure = useWindow
+          ? closures.find(c => c.planId === plan.id && c.cycleStart === windowStart && (c.status === 'CLOSED' || c.status === 'REOPENED')) || null
+          : null;
+
+        const planTrades = useWindow
+          ? allPlanTrades.filter(t => typeof t.date === 'string' && t.date >= windowStart && t.date <= windowEnd)
+          : (openCycleStart === null
+            ? allPlanTrades
+            : allPlanTrades.filter(t => typeof t.date === 'string' && t.date >= openCycleStart));
+
         const periodPnL = calculatePeriodPnL(planTrades, plan.operationPeriod);
         const cyclePnL = calculateCyclePnL(planTrades, plan.adjustmentCycle);
-        const planInitialPL = Number(plan.pl) || 0;
+        const planInitialPL = resolveCycleInitialPl(matchedClosure, plan);
         const totalPlanPnL = planTrades.reduce((sum, t) => sum + (Number(t.result) || 0), 0);
         const currentPlanBalance = planInitialPL + totalPlanPnL;
-        const periodStopVal = (plan.pl * (plan.periodStop / 100));
-        const periodGoalVal = (plan.pl * (plan.periodGoal / 100));
-        const cycleGoalVal = (plan.pl * (plan.cycleGoal / 100));
-        const cycleStopVal = (plan.pl * (plan.cycleStop / 100));
+        // Metas e stops sao % do PL inicial DAQUELE ciclo — com plan.pl fixo, um ciclo
+        // passado media suas metas pelo capital de hoje.
+        const periodStopVal = (planInitialPL * (plan.periodStop / 100));
+        const periodGoalVal = (planInitialPL * (plan.periodGoal / 100));
+        const cycleGoalVal = (planInitialPL * (plan.cycleGoal / 100));
+        const cycleStopVal = (planInitialPL * (plan.cycleStop / 100));
 
         // State machine: computar estado do período atual
         const planState = computePlanState(planTrades, {

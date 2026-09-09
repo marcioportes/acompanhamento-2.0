@@ -197,7 +197,77 @@ describe('useDashboardMetrics — ContextBar respect', () => {
         accountTypeFilter: 'all',
       })
     );
-    expect(resNone.current.plContext.label).toBe('P&L Total');
+    // #432 — o tile deixou de se chamar "P&L": o painel passou a declarar PL inicial,
+    // Resultado e Saldo da janela, e "P&L" era o nome do número solto.
+    expect(resNone.current.plContext.label).toBe('Resultado acumulado');
+  });
+
+  it('windowTotals declara a janela: abertura + resultado = fim (#432)', () => {
+    const { result } = renderHook(() =>
+      useDashboardMetrics({
+        accounts: baseAccounts,
+        trades,
+        plans: basePlans,
+        filters: neutralFilters,
+        selectedPlanId: null,
+        accountTypeFilter: 'all',
+        context: {
+          periodRange: { kind: 'CYCLE', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28) },
+        },
+      })
+    );
+    const { opening, result: res, end } = result.current.windowTotals;
+    // aporte 10.000 + t1 (jan, +500) = abertura de fevereiro
+    expect(opening).toBe(10500);
+    expect(res).toBe(100);          // t2 -200 + t3 +300
+    expect(end).toBe(10600);
+    expect(end).toBe(opening + res);
+    expect(result.current.windowEndISO).toBe('2026-02-28');
+  });
+
+  it('abertura e PATRIMONIAL: filtro granular encolhe a amostra, nao o saldo (#432)', () => {
+    const mixed = [
+      mkTrade('x', '2026-02-10', 100, { ticker: 'WIN' }),
+      mkTrade('y', '2026-02-15', 200, { ticker: 'MNQ' }),
+    ];
+    const ctx = {
+      periodRange: { kind: 'CYCLE', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28) },
+    };
+    const semFiltro = renderHook(() =>
+      useDashboardMetrics({
+        accounts: baseAccounts, trades: mixed, plans: basePlans,
+        filters: neutralFilters, selectedPlanId: null, accountTypeFilter: 'all', context: ctx,
+      })
+    ).result;
+    const comFiltro = renderHook(() =>
+      useDashboardMetrics({
+        accounts: baseAccounts, trades: mixed, plans: basePlans,
+        filters: { ...neutralFilters, ticker: 'WIN' }, selectedPlanId: null, accountTypeFilter: 'all', context: ctx,
+      })
+    ).result;
+
+    // patrimonio nao se move com o recorte
+    expect(comFiltro.current.windowTotals).toEqual(semFiltro.current.windowTotals);
+    expect(comFiltro.current.windowTotals.result).toBe(300);
+    // a amostra, sim
+    expect(comFiltro.current.stats.totalPL).toBe(100);
+    expect(semFiltro.current.stats.totalPL).toBe(300);
+  });
+
+  it('sem janela a abertura e o aporte e nao ha data no rotulo (#432)', () => {
+    const { result } = renderHook(() =>
+      useDashboardMetrics({
+        accounts: baseAccounts,
+        trades,
+        plans: basePlans,
+        filters: neutralFilters,
+        selectedPlanId: null,
+        accountTypeFilter: 'all',
+      })
+    );
+    expect(result.current.windowTotals.opening).toBe(10000);
+    expect(result.current.windowTotals.end).toBe(10000 + 650);
+    expect(result.current.windowEndISO).toBeNull();
   });
 
   it('MaxDrawdown é calculado apenas sobre a janela', () => {

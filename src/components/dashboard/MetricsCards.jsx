@@ -1,7 +1,9 @@
 /**
  * MetricsCards
- * @version 5.0.0 (v1.19.6)
+ * @version 6.0.0 (v1.90.3)
  * @description Paineis agrupados de metricas do StudentDashboard.
+ *   v6.0.0: Painel Financeiro le a JANELA da ContextBar (#432) — PL inicial + resultado
+ *           + saldo derivado, no lugar do saldo de agora.
  *   v5.0.0: Payoff com semaforo de saude do edge, layout reorganizado (WR+Payoff / Consistencia+Utiliz.RO),
  *           semaforo bidirecional do RO (>100% = infracao), labels renomeados, tooltip diagnostico da assimetria.
  *   v4.1.0: 3 paineis em linha unica, tooltips nativos restaurados, EV com explicacao semantica.
@@ -20,6 +22,28 @@ import DebugBadge from '../DebugBadge';
 import CycleConsistencyCard from './CycleConsistencyCard';
 
 const safe = (v, d = 0) => (v != null && !isNaN(v) && isFinite(v)) ? v.toFixed(d) : '-';
+
+const dataBR = (iso) => {
+  if (!iso || typeof iso !== 'string') return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return d && m && y ? `${d}/${m}/${y}` : '';
+};
+
+/**
+ * Rótulo do tile patrimonial (#432). A janela pode terminar no FUTURO (ciclo aberto):
+ * datar o saldo com o fim do ciclo prometeria uma projeção que o número não é — ele é
+ * a abertura mais os trades que JÁ aconteceram. Só data quando a janela já fechou.
+ */
+const saldoLabel = (windowEndISO) => {
+  if (!windowEndISO) return 'Saldo';
+  const hoje = new Date();
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  return windowEndISO < hojeISO ? `Saldo em ${dataBR(windowEndISO)}` : 'Saldo';
+};
+
+const SALDO_TOOLTIP =
+  'Patrimonio ao fim da janela selecionada na barra de contexto: abertura da janela + resultado do periodo. ' +
+  'A abertura ja traz o que rolou dos ciclos anteriores, incluindo aporte ou saque feito no fechamento.';
 
 const getAsymmetryLevel = (ratio) => {
   if (ratio == null || isNaN(ratio)) return { label: '-', color: 'text-slate-400' };
@@ -117,6 +141,11 @@ const MetricsCards = ({
   payoff,
   asymmetryDiagnostic,
   plContext,
+  windowBalances,
+  sampleBalancesByCurrency,
+  windowTotals,
+  windowEndISO,
+  sampleIsFiltered = false,
   trades,
   plan,
   cycleStart,
@@ -170,15 +199,27 @@ const MetricsCards = ({
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            {/* Saldo */}
-            <div>
-              <p className="text-[11px] text-slate-600 mb-1">Saldo</p>
+            {/* Saldo da JANELA (#432) — derivado de abertura + resultado, nao de
+                `account.currentBalance`. currentBalance e escalar sem dimensao temporal:
+                para qualquer janela que nao termine hoje ele responde outra pergunta. */}
+            <div title={SALDO_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">{saldoLabel(windowEndISO)}</p>
               {dominantCurrency ? (
-                <p className="text-lg font-bold text-white">{formatCurrencyDynamic(aggregatedCurrentBalance, dominantCurrency)}</p>
+                <>
+                  <p className="text-lg font-bold text-white">{formatCurrencyDynamic(windowTotals?.end ?? aggregatedCurrentBalance, dominantCurrency)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    PL inicial: <span className="font-mono text-slate-400">{formatCurrencyDynamic(windowTotals?.opening ?? 0, dominantCurrency)}</span>
+                  </p>
+                </>
               ) : (
-                <div className="space-y-0.5">
-                  {[...balancesByCurrency.entries()].map(([c, data]) => (
-                    <p key={c} className="text-base font-bold text-white font-mono">{formatCurrencyDynamic(data.current, c)}</p>
+                <div className="space-y-1.5">
+                  {[...(windowBalances?.entries?.() || balancesByCurrency.entries())].map(([c, data]) => (
+                    <div key={c}>
+                      <p className="text-base font-bold text-white font-mono">{formatCurrencyDynamic(data.end ?? data.current, c)}</p>
+                      {data.opening != null && (
+                        <p className="text-[10px] text-slate-500 font-mono">PL inicial: {formatCurrencyDynamic(data.opening, c)}</p>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -191,12 +232,20 @@ const MetricsCards = ({
                 <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
               ) : (
                 <div className="space-y-0.5">
-                  {[...balancesByCurrency.entries()].map(([c, data]) => (
-                    <p key={c} className={`text-base font-bold font-mono ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {data.pnl >= 0 ? '+' : ''}{formatCurrencyDynamic(data.pnl, c)}
-                    </p>
-                  ))}
+                  {[...(sampleBalancesByCurrency?.entries?.() || balancesByCurrency.entries())].map(([c, data]) => {
+                    const v = data.result ?? data.pnl;
+                    return (
+                      <p key={c} className={`text-base font-bold font-mono ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {v >= 0 ? '+' : ''}{formatCurrencyDynamic(v, c)}
+                      </p>
+                    );
+                  })}
                 </div>
+              )}
+              {sampleIsFiltered && (
+                <p className="text-[11px] text-amber-400/80 mt-1" title="Ha filtro granular ativo (ticker, setup, emocao ou busca). Este numero e o recorte; o saldo ao lado segue patrimonial.">
+                  recorte da amostra
+                </p>
               )}
               {evLeakage?.evReal != null && !isNaN(evLeakage.evReal) && (
                 <p className="text-[11px] text-slate-500 mt-1">
