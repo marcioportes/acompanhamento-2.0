@@ -12,7 +12,11 @@ Version source of truth: `src/version.js`.
 
 **fix:** as etiquetas de status voltam para a esquerda e com cor
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Foram para a direita no #428:** as etiquetas viraram o `acoes` do `PageHeader`, e `acoes` é `ml-auto` por contrato. O comentário no código seguia dizendo `{/* Título + Pills à esquerda */}`, descrevendo o que deixara de ser verdade.
+- **Perderam a cor:** `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` virou `color: ink/ink-2/ink-4` — cinco estados em cinza, com a cor sobrando num ponto de 5px. E o `StatusBadge` perdeu o ícone (`const Icon = cfg.icon` trocado pelo ponto).
+- **Correção:** `PageHeader` ganha o slot `aoLado` (aditivo, default `null` — nenhuma outra tela muda); ícone e contagem voltam em `cfg.cor`, com o estado ativo tingido por `color-mix`; contagem 0 segue apagada. `aoLado` existe em vez de reusar `contexto` porque `contexto` embrulha em `<span class="meta truncate">`.
+- **Decisão de design:** fundo neutro com cor num ponto vale para etiqueta solta numa lista de dez, onde dez cores não destacam ninguém. Cinco estados fixos num seletor é o caso oposto — a cor é o que faz "Dúvidas" saltar antes da leitura.
+- 4.706 testes / 298 arquivos · guarda de legibilidade do #434 verde · conferido na foto do harness antes do commit.
 
 
 ## [1.90.4] - 10/09/2026 · #434 · PR #435
