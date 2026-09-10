@@ -1,6 +1,6 @@
 /**
  * MetricsCards
- * @version 6.0.0 (v1.90.3)
+ * @version 6.0.0 (v1.90.7)
  * @description Paineis agrupados de metricas do StudentDashboard.
  *   v6.0.0: Painel Financeiro le a JANELA da ContextBar (#432) — PL inicial + resultado
  *           + saldo derivado, no lugar do saldo de agora.

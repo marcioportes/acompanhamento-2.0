@@ -1,6 +1,6 @@
 /**
  * PlanCardGrid
- * @version 3.0.0 (v1.90.3)
+ * @version 3.0.0 (v1.90.7)
  * @description Grid de cards de planos operacionais.
  *   v3.0.0: O card obedece o CICLO selecionado na ContextBar (#432). Antes fixava o ciclo
  *           ABERTO: escolher um ciclo fechado deixava o card mostrando o resultado do ciclo
