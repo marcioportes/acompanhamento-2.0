@@ -10,6 +10,7 @@
  *   - filteredAccountsByType, selectedAccountIds, allAccountTrades, plansToShow, availablePlans
  *   - filteredTrades, stats
  *   - aggregatedInitialBalance, aggregatedCurrentBalance, balancesByCurrency, dominantCurrency
+ *   - windowBalances, windowTotals, windowEndISO (patrimônio da janela da ContextBar — #432)
  *   - drawdown, maxDrawdownData, winRatePlanned, complianceRate
  *   - plContext { label, type }
  */
@@ -27,12 +28,29 @@ import {
 } from '../utils/dashboardMetrics';
 import { hasEffectiveRedFlags } from '../utils/violationFilter';
 import { computeOpeningBalance } from '../utils/openingBalance';
+import { buildWindowBalances, totalsForSingleCurrency } from '../utils/windowBalance';
+import { computeDrawdown } from '../utils/drawdown';
+import { computePlanWindowOpening } from '../utils/planBalance';
 
 /** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
 const PERIOD_KIND_LABELS = {
   CYCLE: 'Ciclo',
   MONTH: 'Este Mês',
   WEEK: 'Esta Semana',
+};
+
+/** Date | 'YYYY-MM-DD...' → 'YYYY-MM-DD'. */
+const toISODay = (input) => {
+  if (!input) return null;
+  if (input instanceof Date) {
+    if (Number.isNaN(input.getTime())) return null;
+    const y = input.getFullYear();
+    const m = String(input.getMonth() + 1).padStart(2, '0');
+    const d = String(input.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const match = String(input).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
 };
 
 /** Converte trade.date ('YYYY-MM-DD') em Date local à meia-noite. */
@@ -94,7 +112,11 @@ const useDashboardMetrics = ({
   // Janela temporal vem da ContextBar (issue #188 F4): quando `context.periodRange`
   // está definido com start+end, TODOS os cards consumidores obedecem SEM exceção.
   // `filters.period` legado foi removido. Granulares (ticker/setup/emotion/search) seguem.
-  const filteredTrades = useMemo(() => {
+  // ETAPA 1 — escopo + janela, SEM granulares. É o conjunto PATRIMONIAL da janela:
+  // alimenta abertura/saldo do painel Financeiro (#432). Filtrar por ticker encolhe a
+  // amostra que se quer analisar, não o patrimônio do aluno — somar a abertura com um
+  // recorte produziria um "saldo" que nunca existiu.
+  const windowScopedTrades = useMemo(() => {
     let result = allAccountTrades;
     if (selectedPlanId) result = result.filter(t => t.planId === selectedPlanId);
     const range = context?.periodRange;
@@ -109,13 +131,19 @@ const useDashboardMetrics = ({
         return d >= start && d <= endInclusive;
       });
     }
+    return result;
+  }, [allAccountTrades, selectedPlanId, context?.periodRange]);
+
+  // ETAPA 2 — granulares por cima. É a AMOSTRA em análise: stats, win rate, payoff.
+  const filteredTrades = useMemo(() => {
+    let result = windowScopedTrades;
     if (filters.ticker !== 'all') result = result.filter(t => t.ticker === filters.ticker);
     if (filters.setup !== 'all') result = result.filter(t => t.setup === filters.setup);
     if (filters.emotion !== 'all') result = result.filter(t => t.emotion === filters.emotion);
     if (filters.result !== 'all') result = result.filter(t => filters.result === 'win' ? t.result > 0 : t.result < 0);
     if (filters.search) result = searchTrades(result, filters.search);
     return result;
-  }, [allAccountTrades, selectedPlanId, filters, context?.periodRange]);
+  }, [windowScopedTrades, filters]);
 
   const stats = useMemo(() => calculateStats(filteredTrades), [filteredTrades]);
 
@@ -161,6 +189,73 @@ const useDashboardMetrics = ({
     closures: closuresInScope,
   }), [context?.cycleStart, aggregatedInitialBalance, scopedTradesForCarry, closuresInScope]);
 
+  // === Patrimônio da janela selecionada (#432) ===
+  // O painel Financeiro mostrava `currentBalance` (o saldo de AGORA) ao lado do resultado
+  // da janela. Aqui os três números passam a pertencer ao MESMO período, e a identidade
+  // `abertura + resultado = fim` é o que faz o card fechar. Por moeda, sem conversão (#289).
+  const windowBalances = useMemo(() => buildWindowBalances({
+    accounts: accountsInScope,
+    windowStart: context?.periodRange?.start ?? null,
+    tradesForCarry: scopedTradesForCarry,
+    windowTrades: windowScopedTrades,
+    closures: closuresInScope,
+  }), [accountsInScope, context?.periodRange?.start, scopedTradesForCarry, windowScopedTrades, closuresInScope]);
+
+  // A abertura da janela para um PLANO nao vem de `account.initialBalance` (#432):
+  // initialBalance e o deposito na CORRETORA, `plan.pl` e o capital ALOCADO ao plano —
+  // na base real a conta abre com 1.997 enquanto o plano opera 100.000. O painel
+  // Financeiro so renderiza com plano selecionado, entao a base dele e a do plano, e e
+  // assim que ele concorda com o card do plano em vez de contar outra historia.
+  const planWindowOpening = useMemo(() => {
+    if (!selectedPlanId) return null;
+    const plan = plans.find(p => p.id === selectedPlanId);
+    if (!plan) return null;
+    return computePlanWindowOpening({
+      plan,
+      trades: scopedTradesForCarry,
+      closures: closuresInScope,
+      cycleStartISO: toISODay(context?.cycleStart),
+      windowStartISO: toISODay(context?.periodRange?.start),
+    });
+  }, [selectedPlanId, plans, scopedTradesForCarry, closuresInScope, context?.cycleStart, context?.periodRange?.start]);
+
+  const windowTotals = useMemo(() => {
+    const porConta = totalsForSingleCurrency(windowBalances);
+    if (planWindowOpening == null) return porConta;
+    // Resultado continua sendo o dos trades da janela; so a ANCORA muda.
+    const opening = planWindowOpening;
+    return {
+      ...porConta,
+      opening,
+      end: opening + porConta.result,
+      pctOfOpening: opening > 0 ? (porConta.result / opening) * 100 : null,
+    };
+  }, [windowBalances, planWindowOpening]);
+
+  // Mesma quebra por moeda, mas sobre a AMOSTRA (com granulares). Alimenta o tile de
+  // Resultado no modo multi-moeda, para que ele nao discorde do `stats.totalPL` que o
+  // modo moeda-unica exibe. O tile patrimonial ao lado segue usando `windowBalances`.
+  const sampleBalancesByCurrency = useMemo(() => buildWindowBalances({
+    accounts: accountsInScope,
+    windowStart: context?.periodRange?.start ?? null,
+    tradesForCarry: scopedTradesForCarry,
+    windowTrades: filteredTrades,
+    closures: closuresInScope,
+  }), [accountsInScope, context?.periodRange?.start, scopedTradesForCarry, filteredTrades, closuresInScope]);
+
+  // Fim da janela — vira o rótulo do tile ("Saldo em 31/07"). Null quando a janela é
+  // "todo o histórico": aí o rótulo volta a ser `Saldo` e o número converge com o atual.
+  const windowEndISO = useMemo(() => {
+    const end = context?.periodRange?.end;
+    if (!end) return null;
+    const d = end instanceof Date ? end : new Date(end);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }, [context?.periodRange?.end]);
+
   // v1.15.0: Multi-moeda
   const balancesByCurrency = useMemo(() =>
     aggregateBalancesByCurrency(accountsInScope),
@@ -173,31 +268,24 @@ const useDashboardMetrics = ({
   }, [accountsInScope]);
 
   // === Métricas avançadas ===
-  const drawdown = useMemo(() => {
-    if (aggregatedInitialBalance <= 0) return 0;
-    const loss = Math.min(0, aggregatedCurrentBalance - aggregatedInitialBalance);
-    return Math.abs(loss / aggregatedInitialBalance) * 100;
-  }, [aggregatedInitialBalance, aggregatedCurrentBalance]);
+  // Drawdown (#413 defeitos 1-3 + #432): curva de patrimônio da JANELA, ordenada pelo
+  // INSTANTE do trade, medida a partir do PICO. Usa `windowScopedTrades` e não
+  // `filteredTrades`: filtrar por ticker encolhe a amostra em análise, não a queda que o
+  // patrimônio do aluno realmente sofreu.
+  const drawdownData = useMemo(() => computeDrawdown({
+    trades: windowScopedTrades,
+    openingBalance: windowTotals.opening,
+  }), [windowScopedTrades, windowTotals.opening]);
 
-  const maxDrawdownData = useMemo(() => {
-    if (filteredTrades.length === 0) return { maxDD: 0, maxDDPercent: 0, maxDDDate: null };
-    const sorted = [...filteredTrades].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    let cumPnL = 0;
-    let peak = 0;
-    let maxDD = 0;
-    let maxDDDate = null;
-    for (const trade of sorted) {
-      cumPnL += Number(trade.result) || 0;
-      if (cumPnL > peak) peak = cumPnL;
-      const dd = peak - cumPnL;
-      if (dd > maxDD) {
-        maxDD = dd;
-        maxDDDate = trade.date;
-      }
-    }
-    const maxDDPercent = aggregatedInitialBalance > 0 ? (maxDD / aggregatedInitialBalance) * 100 : 0;
-    return { maxDD, maxDDPercent, maxDDDate };
-  }, [filteredTrades, aggregatedInitialBalance]);
+  /** Drawdown corrente em % do pico — o número grande do tile. */
+  const drawdown = drawdownData.current.percent;
+
+  /** Shape historico preservado: consumido por metricsInsights e pelo tradesSummary da IA. */
+  const maxDrawdownData = useMemo(() => ({
+    maxDD: drawdownData.max.value,
+    maxDDPercent: drawdownData.max.percent,
+    maxDDDate: drawdownData.max.date,
+  }), [drawdownData]);
 
   const winRatePlanned = useMemo(() => {
     if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
@@ -298,17 +386,17 @@ const useDashboardMetrics = ({
   const plContext = useMemo(() => {
     const kind = context?.periodRange?.kind;
     if (kind && PERIOD_KIND_LABELS[kind]) {
-      return { label: `P&L ${PERIOD_KIND_LABELS[kind]}`, type: 'filtered' };
+      return { label: `Resultado · ${PERIOD_KIND_LABELS[kind]}`, type: 'filtered' };
     }
 
     if (selectedPlanId) {
       const plan = plans.find(p => p.id === selectedPlanId);
       if (plan) {
-        return { label: `P&L Plano: ${plan.name}`, type: 'plan' };
+        return { label: `Resultado · ${plan.name}`, type: 'plan' };
       }
     }
 
-    return { label: 'P&L Total', type: 'total' };
+    return { label: 'Resultado acumulado', type: 'total' };
   }, [context?.periodRange?.kind, selectedPlanId, plans]);
 
   return {
@@ -329,8 +417,15 @@ const useDashboardMetrics = ({
     // Carry-over de patrimônio (bug 2 — #267)
     windowOpeningBalance,
     cycleOpeningBalance,
+    // Patrimônio da janela (#432)
+    windowScopedTrades,
+    windowBalances,
+    sampleBalancesByCurrency,
+    windowTotals,
+    windowEndISO,
     // Métricas
     drawdown,
+    drawdownData,
     maxDrawdownData,
     winRatePlanned,
     complianceRate,

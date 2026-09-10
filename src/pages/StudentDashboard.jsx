@@ -242,6 +242,10 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     aggregatedCurrentBalance,
     windowOpeningBalance,
     cycleOpeningBalance,
+    windowBalances,
+    sampleBalancesByCurrency,
+    windowTotals,
+    windowEndISO,
     balancesByCurrency,
     dominantCurrency,
     drawdown,
@@ -378,6 +382,23 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     maturityStudentId, swotPlanFilter, cycleFilter,
   );
   const isPastCycle = Boolean(studentCtx.isReadOnlyCycle);
+
+  // Janela ISO do ciclo selecionado na ContextBar (#432). Null em "Todos os ciclos" —
+  // aí os cards voltam ao comportamento historico (ciclo aberto).
+  const cycleWindow = useMemo(() => {
+    if (!studentCtx.cycleKey || studentCtx.cycleKey === ALL_CYCLES_KEY) return null;
+    const toISO = (d) => {
+      if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const startISO = toISO(studentCtx.selectedCycle?.start);
+    const endISO = toISO(studentCtx.selectedCycle?.end);
+    if (!startISO || !endISO) return null;
+    return { startISO, endISO };
+  }, [studentCtx.cycleKey, studentCtx.selectedCycle]);
   const displayMaturity = isPastCycle
     ? (cycleReview?.frozenSnapshot?.maturitySnapshot ?? null)
     : maturity;
@@ -648,6 +669,8 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         trades={trades}
         selectedPlanId={selectedPlanId}
         contextSelection={{ cycleKey: studentCtx.cycleKey, periodKind: studentCtx.period?.kind, isReadOnlyCycle: studentCtx.isReadOnlyCycle }}
+        cycleWindow={cycleWindow}
+        closures={studentClosures}
         viewAs={viewAs}
         onSelectPlan={(id) => studentCtx.setPlan(id)}
         onOpenLedger={(plan) => onOpenLedger?.(plan?.id)}
@@ -679,24 +702,15 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         payoff={payoff}
         asymmetryDiagnostic={asymmetryDiagnostic}
         plContext={plContext}
+        windowBalances={windowBalances}
+        sampleBalancesByCurrency={sampleBalancesByCurrency}
+        windowTotals={windowTotals}
+        windowEndISO={windowEndISO}
+        sampleIsFiltered={filters.ticker !== 'all' || filters.setup !== 'all' || filters.emotion !== 'all' || filters.result !== 'all' || !!filters.search}
         trades={filteredTrades}
         plan={studentCtx.selectedPlan}
-        cycleStart={(() => {
-          const d = studentCtx.selectedCycle?.start;
-          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        })()}
-        cycleEnd={(() => {
-          const d = studentCtx.selectedCycle?.end;
-          if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
-        })()}
+        cycleStart={cycleWindow?.startISO ?? null}
+        cycleEnd={cycleWindow?.endISO ?? null}
         avgTradeDuration={avgTradeDuration}
         durationDelta={durationDelta}
         mentorClassificationStats={computeMentorClassificationStats(filteredTrades)}

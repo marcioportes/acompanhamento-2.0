@@ -12,6 +12,7 @@
 //   calculateStats          → src/utils/calculations.js (versão simplificada — só campos usados)
 //   calculatePayoff         → src/utils/dashboardMetrics.js
 //   calculateMaxDrawdown    → src/utils/dashboardMetrics.js
+//   sortByInstant/tradeInstantMs → src/utils/drawdown.js (#432)
 //   calculateConsistencyCV  → src/utils/dashboardMetrics.js
 //   calculateComplianceRate → src/utils/dashboardMetrics.js
 //   emotionalAnalysis        → ./emotionalAnalysisMirror (issue #189, sub de
@@ -84,11 +85,44 @@ function calcPayoff(stats) {
   return { ratio, avgWin, avgLoss };
 }
 
+/**
+ * Instante do trade em ms — saida > entrada > dia. Espelho de
+ * `src/utils/drawdown.js:tradeInstantMs`. Manter sincronizado.
+ */
+function tradeInstantMs(trade) {
+  const raw = trade?.exitTime || trade?.entryTime || trade?.date;
+  if (!raw) return null;
+  const ms = new Date(raw).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Ordena pelo INSTANTE. Trades sem instante algum vao para o fim, em ordem estavel.
+ * Espelho de `src/utils/drawdown.js:sortByInstant`. Manter sincronizado.
+ */
+function sortByInstant(trades) {
+  const withIndex = (trades || []).map((t, i) => ({ t, i, ms: tradeInstantMs(t) }));
+  withIndex.sort((a, b) => {
+    if (a.ms === null && b.ms === null) return a.i - b.i;
+    if (a.ms === null) return 1;
+    if (b.ms === null) return -1;
+    if (a.ms !== b.ms) return a.ms - b.ms;
+    return a.i - b.i;
+  });
+  return withIndex.map(({ t }) => t);
+}
+
 function calcMaxDrawdown(trades, initialBalance = 0) {
   if (!Array.isArray(trades) || trades.length === 0) {
     return { maxDD: 0, maxDDPercent: 0, maxDDDate: null };
   }
-  const sorted = [...trades].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+  // Ordena pelo INSTANTE, nao pelo dia (#413 defeito 1 / #432). `date` guarda so
+  // 'YYYY-MM-DD': trades do mesmo dia empatavam e a sequencia intradiaria virava a ordem
+  // arbitraria do Firestore. Isso nao era cosmetico aqui — `maxDDPercent` alimenta os
+  // gates maxdd-under-20 / maxdd-12 / maxdd-8 em constants.js. A ordem errada tende a
+  // INFLAR o maxDD (ela pode empilhar as perdas do dia depois do pico), entao o gate
+  // reprovava aluno que a serie cronologica aprovaria.
+  const sorted = sortByInstant(trades);
   let cumPnL = 0;
   let peak = 0;
   let maxDD = 0;
@@ -214,6 +248,8 @@ function preComputeShapes({ trades, plans, now, emotions, getEmotionConfig, orde
 module.exports = {
   preComputeShapes,
   calcStats,
+  tradeInstantMs,
+  sortByInstant,
   calcPayoff,
   calcMaxDrawdown,
   calcConsistencyCV,

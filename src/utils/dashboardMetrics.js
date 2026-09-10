@@ -7,6 +7,7 @@
  */
 
 import { hasEffectiveRedFlags } from './violationFilter';
+import { sortByInstant } from './drawdown';
 
 /**
  * Calcula Max Drawdown peak-to-trough na série histórica de PL acumulado.
@@ -21,8 +22,14 @@ export const calculateMaxDrawdown = (trades, initialBalance = 0) => {
     return { maxDD: 0, maxDDPercent: 0, maxDDDate: null };
   }
   
-  // Ordenar por data ASC
-  const sorted = [...trades].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  // Ordenar pelo INSTANTE, não pelo dia (#413 defeito 1): `date` guarda só 'YYYY-MM-DD',
+  // então trades do mesmo dia empatavam e a sequência intradiária virava a ordem
+  // arbitrária do Firestore — variação medida de 2,3× no mesmo ciclo.
+  // NOTA: o denominador do percentual continua sendo `initialBalance`, e não o pico, para
+  // não divergir do gêmeo `functions/maturity/preComputeShapes.js:calcMaxDrawdown`, que
+  // alimenta os gates de promoção. O drawdown peak-relative do dashboard vive em
+  // `src/utils/drawdown.js`.
+  const sorted = sortByInstant(trades);
   
   let cumPnL = 0;
   let peak = 0;

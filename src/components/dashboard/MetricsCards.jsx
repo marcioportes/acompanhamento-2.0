@@ -1,7 +1,9 @@
 /**
  * MetricsCards
- * @version 5.0.0 (v1.19.6)
+ * @version 6.0.0 (v1.90.7)
  * @description Paineis agrupados de metricas do StudentDashboard.
+ *   v6.0.0: Painel Financeiro le a JANELA da ContextBar (#432) — PL inicial + resultado
+ *           + saldo derivado, no lugar do saldo de agora.
  *   v5.0.0: Payoff com semaforo de saude do edge, layout reorganizado (WR+Payoff / Consistencia+Utiliz.RO),
  *           semaforo bidirecional do RO (>100% = infracao), labels renomeados, tooltip diagnostico da assimetria.
  *   v4.1.0: 3 paineis em linha unica, tooltips nativos restaurados, EV com explicacao semantica.
@@ -15,11 +17,58 @@ import { DollarSign, Target, BarChart3, Info, AlertTriangle } from 'lucide-react
 import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import { pctOverOpening } from '../../utils/windowBalance';
 import { getFinancialInsights, getPerformanceInsights, getPlanVsResultInsights } from '../../utils/metricsInsights';
 import DebugBadge from '../DebugBadge';
 import CycleConsistencyCard from './CycleConsistencyCard';
 
 const safe = (v, d = 0) => (v != null && !isNaN(v) && isFinite(v)) ? v.toFixed(d) : '-';
+
+const dataBR = (iso) => {
+  if (!iso || typeof iso !== 'string') return '';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return d && m && y ? `${d}/${m}/${y}` : '';
+};
+
+/**
+ * Rótulo do tile patrimonial (#432). A janela pode terminar no FUTURO (ciclo aberto):
+ * datar o saldo com o fim do ciclo prometeria uma projeção que o número não é — ele é
+ * a abertura mais os trades que JÁ aconteceram. Só data quando a janela já fechou.
+ */
+const saldoLabel = (windowEndISO) => {
+  if (!windowEndISO) return 'Saldo';
+  const hoje = new Date();
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  return windowEndISO < hojeISO ? `Saldo em ${dataBR(windowEndISO)}` : 'Saldo';
+};
+
+/**
+ * Drawdown nunca ganha sinal negativo colado a mao (#413 defeito 3): concatenar '-'
+ * incondicionalmente fazia zero virar '-0.0%', que le como se houvesse queda.
+ */
+const fmtDrawdownPct = (percent) => {
+  if (percent == null || !isFinite(percent)) return '-';
+  const abs = Math.abs(percent).toFixed(1);
+  return abs === '0.0' ? '0.0%' : `-${abs}%`;
+};
+
+/** '+2.8%' / '-1.4%' / '' quando nao ha capital de referencia. */
+const fmtSignedPct = (percent) => {
+  if (percent == null || !isFinite(percent)) return '';
+  return `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`;
+};
+
+const RESULTADO_TOOLTIP =
+  'Resultado da janela selecionada, e quanto ele representa do PL inicial dessa janela ' +
+  '— mesma conta que o fechamento de ciclo usa para dizer "+1,5%".';
+
+const DRAWDOWN_TOOLTIP =
+  'Queda desde o TOPO do patrimonio dentro da janela selecionada — nao distancia do aporte. ' +
+  'A curva e ordenada pelo horario de saida do trade, nao pelo dia.';
+
+const SALDO_TOOLTIP =
+  'Patrimonio ao fim da janela selecionada na barra de contexto: abertura da janela + resultado do periodo. ' +
+  'A abertura ja traz o que rolou dos ciclos anteriores, incluindo aporte ou saque feito no fechamento.';
 
 const getAsymmetryLevel = (ratio) => {
   if (ratio == null || isNaN(ratio)) return { label: '-', color: 'text-slate-400' };
@@ -117,6 +166,11 @@ const MetricsCards = ({
   payoff,
   asymmetryDiagnostic,
   plContext,
+  windowBalances,
+  sampleBalancesByCurrency,
+  windowTotals,
+  windowEndISO,
+  sampleIsFiltered = false,
   trades,
   plan,
   cycleStart,
@@ -170,33 +224,69 @@ const MetricsCards = ({
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            {/* Saldo */}
-            <div>
-              <p className="text-[11px] text-slate-600 mb-1">Saldo</p>
+            {/* Saldo da JANELA (#432) — derivado de abertura + resultado, nao de
+                `account.currentBalance`. currentBalance e escalar sem dimensao temporal:
+                para qualquer janela que nao termine hoje ele responde outra pergunta. */}
+            <div title={SALDO_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">{saldoLabel(windowEndISO)}</p>
               {dominantCurrency ? (
-                <p className="text-lg font-bold text-white">{formatCurrencyDynamic(aggregatedCurrentBalance, dominantCurrency)}</p>
+                <>
+                  <p className="text-lg font-bold text-white">{formatCurrencyDynamic(windowTotals?.end ?? aggregatedCurrentBalance, dominantCurrency)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    PL inicial: <span className="font-mono text-slate-400">{formatCurrencyDynamic(windowTotals?.opening ?? 0, dominantCurrency)}</span>
+                  </p>
+                </>
               ) : (
-                <div className="space-y-0.5">
-                  {[...balancesByCurrency.entries()].map(([c, data]) => (
-                    <p key={c} className="text-base font-bold text-white font-mono">{formatCurrencyDynamic(data.current, c)}</p>
+                <div className="space-y-1.5">
+                  {[...(windowBalances?.entries?.() || balancesByCurrency.entries())].map(([c, data]) => (
+                    <div key={c}>
+                      <p className="text-base font-bold text-white font-mono">{formatCurrencyDynamic(data.end ?? data.current, c)}</p>
+                      {data.opening != null && (
+                        <p className="text-[10px] text-slate-500 font-mono">PL inicial: {formatCurrencyDynamic(data.opening, c)}</p>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* P&L */}
-            <div>
-              <p className="text-[11px] text-slate-600 mb-1">{plContext?.label || 'P&L acumulado'}</p>
+            {/* Resultado da janela + quanto isso representa do PL inicial */}
+            <div title={RESULTADO_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">{plContext?.label || 'Resultado acumulado'}</p>
               {dominantCurrency ? (
-                <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
+                  {/* % sobre a abertura DESTA janela — o numerador e o mesmo numero ao lado,
+                      entao com filtro granular ele descreve a amostra, coerente com o rotulo. */}
+                  {pctOverOpening(stats.totalPL, windowTotals?.opening) != null && (
+                    <span className={`text-xs font-mono ${stats.totalPL >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                      {fmtSignedPct(pctOverOpening(stats.totalPL, windowTotals?.opening))}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-0.5">
-                  {[...balancesByCurrency.entries()].map(([c, data]) => (
-                    <p key={c} className={`text-base font-bold font-mono ${data.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {data.pnl >= 0 ? '+' : ''}{formatCurrencyDynamic(data.pnl, c)}
-                    </p>
-                  ))}
+                  {[...(sampleBalancesByCurrency?.entries?.() || balancesByCurrency.entries())].map(([c, data]) => {
+                    const v = data.result ?? data.pnl;
+                    return (
+                      <div key={c} className="flex items-baseline gap-2">
+                        <p className={`text-base font-bold font-mono ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {v >= 0 ? '+' : ''}{formatCurrencyDynamic(v, c)}
+                        </p>
+                        {data.pctOfOpening != null && (
+                          <span className={`text-[11px] font-mono ${v >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                            {fmtSignedPct(data.pctOfOpening)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+              )}
+              {sampleIsFiltered && (
+                <p className="text-[11px] text-amber-400/80 mt-1" title="Ha filtro granular ativo (ticker, setup, emocao ou busca). Este numero e o recorte; o saldo ao lado segue patrimonial.">
+                  recorte da amostra
+                </p>
               )}
               {evLeakage?.evReal != null && !isNaN(evLeakage.evReal) && (
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -206,12 +296,12 @@ const MetricsCards = ({
             </div>
 
             {/* Drawdown */}
-            <div title={maxDrawdownData?.maxDDDate ? `Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}` : ''}>
-              <p className="text-[11px] text-slate-600 mb-1">Drawdown</p>
-              <p className={`text-lg font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>-{drawdown.toFixed(1)}%</p>
+            <div title={maxDrawdownData?.maxDDDate ? `${DRAWDOWN_TOOLTIP} Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}.` : DRAWDOWN_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">Drawdown do topo</p>
+              <p className={`text-lg font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtDrawdownPct(drawdown)}</p>
               {maxDrawdownData.maxDD > 0 && (
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Max: <span className="font-mono text-red-400">-{safe(maxDrawdownData.maxDDPercent, 1)}%</span>
+                  Max: <span className="font-mono text-red-400">{fmtDrawdownPct(maxDrawdownData.maxDDPercent)}</span>
                   <span className="text-slate-600 ml-1">({formatCurrencyDynamic(-maxDrawdownData.maxDD, cur)})</span>
                 </p>
               )}

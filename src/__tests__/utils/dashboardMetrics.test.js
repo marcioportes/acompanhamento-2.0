@@ -19,6 +19,22 @@ import {
 
 describe('calculateMaxDrawdown', () => {
 
+  it('ordena pelo INSTANTE, nao pelo dia (#413 defeito 1)', () => {
+    // Chegam do Firestore em ordem arbitraria; no relogio o ganho veio primeiro.
+    const trades = [
+      { result: -300, date: '2026-08-12', exitTime: '2026-08-12T16:00:00' },
+      { result: 500, date: '2026-08-12', exitTime: '2026-08-12T10:00:00' },
+    ];
+    // Cronologico: +500 (peak 500) depois -300 → DD 300.
+    expect(calculateMaxDrawdown(trades).maxDD).toBe(300);
+
+    // Sem instante nenhum, a ordem de chegada manda: -300 primeiro (peak 0, DD 300),
+    // depois +500. O maxDD coincide aqui, mas a serie percorrida e outra.
+    const semInstante = trades.map(({ exitTime, ...t }) => t);
+    expect(calculateMaxDrawdown(semInstante).maxDD).toBe(300);
+  });
+
+
   it('série com drawdown conhecido → peak-to-trough correto', () => {
     const trades = [
       { result: 100, date: '2026-01-01' },   // cumPnL: 100, peak: 100
