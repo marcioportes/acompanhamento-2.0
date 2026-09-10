@@ -113,34 +113,53 @@ const filterByPeriod = (trades, period) => {
 // SUB-COMPONENTS
 // ============================================
 
+/** #436 — o ícone voltou: o #428 o trocou por um ponto de 5px e deixou
+ *  `STATUS_CONFIG.icon` meio morto. Ícone + cor identificam o estado sem que o
+ *  olho precise ler a palavra. */
 const StatusBadge = ({ status }) => {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.OPEN;
+  const Icon = cfg.icon;
   return (
-    <span className="chip">
-      <span className="chip-dot" style={{ background: cfg.cor }} />
+    <span className="chip" style={{ color: cfg.cor }}>
+      <Icon className="w-3 h-3 flex-shrink-0" strokeWidth={2} />
       {cfg.label}
     </span>
   );
 };
 
-/** Pill de status — ao lado do título, visível e clicável */
+/**
+ * Etiqueta de status — ao lado do título, à esquerda, na cor do próprio status.
+ *
+ * O #428 deixou as cinco em cinza (`--ink-2`/`--ink-4`) e a cor sobrou num ponto
+ * de 5px. Numa fileira de cinco estados, cinza obriga a ler os cinco rótulos para
+ * achar o que interessa — a cor é o que faz "Dúvidas" saltar antes da leitura.
+ * A regra do face lift (fundo neutro, cor num ponto) vale para etiqueta solta
+ * numa lista de dez; aqui são cinco estados fixos e distintos, que é o caso em
+ * que a cor carrega significado em vez de virar ruído.
+ *
+ * Estado zerado continua apagado: contagem 0 não disputa atenção.
+ */
 const StatusPill = ({ statusKey, count, isActive, onClick }) => {
   const cfg = STATUS_CONFIG[statusKey];
   const Icon = cfg.icon;
+  const vazio = !count;
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-1.5 px-2.5 h-7 text-[12px] transition-colors"
       style={{
         borderRadius: 'var(--r-sm)',
-        background: isActive ? 'var(--surface-3)' : 'transparent',
-        color: isActive ? 'var(--ink)' : count > 0 ? 'var(--ink-2)' : 'var(--ink-4)',
-        fontWeight: isActive ? 600 : 400,
+        background: isActive ? `color-mix(in srgb, ${cfg.cor} 18%, transparent)` : 'transparent',
+        boxShadow: isActive ? `inset 0 0 0 1px color-mix(in srgb, ${cfg.cor} 45%, transparent)` : undefined,
+        color: vazio ? 'var(--ink-4)' : cfg.cor,
+        fontWeight: isActive ? 600 : 500,
       }}
     >
       <Icon className="w-3.5 h-3.5" strokeWidth={1.75} />
       <span className="tabular">{count}</span>
-      <span className="hidden sm:inline">{cfg.shortLabel}</span>
+      <span className="hidden sm:inline" style={{ color: isActive || vazio ? 'inherit' : 'var(--ink-2)' }}>
+        {cfg.shortLabel}
+      </span>
     </button>
   );
 };
@@ -301,12 +320,12 @@ const StudentFeedbackPage = () => {
 
   return (
     <div className="h-[calc(100vh-0px)] flex flex-col">
-      {/* ===== HEADER: Título + Pills à esquerda, Filtros abaixo ===== */}
+      {/* ===== HEADER: Título + etiquetas à esquerda, Filtros abaixo ===== */}
       <div className="flex-none">
         <PageHeader
           titulo="Meus Feedbacks"
           icone={MessageSquare}
-          acoes={(
+          aoLado={(
             <div
               className="flex items-center gap-0.5 p-0.5"
               style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r)' }}
