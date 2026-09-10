@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.90.4: #434 fix o filtro do Feedback estava com o texto cortado, não invisível (PR #435, 10/09/2026)
  * - 1.90.3: #432 fix card Financeiro e card de plano leem a janela da ContextBar, não o saldo de agora (RESERVADA)
  * - 1.90.2: #406 chore harness de avaliação para feedback escrito por IA — Fase 0, decide go/no-go (RESERVADA)
  * - 1.90.1: #430 fix rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento (PR #431, 07/09/2026)

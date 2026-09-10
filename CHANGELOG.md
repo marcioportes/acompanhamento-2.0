@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.4] - 10/09/2026 · #434 · PR #435
+
+**fix:** o filtro do Feedback estava com o texto cortado, não invisível
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.90.1] - 07/09/2026 · #430 · PR #431
 
 **fix:** rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento
