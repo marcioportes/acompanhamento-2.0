@@ -21,9 +21,19 @@ const DebugBadge = ({ component, embedded = false }) => {
     ? `${VERSION.build.slice(6,8)}/${VERSION.build.slice(4,6)}/${VERSION.build.slice(0,4)}`
     : '-';
 
-  const positionClass = embedded
-    ? 'relative mt-1 flex justify-end pr-2 pb-1 opacity-50 select-none cursor-pointer'
+  // #438 — `embedded` era `relative mt-1 ... pb-1`: um bloco com altura própria
+  // NO FLUXO. Com sete selos, o Dashboard perdia ~130px entre o cabeçalho e a
+  // barra de contexto, e o buraco aparecia como defeito de layout para o aluno.
+  // Agora o wrapper tem altura zero e é ele o ancestral posicionado do selo, que
+  // fica no canto inferior direito do bloco onde foi declarado: continua visível
+  // (INV-04) e não empurra mais nada. Expandido volta ao fluxo, senão o painel
+  // de debug nasceria cortado pelo `h-0`.
+  const wrapperClass = embedded
+    ? (expanded ? 'relative flex justify-end pr-2 pb-1 select-none cursor-pointer' : 'relative h-0 select-none cursor-pointer')
     : `fixed bottom-2 right-2 z-50 select-none cursor-pointer ${expanded ? '' : 'opacity-60 hover:opacity-100'}`;
+  const positionClass = embedded && !expanded
+    ? `${wrapperClass} [&>*]:absolute [&>*]:right-2 [&>*]:-top-5 [&>*]:opacity-50 [&>*]:hover:opacity-100`
+    : wrapperClass;
 
   return (
     <div
