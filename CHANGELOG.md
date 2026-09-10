@@ -10,13 +10,33 @@ Version source of truth: `src/version.js`.
 
 ## [1.90.7] - 10/09/2026 · #432 · PR #433
 
-**fix:** os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawd
+**fix:** os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawdown do topo e o gate de promoção
+
+A barra de contexto (Conta → Plano → Ciclo → Período) definia uma janela, e os cards só a obedeciam pela metade. Com o ciclo de julho escolhido, a tela mostrava **três números de três períodos ao mesmo tempo**: `Saldo R$ 10.500,00` (patrimônio de hoje), `P&L Ciclo R$ 280,00` (julho) e, no card do plano logo acima, `+R$ 151,00` (agosto). O PL inicial da janela — o número que dá sentido a qualquer resultado — não aparecia em lugar nenhum.
+
+**Contrato:** `abertura(janela) + resultado(janela) = saldo ao fim da janela`. O saldo passa a ser derivado; `account.currentBalance` é escalar sem dimensão temporal e, para qualquer janela que não termine hoje, responde outra pergunta.
+
+- **Painel Financeiro lê a janela.** `PL inicial` + `Resultado` + `Saldo em DD/MM`. O rótulo só ganha data quando a janela já fechou — datá-lo com o fim de um ciclo aberto prometeria uma projeção que o número não é.
+- **A âncora é o capital do PLANO, não o depósito da conta.** `account.initialBalance` é o depósito na corretora; `plan.pl` é o capital alocado ao plano — na base real a conta abre com 1.997 enquanto o plano opera 100.000. Os dois campos estão 100% preenchidos, então não foi campo vazio: foi campo errado. Para ciclo passado a âncora vem do fechamento (`cycleBaseline.plInicial`), que é o PL congelado daquele ciclo; `plan.pl` é sempre o do ciclo corrente.
+- **Patrimonial ≠ amostra.** `filteredTrades` foi partido em dois estágios: escopo + janela alimenta patrimônio e drawdown; os granulares (ticker, setup, emoção, busca) entram depois e alimentam as estatísticas. Filtrar por ticker encolhe a amostra em análise, não o patrimônio do aluno. Com granular ativo o tile de Resultado se declara `recorte da amostra`.
+- **Percentual no Resultado.** `R$ 280,00` não informa nada sozinho: sobre R$ 10.000 é um ciclo bom, sobre R$ 200.000 é ruído. Mesma conta que o produto já usa (`resultado / PL inicial`), com a abertura da janela no lugar de `plan.pl`. Sem capital de referência o percentual some, em vez de mostrar `0,0%` — zero por cento afirmaria que não rendeu.
+- **Card de plano respeita o ciclo.** `PlanCardGrid` fixava o ciclo ABERTO via `getOpenCycleStart`; passa a obedecer o `cycleKey` da barra. Metas e stops, sendo % do PL, seguem junto — antes um ciclo passado media suas metas pelo capital de hoje. Em "Todos os ciclos" o comportamento histórico é preservado (contrato C2 do #259).
+
+**Drawdown — os três defeitos do #413, puxados do parking lot.** SSoT nova em `src/utils/drawdown.js`.
 
 - **Ordenação (o grave).** A série ordenava por `trade.date` ('YYYY-MM-DD'): trades do mesmo dia empatavam, o sort é estável, e a sequência intradiária virava a ordem arbitrária do Firestore. Medido 2,3× de variação no ciclo 2026-08 — o card exibiu o pior de 432 ordenações possíveis. Mesma família do #375: campo de DIA onde o INSTANTE importa.
 - **Semântica.** Media distância do saldo inicial, não do topo: quem subia 10% e caía 8% via `0,0%`. Passa a peak-to-trough, percentual relativo ao pico vigente.
 - **Render.** `-{x.toFixed(1)}%` colava o sinal e zero virava `-0.0%`.
-- **Denominador do `maxDDPercent`** segue `initialBalance`, não o pico, nos dois lados. Movê-lo deslocaria o threshold dos gates semanticamente — decisão de produto, não de fix.
-- **`calculateMaxDrawdown`** em `dashboardMetrics.js` recebeu só o fix de ordenação, pelo mesmo motivo: manter lockstep com o gêmeo do backend.
+
+**Gate de promoção.** `functions/maturity/preComputeShapes.js:calcMaxDrawdown` tinha o mesmo defeito de ordenação, e seu `maxDDPercent` alimenta `maxdd-under-20` / `maxdd-12` / `maxdd-8`. A ordem errada tende a **inflar** o maxDD — nada impede que empilhe as perdas do dia depois do pico —, então o gate reprovava aluno que a série cronológica aprovaria. Relacionado a "zero promoções desde a abertura" (#376/#377). Um teste de paridade trava as duas implementações trade a trade.
+
+**Não mudou, de propósito:** o denominador do `maxDDPercent` segue `initialBalance` e não o pico, nos dois lados — movê-lo deslocaria o threshold dos gates semanticamente, e isso é decisão de produto, não de fix. `calculateMaxDrawdown` em `dashboardMetrics.js` recebeu só o fix de ordenação, pelo mesmo motivo.
+
+**Regressão cometida e corrigida dentro do próprio issue:** a primeira versão ancorou a janela em `account.initialBalance` e o card exibiu `PL inicial: -R$ 673,67` ao lado de um card de plano dizendo `R$ 99.546,96` — exatamente a doença que este issue existe para curar. Pego na tela pelo harness, não pela suíte; virou os 18 testes de `planWindowOpening`.
+
+**Chunk sem dono:** `functions/maturity/` não é coberto por nenhum chunk de `docs/chunks.md`. Candidato a entrada própria na tabela.
+
+**Verificação:** 302 arquivos / 4769 testes passando, 39 testes novos, build limpo, tela conferida pelo harness pós-merge com o #438.
 
 
 ## [1.90.6] - 10/09/2026 · #438 · PR #439
