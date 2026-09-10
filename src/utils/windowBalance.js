@@ -82,6 +82,12 @@ export const buildWindowBalances = ({
       opening,
       result,
       end: opening + result,
+      // Retorno sobre o capital com que a janela ABRIU. Mesma formula que o resto do
+      // produto ja usa para "resultado do ciclo em %" (useCycleExpiredQueue, TradesList):
+      // resultado / PL inicial. A diferenca e o denominador ser a abertura DESTA janela,
+      // com carry-over, e nao `plan.pl` — que e sempre o PL do ciclo corrente.
+      // null (e nao 0) quando nao ha capital: 0% afirmaria que nao rendeu.
+      pctOfOpening: opening > 0 ? (result / opening) * 100 : null,
       accountCount: group.ids.size,
     });
   }
@@ -96,11 +102,28 @@ export const buildWindowBalances = ({
  */
 export const totalsForSingleCurrency = (balances) => {
   const entries = [...(balances?.values?.() || [])];
-  if (entries.length === 0) return { opening: 0, result: 0, end: 0 };
-  return entries.reduce(
+  if (entries.length === 0) return { opening: 0, result: 0, end: 0, pctOfOpening: null };
+  const somado = entries.reduce(
     (acc, b) => ({ opening: acc.opening + b.opening, result: acc.result + b.result, end: acc.end + b.end }),
     { opening: 0, result: 0, end: 0 }
   );
+  // Recalculado sobre os totais — somar percentuais de aberturas diferentes daria um
+  // numero sem significado.
+  return { ...somado, pctOfOpening: somado.opening > 0 ? (somado.result / somado.opening) * 100 : null };
+};
+
+/**
+ * Retorno de um resultado qualquer sobre a abertura da janela. Existe para o caso em que
+ * o numerador NAO e o resultado patrimonial: com filtro granular ativo o tile mostra a
+ * amostra (`stats.totalPL`), e o percentual tem que descrever o numero que esta ao lado
+ * dele, nao outro.
+ */
+export const pctOverOpening = (value, opening) => {
+  const base = Number(opening) || 0;
+  if (base <= 0) return null;
+  const v = Number(value);
+  if (!Number.isFinite(v)) return null;
+  return (v / base) * 100;
 };
 
 export default buildWindowBalances;

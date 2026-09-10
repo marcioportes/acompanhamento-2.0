@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildWindowBalances, totalsForSingleCurrency } from '../../utils/windowBalance.js';
+import { buildWindowBalances, totalsForSingleCurrency, pctOverOpening } from '../../utils/windowBalance.js';
 
 const acc = (id, initialBalance, currency = 'BRL') => ({ id, initialBalance, currency });
 const trade = (accountId, date, result) => ({ accountId, date, result });
@@ -78,6 +78,16 @@ describe('buildWindowBalances', () => {
       closures: [closure('a1', '2026-07-31', 41200, 3300, 42500)],
     });
     expect(b.get('BRL').opening).toBe(40000);
+  });
+
+  it('o percentual do total NAO e a soma dos percentuais das moedas', () => {
+    const b = buildWindowBalances({
+      accounts: [acc('a1', 10000), acc('a2', 90000)],
+      windowStart: null,
+      windowTrades: [trade('a1', '2026-08-05', 1000)],
+    });
+    // Uma so entrada (mesma moeda): 1.000 sobre 100.000 = 1%, e nao 10%.
+    expect(totalsForSingleCurrency(b).pctOfOpening).toBeCloseTo(1, 6);
   });
 
   it('a identidade abertura + resultado = fim vale em toda entrada', () => {
@@ -151,6 +161,62 @@ describe('buildWindowBalances', () => {
   });
 });
 
+describe('pctOfOpening — retorno sobre o capital da janela', () => {
+  it('e resultado / PL inicial, a mesma conta do fechamento de ciclo', () => {
+    const b = buildWindowBalances({
+      accounts: [acc('a1', 40000)],
+      windowStart: '2026-08-01',
+      tradesForCarry: [trade('a1', '2026-07-01', 2500)],   // abertura 42.500
+      windowTrades: [trade('a1', '2026-08-12', 1275)],
+    });
+    expect(b.get('BRL').opening).toBe(42500);
+    expect(b.get('BRL').pctOfOpening).toBeCloseTo(3, 6);   // 1.275 / 42.500
+  });
+
+  it('prejuizo da percentual negativo', () => {
+    const b = buildWindowBalances({
+      accounts: [acc('a1', 10000)],
+      windowStart: null,
+      windowTrades: [trade('a1', '2026-08-12', -250)],
+    });
+    expect(b.get('BRL').pctOfOpening).toBeCloseTo(-2.5, 6);
+  });
+
+  it('sem capital o percentual e null, nao zero — 0% afirmaria que nao rendeu', () => {
+    const b = buildWindowBalances({
+      accounts: [{ id: 'a1', currency: 'BRL' }],
+      windowStart: null,
+      windowTrades: [trade('a1', '2026-08-12', 300)],
+    });
+    expect(b.get('BRL').pctOfOpening).toBeNull();
+  });
+
+  it('cada moeda tem seu proprio denominador', () => {
+    const b = buildWindowBalances({
+      accounts: [acc('a1', 10000, 'BRL'), acc('a2', 5000, 'USD')],
+      windowStart: null,
+      windowTrades: [trade('a1', '2026-08-05', 500), trade('a2', '2026-08-05', 500)],
+    });
+    expect(b.get('BRL').pctOfOpening).toBeCloseTo(5, 6);
+    expect(b.get('USD').pctOfOpening).toBeCloseTo(10, 6);
+  });
+});
+
+describe('pctOverOpening', () => {
+  it('descreve o numerador que recebe — util quando o tile mostra a amostra', () => {
+    expect(pctOverOpening(1275, 42500)).toBeCloseTo(3, 6);
+    expect(pctOverOpening(-250, 10000)).toBeCloseTo(-2.5, 6);
+  });
+
+  it('null para base ausente, zero, negativa ou numerador invalido', () => {
+    expect(pctOverOpening(100, 0)).toBeNull();
+    expect(pctOverOpening(100, -5)).toBeNull();
+    expect(pctOverOpening(100, undefined)).toBeNull();
+    expect(pctOverOpening(undefined, 1000)).toBeNull();
+    expect(pctOverOpening(NaN, 1000)).toBeNull();
+  });
+});
+
 describe('totalsForSingleCurrency', () => {
   it('soma as entradas quando ha uma moeda so', () => {
     const b = buildWindowBalances({
@@ -159,11 +225,13 @@ describe('totalsForSingleCurrency', () => {
       tradesForCarry: [trade('a1', '2026-07-01', 500)],
       windowTrades: [trade('a1', '2026-08-05', 300)],
     });
-    expect(totalsForSingleCurrency(b)).toEqual({ opening: 50500, result: 300, end: 50800 });
+    expect(totalsForSingleCurrency(b)).toEqual({
+      opening: 50500, result: 300, end: 50800, pctOfOpening: (300 / 50500) * 100,
+    });
   });
 
   it('devolve zeros para Map vazio', () => {
-    expect(totalsForSingleCurrency(new Map())).toEqual({ opening: 0, result: 0, end: 0 });
-    expect(totalsForSingleCurrency(undefined)).toEqual({ opening: 0, result: 0, end: 0 });
+    expect(totalsForSingleCurrency(new Map())).toEqual({ opening: 0, result: 0, end: 0, pctOfOpening: null });
+    expect(totalsForSingleCurrency(undefined)).toEqual({ opening: 0, result: 0, end: 0, pctOfOpening: null });
   });
 });

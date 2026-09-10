@@ -17,6 +17,7 @@ import { DollarSign, Target, BarChart3, Info, AlertTriangle } from 'lucide-react
 import { useState, useMemo } from 'react';
 import { formatPercent } from '../../utils/calculations';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import { pctOverOpening } from '../../utils/windowBalance';
 import { getFinancialInsights, getPerformanceInsights, getPlanVsResultInsights } from '../../utils/metricsInsights';
 import DebugBadge from '../DebugBadge';
 import CycleConsistencyCard from './CycleConsistencyCard';
@@ -50,6 +51,16 @@ const fmtDrawdownPct = (percent) => {
   const abs = Math.abs(percent).toFixed(1);
   return abs === '0.0' ? '0.0%' : `-${abs}%`;
 };
+
+/** '+2.8%' / '-1.4%' / '' quando nao ha capital de referencia. */
+const fmtSignedPct = (percent) => {
+  if (percent == null || !isFinite(percent)) return '';
+  return `${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%`;
+};
+
+const RESULTADO_TOOLTIP =
+  'Resultado da janela selecionada, e quanto ele representa do PL inicial dessa janela ' +
+  '— mesma conta que o fechamento de ciclo usa para dizer "+1,5%".';
 
 const DRAWDOWN_TOOLTIP =
   'Queda desde o TOPO do patrimonio dentro da janela selecionada — nao distancia do aporte. ' +
@@ -239,19 +250,35 @@ const MetricsCards = ({
               )}
             </div>
 
-            {/* P&L */}
-            <div>
-              <p className="text-[11px] text-slate-600 mb-1">{plContext?.label || 'P&L acumulado'}</p>
+            {/* Resultado da janela + quanto isso representa do PL inicial */}
+            <div title={RESULTADO_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">{plContext?.label || 'Resultado acumulado'}</p>
               {dominantCurrency ? (
-                <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <p className={`text-lg font-bold ${stats.totalPL >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatCurrencyDynamic(stats.totalPL, dominantCurrency)}</p>
+                  {/* % sobre a abertura DESTA janela — o numerador e o mesmo numero ao lado,
+                      entao com filtro granular ele descreve a amostra, coerente com o rotulo. */}
+                  {pctOverOpening(stats.totalPL, windowTotals?.opening) != null && (
+                    <span className={`text-xs font-mono ${stats.totalPL >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                      {fmtSignedPct(pctOverOpening(stats.totalPL, windowTotals?.opening))}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-0.5">
                   {[...(sampleBalancesByCurrency?.entries?.() || balancesByCurrency.entries())].map(([c, data]) => {
                     const v = data.result ?? data.pnl;
                     return (
-                      <p key={c} className={`text-base font-bold font-mono ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {v >= 0 ? '+' : ''}{formatCurrencyDynamic(v, c)}
-                      </p>
+                      <div key={c} className="flex items-baseline gap-2">
+                        <p className={`text-base font-bold font-mono ${v >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {v >= 0 ? '+' : ''}{formatCurrencyDynamic(v, c)}
+                        </p>
+                        {data.pctOfOpening != null && (
+                          <span className={`text-[11px] font-mono ${v >= 0 ? 'text-emerald-500/70' : 'text-red-500/70'}`}>
+                            {fmtSignedPct(data.pctOfOpening)}
+                          </span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
