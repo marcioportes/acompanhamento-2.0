@@ -30,7 +30,12 @@
 /**
  * Instante do trade em ms. Precedência: saída > entrada > dia.
  * `exitTime` é o momento em que o resultado entrou no patrimônio — é ele que ordena a
- * curva. `date` é o último recurso e empata trades do mesmo dia (defeito 1).
+ * curva. `date` é o último recurso: 'YYYY-MM-DD' resolve para o INÍCIO do dia, então um
+ * trade sem hora ancora antes dos trades cronometrados do mesmo dia. Não é uma preferência
+ * de negócio, é o que a data significa — e o ponto é ser DETERMINÍSTICO, porque o que
+ * havia antes era a ordem em que o Firestore devolveu os documentos (defeito 1).
+ * Na base atual `entryTime` está em 100% dos trades e `exitTime` em 99%, então o caso
+ * só-dia é residual.
  */
 export const tradeInstantMs = (trade) => {
   const raw = trade?.exitTime || trade?.entryTime || trade?.date;

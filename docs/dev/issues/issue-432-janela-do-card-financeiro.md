@@ -5,8 +5,10 @@
 **Status atual do documento:**
 - [x] Mockup apresentado — 09/09/2026
 - [x] Memória de cálculo apresentada — 09/09/2026
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou — 09/09/2026: autorizou pela foto do dashboard ("Eu estou como
+      mentor, entrei no dashboard do aluno e não mudou nada!"), depois estendeu o escopo
+      duas vezes: "arruma o drawdown também" e "arruma o gate também".
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -156,6 +158,9 @@ Fechamento de julho com **saque manual de R$ 2.000,00** → `rollPL = 42.500`, `
 - A3 — `MetricsCards` painel Financeiro consome a janela (opção A do mockup)
 - B1 — `PlanCardGrid` respeita `cycleKey` da ContextBar
 - B2 — verificação em app real (AP-08: build verde não basta)
+- C1 — `src/utils/drawdown.js` + 15 testes (ordenação por instante, peak-to-trough, janela)
+- C2 — hook e `MetricsCards` consomem a SSoT; `fmtDrawdownPct` mata o `-0.0%`
+- C3 — `calcMaxDrawdown` do backend ordena por instante + teste de paridade front/back
 
 ## Sessions
 
