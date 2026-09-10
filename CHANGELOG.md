@@ -12,7 +12,10 @@ Version source of truth: `src/version.js`.
 
 **fix:** o Dashboard perdia 168px para selo de debug e colava rótulo no valor
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Selos no fluxo:** `DebugBadge` no modo `embedded` era `relative mt-1 ... pb-1`, um bloco com altura própria. O Dashboard renderiza sete; dois caem entre o cabeçalho e a barra de contexto e abriam ~130px de buraco. Os `fixed` ainda colidiam com `embedded` próximos do mesmo canto (lia-se `StudéntDashböard`, dois selos sobrepostos). Agora o wrapper tem altura zero e ancora o selo no canto do próprio bloco — visível, INV-04 mantida, sem empurrar layout. Expandido volta ao fluxo, senão o painel nasceria cortado pelo `h-0`. Vale para os 24 `embedded` do app.
+- **Rótulo colado no valor:** `flex justify-between` numa coluna de ~170px fazia o valor quebrar linha — o `/` sozinho em cima e `R$ 1.000,00` colado no rótulo truncado (`DIÁRIOR$ 1.000,00`, com o fim cortado). Rótulo e valor passam a ser empilhados.
+- **Tentativa descartada:** `whitespace-nowrap` no valor com `truncate` no rótulo parou a quebra, mas o rótulo virou `D.` e `MENSAL` sumiu — defeito pior que o original. Na largura real da coluna os dois não cabem lado a lado.
+- Verificado na foto do harness antes e depois: página de 2904px para 2736px, exatamente os 168px dos selos.
 
 
 ## [1.90.5] - 10/09/2026 · #436 · PR #437
