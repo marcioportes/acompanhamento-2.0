@@ -11,8 +11,15 @@
  *
  * `acoes` é o canto direito — o botão primário da tela mora aqui, não solto no
  * meio do conteúdo.
+ *
+ * `aoLado` é o oposto: fica colado no título, à esquerda. Serve para o que
+ * pertence à identidade da tela e não é ação — filtro de estado, contagem,
+ * segmentação. Passar isso por `acoes` joga no canto direito (é `ml-auto`), que
+ * foi o que aconteceu com as etiquetas do Feedback no #428 (issue #436).
+ * Diferente de `contexto`, não vem embrulhado em `<span class="meta truncate">`,
+ * então aceita uma fileira de controles sem truncar.
  */
-const PageHeader = ({ titulo, contexto = null, acoes = null, icone: Icone = null }) => (
+const PageHeader = ({ titulo, contexto = null, aoLado = null, acoes = null, icone: Icone = null }) => (
   <header
     className="sticky top-0 z-30 min-h-14 flex items-center gap-3 px-6 py-2"
     style={{ background: 'var(--bg)', borderBottom: '1px solid var(--line)' }}
@@ -20,6 +27,7 @@ const PageHeader = ({ titulo, contexto = null, acoes = null, icone: Icone = null
     {Icone && <Icone className="w-4 h-4 flex-shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink-3)' }} />}
     <h1 className="text-[15px] font-semibold whitespace-nowrap" style={{ color: 'var(--ink)' }}>{titulo}</h1>
     {contexto && <span className="meta truncate">{contexto}</span>}
+    {aoLado && <div className="flex items-center gap-2 flex-shrink-0">{aoLado}</div>}
     {acoes && <div className="ml-auto flex items-center gap-2 flex-shrink-0">{acoes}</div>}
   </header>
 );
