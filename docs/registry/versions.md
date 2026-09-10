@@ -115,3 +115,4 @@
 | 1.90.3 | #432 | `fix/issue-432-janela-do-card-financeiro` | 09/09/2026 | reservada (1.90.2 reservada por #406, pendente) |
 | 1.90.4 | #434 | `fix/issue-434-filtro-feedback-ilegivel` | 10/09/2026 | consumida (PR #435 squash `de4ae6cc`) |
 | 1.90.5 | #436 | `fix/issue-436-etiquetas-status-feedback` | 10/09/2026 | consumida (PR #437 squash `a46fb5b3`) |
+| 1.90.6 | #438 | `fix/issue-438-dashboard-selos-e-card-do-plano` | 10/09/2026 | reservada |
