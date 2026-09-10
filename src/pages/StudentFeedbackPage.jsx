@@ -48,6 +48,26 @@ const STATUS_CONFIG = {
   CLOSED: { label: 'Encerrado', shortLabel: 'Encerrados', icon: Lock, cor: 'var(--ink-4)', priority: 5 }
 };
 
+/**
+ * Os dois filtros compartilham estilo — antes era literal duplicado, e o defeito
+ * do #434 nasceu duas vezes de uma vez só.
+ *
+ * `py-1` não é enfeite: `index.css` dá `py-3` (12px) a todo input/textarea/select,
+ * e com `h-8` + border-box sobra caixa de 8px para uma linha de 19,5px — o texto
+ * fica cortado, que é como este filtro foi para produção no #428.
+ *
+ * `backgroundColor`, e não `background`: o shorthand zera o `background-image`
+ * onde `index.css` desenha a seta do select, e o controle fica sem indicação de
+ * que abre. `pr-9` reserva o espaço dessa seta (20px a 12px da borda).
+ */
+const CLASSE_SELECT = 'pl-3 pr-9 py-1 h-8 text-[13px] focus:outline-none';
+const ESTILO_SELECT = {
+  backgroundColor: 'var(--surface)',
+  border: '1px solid var(--line)',
+  borderRadius: 'var(--r-sm)',
+  color: 'var(--ink)',
+};
+
 const PERIOD_OPTIONS = [
   { id: 'all', label: 'Todo período' },
   { id: 'today', label: 'Hoje' },
@@ -309,8 +329,8 @@ const StudentFeedbackPage = () => {
           <select
             value={tickerFilter}
             onChange={(e) => setTickerFilter(e.target.value)}
-            className="px-3 h-8 text-[13px] focus:outline-none"
-            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
+            className={CLASSE_SELECT}
+            style={ESTILO_SELECT}
           >
             <option value="all">Todos os ativos</option>
             {availableTickers.map(t => <option key={t} value={t}>{t}</option>)}
@@ -319,8 +339,8 @@ const StudentFeedbackPage = () => {
           <select
             value={periodFilter}
             onChange={(e) => setPeriodFilter(e.target.value)}
-            className="px-3 h-8 text-[13px] focus:outline-none"
-            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
+            className={CLASSE_SELECT}
+            style={ESTILO_SELECT}
           >
             {PERIOD_OPTIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>

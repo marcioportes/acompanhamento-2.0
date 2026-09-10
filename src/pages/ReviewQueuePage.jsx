@@ -252,8 +252,8 @@ const ReviewQueuePage = ({ onOpenReviewInLedger = null, onOpenWeeklyReview = nul
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar aluno por nome ou email..."
-            className="w-full pl-9 pr-9 h-9 text-[13px] focus:outline-none"
-            style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
+            className="w-full pl-9 pr-9 py-1 h-9 text-[13px] focus:outline-none"
+            style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
           />
           {search && (
             <button
