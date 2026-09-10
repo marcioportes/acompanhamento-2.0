@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.5] - 10/09/2026 · #436 · PR #437
+
+**fix:** as etiquetas de status voltam para a esquerda e com cor
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.90.4] - 10/09/2026 · #434 · PR #435
 
 **fix:** o filtro do Feedback estava com o texto cortado, não invisível

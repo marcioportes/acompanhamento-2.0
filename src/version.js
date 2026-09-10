@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.90.5: #436 fix as etiquetas de status voltam para a esquerda e com cor (PR #437, 10/09/2026)
  * - 1.90.4: #434 fix o filtro do Feedback estava com o texto cortado, não invisível (PR #435, 10/09/2026)
  * - 1.90.3: #432 fix card Financeiro e card de plano leem a janela da ContextBar, não o saldo de agora (RESERVADA)
  * - 1.90.2: #406 chore harness de avaliação para feedback escrito por IA — Fase 0, decide go/no-go (RESERVADA)
