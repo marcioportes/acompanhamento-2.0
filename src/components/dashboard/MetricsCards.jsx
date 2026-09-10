@@ -41,6 +41,20 @@ const saldoLabel = (windowEndISO) => {
   return windowEndISO < hojeISO ? `Saldo em ${dataBR(windowEndISO)}` : 'Saldo';
 };
 
+/**
+ * Drawdown nunca ganha sinal negativo colado a mao (#413 defeito 3): concatenar '-'
+ * incondicionalmente fazia zero virar '-0.0%', que le como se houvesse queda.
+ */
+const fmtDrawdownPct = (percent) => {
+  if (percent == null || !isFinite(percent)) return '-';
+  const abs = Math.abs(percent).toFixed(1);
+  return abs === '0.0' ? '0.0%' : `-${abs}%`;
+};
+
+const DRAWDOWN_TOOLTIP =
+  'Queda desde o TOPO do patrimonio dentro da janela selecionada — nao distancia do aporte. ' +
+  'A curva e ordenada pelo horario de saida do trade, nao pelo dia.';
+
 const SALDO_TOOLTIP =
   'Patrimonio ao fim da janela selecionada na barra de contexto: abertura da janela + resultado do periodo. ' +
   'A abertura ja traz o que rolou dos ciclos anteriores, incluindo aporte ou saque feito no fechamento.';
@@ -255,12 +269,12 @@ const MetricsCards = ({
             </div>
 
             {/* Drawdown */}
-            <div title={maxDrawdownData?.maxDDDate ? `Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}` : ''}>
-              <p className="text-[11px] text-slate-600 mb-1">Drawdown</p>
-              <p className={`text-lg font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>-{drawdown.toFixed(1)}%</p>
+            <div title={maxDrawdownData?.maxDDDate ? `${DRAWDOWN_TOOLTIP} Pior vale em ${maxDrawdownData.maxDDDate.split('-').reverse().join('/')}.` : DRAWDOWN_TOOLTIP}>
+              <p className="text-[11px] text-slate-600 mb-1">Drawdown do topo</p>
+              <p className={`text-lg font-bold ${drawdown < 5 ? 'text-emerald-400' : 'text-red-400'}`}>{fmtDrawdownPct(drawdown)}</p>
               {maxDrawdownData.maxDD > 0 && (
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Max: <span className="font-mono text-red-400">-{safe(maxDrawdownData.maxDDPercent, 1)}%</span>
+                  Max: <span className="font-mono text-red-400">{fmtDrawdownPct(maxDrawdownData.maxDDPercent)}</span>
                   <span className="text-slate-600 ml-1">({formatCurrencyDynamic(-maxDrawdownData.maxDD, cur)})</span>
                 </p>
               )}

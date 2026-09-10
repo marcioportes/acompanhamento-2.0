@@ -29,6 +29,7 @@ import {
 import { hasEffectiveRedFlags } from '../utils/violationFilter';
 import { computeOpeningBalance } from '../utils/openingBalance';
 import { buildWindowBalances, totalsForSingleCurrency } from '../utils/windowBalance';
+import { computeDrawdown } from '../utils/drawdown';
 
 /** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
 const PERIOD_KIND_LABELS = {
@@ -223,31 +224,24 @@ const useDashboardMetrics = ({
   }, [accountsInScope]);
 
   // === Métricas avançadas ===
-  const drawdown = useMemo(() => {
-    if (aggregatedInitialBalance <= 0) return 0;
-    const loss = Math.min(0, aggregatedCurrentBalance - aggregatedInitialBalance);
-    return Math.abs(loss / aggregatedInitialBalance) * 100;
-  }, [aggregatedInitialBalance, aggregatedCurrentBalance]);
+  // Drawdown (#413 defeitos 1-3 + #432): curva de patrimônio da JANELA, ordenada pelo
+  // INSTANTE do trade, medida a partir do PICO. Usa `windowScopedTrades` e não
+  // `filteredTrades`: filtrar por ticker encolhe a amostra em análise, não a queda que o
+  // patrimônio do aluno realmente sofreu.
+  const drawdownData = useMemo(() => computeDrawdown({
+    trades: windowScopedTrades,
+    openingBalance: windowTotals.opening,
+  }), [windowScopedTrades, windowTotals.opening]);
 
-  const maxDrawdownData = useMemo(() => {
-    if (filteredTrades.length === 0) return { maxDD: 0, maxDDPercent: 0, maxDDDate: null };
-    const sorted = [...filteredTrades].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    let cumPnL = 0;
-    let peak = 0;
-    let maxDD = 0;
-    let maxDDDate = null;
-    for (const trade of sorted) {
-      cumPnL += Number(trade.result) || 0;
-      if (cumPnL > peak) peak = cumPnL;
-      const dd = peak - cumPnL;
-      if (dd > maxDD) {
-        maxDD = dd;
-        maxDDDate = trade.date;
-      }
-    }
-    const maxDDPercent = aggregatedInitialBalance > 0 ? (maxDD / aggregatedInitialBalance) * 100 : 0;
-    return { maxDD, maxDDPercent, maxDDDate };
-  }, [filteredTrades, aggregatedInitialBalance]);
+  /** Drawdown corrente em % do pico — o número grande do tile. */
+  const drawdown = drawdownData.current.percent;
+
+  /** Shape historico preservado: consumido por metricsInsights e pelo tradesSummary da IA. */
+  const maxDrawdownData = useMemo(() => ({
+    maxDD: drawdownData.max.value,
+    maxDDPercent: drawdownData.max.percent,
+    maxDDDate: drawdownData.max.date,
+  }), [drawdownData]);
 
   const winRatePlanned = useMemo(() => {
     if (filteredTrades.length === 0 || plansToShow.length === 0) return null;
@@ -387,6 +381,7 @@ const useDashboardMetrics = ({
     windowEndISO,
     // Métricas
     drawdown,
+    drawdownData,
     maxDrawdownData,
     winRatePlanned,
     complianceRate,
