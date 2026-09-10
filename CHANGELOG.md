@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.6] - 10/09/2026 · #438 · PR #439
+
+**fix:** o Dashboard perdia 168px para selo de debug e colava rótulo no valor
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.90.5] - 10/09/2026 · #436 · PR #437
 
 **fix:** as etiquetas de status voltam para a esquerda e com cor
