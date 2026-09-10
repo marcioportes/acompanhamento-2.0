@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.7] - 10/09/2026 · #432 · PR #433
+
+**fix:** os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawd
+
+- **Ordenação (o grave).** A série ordenava por `trade.date` ('YYYY-MM-DD'): trades do mesmo dia empatavam, o sort é estável, e a sequência intradiária virava a ordem arbitrária do Firestore. Medido 2,3× de variação no ciclo 2026-08 — o card exibiu o pior de 432 ordenações possíveis. Mesma família do #375: campo de DIA onde o INSTANTE importa.
+- **Semântica.** Media distância do saldo inicial, não do topo: quem subia 10% e caía 8% via `0,0%`. Passa a peak-to-trough, percentual relativo ao pico vigente.
+- **Render.** `-{x.toFixed(1)}%` colava o sinal e zero virava `-0.0%`.
+- **Denominador do `maxDDPercent`** segue `initialBalance`, não o pico, nos dois lados. Movê-lo deslocaria o threshold dos gates semanticamente — decisão de produto, não de fix.
+- **`calculateMaxDrawdown`** em `dashboardMetrics.js` recebeu só o fix de ordenação, pelo mesmo motivo: manter lockstep com o gêmeo do backend.
+
+
 ## [1.90.6] - 10/09/2026 · #438 · PR #439
 
 **fix:** o Dashboard perdia 168px para selo de debug e colava rótulo no valor
