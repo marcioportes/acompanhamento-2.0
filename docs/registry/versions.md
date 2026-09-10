@@ -112,8 +112,7 @@
 | 1.90.0 | #427 | `chore/issue-427-harness-visual` | 06/09/2026 | consumida (PR #429 squash `89a2deb7`) |
 | 1.90.1 | #430 | `fix/issue-430-rescaldo-face-lift` | 07/09/2026 | consumida (PR #431 squash `4370e886`) |
 | 1.90.2 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | reservada |
-| 1.90.3 | #432 | `fix/issue-432-janela-do-card-financeiro` | 09/09/2026 | pulada — main consumiu 1.90.4/5/6 (#434/#436/#438) antes do #432 mergear; reserva re-tomada em 1.90.7 |
 | 1.90.4 | #434 | `fix/issue-434-filtro-feedback-ilegivel` | 10/09/2026 | consumida (PR #435 squash `de4ae6cc`) |
 | 1.90.5 | #436 | `fix/issue-436-etiquetas-status-feedback` | 10/09/2026 | consumida (PR #437 squash `a46fb5b3`) |
 | 1.90.6 | #438 | `fix/issue-438-dashboard-selos-e-card-do-plano` | 10/09/2026 | consumida (PR #439 squash `6bfbe9b3`) |
-| 1.90.7 | #432 | `fix/issue-432-janela-do-card-financeiro` | 10/09/2026 | reservada |
+| 1.90.7 | #432 | `fix/issue-432-janela-do-card-financeiro` | 10/09/2026 | reservada (1.90.3 pulada — main consumiu 1.90.4/5/6 antes deste mergear) |
