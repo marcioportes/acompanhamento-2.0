@@ -218,16 +218,16 @@ const PlanCardGrid = ({
               </div>
               <div className="mt-2 grid grid-cols-2 gap-3 border-t border-slate-700/50 pt-3">
                 <div className="flex flex-col border-r border-slate-700/50 pr-2">
-                  <div className="flex justify-between items-end mb-1">
-                    <div className="flex items-center gap-1"><Calendar className="w-3 h-3 text-slate-500" /><span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">{plan.operationPeriod}</span></div>
-                    <span className="text-[10px] text-slate-500 font-mono">/ {periodPnL >= 0 ? formatCurrencyDynamic(periodGoalVal, planCurrency) : `-${formatCurrencyDynamic(periodStopVal, planCurrency)}`}</span>
+                  <div className="mb-1 min-w-0">
+                    <div className="flex items-center gap-1 min-w-0"><Calendar className="w-3 h-3 text-slate-500 flex-shrink-0" /><span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">{plan.operationPeriod}</span></div>
+                    <span className="block text-[10px] text-slate-500 font-mono whitespace-nowrap overflow-hidden text-ellipsis">/ {periodPnL >= 0 ? formatCurrencyDynamic(periodGoalVal, planCurrency) : `-${formatCurrencyDynamic(periodStopVal, planCurrency)}`}</span>
                   </div>
                   <MiniProgressBar current={periodPnL} target={periodPnL >= 0 ? periodGoalVal : periodStopVal} isLoss={periodPnL < 0} />
                 </div>
                 <div className="flex flex-col pl-2">
-                  <div className="flex justify-between items-end mb-1">
-                    <div className="flex items-center gap-1"><RefreshCw className="w-3 h-3 text-slate-500" /><span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">{plan.adjustmentCycle}</span></div>
-                    <span className="text-[10px] text-slate-500 font-mono">/ {cyclePnL >= 0 ? formatCurrencyDynamic(cycleGoalVal, planCurrency) : `-${formatCurrencyDynamic(cycleStopVal, planCurrency)}`}</span>
+                  <div className="mb-1 min-w-0">
+                    <div className="flex items-center gap-1 min-w-0"><RefreshCw className="w-3 h-3 text-slate-500 flex-shrink-0" /><span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider truncate">{plan.adjustmentCycle}</span></div>
+                    <span className="block text-[10px] text-slate-500 font-mono whitespace-nowrap overflow-hidden text-ellipsis">/ {cyclePnL >= 0 ? formatCurrencyDynamic(cycleGoalVal, planCurrency) : `-${formatCurrencyDynamic(cycleStopVal, planCurrency)}`}</span>
                   </div>
                   <MiniProgressBar current={cyclePnL} target={cyclePnL >= 0 ? cycleGoalVal : cycleStopVal} isLoss={cyclePnL < 0} />
                 </div>

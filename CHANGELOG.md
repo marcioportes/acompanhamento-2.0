@@ -8,6 +8,39 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.6] - 10/09/2026 · #438 · PR #439
+
+**fix:** o Dashboard perdia 168px para selo de debug e colava rótulo no valor
+
+- **Selos no fluxo:** `DebugBadge` no modo `embedded` era `relative mt-1 ... pb-1`, um bloco com altura própria. O Dashboard renderiza sete; dois caem entre o cabeçalho e a barra de contexto e abriam ~130px de buraco. Os `fixed` ainda colidiam com `embedded` próximos do mesmo canto (lia-se `StudéntDashböard`, dois selos sobrepostos). Agora o wrapper tem altura zero e ancora o selo no canto do próprio bloco — visível, INV-04 mantida, sem empurrar layout. Expandido volta ao fluxo, senão o painel nasceria cortado pelo `h-0`. Vale para os 24 `embedded` do app.
+- **Rótulo colado no valor:** `flex justify-between` numa coluna de ~170px fazia o valor quebrar linha — o `/` sozinho em cima e `R$ 1.000,00` colado no rótulo truncado (`DIÁRIOR$ 1.000,00`, com o fim cortado). Rótulo e valor passam a ser empilhados.
+- **Tentativa descartada:** `whitespace-nowrap` no valor com `truncate` no rótulo parou a quebra, mas o rótulo virou `D.` e `MENSAL` sumiu — defeito pior que o original. Na largura real da coluna os dois não cabem lado a lado.
+- Verificado na foto do harness antes e depois: página de 2904px para 2736px, exatamente os 168px dos selos.
+
+
+## [1.90.5] - 10/09/2026 · #436 · PR #437
+
+**fix:** as etiquetas de status voltam para a esquerda e com cor
+
+- **Foram para a direita no #428:** as etiquetas viraram o `acoes` do `PageHeader`, e `acoes` é `ml-auto` por contrato. O comentário no código seguia dizendo `{/* Título + Pills à esquerda */}`, descrevendo o que deixara de ser verdade.
+- **Perderam a cor:** `${cfg.bg} ${cfg.text} ring-1 ${cfg.ring}` virou `color: ink/ink-2/ink-4` — cinco estados em cinza, com a cor sobrando num ponto de 5px. E o `StatusBadge` perdeu o ícone (`const Icon = cfg.icon` trocado pelo ponto).
+- **Correção:** `PageHeader` ganha o slot `aoLado` (aditivo, default `null` — nenhuma outra tela muda); ícone e contagem voltam em `cfg.cor`, com o estado ativo tingido por `color-mix`; contagem 0 segue apagada. `aoLado` existe em vez de reusar `contexto` porque `contexto` embrulha em `<span class="meta truncate">`.
+- **Decisão de design:** fundo neutro com cor num ponto vale para etiqueta solta numa lista de dez, onde dez cores não destacam ninguém. Cinco estados fixos num seletor é o caso oposto — a cor é o que faz "Dúvidas" saltar antes da leitura.
+- 4.706 testes / 298 arquivos · guarda de legibilidade do #434 verde · conferido na foto do harness antes do commit.
+
+
+## [1.90.4] - 10/09/2026 · #434 · PR #435
+
+**fix:** o filtro do Feedback estava com o texto cortado, não invisível
+
+- **Causa 1 — geometria.** `index.css:91` aplica `px-4 py-3` a todo `input, textarea, select`; o #428 fixou a altura em `h-8`/`h-9`. Com `border-box` sobram **6px de caixa de conteúdo para uma linha de 19,5px**, e o texto é cortado. Cor, fonte e largura estavam corretas — o defeito nunca foi de estilo.
+- **Causa 2 — a seta.** `style={{ background: ... }}` é shorthand e zera o `background-image` onde `index.css:103` desenha o chevron do select. Trocado por `backgroundColor`; `pr-9` reserva o espaço da seta.
+- **Escopo:** 3 controles em 2 arquivos — os dois selects do filtro em `StudentFeedbackPage.jsx` e o campo "Buscar aluno" em `ReviewQueuePage.jsx`. O terceiro não estava no issue: apareceu quando o teste de regressão rodou, porque a varredura declarada procurava `<select>` com `h-8` e não via input com `h-9`.
+- **Regressão:** `e2e/controles-legiveis.spec.js` exige caixa de conteúdo ≥ line-height em todo controle de formulário e folha de texto, sobre o harness do #427. Verificado nos dois sentidos — reprova no código quebrado (6px contra 19,5px), passa no consertado. `jsdom` não faz layout: nenhum teste de unidade podia pegar isto, e foi assim que o defeito atravessou build verde, lint limpo e 4.706 testes.
+- **Lição:** o harness do #427 fotografou este defeito no dia em que ele entrou. A foto existia e ninguém abriu — ferramenta de conferência sem hábito de conferir não é gate, por isso a regressão aqui roda sozinha em vez de esperar alguém olhar a imagem.
+- 4.706 testes / 298 arquivos · lint idêntico ao baseline nos arquivos tocados · guarda novo verde em 3 telas.
+
+
 ## [1.90.1] - 07/09/2026 · #430 · PR #431
 
 **fix:** rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento
