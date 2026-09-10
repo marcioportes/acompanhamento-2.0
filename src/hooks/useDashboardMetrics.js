@@ -30,12 +30,27 @@ import { hasEffectiveRedFlags } from '../utils/violationFilter';
 import { computeOpeningBalance } from '../utils/openingBalance';
 import { buildWindowBalances, totalsForSingleCurrency } from '../utils/windowBalance';
 import { computeDrawdown } from '../utils/drawdown';
+import { computePlanWindowOpening } from '../utils/planBalance';
 
 /** Labels de período por `periodRange.kind` (ContextBar — issue #118/#188). */
 const PERIOD_KIND_LABELS = {
   CYCLE: 'Ciclo',
   MONTH: 'Este Mês',
   WEEK: 'Esta Semana',
+};
+
+/** Date | 'YYYY-MM-DD...' → 'YYYY-MM-DD'. */
+const toISODay = (input) => {
+  if (!input) return null;
+  if (input instanceof Date) {
+    if (Number.isNaN(input.getTime())) return null;
+    const y = input.getFullYear();
+    const m = String(input.getMonth() + 1).padStart(2, '0');
+    const d = String(input.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const match = String(input).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
 };
 
 /** Converte trade.date ('YYYY-MM-DD') em Date local à meia-noite. */
@@ -186,7 +201,36 @@ const useDashboardMetrics = ({
     closures: closuresInScope,
   }), [accountsInScope, context?.periodRange?.start, scopedTradesForCarry, windowScopedTrades, closuresInScope]);
 
-  const windowTotals = useMemo(() => totalsForSingleCurrency(windowBalances), [windowBalances]);
+  // A abertura da janela para um PLANO nao vem de `account.initialBalance` (#432):
+  // initialBalance e o deposito na CORRETORA, `plan.pl` e o capital ALOCADO ao plano —
+  // na base real a conta abre com 1.997 enquanto o plano opera 100.000. O painel
+  // Financeiro so renderiza com plano selecionado, entao a base dele e a do plano, e e
+  // assim que ele concorda com o card do plano em vez de contar outra historia.
+  const planWindowOpening = useMemo(() => {
+    if (!selectedPlanId) return null;
+    const plan = plans.find(p => p.id === selectedPlanId);
+    if (!plan) return null;
+    return computePlanWindowOpening({
+      plan,
+      trades: scopedTradesForCarry,
+      closures: closuresInScope,
+      cycleStartISO: toISODay(context?.cycleStart),
+      windowStartISO: toISODay(context?.periodRange?.start),
+    });
+  }, [selectedPlanId, plans, scopedTradesForCarry, closuresInScope, context?.cycleStart, context?.periodRange?.start]);
+
+  const windowTotals = useMemo(() => {
+    const porConta = totalsForSingleCurrency(windowBalances);
+    if (planWindowOpening == null) return porConta;
+    // Resultado continua sendo o dos trades da janela; so a ANCORA muda.
+    const opening = planWindowOpening;
+    return {
+      ...porConta,
+      opening,
+      end: opening + porConta.result,
+      pctOfOpening: opening > 0 ? (porConta.result / opening) * 100 : null,
+    };
+  }, [windowBalances, planWindowOpening]);
 
   // Mesma quebra por moeda, mas sobre a AMOSTRA (com granulares). Alimenta o tile de
   // Resultado no modo multi-moeda, para que ele nao discorde do `stats.totalPL` que o

@@ -25,23 +25,8 @@ import { formatCurrencyDynamic } from '../../utils/currency';
 import { PERIOD_LABELS, ALL_CYCLES_KEY } from '../../utils/cycleResolver';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
 import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
-import { getOpenCycleStart } from '../../utils/planBalance';
+import { getOpenCycleStart, resolveCycleInitialPl, findCycleClosure } from '../../utils/planBalance';
 import DebugBadge from '../DebugBadge';
-
-/**
- * PL inicial do ciclo exibido. Fechamento tem prioridade: `cycleBaseline.plInicial` e o
- * ground truth gravado na transaction do servidor; closures pre-C3 (schemaVersion=2) nao
- * tem cycleBaseline mas tem `snapshot.plStart`. Sem fechamento (ciclo aberto) e `plan.pl`.
- */
-const resolveCycleInitialPl = (closure, plan) => {
-  if (closure) {
-    const fromBaseline = Number(closure.cycleBaseline?.plInicial);
-    if (Number.isFinite(fromBaseline) && fromBaseline > 0) return fromBaseline;
-    const fromSnapshot = Number(closure.snapshot?.plStart);
-    if (Number.isFinite(fromSnapshot) && fromSnapshot > 0) return fromSnapshot;
-  }
-  return Number(plan?.pl) || 0;
-};
 
 const MiniProgressBar = ({ current, target, isLoss }) => {
   const percent = target > 0 ? Math.min(Math.abs(current) / target * 100, 100) : 0;
@@ -134,9 +119,7 @@ const PlanCardGrid = ({
         // Ciclo fechado tem PL inicial proprio, congelado no fechamento. `plan.pl` e o PL
         // do ciclo CORRENTE (rolou no close) — usa-lo para um ciclo passado mostra o
         // capital errado. Mesma precedencia do PlanLedgerExtract (C3 #259).
-        const matchedClosure = useWindow
-          ? closures.find(c => c.planId === plan.id && c.cycleStart === windowStart && (c.status === 'CLOSED' || c.status === 'REOPENED')) || null
-          : null;
+        const matchedClosure = useWindow ? findCycleClosure(closures, plan.id, windowStart) : null;
 
         const planTrades = useWindow
           ? allPlanTrades.filter(t => typeof t.date === 'string' && t.date >= windowStart && t.date <= windowEnd)
