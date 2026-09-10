@@ -12,7 +12,12 @@ Version source of truth: `src/version.js`.
 
 **fix:** o filtro do Feedback estava com o texto cortado, não invisível
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Causa 1 — geometria.** `index.css:91` aplica `px-4 py-3` a todo `input, textarea, select`; o #428 fixou a altura em `h-8`/`h-9`. Com `border-box` sobram **6px de caixa de conteúdo para uma linha de 19,5px**, e o texto é cortado. Cor, fonte e largura estavam corretas — o defeito nunca foi de estilo.
+- **Causa 2 — a seta.** `style={{ background: ... }}` é shorthand e zera o `background-image` onde `index.css:103` desenha o chevron do select. Trocado por `backgroundColor`; `pr-9` reserva o espaço da seta.
+- **Escopo:** 3 controles em 2 arquivos — os dois selects do filtro em `StudentFeedbackPage.jsx` e o campo "Buscar aluno" em `ReviewQueuePage.jsx`. O terceiro não estava no issue: apareceu quando o teste de regressão rodou, porque a varredura declarada procurava `<select>` com `h-8` e não via input com `h-9`.
+- **Regressão:** `e2e/controles-legiveis.spec.js` exige caixa de conteúdo ≥ line-height em todo controle de formulário e folha de texto, sobre o harness do #427. Verificado nos dois sentidos — reprova no código quebrado (6px contra 19,5px), passa no consertado. `jsdom` não faz layout: nenhum teste de unidade podia pegar isto, e foi assim que o defeito atravessou build verde, lint limpo e 4.706 testes.
+- **Lição:** o harness do #427 fotografou este defeito no dia em que ele entrou. A foto existia e ninguém abriu — ferramenta de conferência sem hábito de conferir não é gate, por isso a regressão aqui roda sozinha em vez de esperar alguém olhar a imagem.
+- 4.706 testes / 298 arquivos · lint idêntico ao baseline nos arquivos tocados · guarda novo verde em 3 telas.
 
 
 ## [1.90.1] - 07/09/2026 · #430 · PR #431
