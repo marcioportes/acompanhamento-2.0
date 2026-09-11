@@ -180,7 +180,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
               if (!meta) {
                 return (
                   <div key={dateString} className="rounded-xl border border-transparent min-h-[38px] sm:min-h-[52px] p-1 sm:p-1.5">
-                    <span className="text-[10px] sm:text-[11px] text-slate-700">{day}</span>
+                    <span className="text-[10px] sm:text-[11px] text-slate-500">{day}</span>
                   </div>
                 );
               }
@@ -234,7 +234,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                         proporção, e os contadores só aparecem quando há espaço. */}
                     <div className="hidden sm:flex items-center justify-between mt-1">
                       <span className="text-[9px] text-slate-500">
-                        {meta.gains}<span className="text-slate-700">/</span>{meta.losses}
+                        {meta.gains}<span className="text-slate-500">/</span>{meta.losses}
                       </span>
                       <span className="text-[9px] text-slate-500">
                         {meta.alunos} {meta.alunos === 1 ? 'aluno' : 'alunos'}
@@ -275,7 +275,7 @@ const TradingCalendar = ({ trades = [], selectedDate, onSelectDate, currency = '
                   ${bgClass} ${!data ? 'cursor-default' : 'cursor-pointer'}
                 `}
               >
-                <span className={`text-[10px] absolute top-1 left-1.5 leading-none ${data ? 'text-slate-400' : 'text-slate-700'}`}>
+                <span className={`text-[10px] absolute top-1 left-1.5 leading-none ${data ? 'text-slate-400' : 'text-slate-500'}`}>
                   {day}
                 </span>
 

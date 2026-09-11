@@ -465,7 +465,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
     { id: 'pending', sidebarId: 'pending', label: 'Aguardando Feedback', icon: MessageSquare, contagem: pendingFeedback.length },
     { id: 'attention', sidebarId: 'attention', label: 'Precisam Atenção', icon: AlertTriangle, contagem: studentsNeedingAttention.length },
-    { id: 'closures', sidebarId: 'closures', label: 'Closures', icon: Inbox, contagem: closuresPendingCount },
+    { id: 'closures', sidebarId: 'closures', label: 'Fechamentos', icon: Inbox, contagem: closuresPendingCount },
   ];
 
   return (
