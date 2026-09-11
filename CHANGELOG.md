@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.90.8] - 11/09/2026 · #440 · PR #441
+
+**fix:** o número do dia no calendário tinha 1,44:1 de contraste
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.90.7] - 10/09/2026 · #432 · PR #433
 
 **fix:** os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawdown do topo e o gate de promoção

@@ -116,4 +116,4 @@
 | 1.90.5 | #436 | `fix/issue-436-etiquetas-status-feedback` | 10/09/2026 | consumida (PR #437 squash `a46fb5b3`) |
 | 1.90.6 | #438 | `fix/issue-438-dashboard-selos-e-card-do-plano` | 10/09/2026 | consumida (PR #439 squash `6bfbe9b3`) |
 | 1.90.7 | #432 | `fix/issue-432-janela-do-card-financeiro` | 10/09/2026 | consumida (PR #433 squash `7a0212a4`) |
-| 1.90.8 | #440 | `fix/issue-440-calendario-ilegivel-e-closures` | 11/09/2026 | reservada |
+| 1.90.8 | #440 | `fix/issue-440-calendario-ilegivel-e-closures` | 11/09/2026 | consumida (PR #441 squash `8fe65816`) |
