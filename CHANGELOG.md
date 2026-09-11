@@ -12,7 +12,10 @@ Version source of truth: `src/version.js`.
 
 **fix:** o número do dia no calendário tinha 1,44:1 de contraste
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Causa:** o #428 remapeou a escala `slate` para a paleta nova (`tailwind.config.js:20`) e `slate-700` — que o `TradingCalendar` usa no número do dia — virou `#2a323d`. Sobre o fundo do card isso dá **1,44:1**, contra 4,5:1 do mínimo WCAG: não é contraste baixo, é texto ausente. Aparecia nas duas telas com calendário (Análises e Ficha do aluno).
+- **Correção:** dia sem trade passa para `slate-500` (**3,94:1**). Não `slate-400` (7,45:1), que o igualaria ao dia com trade e mataria a leitura da grade. Três ocorrências: `:183`, `:237` e `:278`.
+- **Junto:** a aba dizia `Closures` em inglês contra `Fechamentos` no menu — mesmo destino, dois nomes. Estava registrada como pendência no encerramento do #430 e nunca virou issue.
+- 4.769 testes / 299 arquivos · conferido na foto do harness antes do commit.
 
 
 ## [1.90.7] - 10/09/2026 · #432 · PR #433
