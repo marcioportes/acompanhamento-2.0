@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.91.0: #442 fix a análise do mentor somava mesas diferentes do mesmo aluno (PR #443, 12/09/2026)
  * - 1.90.8: #440 fix o número do dia no calendário tinha 1,44:1 de contraste (PR #441, 11/09/2026)
  * - 1.90.7: #432 fix os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawd (PR #433, 10/09/2026)
  * - 1.90.6: #438 fix o Dashboard perdia 168px para selo de debug e colava rótulo no valor (PR #439, 10/09/2026)
@@ -443,7 +444,7 @@
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
 const version = '1.91.0';
-const build = '20260911';
+const build = '20260912';
 
 const VERSION = {
   version,

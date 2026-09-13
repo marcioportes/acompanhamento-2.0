@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.91.0] - 12/09/2026 · #442 · PR #443
+
+**fix:** a análise do mentor somava mesas diferentes do mesmo aluno
+
+- **Visão rápida** lista **aluno+plano** (23 linhas contra 17 alunos). Zero trades sem `planId` na base, então nada fica órfão. Abrir a ficha leva o `planId` junto.
+- **Na ficha** o plano vem do trade do dia clicado. O **seletor só aparece quando o mês tem mais de um plano** — 3 dos 41 meses aluno×mês. Nos outros 38 seria ruído.
+- **Curva e card Resultado** passam a ler plano + mês do dia selecionado.
+- **Moeda:** um plano tem uma moeda só (medido: zero planos com moeda misturada), então escopar por plano resolve a moeda junto. O cabeçalho do aluno segue empilhando USD e BRL — ali é totalizador de pessoa, não análise (DEC-AUTO-188-05 mantida).
+
+
 ## [1.90.8] - 11/09/2026 · #440 · PR #441
 
 **fix:** o número do dia no calendário tinha 1,44:1 de contraste
