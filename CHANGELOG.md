@@ -12,10 +12,15 @@ Version source of truth: `src/version.js`.
 
 **fix:** a análise do mentor somava mesas diferentes do mesmo aluno
 
+- **Causa:** `MentorDashboard:208` montava a ficha com todos os trades do aluno, sem filtro de plano. 8 de 20 alunos com plano têm mais de um — o caso real tem três mesas arriscando 6%, 10% e 1,7% por operação, em USD e BRL, somadas num número só. "R" é o risco DO PLANO: somar R de planos diferentes é somar unidades diferentes com o mesmo nome. O drawdown empilhava contas separadas numa trajetória que nunca existiu; payoff e profit factor misturavam moedas. Win rate era o único que sobrevivia, por ser contagem.
+- **A regra já existia do outro lado:** o dashboard do aluno trava com "Selecione um plano para ver as análises" desde o #289; a ficha do mentor ignorava.
 - **Visão rápida** lista **aluno+plano** (23 linhas contra 17 alunos). Zero trades sem `planId` na base, então nada fica órfão. Abrir a ficha leva o `planId` junto.
 - **Na ficha** o plano vem do trade do dia clicado. O **seletor só aparece quando o mês tem mais de um plano** — 3 dos 41 meses aluno×mês. Nos outros 38 seria ruído.
 - **Curva e card Resultado** passam a ler plano + mês do dia selecionado.
 - **Moeda:** um plano tem uma moeda só (medido: zero planos com moeda misturada), então escopar por plano resolve a moeda junto. O cabeçalho do aluno segue empilhando USD e BRL — ali é totalizador de pessoa, não análise (DEC-AUTO-188-05 mantida).
+- **Dois defeitos meus, achados na foto do harness:** declarei `tradesDoPlano` depois de usá-lo em `diagnosticoAluno` (TDZ — o mesmo do #421, que levou tela branca a produção com o build verde); e `focusDate={mês}-01`, onde `new Date('2026-09-01')` é UTC e em BRT volta para 31/08, deixando curva em setembro e calendário em agosto.
+- **Item retirado do escopo:** o issue afirmava que o calendário do dashboard do aluno navega solto. Não navega — `isoDateToRange` constrói Date local e o `TradingCalendar` sincroniza desde o #289. Afirmação minha sem verificação, retirada em vez de "consertada".
+- 4.769 testes / 302 arquivos, mais 4 novos cobrindo um retrato por plano, isolamento entre planos e o R de cada um contra o RO do próprio plano.
 
 
 ## [1.90.8] - 11/09/2026 · #440 · PR #441
