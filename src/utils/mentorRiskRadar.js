@@ -314,6 +314,20 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
         tradesDoPlano: todosDoAluno.get(s.id) ?? [],
         periodState,
       }),
+      // #442 — um retrato POR PLANO, não um por aluno. O retrato acima segue
+      // sendo o do plano em foco (o do dia, ou o mais recente) e é o que abre;
+      // esta lista é o que o mentor pode escolher. 8 de 20 alunos com plano têm
+      // mais de um, e a ficha somava os três num número só — somar R de um plano
+      // que arrisca 10% com outro que arrisca 1,7% é somar unidades diferentes
+      // com o mesmo nome.
+      visaoRapidaPorPlano: [...new Set((todosDoAluno.get(s.id) ?? []).map((t) => t.planId))]
+        .filter(Boolean)
+        .map((planId) => visaoRapidaDoAluno({
+          plano: planoPorId.get(planId) ?? null,
+          tradesDoPlano: todosDoAluno.get(s.id) ?? [],
+          periodState,
+        }))
+        .filter(Boolean),
       studentId: s.id,
       email: s.email ?? null,
       // D9: a ação da Torre é LINK pro que já existe. O número já está cadastrado

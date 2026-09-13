@@ -97,6 +97,10 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // #101 — o calendário da turma é o seletor do dia; sem dia escolhido não há lista.
   const [diaSelecionado, setDiaSelecionado] = useState(null);
   const [diaAluno, setDiaAluno] = useState(null);
+  // #442 — o plano em foco na ficha. Vem de quem abriu (a visão rápida manda o
+  // planId junto) ou, na falta, da conta principal. NUNCA fica nulo com o aluno
+  // aberto: sem plano, a análise soma mesas diferentes.
+  const [planoAtivo, setPlanoAtivo] = useState(null);
   const [detalheAberto, setDetalheAberto] = useState(false);
 
   // === Bulk Feedback State ===
@@ -208,19 +212,6 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const selectedStudentTrades = selectedStudent ? getTradesByStudent(selectedStudent.email) : [];
   const selectedStudentStats = useMemo(() => calculateStats(selectedStudentTrades), [selectedStudentTrades]);
   const selectedStudentTotals = useMemo(() => aggregateTradesByCurrency(selectedStudentTrades), [selectedStudentTrades]);
-  // #101 — o veredicto da ficha: o que dói e o que funciona, setup e emoção.
-  const diagnosticoAluno = useMemo(
-    () => diagnosticoDoAluno(selectedStudentTrades, planosPorId),
-    [selectedStudentTrades, planosPorId],
-  );
-  const planoDeConversa = useMemo(
-    () => prescricoes(selectedStudentTrades, planosPorId),
-    [selectedStudentTrades, planosPorId],
-  );
-  const episodiosAluno = useMemo(
-    () => episodios(selectedStudentTrades, planosPorId),
-    [selectedStudentTrades, planosPorId],
-  );
   // O R depende do plano; aluno com duas contas tem dois R. A ficha mede a conta
   // PRINCIPAL — a de maior volume —, não a do último trade: pelo último, o Daniel
   // apareceria com 1 de 7 trades porque o último dele foi numa conta quase vazia.
@@ -229,6 +220,72 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     () => (contaDaFicha ? planosPorId.get(contaDaFicha.planId) ?? null : null),
     [planosPorId, contaDaFicha],
   );
+  // #442 — planos do aluno que têm trade. Ordenados pelo mais recente, que é o
+  // que abre quando ninguém indicou um.
+  const planosDoAluno = useMemo(() => {
+    const ultimaData = new Map();
+    for (const t of selectedStudentTrades) {
+      if (!t.planId) continue;
+      const atual = ultimaData.get(t.planId);
+      if (!atual || (t.date ?? '') > atual) ultimaData.set(t.planId, t.date ?? '');
+    }
+    return [...ultimaData.entries()]
+      .sort((a, b) => (b[1] ?? '').localeCompare(a[1] ?? ''))
+      .map(([planId]) => planosPorId.get(planId))
+      .filter(Boolean);
+  }, [selectedStudentTrades, planosPorId]);
+
+  const planoEfetivo = useMemo(
+    () => planosDoAluno.find((p) => p.id === planoAtivo)
+      ?? planosDoAluno.find((p) => p.id === selectedStudent?.planId)
+      ?? planosDoAluno.find((p) => p.id === planoDaFicha?.id)
+      ?? planosDoAluno[0]
+      ?? null,
+    [planosDoAluno, planoAtivo, selectedStudent, planoDaFicha],
+  );
+
+  // A fatia que a análise inteira enxerga. Um plano tem uma moeda só (medido:
+  // zero planos com moeda misturada), então escopar aqui resolve a moeda junto.
+  const tradesDoPlano = useMemo(
+    () => (planoEfetivo ? selectedStudentTrades.filter((t) => t.planId === planoEfetivo.id) : selectedStudentTrades),
+    [selectedStudentTrades, planoEfetivo],
+  );
+
+  // O mês do dia selecionado governa a curva. Sem dia, o mês do trade mais
+  // recente — um mês vazio não é curva, e a tela precisa abrir mostrando algo.
+  const mesDaCurva = useMemo(() => {
+    if (diaAluno) return diaAluno.slice(0, 7);
+    const datas = tradesDoPlano.map((t) => t.date).filter(Boolean).sort();
+    return datas.length ? datas[datas.length - 1].slice(0, 7) : null;
+  }, [diaAluno, tradesDoPlano]);
+
+  const tradesDoMes = useMemo(
+    () => (mesDaCurva ? tradesDoPlano.filter((t) => (t.date ?? '').startsWith(mesDaCurva)) : tradesDoPlano),
+    [tradesDoPlano, mesDaCurva],
+  );
+
+  // O seletor só existe quando há ambiguidade real: 3 dos 41 meses aluno×mês da
+  // base têm dois planos. Nos outros 38 ele seria ruído.
+  const planosNoMes = useMemo(() => {
+    if (!mesDaCurva) return planosDoAluno;
+    const ids = new Set(selectedStudentTrades.filter((t) => (t.date ?? '').startsWith(mesDaCurva)).map((t) => t.planId));
+    return planosDoAluno.filter((p) => ids.has(p.id));
+  }, [planosDoAluno, selectedStudentTrades, mesDaCurva]);
+
+  // #101 — o veredicto da ficha: o que dói e o que funciona, setup e emoção.
+  const diagnosticoAluno = useMemo(
+    () => diagnosticoDoAluno(tradesDoPlano, planosPorId),
+    [tradesDoPlano, planosPorId],
+  );
+  const planoDeConversa = useMemo(
+    () => prescricoes(tradesDoPlano, planosPorId),
+    [tradesDoPlano, planosPorId],
+  );
+  const episodiosAluno = useMemo(
+    () => episodios(selectedStudentTrades, planosPorId),
+    [selectedStudentTrades, planosPorId],
+  );
+
 
   const handleAddFeedback = async (tradeId, feedback) => {
     setFeedbackLoading(true);
@@ -246,6 +303,11 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   // card de promoção entregava a tela sem plano nenhum, enquanto abrir pela lista
   // de Alunos entregava completa. O id vem do próprio trade (getUniqueStudents).
   const abrirAluno = useCallback((student) => {
+    // #442 — quem abre pode indicar o plano (a visão rápida manda o `planId` do
+    // retrato escolhido). Quem abre pela lista da turma não indica, e a ficha
+    // resolve pela conta principal. Dia zera: era de outro aluno.
+    setPlanoAtivo(student?.planId ?? null);
+    setDiaAluno(null);
     if (!student?.email) return setSelectedStudent(student);
     if (student.studentId) return setSelectedStudent(student);
     const conhecido = students.find(
@@ -323,7 +385,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   if (selectedStudent) {
     return (
       <div className="min-h-screen p-6 lg:p-8">
-        <button onClick={() => setSelectedStudent(null)} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
+        <button onClick={() => { setSelectedStudent(null); setPlanoAtivo(null); setDiaAluno(null); }} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
           <ChevronLeft className="w-4 h-4" /> Voltar para lista
         </button>
         <div className="flex items-center justify-between mb-8">
@@ -353,19 +415,40 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           <PlanoDeConversa prescricoes={planoDeConversa} nome={selectedStudent.name} compacto />
         </div>
 
+        {/* #442 — o seletor só aparece quando o mês tem mais de um plano: 3 dos 41
+            meses aluno×mês da base. Nos outros 38 ele seria ruído, e a resposta
+            já veio do trade que o mentor clicou. */}
+        {planosNoMes.length > 1 && (
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-[11px] uppercase tracking-widest text-slate-500">Plano</span>
+            <select
+              value={planoEfetivo?.id ?? ''}
+              onChange={(e) => { setPlanoAtivo(e.target.value || null); setDiaAluno(null); }}
+              className="pl-3 pr-9 py-1 h-8 text-[13px] focus:outline-none"
+              style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink)' }}
+            >
+              {planosNoMes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        )}
+
         {/* #101 — a ficha ganhou espinha: veredicto, resultado, detalhamento. Antes
             era uma pilha de cards de mesmo peso visual, e o mentor tinha que
             garimpar a informação relevante em cada um. */}
-        <ResultadoDoAluno trades={selectedStudentTrades} plano={planoDaFicha} foraDaConta={contaDaFicha?.fora ?? 0} />
+        <ResultadoDoAluno trades={tradesDoMes} plano={planoEfetivo} foraDaConta={contaDaFicha?.fora ?? 0} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <EquityCurve trades={selectedStudentTrades} />
+          <EquityCurve trades={tradesDoMes} />
           {/* #101 — mesmo defeito do calendário da turma: o CalendarHeatmap lia
               `dayOfWeek`/`pl`, campos que `generateCalendarData` não devolve, e
               pintava uma grade vazia. Aqui é um aluno só, então o dia mostra
               dinheiro, na moeda dominante dele. */}
+          {/* #442 — o calendário abre no mês da curva. `-15` e não `-01`:
+              `new Date('2026-09-01')` é UTC, e em BRT (−03) volta para 31/08,
+              abrindo o mês anterior. O meio do mês sobrevive a qualquer fuso. */}
           <TradingCalendar
-            trades={selectedStudentTrades}
+            trades={tradesDoPlano}
+            focusDate={mesDaCurva ? `${mesDaCurva}-15` : null}
             currency={[...selectedStudentTotals.keys()][0] || 'BRL'}
             selectedDate={diaAluno}
             onSelectDate={(date) => setDiaAluno(date === diaAluno ? null : date)}
@@ -420,7 +503,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
               </button>
             </div>
             <TradesList
-              trades={selectedStudentTrades.filter((t) => t.date === diaAluno)}
+              trades={tradesDoPlano.filter((t) => t.date === diaAluno)}
               plans={plans}
               onViewTrade={setViewingTrade}
               showStudent={false}
