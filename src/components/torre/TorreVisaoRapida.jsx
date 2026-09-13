@@ -21,28 +21,35 @@ const Linha = ({ rotulo, valor, cor = 'text-white', titulo }) => (
 );
 
 const TorreVisaoRapida = ({ byStudent = [], currency = 'BRL', onAbrirAluno }) => {
-  const comRetrato = byStudent.filter((a) => a.visaoRapida);
+  // #442 — a unidade da lista é ALUNO+PLANO, não aluno. Aluno com três mesas
+  // aparecia uma vez só, com o plano do dia, e as outras duas eram invisíveis:
+  // o mentor não sabia que existiam. Agora cada plano com trade é uma linha.
+  // A chave é composta porque o mesmo aluno aparece mais de uma vez.
+  const comRetrato = byStudent.flatMap((a) => {
+    const retratos = a.visaoRapidaPorPlano?.length ? a.visaoRapidaPorPlano : (a.visaoRapida ? [a.visaoRapida] : []);
+    return retratos.map((v) => ({ ...a, visaoRapida: v, chave: `${a.studentId}|${v.planId}` }));
+  });
   const [selecionado, setSelecionado] = useState(null);
 
   // #101 — começa SEM aluno. Escolher o primeiro da lista por conta própria dá ao
   // mentor um retrato que ele não pediu, sobre alguém que ele não escolheu — e o
   // número fica lá parecendo o da turma. Quem escolhe é ele.
-  const emFoco = comRetrato.find((a) => a.studentId === selecionado) ?? null;
+  const emFoco = comRetrato.find((a) => a.chave === selecionado) ?? null;
 
   useEffect(() => {
-    if (selecionado && !comRetrato.some((a) => a.studentId === selecionado)) setSelecionado(null);
+    if (selecionado && !comRetrato.some((a) => a.chave === selecionado)) setSelecionado(null);
   }, [comRetrato, selecionado]);
 
   const seletor = (
     <div className="relative">
       <select
-        value={emFoco?.studentId ?? ''}
+        value={emFoco?.chave ?? ''}
         onChange={(e) => setSelecionado(e.target.value || null)}
         className="w-full appearance-none bg-slate-800/50 border border-slate-700 rounded-xl px-3 py-2 pr-8 text-sm text-white focus:outline-none focus:border-blue-500/50"
       >
         <option value="">Escolha um aluno…</option>
         {comRetrato.map((a) => (
-          <option key={a.studentId} value={a.studentId}>
+          <option key={a.chave} value={a.chave}>
             {a.name}{a.visaoRapida.planName ? ` · ${a.visaoRapida.planName}` : ''}
           </option>
         ))}
@@ -61,7 +68,7 @@ const TorreVisaoRapida = ({ byStudent = [], currency = 'BRL', onAbrirAluno }) =>
         <div className="p-8 text-center">
           <User className="w-8 h-8 text-slate-700 mx-auto mb-3" />
           <p className="text-sm text-slate-500">
-            {comRetrato.length ? 'Escolha um aluno para ver o retrato.' : 'Nenhum aluno com plano ativo.'}
+            {comRetrato.length ? 'Escolha um aluno e plano para ver o retrato.' : 'Nenhum aluno com plano ativo.'}
           </p>
         </div>
       </div>
@@ -122,7 +129,7 @@ const TorreVisaoRapida = ({ byStudent = [], currency = 'BRL', onAbrirAluno }) =>
         <Linha rotulo="Trades no ciclo" valor={v.trades} cor="text-slate-300" />
 
         <button
-          onClick={() => onAbrirAluno?.({ email: emFoco.email, name: emFoco.name, studentId: emFoco.studentId })}
+          onClick={() => onAbrirAluno?.({ email: emFoco.email, name: emFoco.name, studentId: emFoco.studentId, planId: emFoco.visaoRapida?.planId ?? null })}
           className="w-full mt-4 text-xs px-3 py-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800/50 transition-colors"
         >
           Abrir ficha de {emFoco.name?.split(' ')[0]}

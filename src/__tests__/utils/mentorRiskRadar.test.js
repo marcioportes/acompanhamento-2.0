@@ -765,6 +765,57 @@ describe('foraDoPlanoDoAluno — MC-7', () => {
   });
 });
 
+describe('visaoRapidaPorPlano — #442', () => {
+  const HOJE = new Date(2026, 7, 27, 14, 0);
+  const dia = '2026-08-27';
+  // Dois planos do MESMO aluno, com réguas diferentes — o caso real do Joe Hott,
+  // que tem uma mesa arriscando 6% e outra 1,7%. Somar o R dos dois é somar
+  // unidades diferentes com o mesmo nome, que é o defeito que o #442 fecha.
+  const planoA = { id: 'pA', studentId: 'a1', name: 'MFF 1k', pl: 1000, riskPerOperation: 6, operationPeriod: 'Diário' };
+  const planoB = { id: 'pB', studentId: 'a1', name: 'WinFut', pl: 3000, riskPerOperation: 1.7, operationPeriod: 'Diário' };
+  const students = [{ id: 'a1', email: 'ana@x.com', name: 'Ana', firstLoginAt: '2026-01-01' }];
+  const subscriptions = [{ studentId: 'a1', status: 'active', type: 'paid', plan: 'alpha' }];
+  const t = (id, planId, result) => ({
+    id, studentId: 'a1', date: dia, entryTime: `${dia}T10:00:00-03:00`, result, planId, redFlags: [],
+  });
+  const run = (trades) => buildMentorRadar({
+    allTrades: trades, plans: [planoA, planoB], students, subscriptions, now: HOJE,
+  });
+
+  it('produz um retrato por plano com trade, não um por aluno', () => {
+    const r = run([t('1', 'pA', 100), t('2', 'pB', -50)]);
+    const ana = r.byStudent.find((a) => a.studentId === 'a1');
+    expect(ana.visaoRapidaPorPlano).toHaveLength(2);
+    expect(ana.visaoRapidaPorPlano.map((v) => v.planId).sort()).toEqual(['pA', 'pB']);
+  });
+
+  it('cada retrato só enxerga os trades do seu plano', () => {
+    const r = run([t('1', 'pA', 100), t('2', 'pB', -50)]);
+    const porId = Object.fromEntries(
+      r.byStudent.find((a) => a.studentId === 'a1').visaoRapidaPorPlano.map((v) => [v.planId, v]),
+    );
+    expect(porId.pA.saldoCiclo).toBe(100);
+    expect(porId.pB.saldoCiclo).toBe(-50);
+  });
+
+  it('o R de cada retrato usa o RO do próprio plano', () => {
+    // pA: RO = 1000 × 6% = 60 → +120 são +2R.
+    // pB: RO = 3000 × 1,7% = 51 → -51 são -1R.
+    const r = run([t('1', 'pA', 120), t('2', 'pB', -51)]);
+    const porId = Object.fromEntries(
+      r.byStudent.find((a) => a.studentId === 'a1').visaoRapidaPorPlano.map((v) => [v.planId, v]),
+    );
+    expect(porId.pA.liquidoR).toBe(2);
+    expect(porId.pB.liquidoR).toBe(-1);
+  });
+
+  it('plano sem trade não vira retrato — lista só o que tem o que mostrar', () => {
+    const r = run([t('1', 'pA', 100)]);
+    const ana = r.byStudent.find((a) => a.studentId === 'a1');
+    expect(ana.visaoRapidaPorPlano.map((v) => v.planId)).toEqual(['pA']);
+  });
+});
+
 describe('visaoRapidaDoAluno — MC-9', () => {
   const plano = {
     id: 'p1', name: 'WINFUT', pl: 30000, periodStop: 1.67, periodGoal: 3.35,
