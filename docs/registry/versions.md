@@ -118,3 +118,4 @@
 | 1.90.7 | #432 | `fix/issue-432-janela-do-card-financeiro` | 10/09/2026 | consumida (PR #433 squash `7a0212a4`) |
 | 1.90.8 | #440 | `fix/issue-440-calendario-ilegivel-e-closures` | 11/09/2026 | consumida (PR #441 squash `8fe65816`) |
 | 1.91.0 | #442 | `fix/issue-442-escopo-aluno-plano-mes` | 12/09/2026 | consumida (PR #443 squash `b1a79c4b`) |
+| 1.92.0 | #444 | `feat/issue-444-trades-precisam-atencao` | 14/09/2026 | reservada (minor: Precisam Atenção muda de aluno para trade) |
