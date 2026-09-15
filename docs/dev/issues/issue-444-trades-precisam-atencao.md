@@ -8,8 +8,8 @@
 
 - [x] Mockup apresentado (14/09/2026)
 - [x] Memória de cálculo apresentada (14/09/2026), **calibragem na base pendente**
-- [ ] Marcio autorizou (data + frase)
-- [ ] Gate Pré-Código liberado
+- [x] Marcio autorizou (14/09/2026: "autorizado", modo autônomo acionado)
+- [x] Gate Pré-Código liberado
 
 ## Context
 
@@ -146,13 +146,26 @@ Script de leitura (`scripts/issue-444-calibragem.mjs`, não escreve nada): trade
 - **Critério de aceite do corte:** a prioridade fica abaixo de ~30% da fila. Acima disso, apertar o corte.
 - Precisa de leitura de produção, e o classificador de segurança da sessão bloqueou em 13/09.
 
+## 3.1 Decisões Antecipadas (Fase 2 — respostas do Marcio)
+
+- **D1 — mockup e memória aprovados** como estão (M1 aba por trade com motivo, M2 Torre com ⚠ e "Priorizar →", M3 badge conta trades).
+- **D2 — corte do "pesado" = A:** severidade vigente HIGH ∩ `GATE_CODES`, sem as dispensadas. Hoje isso dá TILT, LOSS_CHASING, STOP_PANIC, RISK_OVER_RO e UNPROTECTED_SIZE. Implementar como constante nomeada, derivada da taxonomia, sem lista fixa no código.
+- **D3 — sem calibragem na base.** Nenhum script de contagem, nenhuma leitura de produção. O loop não bloqueia por isso.
+
+## 3.2 Decisões Autônomas (Coord, durante o loop)
+
+_(formato: `DEC-AUTO-444-NN: <decisão> | Justificativa: ...`)_
+
 ## Phases
 
-- A0 — calibragem na base e escolha do corte com o Marcio
-- A1 — `motivosPesados` e `tradesPrecisamAtencao` puros em `mentorRiskRadar.js`, com testes antes da UI (INV-05)
-- A2 — aba Precisam atenção (M1) e badge do menu (M3) na mesma fonte, com a lista antiga por aluno removida
-- A3 — Torre, "Você deve" (M2)
-- A4 — harness, fotos das 3 superfícies, lint e gate pré-entrega
+Modo autônomo acionado por Marcio em 14/09/2026. Tasks na ordem, uma por worker:
+
+- **01-regra-pura:** `motivosPesados(trade)` e `tradesPrecisamAtencao({ trades, students, subscriptions })` em `src/utils/mentorRiskRadar.js`, reaproveitando `familiasDeRisco` e `isOnRadar`. Testes antes da UI (INV-05) cobrindo os casos limite da Memória de Cálculo e o exemplo da Sandra.
+- **02-aba-e-badge:** `studentsAttention.js` passa a expor trades (a mesma função para a aba e para o badge, #430). A aba em `MentorDashboard.jsx` segue M1. O badge em `App.jsx`/`Sidebar.jsx` segue M3. A lista antiga por aluno sai (`identifyStudentsNeedingAttention` só se não tiver outro consumidor). Testes de render.
+- **03-torre-voce-deve:** `TorreAgenda.jsx`, bloco 3 segue M2 (quem tem trade pesado primeiro, ⚠, "Priorizar →" para a aba), com `pendencias.pesados` no radar. Testes.
+- **04-entrega:** harness nas 3 superfícies, lint nos arquivos tocados, suíte completa e DebugBadge nos componentes tocados. Report com as fotos.
+
+A calibragem na base (A0) fica fora do loop. Worker headless não tem leitura de produção, e o corte segue a decisão de §3.1.
 
 ## Sessions
 
