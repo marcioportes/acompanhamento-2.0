@@ -22,7 +22,7 @@ import { calculateComplianceRate } from './dashboardMetrics';
 import { redFlagLabel } from './compliance';
 import { effectiveRedFlags, flagType } from './violationFilter';
 import { buildPeriodState } from './dayState';
-import { getPattern, severidadeVigente } from '../constants/behavioralTaxonomy';
+import { getPattern, severidadeVigente, GATE_CODES } from '../constants/behavioralTaxonomy';
 import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
 import { tradeInstantMs, sortTradesChrono } from './tradeInstant';
 import { computeCurrentPl, computeCycleBalance } from './planBalance';
@@ -544,6 +544,64 @@ export function familiasDeRisco(trade) {
     });
   }
   return saida;
+}
+
+// ============================================================================
+// #444 — Precisam Atenção: fila de trades prioritários
+// ============================================================================
+
+/**
+ * Códigos que podem tornar um trade "pesado" (D2, corte A): os que alimentam gate
+ * de maturidade. Derivado da taxonomia — padrão novo com `feedsGates` entra sozinho.
+ */
+export const CODIGOS_PESADOS = new Set(GATE_CODES);
+
+/** Status que significam "tem alguém esperando o feedback" (`useTrades.getTradesAwaitingFeedback`). */
+const AGUARDANDO_FEEDBACK = new Set(['OPEN', 'QUESTION']);
+
+/**
+ * Por que o trade é pesado: famílias de risco (já negativas, vigentes e sem as
+ * dispensadas pelo mentor) com severidade HIGH em código de gate.
+ */
+export const motivosPesados = (trade) =>
+  familiasDeRisco(trade).filter((f) => f.severity === 'HIGH' && CODIGOS_PESADOS.has(f.code));
+
+/** Trade aguardando feedback com ao menos um motivo pesado. O escopo Alpha fica na coleção. */
+export const precisaAtencao = (trade) =>
+  AGUARDANDO_FEEDBACK.has(trade?.status) && motivosPesados(trade).length > 0;
+
+/**
+ * A fila única que aba, badge e Torre consomem (#430: um número só).
+ *
+ * Só alunos no radar (Alpha). Sem assinaturas carregadas, `isOnRadar` cai para
+ * não-Alpha e a lista sai vazia — de propósito: trade de aluno Espelho como
+ * prioridade seria alarme falso. O dono do trade é resolvido como em
+ * `buildMentorRadar` (studentId, e na falta, studentEmail).
+ *
+ * @returns {Array<{trade, motivos, studentId, planId}>} mais recente primeiro
+ */
+export function tradesPrecisamAtencao({ trades, students, subscriptions } = {}) {
+  if (!Array.isArray(trades) || !Array.isArray(students)) return [];
+  const subsIdx = indexSubsByStudent(Array.isArray(subscriptions) ? subscriptions : []);
+  const ativos = students.filter((s) => isOnRadar(s, subsIdx.get(s?.id) ?? []));
+  const porId = new Map(ativos.filter((s) => s?.id).map((s) => [s.id, s]));
+  const porEmail = new Map(
+    ativos.filter((s) => s?.email).map((s) => [String(s.email).toLowerCase(), s]),
+  );
+
+  const saida = [];
+  for (const trade of trades) {
+    if (!AGUARDANDO_FEEDBACK.has(trade?.status)) continue;
+    const dono =
+      (trade.studentId && porId.get(trade.studentId)) ||
+      (trade.studentEmail && porEmail.get(String(trade.studentEmail).toLowerCase())) ||
+      null;
+    if (!dono) continue;
+    const motivos = motivosPesados(trade);
+    if (!motivos.length) continue;
+    saida.push({ trade, motivos, studentId: dono.id, planId: trade.planId ?? null });
+  }
+  return saida.sort((a, b) => (tradeInstantMs(b.trade) ?? 0) - (tradeInstantMs(a.trade) ?? 0));
 }
 
 /** Ordena por gravidade e, empatado, pelo mais recente. */

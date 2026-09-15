@@ -30,6 +30,10 @@ import {
   semanaEmR,
   FAIXA,
   emailsDoRadar,
+  motivosPesados,
+  precisaAtencao,
+  tradesPrecisamAtencao,
+  CODIGOS_PESADOS,
 } from '../../utils/mentorRiskRadar';
 import { buildPeriodState } from '../../utils/dayState';
 
@@ -1145,5 +1149,130 @@ describe('Risco alto diz QUANTOS achados graves', () => {
   it('vários graves viram número, não adjetivo', () => {
     const aluno = { radar: linhaDeRadar([f('TILT', 'HIGH', 1), f('RISK_OVER_RO', 'HIGH', 2)]), diasSemOperar: 1 };
     expect(faixaDeAtencao(aluno).motivo).toBe('2 achados graves na semana');
+  });
+});
+
+describe('#444 — motivosPesados / precisaAtencao: o corte A (HIGH ∩ gate)', () => {
+  const tr = (familias, extra = {}) => ({
+    id: 't1', status: 'OPEN', date: '2026-08-26', entryTime: '2026-08-26T10:00:00-03:00',
+    behaviorProfile: { families: familias }, ...extra,
+  });
+  const fam = (canonicalCode, severity = 'HIGH') => ({ canonicalCode, severity });
+
+  it('o corte é derivado da taxonomia e dá os 5 padrões graves de gate hoje', () => {
+    for (const code of ['TILT', 'LOSS_CHASING', 'STOP_PANIC', 'RISK_OVER_RO', 'UNPROTECTED_SIZE']) {
+      expect(CODIGOS_PESADOS.has(code)).toBe(true);
+      expect(motivosPesados(tr([fam(code)])).map((m) => m.code)).toEqual([code]);
+      expect(precisaAtencao(tr([fam(code)]))).toBe(true);
+    }
+  });
+
+  it('AVERAGING_DOWN e DIRECTION_FLIP graves NÃO entram — não alimentam gate', () => {
+    const t = tr([fam('AVERAGING_DOWN'), fam('DIRECTION_FLIP')]);
+    expect(motivosPesados(t)).toEqual([]);
+    expect(precisaAtencao(t)).toBe(false);
+  });
+
+  it('código de gate em MEDIUM não entra', () => {
+    expect(motivosPesados(tr([fam('OVERTRADING', 'MEDIUM'), fam('TILT', 'MEDIUM')]))).toEqual([]);
+  });
+
+  it('teto de leitura: HIGH rebaixado por severidadeVigente não entra (hoje só EARLY_EXIT tem teto, e não é de gate)', () => {
+    expect(motivosPesados(tr([fam('EARLY_EXIT', 'HIGH')]))).toEqual([]);
+  });
+
+  it('padrão dispensado sai do motivo; se era o único, o trade sai', () => {
+    const doisMotivos = tr([fam('TILT'), fam('RISK_OVER_RO')], { mentorClearedViolations: ['TILT:t1'] });
+    expect(motivosPesados(doisMotivos).map((m) => m.code)).toEqual(['RISK_OVER_RO']);
+    const unico = tr([fam('TILT')], { mentorClearedViolations: ['TILT:t1'] });
+    expect(precisaAtencao(unico)).toBe(false);
+  });
+
+  it('trade sem behaviorProfile não é pesado', () => {
+    expect(motivosPesados({ id: 'x', status: 'OPEN' })).toEqual([]);
+    expect(precisaAtencao({ id: 'x', status: 'OPEN' })).toBe(false);
+    expect(precisaAtencao(null)).toBe(false);
+  });
+
+  it('QUESTION conta; REVIEWED, CLOSED e DISCUSSED não', () => {
+    expect(precisaAtencao(tr([fam('TILT')], { status: 'QUESTION' }))).toBe(true);
+    for (const status of ['REVIEWED', 'CLOSED', 'DISCUSSED']) {
+      expect(precisaAtencao(tr([fam('TILT')], { status }))).toBe(false);
+    }
+  });
+});
+
+describe('#444 — tradesPrecisamAtencao: a fila única', () => {
+  const alpha = { id: 'sandra', email: 'Sandra@x.com', firstLoginAt: '2026-01-10' };
+  const subsAlpha = [{ studentId: 'sandra', status: 'active', type: 'paid', plan: 'alpha' }];
+  const tr = (id, hora, familias, extra = {}) => ({
+    id, status: 'OPEN', studentId: 'sandra', planId: 'winfut', ticker: 'WINFUT',
+    date: '2026-08-26', entryTime: `2026-08-26T${hora}:00-03:00`,
+    behaviorProfile: { families: familias }, ...extra,
+  });
+  const fam = (canonicalCode, severity = 'HIGH') => ({ canonicalCode, severity });
+
+  // Exemplo numérico da Memória de Cálculo — Sandra, 26/08, WINFUT.
+  const sandra = () => [
+    tr('t1', '10:15', [{ canonicalCode: 'CLEAN_EXECUTION', severity: 'NONE' }]),
+    tr('t2', '10:42', [fam('LOSS_CHASING')]),
+    tr('t3', '11:05', [fam('LOSS_CHASING'), fam('RISK_OVER_RO')]),
+    tr('t4', '11:31', [fam('TILT'), fam('OVERTRADING', 'MEDIUM')]),
+    tr('t5', '11:50', [fam('UNPROTECTED_SIZE')], { mentorClearedViolations: ['UNPROTECTED_SIZE:t5'] }),
+  ];
+
+  it('Sandra: 5 trades → 3 pesados, mais recente primeiro, com os motivos', () => {
+    const r = tradesPrecisamAtencao({ trades: sandra(), students: [alpha], subscriptions: subsAlpha });
+    expect(r.map((i) => i.trade.id)).toEqual(['t4', 't3', 't2']);
+    expect(r.map((i) => i.motivos.map((m) => m.code))).toEqual([['TILT'], ['LOSS_CHASING', 'RISK_OVER_RO'], ['LOSS_CHASING']]);
+    expect(r[0]).toMatchObject({ studentId: 'sandra', planId: 'winfut' });
+  });
+
+  it('Sandra: feedback em t2 (REVIEWED) → 2', () => {
+    const trades = sandra().map((t) => (t.id === 't2' ? { ...t, status: 'REVIEWED' } : t));
+    const r = tradesPrecisamAtencao({ trades, students: [alpha], subscriptions: subsAlpha });
+    expect(r.map((i) => i.trade.id)).toEqual(['t4', 't3']);
+  });
+
+  it('dono resolvido por email quando o trade não traz studentId', () => {
+    const t = tr('t9', '12:00', [fam('TILT')], { studentId: undefined, studentEmail: 'sandra@X.com' });
+    const r = tradesPrecisamAtencao({ trades: [t], students: [alpha], subscriptions: subsAlpha });
+    expect(r).toHaveLength(1);
+    expect(r[0].studentId).toBe('sandra');
+  });
+
+  it('aluno Espelho fica fora', () => {
+    const subs = [{ studentId: 'sandra', status: 'active', type: 'paid', plan: 'self_service' }];
+    expect(tradesPrecisamAtencao({ trades: sandra(), students: [alpha], subscriptions: subs })).toEqual([]);
+  });
+
+  it('aluno bloqueado fica fora', () => {
+    const bloqueada = { ...alpha, loginBlocked: true };
+    expect(tradesPrecisamAtencao({ trades: sandra(), students: [bloqueada], subscriptions: subsAlpha })).toEqual([]);
+  });
+
+  it('assinaturas carregando (vazias) → lista vazia, não alarme falso', () => {
+    expect(tradesPrecisamAtencao({ trades: sandra(), students: [alpha], subscriptions: [] })).toEqual([]);
+    expect(tradesPrecisamAtencao({ trades: sandra(), students: [alpha] })).toEqual([]);
+  });
+
+  it('trade de aluno que não está na lista de alunos fica fora', () => {
+    const t = tr('t9', '12:00', [fam('TILT')], { studentId: 'desconhecido' });
+    expect(tradesPrecisamAtencao({ trades: [t], students: [alpha], subscriptions: subsAlpha })).toEqual([]);
+  });
+
+  it('ordena do mais recente para o mais antigo entre dias', () => {
+    const trades = [
+      tr('velho', '15:00', [fam('TILT')], { date: '2026-08-25', entryTime: '2026-08-25T15:00:00-03:00' }),
+      tr('novo', '09:00', [fam('TILT')]),
+    ];
+    const r = tradesPrecisamAtencao({ trades, students: [alpha], subscriptions: subsAlpha });
+    expect(r.map((i) => i.trade.id)).toEqual(['novo', 'velho']);
+  });
+
+  it('entradas não-array não explodem', () => {
+    expect(tradesPrecisamAtencao({ trades: null, students: [alpha], subscriptions: subsAlpha })).toEqual([]);
+    expect(tradesPrecisamAtencao({ trades: sandra(), students: undefined, subscriptions: subsAlpha })).toEqual([]);
+    expect(tradesPrecisamAtencao()).toEqual([]);
   });
 });
