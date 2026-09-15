@@ -27,9 +27,10 @@
 import { useState } from 'react';
 import {
   Flame, ShieldAlert, TrendingDown, MessageCircle, ArrowRight,
-  MoonStar, MessageSquare, Check, ChevronDown,
+  MoonStar, MessageSquare, Check, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { TRIGGER, FAIXA } from '../../utils/mentorRiskRadar';
+import { BEHAVIOR_LABELS } from '../Trades/behaviorDisplay';
 
 const GATILHO = {
   [TRIGGER.FURIA]: { icon: Flame, titulo: 'Dia de fúria' },
@@ -153,6 +154,7 @@ const TorreAgenda = ({
   radar,
   onAbrirAluno,
   onIrParaFeedback,
+  onIrParaAtencao,
   onIrParaRevisoes,
   onIrParaFechamentos,
   rascunhos = 0,
@@ -166,9 +168,16 @@ const TorreAgenda = ({
 
   // "Devo" é dívida MINHA, então a unidade é a pessoa que está esperando — não o
   // trade. Quinze trades de três alunos são três conversas, não quinze.
+  // #444 — mas nem toda conversa custa o mesmo: quem tem trade pesado esperando
+  // (a mesma regra da aba Precisam atenção) vem antes, e o botão leva à aba.
+  const pesadosDe = (a) => a.pendencias?.pesados ?? 0;
   const devoFeedback = turma
     .filter((a) => (a.pendencias?.feedback ?? 0) > 0)
-    .sort((a, b) => (b.pendencias.feedback - a.pendencias.feedback));
+    .sort((a, b) =>
+      (pesadosDe(b) > 0) - (pesadosDe(a) > 0)
+      || pesadosDe(b) - pesadosDe(a)
+      || b.pendencias.feedback - a.pendencias.feedback);
+  const irParaAtencao = onIrParaAtencao ?? onIrParaFeedback;
 
   const totalDevo = devoFeedback.length + (rascunhos > 0 ? 1 : 0) + (fechamentosPendentes > 0 ? 1 : 0);
   const totalAtos = priority.length + sumidos.length + totalDevo + totalDecisoes;
@@ -258,7 +267,20 @@ const TorreAgenda = ({
         cor="var(--info)"
         itens={totalDevo}
       >
-        {devoFeedback.map((a) => (
+        {devoFeedback.map((a) => (pesadosDe(a) > 0 ? (
+          <Ato
+            key={a.studentId}
+            icone={AlertTriangle}
+            cor="var(--warn)"
+            quem={a.name}
+            motivo={`${a.pendencias.pesados} de ${a.pendencias.feedback} trades pesados · ${
+              (a.pendencias.motivosPesados ?? []).map((code) => BEHAVIOR_LABELS[code] ?? code).join(', ')
+            }`}
+            evidencia={a.atencao?.motivo}
+            onClick={irParaAtencao}
+            acoes={<BotaoPrincipal onClick={irParaAtencao}>Priorizar</BotaoPrincipal>}
+          />
+        ) : (
           <Ato
             key={a.studentId}
             icone={MessageSquare}
@@ -269,7 +291,7 @@ const TorreAgenda = ({
             onClick={onIrParaFeedback}
             acoes={<BotaoPrincipal onClick={onIrParaFeedback}>Escrever</BotaoPrincipal>}
           />
-        ))}
+        )))}
         {rascunhos > 0 && (
           <Ato
             key="rascunhos"

@@ -609,6 +609,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           fechamentosPendentes={closuresPendingCount}
           totalDecisoes={totalDecisoes}
           onIrParaFeedback={() => onViewChange('pending')}
+          onIrParaAtencao={() => onViewChange('attention')}
           onIrParaRevisoes={() => onViewChange('reviews')}
           onIrParaFechamentos={() => onViewChange('closures')}
           extrasAcao={(
