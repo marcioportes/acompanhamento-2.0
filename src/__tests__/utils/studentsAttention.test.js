@@ -1,52 +1,99 @@
 /**
- * studentsAttention.test.js — issue #430
- * @description O badge do menu e a aba "Precisam Atenção" leem daqui. O teste
- *              fixa o que as duas superfícies passam a compartilhar: a regra
- *              inteira (prejuízo, win rate, profit factor) e o filtro de
- *              assinatura ativa do #402.
+ * studentsAttention.test.js — issues #430 e #444
+ * @description O badge do menu e a aba "Precisam Atenção" leem daqui (#430). Desde o
+ *              #444 a unidade é o TRADE aguardando feedback com motivo pesado, só de
+ *              aluno Alpha. O teste fixa a fonte única e o agrupamento por aluno e
+ *              plano, que nunca soma entre planos (#442).
  */
 
 import { describe, it, expect } from 'vitest';
-import { studentsNeedingAttention } from '../../utils/studentsAttention';
+import { tradesNeedingAttention, agruparPorAlunoEPlano } from '../../utils/studentsAttention';
 
-const trade = (result) => ({ result, pl: result, status: 'REVIEWED' });
+const students = [
+  { id: 'sandra', email: 'sandra@x.com', name: 'Sandra Maria', firstLoginAt: '2026-01-10' },
+  { id: 'joe', email: 'joe@x.com', name: 'Joe Hott', firstLoginAt: '2026-01-10' },
+  { id: 'ana', email: 'ana@x.com', name: 'Ana Espelho', firstLoginAt: '2026-01-10' },
+];
+const subscriptions = [
+  { studentId: 'sandra', status: 'active', type: 'paid', plan: 'alpha' },
+  { studentId: 'joe', status: 'active', type: 'paid', plan: 'alpha' },
+  { studentId: 'ana', status: 'active', type: 'paid', plan: 'self_service' }, // Espelho
+];
+const plans = [
+  { id: 'winfut', name: 'WINFUT' },
+  { id: 'apex', name: 'Apex EOD 50K' },
+];
 
-// 5 trades, 1 win → win rate 20%, P&L negativo: entra pelos dois critérios.
-const emApuros = [trade(10), trade(-30), trade(-30), trade(-30), trade(-30)];
-// P&L positivo e win rate alto: não entra.
-const bem = [trade(50), trade(50), trade(50), trade(50), trade(-10)];
+const tr = (id, studentId, hora, extra = {}) => ({
+  id, studentId, status: 'OPEN', date: '2026-08-26', entryTime: `2026-08-26T${hora}:00-03:00`,
+  ticker: 'WINV26', result: -100, currency: 'BRL', planId: 'winfut',
+  behaviorProfile: { families: [{ canonicalCode: 'LOSS_CHASING', severity: 'HIGH' }] },
+  ...extra,
+});
 
-describe('studentsNeedingAttention', () => {
-  it('a regra é a de identifyStudentsNeedingAttention, não só win rate', () => {
-    // Prejuízo com 1 trade só: a regra ad-hoc que existia no App.jsx exigia
-    // 5 trades e ignorava este aluno; o badge dizia 2 e a aba dizia 6.
-    const r = studentsNeedingAttention({ 'a@x.com': [trade(-500)] }, new Set());
-    expect(r).toHaveLength(1);
-    expect(r[0].reasons).toContain('Prejuízo');
+describe('tradesNeedingAttention', () => {
+  it('conta trades pesados aguardando feedback, não alunos', () => {
+    const trades = [
+      tr('t1', 'sandra', '10:00'),
+      tr('t2', 'sandra', '11:00'),
+      tr('t3', 'sandra', '12:00', { behaviorProfile: { families: [{ canonicalCode: 'CLEAN_EXECUTION' }] } }),
+      tr('t4', 'sandra', '13:00', { status: 'REVIEWED' }),
+    ];
+    const r = tradesNeedingAttention({ trades, students, subscriptions });
+    expect(r.map((i) => i.trade.id)).toEqual(['t2', 't1']);
   });
 
-  it('filtra por assinatura ativa (#402)', () => {
-    const grouped = { 'ativo@x.com': emApuros, 'saiu@x.com': emApuros };
-    const r = studentsNeedingAttention(grouped, new Set(['ativo@x.com']));
-    expect(r.map((s) => s.email)).toEqual(['ativo@x.com']);
+  it('aluno fora do Alpha fica fora', () => {
+    const r = tradesNeedingAttention({ trades: [tr('t1', 'ana', '10:00')], students, subscriptions });
+    expect(r).toEqual([]);
   });
 
-  it('email compara sem depender de caixa', () => {
-    const r = studentsNeedingAttention({ 'Ativo@X.com': emApuros }, new Set(['ativo@x.com']));
-    expect(r).toHaveLength(1);
-  });
-
-  it('set vazio não esconde ninguém — assinaturas ainda carregando', () => {
-    const r = studentsNeedingAttention({ 'a@x.com': emApuros }, new Set());
-    expect(r).toHaveLength(1);
-  });
-
-  it('aluno saudável fica fora', () => {
-    expect(studentsNeedingAttention({ 'ok@x.com': bem }, new Set())).toHaveLength(0);
+  it('subs vazias dão lista vazia — trade de aluno não-Alpha não vira alarme', () => {
+    expect(tradesNeedingAttention({ trades: [tr('t1', 'sandra', '10:00')], students, subscriptions: [] })).toEqual([]);
   });
 
   it('entrada vazia devolve lista vazia', () => {
-    expect(studentsNeedingAttention({}, new Set())).toEqual([]);
-    expect(studentsNeedingAttention(null, undefined)).toEqual([]);
+    expect(tradesNeedingAttention({})).toEqual([]);
+    expect(tradesNeedingAttention()).toEqual([]);
+  });
+});
+
+describe('agruparPorAlunoEPlano', () => {
+  const itens = (trades) => tradesNeedingAttention({ trades, students, subscriptions });
+
+  it('agrupa por aluno, o de trade mais recente primeiro, sem nome de plano com plano único', () => {
+    const r = agruparPorAlunoEPlano(
+      itens([tr('s1', 'sandra', '10:00'), tr('j1', 'joe', '11:00'), tr('s2', 'sandra', '09:00')]),
+      { students, plans },
+    );
+    expect(r.map((a) => a.studentName)).toEqual(['Joe Hott', 'Sandra Maria']);
+    expect(r[1].total).toBe(2);
+    expect(r[1].grupos).toHaveLength(1);
+    expect(r[1].grupos[0]).toMatchObject({ planId: 'winfut', planName: null, moeda: 'BRL' });
+    expect(r[1].grupos[0].itens.map((i) => i.trade.id)).toEqual(['s1', 's2']);
+  });
+
+  it('dois planos não somam: um grupo por plano, cada um com nome e moeda', () => {
+    const r = agruparPorAlunoEPlano(
+      itens([
+        tr('j1', 'joe', '10:00'),
+        tr('j2', 'joe', '11:00', { planId: 'apex', currency: 'USD', result: -314 }),
+        tr('j3', 'joe', '12:00', { planId: 'apex', currency: 'USD', result: -50 }),
+      ]),
+      { students, plans },
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].total).toBe(3);
+    expect(r[0].grupos.map((g) => [g.planName, g.moeda, g.itens.length])).toEqual([
+      ['Apex EOD 50K', 'USD', 2],
+      ['WINFUT', 'BRL', 1],
+    ]);
+    // Nenhum campo de soma de resultado existe no grupo.
+    expect(Object.keys(r[0].grupos[0]).sort()).toEqual(['itens', 'moeda', 'planId', 'planName']);
+  });
+
+  it('entrada vazia devolve lista vazia', () => {
+    expect(agruparPorAlunoEPlano([], { students, plans })).toEqual([]);
+    expect(agruparPorAlunoEPlano(null)).toEqual([]);
   });
 });

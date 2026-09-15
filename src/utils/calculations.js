@@ -205,57 +205,8 @@ export const calculateStudentRanking = (groupedTrades, sortBy = 'totalPL') => {
   }
 };
 
-/**
- * Identifica alunos que precisam de atenção
- * @param {Object|Array} groupedTrades - { email: [trades] } ou [{ email, name, trades }]
- * @returns {Array} Lista de alunos com reasons
- */
-export const identifyStudentsNeedingAttention = (groupedTrades) => {
-  try {
-    if (!groupedTrades) return [];
-    
-    // Normaliza entrada - aceita objeto { email: [trades] } ou array
-    let students;
-    if (Array.isArray(groupedTrades)) {
-      students = groupedTrades;
-    } else {
-      // Converte objeto { email: [trades] } para array
-      students = Object.entries(groupedTrades).map(([email, trades]) => ({
-        email,
-        name: trades[0]?.studentName || email.split('@')[0],
-        trades
-      }));
-    }
-    
-    return students
-      .map(student => {
-        const trades = student.trades || [];
-        if (trades.length === 0) return null;
-        
-        const stats = calculateStats(trades);
-        const reasons = [];
-        
-        // Critérios de atenção
-        if (stats.totalPL < 0) reasons.push('Prejuízo');
-        if (stats.totalTrades >= 5 && stats.winRate < 40) reasons.push('WinRate Baixo');
-        if (stats.totalTrades >= 5 && stats.profitFactor < 0.8) reasons.push('Profit Factor Baixo');
-        
-        // Sem razões = não precisa atenção
-        if (reasons.length === 0) return null;
-        
-        return {
-          email: student.email,
-          name: student.name,
-          stats,
-          reasons
-        };
-      })
-      .filter(Boolean);
-  } catch (error) { 
-    console.error('[identifyStudentsNeedingAttention]', error);
-    return []; 
-  }
-};
+// #444 — `identifyStudentsNeedingAttention` (aluno por prejuízo/win rate/PF da vida
+// inteira) saiu: "Precisam Atenção" conta trades em `utils/studentsAttention.js`.
 
 // --- FILTROS E HELPERS ---
 
@@ -381,7 +332,6 @@ export default {
   analyzeBySetup,
   analyzeByEmotion,
   calculateStudentRanking,
-  identifyStudentsNeedingAttention,
   filterTradesByPeriod,
   filterTradesByDateRange,
   searchTrades,
