@@ -599,7 +599,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       </div>
 
-      <div className="px-6 pt-6 pb-8">
+      {/* pb-20: o DebugBadge é `fixed bottom-2`; com pb-8 ele cobria o último "Abrir →". */}
+      <div className="px-6 pt-6 pb-20">
 
       {activeView === 'torre' && (
         <TorreDeControle

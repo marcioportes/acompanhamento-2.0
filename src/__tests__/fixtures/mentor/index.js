@@ -43,7 +43,9 @@ const SETUPS = ['Fractal TTrades', 'Rompimento', 'Pullback', 'Reversão', 'VWAP'
 const PERFIS = [
   { n: 1,  nome: 'Ana Ribeiro',      bucket: 'alpha',        faixa: 'ACAO_HOJE',    diasDesdeUltimo: 0,  gatilho: 'TILT' },
   { n: 2,  nome: 'Bruno Tavares',    bucket: 'alpha',        faixa: 'ACAO_HOJE',    diasDesdeUltimo: 0,  gatilho: 'ALEM_DO_STOP' },
-  { n: 3,  nome: 'Carla Menezes',    bucket: 'alpha',        faixa: 'ACAO_HOJE',    diasDesdeUltimo: 0,  gatilho: 'RISK_OVER_RO' },
+  // #444 — HIGH e um segundo código de gate no mesmo trade: sem isso a aba
+  // "Precisam atenção" só teria a Ana, com um motivo, e a foto não provaria o grupo.
+  { n: 3,  nome: 'Carla Menezes',    bucket: 'alpha',        faixa: 'ACAO_HOJE',    diasDesdeUltimo: 0,  gatilho: 'RISK_OVER_RO', severidade: 'HIGH', gatilhosExtra: ['UNPROTECTED_SIZE'] },
   { n: 4,  nome: 'Diego Salles',     bucket: 'alpha',        faixa: 'SUMIU',        diasDesdeUltimo: 21, gatilho: null },
   { n: 5,  nome: 'Eduarda Lopes',    bucket: 'alpha',        faixa: 'SUMIU',        diasDesdeUltimo: 40, gatilho: null },
   { n: 6,  nome: 'Felipe Andrade',   bucket: 'alpha',        faixa: 'RISCO_ALTO',   diasDesdeUltimo: 2,  gatilho: 'AVERAGING_DOWN' },
@@ -55,8 +57,8 @@ const PERFIS = [
   { n: 12, nome: 'Marcos Vinícius',  bucket: 'espelho',      faixa: 'NUNCA_OPEROU', diasDesdeUltimo: null, gatilho: null },
 ];
 
-const familiaDe = (codigo, severidade) => ({
-  families: [{ canonicalCode: codigo, severity: severidade, valence: 'negative' }],
+const familiaDe = (codigo, severidade, extras = []) => ({
+  families: [codigo, ...extras].map((c) => ({ canonicalCode: c, severity: severidade, valence: 'negative' })),
 });
 
 export const buildMentorDataset = ({ hoje = '2026-09-03', cenario = 'cheio' } = {}) => {
@@ -182,7 +184,11 @@ export const buildMentorDataset = ({ hoje = '2026-09-03', cenario = 'cheio' } = 
         redFlags: comFlag ? [{ type: 'NO_STOP', message: 'Operação sem stop definido' }] : [],
         mentorClearedViolations: [],
         behaviorProfile: comGatilho
-          ? familiaDe(perfil.gatilho, perfil.gatilho === 'TILT' ? 'HIGH' : 'MEDIUM')
+          ? familiaDe(
+            perfil.gatilho,
+            perfil.severidade ?? (perfil.gatilho === 'TILT' ? 'HIGH' : 'MEDIUM'),
+            perfil.gatilhosExtra,
+          )
           : { families: [] },
         htfUrl: rand() > 0.15 ? 'https://placehold.co/1200x700/0f172a/64748b?text=HTF' : null,
         ltfUrl: rand() > 0.4 ? 'https://placehold.co/1200x700/0f172a/64748b?text=LTF' : null,
