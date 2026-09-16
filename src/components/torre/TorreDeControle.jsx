@@ -31,6 +31,7 @@ const TorreDeControle = ({
   rascunhos = 0,
   fechamentosPendentes = 0,
   onIrParaFeedback,
+  onIrParaAtencao,
   onIrParaRevisoes,
   onIrParaFechamentos,
 }) => {
@@ -87,6 +88,7 @@ const TorreDeControle = ({
           radar={radar}
           onAbrirAluno={onAbrirAluno}
           onIrParaFeedback={onIrParaFeedback}
+          onIrParaAtencao={onIrParaAtencao}
           onIrParaRevisoes={onIrParaRevisoes}
           onIrParaFechamentos={onIrParaFechamentos}
           rascunhos={rascunhos}

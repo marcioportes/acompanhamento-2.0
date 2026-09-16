@@ -15,7 +15,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { 
   Users, DollarSign, Target, Activity, MessageSquare, AlertTriangle, 
-  Eye, ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
+  ChevronRight, ChevronDown, TrendingUp, ChevronLeft, Clock, HelpCircle, Brain,
   CheckSquare, Square, Loader2, X, Radar
 } from 'lucide-react';
 import TradesList from '../components/TradesList';
@@ -48,7 +48,7 @@ import CycleClosureModal from '../components/cycleClosure/CycleClosureModal';
 import useMentorClosureInbox from '../hooks/useMentorClosureInbox';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Inbox, Check } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 import { useTrades } from '../hooks/useTrades';
 import { usePlans } from '../hooks/usePlans';
 import { useEmotionalProfile } from '../hooks/useEmotionalProfile';
@@ -64,8 +64,8 @@ import { aggregateTradesByCurrency, formatCurrencyDynamic } from '../utils/curre
 import MultiCurrencyAmount from '../components/MultiCurrencyAmount';
 import { fmtTradeTime } from '../utils/tradeTimezone';
 import { useSubscriptions } from '../hooks/useSubscriptions';
-import { studentsNeedingAttention as computeStudentsNeedingAttention } from '../utils/studentsAttention';
-import { visibleStudentEmails } from '../utils/mentorAccountsVisibility';
+import { tradesNeedingAttention as computeTradesNeedingAttention, agruparPorAlunoEPlano } from '../utils/studentsAttention';
+import PrecisamAtencaoLista from '../components/feedback/PrecisamAtencaoLista';
 import { buildCalendarDays, emailsDoRadar } from '../utils/mentorRiskRadar';
 import { isReadyForPromotion } from '../utils/maturityEngine/promotionReadiness';
 import { regressaoVigente } from '../utils/maturityEngine/regressionVisibility';
@@ -74,7 +74,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const toast = useToast();
   const { 
     allTrades, loading, addFeedback, 
-    getTradesByStudent, getTradesGroupedByStudent, getUniqueStudents, 
+    getTradesByStudent, getUniqueStudents,
     getTradesAwaitingFeedback, getTradesByStudentAndStatus,
     addBulkFeedback
   } = useTrades();
@@ -135,35 +135,34 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     }
     return n;
   }, [students, maturityByStudentId]);
-  const groupedTrades = useMemo(() => getTradesGroupedByStudent(), [getTradesGroupedByStudent]);
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
   // Contagem de rascunhos: sobe dos probes do PendingReviewsCard (um listener por
-  // aluno, os mesmos de sempre) para o bloco "Você deve" da Agenda.
+  // aluno, os mesmos de sempre) para o bloco "Aguardando você" da Agenda.
   const [rascunhosPendentes, setRascunhosPendentes] = useState(0);
   // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
   // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
   // "Precisam Atenção" e os alertas do cockpit listavam gente que já tinha saído:
   // 203 dos 588 alarmes da base eram de seis alunos sem assinatura ativa.
   const { subscriptions: allSubscriptions, students: allStudents } = useSubscriptions();
-  const emailsAtivos = useMemo(
-    () => visibleStudentEmails(allStudents, allSubscriptions),
-    [allStudents, allSubscriptions],
-  );
 
   // #101 — o calendário e a lista do dia seguem o MESMO conjunto da Torre (track
-  // Alpha). `emailsAtivos` continua sendo o escopo de Acompanhamento/Contas, que é
-  // mais largo e vale para as outras superfícies.
+  // Alpha), não o escopo mais largo de Acompanhamento/Contas.
   const emailsDaMentoria = useMemo(
     () => emailsDoRadar(allStudents, allSubscriptions),
     [allStudents, allSubscriptions],
   );
 
-  // #430 — mesma fonte do badge do menu (`App.jsx`). Enquanto as assinaturas não
-  // carregaram, o helper não esconde nada: some depois é pior que aparecer e sumir.
-  const studentsNeedingAttention = useMemo(
-    () => computeStudentsNeedingAttention(groupedTrades, emailsAtivos),
-    [groupedTrades, emailsAtivos],
+  // #430/#444 — mesma função e mesmo `allTrades` do badge do menu (`App.jsx`): um
+  // número só. A unidade é o trade pesado sem feedback, só de aluno Alpha; sem
+  // assinaturas carregadas a fila sai vazia (alarme falso é pior que esperar).
+  const tradesNeedingAttention = useMemo(
+    () => computeTradesNeedingAttention({ trades: allTrades, students: allStudents, subscriptions: allSubscriptions }),
+    [allTrades, allStudents, allSubscriptions],
+  );
+  const alunosNeedingAttention = useMemo(
+    () => agruparPorAlunoEPlano(tradesNeedingAttention, { students: allStudents, plans }),
+    [tradesNeedingAttention, allStudents, plans],
   );
 
   // #101 — dias da turma: atividade e risco, nunca soma de dinheiro (BRL + USD na base).
@@ -547,7 +546,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
     { id: 'overview', sidebarId: 'dashboard', label: 'Análises', icon: Activity },
     { id: 'students', sidebarId: 'students', label: 'Alunos', icon: Users },
     { id: 'pending', sidebarId: 'pending', label: 'Aguardando Feedback', icon: MessageSquare, contagem: pendingFeedback.length },
-    { id: 'attention', sidebarId: 'attention', label: 'Precisam Atenção', icon: AlertTriangle, contagem: studentsNeedingAttention.length },
+    { id: 'attention', sidebarId: 'attention', label: 'Precisam Atenção', icon: AlertTriangle, contagem: tradesNeedingAttention.length },
     { id: 'closures', sidebarId: 'closures', label: 'Fechamentos', icon: Inbox, contagem: closuresPendingCount },
   ];
 
@@ -600,6 +599,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       </div>
 
+      {/* #444 — DebugBadge `embedded` no fim do fluxo: `fixed` flutuava sobre a lista durante a rolagem. */}
       <div className="px-6 pt-6 pb-8">
 
       {activeView === 'torre' && (
@@ -610,6 +610,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
           fechamentosPendentes={closuresPendingCount}
           totalDecisoes={totalDecisoes}
           onIrParaFeedback={() => onViewChange('pending')}
+          onIrParaAtencao={() => onViewChange('attention')}
           onIrParaRevisoes={() => onViewChange('reviews')}
           onIrParaFechamentos={() => onViewChange('closures')}
           extrasAcao={(
@@ -860,52 +861,15 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   </>
 )}
 
+      {/* #444 — a aba lista TRADES pesados sem feedback, com o motivo escrito; a
+          linha sai quando o feedback é dado. Clique abre o compositor, o mesmo
+          destino da Fila de Feedback. */}
       {activeView === 'attention' && (
-        /* Lista, não seis cartões de 100px com moldura vermelha. Quando todo item
-           da tela está circundado de vermelho, o vermelho deixa de significar
-           alguma coisa — e a lista deixa de caber numa olhada. */
-        <div className="glass-card overflow-hidden">
-          <div className="panel-head">
-            <h3 className="panel-title">Precisam atenção</h3>
-            <span className="meta tabular">
-              {studentsNeedingAttention.length} {studentsNeedingAttention.length === 1 ? 'aluno' : 'alunos'} · prejuízo, win rate ou profit factor
-            </span>
-          </div>
-
-          {studentsNeedingAttention.length === 0 ? (
-            <div className="px-4 py-10 text-center">
-              <Check className="w-6 h-6 mx-auto mb-2" strokeWidth={1.5} style={{ color: 'var(--pos)' }} />
-              <p className="text-[13px]" style={{ color: 'var(--ink-2)' }}>Tudo sob controle!</p>
-              <p className="text-[11px] mt-1" style={{ color: 'var(--ink-4)' }}>Nenhum aluno precisa de atenção especial.</p>
-            </div>
-          ) : (
-            studentsNeedingAttention.map(student => (
-              <div
-                key={student.email}
-                onClick={() => abrirAluno({ email: student.email, name: student.name })}
-                className="group px-4 py-2.5 flex items-center justify-between gap-4 cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
-                style={{ borderTop: '1px solid var(--line)', boxShadow: 'inset 2px 0 0 var(--neg)' }}
-              >
-                <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-                  <span className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>{student.name}</span>
-                  {student.reasons.map((reason, i) => (
-                    <span key={i} className="chip" style={{ color: 'var(--neg)' }}>
-                      <span className="chip-dot" style={{ background: 'var(--neg)' }} />
-                      {reason}
-                    </span>
-                  ))}
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); abrirAluno({ email: student.email, name: student.name }); }}
-                  className="icon-btn opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-shrink-0"
-                  title="Abrir ficha"
-                >
-                  <Eye className="w-3.5 h-3.5" strokeWidth={1.75} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
+        <PrecisamAtencaoLista
+          alunos={alunosNeedingAttention}
+          totalTrades={tradesNeedingAttention.length}
+          onAbrirTrade={handleGoToFeedback}
+        />
       )}
 
       {activeView === 'closures' && !viewingClosure && (
@@ -927,7 +891,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       )}
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
-      <DebugBadge component="MentorDashboard" />
+      {/* pt-8: o selo embedded sobe 20px (-top-5); sem o respiro ele cai sobre o último card. */}
+      <div className="pt-8"><DebugBadge component="MentorDashboard" embedded /></div>
       </div>
     </div>
   );

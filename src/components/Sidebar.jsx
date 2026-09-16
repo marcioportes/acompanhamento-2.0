@@ -41,7 +41,8 @@ const Sidebar = ({
   collapsed = false, 
   onToggle,
   pendingFeedback = 0,
-  studentsNeedingAttention = 0,
+  // #444 — conta TRADES pesados sem feedback, da mesma fonte da aba (#430).
+  tradesNeedingAttention = 0,
   emotionalAlerts = 0,
   unreviewedFeedback = 0,
   hasBaseline = false,
@@ -100,7 +101,7 @@ const Sidebar = ({
       id: 'attention',
       label: 'Precisam Atenção',
       icon: AlertTriangle,
-      badge: studentsNeedingAttention > 0 ? studentsNeedingAttention : null,
+      badge: tradesNeedingAttention > 0 ? tradesNeedingAttention : null,
       badgeColor: 'red'
     },
     {

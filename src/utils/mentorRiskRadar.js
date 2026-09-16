@@ -22,7 +22,7 @@ import { calculateComplianceRate } from './dashboardMetrics';
 import { redFlagLabel } from './compliance';
 import { effectiveRedFlags, flagType } from './violationFilter';
 import { buildPeriodState } from './dayState';
-import { getPattern, severidadeVigente } from '../constants/behavioralTaxonomy';
+import { getPattern, severidadeVigente, GATE_CODES } from '../constants/behavioralTaxonomy';
 import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
 import { tradeInstantMs, sortTradesChrono } from './tradeInstant';
 import { computeCurrentPl, computeCycleBalance } from './planBalance';
@@ -214,10 +214,7 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   const planoPorId = new Map((plans ?? []).filter((p) => p?.id).map((p) => [p.id, p]));
 
   const ativos = (students ?? []).filter((s) => isOnRadar(s, subsIdx.get(s?.id) ?? []));
-  const porId = new Map(ativos.filter((s) => s?.id).map((s) => [s.id, s]));
-  const porEmail = new Map(
-    ativos.filter((s) => s?.email).map((s) => [String(s.email).toLowerCase(), s]),
-  );
+  const donoDe = resolvedorDeDono(ativos);
 
   // Um passe sobre a janela; quem não é aluno do radar não entra.
   const tradesPorAluno = new Map();
@@ -225,13 +222,19 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
   const radarPorAluno = new Map();
   // Saldo, winrate e drawdown são do CICLO, não da janela: precisam do histórico.
   const todosDoAluno = new Map();
+  // #444 — o que devo não depende de data: trade sem `date` também espera
+  // feedback (`getTradesAwaitingFeedback` não filtra por data). Coletado antes do
+  // corte de data para a Torre contar a mesma população da aba Precisam atenção.
+  const aguardandoDoAluno = new Map();
   for (const t of allTrades ?? []) {
-    if (!t?.date) continue;
-    const dono =
-      (t.studentId && porId.get(t.studentId)) ||
-      (t.studentEmail && porEmail.get(String(t.studentEmail).toLowerCase())) ||
-      null;
+    const dono = t ? donoDe(t) : null;
     if (!dono) continue;
+    if (AGUARDANDO_FEEDBACK.has(t.status)) {
+      const aguardando = aguardandoDoAluno.get(dono.id) ?? [];
+      aguardando.push(t);
+      aguardandoDoAluno.set(dono.id, aguardando);
+    }
+    if (!t.date) continue;
 
     const todos = todosDoAluno.get(dono.id) ?? [];
     todos.push(t);
@@ -287,9 +290,9 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       (maisNova, t) => (t?.date && (!maisNova || t.date > maisNova) ? t.date : maisNova),
       null,
     );
-    const feedbackPendente = todos.filter(
-      (t) => t?.status === 'OPEN' || t?.status === 'QUESTION',
-    ).length;
+    const aguardando = aguardandoDoAluno.get(s.id) ?? [];
+    // #444 — dos que esperam, quantos são pesados e por quê. Mesma regra da aba.
+    const pesados = aguardando.map(motivosPesados).filter((m) => m.length > 0);
 
     const familiasHoje = tradesHoje.flatMap(familiasDeRisco);
     const familiasJanela = tradesRadar.flatMap(familiasDeRisco);
@@ -304,7 +307,11 @@ export function buildMentorRadar({ allTrades, plans, students, subscriptions, no
       ultimaOperacao: ultimaData,
       diasSemOperar: ultimaData ? diasEntre(ultimaData, dia) : null,
       resultadoSemanaR: semanaEmR(tradesSemana, planoPorId),
-      pendencias: { feedback: feedbackPendente },
+      pendencias: {
+        feedback: aguardando.length,
+        pesados: pesados.length,
+        motivosPesados: codigosPorOcorrencia(pesados.flat()),
+      },
       foraDoPlanoSemana: foraDoPlanoDoAluno(tradesSemana, tradesSemanaAnterior),
       // S6 — o retrato do aluno é sempre de UM plano. Com duas contas, a do dia;
       // sem trade hoje, a mais recente da janela. Misturar as duas seria repetir
@@ -544,6 +551,80 @@ export function familiasDeRisco(trade) {
     });
   }
   return saida;
+}
+
+// ============================================================================
+// #444 — Precisam Atenção: fila de trades prioritários
+// ============================================================================
+
+/**
+ * Códigos que podem tornar um trade "pesado" (D2, corte A): os que alimentam gate
+ * de maturidade. Derivado da taxonomia — padrão novo com `feedsGates` entra sozinho.
+ */
+export const CODIGOS_PESADOS = new Set(GATE_CODES);
+
+/** Status que significam "tem alguém esperando o feedback" (`useTrades.getTradesAwaitingFeedback`). */
+const AGUARDANDO_FEEDBACK = new Set(['OPEN', 'QUESTION']);
+
+/**
+ * Por que o trade é pesado: famílias de risco (já negativas, vigentes e sem as
+ * dispensadas pelo mentor) com severidade HIGH em código de gate.
+ */
+export const motivosPesados = (trade) =>
+  familiasDeRisco(trade).filter((f) => f.severity === 'HIGH' && CODIGOS_PESADOS.has(f.code));
+
+/** Trade aguardando feedback com ao menos um motivo pesado. O escopo Alpha fica na coleção. */
+export const precisaAtencao = (trade) =>
+  AGUARDANDO_FEEDBACK.has(trade?.status) && motivosPesados(trade).length > 0;
+
+/**
+ * Dono do trade entre os alunos do radar: `studentId` e, na falta, `studentEmail`
+ * (case-insensitive). Único para a Torre e a fila — se cada um resolvesse do seu
+ * jeito, a Torre e a aba contariam populações diferentes (#430).
+ */
+function resolvedorDeDono(ativos) {
+  const porId = new Map(ativos.filter((s) => s?.id).map((s) => [s.id, s]));
+  const porEmail = new Map(
+    ativos.filter((s) => s?.email).map((s) => [String(s.email).toLowerCase(), s]),
+  );
+  return (trade) =>
+    (trade.studentId && porId.get(trade.studentId)) ||
+    (trade.studentEmail && porEmail.get(String(trade.studentEmail).toLowerCase())) ||
+    null;
+}
+
+/** Códigos distintos, do mais frequente ao menos; empate fica na ordem de aparição. */
+function codigosPorOcorrencia(motivos) {
+  const contagem = new Map();
+  for (const m of motivos) contagem.set(m.code, (contagem.get(m.code) ?? 0) + 1);
+  return [...contagem.entries()].sort((a, b) => b[1] - a[1]).map(([code]) => code);
+}
+
+/**
+ * A fila única que aba, badge e Torre consomem (#430: um número só).
+ *
+ * Só alunos no radar (Alpha). Sem assinaturas carregadas, `isOnRadar` cai para
+ * não-Alpha e a lista sai vazia — de propósito: trade de aluno Espelho como
+ * prioridade seria alarme falso. O dono do trade é resolvido como em
+ * `buildMentorRadar` (studentId, e na falta, studentEmail).
+ *
+ * @returns {Array<{trade, motivos, studentId, planId}>} mais recente primeiro
+ */
+export function tradesPrecisamAtencao({ trades, students, subscriptions } = {}) {
+  if (!Array.isArray(trades) || !Array.isArray(students)) return [];
+  const subsIdx = indexSubsByStudent(Array.isArray(subscriptions) ? subscriptions : []);
+  const donoDe = resolvedorDeDono(students.filter((s) => isOnRadar(s, subsIdx.get(s?.id) ?? [])));
+
+  const saida = [];
+  for (const trade of trades) {
+    if (!AGUARDANDO_FEEDBACK.has(trade?.status)) continue;
+    const dono = donoDe(trade);
+    if (!dono) continue;
+    const motivos = motivosPesados(trade);
+    if (!motivos.length) continue;
+    saida.push({ trade, motivos, studentId: dono.id, planId: trade.planId ?? null });
+  }
+  return saida.sort((a, b) => (tradeInstantMs(b.trade) ?? 0) - (tradeInstantMs(a.trade) ?? 0));
 }
 
 /** Ordena por gravidade e, empatado, pelo mais recente. */

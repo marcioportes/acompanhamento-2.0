@@ -42,8 +42,7 @@ import { useTrades } from './hooks/useTrades';
 import { usePlans } from './hooks/usePlans';
 import { useAccounts } from './hooks/useAccounts';
 import { useSubscriptions } from './hooks/useSubscriptions';
-import { visibleStudentEmails } from './utils/mentorAccountsVisibility';
-import { studentsNeedingAttention as computeStudentsNeedingAttention } from './utils/studentsAttention';
+import { tradesNeedingAttention as computeTradesNeedingAttention } from './utils/studentsAttention';
 import { getPlanCurrency } from './utils/currency';
 import { useAssessmentGuard } from './components/Onboarding/AssessmentGuard';
 import { useAssessment } from './hooks/useAssessment';
@@ -116,8 +115,7 @@ const AppContent = () => {
   const { 
     addTrade, 
     trades,
-    getTradesAwaitingFeedback, 
-    getTradesGroupedByStudent, 
+    getTradesAwaitingFeedback,
     allTrades,
     addFeedbackComment,
     updateTradeStatus,
@@ -172,18 +170,20 @@ const AppContent = () => {
   // bloco reimplementava a regra na mão (só win rate, sem filtro de assinatura) e
   // por isso o menu dizia 2 enquanto a aba dizia 6.
   const { subscriptions: mentorSubscriptions, students: mentorStudents } = useSubscriptions();
-  const emailsAtivos = useMemo(
-    () => visibleStudentEmails(mentorStudents, mentorSubscriptions),
-    [mentorStudents, mentorSubscriptions],
-  );
-  const studentsNeedingAttention = useMemo(() => {
+  // #444 — a unidade virou o TRADE pesado sem feedback, só de aluno Alpha. A aba
+  // chama a mesma função com o mesmo `allTrades` do `useTrades`.
+  const tradesNeedingAttention = useMemo(() => {
     if (!isMentor() || viewingAsStudent) return 0;
     try {
-      return computeStudentsNeedingAttention(getTradesGroupedByStudent?.() || {}, emailsAtivos).length;
+      return computeTradesNeedingAttention({
+        trades: allTrades,
+        students: mentorStudents,
+        subscriptions: mentorSubscriptions,
+      }).length;
     } catch (e) {
       return 0;
     }
-  }, [isMentor, viewingAsStudent, allTrades, getTradesGroupedByStudent, emailsAtivos]);
+  }, [isMentor, viewingAsStudent, allTrades, mentorStudents, mentorSubscriptions]);
 
   if (loading) return <Loading fullScreen text="Carregando..." />;
   if (!user) return <LoginPage />;
@@ -528,7 +528,7 @@ const AppContent = () => {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         pendingFeedback={pendingFeedbackCount}
-        studentsNeedingAttention={studentsNeedingAttention}
+        tradesNeedingAttention={tradesNeedingAttention}
         unreviewedFeedback={unreviewedFeedbackCount}
         hasBaseline={hasBaseline}
         hasPropAccount={hasPropAccount}
