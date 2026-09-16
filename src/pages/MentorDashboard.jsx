@@ -138,7 +138,7 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
   const todayTrades = useMemo(() => filterTradesByPeriod(allTrades, 'today'), [allTrades]);
   const pendingFeedback = useMemo(() => getTradesAwaitingFeedback(), [getTradesAwaitingFeedback]);
   // Contagem de rascunhos: sobe dos probes do PendingReviewsCard (um listener por
-  // aluno, os mesmos de sempre) para o bloco "Você deve" da Agenda.
+  // aluno, os mesmos de sempre) para o bloco "Aguardando você" da Agenda.
   const [rascunhosPendentes, setRascunhosPendentes] = useState(0);
   // #402 — alarme só para aluno que o mentor ainda acompanha. Mesmo predicado da
   // visibilidade em Contas/Acompanhamento (`classifyStudent !== null`). Antes disso,
@@ -599,8 +599,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
         </div>
       </div>
 
-      {/* pb-20: o DebugBadge é `fixed bottom-2`; com pb-8 ele cobria o último "Abrir →". */}
-      <div className="px-6 pt-6 pb-20">
+      {/* #444 — DebugBadge `embedded` no fim do fluxo: `fixed` flutuava sobre a lista durante a rolagem. */}
+      <div className="px-6 pt-6 pb-8">
 
       {activeView === 'torre' && (
         <TorreDeControle
@@ -891,7 +891,8 @@ const MentorDashboard = ({ currentView = 'dashboard', onViewChange, onNavigateTo
       )}
 
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={allTrades} isMentor onAddFeedback={handleAddFeedback} feedbackLoading={feedbackLoading} onViewFeedbackHistory={handleViewFeedbackHistory} />
-      <DebugBadge component="MentorDashboard" />
+      {/* pt-8: o selo embedded sobe 20px (-top-5); sem o respiro ele cai sobre o último card. */}
+      <div className="pt-8"><DebugBadge component="MentorDashboard" embedded /></div>
       </div>
     </div>
   );

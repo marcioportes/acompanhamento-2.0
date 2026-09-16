@@ -1,5 +1,5 @@
 /**
- * #444 — bloco 3 "Você deve" da Torre (M2).
+ * #444 — bloco 3 "Aguardando você" da Torre (M2).
  *
  * A unidade continua sendo a pessoa, mas quem tem trade pesado esperando feedback
  * vem primeiro, com ⚠ e "Priorizar →" levando à aba Precisam atenção.
@@ -17,14 +17,14 @@ const turma = [
 ];
 
 const blocoVoceDeve = (container) =>
-  [...container.querySelectorAll('section')].find((s) => s.textContent.includes('Você deve'));
+  [...container.querySelectorAll('section')].find((s) => s.textContent.includes('Aguardando você'));
 
 const linhas = (bloco) => [...bloco.querySelectorAll('section > div')].slice(1);
 
 const renderAgenda = (props = {}) =>
   render(<TorreAgenda radar={{ priority: [], turma }} rascunhos={2} {...props} />);
 
-describe('TorreAgenda — Você deve prioriza trades pesados (#444)', () => {
+describe('TorreAgenda — Aguardando você prioriza trades pesados (#444)', () => {
   it('pesados primeiro (por pesados desc), depois os demais', () => {
     const { container } = renderAgenda();
     const nomes = linhas(blocoVoceDeve(container)).map((l) => l.querySelector('.font-medium')?.textContent);

@@ -11,7 +11,7 @@
  *   1. RISCO VIVO      — está queimando dinheiro agora. Custo: o prejuízo de hoje.
  *   2. SUMIU           — assinatura viva, sem operar. Custo: churn que só aparece
  *                        no boleto, quando já não dá para reverter.
- *   3. VOCÊ DEVE       — feedback, rascunho, fechamento sem comentário. Custo: tem
+ *   3. AGUARDANDO VOCÊ — feedback, rascunho, fechamento sem comentário. Custo: tem
  *                        alguém parado esperando por você.
  *   4. DECISÃO         — promoção pronta, regressão detectada. Custo: reconhecimento
  *                        dado fora da hora não vale o mesmo.
@@ -202,7 +202,7 @@ const TorreAgenda = ({
 
       <Bloco
         ordem={1}
-        titulo="Está queimando agora"
+        titulo="Em risco hoje"
         subtitulo="custo de ignorar: o prejuízo de hoje"
         cor="var(--neg)"
         itens={priority.length}
@@ -262,8 +262,8 @@ const TorreAgenda = ({
 
       <Bloco
         ordem={3}
-        titulo="Você deve"
-        subtitulo="tem gente parada esperando por você"
+        titulo="Aguardando você"
+        subtitulo="feedbacks e revisões que dependem de você"
         cor="var(--info)"
         itens={totalDevo}
       >

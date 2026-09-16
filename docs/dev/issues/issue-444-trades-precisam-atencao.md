@@ -156,6 +156,22 @@ Script de leitura (`scripts/issue-444-calibragem.mjs`, não escreve nada): trade
 
 _(formato: `DEC-AUTO-444-NN: <decisão> | Justificativa: ...`)_
 
+- DEC-AUTO-444-01: dono do trade resolvido por `trade.studentId` e, na falta, `trade.studentEmail` (case-insensitive) | Justificativa: mesma população de `buildMentorRadar` (Torre).
+- DEC-AUTO-444-02: item = `{trade, motivos, studentId, planId}`; `studentId` é o id do aluno resolvido, `planId = trade.planId ?? null` | Justificativa: task 02 agrupa por aluno/plano.
+- DEC-AUTO-444-03: nenhum código de gate tem teto em `TETO_DE_SEVERIDADE` (só EARLY_EXIT); teste cobre EARLY_EXIT HIGH fora | Justificativa: caso limite do teto vazio hoje.
+- DEC-AUTO-444-04: task 01 aceita apesar de validator exit 1 (result.log sem "N passed") | Justificativa: coord reverificou externamente (commit, arquivos, `vitest run` 4789/0 idêntico ao claim); log em `outbox/01-coord-validation.log`.
+- DEC-AUTO-444-05: colapso a partir do 6º aluno reproduzido em `PrecisamAtencaoLista`, sem extrair o `Bloco` | Justificativa: Torre intocada, menor blast radius.
+- DEC-AUTO-444-06: moeda do resultado = `trade.currency`; nome do plano no cabeçalho só quando o aluno tem >1 plano entre os trades da fila | Justificativa: `plans` não tem `currency` (data-dictionary); padrão `FilaDeFeedback`; grupos já separam por plano, nada é somado.
+- DEC-AUTO-444-07: narrativa do chip vem da família original em `trade.behaviorProfile.families` (motivos só têm `code`) | Justificativa: `narrativeFor` precisa da família completa.
+- DEC-AUTO-444-08: prop do Sidebar renomeada para `tradesNeedingAttention`; `identifyStudentsNeedingAttention` removida (sem outro consumidor) | Justificativa: plano da task 02.
+- DEC-AUTO-444-09: lista em `src/components/feedback/PrecisamAtencaoLista.jsx` sem DebugBadge próprio | Justificativa: não é página; `MentorDashboard` mantém o seu (INV-04).
+- DEC-AUTO-444-10: radar coleta trades aguardando feedback **antes** do corte por `date`; `pendencias.feedback` passa a incluir trade sem data (igual `getTradesAwaitingFeedback`) | Justificativa: causa raiz da divergência Torre × aba (#430, AP-02); base: 380/381 com data (data-dictionary). **Desvio do briefing ("feedback não muda") — sinalizado ao Marcio no FINISHED.**
+- DEC-AUTO-444-11: resolução de dono extraída para `resolvedorDeDono(ativos)`, usada por `buildMentorRadar` e `tradesPrecisamAtencao` | Justificativa: uma regra só de população.
+- DEC-AUTO-444-12: `pendencias.motivosPesados` = códigos distintos por ocorrência desc, empate por ordem de aparição | Justificativa: ordem estável e testável.
+- DEC-AUTO-444-13: ordem do bloco 3 = tem pesado > pesados desc > feedback desc; radar sem `pesados` cai para 0 e usa a linha "Escrever"; sem `onIrParaAtencao` cai para `onIrParaFeedback` | Justificativa: M2 + retrocompatibilidade.
+- DEC-AUTO-444-14: fixture mentor — Carla com gatilho `severidade: 'HIGH'` + `gatilhosExtra: ['UNPROTECTED_SIZE']` (aditivo) | Justificativa: harness exercitar 2 alunos e 2 motivos; suíte verde sem alterar asserções; Carla passa a aparecer em "Está queimando", coerente com `faixa: 'ACAO_HOJE'`.
+- DEC-AUTO-444-15: container do `MentorDashboard` `pb-8` → `pb-20` | Justificativa: DebugBadge `fixed bottom-2` cobria o último item (INV-04, memória "DebugBadge não sobrepõe").
+
 ## Phases
 
 Modo autônomo acionado por Marcio em 14/09/2026. Tasks na ordem, uma por worker:
@@ -168,6 +184,12 @@ Modo autônomo acionado por Marcio em 14/09/2026. Tasks na ordem, uma por worker
 A calibragem na base (A0) fica fora do loop. Worker headless não tem leitura de produção, e o corte segue a decisão de §3.1.
 
 ## Sessions
+
+- 14/09 — 01-regra-pura despachada (inbox/01-regra-pura.md)
+- 15/09 — 01-regra-pura entregue `79fd1b9f`, 4789/0, validada externamente (DEC-AUTO-444-04); 02-aba-e-badge despachada
+- 15/09 — 02-aba-e-badge entregue `1d819700`, 4797/0, validator OK; 03-torre-voce-deve despachada
+- 15/09 — 03-torre-voce-deve entregue `d89866e1`, 4809/0, validator OK; 04-entrega despachada
+- 15/09 — 04-entrega entregue `cdf8b4a1`, 4809/0, validator OK; fotos em `.screenshots/issue-444/` (badge = aba = Torre = 2); build e controles-legiveis verdes. Loop concluído, FINISHED emitido.
 
 ## Shared Deltas
 

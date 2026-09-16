@@ -313,7 +313,9 @@ const MentorMaturityAlert = ({
         })}
       </ul>
 
-      {!embedded && <DebugBadge component="MentorMaturityAlert" />}
+      {/* #444 — `backdrop-blur` vira bloco de contenção do `fixed`: o selo caía sobre o
+          "Metódico → sinal Reativo" da última linha. No fluxo, com respiro, não cobre nada. */}
+      {!embedded && <div className="pt-6"><DebugBadge component="MentorMaturityAlert" embedded /></div>}
     </section>
   );
 };
