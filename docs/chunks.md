@@ -50,7 +50,7 @@ Cada frente de desenvolvimento opera em um branch isolado. Arquivos transversais
 | CHUNK-13 | Context Bar | Barra de contexto unificado Conta>Plano>Ciclo>Período, provider, hook | `StudentContextProvider`, `ContextBar`, `useStudentContext` | AVAILABLE |
 | CHUNK-14 | Onboarding Auto | Pipeline CSV→indicadores→Kelly→plano sugerido, wizard de onboarding | `OnboardingWizard`, `kellyCalculator`, `planSuggester` | AVAILABLE |
 | CHUNK-15 | Swing Trade | Módulo de carteira, indicadores de portfólio, stress test | `PortfolioManager`, `portfolioIndicators` | AVAILABLE |
-| CHUNK-16 | Mentor Cockpit | Painel mentor, ranking, alertas, inbox de closures, comment panel, view read-only. **#259:** MentorClosuresInbox + MentorClosureView + ClosurePendingBadge + gate de reabertura encadeada | `MentorDashboard`, `MentorClosuresInbox`, `MentorClosureView`, `useMentorClosureInbox` | AVAILABLE |
+| CHUNK-16 | Mentor Cockpit | Painel mentor, ranking, alertas, inbox de closures, comment panel, view read-only. **#259:** MentorClosuresInbox + MentorClosureView + ClosurePendingBadge + gate de reabertura encadeada. **#444:** "Precisam Atenção" é fila de TRADES pesados sem feedback (regra em `mentorRiskRadar`, mesma função para aba, badge e Torre); a lista por aluno saiu | `MentorDashboard`, `MentorClosuresInbox`, `MentorClosureView`, `useMentorClosureInbox`, `PrecisamAtencaoLista`, `studentsAttention` | AVAILABLE |
 | CHUNK-17 | Prop Firm Engine | Templates de mesas proprietárias, validação de regras, fases (TRAINEE→MASTER), payout schedules, propFirmConsistency | `PropFirmPage`, `PropFirmConfigPage`, `propFirmEngine`, `propFirmTemplates` | AVAILABLE |
 
 ### 6.4 Checklist de Check-Out
