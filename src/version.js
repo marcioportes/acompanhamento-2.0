@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.0: #444 feat Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai c (PR #445, 16/09/2026)
+ * - 1.92.0: #444 feat Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai com o feedback (PR #445, 16/09/2026)
  * - 1.91.0: #442 fix a análise do mentor somava mesas diferentes do mesmo aluno (PR #443, 12/09/2026)
  * - 1.90.8: #440 fix o número do dia no calendário tinha 1,44:1 de contraste (PR #441, 11/09/2026)
  * - 1.90.7: #432 fix os cards do dashboard leem a janela selecionada — PL inicial, resultado, drawd (PR #433, 10/09/2026)

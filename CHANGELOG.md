@@ -10,7 +10,7 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.0] - 16/09/2026 · #444 · PR #445
 
-**feat:** Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai c
+**feat:** Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai com o feedback
 
 - **Regra única** em `mentorRiskRadar.js`: `motivosPesados`, `precisaAtencao`, `tradesPrecisamAtencao`. O corte é derivado de `GATE_CODES` (gravidade vigente HIGH ∩ código que alimenta gate, sem os padrões dispensados), sem lista literal no código.
 - **Badge do menu e aba leem a mesma função** (#430: um número só).
