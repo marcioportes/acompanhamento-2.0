@@ -6,4 +6,3 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
-| CHUNK-16 | #444 | `feat/issue-444-trades-precisam-atencao` | 14/09/2026 | interativa |

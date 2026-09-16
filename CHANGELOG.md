@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.0] - 16/09/2026 · #444 · PR #445
+
+**feat:** Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai c
+
+- **Regra única** em `mentorRiskRadar.js`: `motivosPesados`, `precisaAtencao`, `tradesPrecisamAtencao`. O corte é derivado de `GATE_CODES` (gravidade vigente HIGH ∩ código que alimenta gate, sem os padrões dispensados), sem lista literal no código.
+- **Badge do menu e aba leem a mesma função** (#430: um número só).
+- **Torre, bloco "Aguardando você":** quem tem trade pesado vem primeiro, com ⚠, "N de M trades pesados" e "Priorizar →" para a aba.
+- **A lista antiga por aluno saiu**, junto com `identifyStudentsNeedingAttention`, que não tinha outro consumidor.
+
+
 ## [1.91.0] - 12/09/2026 · #442 · PR #443
 
 **fix:** a análise do mentor somava mesas diferentes do mesmo aluno
