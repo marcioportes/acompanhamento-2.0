@@ -12,10 +12,14 @@ Version source of truth: `src/version.js`.
 
 **fix:** a proteção que foi acionada também é proteção
 
-- A perna protetiva **continua em `exitOrders`** — ela é as duas coisas, e as duas leituras seguem verdadeiras. Ela passa a constar **também** em `stopOrders`.
-- `stopLoss` passa a sair de `stopPrice ?? limitPrice ?? price` — o preço **enviado**, nunca o executado. Sem `limitPrice` na precedência, a proteção acionada gravaria o preço de preenchimento e o risco sairia menor do que foi assumido (mesma distinção `_price` × `_riskPrice` do #371).
-- Entradas, saídas comuns e alvos **não** são tocados: a segunda passada só acrescenta a `stopOrders`, nunca a `cancelledOrders`.
-
+- **A mesma tela afirmava duas coisas opostas:** "Protegido o tempo todo" no painel de ordens e "Trade sem stop loss definido — risco não mensurado (win sem stop)" logo abaixo. As duas leituras estavam certas pelo próprio critério — o painel olhava as ordens, o compliance olhava o campo `stopLoss`, que estava vazio.
+- **O trade era punido por ter tido a proteção acionada:** `associateNonFilledOrders` só percorre ordem NÃO executada, então a perna de bracket que fecha a posição — desfecho normal de quem opera com stop — nunca chegava a `stopOrders`. Se a mesma ordem tivesse sido cancelada, o `stopLoss` seria gravado e não haveria violação.
+- **Uma definição só de proteção:** o critério que existia solto virou `ehProtecaoAdversa()`, igual ao de `protectiveLegsOf` (lado oposto + nascida com a posição + preço **enviado** adverso à entrada), aplicado também às pernas executadas. A perna segue em `exitOrders` e passa a constar **também** em `stopOrders`.
+- **`stopLoss` passa a sair do preço enviado** (`stopPrice ?? limitPrice ?? price`), nunca do executado — senão o risco registrado sai menor do que o assumido.
+- **No trade real de 09/09** (WINV26 SHORT 5): `stopLoss` de vazio para 188.505, violação falsa removida, risco de R$ 252 presumidos para **R$ 125** reais, RR de 0,10x para 0,20x.
+- **Defeito de fuso corrigido junto, achado pela CI:** o laço casava o instante **ingênuo** da ordem com o instante **com offset** da operação. Em São Paulo casa por coincidência; em UTC — onde a CI e as Cloud Functions rodam — dá três horas de defasagem e a ordem cai na operação errada. Mesmo defeito que o #375 corrigiu do lado dos detectores.
+- 4.837 testes passando em **dois fusos** (`TZ=UTC` e local), 306 arquivos, 12 novos.
+- **Pendente:** trades já gravados seguem com a violação falsa — reimportar o extrato ou recalcular compliance é decisão à parte.
 
 ## [1.92.1] - 16/09/2026 · #446 · PR #447
 
