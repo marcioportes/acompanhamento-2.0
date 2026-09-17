@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.2] - 16/09/2026 · #449 · PR #450
+
+**fix:** a proteção que foi acionada também é proteção
+
+- A perna protetiva **continua em `exitOrders`** — ela é as duas coisas, e as duas leituras seguem verdadeiras. Ela passa a constar **também** em `stopOrders`.
+- `stopLoss` passa a sair de `stopPrice ?? limitPrice ?? price` — o preço **enviado**, nunca o executado. Sem `limitPrice` na precedência, a proteção acionada gravaria o preço de preenchimento e o risco sairia menor do que foi assumido (mesma distinção `_price` × `_riskPrice` do #371).
+- Entradas, saídas comuns e alvos **não** são tocados: a segunda passada só acrescenta a `stopOrders`, nunca a `cancelledOrders`.
+
+
 ## [1.92.1] - 16/09/2026 · #446 · PR #447
 
 **fix:** a ordem que vira a mão vira duas operações, como na corretora
