@@ -5,10 +5,11 @@
  * `calculateTradeCompliance` e `RED_FLAG_TYPES` moram em index.js e chegam por injeção.
  *
  * #451 — trade `DISCUSSED` é imutável: pulado ANTES de calcular, contado em `preserved`.
- * Trades não discutidos recebem exatamente o mesmo patch de antes.
+ * Trades não discutidos recebem exatamente o mesmo patch de antes. A escrita passa pelo helper
+ * (cerca de `tradeWriteBoundary.test.js`); o `continue` do laço só evita calcular à toa.
  */
 
-const { isTradeImmutable } = require('../_shared/tradeImmutability');
+const { isTradeImmutable, updateIfMutable } = require('../_shared/tradeImmutability');
 
 /**
  * @param {Object[]} tradeDocs — DocumentSnapshots (`.data()` + `.ref.update`)
@@ -58,7 +59,7 @@ async function recalculateTradesCompliance(tradeDocs, plan, { calculateTradeComp
     updateData.redFlags = newFlags;
     updateData.hasRedFlags = newFlags.length > 0;
 
-    await doc.ref.update(updateData);
+    await updateIfMutable(doc.ref, doc, updateData, 'recalculateCompliance');
     updated++;
   }
   return { updated, preserved };
