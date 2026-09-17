@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
+| CHUNK-10 | #446 | `fix/issue-446-ordem-que-vira-a-mao` | 16/09/2026 | interativa |
