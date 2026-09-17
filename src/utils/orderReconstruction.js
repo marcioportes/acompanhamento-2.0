@@ -133,9 +133,21 @@ export const reconstructOperations = (orders, opts = {}) => {
     let lastOpExitTs = null; // exitTime da última op fechada neste instrumento (para gap)
     let pendingGap = false; // gap detectado antes da operação atual
 
-    for (const order of instrumentOrders) {
+    /**
+     * Uma perna da ordem que vira a mão. Herda preço, instante e identidade do
+     * MESMO fill — só a quantidade muda. `_perna` deixa o rastro do papel: a que
+     * FECHA é a que leva o vínculo com o trade (#446, decisão de Marcio 16/09).
+     */
+    const pernaDe = (order, quantidade, papel) => ({
+      ...order,
+      filledQuantity: quantidade,
+      quantity: quantidade,
+      _perna: papel,
+    });
+
+    const processar = (order) => {
       const qty = order.filledQuantity ?? order.quantity ?? 0;
-      if (qty === 0) continue;
+      if (qty === 0) return;
 
       const delta = order.side === 'BUY' ? qty : -qty;
 
@@ -213,6 +225,34 @@ export const reconstructOperations = (orders, opts = {}) => {
         currentEntries = [];
         currentExits = [];
         openingSide = null;
+      }
+    };
+
+    for (const order of instrumentOrders) {
+      const qty = order.filledQuantity ?? order.quantity ?? 0;
+      if (qty === 0) continue;
+
+      const delta = order.side === 'BUY' ? qty : -qty;
+
+      // #446 — a ordem que VIRA A MÃO: compra 10 com o mercado vendido em 5. Ela
+      // zera a venda e abre a compra no mesmo instante, e por isso não é uma
+      // ordem só para a reconstrução — são duas pernas.
+      //
+      // Sem partir, netPosition ia de −5 para +5 sem passar por zero: a operação
+      // não fechava ali e a saída seguinte era lida como SEGUNDA ENTRADA. O dia
+      // 09/09/2026 saía com 3 operações no lugar de 4, o trade de +500 pts sumia
+      // dentro do anterior, e no lugar dos dois nascia um de +230 pts com preço
+      // médio de duas compras que nunca estiveram na mesma posição.
+      const atravessaZero = netPosition !== 0
+        && Math.sign(delta) !== Math.sign(netPosition)
+        && Math.abs(delta) > Math.abs(netPosition);
+
+      if (atravessaZero) {
+        const qFecha = Math.abs(netPosition);
+        processar(pernaDe(order, qFecha, 'fecha'));
+        processar(pernaDe(order, qty - qFecha, 'abre'));
+      } else {
+        processar(order);
       }
     }
 
