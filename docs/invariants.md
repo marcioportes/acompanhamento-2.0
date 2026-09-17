@@ -218,3 +218,46 @@ evidência comportamental — stop tampering, hesitação. Ela não casa por fin
 o fechamento do lote precisa manter esse caminho, ou apaga a evidência junto com o lixo.
 
 > Origem: decisão de Marcio em 20/08/2026, durante o #366. v1.83.16.
+
+---
+
+
+### INV-30: Trade Discutido É Imutável — Também no Servidor
+
+**Regra:** trade em `status: DISCUSSED` não é reescrito. O registro do trade discutido é o
+registro da conversa que houve com o aluno; alterá-lo apaga o que foi efetivamente dito e
+revisado. O critério é **só o status** — trade dentro de ciclo fechado que **não** foi
+discutido continua editável (o seal do #259 é outra coisa: protege o snapshot do fechamento
+contra o cliente).
+
+**As duas pontas:**
+- **cliente:** `firestore.rules` torna terminal qualquer trade já `DISCUSSED` — exceções
+  conscientes: metadado de revisão do mentor (#302) e auto-revisão do aluno (#308)
+- **servidor:** toda escrita de `update`/`set` em `trades` dentro de `functions/` passa por
+  `functions/_shared/tradeImmutability.js`
+
+**Exceções por desenho:**
+- a transição **PARA** discutido (`publishReview`) é livre — barra-se escrita em quem **já
+  está** discutido, não em quem está entrando
+- exclusão em cascata continua permitida: imutável é sobre reescrever, não sobre o direito
+  de apagar a base
+- `plan.currentPl` é campo do plano, não do trade, e segue recalculando
+
+**A cerca:** `src/__tests__/invariants/tradeWriteBoundary.test.js` varre `src/` (INV-02,
+cliente) e `functions/**` (#451, servidor) atrás de escrita crua em ref de trade fora da
+whitelist, e **roda na CI a cada PR**. Whitelist do servidor: o helper, `publishReview`, as
+cascatas de exclusão e scripts legados — writer novo não entra sem gate de aprovação.
+Remover a guarda de um writer já roteado reprova a suíte apontando arquivo e linha.
+
+**Cuidado ao mexer:** nenhuma trava de código protege contra credencial — console do
+Firebase ou script com chave de admin escrevem onde quiserem. A cerca protege o
+repositório, não o acesso. Em 23/08/2026 quem barrou um backfill sobre 53 trades discutidos
+foi Marcio, não o sistema; foi essa lacuna que o #451 fechou.
+
+**Quando a régua mudar:** regra revogada ou corrigida sai das métricas **na leitura**
+(`violationFilter`, `REVOKED_RED_FLAG_TYPES`), nunca reescrevendo o passado. Trade discutido
+guarda os números da época para sempre.
+
+> Origem: decisão de Marcio em 17/09/2026 — *"Trades já discutidos são imutáveis. O sistema
+> deveria garantir isso."* e o recorte *"Somente discussed é imutável"*. Issue #451, v1.92.3.
+> 239 dos 413 trades da base eram `DISCUSSED` e estavam expostos à cascata de edição de plano.

@@ -12,10 +12,14 @@ Version source of truth: `src/version.js`.
 
 **fix:** trade discutido é imutável também no servidor
 
-- **Nenhum backfill.** Nada foi tocado em trade existente.
-- **Gap de CI pré-existente:** `.github/workflows/ci.yml` roda só a suíte raiz, então os testes sob `functions/__tests__/**` — inclusive os que provam que os triggers e callables recusam trade discutido — não rodam em PR. Vira dívida técnica no encerramento.
-- **INV-30:** a trava é candidata a invariante própria; a avaliar no encerramento.
-
+- **A regra existia só contra o cliente.** `firestore.rules` tornava terminal o trade `DISCUSSED`, mas toda função com admin SDK passava por fora — e não eram scripts esporádicos: editar risco, alvo ou stop no plano reescrevia `redFlags`, `compliance` e `behaviorProfile` de todo trade do plano. **239 dos 413 trades da base (58%) estavam expostos.**
+- **O critério é só o status:** trade em ciclo fechado que não foi discutido continua editável.
+- **Ponto único de escrita:** `functions/_shared/tradeImmutability.js` com três variantes (avulsa, com doc já lido, e para lote/transação). A varredura achou mais escritores vivos que o inventário inicial — `addFeedbackComment`, `closeTrade`, `onTradeCreated`, `onTradeUpdated` em 5 pontos e o enriquecimento de mercado —, todos roteados pelo helper.
+- **Cerca automática na CI:** o `tradeWriteBoundary.test.js`, que já enforçava a INV-02 no cliente, passou a varrer `functions/**` atrás de escrita crua em trade, com whitelist justificada (helper, transição do `publishReview`, cascatas de exclusão, scripts legados). Violador plantado reprova a suíte apontando arquivo e linha.
+- **Fim do silêncio:** as duas rotinas devolvem e logam quantos trades preservaram, e a auditoria do plano exibe o número.
+- **Exceções por desenho:** a transição **para** discutido segue livre, exclusão em cascata continua permitida e o PL do plano segue recalculando. `addFeedbackComment` e `closeTrade` sobre trade discutido passam a devolver erro explícito em vez de escrever em silêncio.
+- **Nenhum backfill:** nada foi tocado em trade existente.
+- Entregue pelo loop autônomo §13 em 5 tasks, com verificação externa independente: 4.875 testes na raiz e 309 em `functions`, ambos em `TZ=UTC`. DEC-AUTO-451-01..17.
 
 ## [1.92.2] - 16/09/2026 · #449 · PR #450
 
