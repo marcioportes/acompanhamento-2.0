@@ -119,4 +119,4 @@
 | 1.90.8 | #440 | `fix/issue-440-calendario-ilegivel-e-closures` | 11/09/2026 | consumida (PR #441 squash `8fe65816`) |
 | 1.91.0 | #442 | `fix/issue-442-escopo-aluno-plano-mes` | 12/09/2026 | consumida (PR #443 squash `b1a79c4b`) |
 | 1.92.0 | #444 | `feat/issue-444-trades-precisam-atencao` | 14/09/2026 | consumida (PR #445 squash `1c5968d2`) |
-| 1.92.1 | #446 | `fix/issue-446-ordem-que-vira-a-mao` | 16/09/2026 | reservada (patch: ordem que vira a mão vira duas operações no import) |
+| 1.92.1 | #446 | `fix/issue-446-ordem-que-vira-a-mao` | 16/09/2026 | consumida (PR #447 squash `9b183914`) |

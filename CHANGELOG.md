@@ -8,6 +8,13 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.1] - 16/09/2026 · #446 · PR #447
+
+**fix:** a ordem que vira a mão vira duas operações, como na corretora
+
+- _(decisões/testes/files — ajustar antes do commit)_
+
+
 ## [1.92.0] - 16/09/2026 · #444 · PR #445
 
 **feat:** Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai com o feedback
