@@ -42,7 +42,7 @@ describe('recomputeBehaviorProfiles — persistência', () => {
   it('retorna {written:0,scanned:0} para trades vazio', async () => {
     const { db, writes } = makeMockDb();
     const res = await recomputeBehaviorProfiles(db, admin, { trades: [] });
-    expect(res).toEqual({ written: 0, scanned: 0 });
+    expect(res).toEqual({ written: 0, scanned: 0, preserved: 0 });
     expect(writes.length).toBe(0);
   });
 
@@ -113,7 +113,7 @@ describe('recomputeBehaviorForStudent — variante com fetch (on-plan-change)', 
   it('studentId vazio → no-op', async () => {
     const { db, writes } = makeFetchMockDb({});
     const res = await recomputeBehaviorForStudent(db, admin, null);
-    expect(res).toEqual({ written: 0, scanned: 0 });
+    expect(res).toEqual({ written: 0, scanned: 0, preserved: 0 });
     expect(writes.length).toBe(0);
   });
 
@@ -180,3 +180,85 @@ describe('#389 — writeScope', () => {
   });
 });
 
+
+/**
+ * #451 — trade discutido é imutável também no servidor.
+ *
+ * O discutido continua ALIMENTANDO o cálculo (padrões de janela do vizinho dependem dele),
+ * mas a gravação pula e conta em `preserved`.
+ */
+describe('#451 — trade DISCUSSED não é regravado', () => {
+  const massaMista = () => [
+    { ...clusterTrades()[0], status: 'DISCUSSED' },
+    { ...clusterTrades()[1], status: 'CLOSED' },
+    { id: 'T3', studentId: 'S1', date: '2026-05-05', side: 'C', entryTime: '2026-05-05T10:00:00', exitTime: '2026-05-05T10:20:00', result: 400, qty: 2, ticker: 'WIN', planId: 'P1', status: 'REVIEWED' },
+    { id: 'T4', studentId: 'S1', date: '2026-05-06', side: 'C', entryTime: '2026-05-06T10:00:00', exitTime: '2026-05-06T10:20:00', result: 100, qty: 2, ticker: 'WIN', planId: 'P1' },
+  ];
+
+  it('massa mista: discutido não é escrito, os demais são; preserved correto', async () => {
+    const { db, writes } = makeMockDb();
+    const res = await recomputeBehaviorProfiles(db, admin, { trades: massaMista(), plans });
+    expect(writes.map((w) => w.id).sort()).toEqual(['T2', 'T3', 'T4']);
+    expect(res).toEqual({ written: 3, scanned: 4, preserved: 1 });
+  });
+
+  it('o discutido continua no cálculo: cluster do vizinho segue detectado', async () => {
+    const { db, writes } = makeMockDb();
+    await recomputeBehaviorProfiles(db, admin, { trades: massaMista(), plans });
+    const t2 = writes.find((w) => w.id === 'T2').data.behaviorProfile;
+    const cluster = t2.families.find((f) => f.canonicalCode === 'IMPULSE_CLUSTER');
+    expect(cluster).toBeTruthy();
+    expect(cluster.evidence.clusterCount).toBe(2);
+
+    // Mesmo fingerprint de quando ninguém está discutido.
+    const semTrava = makeMockDb();
+    await recomputeBehaviorProfiles(semTrava.db, admin, { trades: clusterTrades(), plans });
+    expect(t2.fingerprint).toBe(semTrava.writes.find((w) => w.id === 'T2').data.behaviorProfile.fingerprint);
+  });
+
+  it('discutido fora do writeScope não conta como preservado', async () => {
+    const { db, writes } = makeMockDb();
+    const res = await recomputeBehaviorProfiles(db, admin, { trades: massaMista(), plans, writeScope: ['T3'] });
+    expect(writes.map((w) => w.id)).toEqual(['T3']);
+    expect(res.preserved).toBe(0);
+  });
+
+  it('todos discutidos → nenhum commit, preserved = total', async () => {
+    const { db, writes, commitSizes } = makeMockDb();
+    const trades = massaMista().map((t) => ({ ...t, status: 'DISCUSSED' }));
+    const res = await recomputeBehaviorProfiles(db, admin, { trades, plans });
+    expect(res).toEqual({ written: 0, scanned: 4, preserved: 4 });
+    expect(writes.length).toBe(0);
+    expect(commitSizes.length).toBe(0);
+  });
+
+  it('lote > BATCH_LIMIT com discutidos intercalados não quebra', async () => {
+    const trades = Array.from({ length: 1000 }, (_, i) => {
+      const day = String((i % 28) + 1).padStart(2, '0');
+      const hh = String(9 + (i % 8)).padStart(2, '0');
+      return {
+        id: `B${i}`, studentId: 'S1', date: `2026-04-${day}`, side: 'C',
+        entryTime: `2026-04-${day}T${hh}:${String(i % 60).padStart(2, '0')}:00`,
+        exitTime: `2026-04-${day}T${hh}:${String(i % 60).padStart(2, '0')}:30`,
+        result: i % 2 ? 50 : -50, qty: 1, ticker: 'WIN', planId: 'P1',
+        status: i % 3 === 0 ? 'DISCUSSED' : 'CLOSED',
+      };
+    });
+    const { db, writes, commitSizes } = makeMockDb();
+    const res = await recomputeBehaviorProfiles(db, admin, { trades, plans });
+    const discutidos = trades.filter((t) => t.status === 'DISCUSSED').length;
+    expect(res.preserved).toBe(discutidos);
+    expect(res.written).toBe(1000 - discutidos);
+    expect(writes.length).toBe(res.written);
+    expect(writes.some((w) => trades[Number(w.id.slice(1))].status === 'DISCUSSED')).toBe(false);
+    expect(commitSizes.length).toBe(3);
+    for (const n of commitSizes) expect(n).toBeLessThanOrEqual(450);
+  });
+
+  it('recomputeBehaviorForStudent devolve preserved dos docs carregados', async () => {
+    const { db, writes } = makeFetchMockDb({ trades: massaMista(), plans });
+    const res = await recomputeBehaviorForStudent(db, admin, 'S1');
+    expect(res.preserved).toBe(1);
+    expect(writes.some((w) => w.id === 'T1')).toBe(false);
+  });
+});

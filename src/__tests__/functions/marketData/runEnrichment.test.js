@@ -368,3 +368,50 @@ describe('runEnrichment — issue #285 (entryTime com offset explícito do fuso 
   });
 });
 
+
+describe('runEnrichment — issue #451 (trade discutido é imutável)', () => {
+  const now = () => new Date('2026-04-27T15:00:00Z');
+  const barsFetch = (trade) => {
+    const t1 = Math.floor(new Date(trade.entryTime).getTime() / 1000);
+    return vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ chart: { result: [{
+        timestamp: [t1, t1 + 60],
+        indicators: { quote: [{ high: [100, 105], low: [99, 95] }] },
+      }] } }),
+    });
+  };
+
+  it('DISCUSSED com bars: não grava MEP/MEN e responde preservado', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const trade = futuresTrade({ status: 'DISCUSSED' });
+    const { db, updateFn } = makeMockDb(trade);
+
+    const result = await runEnrichment({ tradeId: 't-1' }, { db, fetchFn: barsFetch(trade), now });
+
+    expect(updateFn).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, skipped: true, preserved: true });
+    vi.restoreAllMocks();
+  });
+
+  it('DISCUSSED sem mapping: não grava excursionSource unavailable', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { db, updateFn } = makeMockDb(futuresTrade({ ticker: 'WINM26', status: 'DISCUSSED' }));
+
+    const result = await runEnrichment({ tradeId: 't-1' }, { db, fetchFn: vi.fn(), now });
+
+    expect(updateFn).not.toHaveBeenCalled();
+    expect(result.preserved).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  it.each(['OPEN', 'REVIEWED', 'CLOSED', 'QUESTION'])('%s: mesmo patch de antes', async (status) => {
+    const trade = futuresTrade({ status });
+    const { db, updateFn } = makeMockDb(trade);
+
+    const result = await runEnrichment({ tradeId: 't-1' }, { db, fetchFn: barsFetch(trade), now });
+
+    expect(result).toEqual({ ok: true, mepPrice: 105, menPrice: 95, source: 'yahoo' });
+    expect(updateFn).toHaveBeenCalledWith({ mepPrice: 105, menPrice: 95, excursionSource: 'yahoo' });
+  });
+});
