@@ -394,7 +394,42 @@ const attributeOrphanOrder = (operations, orderTs, instrument, windowMs) => {
  * @param {number} toleranceMs — folga para "nasceu com a posição"
  * @returns {boolean}
  */
-const ehProtecaoAdversa = (op, order, toleranceMs) => {
+/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
+const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * Offset do lote, lido da primeira operação que carrega fuso (#292). Um lote é de
+ * um fuso só, então uma amostra basta. `null` = lote legado, tudo naive.
+ */
+const offsetDasOperacoes = (operations) => {
+  for (const op of operations || []) {
+    if (typeof op?.entryTime !== 'string') continue;
+    const m = op.entryTime.match(OFFSET_RE);
+    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
+  }
+  return null;
+};
+
+/**
+ * Instante da ordem resolvido NO FUSO DA OPERAÇÃO (#375, reaplicado no #449).
+ *
+ * `orders` guarda instante ingênuo (`"2026-09-09T11:22:02"`), enquanto a operação
+ * guarda ISO+offset desde o #292. `new Date()` lê string sem offset no fuso DO
+ * PROCESSO: no navegador do aluno dá America/Sao_Paulo e casa; na CI e em Cloud
+ * Function, que rodam em UTC, a mesma ordem vira 11:22:02Z contra uma operação em
+ * 14:22:02Z — três horas de defasagem, e a perna de proteção do trade certo passa a
+ * ser lida como ordem de outro trade.
+ */
+const instanteDaOrdem = (valor, offset) => {
+  if (!valor) return null;
+  const iso = (typeof valor === 'string' && offset && !OFFSET_RE.test(valor))
+    ? `${valor}${offset}`
+    : valor;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+};
+
+const ehProtecaoAdversa = (op, order, toleranceMs, offsetLote = null) => {
   const entradaOp = parseFloat(op?.avgEntryPrice ?? NaN);
   const precoEnviado = parseFloat(order?.stopPrice ?? order?.limitPrice ?? order?.price ?? NaN);
   if (!Number.isFinite(entradaOp) || !Number.isFinite(precoEnviado)) return false;
@@ -403,7 +438,7 @@ const ehProtecaoAdversa = (op, order, toleranceMs) => {
   if (order.side !== ladoOposto) return false;
 
   const entradaTs = new Date(op.entryTime).getTime();
-  const enviadaTs = new Date(order.submittedAt || order.filledAt || order.cancelledAt || 0).getTime();
+  const enviadaTs = instanteDaOrdem(order.submittedAt || order.filledAt || order.cancelledAt, offsetLote);
   const nasceuComAPosicao = Number.isFinite(entradaTs) && Number.isFinite(enviadaTs)
     && enviadaTs >= entradaTs - toleranceMs;
   if (!nasceuComAPosicao) return false;
@@ -414,6 +449,9 @@ const ehProtecaoAdversa = (op, order, toleranceMs) => {
 export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   const TOLERANCE_MS = 60 * 1000; // 60 segundos
   const orphanWindowMs = opts.orphanWindowMs ?? ORPHAN_ATTRIBUTION_WINDOW_MS;
+  // #449 — as ordens vêm naive e as operações com offset: sem resolver as duas no
+  // mesmo fuso, a associação erra de trade fora de America/Sao_Paulo.
+  const offsetLote = offsetDasOperacoes(operations);
 
   const nonFilled = allOrders.filter(o =>
     o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED' ||
@@ -421,7 +459,7 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   );
 
   for (const order of nonFilled) {
-    const orderTs = new Date(order.submittedAt || order.cancelledAt || 0).getTime();
+    const orderTs = instanteDaOrdem(order.submittedAt || order.cancelledAt, offsetLote);
     if (!orderTs) continue;
 
     // Encontrar operação cujo intervalo contém o timestamp desta ordem
@@ -453,7 +491,8 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
     // Antes só `isStopOrder` contava aqui, e a operação ficava `hasStopProtection:false`
     // enquanto o detector via proteção: a mesma ordem lida de dois jeitos no mesmo
     // sistema, e foi essa divergência que fez o import apagar o stop do aluno.
-    const protecaoDoBracket = !order.isStopOrder && ehProtecaoAdversa(bestOp, order, TOLERANCE_MS);
+    const protecaoDoBracket = !order.isStopOrder
+      && ehProtecaoAdversa(bestOp, order, TOLERANCE_MS, offsetLote);
 
     // Classificar a ordem
     if (order.isStopOrder || protecaoDoBracket) {
@@ -482,7 +521,7 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   // precisam seguir verdadeiras. Aqui ela só passa a constar TAMBÉM em `stopOrders`.
   for (const op of operations) {
     for (const order of op.exitOrders || []) {
-      if (!(order.isStopOrder || ehProtecaoAdversa(op, order, TOLERANCE_MS))) continue;
+      if (!(order.isStopOrder || ehProtecaoAdversa(op, order, TOLERANCE_MS, offsetLote))) continue;
       op.stopOrders.push(order);
       op.hasStopProtection = true;
       if (order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED') {

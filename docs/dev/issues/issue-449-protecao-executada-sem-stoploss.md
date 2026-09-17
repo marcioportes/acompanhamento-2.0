@@ -95,6 +95,23 @@ SHORT 5, entrada 188.380, saída 188.355, +25 pts, +R$ 25. Bracket com três per
 
 ## Sessions
 
+- 16/09 — A1+A2: `ehProtecaoAdversa` (definição única), segunda passada sobre pernas executadas, `stopLoss` pelo preço enviado, 11 testes com a massa real de 09/09.
+- 17/09 — A3: CI reprovou o que passava aqui. Correção de fuso no laço de associação + 1 teste que trava o comportamento em qualquer máquina.
+
+## Achado durante a entrega — o instante da ordem era lido no fuso do processo
+
+A CI reprovou 7 testes que passavam na minha máquina. Não era teste frouxo: `TZ=UTC` reproduz local, e uma das falhas mostrava a perna de **outro trade** do dia sendo escolhida como proteção (`expected 187485 to be 188505`).
+
+**Causa:** `associateNonFilledOrders` casava `new Date(order.submittedAt)` — instante **ingênuo**, lido no fuso do processo — com `op.entryTime`, que carrega offset desde o #292. Em BRT casa; em UTC dá três horas de defasagem, e a ordem cai na operação errada ou fica fora da janela de tolerância.
+
+É o mesmo defeito que o #375 já tinha corrigido do lado dos detectores (`orderMs` + `tradeOffsetOf` em `executionBehaviorEngine`), e que continuava vivo no lado do import.
+
+**Correção:** `offsetDasOperacoes(operations)` lê o fuso do lote e `instanteDaOrdem(valor, offset)` resolve o instante da ordem nesse fuso. Aplicado nos dois pontos: o `orderTs` que escolhe a operação e a checagem "nasceu com a posição".
+
+**Por que estava latente:** o import roda no navegador do aluno, em America/Sao_Paulo, onde os dois lados casam por coincidência. A CI roda em UTC — e Cloud Function também.
+
+O teste `lote em outro fuso (#375)` usa America/New_York justamente para reprovar em qualquer máquina, e não só onde o fuso do processo difere.
+
 ## Shared Deltas
 
 - `src/version.js`: 1.92.2 (já reservada no main)

@@ -142,4 +142,23 @@ describe('#449 · casos limite', () => {
     ]);
     expect(ops[0].stopOrders).toHaveLength(1);
   });
+
+  // A ordem vem NAIVE e a operação vem com offset. Se o instante da ordem for lido no
+  // fuso do processo em vez do fuso do lote, a defasagem joga a perna para fora da
+  // janela de tolerância e a proteção some — foi o que reprovou a CI (UTC) enquanto
+  // passava aqui (BRT). Lote em Nova York difere do fuso local o bastante para
+  // reprovar a regressão em qualquer máquina.
+  it('lote em outro fuso: a proteção é reconhecida igual (#375)', () => {
+    const orders = [
+      ordem('1', 'BUY', 5, '10:00:00', 100000),
+      ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }),
+    ];
+    const ops = associateNonFilledOrders(
+      reconstructOperations(orders, { timezone: 'America/New_York' }), orders,
+    );
+    expect(ops[0].entryTime).toMatch(/-0[45]:00$/);
+    expect(ops[0].hasStopProtection).toBe(true);
+    expect(ops[0].stopExecuted).toBe(true);
+    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99500);
+  });
 });
