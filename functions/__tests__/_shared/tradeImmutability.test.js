@@ -2,11 +2,11 @@
  * tradeImmutability.test.js — trade discutido é imutável no servidor (#451).
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { isTradeImmutable, updateTradeIfMutable, guardedUpdate } = require('../../_shared/tradeImmutability');
+const { isTradeImmutable, updateTradeIfMutable, guardedUpdate, updateIfMutable } = require('../../_shared/tradeImmutability');
 
 const snap = (data) => ({ exists: data !== undefined, data: () => data });
 const docRef = (data) => ({ get: vi.fn(async () => snap(data)), update: vi.fn(async () => {}) });
@@ -116,5 +116,36 @@ describe('guardedUpdate (batch / transação)', () => {
     const w = writer();
     expect(guardedUpdate(w, { status: 'DISCUSSED' }, ref, { status: 'DISCUSSED' }).preserved).toBe(true);
     expect(w.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('updateIfMutable (doc já lido, escrita avulsa)', () => {
+  const liveRef = () => ({ id: 't9', get: vi.fn(), update: vi.fn(async () => {}) });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('DISCUSSED: não escreve, não relê e loga com o label', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const r = liveRef();
+    expect(await updateIfMutable(r, snap({ status: 'DISCUSSED' }), { a: 1 }, 'onTradeUpdated'))
+      .toEqual({ written: false, preserved: true });
+    expect(r.update).not.toHaveBeenCalled();
+    expect(r.get).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith('[onTradeUpdated] trade t9 DISCUSSED — escrita preservada (#451)');
+  });
+
+  it.each(['OPEN', 'CLOSED', 'REVIEWED', 'QUESTION'])('%s: escreve o patch (snapshot e objeto plano)', async (status) => {
+    const patch = { reviewId: 'r1' };
+    const r1 = liveRef();
+    expect(await updateIfMutable(r1, snap({ status }), patch, 'x')).toEqual({ written: true, preserved: false });
+    expect(r1.update).toHaveBeenCalledWith(patch);
+    const r2 = liveRef();
+    expect((await updateIfMutable(r2, { status }, patch)).written).toBe(true);
+    expect(r2.get).not.toHaveBeenCalled();
+  });
+
+  it('snapshot inexistente: não escreve e não conta preservado', async () => {
+    const r = liveRef();
+    expect(await updateIfMutable(r, snap(undefined), { a: 1 })).toEqual({ written: false, preserved: false });
+    expect(r.update).not.toHaveBeenCalled();
   });
 });

@@ -66,6 +66,10 @@ const { deleteStudentData } = require('./students/deleteStudentData');
 // Espelhado em functions/propFirmEngine.js — DT-034: unificar via build step
 const propFirmEngine = require('./propFirmEngine');
 
+// Trade discutido é imutável também no servidor (#451) — toda escrita de update em
+// `trades` passa pelo helper.
+const { updateIfMutable } = require('./_shared/tradeImmutability');
+
 // ============================================
 // VERSÃO (SemVer 2.0.0)
 // ============================================
@@ -1084,7 +1088,11 @@ exports.addFeedbackComment = functions.https.onCall(async (data, context) => {
       updateData.feedbackDate = admin.firestore.FieldValue.serverTimestamp();
     }
 
-    await tradeRef.update(updateData);
+    // #451 — discutido sem `newStatus` passava pelas transições e era reescrito.
+    const { preserved } = await updateIfMutable(tradeRef, tradeDoc, updateData, 'addFeedbackComment');
+    if (preserved) {
+      throw new functions.https.HttpsError('failed-precondition', 'Trade discutido não aceita alteração');
+    }
 
     await db.collection('notifications').add({
       type: isMentor ? 'FEEDBACK_RECEIVED' : 'QUESTION_RECEIVED',
@@ -1138,12 +1146,16 @@ exports.closeTrade = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError('failed-precondition', 'Trade precisa de feedback primeiro');
     }
 
-    await tradeRef.update({
+    // #451 — discutido passava pelas pré-condições e virava CLOSED.
+    const { preserved } = await updateIfMutable(tradeRef, tradeDoc, {
       status: 'CLOSED',
       closedAt: admin.firestore.FieldValue.serverTimestamp(),
       closedBy: context.auth.token.email,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    }, 'closeTrade');
+    if (preserved) {
+      throw new functions.https.HttpsError('failed-precondition', 'Trade discutido não aceita alteração');
+    }
 
     return { success: true, status: 'CLOSED' };
 
@@ -1258,7 +1270,7 @@ exports.onTradeCreated = functions.firestore
       updates.redFlags = redFlags;
       updates.hasRedFlags = redFlags.length > 0;
       
-      await snap.ref.update(updates);
+      await updateIfMutable(snap.ref, snap, updates, 'onTradeCreated');
 
       // === 3. NOTIFICAÇÕES ===
       // #402 — alarme só para aluno que o mentor ainda acompanha. Alunos com
@@ -1396,7 +1408,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
             const todayISO = new Date().toISOString().slice(0, 10);
             const res = await getOrCreateOpenReview(db, after.studentId, after.planId, todayISO);
             reviewId = res.reviewId;
-            await change.after.ref.update({ reviewId });
+            await updateIfMutable(change.after.ref, change.after, { reviewId }, 'onTradeUpdated');
             if (res.created) {
               try { await carryOverOpenTakeaways(db, after.studentId, after.planId, reviewId); }
               catch (coErr) { console.warn('[onTradeUpdated] carry-over takeaways falhou:', coErr); }
@@ -1409,7 +1421,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
           if (after._pendingReviewNote && reviewId) {
             try {
               await appendReviewSessionNote(db, after.studentId, reviewId, after._pendingReviewNote);
-              await change.after.ref.update({ _pendingReviewNote: admin.firestore.FieldValue.delete() });
+              await updateIfMutable(change.after.ref, change.after, { _pendingReviewNote: admin.firestore.FieldValue.delete() }, 'onTradeUpdated');
               console.log(`[onTradeUpdated] nota de sessão do trade ${context.params.tradeId} anexada à revisão ${reviewId}`);
             } catch (noteErr) {
               console.warn('[onTradeUpdated] append nota de sessão falhou:', noteErr);
@@ -1488,16 +1500,16 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         }
         
         // DEC-007: calculateTradeCompliance agora calcula RR para todos os trades
-        await change.after.ref.update({
+        const complianceWrite = await updateIfMutable(change.after.ref, change.after, {
           riskPercent: compliance.riskPercent,
           rrRatio: compliance.rrRatio,
           rrAssumed: compliance.rrAssumed,
           compliance: compliance.compliance,
           redFlags: newFlags,
           hasRedFlags: newFlags.length > 0
-        });
+        }, 'onTradeUpdated');
         const roDisplay = compliance.riskPercent != null ? compliance.riskPercent.toFixed(2) + '%' : 'N/A';
-        console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
+        if (complianceWrite.written) console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
       }
     }
 
@@ -1510,7 +1522,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
       && after.importBatchId != null;
     if (importBatchChanged && after._lockedByMentor === true) {
       try {
-        await change.after.ref.update({
+        const unlockWrite = await updateIfMutable(change.after.ref, change.after, {
           _lockedByMentor: false,
           _unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
           _unlockedBy: {
@@ -1518,8 +1530,8 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
             email: null,
             reason: `import:${after.importBatchId}`,
           },
-        });
-        console.log(`[onTradeUpdated] Lock destravado por import (batch=${after.importBatchId})`);
+        }, 'onTradeUpdated');
+        if (unlockWrite.written) console.log(`[onTradeUpdated] Lock destravado por import (batch=${after.importBatchId})`);
       } catch (unlockErr) {
         console.error('[onTradeUpdated] Erro destrava por import:', unlockErr);
       }

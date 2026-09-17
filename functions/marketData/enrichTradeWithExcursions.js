@@ -11,6 +11,7 @@
  *   - Trade > 7d → idem
  *   - Yahoo falha → idem
  *   - Trade já tem MEP/MEN não-null → no-op (idempotente), retorna { ok:true, skipped:true }
+ *   - Trade DISCUSSED → nada gravado (#451), retorna { ok:false, skipped:true, preserved:true }
  *
  * Auth (callable):
  *   - Aluno só pode enrichear trades que ele criou (auth.uid === trade.studentId)
@@ -30,6 +31,7 @@ const { onCall, HttpsError } = (() => {
 const { mapToYahoo } = require('./symbolMapper');
 const { fetchYahooBars } = require('./fetchYahooBars');
 const { computeExcursionFromBars } = require('./computeExcursionFromBars');
+const { updateIfMutable } = require('../_shared/tradeImmutability');
 
 const MENTOR_EMAILS = ['marcio.portes@me.com'];
 const isMentorEmail = (email) => MENTOR_EMAILS.includes(email?.toLowerCase?.());
@@ -69,19 +71,30 @@ async function runEnrichment({ tradeId }, deps = {}) {
     return { ok: true, skipped: true, source: trade.excursionSource };
   }
 
-  const yahooSymbol = mapToYahoo(trade.ticker);
-  if (!yahooSymbol) {
-    await tradeRef.update({ excursionSource: 'unavailable' });
-    return { ok: false, reason: `sem mapping Yahoo para ${trade.ticker}`, source: 'unavailable' };
+  const { patch, result } = await computeEnrichment(trade, deps);
+
+  // #451 — trade discutido é imutável: nada é gravado e o resultado diz isso.
+  const { preserved } = await updateIfMutable(tradeRef, snap, patch, 'runEnrichment');
+  if (preserved) {
+    return { ok: false, skipped: true, preserved: true, reason: 'trade discutido', source: trade.excursionSource ?? null };
   }
+  return result;
+}
+
+/** Decide o que gravar (sem escrever): `patch` para o doc + `result` de retorno. */
+async function computeEnrichment(trade, deps) {
+  const unavailable = (reason) => ({
+    patch: { excursionSource: 'unavailable' },
+    result: { ok: false, reason, source: 'unavailable' },
+  });
+
+  const yahooSymbol = mapToYahoo(trade.ticker);
+  if (!yahooSymbol) return unavailable(`sem mapping Yahoo para ${trade.ticker}`);
 
   // Premissa: trade tem entryTime E exitTime. Faltando qualquer um, abortar — sem
   // fallback pra trade.date (gerava janela do dia inteiro → min/max errados) nem pra
   // entryTime (janela de duração zero). bug 1 #267.
-  if (!trade.entryTime || !trade.exitTime) {
-    await tradeRef.update({ excursionSource: 'unavailable' });
-    return { ok: false, reason: 'trade sem entryTime/exitTime', source: 'unavailable' };
-  }
+  if (!trade.entryTime || !trade.exitTime) return unavailable('trade sem entryTime/exitTime');
 
   const from = toBrasiliaISO(trade.entryTime);
   const to = toBrasiliaISO(trade.exitTime);
@@ -91,27 +104,19 @@ async function runEnrichment({ tradeId }, deps = {}) {
     { fetchFn: deps.fetchFn, now: deps.now }
   );
 
-  if (!fetchResult.ok) {
-    await tradeRef.update({ excursionSource: 'unavailable' });
-    return { ok: false, reason: fetchResult.reason, source: 'unavailable' };
-  }
+  if (!fetchResult.ok) return unavailable(fetchResult.reason);
 
   const { mepPrice, menPrice } = computeExcursionFromBars({
     bars: fetchResult.bars,
     side: trade.side,
   });
 
-  if (mepPrice == null && menPrice == null) {
-    await tradeRef.update({ excursionSource: 'unavailable' });
-    return { ok: false, reason: 'bars vazias dentro do range', source: 'unavailable' };
-  }
+  if (mepPrice == null && menPrice == null) return unavailable('bars vazias dentro do range');
 
-  await tradeRef.update({
-    mepPrice,
-    menPrice,
-    excursionSource: 'yahoo',
-  });
-  return { ok: true, mepPrice, menPrice, source: 'yahoo' };
+  return {
+    patch: { mepPrice, menPrice, excursionSource: 'yahoo' },
+    result: { ok: true, mepPrice, menPrice, source: 'yahoo' },
+  };
 }
 
 const enrichTradeWithExcursions = onCall(

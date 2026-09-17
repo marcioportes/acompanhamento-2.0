@@ -49,4 +49,21 @@ function guardedUpdate(writer, docSnapOrData, ref, patch) {
   return { written: true, preserved: false };
 }
 
-module.exports = { isTradeImmutable, updateTradeIfMutable, guardedUpdate };
+/**
+ * Variante com doc já lido, escrita avulsa (sem batch/tx): trigger (`change.after`, `snap`)
+ * ou callable que já leu o doc — não paga leitura extra. `label` (nome da função) liga o
+ * log de preservação.
+ * @returns {Promise<{written: boolean, preserved: boolean}>}
+ */
+async function updateIfMutable(ref, docSnapOrData, patch, label) {
+  const data = readData(docSnapOrData);
+  if (data === null) return { written: false, preserved: false };
+  if (isTradeImmutable(data)) {
+    if (label) console.log(`[${label}] trade ${ref.id} DISCUSSED — escrita preservada (#451)`);
+    return { written: false, preserved: true };
+  }
+  await ref.update(patch);
+  return { written: true, preserved: false };
+}
+
+module.exports = { isTradeImmutable, updateTradeIfMutable, guardedUpdate, updateIfMutable };
