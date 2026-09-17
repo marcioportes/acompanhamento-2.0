@@ -12,7 +12,11 @@ Version source of truth: `src/version.js`.
 
 **fix:** a ordem que vira a mão vira duas operações, como na corretora
 
-- _(decisões/testes/files — ajustar antes do commit)_
+- **Ordem que atravessa o zero é partida em duas pernas:** a que fecha (quantidade igual à posição aberta) e a que abre (o excedente), ambas herdando preço, instante e identidade do mesmo fill. Antes, vender 10 comprado em 5 levava `netPosition` de +5 a −5 sem passar por zero: a operação não fechava e a saída seguinte entrava como segunda entrada.
+- **Em 09/09/2026 saíam 3 operações no lugar de 4** — o trade de +500 pts sumia dentro do anterior e nascia um LONG de 10 contratos com +230 pts, a preço médio de duas compras que nunca estiveram na mesma posição.
+- **A ordem partida fica ligada ao trade que ela FECHA** (`orderTradeLinks` preserva a primeira escrita). Sem campo novo e sem índice novo: os 12 arquivos que leem `correlatedTradeId` como escalar não mudam. O trade que ela abre guarda a evidência nas parciais inline (DT-047).
+- **Massa real de teste** (`set-0911-inversao.csv`): 09/09 com uma inversão e 11/09 com quatro, uma de 50 contratos, conferidas contra o CSV de performance da corretora. 16 testes novos; 4.825 no total.
+- **Achado fora de escopo, virou o #448:** o preço de execução vem do primeiro fill, não da média da ordem.
 
 
 ## [1.92.0] - 16/09/2026 · #444 · PR #445
