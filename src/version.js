@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.3: #451 fix trade discutido é imutável também no servidor (PR #452, 17/09/2026)
  * - 1.92.2: #449 fix a proteção que foi acionada também é proteção (PR #450, 16/09/2026)
  * - 1.92.1: #446 fix a ordem que vira a mão vira duas operações, como na corretora (PR #447, 16/09/2026)
  * - 1.92.0: #444 feat Precisam Atenção vira fila de trades prioritários — o motivo escrito, sai com o feedback (PR #445, 16/09/2026)
@@ -447,7 +448,7 @@
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
 const version = '1.92.3';
-const build = '20260916';
+const build = '20260917';
 
 const VERSION = {
   version,

@@ -121,4 +121,4 @@
 | 1.92.0 | #444 | `feat/issue-444-trades-precisam-atencao` | 14/09/2026 | consumida (PR #445 squash `1c5968d2`) |
 | 1.92.1 | #446 | `fix/issue-446-ordem-que-vira-a-mao` | 16/09/2026 | consumida (PR #447 squash `9b183914`) |
 | 1.92.2 | #449 | `fix/issue-449-protecao-executada-sem-stoploss` | 16/09/2026 | consumida (PR #450 squash `38831d4b`) |
-| 1.92.3 | #451 | `fix/issue-451-trade-discutido-imutavel` | 17/09/2026 | reservada (patch: trade discutido imutável também no servidor) |
+| 1.92.3 | #451 | `fix/issue-451-trade-discutido-imutavel` | 17/09/2026 | consumida (PR #452 squash `d763a591`) |

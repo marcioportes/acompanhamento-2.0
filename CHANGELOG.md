@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.3] - 17/09/2026 · #451 · PR #452
+
+**fix:** trade discutido é imutável também no servidor
+
+- **Nenhum backfill.** Nada foi tocado em trade existente.
+- **Gap de CI pré-existente:** `.github/workflows/ci.yml` roda só a suíte raiz, então os testes sob `functions/__tests__/**` — inclusive os que provam que os triggers e callables recusam trade discutido — não rodam em PR. Vira dívida técnica no encerramento.
+- **INV-30:** a trava é candidata a invariante própria; a avaliar no encerramento.
+
+
 ## [1.92.2] - 16/09/2026 · #449 · PR #450
 
 **fix:** a proteção que foi acionada também é proteção
