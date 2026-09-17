@@ -377,9 +377,81 @@ const attributeOrphanOrder = (operations, orderTs, instrument, windowMs) => {
  * @param {number} [opts.orphanWindowMs] — janela de atribuição do órfão
  * @returns {Object[]} operations (mesma referência, mutated)
  */
+/**
+ * A ordem é a perna de proteção do bracket desta operação?
+ *
+ * DEFINIÇÃO ÚNICA (#449). O mesmo critério que `protectiveLegsOf` usa no painel e
+ * nos detectores: lado oposto à posição, nascida COM ela (#369), e com o preço
+ * **ENVIADO** adverso à entrada — abaixo dela num LONG, acima num SHORT. Preço
+ * favorável é alvo, não proteção.
+ *
+ * O preço que classifica é o enviado (`stopPrice ?? limitPrice ?? price`), nunca o
+ * executado: o limite com folga que garante preenchimento não é onde a proteção
+ * estava. É a mesma distinção `_price` × `_riskPrice` do #371.
+ *
+ * @param {Object} op — operação reconstruída
+ * @param {Object} order — ordem candidata
+ * @param {number} toleranceMs — folga para "nasceu com a posição"
+ * @returns {boolean}
+ */
+/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
+const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * Offset do lote, lido da primeira operação que carrega fuso (#292). Um lote é de
+ * um fuso só, então uma amostra basta. `null` = lote legado, tudo naive.
+ */
+const offsetDasOperacoes = (operations) => {
+  for (const op of operations || []) {
+    if (typeof op?.entryTime !== 'string') continue;
+    const m = op.entryTime.match(OFFSET_RE);
+    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
+  }
+  return null;
+};
+
+/**
+ * Instante da ordem resolvido NO FUSO DA OPERAÇÃO (#375, reaplicado no #449).
+ *
+ * `orders` guarda instante ingênuo (`"2026-09-09T11:22:02"`), enquanto a operação
+ * guarda ISO+offset desde o #292. `new Date()` lê string sem offset no fuso DO
+ * PROCESSO: no navegador do aluno dá America/Sao_Paulo e casa; na CI e em Cloud
+ * Function, que rodam em UTC, a mesma ordem vira 11:22:02Z contra uma operação em
+ * 14:22:02Z — três horas de defasagem, e a perna de proteção do trade certo passa a
+ * ser lida como ordem de outro trade.
+ */
+const instanteDaOrdem = (valor, offset) => {
+  if (!valor) return null;
+  const iso = (typeof valor === 'string' && offset && !OFFSET_RE.test(valor))
+    ? `${valor}${offset}`
+    : valor;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+};
+
+const ehProtecaoAdversa = (op, order, toleranceMs, offsetLote = null) => {
+  const entradaOp = parseFloat(op?.avgEntryPrice ?? NaN);
+  const precoEnviado = parseFloat(order?.stopPrice ?? order?.limitPrice ?? order?.price ?? NaN);
+  if (!Number.isFinite(entradaOp) || !Number.isFinite(precoEnviado)) return false;
+
+  const ladoOposto = op.side === 'LONG' ? 'SELL' : 'BUY';
+  if (order.side !== ladoOposto) return false;
+
+  const entradaTs = new Date(op.entryTime).getTime();
+  const enviadaTs = instanteDaOrdem(order.submittedAt || order.filledAt || order.cancelledAt, offsetLote);
+  const nasceuComAPosicao = Number.isFinite(entradaTs) && Number.isFinite(enviadaTs)
+    && enviadaTs >= entradaTs - toleranceMs;
+  if (!nasceuComAPosicao) return false;
+
+  return op.side === 'LONG' ? precoEnviado < entradaOp : precoEnviado > entradaOp;
+};
+
 export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   const TOLERANCE_MS = 60 * 1000; // 60 segundos
   const orphanWindowMs = opts.orphanWindowMs ?? ORPHAN_ATTRIBUTION_WINDOW_MS;
+  // #449 — as ordens vêm naive e as operações com offset: sem resolver as duas no
+  // mesmo fuso, a associação erra de trade fora de America/Sao_Paulo.
+  const offsetLote = offsetDasOperacoes(operations);
 
   const nonFilled = allOrders.filter(o =>
     o.status === 'CANCELLED' || o.status === 'REJECTED' || o.status === 'EXPIRED' ||
@@ -387,7 +459,7 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   );
 
   for (const order of nonFilled) {
-    const orderTs = new Date(order.submittedAt || order.cancelledAt || 0).getTime();
+    const orderTs = instanteDaOrdem(order.submittedAt || order.cancelledAt, offsetLote);
     if (!orderTs) continue;
 
     // Encontrar operação cujo intervalo contém o timestamp desta ordem
@@ -419,20 +491,8 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
     // Antes só `isStopOrder` contava aqui, e a operação ficava `hasStopProtection:false`
     // enquanto o detector via proteção: a mesma ordem lida de dois jeitos no mesmo
     // sistema, e foi essa divergência que fez o import apagar o stop do aluno.
-    const entradaOp = parseFloat(bestOp.avgEntryPrice ?? NaN);
-    const ladoOposto = bestOp.side === 'LONG' ? 'SELL' : 'BUY';
-    const precoOrdem = parseFloat(order.stopPrice ?? order.limitPrice ?? order.price ?? NaN);
-    // Proteção nasce COM a posição: ordem enviada antes da entrada existir é tentativa
-    // abortada (#369), não bracket — mesmo estando do lado adverso.
-    const entradaTs = new Date(bestOp.entryTime).getTime();
-    const enviadaTs = new Date(order.submittedAt || order.cancelledAt || 0).getTime();
-    const nasceuComAPosicao = Number.isFinite(entradaTs) && Number.isFinite(enviadaTs)
-      && enviadaTs >= entradaTs - TOLERANCE_MS;
     const protecaoDoBracket = !order.isStopOrder
-      && order.side === ladoOposto
-      && nasceuComAPosicao
-      && Number.isFinite(entradaOp) && Number.isFinite(precoOrdem)
-      && (bestOp.side === 'LONG' ? precoOrdem < entradaOp : precoOrdem > entradaOp);
+      && ehProtecaoAdversa(bestOp, order, TOLERANCE_MS, offsetLote);
 
     // Classificar a ordem
     if (order.isStopOrder || protecaoDoBracket) {
@@ -444,6 +504,29 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
       }
     } else {
       bestOp.cancelledOrders.push(stripInternal(order));
+    }
+  }
+
+  // #449 — a proteção que FOI ACIONADA também é proteção.
+  //
+  // O laço acima só enxerga ordem não executada, então a perna de bracket que fecha
+  // a posição — o desfecho normal de quem opera com stop — nunca chegava a
+  // `stopOrders`: a operação saía com `hasStopProtection: false`, o trade nascia sem
+  // `stopLoss` e o compliance acusava "trade sem stop" JUSTAMENTE no trade protegido.
+  // No caso real de 09/09/2026 (WINV26 SHORT 5), a compra enviada a 188.505, acima da
+  // entrada de 188.380, executou a 188.355 e fechou a posição: proteção acionada,
+  // registrada como ausência de proteção.
+  //
+  // A perna continua em `exitOrders` — ela é as duas coisas, e as duas leituras
+  // precisam seguir verdadeiras. Aqui ela só passa a constar TAMBÉM em `stopOrders`.
+  for (const op of operations) {
+    for (const order of op.exitOrders || []) {
+      if (!(order.isStopOrder || ehProtecaoAdversa(op, order, TOLERANCE_MS, offsetLote))) continue;
+      op.stopOrders.push(order);
+      op.hasStopProtection = true;
+      if (order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED') {
+        op.stopExecuted = true;
+      }
     }
   }
 

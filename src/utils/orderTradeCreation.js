@@ -197,7 +197,11 @@ export function mapOperationToTradeData(operation, planId, importBatchId = null,
   if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
     // Usar o último stop order configurado (pode ter sido movido)
     const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
-    stopLoss = parseFloat(lastStop.stopPrice || lastStop.price) || null;
+    // #449 — o preço ENVIADO, nunca o executado. `limitPrice` entra na ordem de
+    // precedência porque o bracket desta corretora emite a proteção como LIMITE com
+    // `Preço Stop` vazio (DEC-AUTO-242-01): sem ele, a proteção acionada gravaria o
+    // preço de preenchimento e o risco do trade sairia menor do que foi assumido.
+    stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.limitPrice ?? lastStop.price) || null;
   }
 
   return {
