@@ -98,7 +98,7 @@ Causa: `parseProfitChartPro` preenche `filledPrice` com o preço do **primeiro e
 
 O próprio arquivo confirma qual é o certo: `Total Executado` 1.886.698,00 ÷ 50 ÷ 0,2 = 188.669,80.
 
-Afeta qualquer ordem preenchida a mais de um preço, em qualquer dia — não só virada de mão. Fica registrado para virar issue própria; não entra aqui para não misturar dois defeitos no mesmo PR.
+Afeta qualquer ordem preenchida a mais de um preço, em qualquer dia — não só virada de mão. Virou o **#448** (aberto em 16/09/2026). Não entra neste PR para não misturar dois defeitos: lá o problema é leitura de preço, aqui é agrupamento.
 
 ## Shared Deltas
 
