@@ -225,7 +225,7 @@ export const usePlans = (overrideStudentId = null) => {
           const functions = getFunctions();
           const recalc = httpsCallable(functions, 'recalculateCompliance');
           const result = await recalc({ planId });
-          console.log(`[usePlans] Compliance recalculado em cascata: ${result.data.updated} trades (planId=${planId})`);
+          console.log(`[usePlans] Compliance recalculado em cascata: ${result.data.updated} trades, ${result.data.preserved ?? 0} discutidos preservados (planId=${planId})`);
         } catch (recalcErr) {
           console.error('[usePlans] Erro no recálculo em cascata:', recalcErr);
           // Não throw — o plano já foi salvo, o recálculo é best-effort
@@ -352,6 +352,9 @@ export const usePlans = (overrideStudentId = null) => {
     const divergentTrades = [];
 
     for (const trade of planTrades) {
+      // #451 — trade discutido é imutável: o servidor nunca o recalcula, então não pode
+      // contar como divergente (a auditoria nunca ficaria saudável).
+      if (trade.status === 'DISCUSSED') continue;
       const fresh = calculateTradeCompliance(trade, plan);
       const currentRisk = trade.riskPercent;
       const newRisk = fresh.riskPercent;
@@ -416,7 +419,7 @@ export const usePlans = (overrideStudentId = null) => {
    * 
    * @param {string} planId
    * @param {Function} [onProgress] - callback({ step, message })
-   * @returns {{ plRecalculated, complianceUpdated, oldPl, newPl }}
+   * @returns {{ plRecalculated, complianceUpdated, compliancePreserved, oldPl, newPl }}
    */
   const auditPlan = useCallback(async (planId, onProgress) => {
     if (!planId) throw new Error('planId obrigatório');
@@ -433,11 +436,13 @@ export const usePlans = (overrideStudentId = null) => {
         newPl: result.data.newPl ?? 0,
         plRecalculated: result.data.plRecalculated ?? false,
         complianceUpdated: result.data.updated ?? 0,
+        // #451 — trades discutidos que o servidor não regravou.
+        compliancePreserved: result.data.preserved ?? 0,
       };
 
-      onProgress?.({ step: 2, message: `Auditoria concluída: PL ${report.oldPl.toFixed(2)} → ${report.newPl.toFixed(2)}, ${report.complianceUpdated} trades` });
+      onProgress?.({ step: 2, message: `Auditoria concluída: PL ${report.oldPl.toFixed(2)} → ${report.newPl.toFixed(2)}, ${report.complianceUpdated} trades, ${report.compliancePreserved} discutidos preservados` });
 
-      console.log(`[usePlans] auditPlan ${planId}: PL ${report.oldPl} → ${report.newPl}, compliance ${report.complianceUpdated} trades`);
+      console.log(`[usePlans] auditPlan ${planId}: PL ${report.oldPl} → ${report.newPl}, compliance ${report.complianceUpdated} trades, ${report.compliancePreserved} discutidos preservados`);
 
       return report;
     } catch (err) {

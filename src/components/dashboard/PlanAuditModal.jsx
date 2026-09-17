@@ -173,6 +173,7 @@ const PlanAuditModal = ({
           oldPl: report.oldPl,
           newPl: report.newPl,
           complianceUpdated: report.complianceUpdated,
+          compliancePreserved: report.compliancePreserved ?? 0,
         },
       });
       setState(STATES.FIXED);
@@ -267,6 +268,11 @@ const PlanAuditModal = ({
                     {data.fixReport && (
                       <p className="text-xs text-emerald-400/60 mt-0.5">
                         {data.fixReport.complianceUpdated} trade(s) recalculados
+                      </p>
+                    )}
+                    {data.fixReport?.compliancePreserved > 0 && (
+                      <p className="text-xs text-emerald-400/60 mt-0.5">
+                        {data.fixReport.compliancePreserved} trade(s) discutido(s) preservado(s)
                       </p>
                     )}
                   </div>

@@ -1929,62 +1929,28 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
     tradeDocs = snap.docs;
   }
   
-  let updated = 0;
-  for (const doc of tradeDocs) {
-    const trade = doc.data();
-    const compliance = calculateTradeCompliance(trade, plan);
-    
-    const updateData = {
-      riskPercent: compliance.riskPercent,
-      rrRatio: compliance.rrRatio,
-      rrAssumed: compliance.rrAssumed,
-      compliance: compliance.compliance
-    };
-    
-    // Recalcular red flags — remove os flags de compliance antigos e recria
-    const existingFlags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
-    let newFlags = existingFlags.filter(f => {
-      const type = typeof f === 'string' ? f : f.type;
-      return type !== 'RISCO_ACIMA_PERMITIDO' && type !== 'RR_ABAIXO_MINIMO' && type !== 'TRADE_SEM_STOP';
-    });
-    
-    if (!trade.stopLoss) {
-      // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
-      const tradeResult = trade.result ?? 0;
-      const isImplicitStop = tradeResult < 0;
-      if (!isImplicitStop) {
-        let noStopMsg = 'Trade sem stop loss definido';
-        if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
-        newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
-      }
-    }
-    if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
-      newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: 'Risco ' + compliance.riskPercent.toFixed(1) + '% excede maximo (' + plan.riskPerOperation + '%)', timestamp: new Date().toISOString() });
-    }
-    
-    updateData.redFlags = newFlags;
-    updateData.hasRedFlags = newFlags.length > 0;
-    
-    await doc.ref.update(updateData);
-    updated++;
-  }
-  
-  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
+  // #451 — discutidos são pulados (preserved); PL acima segue somando todos (D4).
+  const { recalculateTradesCompliance } = require('./trades/recalculateTradesCompliance');
+  const { updated, preserved } = await recalculateTradesCompliance(tradeDocs, plan, { calculateTradeCompliance, RED_FLAG_TYPES });
 
   // Fase 2 #301 (on-plan-change): mudança no plano (riskPerOperation/rrTarget) afeta
   // UNDERSIZED_TRADE/TARGET_HIT — refaz behaviorProfile do aluno. As updates de compliance
   // acima escrevem campos de SAÍDA (riskPercent/redFlags), que não disparam onTradeUpdated,
   // então o refresh precisa ser explícito. Isolado (INV-03): falha não afeta o retorno.
+  let behaviorPreserved = 0;
   if (plan.studentId) {
     try {
       const { recomputeBehaviorForStudent } = require('./behavior/recomputeBehaviorProfiles');
-      await recomputeBehaviorForStudent(db, admin, plan.studentId, { computedBy: 'auto' });
+      const beh = await recomputeBehaviorForStudent(db, admin, plan.studentId, { computedBy: 'auto' });
+      behaviorPreserved = beh?.preserved ?? 0;
     } catch (behErr) {
       console.warn('[recalculateCompliance] behaviorProfile recompute failed:', behErr.message);
     }
   }
 
-  return { success: true, updated, planId, oldPl, newPl, plRecalculated };
+  console.log('[recalculateCompliance] Plan ' + planId + ': ' + updated + ' trades recalculados, ' + preserved + ' discutidos preservados (behaviorProfile: ' + behaviorPreserved + ')' + (plRecalculated ? ', PL: ' + oldPl + ' -> ' + newPl : ''));
+
+  return { success: true, updated, preserved, planId, oldPl, newPl, plRecalculated };
 });
 
 

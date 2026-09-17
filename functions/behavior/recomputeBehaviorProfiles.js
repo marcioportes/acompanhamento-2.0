@@ -12,6 +12,7 @@
 
 const { buildBehaviorProfiles } = require('./buildBehaviorProfile');
 const { buildGetEmotionConfig } = require('../maturity/emotionalAnalysisMirror');
+const { guardedUpdate } = require('../_shared/tradeImmutability');
 
 const BATCH_LIMIT = 450; // Firestore: 500 ops/batch; margem de segurança.
 
@@ -34,43 +35,51 @@ const BATCH_LIMIT = 450; // Firestore: 500 ops/batch; margem de segurança.
  *   um dia; o trigger passava o histórico inteiro. Mesmo trade, duas respostas, e a última
  *   escrita vencia — foi assim que um trade revisado limpo chegou ao aluno com Hesitação.
  *
- * @returns {Promise<{written:number, scanned:number}>}
+ *   #451 — trade `DISCUSSED` é imutável: entra no CÁLCULO (os padrões de janela dos
+ *   vizinhos dependem dele), mas a GRAVAÇÃO pula e conta em `preserved`.
+ *
+ * @returns {Promise<{written:number, scanned:number, preserved:number}>}
  */
 async function recomputeBehaviorProfiles(db, admin, {
   trades = [], plans = [], orders = [], emotions = [], computedBy = 'auto', writeScope = null,
 } = {}) {
-  if (!Array.isArray(trades) || trades.length === 0) return { written: 0, scanned: 0 };
+  if (!Array.isArray(trades) || trades.length === 0) return { written: 0, scanned: 0, preserved: 0 };
 
   const getEmotionConfig = buildGetEmotionConfig(emotions);
   const profiles = buildBehaviorProfiles({ trades, orders, plans, getEmotionConfig });
 
   // Só grava onde o fingerprint mudou vs. o que já está no doc.
-  const existingByTrade = new Map(trades.map((t) => [t.id, t && t.behaviorProfile]));
+  const tradeById = new Map(trades.map((t) => [t.id, t]));
   const escopo = writeScope == null
     ? null
     : (writeScope instanceof Set ? writeScope : new Set(writeScope));
   const toWrite = [];
   for (const [tradeId, profile] of profiles) {
     if (escopo && !escopo.has(tradeId)) continue;   // #389 — calcula com tudo, grava o recorte
-    const existing = existingByTrade.get(tradeId);
+    const existing = tradeById.get(tradeId)?.behaviorProfile;
     if (existing && existing.fingerprint === profile.fingerprint) continue;
     toWrite.push([tradeId, profile]);
   }
-  if (toWrite.length === 0) return { written: 0, scanned: profiles.size };
+  if (toWrite.length === 0) return { written: 0, scanned: profiles.size, preserved: 0 };
 
   const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
   let written = 0;
+  let preserved = 0;
   for (let i = 0; i < toWrite.length; i += BATCH_LIMIT) {
     const batch = db.batch();
+    let ops = 0;
     for (const [tradeId, profile] of toWrite.slice(i, i + BATCH_LIMIT)) {
       const ref = db.collection('trades').doc(tradeId);
       // SÓ behaviorProfile: fora do guard de onTradeUpdated → não re-dispara.
-      batch.update(ref, { behaviorProfile: { ...profile, computedAt: serverTimestamp, computedBy } });
-      written += 1;
+      const r = guardedUpdate(batch, tradeById.get(tradeId), ref, {
+        behaviorProfile: { ...profile, computedAt: serverTimestamp, computedBy },
+      });
+      if (r.written) { written += 1; ops += 1; }
+      if (r.preserved) preserved += 1;
     }
-    await batch.commit();
+    if (ops > 0) await batch.commit();
   }
-  return { written, scanned: profiles.size };
+  return { written, scanned: profiles.size, preserved };
 }
 
 /**
@@ -81,7 +90,7 @@ async function recomputeBehaviorProfiles(db, admin, {
  * @param {Object} [opts] — { computedBy }
  */
 async function recomputeBehaviorForStudent(db, admin, studentId, { computedBy = 'auto' } = {}) {
-  if (!studentId) return { written: 0, scanned: 0 };
+  if (!studentId) return { written: 0, scanned: 0, preserved: 0 };
 
   const [tradesSnap, plansSnap] = await Promise.all([
     db.collection('trades').where('studentId', '==', studentId).get(),
