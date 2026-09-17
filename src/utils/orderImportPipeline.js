@@ -170,7 +170,14 @@ export function orderTradeLinks(queue, createdTrades = []) {
     const tradeId = item.tradeId || porOperacao.get(item.operation.operationId);
     if (!tradeId) continue;
     for (const order of operationOrders(item.operation)) {
-      links[makeOrderKey(order)] = tradeId;
+      // #446 — a ordem que vira a mão pertence a DUAS operações e produz a mesma
+      // chave nas duas. A fila está em ordem cronológica e a operação que ela
+      // FECHA vem antes da que ela abre: preservar a primeira escrita é o que
+      // implementa "a ordem fica ligada ao trade que ela fecha". Sobrescrever
+      // daria o vínculo ao trade seguinte, que é o contrário da decisão.
+      const chave = makeOrderKey(order);
+      if (chave in links) continue;
+      links[chave] = tradeId;
     }
   }
   return links;
