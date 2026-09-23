@@ -45,7 +45,7 @@ export const parseDateTime = (value, format) => {
 
   // MM/DD/YYYY HH:mm:ss (formato US — testar ANTES do BR se hint indica)
   if (format && format.startsWith('MM/DD')) {
-    const usFull = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    const usFull = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,]\d{1,3})?)?$/);
     if (usFull) {
       const [, mm, dd, yyyy, hh, min, ss] = usFull;
       return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${hh.padStart(2, '0')}:${min}:${(ss || '00').padStart(2, '0')}`;
@@ -57,8 +57,21 @@ export const parseDateTime = (value, format) => {
     }
   }
 
-  // DD/MM/YYYY HH:mm:ss ou DD/MM/YYYY HH:mm (formato BR — default)
-  const brFull = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  // DD/MM/YYYY HH:mm:ss[.mmm] ou DD/MM/YYYY HH:mm (formato BR — default)
+  //
+  // #455 — os milissegundos são ACEITOS e DESCARTADOS. O ProfitChart-Pro passou a
+  // exportar `23/09/2026 10:58:06.975` entre 16 e 22/09/2026; sem o sufixo opcional o
+  // match falhava, `submittedAt`/`filledAt` saíam `null` e `reconstructOperations`
+  // ordenava os fills pela ordem das linhas do arquivo — que o ProfitChart escreve em
+  // ordem DECRESCENTE de criação. O trade nascia invertido (a venda virava entrada) e
+  // datado de 01/01/1970.
+  //
+  // Truncar ao segundo, e não preservar os ms, é deliberado: o ISO naive gravado em
+  // `trade.entryTime` é lido por `tzFromStoredIso`, cujo match exige
+  // `T\d{2}:\d{2}(?::\d{2})?` seguido do offset. Preservar `.975` faria esse helper
+  // devolver `null` (tratar o trade como legado sem fuso) em toda a base nova.
+  // Precisão de milissegundo na ordenação de fills fica como limite conhecido.
+  const brFull = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,]\d{1,3})?)?$/);
   if (brFull) {
     const [, dd, mm, yyyy, hh, min, ss] = brFull;
     return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${hh.padStart(2, '0')}:${min}:${(ss || '00').padStart(2, '0')}`;

@@ -65,8 +65,13 @@ const validateConsistency = (order) => {
     if (order.filledPrice == null && order.price == null) {
       warnings.push('Ordem FILLED sem preço de execução');
     }
+    // #455 — ERRO, não warning. O instante de um fill não é enfeite: é o que ordena os
+    // fills e, com isso, o que decide qual perna ABRE a posição. Sem ele a reconstrução
+    // cai na ordem das linhas do arquivo e o trade nasce invertido. Como warning, o
+    // arquivo de 23/09/2026 atravessou a validação inteira e chegou à tela de decisão
+    // como SHORT 189.870 → 189.370, sendo LONG 189.370 → 189.870.
     if (!order.filledAt && !order.submittedAt) {
-      warnings.push('Ordem FILLED sem timestamp de execução');
+      errors.push('Ordem FILLED sem timestamp de execução — instante é obrigatório para reconstruir a operação');
     }
   }
 

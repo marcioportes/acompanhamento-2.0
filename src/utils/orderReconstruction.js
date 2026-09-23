@@ -102,12 +102,22 @@ export const reconstructOperations = (orders, opts = {}) => {
 
   // Step 1: Separar FILLED das demais. _iso = instante absoluto (ISO+offset no
   // fuso do lote); _ts = ms derivado dele (ordenação/gap/duração consistentes).
+  //
+  // #455 — fill sem instante NÃO entra. Antes o `_ts` caía para `0` e o `sort`, estável,
+  // devolvia esses fills na ordem em que vieram no arquivo — que o ProfitChart-Pro
+  // escreve em ordem DECRESCENTE de criação. A primeira ordem executada da lista virava
+  // a entrada, e o LONG de 23/09/2026 (189.370 → 189.870) foi reconstruído como SHORT
+  // (189.870 → 189.370), datado de 01/01/1970. Sem instante não há como saber qual perna
+  // abre a posição: descartar é a única leitura honesta. A validação já barra esses fills
+  // (`orderValidation`), e o parser já acusa a data ilegível (`orderParsers`) — esta é a
+  // terceira camada, a que também cobre o lote retomado do staging, que não revalida.
   const filledOrders = aggregated
     .filter(o => o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
     .map(o => {
       const iso = getEffectiveIso(o, tz);
-      return { ...o, _iso: iso, _ts: iso ? new Date(iso).getTime() : 0 };
+      return { ...o, _iso: iso, _ts: iso ? new Date(iso).getTime() : null };
     })
+    .filter(o => o._ts != null && Number.isFinite(o._ts))
     .sort((a, b) => a._ts - b._ts);
 
   if (!filledOrders.length) return [];
