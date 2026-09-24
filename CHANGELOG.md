@@ -8,21 +8,21 @@ Version source of truth: `src/version.js`.
 
 ---
 
-## [1.92.4] - 24/09/2026 · #455 · PR #456
-
-**fix:** import de ordens grava o trade invertido e datado de 1970
-
-- **Trades já na base.** `ordens_18-22.csv` tem o mesmo formato: se foi importado, há trades invertidos e datados de 1970. Auditar é issue própria.
-- **Recuperar o stop inicial.** Não é possível deste export — o gatilho 189.390 não vigorou durante a operação (dispararia na queda *e* na alta), é estado final de alteração in-place. Cruzando com a MEN de −220 dá para cravar o teto (< 189.150), não o valor.
-- **Precisão de milissegundo** na ordenação de fills — limite conhecido, registrado em `csvMapper`.
-
-
 ## [1.92.5] - 24/09/2026 · #458 · PR #459
 
 **fix:** gate de constância do risco pede 2 meses e só zera com mudança real
 
 - **Alvo do gate** `strategy-12-months` (3→4): **6 → 2 meses**, no cliente e no espelho da CF. O texto do card acompanha e passa a dizer que salvar sem mudar não zera e que o ajuste do fechamento de ciclo não zera.
 - **`updatePlan`** compara o payload com o plano gravado (`listChangedPlanFields`). Salvar sem mudar valor de risco **não entra no `editHistory`** e **não dispara `recalculateCompliance`**. Se a leitura falhar, audita o payload inteiro.
+
+
+## [1.92.4] - 24/09/2026 · #455 · PR #456
+
+**fix:** import de ordens grava o trade invertido e datado de 1970
+
+- **Data com milissegundos.** O ProfitChart-Pro passou a exportar `.mmm` entre 16 e 22/09/2026. `csvMapper` aceita e descarta os milissegundos (BR e US); `orderParsers` trata data que existe e não parseia como erro; `orderValidation` trata fill sem instante como erro; `orderReconstruction` descarta fill sem instante em vez de assumir `_ts: 0`. Caso real WINV26 23/09: SHORT 189.870 → 189.370 em 01/01/1970 vira LONG 189.370 → 189.870 em 23/09 10:58.
+- **Stop.** Perna classificada `STOP_GAIN` não vira `stopLoss`. Sem proteção real, `stopLoss` fica `null` e o aluno informa (`TRADE_SEM_STOP`).
+- **Fora de escopo:** trades já importados de `ordens_18-22.csv` podem estar invertidos e datados de 1970. Auditar é issue própria.
 
 
 ## [1.92.3] - 17/09/2026 · #451 · PR #452
