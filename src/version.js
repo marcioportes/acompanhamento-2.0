@@ -4,7 +4,7 @@
  *
  * CHANGELOG:
  * - 1.92.6: #460 fix o ícone do card do plano mede o dia, não o mês (RESERVADA)
- * - 1.92.4: #455 fix import de ordens grava o trade invertido e datado de 1970 (RESERVADA)
+ * - 1.92.4: #455 fix import de ordens grava o trade invertido e datado de 1970 (PR #456, 24/09/2026)
  * - 1.92.5: #458 fix gate de constância do risco pede 2 meses e só zera com mudança real (PR #459, 24/09/2026)
  * - 1.92.3: #451 fix trade discutido é imutável também no servidor (PR #452, 17/09/2026)
  * - 1.92.2: #449 fix a proteção que foi acionada também é proteção (PR #450, 16/09/2026)
@@ -450,7 +450,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.5';
+const version = '1.92.4';
 const build = '20260924';
 
 const VERSION = {

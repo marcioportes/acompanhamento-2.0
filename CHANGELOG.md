@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.4] - 24/09/2026 · #455 · PR #456
+
+**fix:** import de ordens grava o trade invertido e datado de 1970
+
+- **Trades já na base.** `ordens_18-22.csv` tem o mesmo formato: se foi importado, há trades invertidos e datados de 1970. Auditar é issue própria.
+- **Recuperar o stop inicial.** Não é possível deste export — o gatilho 189.390 não vigorou durante a operação (dispararia na queda *e* na alta), é estado final de alteração in-place. Cruzando com a MEN de −220 dá para cravar o teto (< 189.150), não o valor.
+- **Precisão de milissegundo** na ordenação de fills — limite conhecido, registrado em `csvMapper`.
+
+
 ## [1.92.5] - 24/09/2026 · #458 · PR #459
 
 **fix:** gate de constância do risco pede 2 meses e só zera com mudança real
