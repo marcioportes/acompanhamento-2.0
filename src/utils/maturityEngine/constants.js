@@ -193,14 +193,14 @@ export const GATES_BY_TRANSITION = {
       dim: 'op', metric: 'O', op: '>=', threshold: 70,
     },
     {
-      // #416 C2 / DEC-AUTO-416-19 — `id` e `threshold` intactos (id é chave persistida
-      // no histórico de gates). O texto passa a descrever o que a métrica mede de fato:
-      // meses sem mudar os parâmetros de risco do plano.
-      id: 'strategy-12-months', label: '6 meses sem mudar os parâmetros de risco do plano',
-      friendlyLabel: 'Manter os parâmetros de risco do plano por 6 meses', unit: 'meses',
-      whatIs: 'Conta os meses desde a última mudança em risco por operação, alvo de R:R, stop do período ou stop do ciclo. Edge se prova com ciclos longos: 6 meses com o mesmo contrato de risco já cobrem regimes diferentes — alta, correção, lateral.',
-      howTo: 'Deixar o risco por operação, o R:R alvo e os stops parados por 6 meses. Mexer em qualquer um zera a contagem — mudança de parâmetro de risco exige fundamentação documentada.',
-      dim: 'op', metric: 'strategyConsMonths', op: '>=', threshold: 6,
+      // #416 C2 / DEC-AUTO-416-19 — `id` intacto (chave persistida no histórico de
+      // gates). #458: alvo 6 → 2 meses. Com 6, nenhum aluno em stage 3 passava e o
+      // gate ficava meses em vermelho sem sinal de progresso.
+      id: 'strategy-12-months', label: '2 meses sem mudar os parâmetros de risco do plano',
+      friendlyLabel: 'Manter os parâmetros de risco do plano por 2 meses', unit: 'meses',
+      whatIs: 'Conta os meses desde a última mudança em risco por operação, alvo de R:R, stop do período ou stop do ciclo. Dois ciclos seguidos com o mesmo contrato de risco mostram que o resultado veio do método, não de mexer no tamanho.',
+      howTo: 'Deixar o risco por operação, o R:R alvo e os stops parados por 2 meses. Mexer em qualquer um zera a contagem; salvar o plano sem mudar esses valores não zera. O ajuste feito no fechamento de ciclo também não zera: é a mudança documentada.',
+      dim: 'op', metric: 'strategyConsMonths', op: '>=', threshold: 2,
     },
     {
       id: 'advanced-metrics', label: 'MEP/MEN/Sharpe rastreados',

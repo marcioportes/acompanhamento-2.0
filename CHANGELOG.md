@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.5] - 24/09/2026 · #458 · PR #459
+
+**fix:** gate de constância do risco pede 2 meses e só zera com mudança real
+
+- **Alvo do gate** `strategy-12-months` (3→4): **6 → 2 meses**, no cliente e no espelho da CF. O texto do card acompanha e passa a dizer que salvar sem mudar não zera e que o ajuste do fechamento de ciclo não zera.
+- **`updatePlan`** compara o payload com o plano gravado (`listChangedPlanFields`). Salvar sem mudar valor de risco **não entra no `editHistory`** e **não dispara `recalculateCompliance`**. Se a leitura falhar, audita o payload inteiro.
+
+
 ## [1.92.3] - 17/09/2026 · #451 · PR #452
 
 **fix:** trade discutido é imutável também no servidor

@@ -20,6 +20,7 @@ import {
   updateDoc, 
   deleteDoc, 
   doc,
+  getDoc,
   getDocs,
   serverTimestamp,
   orderBy,
@@ -33,6 +34,7 @@ import { calculateTradeCompliance } from '../utils/compliance';
 // #416 C2: a mesma lista alimenta o gate `strategy-12-months` (meses sem mudança de
 // parâmetro de risco). SSoT única — duas listas que podem divergir era o defeito.
 import { RISK_FIELDS } from '../utils/planRiskFields';
+import { listChangedPlanFields } from '../utils/mentorPlanAudit';
 
 
 /**
@@ -189,6 +191,22 @@ export const usePlans = (overrideStudentId = null) => {
         updatedAt: serverTimestamp()
       };
 
+      // #458 — o que mudou é o que difere do plano gravado, não toda chave do payload.
+      // Sem o plano original (leitura falhou), cai no payload inteiro: registrar
+      // mudança a mais é recuperável, perder uma mudança de risco não é.
+      let changedFields = auditInfo?.changedFields;
+      if (!changedFields) {
+        try {
+          const snap = await getDoc(planRef);
+          changedFields = snap.exists()
+            ? listChangedPlanFields(snap.data(), safePlanData)
+            : Object.keys(safePlanData);
+        } catch (readErr) {
+          console.error('[usePlans] Plano original ilegível, auditando payload inteiro:', readErr);
+          changedFields = Object.keys(safePlanData);
+        }
+      }
+
       // Audit trail para edições do mentor
       if (auditInfo && auditInfo.editedBy === 'mentor') {
         updateData.lastEditedBy = 'mentor';
@@ -197,8 +215,6 @@ export const usePlans = (overrideStudentId = null) => {
       }
 
       await updateDoc(planRef, updateData);
-
-      const changedFields = auditInfo?.changedFields || Object.keys(planData);
 
       // #416 C2 — editHistory agora registra as DUAS mãos. Até aqui só a edição do
       // mentor entrava; a do aluno bumpava `updatedAt` e sumia do histórico. Como o gate
@@ -213,10 +229,13 @@ export const usePlans = (overrideStudentId = null) => {
         fields: changedFields,
         timestamp: new Date().toISOString()
       };
-      await updateDoc(planRef, {
-        editHistory: arrayUnion(historyEntry)
-      });
-      console.log(`[usePlans] Plan edit audit (${by}): ${historyEntry.email} → ${planId}`);
+      // Salvar sem mudar nada não é edição: não entra no histórico.
+      if (changedFields.length > 0) {
+        await updateDoc(planRef, {
+          editHistory: arrayUnion(historyEntry)
+        });
+        console.log(`[usePlans] Plan edit audit (${by}): ${historyEntry.email} → ${planId}`);
+      }
 
       // B1: Se campos de risco foram alterados, recalcular compliance em cascata
       const riskChanged = changedFields.some(f => RISK_FIELDS.includes(f));

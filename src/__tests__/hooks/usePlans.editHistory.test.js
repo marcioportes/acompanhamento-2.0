@@ -13,6 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 const mockUpdateDoc = vi.fn(() => Promise.resolve());
+// Default: plano não encontrado → audita o payload inteiro (comportamento de #416 C2).
+const mockGetDoc = vi.fn(() => Promise.resolve({ exists: () => false, data: () => undefined }));
+const mockRecalc = vi.fn(() => Promise.resolve({ data: { updated: 0 } }));
 
 vi.mock('firebase/firestore', () => ({
   collection: (...args) => ({ __type: 'collection', path: args.slice(1).join('/') }),
@@ -24,6 +27,7 @@ vi.mock('firebase/firestore', () => ({
   addDoc: vi.fn(() => Promise.resolve({ id: 'new-plan-id' })),
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: vi.fn(() => Promise.resolve()),
+  getDoc: (...args) => mockGetDoc(...args),
   getDocs: vi.fn(() => Promise.resolve({ docs: [] })),
   serverTimestamp: () => ({ __type: 'serverTimestamp' }),
   arrayUnion: (...items) => ({ __type: 'arrayUnion', items }),
@@ -31,7 +35,7 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('firebase/functions', () => ({
   getFunctions: () => ({}),
-  httpsCallable: () => vi.fn(() => Promise.resolve({ data: { updated: 0 } })),
+  httpsCallable: () => mockRecalc,
 }));
 
 vi.mock('../../firebase', () => ({ db: { __type: 'db' } }));
@@ -58,6 +62,9 @@ function entradaDeHistorico() {
 
 beforeEach(() => {
   mockUpdateDoc.mockClear();
+  mockRecalc.mockClear();
+  mockGetDoc.mockReset();
+  mockGetDoc.mockImplementation(() => Promise.resolve({ exists: () => false, data: () => undefined }));
   mockAuthState = { user: null, isMentor: () => false };
 });
 
@@ -144,5 +151,95 @@ describe('#416 C2 — usePlans.updatePlan grava editHistory', () => {
     await act(async () => { await result.current.updatePlan('plan-1', PLAN_DATA); });
 
     expect(entradaDeHistorico().email).toBe('unknown');
+  });
+});
+
+/**
+ * #458 — o modal manda o formulário inteiro. Toda chave do payload virava "campo
+ * alterado": cada Salvar zerava o gate de constância e recalculava o compliance.
+ */
+describe('#458 — changedFields por diferença de valor', () => {
+  const GRAVADO = {
+    name: 'Plano', riskPerOperation: 2, rrTarget: 3, periodStop: 2, cycleStop: 5,
+    pl: 30000, description: '',
+  };
+  const planoGravado = (dados) => {
+    mockGetDoc.mockImplementation(() => Promise.resolve({ exists: () => true, data: () => dados }));
+  };
+
+  it('salvar sem mudar nada não grava histórico nem recalcula', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => { await result.current.updatePlan('plan-1', { ...GRAVADO }); });
+
+    expect(entradaDeHistorico()).toBeNull();
+    expect(mockRecalc).not.toHaveBeenCalled();
+  });
+
+  it('valor numérico vindo como texto do formulário não conta como mudança', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => {
+      await result.current.updatePlan('plan-1', { ...GRAVADO, riskPerOperation: '2', description: null });
+    });
+
+    expect(entradaDeHistorico()).toBeNull();
+    expect(mockRecalc).not.toHaveBeenCalled();
+  });
+
+  it('mudar só o nome registra o nome e não recalcula', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => { await result.current.updatePlan('plan-1', { ...GRAVADO, name: 'Set-Plano' }); });
+
+    expect(entradaDeHistorico().fields).toEqual(['name']);
+    expect(mockRecalc).not.toHaveBeenCalled();
+  });
+
+  it('mudar o risco registra só o risco e recalcula', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => { await result.current.updatePlan('plan-1', { ...GRAVADO, rrTarget: 2 }); });
+
+    expect(entradaDeHistorico().fields).toEqual(['rrTarget']);
+    expect(mockRecalc).toHaveBeenCalledTimes(1);
+  });
+
+  it('pl no payload não entra (C1: não é gravado pelo modal)', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => { await result.current.updatePlan('plan-1', { ...GRAVADO, pl: 99999 }); });
+
+    expect(entradaDeHistorico()).toBeNull();
+  });
+
+  it('mentor pelo accordion (auditInfo sem changedFields) também compara por valor', async () => {
+    mockAuthState = { user: MENTOR, isMentor: () => true };
+    planoGravado(GRAVADO);
+    const { result } = renderHook(() => usePlans());
+    await act(async () => {
+      await result.current.updatePlan('plan-1', { ...GRAVADO, cycleStop: 6 }, {
+        editedBy: 'mentor', email: MENTOR.email, source: 'AccountsPage',
+      });
+    });
+
+    const entrada = entradaDeHistorico();
+    expect(entrada.by).toBe('mentor');
+    expect(entrada.fields).toEqual(['cycleStop']);
+  });
+
+  it('leitura do plano falhou → audita o payload inteiro (não perde mudança de risco)', async () => {
+    mockAuthState = { user: ALUNO, isMentor: () => false };
+    mockGetDoc.mockImplementation(() => Promise.reject(new Error('offline')));
+    const { result } = renderHook(() => usePlans());
+    await act(async () => { await result.current.updatePlan('plan-1', PLAN_DATA); });
+
+    expect(entradaDeHistorico().fields).toEqual(Object.keys(PLAN_DATA));
+    expect(mockRecalc).toHaveBeenCalledTimes(1);
   });
 });

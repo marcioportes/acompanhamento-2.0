@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeStrategyConsistencyMonths } from '../../../utils/maturityEngine/helpers';
 import { RISK_FIELDS } from '../../../utils/planRiskFields';
+import { GATES_BY_TRANSITION as GATES_CLIENT } from '../../../utils/maturityEngine/constants';
 
 // DEC-AUTO-416-20: `now` fixo em todo teste de tempo. Sem isso o teste passa hoje e
 // quebra na virada do mês.
@@ -195,5 +196,15 @@ describe('#416 C2 — coerção de data nos dois ambientes', () => {
   it('entrada nula na lista de planos não quebra', () => {
     const p = plano([[['rrTarget'], '2026-06-15T10:00:00.000Z']]);
     expect(computeStrategyConsistencyMonths([null, p, undefined], opts)).toBe(3);
+  });
+});
+
+// #458 — alvo do gate caiu de 6 para 2 meses, nos dois lados (cliente e CF).
+describe('#458 — gate strategy-12-months pede 2 meses', () => {
+  it('cliente: threshold 2 e texto coerente', () => {
+    const gate = Object.values(GATES_CLIENT).flat().find((g) => g.id === 'strategy-12-months');
+    expect(gate.threshold).toBe(2);
+    expect(gate.label).toMatch(/^2 meses/);
+    expect(`${gate.friendlyLabel} ${gate.whatIs} ${gate.howTo}`).not.toMatch(/6 meses/);
   });
 });
