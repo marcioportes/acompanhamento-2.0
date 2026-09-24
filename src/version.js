@@ -4,6 +4,7 @@
  *
  * CHANGELOG:
  * - 1.92.4: #455 fix import de ordens grava o trade invertido e datado de 1970 (RESERVADA)
+ * - 1.92.5: #458 fix gate de constância do risco zera a cada Salvar e pede 6 meses (RESERVADA)
  * - 1.92.3: #451 fix trade discutido é imutável também no servidor (PR #452, 17/09/2026)
  * - 1.92.2: #449 fix a proteção que foi acionada também é proteção (PR #450, 16/09/2026)
  * - 1.92.1: #446 fix a ordem que vira a mão vira duas operações, como na corretora (PR #447, 16/09/2026)
