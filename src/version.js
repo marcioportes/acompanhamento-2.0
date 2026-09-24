@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.6: #460 fix o ícone do card do plano mede o dia, não o mês (RESERVADA)
  * - 1.92.4: #455 fix import de ordens grava o trade invertido e datado de 1970 (RESERVADA)
  * - 1.92.5: #458 fix gate de constância do risco pede 2 meses e só zera com mudança real (PR #459, 24/09/2026)
  * - 1.92.3: #451 fix trade discutido é imutável também no servidor (PR #452, 17/09/2026)
