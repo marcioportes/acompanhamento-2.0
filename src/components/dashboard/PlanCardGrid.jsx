@@ -1,7 +1,10 @@
 /**
  * PlanCardGrid
- * @version 3.0.0 (v1.90.7)
+ * @version 3.1.0 (v1.92.6)
  * @description Grid de cards de planos operacionais.
+ *   v3.1.0: Ícone mede o CICLO, não o dia (#460) — meta do mês batida não aparecia. A
+ *           etiqueta do canto segue sendo do período, rotulada ("Hoje:"/"Semana:") e só
+ *           quando o período é o corrente.
  *   v3.0.0: O card obedece o CICLO selecionado na ContextBar (#432). Antes fixava o ciclo
  *           ABERTO: escolher um ciclo fechado deixava o card mostrando o resultado do ciclo
  *           corrente — dois cards da mesma tela discordando sobre o mesmo período.
@@ -24,7 +27,7 @@ import {
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { PERIOD_LABELS, ALL_CYCLES_KEY } from '../../utils/cycleResolver';
 import { calculatePeriodPnL, calculateCyclePnL } from '../../utils/planCalculations';
-import { computePlanState, classifyPeriodBadge, getSentimentFromState } from '../../utils/planStateMachine';
+import { computePlanState, classifyPeriodBadge, getCycleSentiment } from '../../utils/planStateMachine';
 import { getOpenCycleStart, resolveCycleInitialPl, findCycleClosure } from '../../utils/planBalance';
 import DebugBadge from '../DebugBadge';
 
@@ -150,16 +153,19 @@ const PlanCardGrid = ({
           adjustmentCycle: plan.adjustmentCycle || 'Mensal',
         });
 
-        // Badge do período atual
+        // Etiqueta do PERÍODO (#460): só quando o período é o de hoje/desta semana, e
+        // dizendo que é o período — sem trade hoje, o último dia operado não é "hoje".
         const currentPeriodKey = planState?.currentPeriodKey;
-        const currentPeriodState = currentPeriodKey
+        const currentPeriodState = currentPeriodKey && planState.currentPeriodIsLive
           ? planState.cycleState.periods.get(currentPeriodKey)
           : null;
-        const badge = currentPeriodState ? classifyPeriodBadge(currentPeriodState) : null;
+        const periodBadge = currentPeriodState ? classifyPeriodBadge(currentPeriodState) : null;
+        const badge = periodBadge
+          ? { ...periodBadge, label: `${plan.operationPeriod === 'Semanal' ? 'Semana' : 'Hoje'}: ${periodBadge.label}` }
+          : null;
 
-        // Sentiment icon do período atual
-        const periodStatus = currentPeriodState?.status || null;
-        const sentiment = getSentimentFromState(periodStatus, periodPnL);
+        // Ícone do CICLO (#460): o card mostra o mês; mede o mesmo acumulado da barra do ciclo.
+        const sentiment = getCycleSentiment(cyclePnL, cycleGoalVal, cycleStopVal);
 
         return (
           <div key={plan.id} onClick={() => onSelectPlan(isSelected ? null : plan.id)} className={`relative cursor-pointer transition-all duration-300 overflow-hidden rounded-2xl border group ${isSelected ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-600'}`}>

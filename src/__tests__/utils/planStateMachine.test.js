@@ -17,6 +17,7 @@ import {
   getCycleEndDate,
   classifyPeriodBadge,
   getSentimentFromState,
+  getCycleSentiment,
   getAvailableCycles,
 } from '../../utils/planStateMachine';
 
@@ -572,5 +573,58 @@ describe('computePlanState — targetCycle navigation', () => {
     });
     expect(marState.cycleState.summary.tradesCount).toBe(1);
     expect(marState.cycleState.summary.totalPnL).toBe(500);
+  });
+});
+
+// ============================================
+// #460 — ícone mede o ciclo; etiqueta só no período corrente
+// ============================================
+
+describe('#460 — getCycleSentiment', () => {
+  // Caso real: capital R$ 30.426, meta do ciclo 10%, stop 5%. Setembro +R$ 3.505.
+  const GOAL = 3042.6;
+  const STOP = 1521.3;
+
+  it('meta do ciclo batida → troféu, mesmo sem nenhum dia na meta diária', () => {
+    expect(getCycleSentiment(3505, GOAL, STOP).icon).toBe('Trophy');
+  });
+  it('exatamente na meta conta como batida', () => {
+    expect(getCycleSentiment(GOAL, GOAL, STOP).icon).toBe('Trophy');
+  });
+  it('stop do ciclo estourado → caveira', () => {
+    expect(getCycleSentiment(-1600, GOAL, STOP).icon).toBe('Skull');
+  });
+  it('no meio do caminho → carinha pelo sinal do acumulado', () => {
+    expect(getCycleSentiment(1200, GOAL, STOP).icon).toBe('Smile');
+    expect(getCycleSentiment(-300, GOAL, STOP).icon).toBe('Frown');
+    expect(getCycleSentiment(0, GOAL, STOP).icon).toBe('Meh');
+  });
+  it('plano sem meta/stop de ciclo não inventa troféu nem caveira', () => {
+    expect(getCycleSentiment(99999, 0, 0).icon).toBe('Smile');
+    expect(getCycleSentiment(-99999, 0, 0).icon).toBe('Frown');
+  });
+});
+
+describe('#460 — currentPeriodIsLive', () => {
+  const config = makePlanConfig();
+
+  it('Diário com trade hoje → período corrente é ao vivo', () => {
+    const trades = [makeTrade({ date: '2026-03-04', result: 100 })];
+    const state = computePlanState(trades, config, { targetDate: new Date('2026-03-04T12:00:00') });
+    expect(state.currentPeriodKey).toBe('2026-03-04');
+    expect(state.currentPeriodIsLive).toBe(true);
+  });
+
+  it('Diário sem trade hoje → cai no último dia operado, mas NÃO é ao vivo', () => {
+    const trades = [makeTrade({ date: '2026-03-04', result: -500 })];
+    const state = computePlanState(trades, config, { targetDate: new Date('2026-03-06T12:00:00') });
+    expect(state.currentPeriodKey).toBe('2026-03-04');
+    expect(state.currentPeriodIsLive).toBe(false);
+  });
+
+  it('sem trades no ciclo → nada ao vivo', () => {
+    const state = computePlanState([], config, { targetDate: new Date('2026-03-06T12:00:00') });
+    expect(state.currentPeriodKey).toBeNull();
+    expect(state.currentPeriodIsLive).toBe(false);
   });
 });
