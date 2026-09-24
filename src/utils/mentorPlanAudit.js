@@ -37,4 +37,29 @@ export const buildAuditInfo = (mentorEmail, originalPlan, newPlanData) => {
   };
 };
 
-export default { detectChangedFields, buildAuditInfo };
+/** Vazio (null/undefined/'') é um valor só; objeto compara por conteúdo. */
+const normalizeForCompare = (v) => {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+};
+
+/**
+ * #458 — campos do payload cujo VALOR difere do plano gravado.
+ *
+ * O modal de plano sempre manda o formulário inteiro. Tratar toda chave do payload
+ * como alterada fazia cada "Salvar" registrar mudança de risco: o gate de constância
+ * zerava e o compliance era recalculado sem nada ter mudado.
+ *
+ * @param {object} originalPlan - plano como está no Firestore
+ * @param {object} newPlanData - payload a gravar
+ * @returns {string[]} chaves do payload com valor diferente
+ */
+export const listChangedPlanFields = (originalPlan, newPlanData) => {
+  const original = originalPlan || {};
+  return Object.keys(newPlanData || {}).filter(
+    (f) => normalizeForCompare(original[f]) !== normalizeForCompare(newPlanData[f]),
+  );
+};
+
+export default { detectChangedFields, buildAuditInfo, listChangedPlanFields };
