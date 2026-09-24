@@ -196,7 +196,7 @@ stage: {
 | `emotional-75` | Emocional ≥ 75 | emo | E | >= | 75 |
 | `financial-fortified` | Financial ≥ 85 | fin | F | >= | 85 |
 | `operational-80` | Operacional ≥ 80 | op | O | >= | 80 |
-| `strategy-12-months` | 12 meses s/ trocar estratégia | op | strategyConsMonths | >= | 12 |
+| `strategy-12-months` | 2 meses sem mudar os parâmetros de risco do plano (#416 C2; alvo 6 → 2 em #458) | op | strategyConsMonths | >= | 2 |
 | `advanced-metrics` | MFE/MAE/Sharpe rastreados | op | advancedMetricsPresent | == | true |
 | `compliance-100` | Compliance = 100% últimos 100 | op | complianceRate100 | >= | 100 |
 | `winrate-55` | Win rate ≥ 55% | fin | winRate | >= | 55 |
