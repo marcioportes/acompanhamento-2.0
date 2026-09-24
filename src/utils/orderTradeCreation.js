@@ -12,6 +12,7 @@
  */
 
 import { CORRELATION_WINDOW_MS } from './orderCorrelation';
+import { STOP_SEMANTIC } from './stopSemantic';
 import { detectAutoLiq } from './autoLiqDetector';
 
 // ============================================
@@ -193,10 +194,29 @@ export function mapOperationToTradeData(operation, planId, importBatchId = null,
   }
 
   // Stop loss: se operação tem proteção de stop, extrair preço do stop
+  //
+  // #455 — perna classificada `STOP_GAIN` NÃO vira `stopLoss`. `stopSemantic` já
+  // distingue proteção de trail desde o #242 (LONG com gatilho ≥ entrada, SHORT com
+  // gatilho ≤ entrada), e `hasRealStopLoss` era escrito e nunca lido: o trade de
+  // 23/09/2026 nasceu com `stopLoss: 189.390` — ACIMA da entrada de 189.370 num LONG.
+  // Como `calculateRiskPercent`/`calculateRiskReward` usam `Math.abs(entry - stop)`, o
+  // sinal invertido não aparece: saiu risco de 20 pts (R$ 20) e RR 25,0, contra risco
+  // mínimo comprovável de 220 pts (R$ 220) e RR ≤ 2,27.
+  //
+  // Sem perna de proteção real, `stopLoss` fica null e o aluno informa (Marcio,
+  // 23/09/2026: "o stop deve ser informado mesmo, se não tem jeito"). Quando a proteção
+  // foi arrastada durante a operação, o export da corretora traz só o estado final da
+  // ordem — o stop assumido na entrada não está no arquivo e o sistema não o inventa.
+  //
+  // O filtro exclui apenas o que foi classificado como STOP_GAIN: perna sem
+  // `stopSemantic` (bracket LIMIT com `Preço Stop` vazio, DEC-AUTO-242-01 / #449)
+  // continua elegível, como antes.
   let stopLoss = null;
-  if (operation.hasStopProtection && operation.stopOrders?.length > 0) {
+  const protecoesReais = (operation.stopOrders || [])
+    .filter(s => s.stopSemantic !== STOP_SEMANTIC.STOP_GAIN);
+  if (operation.hasStopProtection && protecoesReais.length > 0) {
     // Usar o último stop order configurado (pode ter sido movido)
-    const lastStop = operation.stopOrders[operation.stopOrders.length - 1];
+    const lastStop = protecoesReais[protecoesReais.length - 1];
     // #449 — o preço ENVIADO, nunca o executado. `limitPrice` entra na ordem de
     // precedência porque o bracket desta corretora emite a proteção como LIMITE com
     // `Preço Stop` vazio (DEC-AUTO-242-01): sem ele, a proteção acionada gravaria o

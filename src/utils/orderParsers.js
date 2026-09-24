@@ -148,6 +148,24 @@ const parseDateTimeBR = (raw) => {
 };
 
 /**
+ * #455 — data que EXISTE no arquivo e não parseia é erro, não ausência.
+ *
+ * `parseDateTimeBR` devolve `null` tanto para célula vazia (`-`, legítimo) quanto para
+ * formato não reconhecido. Quando o ProfitChart passou a exportar `10:58:06.975`, o
+ * parser devolveu `errors: []` com TODOS os timestamps nulos e detecção "100%": o
+ * arquivo inteiro falhou em silêncio e o trade chegou invertido à tela de decisão.
+ *
+ * @returns {string|null} ISO, ou null — empurrando a razão para `errors` quando há texto
+ */
+const parseDateTimeBROrError = (raw, errors, row, campo) => {
+  const parsed = parseDateTimeBR(raw);
+  if (parsed === null && raw && raw.trim() !== '-' && raw.trim() !== '') {
+    errors.push({ row, message: `${campo} em formato não reconhecido: "${raw.trim()}"` });
+  }
+  return parsed;
+};
+
+/**
  * Strip acentos para comparação de headers.
  */
 const stripAccents = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -327,8 +345,8 @@ export const parseProfitChartPro = (text) => {
         side,
         status,
         orderType: orderType || 'LIMIT',
-        submittedAt: parseDateTimeBR(getCol('criacao')),
-        lastUpdatedAt: parseDateTimeBR(getCol('ultimaAtualizacao')),
+        submittedAt: parseDateTimeBROrError(getCol('criacao'), errors, i + 1, 'Criação'),
+        lastUpdatedAt: parseDateTimeBROrError(getCol('ultimaAtualizacao'), errors, i + 1, 'Última Atualização'),
         price: parsePriceBR(getCol('preco')),
         stopPrice,
         quantity: parseQty(getCol('qtd')),
@@ -356,7 +374,7 @@ export const parseProfitChartPro = (text) => {
       }
 
       const eventStatus = (cols[6] || '').trim().toLowerCase();
-      const eventTimestamp = parseDateTimeBR((cols[7] || '').trim());
+      const eventTimestamp = parseDateTimeBROrError((cols[7] || '').trim(), errors, i + 1, 'Timestamp do evento');
       const eventPrice = parsePriceBR((cols[12] || '').trim());
       const eventQty = parseQty((cols[13] || '').trim());
 
