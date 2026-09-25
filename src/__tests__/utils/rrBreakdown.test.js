@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest';
 import { rrBreakdown } from '../../utils/rrBreakdown';
 
 const trade = {
+  side: 'LONG',
   entry: 171842.5,
   stopLoss: 171595,
   qty: 10,
@@ -96,7 +97,8 @@ describe('rrBreakdown — bordas', () => {
   it('stop na entrada (risco zero) não divide por zero', () => {
     const r = rrBreakdown({ ...trade, stopLoss: trade.entry }, plan);
 
-    expect(r.riskAmount).toBe(0);
+    // #467 — stop na entrada (ou do lado errado) não é stop: sem risco assumido.
+    expect(r.riskAmount).toBeNull();
     expect(r.rrTaken).toBeNull();
   });
 

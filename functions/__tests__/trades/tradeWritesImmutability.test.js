@@ -155,13 +155,20 @@ describe('onTradeCreated', () => {
   });
 
   it('trade novo: grava o mesmo patch de antes', async () => {
-    const snap = createdSnap('t1', { stopLoss: 10, studentId: 's1' });
+    const snap = createdSnap('t1', { side: 'LONG', entry: 20, stopLoss: 10, studentId: 's1' });
     await fns.onTradeCreated.run(snap, { params: { tradeId: 't1' } });
     expect(tradeWrites).toHaveLength(1);
     expect(tradeWrites[0].patch).toMatchObject({
       status: 'OPEN', feedbackHistory: [], hasRedFlags: true, createdAt: 'TS',
     });
     expect(tradeWrites[0].patch.redFlags.map((f) => f.type)).toEqual(['TRADE_SEM_PLANO']);
+  });
+
+  // #467 (épico #462 F4) — stop do lado errado da entrada é "sem stop" também no servidor.
+  it('stop do lado errado da entrada → TRADE_SEM_STOP', async () => {
+    const snap = createdSnap('t1', { side: 'SHORT', entry: 20, stopLoss: 10, result: 5, studentId: 's1' });
+    await fns.onTradeCreated.run(snap, { params: { tradeId: 't1' } });
+    expect(tradeWrites[0].patch.redFlags.map((f) => f.type)).toEqual(['TRADE_SEM_STOP', 'TRADE_SEM_PLANO']);
   });
 });
 
@@ -211,6 +218,25 @@ describe('onTradeUpdated', () => {
       _unlockedAt: 'TS',
       _unlockedBy: { uid: 'system', email: null, reason: 'import:b1' },
     });
+  });
+
+  // #467 (épico #462 F4) — recálculo no servidor: stop movido para o lado errado da
+  // entrada vira "sem stop" (flag + sem risco inventado); discutido segue intocado (INV-30).
+  it('stop do lado errado da entrada: recálculo emite TRADE_SEM_STOP e não mede risco', async () => {
+    store.set('plans/p1', plan);
+    const base = { status: 'REVIEWED', planId: 'p1', side: 'LONG', entry: 100, qty: 1, result: 30 };
+    await run('t1', { ...base, stopLoss: 90 }, { ...base, stopLoss: 105 });
+    const patch = tradeWrites[0].patch;
+    expect(patch.redFlags.map((f) => f.type)).toEqual(['TRADE_SEM_STOP']);
+    expect(patch.riskPercent).toBeNull();
+    expect(patch.rrAssumed).toBe(true);
+  });
+
+  it('stop do lado errado em trade DISCUSSED: nada é gravado (INV-30)', async () => {
+    store.set('plans/p1', plan);
+    const base = { status: 'DISCUSSED', planId: 'p1', side: 'LONG', entry: 100, qty: 1, result: 30 };
+    await run('t1', { ...base, stopLoss: 90 }, { ...base, stopLoss: 105 });
+    expect(tradeWrites).toEqual([]);
   });
 
   it('entrada em REVIEWED (aluno alpha): carimba reviewId e limpa _pendingReviewNote como antes', async () => {

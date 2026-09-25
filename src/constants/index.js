@@ -2,6 +2,8 @@
  * Constantes e tipos do sistema Acompanhamento 2.0
  */
 
+import { stopDistanceOf } from '../utils/orderProtection';
+
 // ============================================
 // STATUS DO TRADE
 // ============================================
@@ -201,10 +203,11 @@ export const calculateTradeResultPercent = (trade) => {
 export const calculateRiskReward = (entry, stopLoss, takeProfit, side) => {
   if (!entry || !stopLoss || !takeProfit) return null;
   
-  const risk = Math.abs(entry - stopLoss);
+  // #467 — stop do lado errado da entrada não é stop: sem razão.
+  const risk = stopDistanceOf(side, entry, stopLoss);
   const reward = Math.abs(takeProfit - entry);
   
-  if (risk === 0) return null;
+  if (risk == null) return null;
   return reward / risk;
 };
 

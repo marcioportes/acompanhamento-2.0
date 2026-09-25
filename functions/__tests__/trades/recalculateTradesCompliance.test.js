@@ -46,7 +46,7 @@ afterEach(() => vi.useRealTimers());
 describe('recalculateTradesCompliance — patch dos trades não discutidos', () => {
   it('conforme com stop: patch sem flags, preserva flags que não são de compliance', async () => {
     const d = doc('t1', {
-      status: 'CLOSED', stopLoss: 100, result: 50,
+      status: 'CLOSED', side: 'LONG', entry: 110, stopLoss: 100, result: 50,
       redFlags: ['RISCO_ACIMA_PERMITIDO', { type: 'EMOCIONAL_BLOQUEADO', message: 'x' }, { type: 'RR_ABAIXO_MINIMO' }],
     });
     const res = await recalculateTradesCompliance([d], plan, deps);
@@ -75,6 +75,23 @@ describe('recalculateTradesCompliance — patch dos trades não discutidos', () 
       ],
       hasRedFlags: true,
     });
+  });
+
+  // #467 (épico #462 F4) — stop do lado errado da entrada é "sem stop": mesma flag.
+  it('stop do lado errado da entrada (LONG com stop acima, SHORT com stop abaixo) → NO_STOP', async () => {
+    const long = doc('w1', { side: 'LONG', entry: 100, stopLoss: 105, result: 30 });
+    const short = doc('w2', { side: 'SHORT', entry: 100, stopLoss: 95, result: 30 });
+    const naEntrada = doc('w3', { side: 'SHORT', entry: 100, stopLoss: 100, result: 30 });
+    await recalculateTradesCompliance([long, short, naEntrada], plan, deps);
+    for (const d of [long, short, naEntrada]) {
+      expect(d.ref.update.mock.calls[0][0].redFlags.map(f => f.type)).toEqual(['TRADE_SEM_STOP']);
+    }
+  });
+
+  it('stop do lado certo não emite NO_STOP', async () => {
+    const d = doc('w4', { side: 'SHORT', entry: 100, stopLoss: 105, result: 30 });
+    await recalculateTradesCompliance([d], plan, deps);
+    expect(d.ref.update.mock.calls[0][0].redFlags).toEqual([]);
   });
 
   it('loss sem stop (stop implícito, DEC-AUTO-208-04) não emite NO_STOP', async () => {

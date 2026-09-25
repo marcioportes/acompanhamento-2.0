@@ -359,6 +359,29 @@ function legOfOrder(order, legs, position, ctx) {
   return ultima;
 }
 
+/**
+ * Distância de risco do stop de um TRADE (#467, épico #462 F4) — a única conta de
+ * "quanto o stop arrisca" de compliance, R:R e risco %, cliente e servidor.
+ *
+ * Stop do lado ERRADO da entrada (LONG com stop ≥ entrada, SHORT com stop ≤ entrada) NÃO
+ * é stop: não limita perda nenhuma, e o `Math.abs(entrada − stop)` de antes transformava
+ * um stop de ganho em "risco" (um SHORT a 185.070 com stop digitado a 184.000 virava
+ * 1.070 pts de risco). Resultado igual ao de `stopLoss` vazio — o caminho "sem stop".
+ * Lado desconhecido também não prova nada: null.
+ *
+ * @param {string} side — 'LONG' | 'SHORT'
+ * @param {number|string} entry
+ * @param {number|string} stop
+ * @returns {number|null} distância em pontos (> 0) ou null quando não há stop que proteja
+ */
+function stopDistanceOf(side, entry, stop) {
+  const e = num(entry);
+  const s = num(stop);
+  if (!Number.isFinite(e) || !Number.isFinite(s) || e === 0 || s === 0) return null;
+  if (!isAdversePrice(s, side, e)) return null;
+  return Math.abs(e - s);
+}
+
 module.exports = {
   PROTECTION_WINDOW_MS,
   LEG_STOP_REASON,
@@ -373,4 +396,5 @@ module.exports = {
   tradeStopFromLegs,
   isPositionProtection,
   legOfOrder,
+  stopDistanceOf,
 };

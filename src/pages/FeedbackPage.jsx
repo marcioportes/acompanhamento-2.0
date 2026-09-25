@@ -55,6 +55,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { editTradeAsMentor as gatewayEditAsMentor, lockTradeByMentor as gatewayLockByMentor, classifyTradeAsMentor as gatewayClassify, toggleViolationClearedAsMentor as gatewayToggleViolation } from '../utils/tradeGateway';
 import { effectiveRedFlags, isViolationCleared } from '../utils/violationFilter';
 import { buildPeriodState } from '../utils/dayState';
+import { stopDistanceOf } from '../utils/orderProtection';
 
 // Helpers locais
 const formatCurrency = (value, currency = 'BRL') => {
@@ -195,8 +196,8 @@ const TradeInfoCard = ({ trade, onImageClick, userIsMentor = false, onToggleViol
         const result = Number(trade.result) || 0;
         const tickerRule = trade.tickerRule;
         
-        // Calcula risco em pontos/preço
-        const riskPts = stopLoss != null && entry ? Math.abs(entry - stopLoss) : null;
+        // Calcula risco em pontos/preço — #467: stop do lado errado da entrada não é risco.
+        const riskPts = stopDistanceOf(trade.side, entry, stopLoss);
         
         // RR Ratio — usa rrRatio salvo, ou calcula via movement/risk
         let rrCalc = null;

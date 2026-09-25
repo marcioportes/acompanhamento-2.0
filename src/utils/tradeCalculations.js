@@ -18,6 +18,8 @@
  * resultado = (saída - entrada) * pointValue * contratos * (side === 'LONG' ? 1 : -1)
  */
 
+import { stopDistanceOf } from './orderProtection';
+
 /**
  * Calcula o resultado financeiro de um trade baseado nas especificações do ativo
  * 
@@ -112,12 +114,12 @@ export const calculateResultPercent = (result, accountBalance) => {
 export const calculateRiskPercent = ({ side, entry, stopLoss, qty, ticker, accountBalance }) => {
   if (!entry || !stopLoss || !qty || !accountBalance || accountBalance === 0) return 0;
   
-  const entryPrice = parseFloat(entry);
-  const stopPrice = parseFloat(stopLoss);
   const contracts = parseFloat(qty);
   
-  // Calcular diferença de pontos até o stop
-  const pointDiff = Math.abs(entryPrice - stopPrice);
+  // #467 — distância até o stop pela conta única: stop do lado errado da entrada não
+  // arrisca nada (não é stop) → 0, como sem stop.
+  const pointDiff = stopDistanceOf(side, entry, stopLoss);
+  if (pointDiff == null) return 0;
   
   // Valor do risco
   const pointValue = ticker?.pointValue || 1;
@@ -140,13 +142,13 @@ export const calculateRiskReward = ({ side, entry, stopLoss, takeProfit }) => {
   if (!entry || !stopLoss || !takeProfit) return null;
   
   const entryPrice = parseFloat(entry);
-  const stopPrice = parseFloat(stopLoss);
   const targetPrice = parseFloat(takeProfit);
   
-  const risk = Math.abs(entryPrice - stopPrice);
+  // #467 — stop do lado errado da entrada não é stop: sem razão.
+  const risk = stopDistanceOf(side, entry, stopLoss);
   const reward = Math.abs(targetPrice - entryPrice);
   
-  if (risk === 0) return null;
+  if (risk == null) return null;
   
   return Math.round((reward / risk) * 100) / 100;
 };

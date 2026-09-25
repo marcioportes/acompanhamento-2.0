@@ -57,8 +57,9 @@ export const realizedRR = (trade) => {
   const stop = n(trade?.stopLoss);
   if (entry == null || exit == null || stop == null) return null;
 
-  const risk = Math.abs(entry - stop);
-  if (!(risk > 0)) return null;   // stop na entrada não é R:R infinito, é ausência de razão
+  // #467 — stop do lado errado da entrada (ou na entrada) não é stop: ausência de razão.
+  const risk = stopDistanceOf(trade?.side, entry, stop);
+  if (risk == null) return null;
 
   const dir = trade?.side === 'SHORT' ? -1 : 1;
   return Math.round((((exit - entry) * dir) / risk) * 100) / 100;
@@ -93,6 +94,7 @@ export const RED_FLAG_LABELS = {
 export const redFlagLabel = (type) => RED_FLAG_LABELS[type] ?? type ?? '';
 
 import { exceedsLimit } from './planTolerance';
+import { stopDistanceOf } from './orderProtection';
 
 /**
  * O aluno declarou um alvo para este trade?
@@ -158,12 +160,17 @@ export const calculateTradeCompliance = (trade, plan) => {
   const planPl = plan.pl ?? plan.currentPl ?? 0;
   if (planPl <= 0) return result;
   
+  // #467 (épico #462 F4) — distância do stop pela conta única (`stopDistanceOf`): stop do
+  // lado ERRADO da entrada (LONG com stop ≥ entrada, SHORT com stop ≤ entrada) é "sem stop",
+  // nunca risco. O `Math.abs(entrada − stop)` de antes fazia de um stop de ganho um risco.
+  const stopDistance = stopDistanceOf(trade.side, trade.entry, trade.stopLoss);
+
   // === Risco Operacional (RO) ===
-  if (trade.stopLoss && trade.entry) {
+  if (stopDistance != null) {
     // Com stop: risco = (distância / tickSize) * tickValue * qty
     const tickSize = trade.tickerRule?.tickSize || 1;
     const tickValue = trade.tickerRule?.tickValue || 1;
-    const distanceInPoints = Math.abs(trade.entry - trade.stopLoss);
+    const distanceInPoints = stopDistance;
     const riskAmount = (distanceInPoints / tickSize) * tickValue * (trade.qty ?? 1);
     result.riskPercent = (riskAmount / planPl) * 100;
   } else {
@@ -189,9 +196,9 @@ export const calculateTradeCompliance = (trade, plan) => {
   }
   
   // === Razão Risco-Retorno (RR) ===
-  if (trade.stopLoss && trade.entry) {
+  if (stopDistance != null) {
     // COM stop: RR real baseado na distância do stop
-    const risk = Math.abs(trade.entry - trade.stopLoss);
+    const risk = stopDistance;
     if (risk > 0) {
       if (trade.takeProfit) {
         // Via takeProfit (planejado)
@@ -262,7 +269,8 @@ export const calculateTradeCompliance = (trade, plan) => {
 export const generateComplianceRedFlags = (trade, plan, complianceResult) => {
   const flags = [];
 
-  if (!trade.stopLoss) {
+  // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
+  if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
     const tradeResult = trade.result ?? 0;
     const isImplicitStop = tradeResult < 0;
     if (!isImplicitStop) {

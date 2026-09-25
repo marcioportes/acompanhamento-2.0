@@ -27,6 +27,7 @@ import { calculateFromPartials, calculateAssumedRR } from './tradeCalculations';
 import { findSealingRange, buildSealedError, isTradeBeforeLastClosedCycle, buildRetroactiveBlockedError } from './cycleClosure/sealCheck';
 import { TRADE_REVIEW_VERSION, questionsForQuadrant } from '../constants/tradeReviewFramework';
 import { classifyTrade } from './tradeReviewConfront';
+import { stopDistanceOf } from './orderProtection';
 
 // Campos comportamentais editáveis pelo mentor + protegidos pelo lock (#188 F1).
 export const MENTOR_EDITABLE_FIELDS = ['emotionEntry', 'emotionExit', 'setup'];
@@ -222,12 +223,12 @@ export async function createTrade(tradeData, userContext) {
 
   let rrRatio = null;
   let rrAssumed = false;
-  if (stopLoss != null && stopLoss !== 0 && entry) {
+  // #467 — distância do stop pela conta única: stop do lado errado da entrada = sem stop
+  // (cai no RR assumido), nunca risco via Math.abs.
+  const stopDistance = stopDistanceOf(side, entry, stopLoss);
+  if (stopDistance != null) {
     // RR real: baseado no stop loss efetivo
-    const risk = Math.abs(entry - stopLoss);
-    if (risk > 0) {
-      rrRatio = Math.round((effectiveResult / (risk * (tradeData.tickerRule?.pointValue || 1) * qty)) * 100) / 100;
-    }
+    rrRatio = Math.round((effectiveResult / (stopDistance * (tradeData.tickerRule?.pointValue || 1) * qty)) * 100) / 100;
   } else {
     // RR assumido: baseado no RO$ do plano (DEC-007: usa plan.pl = capital base)
     const assumed = calculateAssumedRR({
@@ -430,11 +431,10 @@ export async function enrichTrade(tradeId, enrichment, userContext, deps = {}) {
 
   let rrRatio = null;
   let rrAssumed = false;
-  if (stopLoss != null && stopLoss !== 0 && entry) {
-    const risk = Math.abs(entry - stopLoss);
-    if (risk > 0) {
-      rrRatio = Math.round((effectiveResult / (risk * (tickerRule?.pointValue || 1) * qty)) * 100) / 100;
-    }
+  // #467 — mesma conta da criação: stop do lado errado da entrada = sem stop.
+  const stopDistance = stopDistanceOf(side, entry, stopLoss);
+  if (stopDistance != null) {
+    rrRatio = Math.round((effectiveResult / (stopDistance * (tickerRule?.pointValue || 1) * qty)) * 100) / 100;
   } else {
     const assumed = calculateAssumedRR({
       result: effectiveResult,

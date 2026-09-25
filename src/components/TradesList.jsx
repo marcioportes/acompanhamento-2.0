@@ -32,6 +32,7 @@ import { formatCurrencyDynamic } from '../utils/currency';
 import TradeStatusBadges from './TradeStatusBadges';
 import ExcursionDisplay from './ExcursionDisplay';
 import { fmtTradeTime } from '../utils/tradeTimezone';
+import { stopDistanceOf } from '../utils/orderProtection';
 
 /**
  * Formatadores Visuais (Helpers)
@@ -254,8 +255,9 @@ const TradesList = ({
                     <div className={`text-xs ${getResultColor(result)} opacity-80`}>
                       {(() => {
                         // Futuros: mostrar risco em pontos se tem stop
-                        if (trade.tickerRule && trade.stopLoss && trade.entry) {
-                          const riskPts = Math.abs(trade.entry - trade.stopLoss);
+                        // #467 — distância pela conta única: stop do lado errado da entrada não é risco.
+                        const riskPts = trade.tickerRule ? stopDistanceOf(trade.side, trade.entry, trade.stopLoss) : null;
+                        if (riskPts != null) {
                           return `Stop: ${riskPts} pts`;
                         }
                         // Ações/papéis: mostrar % sobre PL

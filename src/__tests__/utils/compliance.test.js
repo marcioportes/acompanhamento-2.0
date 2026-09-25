@@ -154,7 +154,7 @@ describe('calculateTradeCompliance', () => {
   describe('T2 -- RISCO_ACIMA_PERMITIDO (com stop)', () => {
     it('RO dentro do limite -> roStatus CONFORME', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4990, qty: 1, 
+        entry: 5000, side: 'LONG', stopLoss: 4990, qty: 1, 
         tickerRule: winfutTicker 
       };
 
@@ -166,7 +166,7 @@ describe('calculateTradeCompliance', () => {
 
     it('RO exatamente no limite -> ainda CONFORME (> nao >=)', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, qty: 8, 
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 8, 
         tickerRule: winfutTicker 
       };
 
@@ -178,7 +178,7 @@ describe('calculateTradeCompliance', () => {
 
     it('RO acima do limite -> roStatus FORA_DO_PLANO', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, qty: 50,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 50,
         tickerRule: winfutTicker 
       };
 
@@ -190,7 +190,7 @@ describe('calculateTradeCompliance', () => {
 
     it('FORA_DO_PLANO -> generateComplianceRedFlags inclui RISCO_ACIMA_PERMITIDO', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, qty: 50,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 50,
         tickerRule: winfutTicker 
       };
 
@@ -281,7 +281,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('com stop CONFORME -> NENHUMA flag', () => {
-      const trade = { entry: 5000, stopLoss: 4990, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4990, qty: 1, tickerRule: winfutTicker };
       const compliance = calculateTradeCompliance(trade, basePlan);
       const flags = generateComplianceRedFlags(trade, basePlan, compliance);
 
@@ -295,7 +295,7 @@ describe('calculateTradeCompliance', () => {
   describe('Risk-Reward (RR) -- com stop', () => {
     it('RR via takeProfit acima do target -> CONFORME', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, takeProfit: 5100, qty: 1,
+        entry: 5000, side: 'LONG', stopLoss: 4950, takeProfit: 5100, qty: 1,
         tickerRule: winfutTicker 
       };
 
@@ -307,7 +307,7 @@ describe('calculateTradeCompliance', () => {
 
     it('RR via takeProfit abaixo do target -> NAO_CONFORME', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, takeProfit: 5050, qty: 1,
+        entry: 5000, side: 'LONG', stopLoss: 4950, takeProfit: 5050, qty: 1,
         tickerRule: winfutTicker 
       };
 
@@ -319,7 +319,7 @@ describe('calculateTradeCompliance', () => {
 
     it('RR via resultado efetivo (sem takeProfit, trade positivo)', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, qty: 1, result: 20,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, result: 20,
         tickerRule: winfutTicker 
       };
 
@@ -330,7 +330,7 @@ describe('calculateTradeCompliance', () => {
 
     it('trade perdedor (result < 0) sem takeProfit -> rrRatio null', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, qty: 1, result: -10,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, result: -10,
         tickerRule: winfutTicker 
       };
 
@@ -341,7 +341,7 @@ describe('calculateTradeCompliance', () => {
 
     it('takeProfit tem prioridade sobre resultado efetivo', () => {
       const trade = { 
-        entry: 5000, stopLoss: 4950, takeProfit: 5100, 
+        entry: 5000, side: 'LONG', stopLoss: 4950, takeProfit: 5100, 
         qty: 1, result: 5,
         tickerRule: winfutTicker 
       };
@@ -433,7 +433,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('com stop -> rrAssumed = false (RR real)', () => {
-      const trade = { entry: 5000, stopLoss: 4950, takeProfit: 5100, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, takeProfit: 5100, qty: 1, tickerRule: winfutTicker };
       const result = calculateTradeCompliance(trade, basePlan);
 
       expect(result.rrRatio).toBe(2.0);
@@ -483,7 +483,7 @@ describe('calculateTradeCompliance', () => {
   // =============================================
   describe('Edge cases', () => {
     it('plan null -> retorna defaults seguros', () => {
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1 };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1 };
       const result = calculateTradeCompliance(trade, null);
 
       expect(result.riskPercent).toBeNull();
@@ -499,7 +499,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('planPl = 0 -> retorna defaults (divisao por zero evitada)', () => {
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
       const plan = { ...basePlan, currentPl: 0, pl: 0 };
 
       const result = calculateTradeCompliance(trade, plan);
@@ -508,7 +508,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('planPl negativo -> retorna defaults', () => {
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
       const plan = { ...basePlan, currentPl: -5000, pl: -5000 };
 
       const result = calculateTradeCompliance(trade, plan);
@@ -517,7 +517,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('sem tickerRule -> usa defaults (tickSize=1, tickValue=1)', () => {
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1 };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1 };
 
       const result = calculateTradeCompliance(trade, basePlan);
 
@@ -525,7 +525,7 @@ describe('calculateTradeCompliance', () => {
     });
 
     it('plan sem riskPerOperation -> roStatus sempre CONFORME', () => {
-      const trade = { entry: 5000, stopLoss: 4950, qty: 50, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 50, tickerRule: winfutTicker };
       const plan = { currentPl: 20000 };
 
       const result = calculateTradeCompliance(trade, plan);
@@ -536,7 +536,7 @@ describe('calculateTradeCompliance', () => {
 
     it('plan sem pl -> fallback para currentPl via nullish coalescing', () => {
       // DEC-009: pl e primario, mas quando nao existe, faz fallback para currentPl
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
       const plan = { currentPl: 10000, riskPerOperation: 0.4, rrTarget: 2 };
 
       const result = calculateTradeCompliance(trade, plan);
@@ -566,7 +566,7 @@ describe('calculateTradeCompliance', () => {
       // Plan: pl=200000 (base), currentPl=115939 (corrompido/flutuante)
       // Stop distance: 50pts, tickSize=5, tickValue=1, qty=1 -> riskAmount = 10
       const plan = { pl: 200000, currentPl: 115939, riskPerOperation: 0.5, rrTarget: 2 };
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
 
       const result = calculateTradeCompliance(trade, plan);
 
@@ -601,7 +601,7 @@ describe('calculateTradeCompliance', () => {
 
     it('currentPl divergente nao afeta riskPercent quando plan.pl existe', () => {
       // Mesmo trade, currentPl muito diferente do pl -> resultado deve ser identico
-      const trade = { entry: 5000, stopLoss: 4950, qty: 5, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 5, tickerRule: winfutTicker };
       const plan1 = { pl: 20000, currentPl: 20000, riskPerOperation: 0.4, rrTarget: 2 };
       const plan2 = { pl: 20000, currentPl: 50000, riskPerOperation: 0.4, rrTarget: 2 };
       const plan3 = { pl: 20000, currentPl: 5000, riskPerOperation: 0.4, rrTarget: 2 };
@@ -619,7 +619,7 @@ describe('calculateTradeCompliance', () => {
     it('plan legado sem pl -> fallback para currentPl funciona', () => {
       // Planos antigos podem nao ter campo pl
       const plan = { currentPl: 20000, riskPerOperation: 0.4, rrTarget: 2 };
-      const trade = { entry: 5000, stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
+      const trade = { entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1, tickerRule: winfutTicker };
 
       const result = calculateTradeCompliance(trade, plan);
 

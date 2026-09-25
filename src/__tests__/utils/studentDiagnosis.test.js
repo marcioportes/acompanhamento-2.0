@@ -156,7 +156,7 @@ describe('prescricoes — o que mudar e o que preservar', () => {
   const trade = (result, extra = {}) => ({
     date: '2026-08-24', entryTime: '2026-08-24T10:00:00-03:00', exitTime: '2026-08-24T10:20:00-03:00',
     setup: 'X', emotionEntry: 'Calmo', planId: 'p1', currency: 'BRL',
-    entry: 100, stopLoss: 90, qty: 1, result, ...extra,
+    side: 'LONG', entry: 100, stopLoss: 90, qty: 1, result, ...extra,
   });
 
   it('cobra a saída antecipada quando o ganho não chega ao alvo do plano', () => {
