@@ -456,3 +456,5 @@
 - **DEC-466-03** (25/09/2026): LIMITE sem gatilho com origem preenchida diferente de "Estratégia" (SuperDOM, Gráfico, Mobile) é saída manual, não proteção. Sem origem (outras corretoras, `orders`), não há evidência e a ordem passa.
 - **DEC-466-04** (25/09/2026): stop enviado com a entrada e cancelado segundos depois conta como stop do trade — é o risco declarado (Marcio: "era a intenção"). A retirada é sinal comportamental, não muda o risco.
 - **DEC-466-05** (25/09/2026): ordem órfã só é atribuída a operação do mesmo ativo e nunca vira stop.
+- **DEC-467-01** (25/09/2026): stop do lado errado da entrada (LONG com stop ≥ entrada, SHORT com stop ≤ entrada) é tratado como ausência de stop em todo cálculo de risco — `stopDistanceOf`, cliente e CF. Antes `Math.abs` o transformava em risco.
+- **DEC-467-02** (25/09/2026): o cabeçalho do painel de ordens mede cobertura da posição ("Protegido o tempo todo"), não risco inicial comprovado; no 24/09 os dois diferem e o texto fica como está.

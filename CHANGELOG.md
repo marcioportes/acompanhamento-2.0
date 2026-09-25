@@ -10,13 +10,11 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.11] - 25/09/2026 · #467 · PR #473
 
-**fix:** um caminho só para gravar e exibir o stop — enriquecimento, compliance, paine
+**fix:** um caminho só para gravar e exibir o stop — enriquecimento, compliance, painel
 
-- **Stop do lado errado da entrada = sem stop.** Isso vale para LONG com stop acima da entrada e para SHORT com stop abaixo. O helper novo `stopDistanceOf` (ESM + CJS) substitui o `Math.abs(entry − stop)` em todos os lugares:
-- **Enriquecimento de trade existente** passa a usar `tradeStopFromLegs`, a mesma regra da criação do trade. A guarda do #371 foi mantida: nunca sobrescreve o stop que o aluno digitou.
-- **Painel de ordens:**
-- O `calculateRiskPercent` morto sai de `functions/index.js`.
-
+- **Stop do lado errado da entrada = sem stop** (`stopDistanceOf`, cliente e CF): compliance, R:R, `realizedRR`, `rrBreakdown`, gateway e telas. Antes um SHORT a 185.070 com stop digitado a 184.000 contava 1.070 pts de risco.
+- **Enriquecimento de trade existente** usa a mesma regra de stop da criação (`tradeStopFromLegs`); o stop digitado pelo aluno segue intocado (#371).
+- **Painel de ordens:** "retirada" avaliada contra a saída da própria perna (o OCO da perna 2 do 24/09 passa a "ativa até a saída"); a proteção mostra o preço enviado, o mesmo que o trade grava.
 
 ## [1.92.10] - 25/09/2026 · #466 · PR #472
 
