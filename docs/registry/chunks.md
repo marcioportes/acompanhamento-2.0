@@ -6,3 +6,5 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
+| CHUNK-04 | #468 | `chore/issue-468-recalcular-trades-do-import` | 25/09/2026 | interativa |
+| CHUNK-05 | #468 | `chore/issue-468-recalcular-trades-do-import` | 25/09/2026 | interativa |
