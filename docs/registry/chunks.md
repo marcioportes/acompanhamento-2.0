@@ -6,7 +6,5 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
-| CHUNK-02 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | interativa |
-| CHUNK-03 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | interativa |
 | CHUNK-10 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | interativa |
 | CHUNK-06 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | interativa |
