@@ -20,6 +20,15 @@ Oito dias reais (105 operações) passam pelo caminho do `OrderImportPage`, dire
 - **Operação aberta:** `entryTime` sai em `Z`, e não com o offset do lote. Corrige na F1 #464.
 
 
+## [1.92.6] - 25/09/2026 · #460 · PR #461
+
+**fix:** o ícone do card do plano mede o mês, não o dia
+
+- **Ícone do card = ciclo.** `getCycleSentiment(cyclePnL, cycleGoalVal, cycleStopVal)`, sobre o mesmo acumulado da barra do ciclo: meta batida → troféu; stop estourado → caveira; senão carinha pelo sinal.
+- **Etiqueta do canto = período, rotulada.** "Hoje: …" / "Semana: …", e só quando o período é o corrente (`currentPeriodIsLive` novo na state machine). Sem trade hoje, o último dia operado não aparece mais como se fosse hoje.
+- **Extrato do Plano:** o selo de debug (INV-04) cobria a coluna Evento da última linha visível. Agora fica embutido no fim da rolagem da tabela (`ExtractTable` ganha a prop `footer`).
+
+
 ## [1.92.5] - 24/09/2026 · #458 · PR #459
 
 **fix:** gate de constância do risco pede 2 meses e só zera com mudança real

@@ -288,6 +288,7 @@ export const computePeriodState = (trades, goalVal, stopVal) => {
  *   cycleEnd: string (ISO),
  *   cycleState: { status, periods: Map<periodKey, periodState>, summary },
  *   currentPeriodKey: string | null,
+ *   currentPeriodIsLive: boolean — currentPeriodKey é o período de hoje (não o último operado),
  *   availablePeriods: string[],
  *   planConfig: { ...snapshot },
  *   computedAt: string (ISO),
@@ -375,18 +376,22 @@ export const computePlanState = (trades, planConfig, options = {}) => {
   }
 
   // Determinar período atual
+  // #460 — sem trade no período de hoje, `currentPeriodKey` cai no último período
+  // operado. `currentPeriodIsLive` diz se ele é de fato o período corrente: quem
+  // rotula o estado como "Hoje"/"Semana" precisa saber a diferença.
   const today = formatDateKey(refDate);
-  const currentPeriodKey = sortedPeriodKeys.includes(today)
-    ? today
-    : operationPeriod === 'Semanal'
-      ? sortedPeriodKeys.find(k => {
-          // Para semanal, verificar se hoje está dentro da semana do período
-          const periodStart = new Date(k + 'T00:00:00');
-          const periodEnd = new Date(periodStart);
-          periodEnd.setDate(periodEnd.getDate() + 6);
-          return refDate >= periodStart && refDate <= periodEnd;
-        }) || sortedPeriodKeys[sortedPeriodKeys.length - 1] || null
-      : sortedPeriodKeys[sortedPeriodKeys.length - 1] || null;
+  const liveWeekKey = operationPeriod === 'Semanal'
+    ? sortedPeriodKeys.find(k => {
+        // Para semanal, verificar se hoje está dentro da semana do período
+        const periodStart = new Date(k + 'T00:00:00');
+        const periodEnd = new Date(periodStart);
+        periodEnd.setDate(periodEnd.getDate() + 6);
+        return refDate >= periodStart && refDate <= periodEnd;
+      }) || null
+    : null;
+  const liveKey = sortedPeriodKeys.includes(today) ? today : liveWeekKey;
+  const currentPeriodKey = liveKey || sortedPeriodKeys[sortedPeriodKeys.length - 1] || null;
+  const currentPeriodIsLive = liveKey !== null;
 
   // Cycle summary
   const cycleSummary = {
@@ -411,6 +416,7 @@ export const computePlanState = (trades, planConfig, options = {}) => {
       summary: cycleSummary,
     },
     currentPeriodKey,
+    currentPeriodIsLive,
     availablePeriods: sortedPeriodKeys,
     planConfig: {
       pl,
@@ -574,4 +580,24 @@ export const getSentimentFromState = (periodStatus, pnl) => {
       if (pnl < 0) return { icon: 'Frown', colorClass: 'text-red-400' };
       return { icon: 'Meh', colorClass: 'text-slate-400' };
   }
+};
+
+/**
+ * #460 — ícone de sentimento do CICLO, sobre o mesmo acumulado da barra do ciclo.
+ *
+ * O card do plano mostra o mês (saldo, barra do ciclo); o ícone medir o dia
+ * contradizia o resto do card: meta do mês batida não aparecia.
+ *
+ * @param {number} cyclePnL - resultado acumulado do ciclo
+ * @param {number} goalVal - meta do ciclo em valor (0 = sem meta)
+ * @param {number} stopVal - stop do ciclo em valor positivo (0 = sem stop)
+ * @returns {{ icon: string, colorClass: string }}
+ */
+export const getCycleSentiment = (cyclePnL, goalVal, stopVal) => {
+  const pnl = Number(cyclePnL) || 0;
+  if (goalVal > 0 && pnl >= goalVal) return { icon: 'Trophy', colorClass: 'text-yellow-400' };
+  if (stopVal > 0 && pnl <= -stopVal) return { icon: 'Skull', colorClass: 'text-red-400' };
+  if (pnl > 0) return { icon: 'Smile', colorClass: 'text-emerald-400' };
+  if (pnl < 0) return { icon: 'Frown', colorClass: 'text-red-400' };
+  return { icon: 'Meh', colorClass: 'text-slate-400' };
 };

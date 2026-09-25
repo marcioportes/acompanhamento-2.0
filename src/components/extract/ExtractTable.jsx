@@ -125,7 +125,7 @@ export const getFeedbackStatusConfig = (status) => {
  * @param {Object|null} [planRiskInfo] - { pl, riskPerOperation, rrTarget } do plano (B4)
  * @param {Function|null} [onNavigateToFeedback] - Callback para navegar ao feedback do trade (B4)
  */
-const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [], planRiskInfo = null, onNavigateToFeedback = null }) => {
+const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEvents = [], planRiskInfo = null, onNavigateToFeedback = null, footer = null }) => {
   const displayRows = rows;
   // Colunas fixas: #, Data, Ativo, Emo, RO, RR, Resultado, Acum. Ciclo, Acum. Período, Evento, Status = 11
   const totalCols = 11;
@@ -361,6 +361,7 @@ const ExtractTable = ({ rows, fmt, getEmotionConfig, carryOver = 0, emotionalEve
           )}
         </tbody>
       </table>
+      {footer}
     </div>
   );
 };

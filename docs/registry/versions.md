@@ -124,6 +124,6 @@
 | 1.92.3 | #451 | `fix/issue-451-trade-discutido-imutavel` | 17/09/2026 | consumida (PR #452 squash `d763a591`) |
 | 1.92.4 | #455 | `fix/issue-455-data-com-milissegundos` | 23/09/2026 | consumida (PR #456 squash `bb97afd2`) |
 | 1.92.5 | #458 | `fix/issue-458-gate-constancia-risco` | 24/09/2026 | consumida (PR #459 squash `b40ca565`) |
-| 1.92.6 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | reservada |
+| 1.92.6 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | consumida (PR #461 squash `4e57a902`) |
 | 1.92.7 | #463 | `test/issue-463-harness-import-vs-corretora` | 25/09/2026 | consumida (PR #469 squash `3e68a6b1`) |
 | 1.92.8 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | reservada |
