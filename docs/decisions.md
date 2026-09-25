@@ -450,3 +450,4 @@
 - **DEC-464-02** (25/09/2026): ordem sem evento no export ("ordens recentes") usa a "Última Atualização" como instante de execução e também de cancelamento.
 - **DEC-464-03** (25/09/2026): empate de instante entre fills é resolvido pela hora de envio e depois pelo id da corretora; a ordem das linhas do arquivo nunca decide.
 - **DEC-464-04** (25/09/2026): mudança de formato gravado em `orders` exige deploy das CFs leitoras antes do merge do cliente.
+- **DEC-465-01** (25/09/2026): quantidade fracionária (lote de forex/CFD) é recusada no import com o motivo escrito, não aceita como contrato — aceitar erraria o resultado por ordem de grandeza. Suporte no #453.
