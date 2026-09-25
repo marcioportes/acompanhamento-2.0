@@ -451,3 +451,8 @@
 - **DEC-464-03** (25/09/2026): empate de instante entre fills é resolvido pela hora de envio e depois pelo id da corretora; a ordem das linhas do arquivo nunca decide.
 - **DEC-464-04** (25/09/2026): mudança de formato gravado em `orders` exige deploy das CFs leitoras antes do merge do cliente.
 - **DEC-465-01** (25/09/2026): quantidade fracionária (lote de forex/CFD) é recusada no import com o motivo escrito, não aceita como contrato — aceitar erraria o resultado por ordem de grandeza. Suporte no #453.
+- **DEC-466-01** (25/09/2026): posição em pernas grava em `trade.stopLoss` o STOP EQUIVALENTE — média de entrada ∓ Σ(|entrada − stop| × qtd da perna) / qtd total, arredondado em 2 casas — para que a fórmula atual do compliance devolva a soma do risco das pernas. Sem campo novo (INV-15). Perna sem stop comprovado → trade sem stop (aluno informa).
+- **DEC-466-02** (25/09/2026): uma ordem de proteção cobre no máximo a própria quantidade; perna não coberta = proteção parcial = sem stop comprovado.
+- **DEC-466-03** (25/09/2026): LIMITE sem gatilho com origem preenchida diferente de "Estratégia" (SuperDOM, Gráfico, Mobile) é saída manual, não proteção. Sem origem (outras corretoras, `orders`), não há evidência e a ordem passa.
+- **DEC-466-04** (25/09/2026): stop enviado com a entrada e cancelado segundos depois conta como stop do trade — é o risco declarado (Marcio: "era a intenção"). A retirada é sinal comportamental, não muda o risco.
+- **DEC-466-05** (25/09/2026): ordem órfã só é atribuída a operação do mesmo ativo e nunca vira stop.

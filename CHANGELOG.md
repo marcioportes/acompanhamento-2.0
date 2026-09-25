@@ -21,6 +21,7 @@ Version source of truth: `src/version.js`.
 - lado oposto;
 - enviada com a perna (±60s);
 
+Marcio, 8 dias: 53 stops indefensáveis → 0. Italo 19 → 0, Eduardo 32 → 0. Import direto e retomada do staging dão o mesmo stop. 24/09: trade sem stop (perna 2 só com stop de ganho), antes 188.720 e risco de R$ 7.070. DEC-466-01..05.
 
 ## [1.92.9] - 25/09/2026 · #465 · PR #471
 
