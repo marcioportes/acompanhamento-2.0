@@ -136,10 +136,13 @@ const parsePriceBR = (raw) => {
   return parseNumericValue(raw);
 };
 
+// #465 — `parseInt('0,03')` dava 0 e a validação recusava com "Quantidade inválida: 0",
+// sem dizer que o arquivo tinha lote fracionário (export internacional, caso Leandro).
+// A quantidade é lida como número BR; quem decide se fração é aceitável é a validação.
 const parseQty = (raw) => {
   if (!raw || raw.trim() === '-' || raw.trim() === '') return null;
-  const n = parseInt(raw.trim(), 10);
-  return isNaN(n) ? null : n;
+  const n = parseNumericValue(raw.trim());
+  return n == null || isNaN(n) ? null : n;
 };
 
 const parseDateTimeBR = (raw) => {
@@ -419,6 +422,16 @@ export const parseProfitChartPro = (text) => {
       order._instanteDaUltimaAtualizacao = true;
     }
 
+    // #465 (DT-048) — o preço da ordem é a MÉDIA das execuções, ponderada pela quantidade.
+    // Antes era o preço do primeiro evento "Trade": a ordem de 135 contratos de 11/09/2026
+    // executou em mais de um preço, e o resultado saía −250 contra −250,67 da corretora.
+    // Sem eventos (export "ordens recentes"), vale o "Preço Médio" da própria linha.
+    const fills = order.events.filter(e => e.type === 'TRADE' && e.price != null && e.quantity > 0);
+    if (fills.length > 0) {
+      const qtd = fills.reduce((s, e) => s + e.quantity, 0);
+      const media = fills.reduce((s, e) => s + e.price * e.quantity, 0) / qtd;
+      order.filledPrice = Math.round(media * 1e6) / 1e6;
+    }
     if (!order.filledPrice && order.avgFillPrice) order.filledPrice = order.avgFillPrice;
     if (!order.filledQuantity) {
       const tradeEvents = order.events.filter(e => e.type === 'TRADE');

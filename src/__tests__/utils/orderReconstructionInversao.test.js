@@ -116,13 +116,10 @@ describe('#446 · 11/09/2026 — quatro inversões, uma de 50 contratos', () => 
     expect(penultima.resultPoints).toBeCloseTo(-227, 1);
     expect(ultima.side).toBe('SHORT');
     expect(ultima.totalQty).toBe(135);
-    // O Profit mostra −250,67 nesta operação; aqui dá −250. A diferença NÃO é do
-    // agrupamento: as entradas são vendas de 35, 50 e 50, e para as duas últimas
-    // o parser entrega 188.670 onde o arquivo traz `Preço Médio` 188.668,40 e
-    // 188.669,80 — o preço de UM fill, não a média da ordem. O próprio arquivo
-    // confirma a média em `Total Executado` (188.669,80 × 50 × 0,2 = 1.886.698,00).
-    // Defeito de leitura de preço, não de reconstrução: fora do escopo do #446.
-    expect(ultima.resultPoints).toBeCloseTo(-250, 1);
+    // O Profit mostra −250,67 nesta operação. Até o #465 dava −250: o parser lia o preço
+    // de UM fill (188.670) onde o arquivo traz `Preço Médio` 188.668,40 e 188.669,80. Com
+    // o preço = média ponderada dos eventos "Trade" (#465, DT-048), fecha com a corretora.
+    expect(ultima.resultPoints).toBeCloseTo(-250.67, 2);
   });
 
   it('toda operação fecha — nenhuma posição sobra aberta no fim do dia', () => {
