@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
+| CHUNK-10 | #465 | `fix/issue-465-preco-medio-e-quantidade` | 25/09/2026 | interativa |
