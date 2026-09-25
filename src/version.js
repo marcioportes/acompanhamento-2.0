@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.11: #467 fix um caminho só para gravar e exibir o stop — enriquecimento, compliance, painel (RESERVADA)
+ * - 1.92.11: #467 fix um caminho só para gravar e exibir o stop — enriquecimento, compliance, paine (PR #473, 25/09/2026)
  * - 1.92.10: #466 fix pernas e proteção — definição única, stop inicial por perna, risco somado (PR #472, 25/09/2026)
  * - 1.92.9: #465 fix preço da ordem é a média das execuções; quantidade fracionária não zera c (PR #471, 25/09/2026)
  * - 1.92.8: #464 fix instante único da ordem — um helper, orders com offset, execução pelo event (PR #470, 25/09/2026)
@@ -455,7 +455,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.10';
+const version = '1.92.11';
 const build = '20260925';
 
 const VERSION = {

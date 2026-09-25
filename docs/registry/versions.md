@@ -129,4 +129,4 @@
 | 1.92.8 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | consumida (PR #470 squash `200535fb`) |
 | 1.92.9 | #465 | `fix/issue-465-preco-medio-e-quantidade` | 25/09/2026 | consumida (PR #471 squash `19ad5933`) |
 | 1.92.10 | #466 | `fix/issue-466-protecao-unica-por-perna` | 25/09/2026 | consumida (PR #472 squash `0537183a`) |
-| 1.92.11 | #467 | `fix/issue-467-um-caminho-do-stop` | 25/09/2026 | reservada |
+| 1.92.11 | #467 | `fix/issue-467-um-caminho-do-stop` | 25/09/2026 | consumida (PR #473 squash `cfa3fd75`) |
