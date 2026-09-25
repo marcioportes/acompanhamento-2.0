@@ -446,3 +446,7 @@
 - **DEC-455-02** (24/09/2026): perna `STOP_GAIN` não vira `stopLoss`. Sem proteção real o `stopLoss` fica `null` e o aluno informa; o sistema não inventa o stop inicial que o export não traz.
 - **DEC-463-01** (25/09/2026): o harness do import (#463) anota o stop esperado à mão só nos dias curtos (20/04, 04/05, 23/09, 24/09); os demais usam o critério geral `violacoesDoStop`. Falhas atuais rodam como `it.fails` com a fase do épico #462 que as corrige, e a lista só encolhe.
 - **DEC-460-01** (25/09/2026): o ícone do card do plano usa o acumulado atual do ciclo, o mesmo da barra, e não o estado "meta já foi batida" da state machine, que é pegajoso. Assim ícone e barra nunca discordam.
+- **DEC-464-01** (25/09/2026): `orders` passa a ser gravada com o offset do lote, mas ids e chaves não mudam — a chave composta tira o offset (`stripBatchOffset`) e o id determinístico sai do staging ingênuo. Reimportar não duplica (#362/#366).
+- **DEC-464-02** (25/09/2026): ordem sem evento no export ("ordens recentes") usa a "Última Atualização" como instante de execução e também de cancelamento.
+- **DEC-464-03** (25/09/2026): empate de instante entre fills é resolvido pela hora de envio e depois pelo id da corretora; a ordem das linhas do arquivo nunca decide.
+- **DEC-464-04** (25/09/2026): mudança de formato gravado em `orders` exige deploy das CFs leitoras antes do merge do cliente.

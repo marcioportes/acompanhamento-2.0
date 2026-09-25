@@ -10,7 +10,9 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.8] - 25/09/2026 · #464 · PR #470
 
-**fix:** instante único da ordem — um helper, orders com offset, execução pelo event
+**fix:** instante único da ordem — um helper, orders com offset, execução pelo evento
+
+Italo 11–20/08: 23 operações invertidas → 0, 64/64 operações da corretora. Functions publicadas antes do merge (`linkOrdersToCreatedTrade`, `purgeOrphanOrders` aceitam os dois formatos).
 
 - **Um helper só para o instante da ordem.** `functions/shared/orderInstant.js` passa para a v2 e ganha um espelho ESM em `src/utils/orderInstant.js`; a paridade entre os dois tem teste. Saem as cópias `toWallMs`, `instanteDaOrdem`/`offsetDasOperacoes`, `orderMs`/`tradeOffsetOf` (engine e mirror) e os `toMs` soltos. O mesmo defeito de fuso tinha sido corrigido quatro vezes (#296, #375, #388, #449).
 - **Operação aberta** passa a gravar o offset do lote, como as fechadas; antes saía em `Z`. O offset não depende mais de qual operação vem primeiro. A mudança de horário de verão é tratada por data.
