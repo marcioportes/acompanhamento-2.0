@@ -444,3 +444,4 @@
 - **DEC-458-02** (24/09/2026): o ajuste de risco aplicado pelo ritual de fechamento (`closeCycle`) segue sem registrar em `editHistory` e não zera o gate de constância. É a mudança documentada que o próprio gate aceita.
 - **DEC-455-01** (24/09/2026): o instante da ordem é truncado ao segundo; os milissegundos do ProfitChart-Pro são descartados. Preservar `.mmm` faria `tzFromStoredIso` ler toda a base nova como legado sem fuso.
 - **DEC-455-02** (24/09/2026): perna `STOP_GAIN` não vira `stopLoss`. Sem proteção real o `stopLoss` fica `null` e o aluno informa; o sistema não inventa o stop inicial que o export não traz.
+- **DEC-463-01** (25/09/2026): o harness do import (#463) anota o stop esperado à mão só nos dias curtos (20/04, 04/05, 23/09, 24/09); os demais usam o critério geral `violacoesDoStop`. Falhas atuais rodam como `it.fails` com a fase do épico #462 que as corrige, e a lista só encolhe.

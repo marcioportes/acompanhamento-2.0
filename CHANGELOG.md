@@ -12,8 +12,10 @@ Version source of truth: `src/version.js`.
 
 **test:** harness do import de ordens contra o relatório da corretora
 
+Oito dias reais (105 operações) passam pelo caminho do `OrderImportPage`, direto e pela retomada do staging, e são comparados com o relatório de performance do Profit. Falhas atuais em `orderImportVsBroker.known.js`, com a fase do épico #462 que as corrige.
+
 - **Corretora:** 104 de 105 operações conferem. A que não confere é 11/09 16:17, porque o import usa o preço do 1º fill e não a média (DT-048). Corrige na F2 #465.
-- **Stop:** **53 operações gravam um stop indefensável.**
+- **Stop:** **53 operações gravam um stop indefensável** (zeragem, inversão, ordem cancelada antes da entrada, outro ativo, lado do ganho). Corrige na F3 #466.
 - **Retomada:** 2 operações dão stop diferente do import direto (24/09 dá 188.720 × 185.280). Corrige na F3 #466.
 - **Operação aberta:** `entryTime` sai em `Z`, e não com o offset do lote. Corrige na F1 #464.
 
