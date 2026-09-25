@@ -389,6 +389,10 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
               emotionalEvents={emotionalEvents}
               planRiskInfo={planRiskInfo}
               onNavigateToFeedback={onNavigateToFeedback ? handleNavigateToFeedback : null}
+              // #460 — o selo `fixed` ficava preso ao modal (backdrop-blur no ancestral) e
+              // caía sobre a coluna Evento da última linha. Embutido no fim da rolagem da
+              // tabela, com respiro próprio, não cobre nenhuma linha.
+              footer={<div className="pt-6"><DebugBadge component="PlanLedgerExtract" embedded /></div>}
             />
           </div>
 
@@ -405,7 +409,6 @@ const PlanLedgerExtract = ({ plan, trades, onClose, currency = 'BRL', onNavigate
         </div>
 
       </div>
-      <DebugBadge component="PlanLedgerExtract" />
     </div>
   );
 };
