@@ -1,0 +1,19 @@
+97de51907ea22fb1667677d3866259f2,24/09/2026,24/09/2026
+Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criação;Última Atualização;Preço;Preço Stop;Qtd;Preço Médio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estratégia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem
+Simulador;1000319383;Marcio Portes;NELO.3200520260924155221199788;WINV26;C;Executada;24/09/2026 15:52:21.596;24/09/2026 17:40:14.817;185.135,00;-;5;184.985,00;5;-;185.135,00;184.985,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;24/09/2026 17:40:14.817;;;;;184.985,00;5
+Simulador;1000319383;Marcio Portes;NELO.3200520260924155221199789;WINV26;C;Cancelada;24/09/2026 15:52:21.596;24/09/2026 17:40:14.817;184.570,00;-;5;-;-;5;184.570,00;-;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Cancel;24/09/2026 17:40:14.817;;;;;0,00;5
+Simulador;1000319383;Marcio Portes;NELO.3200520260924162431204806;WINV26;C;Executada;24/09/2026 16:24:31.807;24/09/2026 17:21:04.110;184.800,00;-;5;184.800,00;5;-;184.800,00;184.800,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;24/09/2026 17:21:04.110;;;;;184.800,00;5
+Simulador;1000319383;Marcio Portes;NELO.3200520260924162431204805;WINV26;C;Cancelada;24/09/2026 16:24:31.807;24/09/2026 17:21:04.110;185.430,00;185.280,00;5;-;-;5;185.430,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Estratégia
+;;;;;;Cancel;24/09/2026 17:21:04.110;;;;;0,00;5
+Simulador;1000319383;Marcio Portes;NELO.3200520260924154944199178;WINV26;V;Executada;24/09/2026 15:49:44.368;24/09/2026 16:24:31.775;185.300,00;-;5;185.300,00;5;-;185.300,00;185.300,00;Hoje;-;Normal;;-;Limite;-;BMF;Gráfico
+;;;;;;Trade;24/09/2026 16:24:31.760;;;;;185.300,00;5
+Simulador;1000319383;Marcio Portes;NELO.3200520260924155219199761;WINV26;V;Executada;24/09/2026 15:52:19.756;24/09/2026 15:52:24.086;185.070,00;-;5;185.070,00;5;-;185.070,00;185.070,00;Hoje;-;Normal;;-;Limite;-;BMF;Gráfico
+;;;;;;Trade;24/09/2026 15:52:21.565;;;;;185.070,00;4
+;;;;;;Trade;24/09/2026 15:52:24.086;;;;;185.070,00;1
+Simulador;1000319383;Marcio Portes;NELO.3200520260924143951181890;WINV26;C;Cancelada;24/09/2026 14:39:51.243;24/09/2026 15:08:18.618;189.840,00;189.690,00;1;-;-;1;37.968,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Gráfico
+;;;;;;Cancel;24/09/2026 15:08:18.618;;;;;0,00;1
+Simulador;1000319383;Marcio Portes;NELO.3200520260924143947181884;WINV26;C;Cancelada;24/09/2026 14:39:47.070;24/09/2026 15:08:14.693;188.870,00;188.720,00;1;-;-;1;37.774,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Gráfico
+;;;;;;Cancel;24/09/2026 15:08:14.693;;;;;0,00;1
