@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.10: #466 fix pernas e proteção — definição única, stop inicial por perna, risco somado (RESERVADA)
  * - 1.92.9: #465 fix preço da ordem é a média das execuções; quantidade fracionária não zera c (PR #471, 25/09/2026)
  * - 1.92.8: #464 fix instante único da ordem — um helper, orders com offset, execução pelo event (PR #470, 25/09/2026)
  * - 1.92.7: #463 test harness do import de ordens contra o relatório da corretora (PR #469, 25/09/2026)

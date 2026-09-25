@@ -128,3 +128,4 @@
 | 1.92.7 | #463 | `test/issue-463-harness-import-vs-corretora` | 25/09/2026 | consumida (PR #469 squash `3e68a6b1`) |
 | 1.92.8 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | consumida (PR #470 squash `200535fb`) |
 | 1.92.9 | #465 | `fix/issue-465-preco-medio-e-quantidade` | 25/09/2026 | consumida (PR #471 squash `19ad5933`) |
+| 1.92.10 | #466 | `fix/issue-466-protecao-unica-por-perna` | 25/09/2026 | reservada |
