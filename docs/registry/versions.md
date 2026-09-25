@@ -126,4 +126,4 @@
 | 1.92.5 | #458 | `fix/issue-458-gate-constancia-risco` | 24/09/2026 | consumida (PR #459 squash `b40ca565`) |
 | 1.92.6 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | consumida (PR #461 squash `4e57a902`) |
 | 1.92.7 | #463 | `test/issue-463-harness-import-vs-corretora` | 25/09/2026 | consumida (PR #469 squash `3e68a6b1`) |
-| 1.92.8 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | reservada |
+| 1.92.8 | #464 | `fix/issue-464-instante-unico-da-ordem` | 25/09/2026 | consumida (PR #470 squash `200535fb`) |

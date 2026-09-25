@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.8] - 25/09/2026 · #464 · PR #470
+
+**fix:** instante único da ordem — um helper, orders com offset, execução pelo event
+
+- **Um helper só para o instante da ordem.** `functions/shared/orderInstant.js` passa para a v2 e ganha um espelho ESM em `src/utils/orderInstant.js`; a paridade entre os dois tem teste. Saem as cópias `toWallMs`, `instanteDaOrdem`/`offsetDasOperacoes`, `orderMs`/`tradeOffsetOf` (engine e mirror) e os `toMs` soltos. O mesmo defeito de fuso tinha sido corrigido quatro vezes (#296, #375, #388, #449).
+- **Operação aberta** passa a gravar o offset do lote, como as fechadas; antes saía em `Z`. O offset não depende mais de qual operação vem primeiro. A mudança de horário de verão é tratada por data.
+- **Execução sem evento.** No export "ordens recentes", que vem sem as linhas de execução, o horário passa a ser a "Última Atualização". Empate no mesmo instante é resolvido pela hora de envio e depois pelo id da corretora, nunca pela ordem das linhas do arquivo.
+- **`orders` gravada com o offset do lote.** Pendente desde o #375. O staging continua ingênuo, com `importTimezone`. Os leitores aceitam os dois formatos.
+- **Ids e chaves não mudam.** A chave composta tira o offset do lote (`stripBatchOffset`), e o id determinístico sai do staging ingênuo. Reimportar não duplica (#362/#366).
+
+
 ## [1.92.7] - 25/09/2026 · #463 · PR #469
 
 **test:** harness do import de ordens contra o relatório da corretora
