@@ -125,4 +125,4 @@
 | 1.92.4 | #455 | `fix/issue-455-data-com-milissegundos` | 23/09/2026 | consumida (PR #456 squash `bb97afd2`) |
 | 1.92.5 | #458 | `fix/issue-458-gate-constancia-risco` | 24/09/2026 | consumida (PR #459 squash `b40ca565`) |
 | 1.92.6 | #460 | `fix/issue-460-icone-do-card-mede-o-mes` | 24/09/2026 | reservada |
-| 1.92.7 | #463 | `test/issue-463-harness-import-vs-corretora` | 25/09/2026 | reservada |
+| 1.92.7 | #463 | `test/issue-463-harness-import-vs-corretora` | 25/09/2026 | consumida (PR #469 squash `3e68a6b1`) |

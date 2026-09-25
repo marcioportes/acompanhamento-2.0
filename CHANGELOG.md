@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.7] - 25/09/2026 · #463 · PR #469
+
+**test:** harness do import de ordens contra o relatório da corretora
+
+- **Corretora:** 104 de 105 operações conferem. A que não confere é 11/09 16:17, porque o import usa o preço do 1º fill e não a média (DT-048). Corrige na F2 #465.
+- **Stop:** **53 operações gravam um stop indefensável.**
+- **Retomada:** 2 operações dão stop diferente do import direto (24/09 dá 188.720 × 185.280). Corrige na F3 #466.
+- **Operação aberta:** `entryTime` sai em `Z`, e não com o offset do lote. Corrige na F1 #464.
+
+
 ## [1.92.5] - 24/09/2026 · #458 · PR #459
 
 **fix:** gate de constância do risco pede 2 meses e só zera com mudança real

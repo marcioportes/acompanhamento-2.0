@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.7: #463 test harness do import de ordens contra o relatório da corretora (RESERVADA)
+ * - 1.92.7: #463 test harness do import de ordens contra o relatório da corretora (PR #469, 25/09/2026)
  * - 1.92.6: #460 fix o ícone do card do plano mede o dia, não o mês (RESERVADA)
  * - 1.92.4: #455 fix import de ordens grava o trade invertido e datado de 1970 (PR #456, 24/09/2026)
  * - 1.92.5: #458 fix gate de constância do risco pede 2 meses e só zera com mudança real (PR #459, 24/09/2026)
@@ -451,8 +451,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.5';
-const build = '20260924';
+const version = '1.92.7';
+const build = '20260925';
 
 const VERSION = {
   version,
