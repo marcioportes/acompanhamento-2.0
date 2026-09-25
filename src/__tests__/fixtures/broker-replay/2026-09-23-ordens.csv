@@ -1,0 +1,8 @@
+a30f113c7624bd6ce9ca2c7cfc13dc4f,23/09/2026,23/09/2026
+Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criação;Última Atualização;Preço;Preço Stop;Qtd;Preço Médio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estratégia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem
+Simulador;1000319383;Marcio Portes;NELO.320052026092310580689939;WINV26;V;Cancelada;23/09/2026 10:58:06.975;23/09/2026 11:07:36.880;189.240,00;189.390,00;5;-;-;5;189.240,00;-;Hoje;-;Normal;;-;Stop Limite;-;BMF;Estratégia
+;;;;;;Cancel;23/09/2026 11:07:36.834;;;;;0,00;5
+Simulador;1000319383;Marcio Portes;NELO.320052026092310580689940;WINV26;V;Executada;23/09/2026 10:58:06.975;23/09/2026 11:07:36.834;189.870,00;-;5;189.870,00;5;-;189.870,00;189.870,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia
+;;;;;;Trade;23/09/2026 11:07:36.787;;;;;189.870,00;5
+Simulador;1000319383;Marcio Portes;NELO.320052026092310580389928;WINV26;C;Executada;23/09/2026 10:58:03.171;23/09/2026 10:58:06.975;189.370,00;-;5;189.370,00;5;-;189.370,00;189.370,00;Hoje;-;Normal;;-;Limite;-;BMF;Gráfico
+;;;;;;Trade;23/09/2026 10:58:06.975;;;;;189.370,00;5

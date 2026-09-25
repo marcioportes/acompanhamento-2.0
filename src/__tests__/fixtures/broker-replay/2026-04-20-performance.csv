@@ -1,0 +1,9 @@
+Conta: 17375163
+Titular: Marcio R. Portes
+Data Inicial: 20/04/2026
+Data Final: 22/04/2026
+
+Ativo;Abertura;Fechamento;Tempo Operação;Qtd Compra;Qtd Venda;Lado;Preço Compra;Preço Venda;Preço de Mercado;MEP;MEN;Médio;Número Operação;Res. Operação;Res. Operação (%);TET;Total
+WINM26;20/04/2026 12:08:21;20/04/2026 12:58:20;49min59s;2;2;C;200.225,00;200.725,00;197.285,00;500,00;-65,00;Não;1;200,00;500,00; - ;200,00
+WINM26;22/04/2026 10:55:43;22/04/2026 11:00:52;5min9s;2;2;V;198.750,00;198.500,00;197.285,00;45,00;-250,00;Não;2;-100,00;-250,00;1d22h;100,00
+WINM26;22/04/2026 11:07:52;22/04/2026 11:19:49;11min57s;2;2;V;197.870,00;198.370,00;197.285,00;500,00;-60,00;Não;3;200,00;500,00;12min9s;300,00
