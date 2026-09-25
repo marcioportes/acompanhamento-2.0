@@ -14,6 +14,8 @@
  * Base é GEOMETRIA DE PREÇO — não depende de `tickerRule`, `pointValue` nem `result`.
  */
 
+const { stopDistanceOf } = require('./orderProtection');
+
 /** Ausência não é zero: Number(null) é 0 e passaria por finito (armadilha do #373). */
 const num = (v) => {
   if (v === null || v === undefined || v === '') return null;
@@ -31,8 +33,9 @@ const realizedRR = (trade) => {
   const stop = num(trade && trade.stopLoss);
   if (entry == null || exit == null || stop == null) return null;
 
-  const risk = Math.abs(entry - stop);
-  if (!(risk > 0)) return null;   // stop na entrada não é R:R infinito, é ausência de razão
+  // #467 — stop do lado errado da entrada (ou na entrada) não é stop: ausência de razão.
+  const risk = stopDistanceOf(trade && trade.side, entry, stop);
+  if (risk == null) return null;
 
   const dir = (trade && trade.side) === 'SHORT' ? -1 : 1;
   return Math.round((((exit - entry) * dir) / risk) * 100) / 100;

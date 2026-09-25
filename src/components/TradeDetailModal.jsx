@@ -37,6 +37,7 @@ import BehaviorPanel from './Trades/BehaviorPanel';
 import TradeReviewSection from './Trades/TradeReviewSection';
 import ExcursionDisplay from './ExcursionDisplay';
 import { isCMEFutureTicker, fmtTradeDateTime } from '../utils/tradeTimezone';
+import { stopDistanceOf } from '../utils/orderProtection';
 
 // Helpers locais para evitar dependências quebradas
 
@@ -257,8 +258,9 @@ const TradeDetailModal = ({
                 }`}>
                   {(() => {
                     // Futuros: risco em pontos
-                    if (trade.tickerRule && trade.stopLoss && trade.entry) {
-                      const riskPts = Math.abs(trade.entry - trade.stopLoss);
+                    // #467 — distância pela conta única: stop do lado errado da entrada não é risco.
+                    const riskPts = trade.tickerRule ? stopDistanceOf(trade.side, trade.entry, trade.stopLoss) : null;
+                    if (riskPts != null) {
                       return `Stop: ${riskPts} pts`;
                     }
                     // Ações/papéis: % sobre PL

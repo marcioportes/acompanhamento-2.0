@@ -252,6 +252,7 @@ describe('R:R em dinheiro (#373)', () => {
   const tradeRR = {
     id: 'T-RR',
     currency: 'BRL',
+    side: 'LONG',
     entry: 171842.5,
     stopLoss: 171595,
     qty: 10,

@@ -86,6 +86,7 @@ const getResult = (trade) => Number(trade.result) || 0;
 
 // #383 — a conta virou SSoT compartilhada; três cópias foi o defeito que o #383 fechou.
 const { realizedRR } = require('../shared/realizedRR');
+const { stopDistanceOf } = require('../shared/orderProtection');
 const { orderInstantMs } = require('../shared/orderInstant');
 
 /** Instante de um campo do TRADE (já traz offset explícito desde #285/#292). */
@@ -250,8 +251,9 @@ const detectTargetHit = (trade) => {
   if (getResult(trade) <= 0 || realizedRR(trade) == null || trade.rrAssumed) return null;
   const { stopLoss, entry, exit } = trade;
   if (!stopLoss || !entry || !exit) return null;
-  const risk = Math.abs(entry - stopLoss);
-  if (risk <= 0) return null;
+  // #467 — distância pela conta única (stop do lado errado = sem stop).
+  const risk = stopDistanceOf(trade.side, entry, stopLoss);
+  if (risk == null) return null;
   const planRR = planRrTargetOf(trade);
   const side = trade.side === 'SHORT' ? -1 : 1;
   const target = entry + (side * risk * planRR);

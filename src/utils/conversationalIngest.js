@@ -14,6 +14,7 @@
 
 import { CLASSIFICATION } from './orderTradeCreation';
 import { stripBatchOffset } from './orderInstant';
+import { tradeStopFromLegs } from './orderProtection';
 
 /**
  * Roteia itens da fila conversacional em buckets de ação downstream.
@@ -112,12 +113,16 @@ export function buildEnrichmentPayload(item, opts = {}) {
   // #371 — só reporta stop quando o import REALMENTE achou proteção. Antes devolvia
   // `null` na ausência, e o patch apagava o stop que o aluno tinha digitado.
   // Ausência de dado não é dado: o campo simplesmente não entra no payload.
+  //
+  // #467 (épico #462 F4) — o stop do enriquecimento é o MESMO da criação de trade:
+  // `tradeStopFromLegs` (stop por perna, preço ENVIADO, stop de ganho não conta, stop
+  // cancelado antes da entrada não conta). Antes era "o último de `stopOrders`" pelo preço
+  // EXECUTADO (`filledPrice ?? stopPrice`) — nunca recebeu os fixes do #449 e do #455.
+  // Perna sem stop comprovado → `stopLoss` null → o campo não entra no payload.
+  // A regra de não sobrescrever o stop do aluno continua no gateway (`enrichTrade`).
   let stopLoss;
-  if (op.hasStopProtection && op.stopOrders?.length > 0) {
-    const lastStop = op.stopOrders[op.stopOrders.length - 1];
-    const preco = parseFloat(lastStop.filledPrice ?? lastStop.stopPrice ?? lastStop.price);
-    if (Number.isFinite(preco) && preco > 0) stopLoss = preco;
-  }
+  const { stopLoss: stopDasPernas } = tradeStopFromLegs(op);
+  if (Number.isFinite(stopDasPernas) && stopDasPernas > 0) stopLoss = stopDasPernas;
 
   const instrument = (op.instrument || '').toUpperCase();
   const tickerRule = tickerRuleMap[instrument] ?? null;

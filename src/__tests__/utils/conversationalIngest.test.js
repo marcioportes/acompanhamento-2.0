@@ -235,14 +235,54 @@ describe('buildEnrichmentPayload', () => {
     expect(payload.entry).toBe(24905.5);
   });
 
-  it('stopLoss: operation.hasStopProtection true → extrai lastStop', () => {
+  // #467 (épico #462 F4) — o enriquecimento usa o MESMO stop da criação de trade
+  // (`tradeStopFromLegs`): stop por perna, preço enviado, stop de ganho não conta.
+  const stopDe = (over = {}) => ({
+    instrument: 'MNQH6', side: 'SELL', isStopOrder: true,
+    submittedAt: '2026-02-12T14:41:31', quantity: 2, ...over,
+  });
+
+  it('stopLoss: proteção do bracket → stop inicial da perna (a mais antiga, não a última da lista)', () => {
     const op = makeOp({
       hasStopProtection: true,
-      stopOrders: [{ stopPrice: 24880 }, { stopPrice: 24890 }],
+      stopOrders: [
+        stopDe({ stopPrice: 24890, submittedAt: '2026-02-12T14:50:00' }), // arraste posterior
+        stopDe({ stopPrice: 24880 }),
+      ],
     });
-    const item = makeItem({ operation: op });
-    const payload = buildEnrichmentPayload(item);
-    expect(payload.stopLoss).toBe(24890);
+    const payload = buildEnrichmentPayload(makeItem({ operation: op }));
+    expect(payload.stopLoss).toBe(24880);
+  });
+
+  it('stopLoss: preço ENVIADO, nunca o executado (#449)', () => {
+    const op = makeOp({
+      hasStopProtection: true,
+      stopOrders: [stopDe({ stopPrice: 24880, filledPrice: 24870, status: 'FILLED' })],
+    });
+    const payload = buildEnrichmentPayload(makeItem({ operation: op }));
+    expect(payload.stopLoss).toBe(24880);
+  });
+
+  it('stopLoss: stop do lado do ganho (#455) → campo fora do payload', () => {
+    const op = makeOp({ hasStopProtection: true, stopOrders: [stopDe({ stopPrice: 24910 })] });
+    const payload = buildEnrichmentPayload(makeItem({ operation: op }));
+    expect('stopLoss' in payload).toBe(false);
+  });
+
+  it('stopLoss: stop cancelado antes da entrada → campo fora do payload', () => {
+    const op = makeOp({
+      hasStopProtection: true,
+      stopOrders: [stopDe({ stopPrice: 24880, submittedAt: '2026-02-12T14:41:00', cancelledAt: '2026-02-12T14:41:10' })],
+    });
+    const payload = buildEnrichmentPayload(makeItem({ operation: op }));
+    expect('stopLoss' in payload).toBe(false);
+  });
+
+  it('stopLoss: mesmo valor que a criação de trade grava', async () => {
+    const { mapOperationToTradeData } = await import('../../utils/orderTradeCreation');
+    const op = makeOp({ hasStopProtection: true, stopOrders: [stopDe({ stopPrice: 24880 })] });
+    const payload = buildEnrichmentPayload(makeItem({ operation: op }));
+    expect(payload.stopLoss).toBe(mapOperationToTradeData(op, 'plan-1').stopLoss);
   });
 
   it('userAdjustments.stopLoss = null → sobrescreve para null (ordem do aluno, #371)', () => {

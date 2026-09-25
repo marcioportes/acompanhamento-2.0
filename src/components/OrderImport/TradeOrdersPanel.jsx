@@ -9,7 +9,50 @@
 import { useMemo } from 'react';
 import { ShieldCheck, ShieldOff, ShieldAlert, ArrowDownRight, ArrowUpRight, XCircle, FileText } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
-import { protectionTimeline, protectiveLegsOf, orderInstantMs } from '../../utils/executionBehaviorEngine';
+import { protectionTimeline, protectiveLegsOf, positionLegsOf, orderInstantMs } from '../../utils/executionBehaviorEngine';
+import { legOfOrder, sentPriceOf } from '../../utils/orderProtection';
+
+/** Tolerância entre o cancelamento da proteção e a saída que a matou (OCO). */
+const OCO_SAIDA_TOLERANCIA_MS = 20000;
+
+const executada = (o) => o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED';
+
+/**
+ * #467 (épico #462 F4) — instante em que cada PERNA ficou zerada.
+ *
+ * Cada saída executada (lado oposto à entrada — alvo, stop executado, saída manual) é
+ * atribuída à perna a que se refere (`legOfOrder`, a mesma regra do import) e a perna
+ * fecha quando a soma das saídas dela alcança a quantidade dela. O OCO da perna 2 morto
+ * quando o alvo da perna 2 executou é "até a saída" DAQUELA perna — antes o painel
+ * comparava com a saída do TRADE e o chamava de "retirada".
+ *
+ * @param {Object} trade
+ * @param {Object[]} tradeOrders
+ * @param {{position, ctx, legs}} pernas — de `positionLegsOf` (as chaves do Map são essas pernas)
+ * @returns {Map<Object, number>} perna → instante (ms) em que zerou
+ */
+const legCloseTimesOf = (trade, tradeOrders, pernas) => {
+  const fechamento = new Map();
+  if (!trade?.side || !pernas?.legs.length) return fechamento;
+  const { position, ctx, legs } = pernas;
+  const entradaSide = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  const saidas = tradeOrders
+    .filter(o => executada(o) && o.side && o.side !== entradaSide)
+    .map(o => ({
+      ts: orderInstantMs(trade, o.filledAt || o.submittedAt),
+      qty: Number(o.filledQuantity ?? o.quantity ?? 0),
+      perna: legOfOrder(o, legs, position, ctx),
+    }))
+    .filter(x => x.ts != null && x.perna && Number.isFinite(x.qty) && x.qty > 0)
+    .sort((a, b) => a.ts - b.ts);
+  const acumulado = new Map();
+  for (const x of saidas) {
+    const total = (acumulado.get(x.perna) || 0) + x.qty;
+    acumulado.set(x.perna, total);
+    if (total >= x.perna.qty && !fechamento.has(x.perna)) fechamento.set(x.perna, x.ts);
+  }
+  return fechamento;
+};
 
 /** Duração legível para janela de exposição: "1m22s", "45s", "2h05m". */
 const fmtDuracao = (ms) => {
@@ -112,6 +155,9 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
       const d = new Date(raw);
       return Number.isNaN(d.getTime()) ? null : d.getTime();
     })();
+    // #467 — pernas e o instante em que cada uma zerou (ver `legCloseTimesOf`).
+    const pernas = trade?.side ? positionLegsOf(trade, tradeOrders) : null;
+    const fechamentoDaPerna = legCloseTimesOf(trade, tradeOrders, pernas);
 
     const rows = tradeOrders.map((o) => {
       const leg = o.externalOrderId ? legById.get(o.externalOrderId) : null;
@@ -131,8 +177,13 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
         } else if (!o.cancelledAt) {
           protectionState = { kind: 'LIVE', label: 'ativa' };
         } else {
+          // #467 — "até a saída" é a saída DA PERNA desta proteção; a saída do trade vale
+          // para todas (com o trade zerado, toda perna está zerada).
           const cTs = orderInstantMs(trade, o.cancelledAt) ?? 0;
-          const morreuNaSaida = exitTs != null && cTs >= exitTs - 20000;
+          const perna = pernas?.legs.length ? legOfOrder(o, pernas.legs, pernas.position, pernas.ctx) : null;
+          const saidaDaPerna = perna ? fechamentoDaPerna.get(perna) : null;
+          const morreuNaSaida = (saidaDaPerna != null && cTs >= saidaDaPerna - OCO_SAIDA_TOLERANCIA_MS)
+            || (exitTs != null && cTs >= exitTs - OCO_SAIDA_TOLERANCIA_MS);
           protectionState = morreuNaSaida
             ? { kind: 'OCO', label: 'ativa até a saída' }
             : { kind: 'WITHDRAWN', label: 'retirada' };
@@ -272,7 +323,11 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
             cancel: { Icon: XCircle, label: 'Cancel', tone: 'text-slate-500' },
           }[role];
           const { Icon, label, tone } = labelByRole;
-          const priceCell = role === 'stop' ? (o.stopPrice ?? o.price ?? '-')
+          // #467 — proteção mostra o preço ENVIADO (`sentPriceOf`: gatilho > limite), o
+          // mesmo que o trade grava. `price` da ordem normalizada é o EXECUTADO: o stop do
+          // bracket de 24/09 enviado a 185.135 aparecia como 184.985.
+          const priceCell = role === 'stop'
+            ? (implicit ? (o.stopPrice ?? '-') : (sentPriceOf(o) ?? '-'))
             : (o.filledPrice ?? o.price ?? '-');
           const qtyCell = role === 'cancel'
             ? (o.quantity ?? '-')

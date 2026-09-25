@@ -106,6 +106,7 @@ describe('buildEnrichmentPayload — não emite nulo por cima', () => {
   const operacao = (over = {}) => ({
     operationId: 'OP-1',
     instrument: 'WINV26',
+    side: 'SHORT',
     totalQty: 5,
     avgEntryPrice: 169880,
     avgExitPrice: 170130,
@@ -126,7 +127,10 @@ describe('buildEnrichmentPayload — não emite nulo por cima', () => {
   it('operação com proteção manda o stop encontrado', () => {
     const op = operacao({
       hasStopProtection: true,
-      stopOrders: [{ stopPrice: 170280, quantity: 5 }],
+      // #467 — o enriquecimento usa o stop por perna (`tradeStopFromLegs`): a proteção
+      // precisa ser do ativo, do lado oposto e nascer com a perna (±60s).
+      stopOrders: [{ instrument: 'WINV26', side: 'BUY', isStopOrder: true, stopPrice: 170280,
+        quantity: 5, submittedAt: '2026-08-20T10:18:55' }],
     });
 
     const payload = buildEnrichmentPayload({ operation: op, tradeId: 'T1' }, {});

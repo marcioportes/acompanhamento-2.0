@@ -132,7 +132,7 @@ describe('diagnosePlan — diagnóstico bidirecional', () => {
       // RR via resultado efetivo: result=200, risk=50pts, (200/(1*1))*5=1000pts, 1000/50=20.0
       const trades = [{
         id: 't1', planId: 'plan1', result: 200,
-        entry: 5000, stopLoss: 4950, qty: 1,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1,
         tickerRule: winfutTicker,
         riskPercent: 0.1, // (50/5)*1*1=10, 10/10000=0.1%
         rrRatio: 20.0, // resultado efetivo
@@ -241,7 +241,7 @@ describe('diagnosePlan — diagnóstico bidirecional', () => {
       // RR via resultado efetivo: 200/(1*1)*5=1000, 1000/50=20.0
       const trades = [{
         id: 't1', planId: 'plan1', result: 200,
-        entry: 5000, stopLoss: 4950, qty: 1,
+        entry: 5000, side: 'LONG', stopLoss: 4950, qty: 1,
         tickerRule: winfutTicker,
         riskPercent: 0.1,
         rrRatio: 20.0,

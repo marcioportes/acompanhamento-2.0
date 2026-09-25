@@ -248,12 +248,6 @@ const getWelcomeEmailHtml = (studentName, resetLink) => {
 // HELPERS
 // ============================================
 
-const calculateRiskPercent = (trade, accountBalance) => {
-  if (!accountBalance || accountBalance <= 0) return 0;
-  const risk = Math.abs(trade.result < 0 ? trade.result : (trade.entry - trade.stopLoss) * trade.qty);
-  return (risk / accountBalance) * 100;
-};
-
 const updateAccountBalance = async (accountId, resultDiff) => {
   if (!accountId || resultDiff === 0) return;
   const accountRef = db.collection('accounts').doc(accountId);
@@ -433,6 +427,8 @@ const notifyPropFirmFlag = async (accountId, trade, state) => {
 const { realizedRR } = require('./shared/realizedRR');
 const { tradeChangeScope } = require('./shared/tradeChangeScope');
 const { exceedsLimit } = require('./shared/planTolerance');
+// #467 (épico #462 F4) — distância do stop pela conta única, espelho de `src/utils/orderProtection`.
+const { stopDistanceOf } = require('./shared/orderProtection');
 
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
@@ -443,11 +439,15 @@ const calculateTradeCompliance = (trade, plan) => {
   const planPl = plan.pl ?? plan.currentPl ?? 0;
   if (planPl <= 0) return result;
   
+  // #467 — stop do lado ERRADO da entrada é "sem stop", nunca risco via Math.abs.
+  // MANTER EM SINCRONIA com src/utils/compliance.js.
+  const stopDistance = stopDistanceOf(trade.side, trade.entry, trade.stopLoss);
+
   // === Risco Operacional — DEC-006 (v1.19.1) ===
-  if (trade.stopLoss && trade.entry) {
+  if (stopDistance != null) {
     const tickSize = trade.tickerRule?.tickSize || 1;
     const tickValue = trade.tickerRule?.tickValue || 1;
-    const distanceInPoints = Math.abs(trade.entry - trade.stopLoss);
+    const distanceInPoints = stopDistance;
     const riskAmount = (distanceInPoints / tickSize) * tickValue * (trade.qty ?? 1);
     result.riskPercent = (riskAmount / planPl) * 100;
   } else {
@@ -469,8 +469,8 @@ const calculateTradeCompliance = (trade, plan) => {
   }
   
   // === Razão Risco-Retorno — DEC-007 (v1.19.2) ===
-  if (trade.stopLoss && trade.entry) {
-    const risk = Math.abs(trade.entry - trade.stopLoss);
+  if (stopDistance != null) {
+    const risk = stopDistance;
     if (risk > 0) {
       if (trade.takeProfit) {
         const reward = Math.abs(trade.takeProfit - trade.entry);
@@ -1196,7 +1196,8 @@ exports.onTradeCreated = functions.firestore
       // === 2. COMPLIANCE E RED FLAGS ===
       // DEC-006 + DEC-AUTO-208-04: NO_STOP é violação SALVO em stop implícito
       // (loss sem stop formal — saída em prejuízo é o stop praticado).
-      if (!trade.stopLoss) {
+      // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
+      if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
         const tradeResult = trade.result ?? 0;
         const isImplicitStop = tradeResult < 0;
         if (!isImplicitStop) {
@@ -1477,7 +1478,8 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
             && type !== RED_FLAG_TYPES.BLOCKED_EMOTION;
         });
 
-        if (!after.stopLoss) {
+        // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
+        if (stopDistanceOf(after.side, after.entry, after.stopLoss) == null) {
           // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
           const tradeResult = after.result ?? 0;
           const isImplicitStop = tradeResult < 0;

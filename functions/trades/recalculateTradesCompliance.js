@@ -10,6 +10,7 @@
  */
 
 const { isTradeImmutable, updateIfMutable } = require('../_shared/tradeImmutability');
+const { stopDistanceOf } = require('../shared/orderProtection');
 
 /**
  * @param {Object[]} tradeDocs — DocumentSnapshots (`.data()` + `.ref.update`)
@@ -42,7 +43,8 @@ async function recalculateTradesCompliance(tradeDocs, plan, { calculateTradeComp
       return type !== 'RISCO_ACIMA_PERMITIDO' && type !== 'RR_ABAIXO_MINIMO' && type !== 'TRADE_SEM_STOP';
     });
 
-    if (!trade.stopLoss) {
+    // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
+    if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
       // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
       const tradeResult = trade.result ?? 0;
       const isImplicitStop = tradeResult < 0;

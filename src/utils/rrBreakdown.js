@@ -33,6 +33,7 @@
  * @see src/utils/compliance.js — cálculo canônico de conformidade (DEC-006/007/009)
  */
 import { shouldEvaluateRR } from './compliance';
+import { stopDistanceOf } from './orderProtection';
 
 // Ausência não é zero: `Number(null)` é 0 e passaria por finito, fazendo um trade sem
 // stop informado virar "risco de 343.685" (a entrada inteira como distância).
@@ -74,8 +75,9 @@ export function rrBreakdown(trade, plan) {
   const tickValue = num(trade.tickerRule?.tickValue) || 1;
 
   // === Lado do trade: o risco que foi realmente assumido ===
-  if (entry != null && stop != null) {
-    const distancia = Math.abs(entry - stop);
+  // #467 — distância pela conta única: stop do lado errado da entrada não é risco assumido.
+  const distancia = stopDistanceOf(trade.side, entry, stop);
+  if (distancia != null) {
     out.riskAmount = Math.round(((distancia / tickSize) * tickValue * qty) * 100) / 100;
   }
 

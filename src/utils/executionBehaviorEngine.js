@@ -315,6 +315,20 @@ const positionOf = (trade, tradeOrders) => {
   };
 };
 
+/**
+ * #467 (épico #462 F4) — pernas da posição do trade (fills de entrada nas ordens
+ * correlacionadas), com o `position`/`ctx` que `legOfOrder` espera. O painel usa para
+ * avaliar a proteção contra a saída DA PERNA dela, não a do trade.
+ * @returns {{ position:Object, ctx:Object, legs:Array }}
+ */
+export const positionLegsOf = (trade, orders) => {
+  const tradeOrders = ordersForTrade(orders || [], trade?.id);
+  const position = positionOf(trade, tradeOrders);
+  const ctx = { offset: tradeOffsetOf(trade), lifetime: false };
+  ctx.legs = legsOf(position, ctx);
+  return { position, ctx, legs: ctx.legs };
+};
+
 export const protectiveLegsOf = (trade, orders) => {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];

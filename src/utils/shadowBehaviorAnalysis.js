@@ -161,6 +161,7 @@ const getTradeDurationMinutes = (trade) => {
 // #383 — a derivação virou SSoT em `compliance.js`. Aqui só se consome: três cópias da
 // mesma conta foi exatamente o defeito que o #383 fechou.
 import { realizedRR } from './compliance';
+import { stopDistanceOf } from './orderProtection';
 
 export { realizedRR };
 
@@ -479,8 +480,9 @@ export const detectTargetHit = (trade, _adjacentTrades, config = DEFAULT_CONFIG.
   const exit = trade.exit;
   if (stopLoss == null || entry == null || exit == null) return null;
 
-  const riskDistance = Math.abs(entry - stopLoss);
-  if (riskDistance <= 0) return null;
+  // #467 — distância pela conta única (stop do lado errado = sem stop).
+  const riskDistance = stopDistanceOf(trade.side, entry, stopLoss);
+  if (riskDistance == null) return null;
 
   // Planned target based on plan RR (minimum 2:1 default)
   const planRR = planRrTargetOf(trade);
