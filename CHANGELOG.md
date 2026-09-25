@@ -12,16 +12,11 @@ Version source of truth: `src/version.js`.
 
 **fix:** pernas e proteção — definição única, stop inicial por perna, risco somado
 
-- `isStopOrder`;
-- `stopSemantic` contra a 1ª entrada;
-- `ehProtecaoAdversa` contra o preço médio;
-- `protectiveLegsOf` sem a checagem de nascimento;
-- o "último da lista" da criação do trade.
-- mesmo ativo;
-- lado oposto;
-- enviada com a perna (±60s);
-
-Marcio, 8 dias: 53 stops indefensáveis → 0. Italo 19 → 0, Eduardo 32 → 0. Import direto e retomada do staging dão o mesmo stop. 24/09: trade sem stop (perna 2 só com stop de ganho), antes 188.720 e risco de R$ 7.070. DEC-466-01..05.
+- **Uma definição de proteção** (`orderProtection.js` + espelho em `functions/shared/`) substitui as cinco que discordavam: `isStopOrder`, `stopSemantic` contra a 1ª entrada, `ehProtecaoAdversa` contra o preço médio, `protectiveLegsOf` sem checar nascimento e o "último da lista" da criação do trade.
+- **Proteção de uma perna:** mesmo ativo, lado oposto, enviada com a perna (±60s), preço enviado adverso ao executado da perna, não cancelada antes da entrada, sem zeragem, inversão ou saída manual; uma ordem cobre no máximo a própria quantidade.
+- **Stop do trade:** a proteção mais antiga de cada perna; o risco é a soma das pernas, gravada como stop equivalente em `stopLoss` (sem campo novo). Perna sem stop comprovado → trade sem stop, o aluno informa.
+- **Órfã** só vai para operação do mesmo ativo e nunca vira stop.
+- **Resultado:** stops indefensáveis — Marcio 53 → 0, Italo 19 → 0, Eduardo 32 → 0. Import direto e retomada do staging dão o mesmo stop. 24/09 fica sem stop (antes 188.720, risco de R$ 7.070).
 
 ## [1.92.9] - 25/09/2026 · #465 · PR #471
 
