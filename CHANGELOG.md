@@ -8,6 +8,20 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.10] - 25/09/2026 · #466 · PR #472
+
+**fix:** pernas e proteção — definição única, stop inicial por perna, risco somado
+
+- `isStopOrder`;
+- `stopSemantic` contra a 1ª entrada;
+- `ehProtecaoAdversa` contra o preço médio;
+- `protectiveLegsOf` sem a checagem de nascimento;
+- o "último da lista" da criação do trade.
+- mesmo ativo;
+- lado oposto;
+- enviada com a perna (±60s);
+
+
 ## [1.92.9] - 25/09/2026 · #465 · PR #471
 
 **fix:** preço da ordem é a média das execuções; quantidade fracionária não zera c
