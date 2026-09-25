@@ -21,6 +21,8 @@
  *   CORRELATION_WINDOW_MS — janela de correlação (5 min default)
  */
 
+import { wallClockMs } from './orderInstant';
+
 // ============================================
 // CONSTANTS
 // ============================================
@@ -51,46 +53,21 @@ const CONTAINMENT_SCORE = 0.55;
 // ============================================
 
 /**
- * Extrai timestamp em ms de um campo que pode ser ISO string, Firestore Timestamp, ou date string.
- * @param {*} value
- * @returns {number|null}
- */
-const toMs = (value) => {
-  if (!value) return null;
-  // Firestore Timestamp object
-  if (value.seconds != null) return value.seconds * 1000;
-  if (value.toMillis) return value.toMillis();
-  // ISO string ou date string
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d.getTime();
-};
-
-/**
  * Timestamp em ms para COMPARAÇÃO DE PROXIMIDADE op↔trade — hora-de-parede
  * (wall-clock), offset-neutro (issue #296).
  *
- * O horário da ordem chega naive (`2026-05-01T11:30:49`, do CSV da corretora),
- * enquanto `trade.entryTime` desde #285/#292 é instante absoluto com offset
- * (`...-04:00`). Comparar naive vs absoluto desloca os dois lados quando os trades
- * foram gravados em fuso ≠ ambiente (ex.: ET em futuros CME) → 1h de gap → fora da
- * janela de 5min → falso "operação nova". Como ordem e trade vêm da MESMA corretora
- * no MESMO fuso de exibição, a hora-de-parede é a chave de junção robusta: extrai
- * `YYYY-MM-DDTHH:MM:SS` (descarta offset/Z) e parseia como UTC. Sem componente de
- * hora (data pura, Timestamp Firestore, Date) → fallback `toMs`.
+ * O horário da ordem chega do CSV no relógio da corretora, enquanto `trade.entryTime`
+ * desde #285/#292 é instante absoluto com offset (`...-04:00`). Comparar naive vs
+ * absoluto desloca os dois lados quando os trades foram gravados em fuso ≠ ambiente
+ * (ex.: ET em futuros CME) → 1h de gap → fora da janela de 5min → falso "operação
+ * nova". Como ordem e trade vêm da MESMA corretora no MESMO fuso de exibição, a
+ * hora-de-parede é a chave de junção robusta.
  *
- * @param {*} value
- * @returns {number|null}
+ * #464 — a regra mora no SSoT `orderInstant.wallClockMs`; esta cópia local saiu. Ela
+ * também é a que continua certa quando a ordem vem gravada com offset (desde o #464):
+ * o relógio de parede da string não muda.
  */
-const toWallMs = (value) => {
-  if (typeof value === 'string') {
-    const m = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)/);
-    if (m) {
-      const t = new Date(`${m[1]}T${m[2]}Z`);
-      if (!isNaN(t.getTime())) return t.getTime();
-    }
-  }
-  return toMs(value);
-};
+const toWallMs = wallClockMs;
 
 /**
  * Checa se um timestamp de trade tem componente de hora (vs. apenas data).
@@ -332,11 +309,10 @@ export const correlateOrders = (orders, trades) => {
   }
 
   // Ordena cronologicamente para correlations[] preservar fluxo temporal.
-  const sortedOrders = [...filledOrders].sort((a, b) => {
-    const tsA = new Date(a.filledAt || a.submittedAt || 0).getTime();
-    const tsB = new Date(b.filledAt || b.submittedAt || 0).getTime();
-    return tsA - tsB;
-  });
+  // #464 — pelo relógio de parede, como a correlação: `new Date(ingênua)` dependia do
+  // fuso do processo, e o lote pode misturar ordem ingênua com ordem gravada com offset.
+  const sortedOrders = [...filledOrders].sort((a, b) =>
+    (toWallMs(a.filledAt || a.submittedAt) ?? 0) - (toWallMs(b.filledAt || b.submittedAt) ?? 0));
 
   const correlations = [];
   let totalConfidence = 0;
@@ -512,13 +488,13 @@ const CANCEL_TRADE_PADDING_MS = 60 * 1000;
 /** Aderência: distância máxima entre a ordem abortada e o trade vizinho (#369). */
 const CANCEL_NEIGHBOUR_MS = 2 * 60 * 60 * 1000;
 
-const mesmoDiaMs = (aMs, bMs) => {
-  const a = new Date(aMs);
-  const b = new Date(bMs);
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
-};
+/**
+ * Mesmo dia pelo relógio de parede. Os dois lados vêm de `toWallMs`, que lê a parede
+ * como se fosse UTC — então o dia sai dos getters UTC (#464). Com `getDate()` o dia
+ * dependia do fuso do processo: em Brasília, uma ordem da 01h caía no dia anterior.
+ */
+const mesmoDiaMs = (aMs, bMs) =>
+  new Date(aMs).toISOString().slice(0, 10) === new Date(bMs).toISOString().slice(0, 10);
 
 /**
  * Trade vizinho de uma ordem que morreu sem conviver com nenhum trade (#369).

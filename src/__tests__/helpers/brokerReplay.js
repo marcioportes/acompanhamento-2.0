@@ -125,7 +125,7 @@ const headersDoArquivo = (text) => {
 
 const reconstruir = (orders) => {
   const ops = reconstructOperations(orders, { timezone: TIMEZONE });
-  associateNonFilledOrders(ops, orders);
+  associateNonFilledOrders(ops, orders, { timezone: TIMEZONE });
   enrichOperationsWithStopSemantic(ops);
   enrichOperationsWithStopAnalysis(ops);
   return ops;

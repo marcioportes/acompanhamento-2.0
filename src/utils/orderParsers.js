@@ -397,6 +397,28 @@ export const parseProfitChartPro = (text) => {
 
   // Post-processing
   for (const order of orders) {
+    // #464 — o instante de execução é o do evento "Trade". O export "ordens recentes" do
+    // Profit (caso Italo, 11–20/08/2026) não traz as linhas de evento: sem elas `filledAt`
+    // ficava nulo e toda a reconstrução caía na CRIAÇÃO da ordem. Ordem criada às 15:00:22
+    // e executada às 15:00:43 empatava com a que executou às 15:00:22, e o empate saía na
+    // ordem do arquivo (decrescente): 23 operações do Italo com o lado invertido.
+    // Nesse formato a "Última Atualização" de uma ordem executada É a execução (a última,
+    // quando houve mais de um fill); da cancelada, o cancelamento.
+    // `_instanteDaUltimaAtualizacao` só vive em memória — o staging e o `ingestBatch`
+    // gravam lista fechada de campos (INV-15); `orderDedup` o usa para reconhecer a ordem
+    // legada gravada com `filledAt` nulo.
+    const temEvento = (tipo) => order.events.some(e => e.type === tipo);
+    if (!order.filledAt && order.lastUpdatedAt && !temEvento('TRADE')
+      && (order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED')) {
+      order.filledAt = order.lastUpdatedAt;
+      order._instanteDaUltimaAtualizacao = true;
+    }
+    if (!order.cancelledAt && order.lastUpdatedAt && !temEvento('CANCEL')
+      && order.status === 'CANCELLED') {
+      order.cancelledAt = order.lastUpdatedAt;
+      order._instanteDaUltimaAtualizacao = true;
+    }
+
     if (!order.filledPrice && order.avgFillPrice) order.filledPrice = order.avgFillPrice;
     if (!order.filledQuantity) {
       const tradeEvents = order.events.filter(e => e.type === 'TRADE');

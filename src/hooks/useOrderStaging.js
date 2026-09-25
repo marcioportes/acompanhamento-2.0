@@ -27,6 +27,7 @@ import {
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { makeOrderKey, makeOrderDocId } from '../utils/orderKey';
+import { orderInstantsWithOffset } from '../utils/orderImportPipeline';
 
 const STAGING_COLLECTION = 'ordersStagingArea';
 const ORDERS_COLLECTION = 'orders';
@@ -331,6 +332,14 @@ const useOrderStaging = (overrideStudentId = null) => {
               ? doc(db, ORDERS_COLLECTION, docId)
               : doc(collection(db, ORDERS_COLLECTION));   // sem studentId: comportamento antigo
 
+            // #464 — `orders` passa a ser gravada COM offset: o horário da corretora no
+            // fuso do lote (`importTimezone`, fixado pelo aluno no import, #292/#366).
+            // Pendente desde o #375 — sem fuso gravado, cada leitor tinha de adivinhá-lo e
+            // o mesmo defeito foi corrigido quatro vezes (#296, #375, #388, #449).
+            // O staging fica ingênuo + `importTimezone`; a chave e o id do doc acima saem
+            // do staging e não mudam. Lote legado sem fuso segue ingênuo.
+            const instantes = orderInstantsWithOffset(stagingOrder, stagingOrder.importTimezone);
+
             const payload = {
               studentId: stagingOrder.studentId,
               planId: stagingOrder.planId,
@@ -348,9 +357,9 @@ const useOrderStaging = (overrideStudentId = null) => {
               filledPrice: stagingOrder.filledPrice,
               filledQuantity: stagingOrder.filledQuantity,
               status: stagingOrder.status,
-              submittedAt: stagingOrder.submittedAt,
-              filledAt: stagingOrder.filledAt,
-              cancelledAt: stagingOrder.cancelledAt,
+              submittedAt: instantes.submittedAt,
+              filledAt: instantes.filledAt,
+              cancelledAt: instantes.cancelledAt,
               modifications: stagingOrder.modifications || [],
               isStopOrder: stagingOrder.isStopOrder || false,
               importedAt: serverTimestamp(),

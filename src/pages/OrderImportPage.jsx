@@ -300,7 +300,7 @@ const OrderImportPage = ({
 
       setProgress('Reconstruindo operações...');
       const ops = reconstructOperations(parsedOrders, { timezone: importTimezone });
-      associateNonFilledOrders(ops, parsedOrders);
+      associateNonFilledOrders(ops, parsedOrders, { timezone: importTimezone });
       enrichOperationsWithStopSemantic(ops);
       enrichOperationsWithStopAnalysis(ops);
 
@@ -749,7 +749,7 @@ const OrderImportPage = ({
 
     setImportTimezone(resumeBatch.importTimezone);
     const ops = reconstructOperations(orders, { timezone: resumeBatch.importTimezone });
-    associateNonFilledOrders(ops, orders);
+    associateNonFilledOrders(ops, orders, { timezone: resumeBatch.importTimezone });
     enrichOperationsWithStopSemantic(ops);
     enrichOperationsWithStopAnalysis(ops);
     setReconstructedOps(ops);

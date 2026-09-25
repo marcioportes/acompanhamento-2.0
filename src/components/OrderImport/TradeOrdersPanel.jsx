@@ -34,6 +34,13 @@ const fmtHora = (ms) => {
  */
 const formatTime = (iso) => {
   if (!iso) return '-';
+  // #464 — string ISO se exibe pelo RELÓGIO DE PAREDE dela, como o horário do trade
+  // (`fmtTradeTime`, #339). Desde o #464 `orders` é gravada com offset: `new Date()`
+  // + `toLocaleString` converteria a ordem de um lote em ET para o fuso do navegador e
+  // ela deixaria de bater com a hora do trade ao lado. Para a ordem ingênua (legado) o
+  // resultado é o mesmo de antes.
+  const m = typeof iso === 'string' && iso.match(/^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) return `${m[2]}/${m[1]}, ${m[3]}:${m[4]}:${m[5] || '00'}`;
   try {
     return new Date(iso).toLocaleString('pt-BR', {
       day: '2-digit', month: '2-digit',

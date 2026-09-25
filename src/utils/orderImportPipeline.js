@@ -20,6 +20,7 @@
 
 import { makeOrderKey } from './orderKey';
 import { routeConversationalDecisions } from './conversationalIngest';
+import { naiveIsoToOffset } from './tradeTimezone';
 
 /** Decisões que resultam em gravação. `pending` e `discarded` ficam de fora. */
 const DECIDIDAS = new Set(['confirmed', 'adjusted']);
@@ -216,4 +217,25 @@ export function stagingDocsToOrders(docs) {
       order._rowIndex = i + 1;
       return order;
     });
+}
+
+/**
+ * Instantes da ordem como serão gravados em `orders` (#464): ISO com o offset do fuso do
+ * lote, calculado PARA A DATA de cada instante (DST correto num lote americano).
+ *
+ * Instante que já traz offset passa igual; sem fuso (lote legado, anterior ao #366) nada
+ * muda — o leitor (`orderInstant`) aceita as duas formas. `undefined` vira `null`, que é
+ * o que o payload sempre gravou.
+ *
+ * @param {Object} order — doc do staging (instantes ingênuos)
+ * @param {string|null} timezone — `importTimezone` do lote (IANA)
+ * @returns {{ submittedAt: string|null, filledAt: string|null, cancelledAt: string|null }}
+ */
+export function orderInstantsWithOffset(order, timezone) {
+  const conv = (v) => (v == null ? null : naiveIsoToOffset(v, timezone || null));
+  return {
+    submittedAt: conv(order?.submittedAt),
+    filledAt: conv(order?.filledAt),
+    cancelledAt: conv(order?.cancelledAt),
+  };
 }

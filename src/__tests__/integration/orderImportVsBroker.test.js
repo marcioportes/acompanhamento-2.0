@@ -191,10 +191,10 @@ describe('#462 F0 · operação aberta no fim do período', () => {
     expect(aberta?.instrument).toBe('VALED824');
   });
 
-  // `orderReconstruction.js` grava `new Date(_ts).toISOString()` na operação aberta: sai
-  // em `Z` enquanto as fechadas saem com o offset do lote (#292). Quem lê o offset da
-  // PRIMEIRA operação (`offsetDasOperacoes`) desloca a associação em 3h.
-  it.fails('carrega o offset do lote, como as operações fechadas — corrige em F1 #464', () => {
+  // Até o #464 a operação aberta saía em `Z` (`new Date(_ts).toISOString()`) enquanto as
+  // fechadas saíam com o offset do lote (#292), e quem lia o offset da PRIMEIRA operação
+  // deslocava a associação em 3h. Corrigido em F1 #464.
+  it('carrega o offset do lote, como as operações fechadas', () => {
     expect(aberta.entryTime).toMatch(/-03:00$/);
   });
 });

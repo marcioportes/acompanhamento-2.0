@@ -85,9 +85,24 @@ describe('tradeOrderFingerprints', () => {
     const d = ordersOfBatch()[1].data();
     expect(orderDocFingerprint(d)).toBe('WINV26|BUY|2026-08-18T14:46:17|3');
   });
+
+  // #464 — `orders` passou a ser gravada com o offset do lote; a parcial do trade segue
+  // com o instante do arquivo. As duas formas têm de produzir o mesmo fingerprint.
+  it('doc gravado com offset casa com a parcial ingênua (#464)', () => {
+    const d = { ...ordersOfBatch()[1].data(), filledAt: '2026-08-18T14:46:17-03:00' };
+    expect(orderDocFingerprint(d)).toBe('WINV26|BUY|2026-08-18T14:46:17|3');
+  });
 });
 
 describe('linkOrdersToCreatedTrade', () => {
+  it('liga as ordens gravadas com offset (#464)', async () => {
+    const docs = ordersOfBatch().map((d) => orderDoc(d.id, { ...d.data(), filledAt: `${d.data().filledAt}-03:00` }));
+    const { db, updates } = makeDb(docs);
+    const result = await linkOrdersToCreatedTrade(db, { tradeId: 'tradeNovo', trade });
+    expect(result.linked).toBe(4);
+    expect(updates).toHaveLength(4);
+  });
+
   it('liga as 4 ordens do batch ao trade recém-criado — inclusive o aumento de posição', async () => {
     const { db, updates } = makeDb(ordersOfBatch());
     const result = await linkOrdersToCreatedTrade(db, { tradeId: 'tradeNovo', trade });

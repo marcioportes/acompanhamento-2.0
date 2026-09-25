@@ -1,22 +1,15 @@
 /**
- * functions/shared/orderInstant.js
- * @version 2.0.0 (v1.92.8 — issue #464, épico #462 F1)
- * @description SSoT do instante de uma ordem.
+ * orderInstant.js — issue #464 (épico #462 F1)
  *
- * `orders` guardou instante ingênuo (`"2026-08-21T11:27:51"`) até o #464; `trades` guarda
- * com offset explícito desde o #285/#292. `new Date()` lê string sem offset no fuso DO
- * PROCESSO, e a Cloud Function roda em UTC — a ordem sai 3h antes do trade dela.
+ * SSoT do instante de uma ordem, lado cliente. Espelho ESM de
+ * `functions/shared/orderInstant.js` (#388) — o CORPO é idêntico, só muda o export
+ * (paridade testada em `src/__tests__/functions/shared/orderInstantMirror.test.js`).
  *
- * O #375 corrigiu isso em `executionBehaviorEngine` e `executionBehaviorMirror`; uma
- * TERCEIRA cópia sobreviveu em `shadow/shadowDetectors.detectHesitation` (#388) e uma
- * QUARTA em `orderReconstruction.instanteDaOrdem` (#449). O #464 tirou as cópias: quem
- * resolve instante de ordem, no cliente ou na CF, passa por aqui.
+ * POR QUE EXISTE: o mesmo defeito — ordem ingênua lida no fuso do processo contra trade
+ * com offset — foi corrigido quatro vezes em quatro cópias (#296, #375, #388, #449).
+ * Quem resolve instante de ordem passa por aqui; não reimplemente o parse.
  *
- * Desde o #464 as ordens novas são gravadas COM offset. O leitor aceita as duas formas:
- * offset presente é usado como está; ingênuo recebe o offset do contexto (trade ou lote).
- *
- * Espelho ESM: `src/utils/orderInstant.js` — manter o CORPO IDÊNTICO (paridade testada em
- * `src/__tests__/functions/shared/orderInstantMirror.test.js`).
+ * Desde o #464 `orders` é gravada com offset; o leitor aceita as duas formas.
  */
 
 /** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
@@ -119,7 +112,7 @@ function stripBatchOffset(value) {
   return value.replace(/[+-]\d{2}:?\d{2}$/, '');
 }
 
-module.exports = {
+export {
   OFFSET_RE,
   offsetOf,
   tradeOffsetOf,
