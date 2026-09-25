@@ -125,14 +125,30 @@ describe('associateNonFilledOrders — ordens que não viraram posição', () =>
     expect(ops[0].cancelledOrders).toHaveLength(0);
   });
 
-  it('stop cancelado órfão entra como stopOrder da operação atribuída', () => {
+  // #466 — a órfã NUNCA produz stop: um stop montado e desmontado meia hora antes da
+  // entrada não protegeu posição nenhuma (24/09/2026: o stop cancelado 44 min antes virou
+  // o stop do trade, risco de R$ 7.070). Ela continua atribuída — é evidência de hesitação.
+  it('stop cancelado órfão é atribuído só como cancelada, nunca como stop', () => {
     const ops = [operacao('OP-12h', 12, 0, 12, 30)];
     const stop = cancelada(11, 30, { isStopOrder: true, externalOrderId: 'CL-STOP' });
 
     associateNonFilledOrders(ops, [stop]);
 
-    expect(ops[0].stopOrders.map(o => o.externalOrderId)).toEqual(['CL-STOP']);
-    expect(ops[0].hasStopProtection).toBe(true);
+    expect(ops[0].stopOrders).toEqual([]);
+    expect(ops[0].cancelledOrders.map(o => o.externalOrderId)).toEqual(['CL-STOP']);
+    expect(ops[0].hasStopProtection).toBeFalsy();
+  });
+
+  // #466 — órfã de outro ativo não é atribuída: a opção enviada entre dois trades de WIN
+  // virava ordem (e stop) do WIN pelo degrau "última operação do dia, qualquer ativo".
+  it('órfã de outro ativo não é atribuída a operação alguma', () => {
+    const ops = [operacao('OP-12h', 12, 0, 12, 30)];
+    const opcao = cancelada(11, 30, { isStopOrder: true, externalOrderId: 'OPCAO', instrument: 'WINV26C190000' });
+
+    associateNonFilledOrders(ops, [opcao]);
+
+    expect(ops[0].stopOrders).toEqual([]);
+    expect(ops[0].cancelledOrders).toEqual([]);
   });
 
   it('sem operação nenhuma, nada é atribuído', () => {

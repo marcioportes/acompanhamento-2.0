@@ -11,10 +11,16 @@
  *   1 | LONG  | 190.500  | saída exec SELL @ 190.365    | 190.515    | STOP_GAIN
  *   2 | LONG  | 190.565  | saída exec SELL @ 189.980    | 190.130    | STOP_LOSS
  *   3 | LONG  | 190.370  | saída exec SELL @ 189.970    | 190.120    | STOP_LOSS
- *   4 | SHORT | 189.645  | alvo cancelado BUY @ 189.960 | 189.810    | STOP_LOSS
+ *   4 | SHORT | 189.645  | alvo cancelado BUY @ 189.960 | 189.810    | STOP_GAIN (#466)
  *
  * `hasRealStopLoss`: false para trade #1 (única proteção é STOP_GAIN);
- * true para #2, #3, #4.
+ * true para #2, #3; false para #4 desde o #466.
+ *
+ * #466 (épico #462 F3) — a referência passou a ser o preço EXECUTADO da perna (decisão do
+ * Marcio, 25/09/2026). O trade #4 é a venda limite a 189.645 que executou a 189.830: o
+ * stop de 189.810 fica ABAIXO da venda executada — stop movido para o ganho, e é assim que
+ * o harness do #463 o anota à mão (`STOP_ANOTADO`, 04/05 12:17:16 → sem stop). Os trades
+ * #1–#3 executaram no próprio limite e não mudam.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -136,16 +142,17 @@ describe('parser-stop-semantic — fixture 040526-clear-daytrade.csv', () => {
     expect(op.hasRealStopLoss).toBe(true);
   });
 
-  // ---------- Trade #4 — SHORT entry 189.645, stop @ 189.810 → STOP_LOSS
-  it('trade #4 (SHORT entry 189.645): cancelada BUY com Preço Stop 189.810 → STOP_LOSS', () => {
+  // ---------- Trade #4 — SHORT limite 189.645, executada a 189.830, stop @ 189.810 → STOP_GAIN (#466)
+  it('trade #4 (SHORT limite 189.645, executada 189.830): cancelada BUY com Preço Stop 189.810 → STOP_GAIN', () => {
     const op = findOpByEntryLimit(ops, 'SHORT', 189.645);
     expect(op).toBeDefined();
+    expect(op.avgEntryPrice).toBe(189830);
 
     const order = findOrderWithStop(op, 189.810);
     expect(order).toBeDefined();
-    expect(order.stopSemantic).toBe(STOP_SEMANTIC.STOP_LOSS);
+    expect(order.stopSemantic).toBe(STOP_SEMANTIC.STOP_GAIN);
 
-    expect(op.hasRealStopLoss).toBe(true);
+    expect(op.hasRealStopLoss).toBe(false);
   });
 
   it('hasRealStopLoss agregado bate com a tabela do issue', () => {
@@ -157,6 +164,6 @@ describe('parser-stop-semantic — fixture 040526-clear-daytrade.csv', () => {
     expect(op1?.hasRealStopLoss).toBe(false);
     expect(op2?.hasRealStopLoss).toBe(true);
     expect(op3?.hasRealStopLoss).toBe(true);
-    expect(op4?.hasRealStopLoss).toBe(true);
+    expect(op4?.hasRealStopLoss).toBe(false); // #466 — ver trade #4
   });
 });

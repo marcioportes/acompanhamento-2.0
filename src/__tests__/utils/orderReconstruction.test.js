@@ -228,8 +228,14 @@ describe('associateNonFilledOrders — stops e canceladas', () => {
     const op = ops[0];
     expect(op.stopOrders.length).toBeGreaterThanOrEqual(1);
     expect(op.hasStopProtection).toBe(true);
-    // Stop foi cancelada, não executada
-    expect(op.stopExecuted).toBe(false);
+    // O stop do bracket (178.280) foi cancelado no OCO da saída, não executado.
+    expect(op.stopOrders.find(o => o.externalOrderId === 'ORD-226983').status).toBe('CANCELLED');
+    // #466 — a saída foi uma COMPRA com gatilho (Preço Stop 177.965, abaixo da venda a
+    // 177.975: stop de ganho). Pela definição única, ordem com gatilho do lado oposto é
+    // proteção da posição em qualquer preço (o mesmo `_isRealStop` do `protectiveLegsOf`),
+    // então a operação saiu por stop — de ganho. Antes do #466 só `isStopOrder` (tipo) ou
+    // preço adverso contavam, e a saída ficava fora.
+    expect(op.stopExecuted).toBe(true);
   });
 
   it('OP1: target cancelada associada', () => {

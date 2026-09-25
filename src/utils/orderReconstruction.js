@@ -27,6 +27,7 @@
 import { aggregateFills } from './orderFillAggregator';
 import { naiveIsoToOffset } from './tradeTimezone';
 import { offsetOf, instantAtOffsetMs } from './orderInstant';
+import { isPositionProtection, legsOf } from './orderProtection';
 
 // Threshold padrão para considerar gap temporal entre operações do mesmo
 // instrumento. 60 minutos cobre janela de almoço, pausas longas intraday
@@ -392,11 +393,17 @@ const mesmoDia = (aMs, bMs, offset = null) => {
  *
  * O set de ordens montado e desmontado entre dois trades não é lixo: é o que veio ANTES
  * da entrada seguinte (hesitação, ou reconsideração se demorou) — e, quando não há
- * entrada seguinte, é a tentativa que veio DEPOIS do último trade do dia (ansiedade).
+ * entrada seguinte, é a tentativa que veio DEPOIS do último trade (ansiedade).
  * Até a v1.83.16 essas ordens eram descartadas aqui, antes de qualquer gravação.
  *
  * Prioridade: próxima operação do mesmo instrumento → operação anterior do mesmo
- * instrumento → última operação do dia (qualquer instrumento).
+ * instrumento.
+ *
+ * #466 — SÓ o mesmo instrumento. Havia um terceiro degrau, "última operação do dia,
+ * qualquer instrumento": ordem de OPÇÃO virava ordem do trade de WIN e, sendo do tipo
+ * stop, virava o `stopLoss` dele (30/03 e 09/04/2026 — risco de R$ 73 mil num WIN). Ordem
+ * de outro ativo não diz nada sobre a hesitação ou a proteção deste trade. E a órfã nunca
+ * produz stop: quem a chama a põe só em `cancelledOrders`.
  *
  * A janela de 2h é o critério de ADERÊNCIA, e vale nos dois sentidos: ordem que ficou a
  * mais de 2h de qualquer trade não pertence àquele momento operacional — cancelar às 9h e
@@ -409,26 +416,22 @@ const attributeOrphanOrder = (operations, orderTs, instrument, windowMs, offset 
 
   let proxima = null;
   let anterior = null;
-  let ultimaDoDia = null;
 
   for (const op of operations) {
+    if ((op.instrument || '').toUpperCase() !== alvo) continue;
     const entrada = new Date(op.entryTime).getTime();
     if (!entrada) continue;
     const saida = op.exitTime ? new Date(op.exitTime).getTime() : entrada;
-    const mesmoInstrumento = (op.instrument || '').toUpperCase() === alvo;
 
-    if (mesmoInstrumento && entrada > orderTs && aderente(entrada)) {
+    if (entrada > orderTs && aderente(entrada)) {
       if (!proxima || entrada < new Date(proxima.entryTime).getTime()) proxima = op;
     }
-    if (mesmoInstrumento && saida < orderTs && aderente(saida)) {
+    if (saida < orderTs && aderente(saida)) {
       if (!anterior || saida > new Date(anterior.exitTime || anterior.entryTime).getTime()) anterior = op;
-    }
-    if (aderente(entrada) || aderente(saida)) {
-      if (!ultimaDoDia || entrada > new Date(ultimaDoDia.entryTime).getTime()) ultimaDoDia = op;
     }
   }
 
-  return proxima || anterior || ultimaDoDia;
+  return proxima || anterior;
 };
 
 /**
@@ -485,40 +488,6 @@ const leitorDoLote = (operations, tz) => {
 };
 
 /**
- * A ordem é a perna de proteção do bracket desta operação?
- *
- * DEFINIÇÃO ÚNICA (#449). O mesmo critério que `protectiveLegsOf` usa no painel e
- * nos detectores: lado oposto à posição, nascida COM ela (#369), e com o preço
- * **ENVIADO** adverso à entrada — abaixo dela num LONG, acima num SHORT. Preço
- * favorável é alvo, não proteção.
- *
- * O preço que classifica é o enviado (`stopPrice ?? limitPrice ?? price`), nunca o
- * executado: o limite com folga que garante preenchimento não é onde a proteção
- * estava. É a mesma distinção `_price` × `_riskPrice` do #371.
- *
- * @param {Object} op — operação reconstruída
- * @param {Object} order — ordem candidata
- * @param {number} toleranceMs — folga para "nasceu com a posição"
- * @returns {boolean}
- */
-const ehProtecaoAdversa = (op, order, toleranceMs, instante) => {
-  const entradaOp = parseFloat(op?.avgEntryPrice ?? NaN);
-  const precoEnviado = parseFloat(order?.stopPrice ?? order?.limitPrice ?? order?.price ?? NaN);
-  if (!Number.isFinite(entradaOp) || !Number.isFinite(precoEnviado)) return false;
-
-  const ladoOposto = op.side === 'LONG' ? 'SELL' : 'BUY';
-  if (order.side !== ladoOposto) return false;
-
-  const entradaTs = new Date(op.entryTime).getTime();
-  const enviadaTs = instante(order.submittedAt || order.filledAt || order.cancelledAt);
-  const nasceuComAPosicao = Number.isFinite(entradaTs) && Number.isFinite(enviadaTs)
-    && enviadaTs >= entradaTs - toleranceMs;
-  if (!nasceuComAPosicao) return false;
-
-  return op.side === 'LONG' ? precoEnviado < entradaOp : precoEnviado > entradaOp;
-};
-
-/**
  * Associa ordens não-FILLED (CANCELLED, stops) às operações reconstruídas.
  * Usa janela temporal: ordem associada à operação cujo intervalo [entryTime, exitTime] contém
  * o submittedAt da ordem. Tolerância de 60s antes da entrada e 60s após a saída.
@@ -547,16 +516,28 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
     (o.isStopOrder && o.status !== 'FILLED') // stop orders canceladas
   );
 
+  // #466 — a definição de proteção é a de `orderProtection` (SSoT). As pernas de cada
+  // operação saem uma vez só, no fuso do lote.
+  const ctxDe = new Map();
+  const ctxDaOp = (op) => {
+    if (!ctxDe.has(op)) ctxDe.set(op, { instant: instante, legs: legsOf(op, { instant: instante }) });
+    return ctxDe.get(op);
+  };
+
   for (const order of nonFilled) {
     const quando = order.submittedAt || order.cancelledAt;
     const orderTs = instante(quando);
     if (!orderTs) continue;
+    const ativo = (order.instrument || '').toUpperCase();
 
-    // Encontrar operação cujo intervalo contém o timestamp desta ordem
+    // Encontrar operação DO MESMO ATIVO cujo intervalo contém o timestamp desta ordem.
+    // #466 — sem o filtro de ativo, a ordem de opção enviada durante um trade de WIN caía
+    // dentro dele (30/03/2026, OUTRO_ATIVO).
     let bestOp = null;
     let bestDistance = Infinity;
 
     for (const op of operations) {
+      if (ativo && (op.instrument || '').toUpperCase() !== ativo) continue;
       const opStart = new Date(op.entryTime).getTime() - TOLERANCE_MS;
       const opEnd = op.exitTime ? new Date(op.exitTime).getTime() + TOLERANCE_MS : opStart + (30 * 60 * 1000);
 
@@ -571,30 +552,28 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
       }
     }
 
-    // Fora de qualquer operação: pertence ao trade vizinho, não ao lixo (v1.83.17).
+    // Fora de qualquer operação: pertence ao trade vizinho, não ao lixo (v1.83.17) —
+    // e NUNCA é proteção (#466): vai só para `cancelledOrders`.
     if (!bestOp) {
       const offsetDaOrdem = typeof quando === 'string'
         ? (offsetOf(quando) || lote.offsetDaData(quando.slice(0, 10)))
         : null;
-      bestOp = attributeOrphanOrder(operations, orderTs, order.instrument, orphanWindowMs, offsetDaOrdem);
+      const vizinha = attributeOrphanOrder(operations, orderTs, order.instrument, orphanWindowMs, offsetDaOrdem);
+      if (vizinha) vizinha.cancelledOrders.push(stripInternal(order));
+      continue;
     }
-    if (!bestOp) continue;
 
-    // #371 — mesma definição de proteção do detector (protectiveLegsOf, #359):
-    // esta corretora emite a perna de proteção do bracket como LIMITE com Preço Stop
-    // vazio (DEC-AUTO-242-01), então o que a identifica é o LADO — adversa à entrada.
-    // Antes só `isStopOrder` contava aqui, e a operação ficava `hasStopProtection:false`
-    // enquanto o detector via proteção: a mesma ordem lida de dois jeitos no mesmo
-    // sistema, e foi essa divergência que fez o import apagar o stop do aluno.
-    const protecaoDoBracket = !order.isStopOrder
-      && ehProtecaoAdversa(bestOp, order, TOLERANCE_MS, instante);
-
-    // Classificar a ordem
-    if (order.isStopOrder || protecaoDoBracket) {
+    // #466 — classificação pela definição única (`isPositionProtection`): mesmo ativo,
+    // lado oposto, fora de zeragem/inversão/saída manual, enviada durante a vida da
+    // posição e não cancelada antes dela. Acabou o atalho por `isStopOrder` — a ordem de
+    // stop cancelada 44 min ANTES da entrada (24/09/2026) entrava aqui só pelo tipo e
+    // virava o stop do trade. `stopOrders` guarda a proteção da vida da posição (inclui
+    // reemissão e trail); o stop INICIAL de cada perna é escolhido depois, em
+    // `tradeStopFromLegs`, com a janela do bracket.
+    if (isPositionProtection(order, bestOp, ctxDaOp(bestOp))) {
       bestOp.stopOrders.push(stripInternal(order));
       bestOp.hasStopProtection = true;
-      // Stop executado = stop order que foi FILLED
-      if (order.status === 'FILLED') {
+      if (order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED') {
         bestOp.stopExecuted = true;
       }
     } else {
@@ -614,9 +593,10 @@ export const associateNonFilledOrders = (operations, allOrders, opts = {}) => {
   //
   // A perna continua em `exitOrders` — ela é as duas coisas, e as duas leituras
   // precisam seguir verdadeiras. Aqui ela só passa a constar TAMBÉM em `stopOrders`.
+  // #466 — mesma definição única: zeragem, inversão e saída manual não entram.
   for (const op of operations) {
     for (const order of op.exitOrders || []) {
-      if (!(order.isStopOrder || ehProtecaoAdversa(op, order, TOLERANCE_MS, instante))) continue;
+      if (!isPositionProtection(order, op, ctxDaOp(op))) continue;
       op.stopOrders.push(order);
       op.hasStopProtection = true;
       if (order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED') {

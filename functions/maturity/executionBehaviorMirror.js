@@ -19,6 +19,8 @@
 
 // #464 — instante de ordem: SSoT único, compartilhado com o motor do cliente.
 const { tradeOffsetOf, instantAtOffsetMs } = require('../shared/orderInstant');
+// #466 — definição única de proteção, compartilhada com o import e o motor do cliente.
+const { isPositionProtection, legsOf } = require('../shared/orderProtection');
 
 const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
@@ -176,21 +178,39 @@ function entryRefOf(trade, orders) {
   return isFinite(ref) && ref > 0 ? ref : null;
 }
 
+/** A posição do trade no formato de `orderProtection` (paridade com o ESM). */
+function positionOf(trade, tradeOrders) {
+  const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  return {
+    side: trade.side,
+    instrument: trade.ticker,
+    entry: trade.entry,
+    entryTime: trade.entryTime,
+    exitTime: trade.exitTime,
+    entryOrders: tradeOrders.filter(function (o) {
+      return o.side === wanted && (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED');
+    }),
+  };
+}
+
 /**
- * Pernas de PROTEÇÃO (paridade com o ESM). `isStopOrder` não basta: o bracket OCO
- * da Clear emite a proteção como Limite com `Preço Stop` vazio (#242). Critério:
- * lado oposto à posição + preço adverso à entrada. Deduplica cópias de reimportação.
+ * Pernas de PROTEÇÃO (paridade com o ESM). #466 — critério de `orderProtection`: mesmo
+ * ativo, lado oposto, fora de zeragem/inversão/saída manual, não cancelada antes da
+ * primeira entrada; ordem de stop em qualquer preço, limite só adverso ao preço executado
+ * da perna. Sem janela de tempo (`lifetime: false`). Deduplica cópias de reimportação.
  */
 function protectiveLegsOf(trade, orders) {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];
-  const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
   const off = tradeOffsetOf(trade);
+  const tradeOrders = ordersForTrade(orders, trade.id);
+  const position = positionOf(trade, tradeOrders);
+  const ctx = { offset: off, lifetime: false };
+  ctx.legs = legsOf(position, ctx);
 
-  const legs = ordersForTrade(orders, trade.id)
-    .filter(function (o) { return o.side === opposite; })
+  const legs = tradeOrders
+    .filter(function (o) { return isPositionProtection(o, position, ctx); })
     .map(function (o) {
-      const raw = o.stopPrice != null ? o.stopPrice : (o.limitPrice != null ? o.limitPrice : o.price);
       return Object.assign({}, o, {
         _ts: orderMs(o.submittedAt, off) != null ? orderMs(o.submittedAt, off) : (orderMs(o.cancelledAt, off) != null ? orderMs(o.cancelledAt, off) : orderMs(o.filledAt, off)),
         _cancelTs: orderMs(o.cancelledAt, off),
@@ -204,11 +224,7 @@ function protectiveLegsOf(trade, orders) {
         ),
       });
     })
-    .filter(function (o) { return isFinite(o._price); })
-    .filter(function (o) {
-      if (o._isRealStop) return true;
-      return trade.side === 'LONG' ? o._price < entryRef : o._price > entryRef;
-    });
+    .filter(function (o) { return isFinite(o._price); });
 
   const seen = {};
   const out = [];

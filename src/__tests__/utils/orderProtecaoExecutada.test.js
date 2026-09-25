@@ -97,14 +97,26 @@ describe('#449 · casos limite', () => {
     reconstructOperations(orders, { timezone: TZ }), orders,
   );
 
+  // #466 — a perna do bracket é ENVIADA junto com a entrada (±60s) e executa depois.
   it('LONG protegido por venda abaixo da entrada, executada → stopLoss', () => {
     const ops = montar([
       ordem('1', 'BUY', 5, '10:00:00', 100000),
-      ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }),
+      { ...ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }), submittedAt: '2026-09-09T10:00:00' },
     ]);
     expect(ops[0].hasStopProtection).toBe(true);
     expect(ops[0].stopExecuted).toBe(true);
     expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99500);
+  });
+
+  // #466 — venda enviada 10 min depois da entrada não nasceu com a perna: é saída, não o
+  // stop inicial. Continua lida como proteção da vida da posição (`stopOrders`), mas o
+  // trade não ganha stop por ela.
+  it('venda adversa enviada 10 min depois da entrada não vira stopLoss', () => {
+    const ops = montar([
+      ordem('1', 'BUY', 5, '10:00:00', 100000),
+      ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }),
+    ]);
+    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBeNull();
   });
 
   it('saída no alvo (preço favorável) não é proteção — stopLoss segue nulo', () => {
@@ -151,7 +163,7 @@ describe('#449 · casos limite', () => {
   it('lote em outro fuso: a proteção é reconhecida igual (#375)', () => {
     const orders = [
       ordem('1', 'BUY', 5, '10:00:00', 100000),
-      ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }),
+      { ...ordem('2', 'SELL', 5, '10:10:00', 99500, { filledPrice: 99600 }), submittedAt: '2026-09-09T10:00:00' },
     ];
     const ops = associateNonFilledOrders(
       reconstructOperations(orders, { timezone: 'America/New_York' }), orders,

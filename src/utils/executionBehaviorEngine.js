@@ -1,5 +1,6 @@
 import { REVOKED_RED_FLAG_TYPES } from './violationFilter';
 import { tradeOffsetOf, instantAtOffsetMs, orderInstantMs } from './orderInstant';
+import { isPositionProtection, legsOf } from './orderProtection';
 /**
  * executionBehaviorEngine.js
  * @version 1.0.0 (v1.49.0 — issue #208 Fase 2)
@@ -297,14 +298,42 @@ const entryRefOf = (trade, orders) => {
  */
 export const REPLACEMENT_TOLERANCE_MS = 20000;
 
+/**
+ * A posição do trade no formato de `orderProtection`: pernas = fills do lado da entrada
+ * entre as ordens correlacionadas.
+ */
+const positionOf = (trade, tradeOrders) => {
+  const wanted = trade.side === 'LONG' ? 'BUY' : 'SELL';
+  return {
+    side: trade.side,
+    instrument: trade.ticker,
+    entry: trade.entry,
+    entryTime: trade.entryTime,
+    exitTime: trade.exitTime,
+    entryOrders: tradeOrders.filter(o => o.side === wanted
+      && (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')),
+  };
+};
+
 export const protectiveLegsOf = (trade, orders) => {
   const entryRef = entryRefOf(trade, orders);
   if (entryRef == null || !trade.side) return [];
-  const opposite = trade.side === 'LONG' ? 'SELL' : 'BUY';
   const off = tradeOffsetOf(trade);
+  const tradeOrders = ordersForTrade(orders, trade.id);
 
-  const legs = ordersForTrade(orders, trade.id)
-    .filter(o => o.side === opposite)
+  // #466 (épico #462 F3) — a definição de proteção é a de `orderProtection`, a mesma do
+  // import: mesmo ativo, lado oposto, fora de zeragem/inversão/saída manual, não cancelada
+  // antes da primeira entrada; ordem de stop vale em qualquer preço (trail protege) e
+  // limite só quando adverso ao preço EXECUTADO da perna a que se refere. Sem janela de
+  // tempo aqui (`lifetime: false`): a linha do tempo da proteção precisa das reemissões,
+  // e a ordem já vem correlacionada ao trade. `orders` não grava `origin`, então o filtro
+  // de origem só age no import — ver cabeçalho de `orderProtection`.
+  const position = positionOf(trade, tradeOrders);
+  const ctx = { offset: off, lifetime: false };
+  ctx.legs = legsOf(position, ctx);
+
+  const legs = tradeOrders
+    .filter(o => isPositionProtection(o, position, ctx))
     .map(o => ({
       ...o,
       _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),
@@ -322,13 +351,7 @@ export const protectiveLegsOf = (trade, orders) => {
           : (o.stopPrice ?? o.limitPrice ?? o.price ?? NaN),
       ),
     }))
-    .filter(o => Number.isFinite(o._price))
-    // Ordem de stop de verdade protege em qualquer preço: acima da entrada num LONG
-    // ela é trail/breakeven, que limita a perda a zero ou lucro — proteção melhor,
-    // não ausência dela. Já uma LIMITE pura só é a perna de proteção do OCO quando
-    // está do lado adverso; do lado favorável é alvo.
-    .filter(o => o._isRealStop
-      || (trade.side === 'LONG' ? o._price < entryRef : o._price > entryRef));
+    .filter(o => Number.isFinite(o._price));
 
   const seen = new Set();
   return legs

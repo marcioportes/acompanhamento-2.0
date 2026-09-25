@@ -17,6 +17,13 @@ import {
 // FIXTURES
 // ============================================
 
+// #466 — o stop da operação sai de `tradeStopFromLegs`: precisa ser proteção de verdade
+// da perna (lado oposto, nascida com a entrada, adversa ao executado).
+const STOP_DO_BRACKET = {
+  instrument: 'WINJ26', side: 'SELL', isStopOrder: true, stopPrice: 129950, quantity: 2,
+  status: 'CANCELLED', submittedAt: '2026-04-04T10:00:01', cancelledAt: '2026-04-04T10:30:00',
+};
+
 const makeOperation = (overrides = {}) => ({
   operationId: 'OP-001',
   instrument: 'WINJ26',
@@ -128,7 +135,7 @@ describe('compareOperationWithTrade', () => {
   it('detecta stop ausente no diário (MEDIUM)', () => {
     const op = makeOperation({
       hasStopProtection: true,
-      stopOrders: [{ stopPrice: 129950 }],
+      stopOrders: [STOP_DO_BRACKET],
     });
     const trade = makeTrade({ stopLoss: null });
     const comparison = compareOperationWithTrade(op, trade);
@@ -142,7 +149,7 @@ describe('compareOperationWithTrade', () => {
   it('detecta stop com valor diferente (MEDIUM)', () => {
     const op = makeOperation({
       hasStopProtection: true,
-      stopOrders: [{ stopPrice: 129950 }],
+      stopOrders: [STOP_DO_BRACKET],
     });
     const trade = makeTrade({ stopLoss: 129900 });
     const comparison = compareOperationWithTrade(op, trade);
@@ -194,7 +201,7 @@ describe('compareOperationWithTrade', () => {
     const op = makeOperation({
       avgEntryPrice: 130025, // HIGH
       hasStopProtection: true,
-      stopOrders: [{ stopPrice: 129950 }], // MEDIUM (trade tem stopLoss null)
+      stopOrders: [STOP_DO_BRACKET], // MEDIUM (trade tem stopLoss null)
       entryTime: '2026-04-04T10:10:00', // LOW
     });
     const trade = makeTrade();

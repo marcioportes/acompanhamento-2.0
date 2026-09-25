@@ -15,6 +15,7 @@
  */
 
 import { CORRELATION_WINDOW_MS } from './orderCorrelation';
+import { tradeStopFromLegs } from './orderProtection';
 
 // ============================================
 // CONSTANTS
@@ -111,10 +112,10 @@ export function compareOperationWithTrade(operation, trade) {
   }
 
   // Stop loss (MEDIUM) — compara presença e valor
-  const opStopPrice = operation.stopOrders?.length > 0
-    ? Number(operation.stopOrders[operation.stopOrders.length - 1].stopPrice
-        ?? operation.stopOrders[operation.stopOrders.length - 1].price)
-    : null;
+  // #466 — o stop da operação é o MESMO que a criação de trade grava (stop por perna,
+  // `tradeStopFromLegs`). Antes era "o último de `stopOrders`", que seguia a ordem do
+  // arquivo e podia ser um stop cancelado antes da entrada.
+  const opStopPrice = tradeStopFromLegs(operation).stopLoss;
   const trStop = trade.stopLoss != null ? Number(trade.stopLoss) : null;
 
   const opHasStop = opStopPrice != null && Number.isFinite(opStopPrice);
