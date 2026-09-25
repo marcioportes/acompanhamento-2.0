@@ -15,7 +15,10 @@ const baseOp = {
   avgEntryPrice: 24910,
   avgExitPrice: 24960,
   hasStopProtection: true,
-  stopOrders: [{ stopPrice: 24880 }],
+  // #466 — o stop sugerido é o de `tradeStopFromLegs`: proteção nascida com a perna.
+  entryTime: '2026-03-02T10:00:00',
+  entryOrders: [{ instrument: 'MNQH6', side: 'BUY', status: 'FILLED', filledPrice: 24910, filledQuantity: 2, filledAt: '2026-03-02T10:00:00' }],
+  stopOrders: [{ instrument: 'MNQH6', side: 'SELL', isStopOrder: true, stopPrice: 24880, quantity: 2, status: 'CANCELLED', submittedAt: '2026-03-02T10:00:01' }],
 };
 
 const baseTrade = {

@@ -12,7 +12,7 @@
  */
 
 import { CORRELATION_WINDOW_MS } from './orderCorrelation';
-import { STOP_SEMANTIC } from './stopSemantic';
+import { tradeStopFromLegs } from './orderProtection';
 import { detectAutoLiq } from './autoLiqDetector';
 
 // ============================================
@@ -193,36 +193,21 @@ export function mapOperationToTradeData(operation, planId, importBatchId = null,
     });
   }
 
-  // Stop loss: se operação tem proteção de stop, extrair preço do stop
+  // Stop loss — #466 (épico #462 F3): stop por PERNA, pela definição única de
+  // `orderProtection`. Cada perna (fill de entrada) tem como stop a proteção mais antiga
+  // que nasceu com ela (±60s), do lado oposto, do mesmo ativo, fora de zeragem/inversão/
+  // saída manual, não cancelada antes da entrada e com preço ENVIADO adverso ao preço
+  // EXECUTADO da perna.
   //
-  // #455 — perna classificada `STOP_GAIN` NÃO vira `stopLoss`. `stopSemantic` já
-  // distingue proteção de trail desde o #242 (LONG com gatilho ≥ entrada, SHORT com
-  // gatilho ≤ entrada), e `hasRealStopLoss` era escrito e nunca lido: o trade de
-  // 23/09/2026 nasceu com `stopLoss: 189.390` — ACIMA da entrada de 189.370 num LONG.
-  // Como `calculateRiskPercent`/`calculateRiskReward` usam `Math.abs(entry - stop)`, o
-  // sinal invertido não aparece: saiu risco de 20 pts (R$ 20) e RR 25,0, contra risco
-  // mínimo comprovável de 220 pts (R$ 220) e RR ≤ 2,27.
+  // Antes era "o último da lista" de `stopOrders`: seguia a ordem do arquivo (importar e
+  // retomar o staging davam stops diferentes) e aceitava qualquer coisa que tivesse
+  // entrado ali — no 24/09/2026 um stop cancelado 44 min antes da entrada, risco R$ 7.070.
   //
-  // Sem perna de proteção real, `stopLoss` fica null e o aluno informa (Marcio,
-  // 23/09/2026: "o stop deve ser informado mesmo, se não tem jeito"). Quando a proteção
-  // foi arrastada durante a operação, o export da corretora traz só o estado final da
-  // ordem — o stop assumido na entrada não está no arquivo e o sistema não o inventa.
-  //
-  // O filtro exclui apenas o que foi classificado como STOP_GAIN: perna sem
-  // `stopSemantic` (bracket LIMIT com `Preço Stop` vazio, DEC-AUTO-242-01 / #449)
-  // continua elegível, como antes.
-  let stopLoss = null;
-  const protecoesReais = (operation.stopOrders || [])
-    .filter(s => s.stopSemantic !== STOP_SEMANTIC.STOP_GAIN);
-  if (operation.hasStopProtection && protecoesReais.length > 0) {
-    // Usar o último stop order configurado (pode ter sido movido)
-    const lastStop = protecoesReais[protecoesReais.length - 1];
-    // #449 — o preço ENVIADO, nunca o executado. `limitPrice` entra na ordem de
-    // precedência porque o bracket desta corretora emite a proteção como LIMITE com
-    // `Preço Stop` vazio (DEC-AUTO-242-01): sem ele, a proteção acionada gravaria o
-    // preço de preenchimento e o risco do trade sairia menor do que foi assumido.
-    stopLoss = parseFloat(lastStop.stopPrice ?? lastStop.limitPrice ?? lastStop.price) || null;
-  }
+  // Perna sem stop comprovado (sem proteção, ou só com stop do lado do ganho — #455) deixa
+  // o trade SEM stop: o aluno informa (Marcio, 23/09 e 25/09/2026). Com todas as pernas
+  // comprovadas, `stopLoss` é o STOP EQUIVALENTE — o preço que faz |entrada − stop| × qtd
+  // devolver a soma do risco das pernas (INV-15: sem campo novo; o detalhe fica em `orders`).
+  const { stopLoss } = tradeStopFromLegs(operation);
 
   return {
     planId,

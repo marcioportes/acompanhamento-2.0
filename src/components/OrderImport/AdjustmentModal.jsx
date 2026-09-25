@@ -21,6 +21,7 @@
 import { useMemo, useState } from 'react';
 import { X, Sparkles } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
+import { tradeStopFromLegs } from '../../utils/orderProtection';
 
 const FIELDS = [
   { key: 'entry', label: 'Entrada' },
@@ -48,14 +49,9 @@ const formatVal = (v) => {
   return n.toLocaleString('pt-BR');
 };
 
-const deriveNewStopLoss = (op) => {
-  if (op?.hasStopProtection && op?.stopOrders?.length > 0) {
-    const lastStop = op.stopOrders[op.stopOrders.length - 1];
-    const parsed = parseFloat(lastStop.stopPrice ?? lastStop.price);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-};
+// #466 — o mesmo stop que a criação de trade grava (stop por perna, `tradeStopFromLegs`),
+// não mais "o último de `stopOrders`".
+const deriveNewStopLoss = (op) => (op ? tradeStopFromLegs(op).stopLoss : null);
 
 const AdjustmentModal = ({ operation, trade, onConfirm, onCancel }) => {
   const isSimplified = !trade;

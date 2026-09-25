@@ -514,17 +514,33 @@ describe('mapOperationToTradeData', () => {
     expect(data._partials[2]).toEqual({ type: 'EXIT', price: 130050, qty: 2, dateTime: '2026-04-04T10:30:00', seq: 3 });
   });
 
-  it('extrai stopLoss do último stop order', () => {
+  // #466 — o stop inicial da perna é a proteção mais ANTIGA pelo instante, nunca a
+  // posição no array (antes: "o último da lista", que seguia a ordem do arquivo).
+  it('extrai stopLoss da proteção mais antiga da perna, não da última do array', () => {
+    const stop = (id, preco, hora) => ({
+      externalOrderId: id, instrument: 'WINJ26', side: 'SELL', status: 'CANCELLED',
+      isStopOrder: true, stopPrice: preco, price: preco, quantity: 2,
+      submittedAt: `2026-04-04T${hora}`, cancelledAt: '2026-04-04T10:30:00',
+    });
     const op = makeOperation({
       hasStopProtection: true,
-      stopOrders: [
-        { stopPrice: 129950, price: 129950 },
-        { stopPrice: 129970, price: 129970 },
-      ],
+      stopOrders: [stop('S2', 129970, '10:00:30'), stop('S1', 129950, '10:00:05')],
     });
 
     const data = mapOperationToTradeData(op, 'plan-001');
-    expect(data.stopLoss).toBe(129970);
+    expect(data.stopLoss).toBe(129950);
+  });
+
+  it('stop fora da janela da perna (enviado 5 min depois) não vira stopLoss', () => {
+    const op = makeOperation({
+      hasStopProtection: true,
+      stopOrders: [{
+        externalOrderId: 'S1', instrument: 'WINJ26', side: 'SELL', status: 'CANCELLED',
+        isStopOrder: true, stopPrice: 129950, quantity: 2,
+        submittedAt: '2026-04-04T10:05:00', cancelledAt: '2026-04-04T10:30:00',
+      }],
+    });
+    expect(mapOperationToTradeData(op, 'plan-001').stopLoss).toBeNull();
   });
 
   it('stopLoss null quando não há stop protection', () => {

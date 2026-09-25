@@ -91,14 +91,8 @@ const STOP_ANOTADO = {
   },
 };
 
-const STOP_ANOTADO_FALHA = {
-  '2026-04-20': { 'WINM26@2026-04-22T11:07:52': 'F3 #466' },
-  '2026-05-04': {
-    'WINM26@2026-05-04T10:44:46': 'F3 #466',
-    'WINM26@2026-05-04T12:17:16': 'F3 #466',
-  },
-  '2026-09-24': { 'WINV26@2026-09-24T15:52:21': 'F3 #466' },
-};
+// #466 (F3) — os quatro stops anotados passaram a conferir; a lista fica para regressão.
+const STOP_ANOTADO_FALHA = {};
 
 const itConforme = (falha) => (falha ? it.fails : it);
 const rotulo = (base, falha) => (falha ? `${base} — falha conhecida, corrige em ${falha}` : base);

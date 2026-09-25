@@ -12,14 +12,14 @@
  * `docs/dev/AUDIT-parser-comparison-20260504.md`.
  *
  * Esta função roda APÓS `reconstructOperations` + `associateNonFilledOrders`,
- * quando o `side` da operação e o `entryOrders[0].limitPrice` (limite original
- * da primeira entrada, preservado por `normalizeOrder`) já estão disponíveis.
+ * quando o `side` da operação e as pernas de entrada (`entryOrders`) já estão
+ * disponíveis.
  * Marca `stopSemantic` em cada ordem da operação que tenha `stopPrice != null`
  * e adiciona `hasRealStopLoss` na operação.
  *
- * Critério (DEC-AUTO-242-01 — referência = LIMITE original, não avgFillPrice):
+ * Critério (DEC-AUTO-242-01; referência trocada no #466 — ver abaixo):
  *
- *   side oposto à posição + Preço Stop relativo ao limite da entrada:
+ *   side oposto à posição + Preço Stop relativo ao preço executado da perna:
  *     LONG  + Preço Stop < entryRef  → STOP_LOSS  (proteção contra queda)
  *     LONG  + Preço Stop >= entryRef → STOP_GAIN  (trail / breakeven plus)
  *     SHORT + Preço Stop > entryRef  → STOP_LOSS  (proteção contra alta)
@@ -27,11 +27,21 @@
  *
  *   side igual à posição → null (entry SuperDOM com stop anexado, não proteção)
  *
+ * #466 (épico #462 F3) — a referência passou a ser o preço EXECUTADO DA PERNA a que a
+ * ordem se refere (`legOfOrder` de `orderProtection`), não mais o limite da primeira
+ * entrada. Com posição em pernas, o stop da segunda perna era comparado com o preço da
+ * primeira: no 24/09/2026 o 185.280 da perna 2 (venda a 185.300) saía STOP_LOSS contra a
+ * perna 1 (185.070) — era stop de ganho. E o limite enviado não é onde a posição abriu:
+ * o risco se realiza contra o executado (decisão do Marcio, 25/09/2026). A função pura
+ * `classifyStopSemantic` não muda — muda a referência que o enriquecedor passa a ela.
+ *
  * EXPORTS:
  *   STOP_SEMANTIC                          — enum { STOP_LOSS, STOP_GAIN }
  *   classifyStopSemantic(input)            — fn pura
  *   enrichOperationsWithStopSemantic(ops)  — mutating, retorna mesma ref
  */
+
+import { legsOf, legOfOrder } from './orderProtection';
 
 export const STOP_SEMANTIC = Object.freeze({
   STOP_LOSS: 'STOP_LOSS',
@@ -71,11 +81,9 @@ const protectionOrderSide = (opSide) => {
  * @param {string} input.orderSide     — 'BUY' | 'SELL'
  * @param {number|null} input.orderStopPrice — `Preço Stop` da ordem
  * @param {string} input.opSide        — 'LONG' | 'SHORT'
- * @param {number|null} input.entryLimitPrice — limite da primeira entrada
- *   (`op.entryOrders[0].limitPrice`). NÃO usar `price`/`filledPrice`/
- *   `avgFillPrice` — slippage não muda intenção de proteção (DEC-AUTO-242-01).
- *   `normalizeOrder` move o `Preço` original (Limite) para `limitPrice` e
- *   sobrescreve `price` com a fill price.
+ * @param {number|null} input.entryLimitPrice — preço de referência da entrada. Desde o
+ *   #466 o enriquecedor passa o preço EXECUTADO da perna da ordem (o nome do parâmetro
+ *   ficou do DEC-AUTO-242-01, que usava o limite da primeira entrada).
  * @returns {'STOP_LOSS' | 'STOP_GAIN' | null}
  */
 export function classifyStopSemantic({ orderSide, orderStopPrice, opSide, entryLimitPrice } = {}) {
@@ -135,24 +143,21 @@ export function enrichOperationsWithStopSemantic(operations) {
     op.hasRealStopLoss = false;
     if (!op.entryOrders?.length) continue;
 
-    // DEC-AUTO-242-01: referência é o LIMITE da entrada, não a fill price
-    // (slippage não muda intenção de proteção). `normalizeOrder` move o
-    // `Preço` original para `limitPrice` e sobrescreve `price` com fill —
-    // por isso preferimos `limitPrice` quando disponível. Fallback para
-    // `price` cobre shapes de teste e ordens sem normalização prévia.
-    const firstEntry = op.entryOrders[0];
-    const entryRefRaw = firstEntry.limitPrice != null ? firstEntry.limitPrice : firstEntry.price;
-    const entryRef = parseFloat(entryRefRaw);
-    if (!Number.isFinite(entryRef)) continue;
+    // #466 — referência = preço executado da perna da ordem (ver cabeçalho). Entrada sem
+    // instante legível não forma perna: aí a referência é o executado da primeira entrada.
+    const legs = legsOf(op);
+    const first = op.entryOrders[0];
+    const semPerna = parseFloat(first.filledPrice ?? first.avgFillPrice ?? first.price);
 
     const all = collectAllOperationOrders(op);
     for (const order of all) {
       if (order.stopPrice == null) continue;
+      const perna = legOfOrder(order, legs, op);
       const semantic = classifyStopSemantic({
         orderSide: order.side,
         orderStopPrice: parseFloat(order.stopPrice),
         opSide: op.side,
-        entryLimitPrice: entryRef,
+        entryLimitPrice: perna ? perna.price : semPerna,
       });
       order.stopSemantic = semantic;
       if (semantic === STOP_SEMANTIC.STOP_LOSS) {

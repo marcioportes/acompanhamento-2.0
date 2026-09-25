@@ -237,16 +237,7 @@ export const pernasDe = (op) => (op.entryOrders || []).map(o => ({
  *
  * Devolve códigos; lista vazia = stop defensável.
  */
-export const violacoesDoStop = (op) => {
-  const trade = tradeDa(op);
-  const stop = trade.stopLoss;
-  if (stop == null) return [];
-
-  const candidatas = [...(op.stopOrders || []), ...(op.exitOrders || [])]
-    .filter(o => precoEnviado(o) === stop);
-  if (candidatas.length === 0) return ['SEM_ORIGEM'];
-  const origem = candidatas[0];
-
+const violacoesDaOrigem = (op, origem, stop) => {
   const v = [];
   const pernas = pernasDe(op);
   const entradaMs = Math.min(...pernas.map(p => p.ts));
@@ -257,6 +248,11 @@ export const violacoesDoStop = (op) => {
   if (origem.side !== ladoOposto) v.push('MESMO_LADO');
   if (origem.cancelledAt && paredeMs(origem.cancelledAt) < entradaMs) v.push('CANCELADA_ANTES_DA_ENTRADA');
   if (/zerag|invers/i.test(origem.origin || '')) v.push('ZERAGEM_OU_INVERSAO');
+  // #466 — saída manual (limite sem gatilho fora do bracket "Estratégia") não é proteção:
+  // limite de venda não segura a queda. Critério do épico ("origem diferente de Zeragem,
+  // Inversão ou manual"); o F0 só cobria as duas primeiras.
+  else if (origem.stopPrice == null && origem.isStopOrder !== true
+    && origem.origin && !/estrat/i.test(origem.origin)) v.push('SAIDA_MANUAL');
 
   const perna = pernas.find(p => Math.abs(enviadaMs - p.ts) <= JANELA_DA_PERNA_MS);
   if (!perna) {
@@ -266,6 +262,55 @@ export const violacoesDoStop = (op) => {
     if (!adversa) v.push('NAO_ADVERSA_A_PERNA');
   }
   return v;
+};
+
+/**
+ * #466 — posição em pernas: o `stopLoss` gravado é o STOP EQUIVALENTE (decisão do Marcio,
+ * 25/09/2026, INV-15), um preço sintético que não é o de nenhuma ordem. Para ele, o
+ * critério é aplicado PERNA A PERNA, reescrito aqui sem usar `orderProtection` (o teste
+ * não pode herdar o defeito do código que testa): cada perna precisa de uma proteção
+ * defensável — a mais antiga que nasceu com ela, sem violação — e o equivalente precisa
+ * devolver a soma do risco das pernas.
+ */
+const violacoesDoEquivalente = (op, stop) => {
+  const pernas = pernasDe(op);
+  const candidatas = [...(op.stopOrders || []), ...(op.exitOrders || [])];
+  // Uma ordem protege no máximo a quantidade dela: o bracket de 5 contratos não é o stop
+  // de duas pernas de 5 (pernas a menos de 60s uma da outra cabem na janela uma da outra).
+  const usado = new Map();
+  let riscoPtsQtd = 0;
+  let qtd = 0;
+  for (const perna of [...pernas].sort((a, b) => a.ts - b.ts)) {
+    const dela = candidatas
+      .filter(o => Math.abs(paredeMs(o.submittedAt) - perna.ts) <= JANELA_DA_PERNA_MS)
+      .filter(o => {
+        const p = precoEnviado(o);
+        return p != null && violacoesDaOrigem({ ...op, entryOrders: [perna.order] }, o, p).length === 0;
+      })
+      .filter(o => (Number(o.quantity) || Infinity) - (usado.get(o) || 0) >= perna.qty)
+      .sort((a, b) => paredeMs(a.submittedAt) - paredeMs(b.submittedAt));
+    if (!dela.length) return ['PERNA_SEM_PROTECAO_DEFENSAVEL'];
+    usado.set(dela[0], (usado.get(dela[0]) || 0) + perna.qty);
+    riscoPtsQtd += Math.abs(perna.price - precoEnviado(dela[0])) * perna.qty;
+    qtd += perna.qty;
+  }
+  const medio = parseFloat(op.avgEntryPrice);
+  const riscoGravado = Math.abs(medio - stop) * qtd;
+  // O stop equivalente é gravado com 2 casas: erro máximo de 0,005 pt por contrato.
+  return Math.abs(riscoGravado - riscoPtsQtd) <= 0.005 * qtd + 1e-6 ? [] : ['EQUIVALENTE_NAO_SOMA_AS_PERNAS'];
+};
+
+export const violacoesDoStop = (op) => {
+  const trade = tradeDa(op);
+  const stop = trade.stopLoss;
+  if (stop == null) return [];
+
+  const candidatas = [...(op.stopOrders || []), ...(op.exitOrders || [])]
+    .filter(o => precoEnviado(o) === stop);
+  if (candidatas.length === 0) {
+    return pernasDe(op).length > 1 ? violacoesDoEquivalente(op, stop) : ['SEM_ORIGEM'];
+  }
+  return violacoesDaOrigem(op, candidatas[0], stop);
 };
 
 /** Chave estável de uma linha da corretora: `ATIVO@abertura`. */
