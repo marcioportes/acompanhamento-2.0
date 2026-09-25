@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.11: #467 fix um caminho só para gravar e exibir o stop — enriquecimento, compliance, painel (RESERVADA)
  * - 1.92.10: #466 fix pernas e proteção — definição única, stop inicial por perna, risco somado (PR #472, 25/09/2026)
  * - 1.92.9: #465 fix preço da ordem é a média das execuções; quantidade fracionária não zera c (PR #471, 25/09/2026)
  * - 1.92.8: #464 fix instante único da ordem — um helper, orders com offset, execução pelo event (PR #470, 25/09/2026)
