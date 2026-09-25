@@ -11,6 +11,7 @@
  */
 
 import { getInstrument } from '../constants/instrumentsTable.js';
+import { orderInstantMs } from './orderInstant.js';
 
 // ============================================
 // CONSTANTS & CONFIG
@@ -692,6 +693,18 @@ export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_C
 // LAYER 2 DETECTORS — when orders exist
 // ============================================
 
+/**
+ * Instante de ordem como `Date`, NO FUSO DO TRADE (#464). Estes detectores comparavam
+ * `new Date(ordemIngênua)` com `new Date(trade.entryTime)` (com offset) — o mesmo desvio
+ * de 3h fora de Brasília que o #375/#388 corrigiram no espelho da CF
+ * (`functions/shadow/shadowDetectors.js`), que já usa `orderInstantMs`. Sem instante →
+ * `Invalid Date`, que os `isNaN` abaixo já descartam.
+ */
+const ordemEm = (trade, valor) => {
+  const ms = orderInstantMs(trade, valor);
+  return new Date(ms == null ? NaN : ms);
+};
+
 export const detectHesitation = (trade, orders, config = DEFAULT_CONFIG.hesitation) => {
   if (!orders || orders.length === 0) return null;
 
@@ -701,7 +714,7 @@ export const detectHesitation = (trade, orders, config = DEFAULT_CONFIG.hesitati
 
   const cancelledBefore = orders.filter(o => {
     if (o.status !== 'CANCELLED') return false;
-    const cancelTime = new Date(o.cancelledAt || o.submittedAt);
+    const cancelTime = ordemEm(trade, o.cancelledAt || o.submittedAt);
     return !isNaN(cancelTime) && cancelTime < entryTime;
   });
 
@@ -709,7 +722,7 @@ export const detectHesitation = (trade, orders, config = DEFAULT_CONFIG.hesitati
 
   // Calculate hesitation time: first cancel to actual entry
   const firstCancelTime = cancelledBefore
-    .map(o => new Date(o.submittedAt))
+    .map(o => ordemEm(trade, o.submittedAt))
     .filter(d => !isNaN(d))
     .sort((a, b) => a - b)[0];
 
@@ -750,7 +763,7 @@ export const detectStopPanic = (trade, orders, config = DEFAULT_CONFIG.stopPanic
   if (isNaN(exitTime)) return null;
 
   const lastWiden = widenedOrders
-    .map(o => new Date(o.lastUpdatedAt || o.cancelledAt || o.submittedAt))
+    .map(o => ordemEm(trade, o.lastUpdatedAt || o.cancelledAt || o.submittedAt))
     .filter(d => !isNaN(d))
     .sort((a, b) => b - a)[0];
 
@@ -787,8 +800,8 @@ export const detectFomoEntry = (trade, orders, config = DEFAULT_CONFIG.fomoEntry
   // Check creation→execution delay
   const delays = entryOrders
     .map(o => {
-      const submitted = new Date(o.submittedAt);
-      const filled = new Date(o.filledAt || o.submittedAt);
+      const submitted = ordemEm(trade, o.submittedAt);
+      const filled = ordemEm(trade, o.filledAt || o.submittedAt);
       if (isNaN(submitted) || isNaN(filled)) return null;
       return (filled - submitted) / 60000;
     })
@@ -878,7 +891,7 @@ export const detectLateExit = (trade, orders, config = DEFAULT_CONFIG.lateExit) 
 
   // Time between last stop cancellation and actual exit
   const lastCancel = cancelledStops
-    .map(o => new Date(o.cancelledAt || o.lastUpdatedAt || o.submittedAt))
+    .map(o => ordemEm(trade, o.cancelledAt || o.lastUpdatedAt || o.submittedAt))
     .filter(d => !isNaN(d))
     .sort((a, b) => b - a)[0];
 
@@ -912,7 +925,7 @@ export const detectAveragingDown = (trade, orders) => {
     (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED') &&
     !o.isStopOrder &&
     o.side === (side === 'LONG' ? 'BUY' : 'SELL')
-  ).sort((a, b) => new Date(a.filledAt || a.submittedAt) - new Date(b.filledAt || b.submittedAt));
+  ).sort((a, b) => ordemEm(trade, a.filledAt || a.submittedAt) - ordemEm(trade, b.filledAt || b.submittedAt));
 
   if (sameDirection.length < 2) return null;
 

@@ -30,9 +30,17 @@
 
 const FIRESTORE_BATCH_SIZE = 400;
 
-/** Fingerprint composto — espelha `orderMatchFingerprint` do front. */
+const { stripBatchOffset } = require('../shared/orderInstant');
+
+/**
+ * Fingerprint composto — espelha `orderMatchFingerprint` do front.
+ *
+ * #464 — o instante entra sem o offset do lote (`stripBatchOffset`): desde o #464 o doc de `orders` é gravado
+ * com offset (`...T11:22:02-03:00`) e a parcial do trade segue com o instante do arquivo
+ * (`...T11:22:02`). Sem normalizar, nenhuma ordem nova casaria com o trade dela (#351).
+ */
 const fingerprint = (instrument, side, filledAt, qty) =>
-  `${(instrument || '').toUpperCase()}|${side || ''}|${filledAt || ''}|${qty ?? ''}`;
+  `${(instrument || '').toUpperCase()}|${side || ''}|${stripBatchOffset(filledAt) || ''}|${qty ?? ''}`;
 
 /** Fingerprint de um doc da collection `orders`. */
 const orderDocFingerprint = (d) =>

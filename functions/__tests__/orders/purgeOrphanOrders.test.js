@@ -213,4 +213,25 @@ describe('purgeOrphanOrders — vínculo decidido pelo cliente', () => {
     expect(r.linked).toBe(1);
     expect(deleted).toEqual([]);
   });
+
+  // #464 — o doc gravado com o offset do lote e a chave que o cliente calcula sobre a
+  // ordem ingênua do import têm de ser a mesma, senão a ordem vinculada morre.
+  it('chave composta casa com o doc gravado com offset (#464)', async () => {
+    const comOffset = orderDoc('nova', {
+      batchId: 'B1', externalOrderId: null,
+      instrument: 'WINV26', side: 'SELL', quantity: 5,
+      submittedAt: '2026-08-20T11:46:45-03:00', filledAt: null,
+      correlatedTradeId: null, importedAt: minutosAtras(1),
+    });
+    const { db, deleted } = makeDb([comOffset], ['T1']);
+
+    const r = await purgeOrphanOrders(db, {
+      batchId: 'B1',
+      links: { 'comp:WINV26|SELL|2026-08-20T11:46:45|5|': 'T1' },
+      now: AGORA,
+    });
+
+    expect(r.linked).toBe(1);
+    expect(deleted).toEqual([]);
+  });
 });

@@ -77,6 +77,9 @@ export const normalizeOrder = (parsed) => {
     // Internal
     _dedupKey: null,
     _rowIndex: parsed._rowIndex ?? null,
+    // #464 — só em memória: `filledAt`/`cancelledAt` vieram da "Última Atualização"
+    // (export sem linhas de evento). Staging e `orders` gravam lista fechada de campos.
+    ...(parsed._instanteDaUltimaAtualizacao ? { _instanteDaUltimaAtualizacao: true } : {}),
   };
 
   normalized._dedupKey = generateDedupKey(normalized);

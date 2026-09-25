@@ -16,13 +16,31 @@
  * inline causaria ordens "sumirem" entre staging e ingest.
  */
 
+import { stripBatchOffset } from './orderInstant';
+
 /**
  * @param {Object} order — ordem normalizada
  * @returns {string} chave canônica
  */
 export function makeOrderKey(order) {
   if (order.externalOrderId) return `eid:${order.externalOrderId}`;
-  return `comp:${order.instrument}|${order.side}|${order.submittedAt || ''}|${order.quantity ?? ''}|${order.filledAt || ''}`;
+  return compositeOrderKey(order);
+}
+
+/**
+ * Chave composta — o fallback sem ClOrdID. Os instantes entram sem o offset do lote (`stripBatchOffset`)
+ * (#464): desde o #464 `orders` é gravada com offset, e a ordem ingênua que chega do
+ * arquivo tem de produzir a MESMA chave do doc já gravado — senão o id determinístico
+ * (#362) e o reconhecimento de reimportação (#366) deixam de casar. Para instante
+ * ingênuo o resultado é o de sempre: nenhum id existente muda.
+ *
+ * @param {Object} order
+ * @param {Object} [override] — campos a substituir (ex.: `{ filledAt: '' }`)
+ * @returns {string}
+ */
+export function compositeOrderKey(order, override = {}) {
+  const o = { ...order, ...override };
+  return `comp:${o.instrument}|${o.side}|${stripBatchOffset(o.submittedAt) || ''}|${o.quantity ?? ''}|${stripBatchOffset(o.filledAt) || ''}`;
 }
 
 /**

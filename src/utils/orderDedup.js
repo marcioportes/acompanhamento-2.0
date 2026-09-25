@@ -23,6 +23,8 @@
  *   não confiado ao hook — senão o ClOrdID de um aluno marcaria a ordem de outro.
  */
 
+import { compositeOrderKey } from './orderKey';
+
 /**
  * Todas as chaves canônicas sob as quais uma ordem pode ser reconhecida.
  * A composta é sempre computável; a `eid:` só quando há ClOrdID.
@@ -34,9 +36,12 @@ export function orderKeyVariants(order) {
   if (!order) return [];
   const variants = [];
   if (order.externalOrderId) variants.push(`eid:${order.externalOrderId}`);
-  variants.push(
-    `comp:${order.instrument}|${order.side}|${order.submittedAt || ''}|${order.quantity ?? ''}|${order.filledAt || ''}`,
-  );
+  variants.push(compositeOrderKey(order));
+  // #464 — no export sem linhas de execução o parser passou a tirar `filledAt` da
+  // "Última Atualização". O doc legado desse arquivo, gravado antes do #362 (sem
+  // `externalOrderId`), tem `filledAt` nulo: sem esta variante a reimportação não o
+  // reconheceria e criaria a duplicata.
+  if (order._instanteDaUltimaAtualizacao) variants.push(compositeOrderKey(order, { filledAt: '' }));
   return variants;
 }
 

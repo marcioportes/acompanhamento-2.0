@@ -21,6 +21,8 @@
  *   detectAveragingDown(orders) → { count, instances[] }
  */
 
+import { wallClockMs } from './orderInstant';
+
 // ============================================
 // HELPERS
 // ============================================
@@ -178,7 +180,10 @@ export const detectAveragingDown = (orders) => {
     .filter(o => (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED') && !o.isStopOrder)
     .map(o => ({
       ...o,
-      _ts: toMs(o.filledAt || o.submittedAt),
+      // #464 — ordem×ordem pelo relógio de parede (SSoT `orderInstant`): o conjunto pode
+      // misturar ordem legada ingênua com ordem gravada com offset, e `new Date()` leria
+      // cada forma num fuso.
+      _ts: wallClockMs(o.filledAt || o.submittedAt),
     }))
     .filter(o => o._ts != null)
     .sort((a, b) => a._ts - b._ts);

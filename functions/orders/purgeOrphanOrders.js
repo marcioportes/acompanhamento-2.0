@@ -27,15 +27,19 @@
  */
 
 const { deleteDocsInBatches } = require('../_shared/batchDelete');
+const { stripBatchOffset } = require('../shared/orderInstant');
 
 /**
  * Espelho CJS de `makeOrderKey` (src/utils/orderKey.js, SSoT do #93). O cliente conhece
  * o vínculo ordem→trade por essa chave; o servidor precisa recalculá-la a partir do doc
  * para casar. Drift entre as duas cópias faz ordem sumir — mantenha idênticas.
+ *
+ * #464 — os instantes entram sem o offset do lote (`stripBatchOffset`): o doc gravado com
+ * offset e a ordem ingênua do import produzem a mesma chave.
  */
 function makeOrderKey(order) {
   if (order.externalOrderId) return `eid:${order.externalOrderId}`;
-  return `comp:${order.instrument}|${order.side}|${order.submittedAt || ''}|${order.quantity ?? ''}|${order.filledAt || ''}`;
+  return `comp:${order.instrument}|${order.side}|${stripBatchOffset(order.submittedAt) || ''}|${order.quantity ?? ''}|${stripBatchOffset(order.filledAt) || ''}`;
 }
 
 /** Janela de proteção da varredura: import em curso não é lixo. */

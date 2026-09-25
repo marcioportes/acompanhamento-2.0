@@ -13,6 +13,7 @@
  */
 
 import { CLASSIFICATION } from './orderTradeCreation';
+import { stripBatchOffset } from './orderInstant';
 
 /**
  * Roteia itens da fila conversacional em buckets de ação downstream.
@@ -165,7 +166,9 @@ export function buildEnrichmentPayload(item, opts = {}) {
 export function orderMatchFingerprint(order) {
   const instrument = (order.instrument || '').toUpperCase();
   const side = order.side || '';
-  const filledAt = order.filledAt || '';
+  // #464 — sem o offset do lote: o doc de `orders` gravado com offset e a ordem ingênua do
+  // import têm de produzir o mesmo fingerprint (espelho em `linkOrdersToCreatedTrade`).
+  const filledAt = stripBatchOffset(order.filledAt) || '';
   const qty = order.filledQuantity ?? order.quantity ?? '';
   return `${instrument}|${side}|${filledAt}|${qty}`;
 }

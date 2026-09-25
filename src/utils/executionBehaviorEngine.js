@@ -1,4 +1,5 @@
 import { REVOKED_RED_FLAG_TYPES } from './violationFilter';
+import { tradeOffsetOf, instantAtOffsetMs, orderInstantMs } from './orderInstant';
 /**
  * executionBehaviorEngine.js
  * @version 1.0.0 (v1.49.0 — issue #208 Fase 2)
@@ -105,53 +106,31 @@ const toMs = (value) => {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 };
 
-/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
-const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
-
-/**
- * Offset gravado no trade (#285/#292 — `entryTime`/`exitTime` são ISO+offset).
- * Devolve string tipo '-03:00', ou null quando o trade não carrega fuso.
- */
-const tradeOffsetOf = (trade) => {
-  for (const v of [trade?.entryTime, trade?.exitTime]) {
-    if (typeof v !== 'string') continue;
-    const m = v.match(OFFSET_RE);
-    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
-  }
-  return null;
-};
-
 /**
  * Instante de uma ordem, resolvido NO FUSO DO TRADE (#375).
  *
- * `orders` guarda instante ingênuo — `"2026-08-21T11:27:51"`, sem fuso — enquanto
+ * `orders` guardou instante ingênuo até o #464 (`"2026-08-21T11:27:51"`), enquanto
  * `trades` guarda com offset explícito desde o #285/#292. `new Date()` lê string sem
- * offset no fuso DO PROCESSO: no browser dá America/Sao_Paulo e bate; na Cloud
- * Function, que roda em UTC, a mesma ordem vira 11:27:51Z contra um trade em
- * 14:27:51Z. Três horas de defasagem entre a ordem e o trade dela.
+ * offset no fuso DO PROCESSO: no browser dá America/Sao_Paulo e bate; na Cloud Function,
+ * que roda em UTC, a mesma ordem vira 11:27:51Z contra um trade em 14:27:51Z.
  *
- * O efeito medido em produção: `liveStopsAt` descarta toda perna de proteção como se
- * tivesse sido cancelada 3h antes da saída, e TODO trade com ordem correlacionada
- * saía com `UNPROTECTED_SIZE` HIGH e cobertura zero — o gate travando progressão de
- * estágio em posição integralmente protegida. `detectStopBreakevenTooEarly`, pelo
- * mesmo desvio invertido, nunca dispara.
+ * O efeito medido em produção: `liveStopsAt` descartava toda perna de proteção como se
+ * tivesse sido cancelada 3h antes da saída, e TODO trade com ordem correlacionada saía com
+ * `UNPROTECTED_SIZE` HIGH e cobertura zero. `detectStopBreakevenTooEarly`, pelo mesmo
+ * desvio invertido, nunca disparava.
  *
- * Aplicado a TODO instante de ordem: comparação ordem×ordem segue consistente (o
- * deslocamento seria uniforme) e ordem×trade passa a ser correta.
+ * #464 — a resolução mora em `orderInstant.js` (SSoT, espelho de
+ * `functions/shared/orderInstant.js`). Aqui só o alias local: `orderMs(valor, offset)`.
+ * Aplicado a TODO instante de ordem: comparação ordem×ordem segue consistente e
+ * ordem×trade passa a ser correta.
  */
-const orderMs = (value, offset) => {
-  if (typeof value === 'string' && offset && value && !OFFSET_RE.test(value)) {
-    return toMs(`${value}${offset}`);
-  }
-  return toMs(value);
-};
+const orderMs = instantAtOffsetMs;
 
 /**
  * Instante de uma ordem no fuso do trade — versão pública, para quem lê ordem fora do
- * motor (o painel). Existe para que ninguém reimplemente o parse e reintroduza o desvio
- * de 3h: aconteceu uma vez dentro deste mesmo issue.
+ * motor (o painel). Reexportado do SSoT (#464) para não quebrar os importadores.
  */
-export const orderInstantMs = (trade, value) => orderMs(value, tradeOffsetOf(trade));
+export { orderInstantMs };
 
 const sameInstrument = (a, b) => {
   const ax = (a || '').toUpperCase();

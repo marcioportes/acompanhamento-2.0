@@ -17,6 +17,9 @@
 //   CHASE_REENTRY,
 //   STOP_BREAKEVEN_TOO_EARLY, STOP_HESITATION (issue #229)
 
+// #464 — instante de ordem: SSoT único, compartilhado com o motor do cliente.
+const { tradeOffsetOf, instantAtOffsetMs } = require('../shared/orderInstant');
+
 const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
   STOP_PARTIAL_SIZING: 'STOP_PARTIAL_SIZING',
@@ -81,32 +84,13 @@ function toMs(value) {
   return Number.isNaN(d.getTime()) ? null : d.getTime();
 }
 
-/** Sufixo de fuso num ISO: 'Z' ou '+HH:MM' / '-HHMM'. */
-const OFFSET_RE = /(Z|[+-]\d{2}:?\d{2})$/;
-
-/** Offset gravado no trade (#285/#292 — entryTime/exitTime são ISO+offset). */
-function tradeOffsetOf(trade) {
-  const cands = [trade && trade.entryTime, trade && trade.exitTime];
-  for (let i = 0; i < cands.length; i++) {
-    const v = cands[i];
-    if (typeof v !== 'string') continue;
-    const m = v.match(OFFSET_RE);
-    if (m) return m[1] === 'Z' ? '+00:00' : m[1];
-  }
-  return null;
-}
-
 /**
- * Instante de ordem no FUSO DO TRADE (#375). `orders` guarda ingênuo, `trades` guarda
- * com offset; esta CF roda em UTC, então sem isto a ordem sai 3h antes do trade dela e
- * `liveStopsAt` descarta toda proteção. Espelho de `executionBehaviorEngine.orderMs`.
+ * Instante de ordem no FUSO DO TRADE (#375). `orders` guardou ingênuo até o #464, `trades`
+ * guarda com offset; esta CF roda em UTC, então sem isto a ordem sai 3h antes do trade
+ * dela e `liveStopsAt` descarta toda proteção. #464 — resolução no SSoT
+ * `../shared/orderInstant` (o mesmo módulo que o motor do cliente usa); aqui só o alias.
  */
-function orderMs(value, offset) {
-  if (typeof value === 'string' && offset && value && !OFFSET_RE.test(value)) {
-    return toMs(value + offset);
-  }
-  return toMs(value);
-}
+const orderMs = instantAtOffsetMs;
 
 function sameInstrument(a, b) {
   const ax = (a || '').toUpperCase();
