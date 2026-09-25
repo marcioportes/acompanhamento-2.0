@@ -35,6 +35,11 @@ const validateStructural = (order) => {
 
   if (order.quantity == null) errors.push('Quantidade ausente');
   else if (order.quantity <= 0) errors.push(`Quantidade inválida: ${order.quantity}`);
+  // #465 — lote fracionário (forex/CFD) não é contrato: aceitar passaria 0,03 lote como
+  // contrato e o resultado sairia errado por ordem de grandeza. Suporte é o #453.
+  else if (!Number.isInteger(order.quantity)) {
+    errors.push(`Quantidade fracionária (${String(order.quantity).replace('.', ',')}): ativo internacional ainda não é suportado`);
+  }
 
   if (!order.orderType) warnings.push('Tipo de ordem ausente — será tratado como MARKET');
   else if (!VALID_ORDER_TYPES.includes(order.orderType)) warnings.push(`Tipo de ordem não reconhecido: "${order.orderType}"`);

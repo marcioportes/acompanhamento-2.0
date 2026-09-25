@@ -244,9 +244,20 @@ const OrderImportPage = ({
     if (validation.validOrders.length > 0) {
       setStep(STEPS.PREVIEW);
     } else {
-      const reason = parsed.errors?.length > 0
-        ? `${parsed.errors.length} erros de parse + 0 ordens válidas após validação`
-        : '0 ordens válidas após validação';
+      // #465 — o motivo mais frequente vai junto: "0 ordens válidas" sozinho não dizia ao
+      // aluno que o arquivo tinha lote fracionário (export internacional).
+      const motivos = {};
+      for (const inv of validation.invalidOrders) {
+        for (const e of inv.errors) {
+          const chave = e.replace(/\(.*?\)/, '').trim();
+          motivos[chave] = motivos[chave] || e;
+        }
+      }
+      const principal = Object.values(motivos)[0];
+      const reason = [
+        parsed.errors?.length > 0 ? `${parsed.errors.length} erros de parse + 0 ordens válidas após validação` : '0 ordens válidas após validação',
+        principal ? `Motivo: ${principal}` : null,
+      ].filter(Boolean).join('. ');
       setError(`Arquivo reconhecido como ProfitChart-Pro mas sem ordens importáveis. ${reason}.`);
     }
   }, []);
