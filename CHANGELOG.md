@@ -8,6 +8,17 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.9] - 25/09/2026 · #465 · PR #471
+
+**fix:** preço da ordem é a média das execuções; quantidade fracionária não zera c
+
+- **Preço da ordem = média ponderada das execuções.** Antes era o preço do primeiro evento "Trade". Sem eventos (export "ordens recentes"), vale o "Preço Médio" da linha.
+- **Quantidade fracionária.** Antes, `parseInt('0,03')` dava 0 e o arquivo era recusado com "0 ordens válidas", sem motivo. Agora a quantidade é lida como número, e a ordem é recusada com o motivo escrito: *"Quantidade fracionária (0,03): ativo internacional ainda não é suportado"*. A tela do import mostra esse motivo. O suporte fica para o #453.
+- **11/09 16:17** (135 contratos, virada de mão): o resultado era −250 e agora é **−250,67**, igual ao Profit. A entrada saiu da lista de falhas conhecidas do harness, e o teste do #446 que tinha fixado o valor errado foi atualizado.
+- **Eduardo, julho:** 102/102 operações conferem com a corretora.
+- **Italo:** sobram 2 diferenças de 1 pt, em ordens que viram a mão num export sem eventos. O "Preço Médio" mistura as duas pernas, e o arquivo não traz o preço de cada fill. Isso é uma limitação do arquivo.
+
+
 ## [1.92.8] - 25/09/2026 · #464 · PR #470
 
 **fix:** instante único da ordem — um helper, orders com offset, execução pelo evento
