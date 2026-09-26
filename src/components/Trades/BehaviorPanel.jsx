@@ -10,9 +10,9 @@
  */
 import React, { useState } from 'react';
 import { severidadeVigente } from '../../constants/behavioralTaxonomy';
-import { AlertTriangle, Lock } from 'lucide-react';
+import { AlertTriangle, Lock, ClipboardEdit } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
-import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag } from '../../utils/violationFilter';
+import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag, isPendingRedFlag, pendingRedFlags } from '../../utils/violationFilter';
 import { rrBreakdown } from '../../utils/rrBreakdown';
 import { authorizationFor } from '../../utils/dayState';
 import { authorizationNotice, tradePositionInPeriod, dayOrderingNotice } from '../metrics/dayMetricTiles';
@@ -213,8 +213,13 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
   const effective = hasFlags ? effectiveRedFlags(trade) : [];
   // #376 — violação revogada não reaparece nem na lista de "limpas pelo mentor".
   const cleared = hasFlags
-    ? trade.redFlags.filter((f) => !isRevokedRedFlag(f.type) && isViolationCleared(trade, f.type))
+    ? trade.redFlags.filter((f) => !isRevokedRedFlag(f.type) && !isPendingRedFlag(f.type) && isViolationCleared(trade, f.type))
     : [];
+  // #475 — pendência (stop inicial a informar) NÃO é violação: bloco próprio, âmbar, fora
+  // de "Violações" e sem botão de limpar. Enquanto está aberta, o risco do trade não foi
+  // medido — então também não cabe afirmar "nenhuma violação" (mesmo princípio do #408).
+  const pendencias = pendingRedFlags(trade);
+  const temPendencia = pendencias.length > 0;
 
   // ② Padrões (já ordenados no profile: negativos por severidade, positivos por último)
   const families = profile?.families ?? [];
@@ -288,6 +293,23 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
             </div>
           )}
 
+          {temPendencia && (
+            <div className="bg-amber-500/5 border border-amber-500/25 border-dashed rounded-lg p-3 mb-2" data-testid="stop-pendencia">
+              <div className="flex items-center gap-2 text-amber-300 mb-1">
+                <ClipboardEdit className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">Pendência</span>
+              </div>
+              {pendencias.map((flag, i) => (
+                <p key={`pend-${i}`} className="text-xs text-amber-200/90 leading-relaxed">
+                  {flag.message || 'Stop movido durante a operação — informe o stop inicial'}
+                </p>
+              ))}
+              <p className="text-[11px] text-zinc-500 mt-1">
+                As ordens mostram proteção, mas o arquivo da corretora traz só onde o stop terminou. Não é violação; com o stop inicial informado, o risco é calculado.
+              </p>
+            </div>
+          )}
+
           {/* Autorização para abrir: fato atômico derivado do período (#402).
               Aviso factual com os dois números lado a lado — não acusação. */}
           {authNotice && (
@@ -307,7 +329,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
             </div>
           )}
 
-          {effective.length === 0 && !authNotice && !ordemEmDuvida && (
+          {effective.length === 0 && !authNotice && !ordemEmDuvida && !temPendencia && (
             <p className="text-xs text-emerald-300/80 mb-2">Nenhuma violação de plano nesta operação.</p>
           )}
 
@@ -346,7 +368,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
               {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
               {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
             </div>
-          ) : (effective.length === 0 && cleared.length === 0 && !authNotice && !ordemEmDuvida) ? (
+          ) : (effective.length === 0 && cleared.length === 0 && !authNotice && !ordemEmDuvida && !temPendencia) ? (
             // Motor rodou, nada negativo, sem violação E sem ressalva de autorização
             // → só aqui cabe afirmar execução alinhada.
             //
@@ -360,6 +382,9 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
               <span className="text-emerald-300 text-sm leading-none mt-0.5">✓</span>
               <p className="text-xs text-emerald-300/80">Nenhuma violação de plano nem padrão de risco neste trade — execução alinhada.</p>
             </div>
+          ) : (effective.length === 0 && cleared.length === 0 && temPendencia && !authNotice && !ordemEmDuvida) ? (
+            // #475 — sem violação, mas o risco ainda não foi medido (stop inicial pendente).
+            <p className="text-xs text-zinc-500">Nenhum padrão comportamental de risco na execução — veja a pendência sobre o stop, acima.</p>
           ) : (effective.length === 0 && cleared.length === 0 && (authNotice || ordemEmDuvida)) ? (
             // Há ressalva em ① — de autorização, ou da ordem que não se pôde
             // estabelecer. O motor não achou padrão de risco na EXECUÇÃO, e é só isso

@@ -1,4 +1,4 @@
-import { REVOKED_RED_FLAG_TYPES } from './violationFilter';
+import { REVOKED_RED_FLAG_TYPES, PENDING_RED_FLAG_TYPES } from './violationFilter';
 import { tradeOffsetOf, instantAtOffsetMs, orderInstantMs } from './orderInstant';
 import { isPositionProtection, legsOf } from './orderProtection';
 /**
@@ -378,6 +378,15 @@ export const protectiveLegsOf = (trade, orders) => {
     .sort((a, b) => (a._ts ?? 0) - (b._ts ?? 0));
 };
 
+/**
+ * #475 — as ordens ligadas ao trade mostram proteção da posição? É a MESMA leitura do
+ * cabeçalho do painel de ordens ("Protegido o tempo todo" / "Sem proteção por…"): ao menos
+ * uma perna de proteção pela definição única do #466. Trade sem ordens → false.
+ * Decide entre violação `TRADE_SEM_STOP` e pendência `STOP_INICIAL_A_INFORMAR` (stopFlag).
+ */
+export const positionWasProtected = (trade, orders) =>
+  !!trade?.id && Array.isArray(orders) && orders.length > 0 && protectiveLegsOf(trade, orders).length > 0;
+
 /** Compat: mantém o nome usado pelos detectores. */
 const stopOrdersOf = (trade, orders) => protectiveLegsOf(trade, orders);
 
@@ -629,7 +638,8 @@ const quebrouPlano = (trade) => {
   const limpas = new Set((trade.mentorClearedViolations || []).map((x) => (typeof x === 'string' ? x : x?.type)));
   const vigentes = (trade.redFlags || [])
     .map((f) => (typeof f === 'string' ? f : f?.type))
-    .filter((tipo) => tipo && !REVOKED_RED_FLAG_TYPES.includes(tipo) && !limpas.has(tipo));
+    // #475 — pendência (stop inicial a informar) não é plano quebrado.
+    .filter((tipo) => tipo && !REVOKED_RED_FLAG_TYPES.includes(tipo) && !PENDING_RED_FLAG_TYPES.includes(tipo) && !limpas.has(tipo));
   if (vigentes.length > 0) return true;
   return trade.compliance?.roStatus === 'FORA_DO_PLANO';
 };

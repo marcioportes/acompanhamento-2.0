@@ -238,6 +238,15 @@ function protectiveLegsOf(trade, orders) {
   return out.sort(function (a, b) { return (a._ts || 0) - (b._ts || 0); });
 }
 
+/**
+ * #475 — as ordens ligadas ao trade mostram proteção da posição? Paridade com o ESM
+ * (`positionWasProtected`): a mesma leitura do cabeçalho do painel de ordens.
+ */
+function positionWasProtected(trade, orders) {
+  return !!(trade && trade.id) && Array.isArray(orders) && orders.length > 0
+    && protectiveLegsOf(trade, orders).length > 0;
+}
+
 function stopOrdersOf(trade, orders) {
   return protectiveLegsOf(trade, orders);
 }
@@ -311,6 +320,7 @@ function detectRiskOverRo(trade, orders) {
  * (#373).
  */
 const REVOKED_RED_FLAG_TYPES = require('./violationFilter').REVOKED_RED_FLAG_TYPES;
+const PENDING_RED_FLAG_TYPES = require('./violationFilter').PENDING_RED_FLAG_TYPES;
 
 function quebrouPlano(trade) {
   if (!trade) return false;
@@ -320,7 +330,9 @@ function quebrouPlano(trade) {
   const vigentes = (trade.redFlags || [])
     .map(function (f) { return typeof f === 'string' ? f : (f && f.type); })
     .filter(function (tipo) {
-      return tipo && REVOKED_RED_FLAG_TYPES.indexOf(tipo) === -1 && limpas.indexOf(tipo) === -1;
+      // #475 — pendência (stop inicial a informar) não é plano quebrado.
+      return tipo && REVOKED_RED_FLAG_TYPES.indexOf(tipo) === -1
+        && PENDING_RED_FLAG_TYPES.indexOf(tipo) === -1 && limpas.indexOf(tipo) === -1;
     });
   if (vigentes.length > 0) return true;
   return !!(trade.compliance && trade.compliance.roStatus === 'FORA_DO_PLANO');
@@ -929,6 +941,8 @@ function detectExecutionEvents(input) {
 
 module.exports = {
   detectExecutionEvents: detectExecutionEvents,
+  protectiveLegsOf: protectiveLegsOf,
+  positionWasProtected: positionWasProtected,
   protectionTimeline: protectionTimeline,
   REPLACEMENT_TOLERANCE_MS: REPLACEMENT_TOLERANCE_MS,
   EVENT_TYPES: EVENT_TYPES,

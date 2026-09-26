@@ -68,6 +68,8 @@ export const realizedRR = (trade) => {
 export const RED_FLAG_TYPES = {
   NO_PLAN: 'TRADE_SEM_PLANO',
   NO_STOP: 'TRADE_SEM_STOP',
+  // #475 — pendência, não violação: protegido pelas ordens, stop inicial a informar.
+  STOP_A_INFORMAR: 'STOP_INICIAL_A_INFORMAR',
   RISK_EXCEEDED: 'RISCO_ACIMA_PERMITIDO',
   RR_BELOW_MINIMUM: 'RR_ABAIXO_MINIMO',
   DAILY_LOSS_EXCEEDED: 'LOSS_DIARIO_EXCEDIDO',
@@ -84,6 +86,7 @@ export const RED_FLAG_TYPES = {
 export const RED_FLAG_LABELS = {
   TRADE_SEM_PLANO: 'Operou sem plano',
   TRADE_SEM_STOP: 'Sem stop declarado',
+  STOP_INICIAL_A_INFORMAR: 'Stop inicial a informar',
   RISCO_ACIMA_PERMITIDO: 'Risco acima do autorizado',
   RR_ABAIXO_MINIMO: 'Alvo abaixo do mínimo',
   LOSS_DIARIO_EXCEDIDO: 'Estouro do stop do dia',
@@ -95,6 +98,7 @@ export const redFlagLabel = (type) => RED_FLAG_LABELS[type] ?? type ?? '';
 
 import { exceedsLimit } from './planTolerance';
 import { stopDistanceOf } from './orderProtection';
+import { stopFlagOf } from './stopFlag';
 
 /**
  * O aluno declarou um alvo para este trade?
@@ -264,31 +268,20 @@ export const calculateTradeCompliance = (trade, plan) => {
  * @param {Object} trade - Trade com dados completos
  * @param {Object} plan - Plano vinculado
  * @param {Object} complianceResult - Resultado de calculateTradeCompliance
+ * @param {Object} [opts] - { protegido?: boolean } — ordens do trade mostram proteção (#475)
  * @returns {Array<{type: string, message: string, timestamp: string}>}
  */
-export const generateComplianceRedFlags = (trade, plan, complianceResult) => {
+export const generateComplianceRedFlags = (trade, plan, complianceResult, opts = {}) => {
   const flags = [];
 
   // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
-  if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
-    const tradeResult = trade.result ?? 0;
-    const isImplicitStop = tradeResult < 0;
-    if (!isImplicitStop) {
-      // Sem stop e não houve loss → não há evidência de proteção, viola.
-      let noStopMessage = 'Trade sem stop loss definido';
-      if (tradeResult > 0) {
-        noStopMessage += ' — risco não mensurado (win sem stop)';
-      }
-      flags.push({
-        type: RED_FLAG_TYPES.NO_STOP,
-        message: noStopMessage,
-        timestamp: new Date().toISOString(),
-      });
-    }
-    // Loss sem stop → stop implícito (DEC-AUTO-208-04). Saída em loss é o
-    // stop praticado, não emite NO_STOP. RISK_EXCEEDED ainda pode disparar
-    // logo abaixo se o risco retroativo exceder o plano.
-  }
+  // Loss sem stop → stop implícito (DEC-AUTO-208-04): sem aviso; RISK_EXCEEDED ainda pode
+  // disparar logo abaixo se o risco retroativo exceder o plano.
+  // #475 — sem stop, mas as ordens do trade mostram proteção (`opts.protegido`, leitura de
+  // `positionWasProtected`) → pendência STOP_INICIAL_A_INFORMAR, não violação. Regra única
+  // em `stopFlag.js`, espelhada no servidor.
+  const stopFlag = stopFlagOf(trade, opts.protegido === true);
+  if (stopFlag) flags.push(stopFlag);
 
   // RISK_EXCEEDED: só quando riskPercent é numérico (com stop ou loss retroativo)
   if (complianceResult.riskPercent != null && complianceResult.compliance.roStatus === 'FORA_DO_PLANO') {

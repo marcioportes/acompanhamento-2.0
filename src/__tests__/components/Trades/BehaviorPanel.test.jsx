@@ -376,3 +376,41 @@ describe('#408 — ordem em dúvida não absolve', () => {
     expect(screen.queryByText(/Sequência do período não determinada/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * #475 — stop movido durante a operação é PENDÊNCIA, não violação. O 24/09/2026 mostrava
+ * "Violações (1): Trade sem stop loss definido" abaixo de "Protegido o tempo todo".
+ */
+describe('#475 — pendência de stop inicial', () => {
+  const pendencia = { type: 'STOP_INICIAL_A_INFORMAR', message: 'Stop movido durante a operação — informe o stop inicial' };
+  const base = {
+    id: 'T24', ticker: 'WINV26', side: 'SHORT', entry: 185185, stopLoss: null, qty: 10, result: 585,
+    currency: 'BRL', behaviorProfile: { families: [], gateInputs: [] },
+  };
+
+  it('bloco "Pendência" com o texto do issue; nada sob "Violações"; não afirma "nenhuma violação"', () => {
+    render(<BehaviorPanel trade={{ ...base, redFlags: [pendencia] }} isMentor embedded />);
+    expect(screen.getByTestId('stop-pendencia')).toBeInTheDocument();
+    expect(screen.getByText('Pendência')).toBeInTheDocument();
+    expect(screen.getByText('Stop movido durante a operação — informe o stop inicial')).toBeInTheDocument();
+    expect(screen.queryByText(/Violações \(/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Limpas pelo mentor/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nenhuma violação de plano/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/execução alinhada/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/veja a pendência sobre o stop/i)).toBeInTheDocument();
+  });
+
+  it('pendência ao lado de violação: cada uma no seu bloco', () => {
+    const risco = { type: 'RISCO_ACIMA_PERMITIDO', message: 'Risco 2.0% excede máximo do plano (1%)' };
+    render(<BehaviorPanel trade={{ ...base, redFlags: [pendencia, risco] }} isMentor embedded />);
+    expect(screen.getByText('Violações (1)')).toBeInTheDocument();
+    expect(screen.getByTestId('stop-pendencia')).toBeInTheDocument();
+  });
+
+  it('sem stop e sem proteção: a violação de sempre, sem bloco de pendência', () => {
+    const noStop = { type: 'TRADE_SEM_STOP', message: 'Trade sem stop loss definido — risco não mensurado (win sem stop)' };
+    render(<BehaviorPanel trade={{ ...base, redFlags: [noStop] }} isMentor embedded />);
+    expect(screen.getByText('Violações (1)')).toBeInTheDocument();
+    expect(screen.queryByTestId('stop-pendencia')).not.toBeInTheDocument();
+  });
+});

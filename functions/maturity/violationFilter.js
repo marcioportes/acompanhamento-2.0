@@ -36,6 +36,15 @@ const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO', 'LOSS_DIARIO_EXCEDIDO'];
 
 function isRevoked(type) { return REVOKED_RED_FLAG_TYPES.indexOf(type) !== -1; }
 
+/**
+ * #475 — PENDÊNCIAS: moram em `redFlags` (sem campo novo, INV-15), mas NÃO são violação.
+ * Ver nota no espelho ESM. STOP_INICIAL_A_INFORMAR = trade protegido cujo stop inicial não
+ * é comprovável pelo arquivo; não conta em conformidade, gate, Torre nem contador.
+ */
+const PENDING_RED_FLAG_TYPES = ['STOP_INICIAL_A_INFORMAR'];
+
+function isPendingRedFlag(type) { return PENDING_RED_FLAG_TYPES.indexOf(type) !== -1; }
+
 function getEventKey(event, tradeId) {
   if (!event || !event.type || !tradeId) return '';
   return event.type + ':' + tradeId;
@@ -56,12 +65,21 @@ function effectiveRedFlags(trade) {
   const flags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
   // #402 — ver nota no espelho ESM: flag em formato string escapava da revogação
   // e do clearing em silêncio.
-  const vigentes = flags.filter(function (f) { return f && !isRevoked(flagType(f)); });
+  // #475 — pendência não é violação: fica fora pelo mesmo portão da revogação.
+  const vigentes = flags.filter(function (f) {
+    return f && !isRevoked(flagType(f)) && !isPendingRedFlag(flagType(f));
+  });
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
   if (cleared.length === 0) return vigentes;
   return vigentes.filter(function (f) { return cleared.indexOf(flagType(f)) === -1; });
+}
+
+/** #475 — pendências do trade (pedido de dado ao aluno, não violação). */
+function pendingRedFlags(trade) {
+  const flags = trade && Array.isArray(trade.redFlags) ? trade.redFlags : [];
+  return flags.filter(function (f) { return f && isPendingRedFlag(flagType(f)); });
 }
 
 function hasEffectiveRedFlags(trade) {
@@ -112,6 +130,9 @@ function effectiveEmotionalEventsForPeriod(trades, events) {
 module.exports = {
   flagType,
   REVOKED_RED_FLAG_TYPES,
+  PENDING_RED_FLAG_TYPES,
+  isPendingRedFlag,
+  pendingRedFlags,
   getEventKey,
   isViolationCleared,
   effectiveRedFlags,

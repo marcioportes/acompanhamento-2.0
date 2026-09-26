@@ -49,6 +49,20 @@ export const REVOKED_RED_FLAG_TYPES = ['RR_ABAIXO_MINIMO', 'LOSS_DIARIO_EXCEDIDO
 
 export const isRevokedRedFlag = (type) => REVOKED_RED_FLAG_TYPES.includes(type);
 
+/**
+ * #475 — PENDÊNCIAS: moram em `redFlags` (sem campo novo, INV-15), mas NÃO são violação.
+ *
+ * STOP_INICIAL_A_INFORMAR — o trade foi protegido (as ordens mostram proteção da posição),
+ * mas o stop inicial não é comprovável pelo arquivo: o stop foi arrastado para o ganho, só
+ * existe do lado do ganho ou cobre parte da posição (épico #462). Acusar "Trade sem stop"
+ * contradizia o painel de ordens ("Protegido o tempo todo") na mesma tela. É pedido de
+ * dado ao aluno, não quebra de regra: não conta em taxa de conformidade, gate, Torre,
+ * contador de violações nem marcador vermelho. Quando o aluno informa o stop, some.
+ */
+export const PENDING_RED_FLAG_TYPES = ['STOP_INICIAL_A_INFORMAR'];
+
+export const isPendingRedFlag = (type) => PENDING_RED_FLAG_TYPES.includes(type);
+
 export const getEventKey = (event, tradeId) => {
   if (!event?.type || !tradeId) return '';
   return `${event.type}:${tradeId}`;
@@ -76,12 +90,22 @@ export const effectiveRedFlags = (trade) => {
   // tratam) escapava tanto da revogação quanto do clearing, em silêncio. Não há
   // nenhum na base hoje — mas este é o portão de que a revogação depende, e
   // falhar calado aqui traz de volta a acusação que o issue removeu.
-  const vigentes = flags.filter((f) => f && !isRevokedRedFlag(flagType(f)));
+  // #475 — pendência não é violação: fica fora pelo mesmo portão da revogação.
+  const vigentes = flags.filter((f) => f && !isRevokedRedFlag(flagType(f)) && !isPendingRedFlag(flagType(f)));
   const cleared = Array.isArray(trade.mentorClearedViolations)
     ? trade.mentorClearedViolations
     : [];
   if (cleared.length === 0) return vigentes;
   return vigentes.filter((f) => !cleared.includes(flagType(f)));
+};
+
+/**
+ * #475 — pendências do trade (pedido de dado ao aluno, não violação). Exibidas à parte,
+ * nunca sob "Violações".
+ */
+export const pendingRedFlags = (trade) => {
+  const flags = Array.isArray(trade?.redFlags) ? trade.redFlags : [];
+  return flags.filter((f) => f && isPendingRedFlag(flagType(f)));
 };
 
 /**
