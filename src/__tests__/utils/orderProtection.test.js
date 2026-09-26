@@ -20,6 +20,8 @@ import {
   initialStopOfLeg,
   tradeStopFromLegs,
   isPositionProtection,
+  stopPriceOf,
+  stopPriceForLeg,
   LEG_STOP_REASON,
 } from '../../utils/orderProtection';
 import { mapOperationToTradeData } from '../../utils/orderTradeCreation';
@@ -228,5 +230,44 @@ describe('#466 · proteção da vida da posição (stopOrders, linha do tempo)',
   it('alvo (limite do lado do ganho) e ordem anterior à posição não são', () => {
     expect(isPositionProtection(ordem('A', 'SELL', '10:00:01', { limitPrice: 190300 }), op)).toBe(false);
     expect(isPositionProtection(ordem('V', 'SELL', '09:10:00', { stopPrice: 189000, isStopOrder: true, cancelledAt: '2026-09-24T09:30:00' }), op)).toBe(false);
+  });
+});
+
+describe('#468 · stop do bracket exportado como LIMITE sem gatilho', () => {
+  // SHORT 5 @ 188.800; a perna de stop do bracket vem como LIMITE 189.075 (gatilho 188.925
+  // + folga de 150), sem "Preço Stop", e executou a 188.925 — o gatilho real.
+  const op = {
+    side: 'SHORT', instrument: 'WINV26', avgEntryPrice: 188800, totalQty: 5,
+    entryTime: '2026-09-11T10:00:00-03:00', exitTime: '2026-09-11T10:20:00-03:00',
+    entryOrders: [{ externalOrderId: 'E', instrument: 'WINV26', side: 'SELL', status: 'FILLED', quantity: 5, filledQuantity: 5, filledPrice: 188800, submittedAt: '2026-09-11T10:00:00', filledAt: '2026-09-11T10:00:00' }],
+    exitOrders: [], cancelledOrders: [], stopOrders: [],
+  };
+  const stopLimite = (status, filledPrice) => ({
+    externalOrderId: 'S', instrument: 'WINV26', side: 'BUY', orderType: 'LIMIT', status,
+    quantity: 5, filledQuantity: status === 'FILLED' ? 5 : null, limitPrice: 189075, stopPrice: null,
+    filledPrice, origin: 'Estratégia', submittedAt: '2026-09-11T10:00:01',
+    filledAt: status === 'FILLED' ? '2026-09-11T10:20:00' : null,
+    cancelledAt: status === 'CANCELLED' ? '2026-09-11T10:20:00' : null,
+  });
+
+  it('executada: vale a execução (188.925), não o limite com folga', () => {
+    const o = stopLimite('FILLED', 188925);
+    expect(stopPriceOf(o)).toBe(188925);
+    const t = tradeStopFromLegs({ ...op, exitOrders: [o], stopOrders: [o] }, [o], { pointValue: 0.2 });
+    expect(t.stopLoss).toBe(188925);
+    expect(t.riskAmount).toBe(125); // 125 pts × 5 × 0,20
+  });
+
+  it('cancelada: vale o limite enviado, por falta de dado melhor', () => {
+    const o = stopLimite('CANCELLED', null);
+    expect(stopPriceOf(o)).toBe(189075);
+  });
+
+  it('com gatilho declarado segue pelo gatilho', () => {
+    expect(stopPriceOf({ ...stopLimite('FILLED', 188930), stopPrice: 188925 })).toBe(188925);
+  });
+
+  it('execução do lado do ganho não vira stop: vale o enviado', () => {
+    expect(stopPriceForLeg(stopLimite('FILLED', 188700), 'SHORT', 188800)).toBe(189075);
   });
 });

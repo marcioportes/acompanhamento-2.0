@@ -10,7 +10,7 @@ import { useMemo } from 'react';
 import { ShieldCheck, ShieldOff, ShieldAlert, ArrowDownRight, ArrowUpRight, XCircle, FileText } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { protectionTimeline, protectiveLegsOf, positionLegsOf, orderInstantMs } from '../../utils/executionBehaviorEngine';
-import { legOfOrder, sentPriceOf } from '../../utils/orderProtection';
+import { legOfOrder, stopPriceForLeg } from '../../utils/orderProtection';
 
 /** Tolerância entre o cancelamento da proteção e a saída que a matou (OCO). */
 const OCO_SAIDA_TOLERANCIA_MS = 20000;
@@ -198,7 +198,13 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
       } else {
         role = 'exit';
       }
-      return { order: o, role, protectionState, ts: tsOf(o) };
+      // #468 — o preço exibido na linha de stop é o que o trade grava para a perna.
+      let stopShown = null;
+      if (role === 'stop') {
+        const perna = pernas?.legs.length ? legOfOrder(o, pernas.legs, pernas.position, pernas.ctx) : null;
+        stopShown = stopPriceForLeg(o, tradeSide, perna ? perna.price : Number(trade?.entry));
+      }
+      return { order: o, role, protectionState, ts: tsOf(o), stopShown };
     });
 
     const formal = rows.some((r) => r.role === 'stop');
@@ -303,7 +309,7 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
         {/* Linhas em ordem cronológica unificada (issue #208). Cada linha
             renderiza com o estilo da role para que entry/exit/stop/cancel
             sejam visualmente distinguíveis sem perder a sequência temporal. */}
-        {orderedRows.map(({ order: o, role, protectionState }, i) => {
+        {orderedRows.map(({ order: o, role, protectionState, stopShown }, i) => {
           const cancelled = role === 'cancel';
           const implicit = o.__implicit === true;
           const rowClass = cancelled
@@ -323,11 +329,11 @@ const TradeOrdersPanel = ({ trade, orders = [], embedded = false }) => {
             cancel: { Icon: XCircle, label: 'Cancel', tone: 'text-slate-500' },
           }[role];
           const { Icon, label, tone } = labelByRole;
-          // #467 — proteção mostra o preço ENVIADO (`sentPriceOf`: gatilho > limite), o
-          // mesmo que o trade grava. `price` da ordem normalizada é o EXECUTADO: o stop do
-          // bracket de 24/09 enviado a 185.135 aparecia como 184.985.
+          // #467/#468 — a proteção mostra o preço que o trade grava como stop
+          // (`stopPriceOf`): o gatilho; na perna de stop do bracket exportada como LIMITE
+          // sem gatilho, a execução quando executou (a folga do limite não é risco).
           const priceCell = role === 'stop'
-            ? (implicit ? (o.stopPrice ?? '-') : (sentPriceOf(o) ?? '-'))
+            ? (implicit ? (o.stopPrice ?? '-') : (stopShown ?? '-'))
             : (o.filledPrice ?? o.price ?? '-');
           const qtyCell = role === 'cancel'
             ? (o.quantity ?? '-')
