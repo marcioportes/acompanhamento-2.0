@@ -458,3 +458,6 @@
 - **DEC-466-05** (25/09/2026): ordem órfã só é atribuída a operação do mesmo ativo e nunca vira stop.
 - **DEC-467-01** (25/09/2026): stop do lado errado da entrada (LONG com stop ≥ entrada, SHORT com stop ≤ entrada) é tratado como ausência de stop em todo cálculo de risco — `stopDistanceOf`, cliente e CF. Antes `Math.abs` o transformava em risco.
 - **DEC-467-02** (25/09/2026): o cabeçalho do painel de ordens mede cobertura da posição ("Protegido o tempo todo"), não risco inicial comprovado; no 24/09 os dois diferem e o texto fica como está.
+- **DEC-468-01** (26/09/2026): a perna de stop do bracket que o Profit exporta como LIMITE sem gatilho vale pela EXECUÇÃO quando executou (é o gatilho; bate com a MEN da corretora) e pelo limite enviado quando foi cancelada. O limite traz a folga do bracket (≈150 pts), que não é risco. Decisão do Marcio. `stopPriceOf`/`stopPriceForLeg`, cliente e CF.
+- **DEC-468-02** (26/09/2026): recálculo dos trades gravados só em trade não discutido (INV-30); stop digitado pelo aluno é preservado; ambíguo fica de fora. Aplicado em 16 trades do Marcio; relatório com os valores antigos (rollback) em `Temp/issue-468-recalc-apply-20260926.json`.
+- **DEC-468-03** (26/09/2026): o script de recálculo mora em `scripts/` (ESM) para reusar o código do import sem cópia.

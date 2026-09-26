@@ -10,11 +10,11 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.12] - 26/09/2026 · #468 · PR #474
 
-**chore:** recalcular trades já gravados pelo import — dry-run antes, só não discutido
+**chore:** recalcular trades já gravados pelo import — dry-run antes, só não discutidos
 
-- **Script de recálculo**: `scripts/issue-468-recalc-import-trades.mjs`. Reconstrói cada trade a partir das próprias `orders`, usando o mesmo código do import, e compara com o que está gravado.
-- **Folga do bracket** (decisão do Marcio): o Profit exporta a perna de stop como LIMITE sem gatilho, e o limite traz a folga (≈150 pts). Quando essa perna **executou**, o stop passa a ser o preço **executado**, que é o gatilho e bate com a MEN da corretora. Quando foi cancelada, vale o limite enviado. A regra fica em `stopPriceOf`/`stopPriceForLeg`, no cliente e na CF, e o painel mostra o mesmo preço.
-
+- **Script** `scripts/issue-468-recalc-import-trades.mjs`: reconstrói cada trade das próprias `orders` pelo código do import; dry-run por padrão, `--apply`, relatório com antes → depois. Discutido intocado; stop digitado preservado.
+- **Folga do bracket:** a perna de stop exportada como LIMITE sem gatilho vale pela execução quando executou — a folga (≈150 pts) não é risco. Painel mostra o mesmo preço.
+- **Aplicado em 26/09:** 16 trades do Marcio recalculados; 43 da Elza (discutidos) preservados; 2 ambíguos e 1 bloqueado ficam como estão. O 24/09 vai de 188.720 (R$ 7.070) para sem stop, com TRADE_SEM_STOP.
 
 ## [1.92.11] - 25/09/2026 · #467 · PR #473
 
