@@ -10,17 +10,11 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.13] - 26/09/2026 · #475 · PR #476
 
-**fix:** trade protegido acusado de 'sem stop' — stop movido vira pendência, não viol
+**fix:** trade protegido acusado de "sem stop" — stop movido vira pendência, não violação
 
-- **Regra única** `stopFlagOf` (ESM + CJS, paridade testada):
-- **Quando o aviso é calculado.** O trade é criado antes de os stops não executados serem ligados a ele. Por isso a CF consulta as ordens do trade, e `finalizeOrderImport` recalcula o aviso depois de ligar as ordens. O trade discutido nunca é lido nem gravado (INV-30).
-- **A pendência não é violação.** Ela fica de fora de:
-- **Tela:** bloco "Pendência" em âmbar no lugar de "Violações".
-- **Recálculo dos trades gravados:** `scripts/issue-475-stop-pendencia.mjs`. Dry-run por padrão; grava só `redFlags`/`hasRedFlags`, e só em trade não discutido.
-- Sem campo novo (INV-15): é um valor novo dentro de `redFlags`.
-- Na criação pelo import, o mentor ainda pode receber "Red Flags (1)" antes de os stops serem ligados. O aviso é corrigido logo depois, mas a notificação já saiu.
-- Trade perdedor sem stop segue sem aviso (stop implícito).
-
+- **Sem stop comprovado, mas com proteção nas ordens** (stop arrastado para o ganho, caso 24/09): pendência *"Stop movido durante a operação — informe o stop inicial"* em vez da violação "Trade sem stop loss definido". Sem proteção nas ordens, a violação segue igual.
+- A pendência não conta como violação no compliance, no ciclo, nos gates, na Torre nem na notificação ao mentor. Na tela, bloco "Pendência" em âmbar.
+- Aviso recalculado depois que o import liga as ordens ao trade (`finalizeOrderImport`). 9 trades já gravados corrigidos; discutidos intocados.
 
 ## [1.92.12] - 26/09/2026 · #468 · PR #474
 
