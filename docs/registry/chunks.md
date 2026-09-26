@@ -6,4 +6,3 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
-| CHUNK-05 | #475 | `fix/issue-475-stop-movido-pendencia` | 26/09/2026 | interativa |
