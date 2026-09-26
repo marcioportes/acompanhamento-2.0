@@ -110,7 +110,7 @@ export const parseBrokerPerformance = (text) => {
 
 // ---------- pipeline (espelho do OrderImportPage) ----------
 
-const headersDoArquivo = (text) => {
+export const headersDoArquivo = (text) => {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   let headers = [];
   for (const d of [';', ',']) {
@@ -218,6 +218,17 @@ export const precoEnviado = (o) => {
   return Number.isFinite(v) ? v : null;
 };
 
+/**
+ * Preço que vale como stop (#468): perna de stop sem gatilho que EXECUTOU vale pela
+ * execução (a folga do limite do bracket não é risco); o resto, pelo preço enviado.
+ */
+export const precoDoStop = (o) => {
+  const semGatilho = !Number.isFinite(parseFloat(o?.stopPrice));
+  const exec = parseFloat(o?.filledPrice);
+  if (semGatilho && (o?.status === 'FILLED' || o?.status === 'PARTIALLY_FILLED') && Number.isFinite(exec)) return exec;
+  return precoEnviado(o);
+};
+
 /** O trade que o import gravaria para a operação. */
 export const tradeDa = (op) => mapOperationToTradeData(op, 'plano-replay');
 
@@ -291,7 +302,9 @@ const violacoesDoEquivalente = (op, stop) => {
       .sort((a, b) => paredeMs(a.submittedAt) - paredeMs(b.submittedAt));
     if (!dela.length) return ['PERNA_SEM_PROTECAO_DEFENSAVEL'];
     usado.set(dela[0], (usado.get(dela[0]) || 0) + perna.qty);
-    riscoPtsQtd += Math.abs(perna.price - precoEnviado(dela[0])) * perna.qty;
+    const valor = precoDoStop(dela[0]);
+    const adversoExec = op.side === 'LONG' ? valor < perna.price : valor > perna.price;
+    riscoPtsQtd += Math.abs(perna.price - (adversoExec ? valor : precoEnviado(dela[0]))) * perna.qty;
     qtd += perna.qty;
   }
   const medio = parseFloat(op.avgEntryPrice);
@@ -306,7 +319,7 @@ export const violacoesDoStop = (op) => {
   if (stop == null) return [];
 
   const candidatas = [...(op.stopOrders || []), ...(op.exitOrders || [])]
-    .filter(o => precoEnviado(o) === stop);
+    .filter(o => precoEnviado(o) === stop || precoDoStop(o) === stop);
   if (candidatas.length === 0) {
     return pernasDe(op).length > 1 ? violacoesDoEquivalente(op, stop) : ['SEM_ORIGEM'];
   }

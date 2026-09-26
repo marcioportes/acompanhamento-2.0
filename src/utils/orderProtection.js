@@ -63,6 +63,35 @@ function sentPriceOf(order) {
   return null;
 }
 
+/**
+ * Preço que vale como STOP de uma proteção (#468, decisão do Marcio em 25/09/2026).
+ *
+ * O Profit exporta a perna de stop do bracket como LIMITE sem "Preço Stop": o limite traz
+ * a folga configurada no bracket (150 pts no Simulador — 11/09: limite 189.075, executou
+ * 188.925). Usar o limite infla o risco pela folga (R$ 250 viravam R$ 400). Quando essa
+ * proteção EXECUTOU, a execução é o gatilho e bate com a MEN da corretora: vale ela.
+ * Cancelada, a execução não existe e vale o limite enviado, por falta de dado melhor.
+ * Ordem com gatilho declarado segue pelo gatilho (`sentPriceOf`).
+ */
+function stopPriceOf(order) {
+  if (!order) return null;
+  const semGatilho = !Number.isFinite(num(order.stopPrice));
+  const executada = order.status === 'FILLED' || order.status === 'PARTIALLY_FILLED';
+  const exec = num(order.filledPrice);
+  if (semGatilho && executada && Number.isFinite(exec)) return exec;
+  return sentPriceOf(order);
+}
+
+/**
+ * Stop de uma perna a partir da proteção que a cobre: `stopPriceOf` se ainda for adverso
+ * ao preço executado da perna; senão o preço enviado (a execução do lado do ganho é stop
+ * arrastado, não o risco assumido na entrada).
+ */
+function stopPriceForLeg(order, positionSide, legPrice) {
+  const valor = stopPriceOf(order);
+  return isAdversePrice(valor, positionSide, legPrice) ? valor : sentPriceOf(order);
+}
+
 /** Lado da ordem que protege a posição: LONG → SELL, SHORT → BUY. */
 function protectionSideOf(positionSide) {
   if (positionSide === 'LONG') return 'SELL';
@@ -229,7 +258,9 @@ function initialStopOfLeg(leg, orders, position, ctx, usado) {
     const livre = capacidadeDe(e.o) - ((usado && usado.get(e.o)) || 0);
     if (livre < leg.qty) { parcial = true; continue; }
     if (usado) usado.set(e.o, ((usado.get(e.o)) || 0) + leg.qty);
-    return { stop: e.price, order: e.o, reason: LEG_STOP_REASON.COMPROVADO };
+    // #468 — elegibilidade pelo preço enviado; o valor do stop pela execução quando a
+    // perna de stop sem gatilho executou (`stopPriceOf`), se ela ainda for adversa.
+    return { stop: stopPriceForLeg(e.o, position.side, leg.price), order: e.o, reason: LEG_STOP_REASON.COMPROVADO };
   }
   if (parcial) return { stop: null, order: null, reason: LEG_STOP_REASON.PROTECAO_PARCIAL };
   const deGanho = elegiveis.some(function (e) { return temGatilho(e.o); });
@@ -392,6 +423,8 @@ export {
   PROTECTION_WINDOW_MS,
   LEG_STOP_REASON,
   sentPriceOf,
+  stopPriceOf,
+  stopPriceForLeg,
   protectionSideOf,
   isAdversePrice,
   legsOf,

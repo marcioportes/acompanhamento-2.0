@@ -105,7 +105,9 @@ describe('#449 · casos limite', () => {
     ]);
     expect(ops[0].hasStopProtection).toBe(true);
     expect(ops[0].stopExecuted).toBe(true);
-    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99500);
+    // #468 (DEC-468-01) — LIMITE sem gatilho que executou vale pela execução: o limite
+    // traz a folga do bracket, a execução é o gatilho.
+    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99600);
   });
 
   // #466 — venda enviada 10 min depois da entrada não nasceu com a perna: é saída, não o
@@ -171,6 +173,6 @@ describe('#449 · casos limite', () => {
     expect(ops[0].entryTime).toMatch(/-0[45]:00$/);
     expect(ops[0].hasStopProtection).toBe(true);
     expect(ops[0].stopExecuted).toBe(true);
-    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99500);
+    expect(mapOperationToTradeData(ops[0], 'p').stopLoss).toBe(99600) // #468 — execução, não o limite com folga;
   });
 });
