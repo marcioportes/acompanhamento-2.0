@@ -131,3 +131,4 @@
 | 1.92.10 | #466 | `fix/issue-466-protecao-unica-por-perna` | 25/09/2026 | consumida (PR #472 squash `0537183a`) |
 | 1.92.11 | #467 | `fix/issue-467-um-caminho-do-stop` | 25/09/2026 | consumida (PR #473 squash `cfa3fd75`) |
 | 1.92.12 | #468 | `chore/issue-468-recalcular-trades-do-import` | 25/09/2026 | consumida (PR #474 squash `a6a7a596`) |
+| 1.92.13 | #475 | `fix/issue-475-stop-movido-pendencia` | 26/09/2026 | reservada |
