@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.12] - 26/09/2026 · #468 · PR #474
+
+**chore:** recalcular trades já gravados pelo import — dry-run antes, só não discutido
+
+- **Script de recálculo**: `scripts/issue-468-recalc-import-trades.mjs`. Reconstrói cada trade a partir das próprias `orders`, usando o mesmo código do import, e compara com o que está gravado.
+- **Folga do bracket** (decisão do Marcio): o Profit exporta a perna de stop como LIMITE sem gatilho, e o limite traz a folga (≈150 pts). Quando essa perna **executou**, o stop passa a ser o preço **executado**, que é o gatilho e bate com a MEN da corretora. Quando foi cancelada, vale o limite enviado. A regra fica em `stopPriceOf`/`stopPriceForLeg`, no cliente e na CF, e o painel mostra o mesmo preço.
+
+
 ## [1.92.11] - 25/09/2026 · #467 · PR #473
 
 **fix:** um caminho só para gravar e exibir o stop — enriquecimento, compliance, painel
