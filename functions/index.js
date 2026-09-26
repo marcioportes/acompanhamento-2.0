@@ -125,6 +125,8 @@ const TRADE_STATUS = {
 const RED_FLAG_TYPES = {
   NO_PLAN: 'TRADE_SEM_PLANO',
   NO_STOP: 'TRADE_SEM_STOP',
+  // #475 — pendência, não violação: protegido pelas ordens, stop inicial a informar.
+  STOP_A_INFORMAR: 'STOP_INICIAL_A_INFORMAR',
   RISK_EXCEEDED: 'RISCO_ACIMA_PERMITIDO',
   RR_BELOW_MINIMUM: 'RR_ABAIXO_MINIMO',
   DAILY_LOSS_EXCEEDED: 'LOSS_DIARIO_EXCEDIDO',
@@ -429,6 +431,10 @@ const { tradeChangeScope } = require('./shared/tradeChangeScope');
 const { exceedsLimit } = require('./shared/planTolerance');
 // #467 (épico #462 F4) — distância do stop pela conta única, espelho de `src/utils/orderProtection`.
 const { stopDistanceOf } = require('./shared/orderProtection');
+// #475 — aviso de stop: violação TRADE_SEM_STOP × pendência STOP_INICIAL_A_INFORMAR.
+const { withStopFlag, violationCountOf } = require('./shared/stopFlag');
+// Carga preguiçosa: puxa o espelho do motor de execução — só quem avalia stop paga o require.
+const stopFlagForTrade = (...args) => require('./trades/refreshStopFlag').stopFlagForTrade(...args);
 
 const calculateTradeCompliance = (trade, plan) => {
   const result = { riskPercent: null, rrRatio: null, rrAssumed: false, compliance: { roStatus: 'CONFORME', rrStatus: 'CONFORME' } };
@@ -1197,22 +1203,12 @@ exports.onTradeCreated = functions.firestore
       // DEC-006 + DEC-AUTO-208-04: NO_STOP é violação SALVO em stop implícito
       // (loss sem stop formal — saída em prejuízo é o stop praticado).
       // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
-      if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
-        const tradeResult = trade.result ?? 0;
-        const isImplicitStop = tradeResult < 0;
-        if (!isImplicitStop) {
-          let noStopMsg = 'Trade sem stop loss definido';
-          if (tradeResult > 0) {
-            noStopMsg += ' — risco não mensurado (win sem stop)';
-          }
-          redFlags.push({
-            type: RED_FLAG_TYPES.NO_STOP,
-            message: noStopMsg,
-            timestamp: new Date().toISOString()
-          });
-        }
-        // Loss sem stop → stop implícito (DEC-AUTO-208-04). Não emite NO_STOP.
-      }
+      // #475 — sem stop, mas com proteção nas ordens do trade → pendência
+      // STOP_INICIAL_A_INFORMAR, não violação (regra em shared/stopFlag.js). No trade
+      // criado pelo import as ordens de stop ainda não estão ligadas aqui; o fechamento do
+      // lote (`finalizeOrderImport` → `refreshStopFlag`) reavalia com elas ligadas.
+      const stopFlag = await stopFlagForTrade(db, tradeId, trade);
+      if (stopFlag) redFlags.push(stopFlag);
 
       if (!trade.planId) {
         redFlags.push({ type: RED_FLAG_TYPES.NO_PLAN, message: 'Trade sem plano', timestamp: new Date().toISOString() });
@@ -1269,7 +1265,9 @@ exports.onTradeCreated = functions.firestore
       }
 
       updates.redFlags = redFlags;
-      updates.hasRedFlags = redFlags.length > 0;
+      // #475 — pendência (stop inicial a informar) não é violação: não acende hasRedFlags.
+      const violacoes = violationCountOf(redFlags);
+      updates.hasRedFlags = violacoes > 0;
       
       await updateIfMutable(snap.ref, snap, updates, 'onTradeCreated');
 
@@ -1282,11 +1280,12 @@ exports.onTradeCreated = functions.firestore
       const alunoAtivo = await studentInManagementScope(db, trade.studentId);
 
       if (alunoAtivo) {
-        if (redFlags.length > 0) {
+        // #475 — só violação alarma o mentor; pendência de dado do aluno não.
+        if (violacoes > 0) {
           await db.collection('notifications').add({ 
             type: 'RED_FLAG', targetRole: 'mentor', studentId: trade.studentId, studentEmail: trade.studentEmail,
-            tradeId, ticker: trade.ticker, redFlagsCount: redFlags.length,
-            message: `Red Flags (${redFlags.length})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
+            tradeId, ticker: trade.ticker, redFlagsCount: violacoes,
+            message: `Red Flags (${violacoes})`, read: false, createdAt: admin.firestore.FieldValue.serverTimestamp() 
           });
         }
 
@@ -1470,25 +1469,19 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
         // #188 Fase E: flag era estale quando mentor editava emotionEntry), recria
         // conforme novo cálculo.
         const existingFlags = Array.isArray(after.redFlags) ? after.redFlags : [];
-        let newFlags = existingFlags.filter(f => {
+        // #475 — o aviso de stop (violação ou pendência) sai por `withStopFlag`.
+        let newFlags = withStopFlag(existingFlags, null).filter(f => {
           const type = typeof f === 'string' ? f : f.type;
           return type !== 'RISCO_ACIMA_PERMITIDO'
             && type !== 'RR_ABAIXO_MINIMO'
-            && type !== 'TRADE_SEM_STOP'
             && type !== RED_FLAG_TYPES.BLOCKED_EMOTION;
         });
 
         // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
-        if (stopDistanceOf(after.side, after.entry, after.stopLoss) == null) {
-          // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
-          const tradeResult = after.result ?? 0;
-          const isImplicitStop = tradeResult < 0;
-          if (!isImplicitStop) {
-            let noStopMsg = 'Trade sem stop loss definido';
-            if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
-            newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
-          }
-        }
+        // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite aviso.
+        // #475 — protegido pelas ordens do trade → pendência, não violação.
+        const stopFlag = await stopFlagForTrade(db, context.params.tradeId, after);
+        if (stopFlag) newFlags.push(stopFlag);
         if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
           newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: `Risco ${compliance.riskPercent.toFixed(1)}% excede máximo do plano (${plan.riskPerOperation}%)`, timestamp: new Date().toISOString() });
         }
@@ -1508,7 +1501,7 @@ exports.onTradeUpdated = functions.firestore.document('trades/{tradeId}').onUpda
           rrAssumed: compliance.rrAssumed,
           compliance: compliance.compliance,
           redFlags: newFlags,
-          hasRedFlags: newFlags.length > 0
+          hasRedFlags: violationCountOf(newFlags) > 0
         }, 'onTradeUpdated');
         const roDisplay = compliance.riskPercent != null ? compliance.riskPercent.toFixed(2) + '%' : 'N/A';
         if (complianceWrite.written) console.log(`[onTradeUpdated] Compliance recalculado: RO=${roDisplay}, RR=${compliance.rrRatio ?? 'N/A'}${compliance.rrAssumed ? ' (assumed)' : ''}, flags=${newFlags.length}`);
@@ -1798,7 +1791,24 @@ exports.finalizeOrderImport = functions.https.onCall(async (data, context) => {
     const links = data?.links && typeof data.links === 'object' ? data.links : null;
     const result = await purgeOrphanOrders(db, { batchId, links });
     console.log(`[finalizeOrderImport] ${batchId}: ${result.linked} ligadas, ${result.deleted} órfãs apagadas, ${result.kept} preservadas`);
-    return { success: true, ...result };
+
+    // #475 — com as ordens do lote enfim ligadas (o stop que nunca executou só é ligado
+    // aqui), reavalia o aviso de stop de cada trade do lote: protegido pelas ordens →
+    // pendência STOP_INICIAL_A_INFORMAR em vez da violação TRADE_SEM_STOP que o
+    // `onTradeCreated` gravou sem enxergá-las. Discutido é intocado (INV-30).
+    // Isolado (INV-03): falha aqui não desfaz o fechamento do lote.
+    let stopFlags = null;
+    try {
+      const { refreshStopFlag } = require('./trades/refreshStopFlag');
+      const tradeIds = [...new Set(Object.values(links || {}).filter((v) => typeof v === 'string' && v))];
+      const r = [];
+      for (const id of tradeIds) r.push(await refreshStopFlag(db, id));
+      stopFlags = { avaliados: r.length, atualizados: r.filter((x) => x.status === 'ATUALIZADO').length };
+      if (stopFlags.atualizados) console.log(`[finalizeOrderImport] ${batchId}: aviso de stop reavaliado em ${stopFlags.atualizados} trade(s)`);
+    } catch (flagErr) {
+      console.error('[finalizeOrderImport] Erro ao reavaliar aviso de stop:', flagErr);
+    }
+    return { success: true, ...result, stopFlags };
   } catch (err) {
     console.error('[finalizeOrderImport] Erro:', err);
     throw new functions.https.HttpsError('internal', err.message);
@@ -1945,7 +1955,12 @@ exports.recalculateCompliance = functions.https.onCall(async (data, context) => 
   
   // #451 — discutidos são pulados (preserved); PL acima segue somando todos (D4).
   const { recalculateTradesCompliance } = require('./trades/recalculateTradesCompliance');
-  const { updated, preserved } = await recalculateTradesCompliance(tradeDocs, plan, { calculateTradeCompliance, RED_FLAG_TYPES });
+  // #475 — `stopFlagFor` consulta as ordens do trade (violação × pendência de stop).
+  const { updated, preserved } = await recalculateTradesCompliance(tradeDocs, plan, {
+    calculateTradeCompliance,
+    RED_FLAG_TYPES,
+    stopFlagFor: (id, trade) => stopFlagForTrade(db, id, trade),
+  });
 
   // Fase 2 #301 (on-plan-change): mudança no plano (riskPerOperation/rrTarget) afeta
   // UNDERSIZED_TRADE/TARGET_HIT — refaz behaviorProfile do aluno. As updates de compliance

@@ -21,7 +21,7 @@ const SHADOW_VERSION = '1.0';
 const RESOLUTION = { HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW' };
 const SEVERITY = { NONE: 'NONE', LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH' };
 
-const { REVOKED_RED_FLAG_TYPES } = require('../maturity/violationFilter');
+const { REVOKED_RED_FLAG_TYPES, PENDING_RED_FLAG_TYPES } = require('../maturity/violationFilter');
 
 const EMOTION_MAPPING = {
   HOLD_ASYMMETRY: 'FEAR',
@@ -215,7 +215,9 @@ const violouPlano = (trade) => {
   const limpas = (trade?.mentorClearedViolations || []).map((x) => (typeof x === 'string' ? x : x?.type));
   const vigentes = (trade?.redFlags || [])
     .map((f) => (typeof f === 'string' ? f : f?.type))
-    .filter((t) => t && REVOKED_RED_FLAG_TYPES.indexOf(t) === -1 && limpas.indexOf(t) === -1);
+    // #475 — pendência (stop inicial a informar) não é plano violado.
+    .filter((t) => t && REVOKED_RED_FLAG_TYPES.indexOf(t) === -1
+      && PENDING_RED_FLAG_TYPES.indexOf(t) === -1 && limpas.indexOf(t) === -1);
   if (vigentes.length > 0) return true;
   return trade?.compliance?.roStatus === 'FORA_DO_PLANO';
 };

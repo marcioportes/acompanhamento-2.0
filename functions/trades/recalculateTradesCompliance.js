@@ -10,15 +10,17 @@
  */
 
 const { isTradeImmutable, updateIfMutable } = require('../_shared/tradeImmutability');
-const { stopDistanceOf } = require('../shared/orderProtection');
+const { stopFlagOf, withStopFlag, violationCountOf } = require('../shared/stopFlag');
 
 /**
  * @param {Object[]} tradeDocs — DocumentSnapshots (`.data()` + `.ref.update`)
  * @param {Object} plan
- * @param {Object} deps — { calculateTradeCompliance, RED_FLAG_TYPES }
+ * @param {Object} deps — { calculateTradeCompliance, RED_FLAG_TYPES, stopFlagFor? }
+ *   `stopFlagFor(tradeId, trade)` (#475) resolve o aviso de stop consultando as ordens do
+ *   trade (violação × pendência). Ausente → sem ordens: o aviso é a violação de antes.
  * @returns {Promise<{updated:number, preserved:number}>}
  */
-async function recalculateTradesCompliance(tradeDocs, plan, { calculateTradeCompliance, RED_FLAG_TYPES }) {
+async function recalculateTradesCompliance(tradeDocs, plan, { calculateTradeCompliance, RED_FLAG_TYPES, stopFlagFor }) {
   let updated = 0;
   let preserved = 0;
   for (const doc of tradeDocs) {
@@ -38,28 +40,26 @@ async function recalculateTradesCompliance(tradeDocs, plan, { calculateTradeComp
 
     // Recalcular red flags — remove os flags de compliance antigos e recria
     const existingFlags = Array.isArray(trade.redFlags) ? trade.redFlags : [];
-    let newFlags = existingFlags.filter(f => {
+    // #475 — o aviso de stop (violação ou pendência) sai por `withStopFlag`.
+    let newFlags = withStopFlag(existingFlags, null).filter(f => {
       const type = typeof f === 'string' ? f : f.type;
-      return type !== 'RISCO_ACIMA_PERMITIDO' && type !== 'RR_ABAIXO_MINIMO' && type !== 'TRADE_SEM_STOP';
+      return type !== 'RISCO_ACIMA_PERMITIDO' && type !== 'RR_ABAIXO_MINIMO';
     });
 
     // #467 — stop do lado errado da entrada conta como sem stop (mesma conta do risco).
-    if (stopDistanceOf(trade.side, trade.entry, trade.stopLoss) == null) {
-      // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite NO_STOP.
-      const tradeResult = trade.result ?? 0;
-      const isImplicitStop = tradeResult < 0;
-      if (!isImplicitStop) {
-        let noStopMsg = 'Trade sem stop loss definido';
-        if (tradeResult > 0) noStopMsg += ' — risco não mensurado (win sem stop)';
-        newFlags.push({ type: RED_FLAG_TYPES.NO_STOP, message: noStopMsg, timestamp: new Date().toISOString() });
-      }
-    }
+    // DEC-AUTO-208-04: stop implícito (loss sem stop) não emite aviso.
+    // #475 — protegido pelas ordens do trade → pendência STOP_INICIAL_A_INFORMAR.
+    const stopFlag = stopFlagFor
+      ? await stopFlagFor(doc.id ?? doc.ref?.id, trade)
+      : stopFlagOf(trade, false);
+    if (stopFlag) newFlags.push(stopFlag);
     if (compliance.riskPercent != null && compliance.compliance.roStatus === 'FORA_DO_PLANO') {
       newFlags.push({ type: RED_FLAG_TYPES.RISK_EXCEEDED, message: 'Risco ' + compliance.riskPercent.toFixed(1) + '% excede maximo (' + plan.riskPerOperation + '%)', timestamp: new Date().toISOString() });
     }
 
     updateData.redFlags = newFlags;
-    updateData.hasRedFlags = newFlags.length > 0;
+    // #475 — pendência não é violação: não acende hasRedFlags.
+    updateData.hasRedFlags = violationCountOf(newFlags) > 0;
 
     await updateIfMutable(doc.ref, doc, updateData, 'recalculateCompliance');
     updated++;
