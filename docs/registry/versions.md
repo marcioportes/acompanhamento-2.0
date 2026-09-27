@@ -132,3 +132,4 @@
 | 1.92.11 | #467 | `fix/issue-467-um-caminho-do-stop` | 25/09/2026 | consumida (PR #473 squash `cfa3fd75`) |
 | 1.92.12 | #468 | `chore/issue-468-recalcular-trades-do-import` | 25/09/2026 | consumida (PR #474 squash `a6a7a596`) |
 | 1.92.13 | #475 | `fix/issue-475-stop-movido-pendencia` | 26/09/2026 | consumida (PR #476 squash `c28241ca`) |
+| 1.92.14 | #477 | `fix/issue-477-emocao-hipotese` | 27/09/2026 | reservada |

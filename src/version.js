@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.14: #477 fix detector comportamental crava medo — ajuste não é hesitação, montagem de posição vira aviso (RESERVADA)
  * - 1.92.13: #475 fix trade protegido acusado de 'sem stop' — stop movido vira pendência, não viol (PR #476, 26/09/2026)
  * - 1.92.12: #468 chore recalcular trades já gravados pelo import — dry-run antes, só não discutido (PR #474, 26/09/2026)
  * - 1.92.11: #467 fix um caminho só para gravar e exibir o stop — enriquecimento, compliance, paine (PR #473, 25/09/2026)
