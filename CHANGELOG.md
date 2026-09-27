@@ -8,6 +8,14 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.14] - 27/09/2026 · #477 · PR #478
+
+**fix:** detector comportamental crava medo — ajuste não é hesitação, montagem de p
+
+- **Faixa verde:** *"Você declarou 'Disciplinado' e a execução confirma — stop enviado junto com a entrada, e cada adição com proteção própria."*
+- **Card neutro:** *"Montagem de posição — Houve montagem de posição com preço médio para trás — 1 adição contra a posição, com proteção própria."*
+
+
 ## [1.92.13] - 26/09/2026 · #475 · PR #476
 
 **fix:** trade protegido acusado de "sem stop" — stop movido vira pendência, não violação
