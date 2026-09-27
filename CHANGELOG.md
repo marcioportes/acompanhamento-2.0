@@ -10,11 +10,12 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.14] - 27/09/2026 · #477 · PR #478
 
-**fix:** detector comportamental crava medo — ajuste não é hesitação, montagem de p
+**fix:** detector comportamental crava medo — ajuste não é hesitação, montagem de posição vira aviso, confronto vira hipótese
 
-- **Faixa verde:** *"Você declarou 'Disciplinado' e a execução confirma — stop enviado junto com a entrada, e cada adição com proteção própria."*
-- **Card neutro:** *"Montagem de posição — Houve montagem de posição com preço médio para trás — 1 adição contra a posição, com proteção própria."*
-
+- **Hesitação** só conta tentativa de entrada cancelada (lado da entrada, até 30 min antes, perto do preço). Cancelar e reenviar com quantidade corrigida é ajuste.
+- **Montagem de posição** deixa de ser "médio contra a posição" (negação) e vira aviso neutro: "Houve montagem de posição com preço médio para trás" ou "para frente". Sem emoção, score ou gate; o mentor decide com o aluno.
+- **Confronto emocional** vira hipótese com a evidência; gravidade baixa não confronta; declaração positiva confirmada pela execução aparece como confirmação.
+- Perfil recalculado em 38 trades não discutidos de 17 alunos; 34 discutidos intocados. O 24/09 passa de "sinais de Medo" para "a execução confirma".
 
 ## [1.92.13] - 26/09/2026 · #475 · PR #476
 
