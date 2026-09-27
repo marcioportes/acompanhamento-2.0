@@ -16,7 +16,7 @@ import {
   detectFomoEntry,
   detectEarlyExit,
   detectLateExit,
-  detectAveragingDown,
+  detectPositionBuild,
   PATTERN_CODES,
   SEVERITY,
   RESOLUTION,
@@ -851,18 +851,30 @@ describe('detectUndersizedTrade', () => {
 // ============================================
 
 describe('detectHesitation', () => {
-  it('detects 2+ cancelled orders before trade entry', () => {
+  // #477 — só conta TENTATIVA de entrada: lado da entrada (LONG → BUY), perto do preço,
+  // cancelada até 30 min antes, sem reenvio corrigido logo depois.
+  it('detects 2+ cancelled entry attempts before trade entry', () => {
     const trade = baseTrade({ entryTime: '2026-04-10T10:05:00' });
     const orders = [
-      { status: 'CANCELLED', submittedAt: '2026-04-10T10:00:00', cancelledAt: '2026-04-10T10:01:00', externalOrderId: 'o1' },
-      { status: 'CANCELLED', submittedAt: '2026-04-10T10:02:00', cancelledAt: '2026-04-10T10:03:00', externalOrderId: 'o2' },
-      { status: 'FILLED', submittedAt: '2026-04-10T10:04:00', filledAt: '2026-04-10T10:05:00', externalOrderId: 'o3' }
+      { status: 'CANCELLED', side: 'BUY', orderType: 'LIMIT', quantity: 1, price: 129950, submittedAt: '2026-04-10T10:00:00', cancelledAt: '2026-04-10T10:01:00', externalOrderId: 'o1' },
+      { status: 'CANCELLED', side: 'BUY', orderType: 'STOP', quantity: 1, stopPrice: 130010, submittedAt: '2026-04-10T10:04:00', cancelledAt: '2026-04-10T10:04:30', externalOrderId: 'o2' },
+      { status: 'FILLED', side: 'BUY', orderType: 'MARKET', quantity: 1, submittedAt: '2026-04-10T10:05:00', filledAt: '2026-04-10T10:05:00', externalOrderId: 'o3' }
     ];
     const result = detectHesitation(trade, orders);
     expect(result).not.toBeNull();
     expect(result.code).toBe(PATTERN_CODES.HESITATION);
     expect(result.layer).toBe(2);
     expect(result.evidence.cancelledOrdersCount).toBe(2);
+    expect(result.evidence.hesitationMinutes).toBe(5);
+  });
+
+  it('#477 — ordem do lado oposto (proteção sem posição) não conta', () => {
+    const trade = baseTrade({ entryTime: '2026-04-10T10:05:00' });
+    const orders = [
+      { status: 'CANCELLED', side: 'SELL', orderType: 'STOP', quantity: 1, stopPrice: 129900, submittedAt: '2026-04-10T10:00:00', cancelledAt: '2026-04-10T10:01:00', externalOrderId: 'o1' },
+      { status: 'CANCELLED', side: 'SELL', orderType: 'STOP', quantity: 1, stopPrice: 129900, submittedAt: '2026-04-10T10:02:00', cancelledAt: '2026-04-10T10:03:00', externalOrderId: 'o2' },
+    ];
+    expect(detectHesitation(trade, orders)).toBeNull();
   });
 
   it('returns null without orders', () => {
@@ -1033,36 +1045,37 @@ describe('detectLateExit', () => {
 });
 
 // ============================================
-// LAYER 2 — AVERAGING_DOWN
+// LAYER 2 — POSITION_BUILD (#477 — substitui AVERAGING_DOWN)
 // ============================================
 
-describe('detectAveragingDown', () => {
-  it('detects same-direction orders at worsening price (LONG buying lower)', () => {
+describe('detectPositionBuild', () => {
+  it('LONG comprando mais barato → aviso neutro "preço médio para trás", sem emoção', () => {
     const trade = baseTrade({ side: 'LONG' });
     const orders = [
-      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130000, filledAt: '2026-04-10T10:00:00', submittedAt: '2026-04-10T10:00:00' },
-      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 129950, filledAt: '2026-04-10T10:05:00', submittedAt: '2026-04-10T10:05:00' },
-      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 129900, filledAt: '2026-04-10T10:10:00', submittedAt: '2026-04-10T10:10:00' }
+      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130000, filledQuantity: 1, filledAt: '2026-04-10T10:00:00', submittedAt: '2026-04-10T10:00:00' },
+      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 129950, filledQuantity: 1, filledAt: '2026-04-10T10:05:00', submittedAt: '2026-04-10T10:05:00' },
+      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 129900, filledQuantity: 1, filledAt: '2026-04-10T10:10:00', submittedAt: '2026-04-10T10:10:00' }
     ];
-    const result = detectAveragingDown(trade, orders);
-    expect(result).not.toBeNull();
-    expect(result.code).toBe(PATTERN_CODES.AVERAGING_DOWN);
-    expect(result.evidence.averagingCount).toBeGreaterThanOrEqual(2);
+    const result = detectPositionBuild(trade, orders);
+    expect(result).toHaveLength(1);
+    expect(result[0].code).toBe(PATTERN_CODES.POSITION_BUILD_AGAINST);
+    expect(result[0].emotionMapping).toBeNull();
+    expect(result[0].severity).toBeNull();
+    expect(result[0].evidence.additions).toBe(2);
   });
 
-  it('returns null without orders', () => {
-    const result = detectAveragingDown(baseTrade(), null);
-    expect(result).toBeNull();
+  it('returns [] without orders', () => {
+    expect(detectPositionBuild(baseTrade(), null)).toEqual([]);
   });
 
-  it('returns null when prices improve', () => {
+  it('LONG comprando mais caro → "preço médio para frente"', () => {
     const trade = baseTrade({ side: 'LONG' });
     const orders = [
-      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130000, filledAt: '2026-04-10T10:00:00', submittedAt: '2026-04-10T10:00:00' },
-      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130050, filledAt: '2026-04-10T10:05:00', submittedAt: '2026-04-10T10:05:00' }
+      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130000, filledQuantity: 1, filledAt: '2026-04-10T10:00:00', submittedAt: '2026-04-10T10:00:00' },
+      { status: 'FILLED', isStopOrder: false, side: 'BUY', filledPrice: 130050, filledQuantity: 1, filledAt: '2026-04-10T10:05:00', submittedAt: '2026-04-10T10:05:00' }
     ];
-    const result = detectAveragingDown(trade, orders);
-    expect(result).toBeNull();
+    const result = detectPositionBuild(trade, orders);
+    expect(result.map((p) => p.code)).toEqual([PATTERN_CODES.POSITION_BUILD_FAVOR]);
   });
 });
 

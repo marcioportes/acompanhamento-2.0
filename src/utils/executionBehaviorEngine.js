@@ -1,6 +1,7 @@
 import { REVOKED_RED_FLAG_TYPES, PENDING_RED_FLAG_TYPES } from './violationFilter';
 import { tradeOffsetOf, instantAtOffsetMs, orderInstantMs } from './orderInstant';
 import { isPositionProtection, legsOf } from './orderProtection';
+import { classifyCancelledEntry, ATTEMPT_CLASS } from './entryAttempts';
 /**
  * executionBehaviorEngine.js
  * @version 1.0.0 (v1.49.0 — issue #208 Fase 2)
@@ -868,6 +869,11 @@ const detectHesitation = (trade, orders, config) => {
       continue;
     }
 
+    // #477 — hesitação só conta TENTATIVA de entrada: perto do preço da entrada e sem
+    // reenvio corrigido logo em seguida (cancelar e reenviar com a quantidade ou o preço
+    // certos é ajuste). Regra única em `entryAttempts`, a mesma do shadow.
+    if (classifyCancelledEntry(c, tradeOrders, trade) !== ATTEMPT_CLASS.ATTEMPT) continue;
+
     events.push({
       type: EVENT_TYPES.HESITATION_PRE_ENTRY,
       severity: EVENT_SEVERITY.LOW,
@@ -1058,8 +1064,16 @@ const detectStopBreakevenTooEarly = (trade, orders, config) => {
 const detectStopHesitation = (trade, orders, config) => {
   const entryPrice = trade?.entry ?? trade?.entryPrice ?? null;
   const off = tradeOffsetOf(trade);
-  const stops = ordersForTrade(orders, trade.id)
-    .filter(o => o.isStopOrder === true)
+  const tradeOrders = ordersForTrade(orders, trade.id);
+  // #477 — ordem de proteção SEM posição aberta nunca conta: stop cancelado antes da
+  // primeira entrada não é "mexer no stop", é boleta montada e desmontada antes de entrar.
+  // Definição única de proteção (`orderProtection`, sem janela de tempo — as reemissões
+  // são justamente o que este detector procura).
+  const position = positionOf(trade, tradeOrders);
+  const pctx = { offset: off, lifetime: false };
+  pctx.legs = legsOf(position, pctx);
+  const stops = tradeOrders
+    .filter(o => o.isStopOrder === true && isPositionProtection(o, position, pctx))
     .map(o => ({
       ...o,
       _ts: orderMs(o.submittedAt, off) ?? orderMs(o.cancelledAt, off) ?? orderMs(o.filledAt, off),

@@ -26,6 +26,9 @@ const trade = {
   entryTime: t(12, 0),
   exitTime: t(12, 30),
   result: 150,
+  // #477 — hesitação exige preço perto da entrada: sem `entry` e sem preço na ordem, não há
+  // como provar que a ordem cancelada era a MESMA entrada.
+  entry: 180000,
 };
 
 const entrada = {
@@ -47,6 +50,8 @@ const abortada = (h, m, over = {}) => ({
   side: 'BUY',
   quantity: 5,
   status: 'CANCELLED',
+  orderType: 'LIMIT',
+  limitPrice: 179990,
   submittedAt: t(h, m),
   cancelledAt: t(h, m + 1),
   isStopOrder: false,

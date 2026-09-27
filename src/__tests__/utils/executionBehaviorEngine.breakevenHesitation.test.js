@@ -24,7 +24,9 @@ const makeTrade = (overrides = {}) => ({
 const makeOrder = (overrides = {}) => ({
   externalOrderId: 'ORD',
   instrument: 'WINM26',
-  side: 'BUY',
+  // #477 — stop de um LONG é VENDA (lado oposto). Com BUY o fixture não era proteção de
+  // posição nenhuma, e STOP_HESITATION passou a exigir proteção de posição aberta.
+  side: 'SELL',
   type: 'STOP',
   status: 'CANCELLED',
   quantity: 2,

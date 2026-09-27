@@ -19,6 +19,8 @@
  *
  * Tom: espelho, não acusação.
  */
+import { valenciaVigente } from '../constants/behavioralTaxonomy';
+
 
 const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
@@ -37,7 +39,11 @@ export function dominantNegativeSeverity(families) {
   if (!Array.isArray(families)) return 'CLEAN';
   let best = null;
   for (const f of families) {
-    if (!f || f.valence === 'positive') continue;
+    // #477 — valência VIGENTE: aviso neutro de montagem de posição não é padrão negativo
+    // (perfis antigos gravaram `AVERAGING_DOWN` como 'negative').
+    if (!f) continue;
+    const v = valenciaVigente(f);
+    if (v === 'positive' || v === 'neutral') continue;
     if (!best) { best = f; continue; }
     const d = (SEVERITY_RANK[f.severity] ?? 0) - (SEVERITY_RANK[best.severity] ?? 0);
     if (d > 0 || (d === 0 && f.isGate && !best.isGate)) best = f;

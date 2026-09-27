@@ -35,24 +35,31 @@ const entrada = (preco, hora) => ({
   filledAt: `2026-08-21T${hora}`, submittedAt: `2026-08-21T${hora}`, quantity: 5,
 });
 
-describe('#392 — piramidação contra a posição', () => {
+// #477 — a piramidação contra a posição (AVERAGING_DOWN, Negação) virou o aviso NEUTRO
+// de montagem de posição: mesma leitura de preço e tempo, sem emoção e sem severidade.
+describe('#392/#477 — montagem de posição', () => {
   it.each(OFFSETS)('detecta aumento em preço pior com trade em %s', (off) => {
     const orders = [entrada(174000, '10:00:00'), entrada(173800, '10:15:00'), entrada(173600, '10:30:00')];
     const r = analyzeShadowForTradeCF(trade(off), [], orders);
-    const p = pattern(r, 'AVERAGING_DOWN');
+    const p = pattern(r, 'POSITION_BUILD_AGAINST');
     expect(p).toBeTruthy();
-    expect(p.evidence.averagingCount).toBe(2);
-    expect(p.emotionMapping).toBe('DENIAL');
+    expect(p.evidence.additions).toBe(2);
+    expect(p.emotionMapping).toBeNull();
+    expect(p.severity).toBeNull();
+    expect(codigos(r)).not.toContain('AVERAGING_DOWN');
   });
 
-  it('aumentar a favor do movimento NÃO é piramidação', () => {
+  it('aumentar a favor do movimento é montagem "para frente", não "para trás"', () => {
     const orders = [entrada(173600, '10:00:00'), entrada(173800, '10:15:00'), entrada(174000, '10:30:00')];
-    expect(codigos(analyzeShadowForTradeCF(trade('-03:00'), [], orders))).not.toContain('AVERAGING_DOWN');
+    const c = codigos(analyzeShadowForTradeCF(trade('-03:00'), [], orders));
+    expect(c).not.toContain('POSITION_BUILD_AGAINST');
+    expect(c).toContain('POSITION_BUILD_FAVOR');
   });
 
-  it('uma entrada só nunca é piramidação', () => {
-    expect(codigos(analyzeShadowForTradeCF(trade('-03:00'), [], [entrada(174000, '10:00:00')])))
-      .not.toContain('AVERAGING_DOWN');
+  it('uma entrada só nunca é montagem', () => {
+    const c = codigos(analyzeShadowForTradeCF(trade('-03:00'), [], [entrada(174000, '10:00:00')]));
+    expect(c).not.toContain('POSITION_BUILD_AGAINST');
+    expect(c).not.toContain('POSITION_BUILD_FAVOR');
   });
 });
 
@@ -152,7 +159,9 @@ describe('#392 — guardas nascidas da base real', () => {
     // escalonada; o mercado não foi contra — o trade fechou positivo.
     const t = trade('-03:00', { result: 520, exit: 174290 });
     const orders = [entrada(174050, '11:25:15'), entrada(174010, '11:25:18')];
-    expect(codigos(analyzeShadowForTradeCF(t, [], orders))).not.toContain('AVERAGING_DOWN');
+    const c = codigos(analyzeShadowForTradeCF(t, [], orders));
+    expect(c).not.toContain('POSITION_BUILD_AGAINST');
+    expect(c).not.toContain('POSITION_BUILD_FAVOR');
   });
 
   it('execução fora da vida da posição não conta', () => {
@@ -167,16 +176,16 @@ describe('#392 — guardas nascidas da base real', () => {
       { side: 'BUY', status: 'FILLED', isStopOrder: false, filledPrice: 49761, filledAt: '2026-05-18T11:27:02', quantity: 1 },
       { side: 'BUY', status: 'FILLED', isStopOrder: false, filledPrice: 49549, filledAt: '2026-05-18T12:26:25', quantity: 1 },
     ];
-    expect(codigos(analyzeShadowForTradeCF(t, [], orders))).not.toContain('AVERAGING_DOWN');
+    expect(codigos(analyzeShadowForTradeCF(t, [], orders))).not.toContain('POSITION_BUILD_AGAINST');
   });
 
-  it('mas piramidação DE VERDADE segue sendo pega', () => {
+  it('mas montagem DE VERDADE segue sendo pega', () => {
     // Aumentos espaçados, com o preço indo contra, dentro da vida da posição.
     const t = trade('-03:00');
     const orders = [entrada(174000, '10:00:00'), entrada(173800, '10:15:00'), entrada(173600, '10:30:00')];
-    const p = pattern(analyzeShadowForTradeCF(t, [], orders), 'AVERAGING_DOWN');
+    const p = pattern(analyzeShadowForTradeCF(t, [], orders), 'POSITION_BUILD_AGAINST');
     expect(p).toBeTruthy();
-    expect(p.evidence.averagingCount).toBe(2);
+    expect(p.evidence.additions).toBe(2);
   });
 
   it('e pânico DE VERDADE segue sendo pego', () => {

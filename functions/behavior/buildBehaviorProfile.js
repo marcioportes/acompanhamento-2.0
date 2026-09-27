@@ -21,8 +21,14 @@ const {
   dedupeByFamily,
   BEHAVIORAL_DETECTION_VERSION,
 } = require('../maturity/behavioralDetectionMirror');
-const { resolveCanonical, getPattern } = require('../maturity/behavioralTaxonomyMirror');
+const {
+  resolveCanonical, getPattern, valenciaVigente, severidadeVigente,
+} = require('../maturity/behavioralTaxonomyMirror');
 const { analyzeShadowForTradeCF, SHADOW_VERSION } = require('../shadow/shadowDetectors');
+const {
+  isConfrontable, confrontVerdictFor, confirmsDeclared, CONFRONT_VERDICT,
+} = require('../shared/emotionConfront');
+const { positionBuildOf } = require('../shared/positionBuild');
 
 const PROFILE_VERSION = '1.0.0';
 const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
@@ -64,11 +70,12 @@ const behaviorFingerprint = (profile) => {
   return crypto.createHash('sha1').update(JSON.stringify(canonical)).digest('hex');
 };
 
-/** Ordena famílias para exibição: negativos por severidade desc, positivos por último. */
+/** Ordena famílias para exibição: negativos por severidade desc, avisos neutros (#477), positivos por último. */
+const VALENCE_ORDER = { negative: 0, neutral: 1, positive: 2 };
 const byDisplayOrder = (a, b) => {
-  const va = a.valence === 'positive' ? 1 : 0;
-  const vb = b.valence === 'positive' ? 1 : 0;
-  if (va !== vb) return va - vb; // negativos primeiro
+  const va = VALENCE_ORDER[a.valence] ?? 0;
+  const vb = VALENCE_ORDER[b.valence] ?? 0;
+  if (va !== vb) return va - vb;
   return (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
 };
 
@@ -82,7 +89,9 @@ const byDisplayOrder = (a, b) => {
 const dominantNegativeFamily = (families, comEmocao = false) => {
   let best = null;
   for (const f of families) {
-    if (f.valence === 'positive') continue;
+    // #477 — valência VIGENTE: aviso neutro de montagem de posição não é negativo.
+    const v = valenciaVigente(f);
+    if (v === 'positive' || v === 'neutral') continue;
     if (comEmocao && !f.emotionMapping) continue;
     if (!best) { best = f; continue; }
     const d = (SEVERITY_RANK[f.severity] ?? 0) - (SEVERITY_RANK[best.severity] ?? 0);
@@ -92,45 +101,38 @@ const dominantNegativeFamily = (families, comEmocao = false) => {
 };
 
 /**
- * Confronto emocional — matriz aprovada (categoria da emoção declarada × severidade do
- * padrão dominante). Veredicto: ALIGNED | ATTENTION | MISALIGNED | NO_DECLARED.
- * 'CLEAN' = sem padrão negativo. Categoria declarada vem de getEmotionConfig.analysisCategory.
+ * Confronto emocional — emoção declarada na entrada × emoção que a execução sugere.
+ * Veredicto: ALIGNED | ATTENTION | MISALIGNED | NO_DECLARED | CONFIRMED (#477).
+ * Matriz e regras em `shared/emotionConfront` (espelhadas no cliente, que as reaplica na
+ * leitura de perfis antigos).
+ *
+ * #477 — o confronto é HIPÓTESE, não sentença:
+ *   - só participa padrão NEGATIVO, com emoção, de gravidade MÉDIA ou ALTA. Padrão de
+ *     gravidade baixa não sustenta dizer ao aluno que ele sentiu outra coisa;
+ *   - declaração positiva que a execução confirma (toda leva de entrada nasceu com
+ *     proteção própria, nada confrontável, nenhum gate) vira CONFIRMED.
+ *
+ * @param {Object} [execution] — { allProtected?: boolean, hasGate?: boolean }
  */
-const verdictFor = (declaredCategory, detSeverity) => {
-  if (!declaredCategory) return 'NO_DECLARED';
-  switch (declaredCategory) {
-    case 'POSITIVE':
-      if (detSeverity === 'CLEAN') return 'ALIGNED';
-      if (detSeverity === 'LOW') return 'ATTENTION';
-      return 'MISALIGNED'; // MEDIUM/HIGH
-    case 'NEUTRAL':
-      if (detSeverity === 'CLEAN' || detSeverity === 'LOW') return 'ALIGNED';
-      if (detSeverity === 'MEDIUM') return 'ATTENTION';
-      return 'MISALIGNED'; // HIGH
-    case 'NEGATIVE':
-      return detSeverity === 'HIGH' ? 'ATTENTION' : 'ALIGNED'; // clean=regulou, low/med=consciente
-    case 'CRITICAL':
-      return detSeverity === 'CLEAN' ? 'ATTENTION' : 'ALIGNED'; // consciente (alto risco)
-    default:
-      return 'ALIGNED';
-  }
-};
-
-const computeEmotionConfront = (trade, families, getEmotionConfig) => {
-  // #375 — o confronto é sobre EMOÇÃO: só participa padrão que carrega uma. Gate sem
-  // emoção continua inteiro na lista de padrões e no bloqueio de estágio, que é o canal
-  // dele. A severidade que calibra o veredicto também sai daí, senão um gate mudo
-  // continuaria endurecendo um confronto do qual não participa.
-  const dom = dominantNegativeFamily(families, true);
-  const detSeverity = dom ? dom.severity : 'CLEAN';
-  const suggested = (dom && dom.emotionMapping)
-    ? { emotion: dom.emotionMapping, code: dom.canonicalCode, severity: dom.severity }
+const computeEmotionConfront = (trade, families, getEmotionConfig, execution = null) => {
+  // #375 — só participa padrão que carrega emoção; gate sem emoção fica no canal dele.
+  const candidatas = (families || []).filter((f) => isConfrontable(
+    valenciaVigente(f) || 'negative', f.emotionMapping, severidadeVigente(f.canonicalCode, f.severity),
+  ));
+  const dom = dominantNegativeFamily(candidatas, true);
+  const detSeverity = dom ? severidadeVigente(dom.canonicalCode, dom.severity) : 'CLEAN';
+  const suggested = dom
+    ? { emotion: dom.emotionMapping, code: dom.canonicalCode, severity: detSeverity }
     : null;
   const entryName = trade.emotionEntry || null;
-  if (!entryName) return { declared: null, suggested, verdict: 'NO_DECLARED' };
+  if (!entryName) return { declared: null, suggested, verdict: CONFRONT_VERDICT.NO_DECLARED };
   const cfg = typeof getEmotionConfig === 'function' ? getEmotionConfig(entryName) : null;
   const category = (cfg && cfg.analysisCategory) || 'NEUTRAL';
-  return { declared: { name: entryName, category }, suggested, verdict: verdictFor(category, detSeverity) };
+  let verdict = confrontVerdictFor(category, detSeverity);
+  if (verdict === CONFRONT_VERDICT.ALIGNED && confirmsDeclared(category, detSeverity, execution)) {
+    verdict = CONFRONT_VERDICT.CONFIRMED;
+  }
+  return { declared: { name: entryName, category }, suggested, verdict };
 };
 
 /**
@@ -222,7 +224,12 @@ const buildBehaviorProfiles = ({
         severity: sp.severity ?? p.severityDefault ?? null,
       });
       // shadow só sobrescreve evidência se o código ainda não veio de events (events > shadow, DEC-074).
-      if (!evidenceByCode[canonical]) {
+      // #477 — exceção: HESITATION. O motor de eventos emite UM evento por ordem cancelada
+      // (sempre BAIXA); o shadow é quem CONTA as tentativas e gradua a severidade (2 BAIXA,
+      // 3 MÉDIA, 4+ ALTA). Com o evento por cima, 3 tentativas reais em 4 min ficavam BAIXA
+      // e a evidência dizia só o intervalo de uma ordem. As duas leituras usam a mesma
+      // regra de tentativa (`shared/entryAttempts`), então o agregado é o retrato do trade.
+      if (!evidenceByCode[canonical] || canonical === 'HESITATION') {
         evidenceByCode[canonical] = { evidence: sp.evidence ?? null, confidence: sp.confidence ?? null, severity: sp.severity ?? null, source: 'shadow' };
       }
     }
@@ -281,7 +288,11 @@ const buildBehaviorProfiles = ({
       resolution: (shadow && shadow.resolution) || 'LOW',
       orderCount: (shadow && shadow.orderCount) || 0,
       // Confronto emocional: emoção declarada na entrada × emoção que a execução sugere.
-      emotionConfront: computeEmotionConfront(trade, reconciled, getEmotionConfig),
+      emotionConfront: computeEmotionConfront(trade, reconciled, getEmotionConfig, {
+        // #477 — a execução confirma a declaração positiva? Toda leva nasceu protegida.
+        allProtected: tradeOrders ? (positionBuildOf(trade, tradeOrders)?.allProtected === true) : false,
+        hasGate: gateInputs.length > 0,
+      }),
     };
     profile.fingerprint = behaviorFingerprint(profile);
     profiles.set(trade.id, profile);

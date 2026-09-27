@@ -44,6 +44,10 @@ function aggregateBehaviorWeights(trades = []) {
       if (cleared.includes(clearedKey(code, t.id))) continue;
       const p = getPattern(code);
       if (!p) continue;
+      // #477 — aviso neutro (montagem de posição) não pesa em nada: nem penalidade, nem
+      // bônus, nem taxa. Lê a valência da TAXONOMIA, não a gravada: perfis antigos trazem
+      // `AVERAGING_DOWN` como 'negative', e o alias o resolve para o aviso neutro.
+      if (p.valence === 'neutral') continue;
       // #394 — exposição que o aluno FECHOU (recolocou proteção) não conta como violação
       // nem alimenta gate: o gate mede posição descoberta, e essa foi coberta. Continua
       // no card, porque o fato é verdadeiro e o mentor precisa ver. Ver

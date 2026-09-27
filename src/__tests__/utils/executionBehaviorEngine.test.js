@@ -294,10 +294,12 @@ describe('detectExecutionEvents — RAPID_REENTRY_POST_STOP', () => {
 // ============================================
 describe('detectExecutionEvents — HESITATION_PRE_ENTRY', () => {
   it('detecta cancel mesmo side seguido de fill <30min', () => {
-    const trade = makeTrade({ id: 'T2', side: 'SHORT',
+    // #477 — tentativa de entrada exige preço perto da entrada (a venda cancelada a 198.520
+    // para uma entrada a 198.500).
+    const trade = makeTrade({ id: 'T2', side: 'SHORT', entry: '198500',
       entryTime: '2026-04-22T10:55:00Z' });
     const orders = [
-      makeOrder({ externalOrderId: 'C1', side: 'SELL', status: 'CANCELLED',
+      makeOrder({ externalOrderId: 'C1', side: 'SELL', status: 'CANCELLED', price: 198520,
         instrument: 'WINM26', correlatedTradeId: 'T2',
         submittedAt: '2026-04-22T10:36:00Z',
         cancelledAt: '2026-04-22T10:36:30Z' }),
@@ -427,8 +429,9 @@ describe('detectExecutionEvents — fixture SEM1 (integração)', () => {
     // nada. Era o caso mais grave e o único não coberto.
     const events = detectExecutionEvents({ trades: [t1, t2, t3], orders });
     const types = events.map(e => e.type).sort();
+    // #477 — 4: a venda cancelada de T2 não tem preço enviado, então não há como provar
+    // que era a MESMA entrada (hesitação não acusa o que não prova).
     expect(types).toEqual([
-      EVENT_TYPES.HESITATION_PRE_ENTRY,
       EVENT_TYPES.RAPID_REENTRY_POST_STOP,
       EVENT_TYPES.UNPROTECTED_SIZE,   // T1 — cobertura parcial (1 de 2)
       EVENT_TYPES.UNPROTECTED_SIZE,   // T2 — sem stop nenhum
@@ -443,8 +446,9 @@ describe('detectExecutionEvents — fixture SEM1 (integração)', () => {
     expect(e.evidence.uncoveredQty).toBe(1);
   });
 
-  it('HESITATION_PRE_ENTRY aponta T2 com gap ~19min', () => {
-    const events = detectExecutionEvents({ trades: [t1, t2, t3], orders });
+  it('HESITATION_PRE_ENTRY aponta T2 com gap ~19min quando a ordem cancelada tem preço perto da entrada (#477)', () => {
+    const comPreco = orders.map(o => (o.externalOrderId === 'NLGC...297106' ? { ...o, price: 198520 } : o));
+    const events = detectExecutionEvents({ trades: [t1, { ...t2, entry: 198500 }, t3], orders: comPreco });
     const e = events.find(x => x.type === EVENT_TYPES.HESITATION_PRE_ENTRY);
     expect(e.tradeId).toBe('T2');
     expect(e.evidence.gapMinutes).toBeGreaterThan(18);

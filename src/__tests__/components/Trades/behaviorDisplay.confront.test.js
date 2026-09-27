@@ -20,9 +20,10 @@ describe('#375 — confronto emocional sem "null"', () => {
       suggested: { emotion: null, code: 'UNPROTECTED_SIZE', severity: 'HIGH' },
       verdict: 'MISALIGNED',
     });
-    expect(out).toBeTruthy();
     semNull(out);
-    expect(out.text).toContain('Calmo');
+    // #477 — a regra vigente é reaplicada na leitura: padrão sem emoção não confronta
+    // emoção (o gate tem canal próprio). Declaração positiva sem nada confrontável: silêncio.
+    expect(out).toBeNull();
   });
 
   it('sugestão com emoção de verdade segue nomeando a emoção', () => {
@@ -31,7 +32,7 @@ describe('#375 — confronto emocional sem "null"', () => {
       suggested: { emotion: 'HOPE', code: 'UNPROTECTED_SIZE', severity: 'HIGH' },
       verdict: 'MISALIGNED',
     });
-    expect(out.text).toContain('Esperança');
+    expect(out.text).toMatch(/esperança/i);
     semNull(out);
   });
 

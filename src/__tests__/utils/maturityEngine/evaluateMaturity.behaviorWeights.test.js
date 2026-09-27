@@ -43,7 +43,8 @@ const window = (count) => Array.from({ length: count }, (_, i) => makeTrade(`T${
 const windowOne = (count, families) => [makeTrade('F1', 0, families), ...Array.from({ length: count - 1 }, (_, i) => makeTrade(`T${i + 2}`, i + 1, []))];
 
 const greed = [{ canonicalCode: 'GREED_CLUSTER', severity: 'MEDIUM', valence: 'negative' }]; // F, MED
-const averaging = [{ canonicalCode: 'AVERAGING_DOWN', severity: 'HIGH', valence: 'negative' }]; // E+F, HIGH
+// #477 — AVERAGING_DOWN virou aviso neutro (não pesa); HOLD_ASYMMETRY é o E+F de referência.
+const averaging = [{ canonicalCode: 'HOLD_ASYMMETRY', severity: 'HIGH', valence: 'negative' }]; // E+F, HIGH
 const revenge = [{ canonicalCode: 'LOSS_CHASING', severity: 'HIGH', valence: 'negative' }]; // E, HIGH, feedsGates
 
 describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
@@ -63,7 +64,7 @@ describe('evaluateMaturity — modulação comportamental F/O (B1)', () => {
 
   it('E fica fora do B1 (não modulado por comportamento ainda)', () => {
     const plain = esm(baseInput({ trades: window(12) }));
-    const withA = esm(baseInput({ trades: windowOne(12, averaging) })); // AVERAGING é E+F
+    const withA = esm(baseInput({ trades: windowOne(12, averaging) })); // HOLD_ASYMMETRY é E+F
     expect(withA.dimensionScores.emotional).toBe(plain.dimensionScores.emotional); // E inalterado no B1
     expect(withA.dimensionScores.financial).toBe(plain.dimensionScores.financial - 2); // F sim
   });

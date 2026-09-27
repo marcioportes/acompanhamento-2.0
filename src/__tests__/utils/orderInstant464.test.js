@@ -261,10 +261,11 @@ describe('#464 · detectores de ordem do cliente leem a ordem no fuso do trade',
   // Trade em ET. Duas ordens canceladas DEPOIS da entrada, no relógio de parede de ET.
   // Lida no fuso do processo (UTC na CI), 11:27 viraria 11:27Z — antes de 15:25Z — e o
   // detector acusaria hesitação que não houve.
-  const trade = { entryTime: '2026-08-21T11:25:15-04:00', exitTime: '2026-08-21T11:40:00-04:00' };
+  // #477 — hesitação conta TENTATIVA de entrada: lado da entrada e preço perto dela.
+  const trade = { side: 'LONG', entry: 5000, entryTime: '2026-08-21T11:25:15-04:00', exitTime: '2026-08-21T11:40:00-04:00' };
   const orders = [
-    { status: 'CANCELLED', submittedAt: '2026-08-21T11:26:00', cancelledAt: '2026-08-21T11:27:00' },
-    { status: 'CANCELLED', submittedAt: '2026-08-21T11:28:00', cancelledAt: '2026-08-21T11:29:00' },
+    { status: 'CANCELLED', side: 'BUY', orderType: 'LIMIT', quantity: 1, limitPrice: 4999, submittedAt: '2026-08-21T11:26:00', cancelledAt: '2026-08-21T11:27:00' },
+    { status: 'CANCELLED', side: 'BUY', orderType: 'LIMIT', quantity: 1, limitPrice: 4999.5, submittedAt: '2026-08-21T11:28:00', cancelledAt: '2026-08-21T11:29:00' },
   ];
 
   it('cancelada depois da entrada não é hesitação', () => {
@@ -272,7 +273,10 @@ describe('#464 · detectores de ordem do cliente leem a ordem no fuso do trade',
   });
 
   it('canceladas antes da entrada continuam sendo', () => {
-    const antes = orders.map(o => ({ ...o, submittedAt: '2026-08-21T11:10:00', cancelledAt: '2026-08-21T11:12:00' }));
+    const antes = [
+      { ...orders[0], submittedAt: '2026-08-21T11:10:00', cancelledAt: '2026-08-21T11:12:00' },
+      { ...orders[1], submittedAt: '2026-08-21T11:14:00', cancelledAt: '2026-08-21T11:16:00' },
+    ];
     expect(detectHesitation(trade, antes)?.evidence.cancelledOrdersCount).toBe(2);
   });
 });
