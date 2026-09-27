@@ -1168,8 +1168,8 @@ describe('#444 — motivosPesados / precisaAtencao: o corte A (HIGH ∩ gate)', 
     }
   });
 
-  it('AVERAGING_DOWN e DIRECTION_FLIP graves NÃO entram — não alimentam gate', () => {
-    const t = tr([fam('AVERAGING_DOWN'), fam('DIRECTION_FLIP')]);
+  it('AVERAGING_DOWN (hoje aviso neutro, #477) e DIRECTION_FLIP graves NÃO entram — não alimentam gate', () => {
+    const t = tr([fam('AVERAGING_DOWN'), fam('DIRECTION_FLIP'), fam('POSITION_BUILD_AGAINST')]);
     expect(motivosPesados(t)).toEqual([]);
     expect(precisaAtencao(t)).toBe(false);
   });

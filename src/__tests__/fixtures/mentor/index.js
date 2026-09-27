@@ -48,7 +48,7 @@ const PERFIS = [
   { n: 3,  nome: 'Carla Menezes',    bucket: 'alpha',        faixa: 'ACAO_HOJE',    diasDesdeUltimo: 0,  gatilho: 'RISK_OVER_RO', severidade: 'HIGH', gatilhosExtra: ['UNPROTECTED_SIZE'] },
   { n: 4,  nome: 'Diego Salles',     bucket: 'alpha',        faixa: 'SUMIU',        diasDesdeUltimo: 21, gatilho: null },
   { n: 5,  nome: 'Eduarda Lopes',    bucket: 'alpha',        faixa: 'SUMIU',        diasDesdeUltimo: 40, gatilho: null },
-  { n: 6,  nome: 'Felipe Andrade',   bucket: 'alpha',        faixa: 'RISCO_ALTO',   diasDesdeUltimo: 2,  gatilho: 'AVERAGING_DOWN' },
+  { n: 6,  nome: 'Felipe Andrade',   bucket: 'alpha',        faixa: 'RISCO_ALTO',   diasDesdeUltimo: 2,  gatilho: 'HOLD_ASYMMETRY' },
   { n: 7,  nome: 'Gabriela Nunes',   bucket: 'alpha',        faixa: 'FORA_DO_PLANO', diasDesdeUltimo: 1, gatilho: 'FLAG' },
   { n: 8,  nome: 'Henrique Dias',    bucket: 'trial-alpha',  faixa: 'FORA_DO_PLANO', diasDesdeUltimo: 3, gatilho: 'FLAG' },
   { n: 9,  nome: 'Isabela Moraes',   bucket: 'alpha',        faixa: 'ESFRIANDO',    diasDesdeUltimo: 9,  gatilho: null },

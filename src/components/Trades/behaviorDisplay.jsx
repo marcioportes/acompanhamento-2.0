@@ -7,6 +7,8 @@
  */
 import React from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import { getPattern, valenciaVigente, severidadeVigente } from '../../constants/behavioralTaxonomy';
+import { isConfrontable, confrontVerdictFor, CONFRONT_VERDICT } from '../../utils/emotionConfront';
 
 // Estilo por severidade. Positivos (valence 'positive') sempre emerald, ignoram severity.
 export const SEVERITY_STYLES = {
@@ -14,14 +16,22 @@ export const SEVERITY_STYLES = {
   MEDIUM: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
   LOW: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
   POSITIVE: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  // #477 — aviso neutro (montagem de posição): fato para a conversa com o mentor, sem cor de
+  // gravidade. Nem vermelho/âmbar (não é violação) nem verde (não é elogio).
+  NEUTRAL: 'bg-sky-500/10 text-sky-200 border-sky-500/25',
 };
 
 export const SEVERITY_LABELS = { HIGH: 'Alta', MEDIUM: 'Média', LOW: 'Baixa' };
 
-export const familyStyle = (family) =>
-  family.valence === 'positive'
-    ? SEVERITY_STYLES.POSITIVE
-    : (SEVERITY_STYLES[family.severity] ?? SEVERITY_STYLES.LOW);
+/** Valência que vale na leitura (#477: `AVERAGING_DOWN` gravado como negativo é aviso neutro). */
+export const familyValence = (family) => valenciaVigente(family) ?? family?.valence ?? null;
+
+export const familyStyle = (family) => {
+  const v = familyValence(family);
+  if (v === 'positive') return SEVERITY_STYLES.POSITIVE;
+  if (v === 'neutral') return SEVERITY_STYLES.NEUTRAL;
+  return SEVERITY_STYLES[family.severity] ?? SEVERITY_STYLES.LOW;
+};
 
 export const EMOTION_LABELS = {
   FEAR: 'Medo', REVENGE: 'Vingança', GREED: 'Ganância', ANXIETY: 'Ansiedade',
@@ -37,7 +47,10 @@ export const BEHAVIOR_LABELS = {
   STOP_PANIC: 'Pânico no stop',
   HESITATION: 'Hesitação',
   GREED_CLUSTER: 'Cluster de ganância',
-  AVERAGING_DOWN: 'Preço médio / Martingale',
+  // #477 — aviso neutro. `AVERAGING_DOWN` é o código antigo, lido como o aviso equivalente.
+  POSITION_BUILD_AGAINST: 'Montagem de posição',
+  POSITION_BUILD_FAVOR: 'Montagem de posição',
+  AVERAGING_DOWN: 'Montagem de posição',
   HOLD_ASYMMETRY: 'Assimetria de permanência',
   EARLY_EXIT: 'Saída antecipada',
   LATE_EXIT: 'Saída tardia',
@@ -64,7 +77,9 @@ export const BEHAVIOR_DESCRIPTIONS = {
   STOP_PANIC: 'Stop alargado seguido de saída manual rápida.',
   HESITATION: 'Múltiplas ordens canceladas antes de entrar — indecisão.',
   GREED_CLUSTER: 'Sequência de trades rápidos após ganhos — excesso de confiança.',
-  AVERAGING_DOWN: 'Adição na mesma direção com preço piorando.',
+  POSITION_BUILD_AGAINST: 'Houve montagem de posição com preço médio para trás.',
+  POSITION_BUILD_FAVOR: 'Houve montagem de posição com preço médio para frente.',
+  AVERAGING_DOWN: 'Houve montagem de posição com preço médio para trás.',
   HOLD_ASYMMETRY: 'Trade perdedor mantido muito mais tempo que a média dos ganhadores.',
   EARLY_EXIT: 'Saída com lucro muito abaixo do alvo planejado.',
   LATE_EXIT: 'Saída atrasada após remoção do stop — segurou a perda.',
@@ -141,8 +156,15 @@ export const BEHAVIOR_NARRATIVE = {
   HESITATION: (e) => {
     const n = num(e.cancelledOrdersCount);
     if (n == null) return null;
-    return `${n} ordens canceladas antes de você entrar — indecisão na execução. Hesitar no gatilho costuma trocar o trade do plano por um pior.`;
+    // #477 — conta só tentativa de entrada (mesmo lado, perto do preço, pouco antes);
+    // cancelar e reenviar corrigido é ajuste e fica de fora.
+    const m = num(e.hesitationMinutes);
+    return `${n} tentativas de entrada canceladas${m != null ? ` nos ${fmtMin(m)} antes de você entrar` : ' antes de você entrar'}. Hesitar no gatilho costuma trocar o trade do plano por um pior.`;
   },
+  // #477 — aviso neutro: diz o que houve, sem emoção e sem veredito.
+  POSITION_BUILD_AGAINST: (e) => montagemTexto('para trás', 'contra a posição', e),
+  POSITION_BUILD_FAVOR: (e) => montagemTexto('para frente', 'a favor da posição', e),
+  AVERAGING_DOWN: (e) => montagemTexto('para trás', 'contra a posição', { additions: e.averagingCount }),
   TARGET_HIT: (e) =>
     `Você saiu no alvo planejado${e.planRR ? ` (${e.planRR}:1)` : ''}. Paciência na execução — o trade foi até onde o plano mandou.`,
   CLEAN_EXECUTION: () =>
@@ -150,6 +172,22 @@ export const BEHAVIOR_NARRATIVE = {
   UNDECLARED_MODEL: (e) =>
     `Este trade não diz de onde veio${e.setup ? ` (setup: "${e.setup}")` : ''}. Sem o modelo declarado não dá pra saber se funcionou ou se deu certo por acaso — e o que não se identifica não se repete.`,
 };
+
+/** Minutos em texto: "4 min", "1,5 min". */
+function fmtMin(m) {
+  const v = Math.round(m * 10) / 10;
+  return `${String(v).replace('.', ',')} min`;
+}
+
+function montagemTexto(sentido, relacao, e) {
+  const n = num(e.additions);
+  const prot = num(e.additionsWithOwnProtection);
+  const qtd = n == null ? '' : ` — ${n} ${n === 1 ? 'adição' : 'adições'} ${relacao}`;
+  const comProt = n != null && prot != null && prot === n
+    ? (n === 1 ? ', com proteção própria' : ', cada uma com proteção própria')
+    : '';
+  return `Houve montagem de posição com preço médio ${sentido}${qtd}${comProt}. Se foi leitura consciente ou erro, é conversa para ter com o mentor.`;
+}
 
 export const narrativeFor = (family) => {
   const builder = BEHAVIOR_NARRATIVE[family.canonicalCode];
@@ -169,32 +207,171 @@ export const CONFRONT_TONE_STYLES = {
 
 const emo = (code) => EMOTION_LABELS[code] ?? code;
 
-/** Retorna {tone, text} para o banner do confronto, ou null quando não há o que dizer. */
-export const emotionConfrontDisplay = (confront) => {
+const CONFRONT_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+/** Emoção no meio da frase: "medo", "ganância" — sigla fica como está ("FOMO"). */
+const emoFrase = (code) => {
+  const l = emo(code);
+  return l === l.toUpperCase() ? l : l.toLowerCase();
+};
+
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+/**
+ * #477 — a EVIDÊNCIA que sustenta a hipótese, por padrão, a partir dos campos que o
+ * detector gravou. Sem os campos esperados → null (a frase cai no nome do padrão).
+ */
+export const CONFRONT_EVIDENCE = {
+  HESITATION: (e) => {
+    const n = num(e.cancelledOrdersCount);
+    if (n == null) return null;
+    const m = num(e.hesitationMinutes);
+    return `${plural(n, 'tentativa de entrada cancelada', 'tentativas de entrada canceladas')}${m != null ? ` em ${fmtMin(m)}` : ''}`;
+  },
+  LOSS_CHASING: (e) => {
+    const i = num(e.intervalMinutes ?? e.gapMinutes);
+    return i == null ? null : `reentrada ${fmtMin(i)} depois de uma perda`;
+  },
+  STOP_PANIC: (e) => {
+    const m = num(e.exitAfterWidenMinutes);
+    if (m == null) return null;
+    const ato = e.motivo === 'removeu' ? 'stop retirado' : 'stop afastado';
+    return `${ato} e saída ${fmtMin(m)} depois`;
+  },
+  LATE_EXIT: (e) => {
+    const m = num(e.delayMinutes);
+    return m == null ? null : `${fmtMin(m)} segurando a perda depois de tirar o stop`;
+  },
+  HOLD_ASYMMETRY: (e) => {
+    const d = num(e.tradeDurationMinutes); const r = num(e.ratio);
+    if (d == null) return null;
+    return `perdedor segurado por ${fmtMin(d)}${r != null ? `, ${String(r).replace('.', ',')}× a média dos vencedores` : ''}`;
+  },
+  OVERTRADING: (e) => {
+    const n = num(e.tradesInWindow);
+    return n == null ? null : `${plural(n, 'trade', 'trades')} na mesma janela`;
+  },
+  IMPULSE_CLUSTER: (e) => {
+    const n = num(e.clusterCount);
+    return n == null ? null : `${plural(n, 'trade', 'trades')} em sequência muito rápida`;
+  },
+  GREED_CLUSTER: (e) => {
+    const n = num(e.rapidTradesInWindow); const w = num(e.windowMinutes);
+    return n == null ? null : `${plural(n, 'entrada', 'entradas')}${w != null ? ` em ${fmtMin(w)}` : ''} depois de ganhar`;
+  },
+  DIRECTION_FLIP: (e) => {
+    if (e.trigger === 'PERDIDO') {
+      const n = num(e.reversals); const span = num(e.spanMinutes);
+      return n == null ? null : `${plural(n, 'inversão', 'inversões')} de lado${span != null ? ` em ${fmtMin(span)}` : ''}`;
+    }
+    const g = num(e.gapMinutes ?? e.intervalMinutes);
+    return g == null ? null : `mão virada ${fmtMin(g)} depois de sair`;
+  },
+  SUB_SIZING: (e) => {
+    const u = num(e.utilizationPct);
+    return u == null ? null : `risco de ${String(u).replace('.', ',')}% do RO do plano`;
+  },
+  EARLY_EXIT: (e) => {
+    const p = num(e.rrAchievedPct);
+    return p == null ? null : `saída com ${p}% do alvo`;
+  },
+  FOMO_ENTRY: (e) => {
+    const m = num(e.maxDelayMinutes);
+    return m == null ? null : `entrada a mercado ${fmtMin(m)} depois da primeira ordem`;
+  },
+};
+
+const evidenciaDe = (code, families) => {
+  const fam = (families || []).find((f) => f?.canonicalCode === code);
+  const builder = CONFRONT_EVIDENCE[code];
+  const out = builder && fam ? builder(fam.evidence || {}) : null;
+  if (out) return out;
+  const label = BEHAVIOR_LABELS[code];
+  return label ? `sinal de ${label.toLowerCase()}` : 'um padrão na execução';
+};
+
+/**
+ * Confronto que VALE na leitura (#477). A CF grava o confronto no perfil; perfis gravados
+ * antes do #477 elegeram padrão de gravidade BAIXA ou o `AVERAGING_DOWN` (Negação) como
+ * "a emoção do trade". Trade discutido não é regravado (INV-30), então a regra é
+ * reaplicada aqui, com as MESMAS funções da CF (`utils/emotionConfront`, espelho).
+ *
+ * Com `families`: refaz a eleição do dominante sobre as famílias gravadas. Sem elas: só
+ * descarta a sugestão que não é mais confrontável. CONFIRMED gravado é mantido (depende
+ * das ordens, que a leitura não tem).
+ */
+export const confrontVigente = (confront, families = null) => {
   if (!confront) return null;
-  const { verdict, declared } = confront;
+  const declared = confront.declared ?? null;
+  let suggested = confront.suggested?.emotion ? confront.suggested : null;
+  // Sem famílias (ou lista vazia) não há sobre o que refazer a eleição: só a sugestão
+  // gravada é conferida.
+  if (Array.isArray(families) && families.length > 0) {
+    let best = null;
+    for (const f of families) {
+      if (!f) continue;
+      const sev = severidadeVigente(f.canonicalCode, f.severity);
+      if (!isConfrontable(familyValence(f) ?? 'negative', f.emotionMapping, sev)) continue;
+      const d = (CONFRONT_RANK[sev] ?? 0) - (CONFRONT_RANK[best?.severity] ?? 0);
+      if (!best || d > 0 || (d === 0 && f.isGate && !best.isGate)) {
+        best = { emotion: f.emotionMapping, code: f.canonicalCode, severity: sev, isGate: !!f.isGate };
+      }
+    }
+    suggested = best ? { emotion: best.emotion, code: best.code, severity: best.severity } : null;
+  } else if (suggested) {
+    const p = getPattern(suggested.code);
+    const sev = severidadeVigente(suggested.code, suggested.severity);
+    if (!isConfrontable(p?.valence ?? 'negative', suggested.emotion, sev)) suggested = null;
+  }
+  let verdict = declared?.category
+    ? confrontVerdictFor(declared.category, suggested ? suggested.severity : 'CLEAN')
+    : CONFRONT_VERDICT.NO_DECLARED;
+  if (confront.verdict === CONFRONT_VERDICT.CONFIRMED && verdict === CONFRONT_VERDICT.ALIGNED) {
+    verdict = CONFRONT_VERDICT.CONFIRMED;
+  }
+  return { declared, suggested, verdict };
+};
+
+/**
+ * Retorna {tone, text} para o banner do confronto, ou null quando não há o que dizer.
+ *
+ * #477 — HIPÓTESE, não sentença: "a execução tem sinais que costumam acompanhar medo —
+ * 3 tentativas de entrada canceladas em 4 min. Confere com o que você sentiu?". Declaração
+ * positiva confirmada pela execução vira confirmação (verde), não contradição.
+ *
+ * @param {Object} confront — `behaviorProfile.emotionConfront`
+ * @param {Array} [families] — `behaviorProfile.families` (evidência da hipótese)
+ */
+export const emotionConfrontDisplay = (confront, families = null) => {
+  const c = confrontVigente(confront, families);
+  if (!c) return null;
+  const { verdict, declared, suggested } = c;
   const dec = declared?.name;
-  // #375 — sugestão só existe quando há emoção de verdade. Perfis gravados antes do fix
-  // trazem `suggested: { emotion: null }` (padrão de gate eleito como emoção), e o
-  // template imprimia a palavra "null" na cara do aluno. Ausência de emoção é ausência
-  // de sugestão — o veredicto cai nos ramos que já tratam isso.
-  const suggested = confront.suggested?.emotion ? confront.suggested : null;
-  const sug = suggested ? emo(suggested.emotion) : null;
+  const hipotese = suggested
+    ? `a execução tem sinais que costumam acompanhar ${emoFrase(suggested.emotion)} — ${evidenciaDe(suggested.code, families)}`
+    : null;
 
   switch (verdict) {
     case 'MISALIGNED':
       if (!suggested) {
         return { tone: 'amber', text: `Você declarou “${dec}”, mas a execução saiu do plano — vale revisitar o que você sentiu de fato na entrada.` };
       }
-      return { tone: 'red', text: `Você declarou “${dec}”, mas a execução sugere ${sug}. Vale revisitar o que você sentiu de fato na entrada.` };
+      return { tone: 'amber', text: `Você declarou “${dec}”, e ${hipotese}. Confere com o que você sentiu?` };
     case 'ATTENTION':
       if (declared?.category === 'NEGATIVE' && suggested) {
-        return { tone: 'amber', text: `Você declarou “${dec}” e a execução foi de ${sug} — emoção reconhecida, mas não contida.` };
+        return { tone: 'amber', text: `Você declarou “${dec}”, e ${hipotese}. A emoção foi reconhecida — confere se foi ela que conduziu a operação?` };
       }
       if (!suggested) {
         return { tone: 'amber', text: `Você declarou “${dec}”, mas a execução saiu limpa — vale confirmar a intensidade.` };
       }
-      return { tone: 'amber', text: `Você declarou “${dec}”, e há sinais de ${sug} na execução.` };
+      return { tone: 'amber', text: `Você declarou “${dec}”, e ${hipotese}. Confere com o que você sentiu?` };
+    case 'CONFIRMED': {
+      const montagem = (families || []).some((f) => familyValence(f) === 'neutral' && num(f?.evidence?.additions) > 0);
+      return {
+        tone: 'emerald',
+        text: `Você declarou “${dec}” e a execução confirma — stop enviado junto com a entrada${montagem ? ', e cada adição com proteção própria' : ''}.`,
+      };
+    }
     case 'ALIGNED':
       if (declared?.category === 'NEGATIVE' && !suggested) {
         return { tone: 'emerald', text: `Você declarou “${dec}” mas executou limpo — boa regulação emocional.` };
@@ -206,7 +383,7 @@ export const emotionConfrontDisplay = (confront) => {
     case 'NO_DECLARED':
       // só vale nudge se há emoção detectada para confrontar
       return suggested
-        ? { tone: 'amber', text: `A execução sugere ${sug}, mas a emoção da entrada não foi declarada. Declare para ativar o confronto.` }
+        ? { tone: 'amber', text: `A execução tem sinais que costumam acompanhar ${emoFrase(suggested.emotion)} — ${evidenciaDe(suggested.code, families)}. Declare a emoção da entrada para ativar o confronto.` }
         : null;
     default:
       return null;

@@ -58,7 +58,8 @@ describe('behavioralTaxonomy — invariantes', () => {
       expect(p.code).toBe(key);
       expect(p.dimensao.length).toBeGreaterThan(0);
       expect(p.dimensao.every((d) => ['E', 'F', 'O'].includes(d))).toBe(true);
-      if (p.valence === 'positive') expect(p.severityDefault).toBeNull();
+      // #477 — aviso neutro também não tem severidade (não é violação).
+      if (p.valence === 'positive' || p.valence === 'neutral') expect(p.severityDefault).toBeNull();
       else expect(['HIGH', 'MEDIUM', 'LOW']).toContain(p.severityDefault);
     }
   });
@@ -75,6 +76,23 @@ describe('behavioralTaxonomy — invariantes', () => {
     for (const code of legacy) {
       expect(getPattern(code), code).toBeTruthy();
     }
+  });
+
+  it('#477 — montagem de posição é aviso neutro: sem emoção, sem score, sem gate; AVERAGING_DOWN resolve para ela', () => {
+    for (const code of ['POSITION_BUILD_AGAINST', 'POSITION_BUILD_FAVOR']) {
+      const p = BEHAVIORAL_PATTERNS[code];
+      expect(p.valence).toBe('neutral');
+      expect(p.emotionMapping).toBeNull();
+      expect(p.feedsScore).toBe(false);
+      expect(p.feedsGates).toBe(false);
+    }
+    expect(BEHAVIORAL_PATTERNS.AVERAGING_DOWN).toBeUndefined();
+    expect(resolveCanonical('AVERAGING_DOWN')).toBe('POSITION_BUILD_AGAINST');
+    expect(cjs.resolveCanonical('AVERAGING_DOWN')).toBe('POSITION_BUILD_AGAINST');
+    expect(esm.valenciaVigente({ canonicalCode: 'AVERAGING_DOWN', valence: 'negative' })).toBe('neutral');
+    expect(cjs.valenciaVigente({ canonicalCode: 'AVERAGING_DOWN', valence: 'negative' })).toBe('neutral');
+    expect(esm.SCORING_CODES).not.toContain('POSITION_BUILD_AGAINST');
+    expect(esm.GATE_CODES).not.toContain('POSITION_BUILD_AGAINST');
   });
 
   it('positivos são bônus (feedsScore) e não-gate', () => {

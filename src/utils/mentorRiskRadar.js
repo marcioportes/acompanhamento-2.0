@@ -513,8 +513,11 @@ export const TRIGGER = {
 
 /** Famílias que caracterizam "dia de fúria" — reatividade e revanche. */
 const FAMILIAS_FURIA = new Set(['TILT', 'LOSS_CHASING', 'IMPULSE_CLUSTER', 'CHASE_REENTRY']);
-/** Famílias que caracterizam risco na própria operação. */
-const FAMILIAS_RISCO = new Set(['RISK_OVER_RO', 'UNPROTECTED_SIZE', 'AVERAGING_DOWN']);
+/**
+ * Famílias que caracterizam risco na própria operação. #477 — `AVERAGING_DOWN` saiu:
+ * montagem de posição virou aviso neutro, não é risco nem violação.
+ */
+const FAMILIAS_RISCO = new Set(['RISK_OVER_RO', 'UNPROTECTED_SIZE']);
 
 const clearedKey = (code, tradeId) => `${code}:${tradeId}`;
 

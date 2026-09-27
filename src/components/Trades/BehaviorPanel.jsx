@@ -18,7 +18,7 @@ import { authorizationFor } from '../../utils/dayState';
 import { authorizationNotice, tradePositionInPeriod, dayOrderingNotice } from '../metrics/dayMetricTiles';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import {
-  familyStyle, SEVERITY_LABELS, EMOTION_LABELS,
+  familyStyle, familyValence, SEVERITY_LABELS, EMOTION_LABELS,
   BEHAVIOR_LABELS, narrativeFor, UndersizedBody,
   emotionConfrontDisplay, CONFRONT_TONE_STYLES,
 } from './behaviorDisplay';
@@ -34,12 +34,16 @@ const AUTH_TONE_STYLES = {
 
 const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolation }) => {
   const [expanded, setExpanded] = useState(false);
-  const isPositive = family.valence === 'positive';
+  const valence = familyValence(family);
+  const isPositive = valence === 'positive';
+  // #477 — aviso neutro (montagem de posição): sem gravidade, sem emoção, sem confiança,
+  // sem "dispensar" (não penaliza nada). Perfil antigo com `AVERAGING_DOWN` cai aqui.
+  const isNeutral = valence === 'neutral';
   const isUndersized = family.canonicalCode === 'SUB_SIZING';
   const label = BEHAVIOR_LABELS[family.canonicalCode] ?? family.family;
   // Clearing estendido (#305 Fase 2 C): mentor dispensa o finding → para de penalizar.
   const clearKey = `${family.canonicalCode}:${trade?.id}`;
-  const cleared = !isPositive && isViolationCleared(trade, clearKey);
+  const cleared = !isPositive && !isNeutral && isViolationCleared(trade, clearKey);
 
   return (
     <div
@@ -48,8 +52,8 @@ const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolati
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm font-medium ${cleared ? 'line-through' : ''}`}>{isPositive ? '✦' : '⚠'} {label}</span>
-          {!isPositive && (
+          <span className={`text-sm font-medium ${cleared ? 'line-through' : ''}`}>{isPositive ? '✦' : isNeutral ? 'ℹ' : '⚠'} {label}</span>
+          {!isPositive && !isNeutral && (
             <span className={`text-xs px-1.5 py-0.5 rounded border ${familyStyle(family)}`}>
               {/* #101 — teto de leitura: `EARLY_EXIT` gravado como alta por uma régua
                   abandonada continua no Firestore, mas não é exibido como grave. */}
@@ -67,7 +71,7 @@ const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolati
           {cleared && <span className="text-[10px] text-slate-400">dispensado pelo mentor</span>}
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-400 shrink-0">
-          {!isPositive && isMentor && onToggleViolation && (
+          {!isPositive && !isNeutral && isMentor && onToggleViolation && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onToggleViolation(clearKey); }}
@@ -77,8 +81,8 @@ const FamilyCard = ({ family, currency, trade, isMentor = false, onToggleViolati
               {cleared ? '↺ Restaurar' : '✕ Dispensar'}
             </button>
           )}
-          {family.emotionMapping && <span>{EMOTION_LABELS[family.emotionMapping] ?? family.emotionMapping}</span>}
-          {family.confidence != null && <span>{Math.round(family.confidence * 100)}%</span>}
+          {!isNeutral && family.emotionMapping && <span>{EMOTION_LABELS[family.emotionMapping] ?? family.emotionMapping}</span>}
+          {!isNeutral && family.confidence != null && <span>{Math.round(family.confidence * 100)}%</span>}
           <span className="text-zinc-500">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
@@ -223,8 +227,10 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
 
   // ② Padrões (já ordenados no profile: negativos por severidade, positivos por último)
   const families = profile?.families ?? [];
-  const negatives = families.filter((f) => f.valence !== 'positive');
-  const positives = families.filter((f) => f.valence === 'positive');
+  // #477 — valência VIGENTE (taxonomia), não a gravada: avisos neutros entre os dois.
+  const negatives = families.filter((f) => { const v = familyValence(f); return v !== 'positive' && v !== 'neutral'; });
+  const neutrals = families.filter((f) => familyValence(f) === 'neutral');
+  const positives = families.filter((f) => familyValence(f) === 'positive');
 
   // ③ Gate
   const gateInputs = profile?.gateInputs ?? [];
@@ -252,7 +258,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
 
         {/* Confronto emocional: emoção declarada × emoção que a execução sugere (manchete). */}
         {(() => {
-          const c = emotionConfrontDisplay(profile?.emotionConfront);
+          const c = emotionConfrontDisplay(profile?.emotionConfront, profile?.families ?? null);
           if (!c) return null;
           const icon = c.tone === 'red' ? '⚠' : c.tone === 'amber' ? '◐' : '✓';
           return (
@@ -366,6 +372,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
           ) : families.length > 0 ? (
             <div className="space-y-2">
               {negatives.map((f, i) => <FamilyCard key={`n-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
+              {neutrals.map((f, i) => <FamilyCard key={`w-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
               {positives.map((f, i) => <FamilyCard key={`p-${i}`} family={f} currency={currency} trade={trade} isMentor={isMentor} onToggleViolation={onToggleViolation} />)}
             </div>
           ) : (effective.length === 0 && cleared.length === 0 && !authNotice && !ordemEmDuvida && !temPendencia) ? (

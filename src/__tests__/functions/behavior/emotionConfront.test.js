@@ -23,9 +23,10 @@ const verdict = (declaredCat, families, emo = 'X') =>
   computeEmotionConfront(trade(emo), families, gec(declaredCat)).verdict;
 
 describe('computeEmotionConfront — matriz', () => {
-  it('POSITIVA: limpo→ALIGNED, baixo→ATTENTION, médio/alto→MISALIGNED', () => {
+  // #477 — padrão de gravidade BAIXA não gera confronto: baixo conta como limpo.
+  it('POSITIVA: limpo/baixo→ALIGNED, médio/alto→MISALIGNED', () => {
     expect(verdict('POSITIVE', [positive])).toBe('ALIGNED');
-    expect(verdict('POSITIVE', [neg('LOW')])).toBe('ATTENTION');
+    expect(verdict('POSITIVE', [neg('LOW')])).toBe('ALIGNED');
     expect(verdict('POSITIVE', [neg('MEDIUM')])).toBe('MISALIGNED');
     expect(verdict('POSITIVE', [neg('HIGH')])).toBe('MISALIGNED');
   });

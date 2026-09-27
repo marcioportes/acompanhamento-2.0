@@ -24,10 +24,23 @@ describe('aggregateBehaviorWeights', () => {
     expect(r.ruleViolationRate).toBe(1); // 1 trade com violação / 1 com profile
   });
 
-  it('AVERAGING_DOWN (E+F, HIGH) penaliza as duas dimensões', () => {
-    const r = esm([trade('T1', [fam('AVERAGING_DOWN', 'HIGH')])]);
+  it('HOLD_ASYMMETRY (E+F, HIGH) penaliza as duas dimensões', () => {
+    const r = esm([trade('T1', [fam('HOLD_ASYMMETRY', 'HIGH')])]);
     expect(r.byDimension.E).toBe(24);
     expect(r.byDimension.F).toBe(24);
+  });
+
+  // #477 — montagem de posição é aviso neutro: não pesa em nada. Perfil ANTIGO, gravado com
+  // `AVERAGING_DOWN` 'negative' HIGH, também não — a valência vem da taxonomia vigente.
+  it.each([['ESM', esm], ['CJS', cjs]])('%s: montagem de posição (nova ou AVERAGING_DOWN gravado) não pesa', (_n, agg) => {
+    const r = agg([
+      trade('T1', [fam('AVERAGING_DOWN', 'HIGH')]),
+      trade('T2', [fam('POSITION_BUILD_AGAINST', null, 'neutral'), fam('POSITION_BUILD_FAVOR', null, 'neutral')]),
+    ]);
+    expect(r.byDimension).toEqual({ E: 0, F: 0, O: 0 });
+    expect(r.bonusByDimension).toEqual({ E: 0, F: 0, O: 0 });
+    expect(r.ruleViolationRate).toBe(0);
+    expect(r.withProfile).toBe(2);
   });
 
   it('positivo (CLEAN_EXECUTION) vira bônus, não penalidade; não conta violação', () => {

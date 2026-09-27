@@ -16,7 +16,7 @@
  * Campos de cada padrão:
  *   code            — código canônico (chave)
  *   family          — família p/ dedupe/agregação (códigos sinônimos compartilham)
- *   valence         — 'negative' | 'positive'
+ *   valence         — 'negative' | 'positive' | 'neutral' (#477: aviso factual, sem peso)
  *   dimensao        — dimensões 4D que informa: subconjunto de ['E','F','O']
  *   viesFramework   — viés nomeado + seção do framework
  *   severityDefault — 'HIGH' | 'MEDIUM' | 'LOW' | null (positivos)
@@ -78,11 +78,21 @@ export const BEHAVIORAL_PATTERNS = Object.freeze({
     severityDefault: SEVERITY.MEDIUM, emotionMapping: 'GREED',
     resolutionLayer: RESOLUTION.LOW, requires: ['trades'], feedsScore: true, feedsGates: false,
   }),
-  AVERAGING_DOWN: P({
-    code: 'AVERAGING_DOWN', family: 'AVERAGING_DOWN', valence: 'negative', dimensao: ['E', 'F'],
-    viesFramework: 'Martingale escalation / denial (§3 Bloco C; blow-up §6.2)',
-    severityDefault: SEVERITY.HIGH, emotionMapping: 'DENIAL',
-    resolutionLayer: RESOLUTION.HIGH, requires: ['orders'], feedsScore: true, feedsGates: false,
+  // #477 — montagem de posição é FATO, não emoção. Saiu o `AVERAGING_DOWN` (Negação):
+  // aumentar contra a posição, com proteção própria, pode ser consciência ou erro — quem
+  // decide é o mentor com o aluno (Marcio, 27/09/2026). Aviso neutro: sem emoção, sem
+  // severidade, não é violação, não alimenta score nem gate, não entra no confronto.
+  POSITION_BUILD_AGAINST: P({
+    code: 'POSITION_BUILD_AGAINST', family: 'POSITION_BUILD_AGAINST', valence: 'neutral', dimensao: ['O'],
+    viesFramework: 'Montagem de posição com preço médio para trás — aviso, não julgamento (#477)',
+    severityDefault: null, emotionMapping: null,
+    resolutionLayer: RESOLUTION.HIGH, requires: ['orders'], feedsScore: false, feedsGates: false,
+  }),
+  POSITION_BUILD_FAVOR: P({
+    code: 'POSITION_BUILD_FAVOR', family: 'POSITION_BUILD_FAVOR', valence: 'neutral', dimensao: ['O'],
+    viesFramework: 'Montagem de posição com preço médio para frente — aviso, não julgamento (#477)',
+    severityDefault: null, emotionMapping: null,
+    resolutionLayer: RESOLUTION.HIGH, requires: ['orders'], feedsScore: false, feedsGates: false,
   }),
   HOLD_ASYMMETRY: P({
     code: 'HOLD_ASYMMETRY', family: 'HOLD_ASYMMETRY', valence: 'negative', dimensao: ['E', 'F'],
@@ -224,7 +234,11 @@ export const LEGACY_CODE_ALIAS = Object.freeze({
   FOMO_ENTRY: 'FOMO_ENTRY',
   EARLY_EXIT: 'EARLY_EXIT',
   LATE_EXIT: 'LATE_EXIT',
-  AVERAGING_DOWN: 'AVERAGING_DOWN',
+  // #477 — o detector antigo só marcava adição CONTRA a posição; perfis gravados com
+  // ele são lidos como o aviso neutro equivalente (sem Negação, sem peso).
+  AVERAGING_DOWN: 'POSITION_BUILD_AGAINST',
+  POSITION_BUILD_AGAINST: 'POSITION_BUILD_AGAINST',
+  POSITION_BUILD_FAVOR: 'POSITION_BUILD_FAVOR',
   CLEAN_EXECUTION: 'CLEAN_EXECUTION',
   UNDECLARED_MODEL: 'UNDECLARED_MODEL',
   TARGET_HIT: 'TARGET_HIT',
@@ -276,4 +290,16 @@ export function severidadeVigente(code, severityGravada) {
   if (severityGravada == null) return teto;
   const ordem = { HIGH: 3, MEDIUM: 2, LOW: 1, NONE: 0 };
   return (ordem[severityGravada] ?? 0) > (ordem[teto] ?? 0) ? teto : severityGravada;
+}
+
+/**
+ * Valência que VALE na leitura de uma família gravada (#477).
+ *
+ * A valência gravada no perfil é a da época do cálculo: perfis antigos trazem
+ * `AVERAGING_DOWN` como 'negative'. A taxonomia vigente manda — o alias o resolve para o
+ * aviso neutro. Código desconhecido fica com o que foi gravado.
+ */
+export function valenciaVigente(family) {
+  const p = family && family.canonicalCode ? getPattern(family.canonicalCode) : null;
+  return (p && p.valence) || (family && family.valence) || null;
 }

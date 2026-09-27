@@ -95,7 +95,8 @@ describe('BehaviorPanel', () => {
     expect(screen.getByText(/ainda não calculado/)).toBeInTheDocument();          // ② estado do motor
   });
 
-  it('confronto MISALIGNED → banner vermelho "execução sugere"', () => {
+  // #477 — hipótese, não sentença: "a execução tem sinais que costumam acompanhar …".
+  it('confronto MISALIGNED → banner com a hipótese e a pergunta', () => {
     const t = {
       id: 'T8', currency: 'USD',
       behaviorProfile: {
@@ -105,7 +106,7 @@ describe('BehaviorPanel', () => {
     };
     render(<BehaviorPanel trade={t} isMentor embedded />);
     expect(screen.getByText('Confronto emocional')).toBeInTheDocument();
-    expect(screen.getByText(/declarou “Confiante”, mas a execução sugere Vingança/)).toBeInTheDocument();
+    expect(screen.getByText(/declarou “Confiante”, e a execução tem sinais que costumam acompanhar vingança .*Confere com o que você sentiu\?/)).toBeInTheDocument();
   });
 
   it('confronto ALIGNED + declarada negativa + limpo → reforço "boa regulação"', () => {
@@ -412,5 +413,38 @@ describe('#475 — pendência de stop inicial', () => {
     render(<BehaviorPanel trade={{ ...base, redFlags: [noStop] }} isMentor embedded />);
     expect(screen.getByText('Violações (1)')).toBeInTheDocument();
     expect(screen.queryByTestId('stop-pendencia')).not.toBeInTheDocument();
+  });
+});
+
+describe('#477 — montagem de posição é aviso neutro', () => {
+  const perfil = (families, emotionConfront = null) => ({
+    id: 'T477', currency: 'BRL',
+    behaviorProfile: { version: '1.0.0', families, gateInputs: [], scoreContribution: { tilt: false, revenge: false }, emotionConfront },
+  });
+
+  it('perfil GRAVADO com AVERAGING_DOWN (Negação) aparece como aviso, sem emoção, sem gravidade, sem dispensar', () => {
+    const t = perfil([{
+      family: 'AVERAGING_DOWN', canonicalCode: 'AVERAGING_DOWN', severity: 'LOW', valence: 'negative',
+      emotionMapping: 'DENIAL', confidence: 0.85, isGate: false, evidence: { averagingCount: 1, side: 'SHORT' },
+    }]);
+    render(<BehaviorPanel trade={t} isMentor embedded onToggleViolation={() => {}} />);
+    expect(screen.getByText(/Montagem de posição/)).toBeInTheDocument();
+    expect(screen.getByText(/Houve montagem de posição com preço médio para trás — 1 adição contra a posição/)).toBeInTheDocument();
+    expect(screen.queryByText('Negação')).not.toBeInTheDocument();
+    expect(screen.queryByText('Baixa')).not.toBeInTheDocument();
+    expect(screen.queryByText('85%')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Dispensar/)).not.toBeInTheDocument();
+  });
+
+  it('24/09 depois do #477: confirmação e aviso, sem medo', () => {
+    const t = perfil(
+      [{ family: 'POSITION_BUILD_AGAINST', canonicalCode: 'POSITION_BUILD_AGAINST', severity: null, valence: 'neutral',
+        emotionMapping: null, confidence: null, isGate: false,
+        evidence: { side: 'SHORT', additions: 1, legs: 2, firstPrice: 185070, additionsWithOwnProtection: 1, firstLegProtected: true } }],
+      { declared: { name: 'Disciplinado', category: 'POSITIVE' }, suggested: null, verdict: 'CONFIRMED' },
+    );
+    render(<BehaviorPanel trade={t} embedded />);
+    expect(screen.getByText('Você declarou “Disciplinado” e a execução confirma — stop enviado junto com a entrada, e cada adição com proteção própria.')).toBeInTheDocument();
+    expect(screen.queryByText(/Medo/i)).not.toBeInTheDocument();
   });
 });

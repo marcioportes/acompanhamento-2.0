@@ -37,8 +37,8 @@ const EMOTION_MAPPING = {
   STOP_PANIC: 'PANIC',
   FOMO_ENTRY: 'FOMO',
   EARLY_EXIT: 'FEAR',
-  LATE_EXIT: 'HOPE',
-  AVERAGING_DOWN: 'DENIAL'
+  LATE_EXIT: 'HOPE'
+  // #477 — AVERAGING_DOWN (Negação) saiu: montagem de posição é aviso neutro, sem emoção.
 };
 
 const DEFAULT_CONFIG = {
@@ -88,6 +88,8 @@ const getResult = (trade) => Number(trade.result) || 0;
 const { realizedRR } = require('../shared/realizedRR');
 const { stopDistanceOf } = require('../shared/orderProtection');
 const { orderInstantMs } = require('../shared/orderInstant');
+const { entryAttemptsOf } = require('../shared/entryAttempts');
+const { positionBuildOf, POSITION_BUILD_DIRECTION } = require('../shared/positionBuild');
 
 /** Instante de um campo do TRADE (já traz offset explícito desde #285/#292). */
 const tradeMs = (v) => {
@@ -235,7 +237,9 @@ const detectUndeclaredModel = (trade) => {
 };
 
 const detectCleanExecution = (trade, otherPatterns) => {
-  if (otherPatterns.some(p => p && p.code !== 'CLEAN_EXECUTION' && p.code !== 'TARGET_HIT')) return null;
+  // #477 — aviso neutro (montagem de posição) não impede a execução limpa (espelho do cliente).
+  const NAO_NEGATIVOS = ['CLEAN_EXECUTION', 'TARGET_HIT', 'POSITION_BUILD_AGAINST', 'POSITION_BUILD_FAVOR'];
+  if (otherPatterns.some(p => p && !NAO_NEGATIVOS.includes(p.code))) return null;
   if (violouPlano(trade)) return null;
   if (setupNaoDeclarado(trade)) return null;
   if (!trade.stopLoss || trade.stopLoss <= 0 || getResult(trade) <= 0) return null;
@@ -401,32 +405,32 @@ const detectUndersizedTrade = (trade) => {
 
 // --- Layer 2 detectors ---
 
+/**
+ * Hesitação — tentativas de ENTRADA canceladas (#477).
+ *
+ * Contava QUALQUER ordem cancelada antes da entrada. No 24/09/2026 (WINV26, venda de 10
+ * em duas pernas) duas compras stop de 1 contrato, do lado OPOSTO, a ~4.000 pts da
+ * entrada e canceladas 44 min antes, viraram "Hesitação · Medo". A regra (Marcio,
+ * 27/09/2026) mora em `shared/entryAttempts`: lado da entrada, não executada, cancelada
+ * até 30 min antes, perto do preço, e cancelar-e-reenviar corrigido é AJUSTE.
+ *
+ * O cuidado do #388/#396 continua lá dentro: instante de ordem sempre por
+ * `orderInstantMs` (ordem ingênua × trade com offset) e ordem sem instante não conta.
+ */
 const detectHesitation = (trade, orders) => {
   if (!orders || !orders.length || !trade.entryTime) return null;
-  const entryTime = new Date(trade.entryTime);
-  // #388 — TERCEIRA cópia da comparação hora-de-ordem × hora-de-trade que o #375
-  // corrigiu em `executionBehaviorEngine` e `executionBehaviorMirror`, e que passou
-  // batida aqui. `orders` guarda instante INGÊNUO e `trades` guarda com offset: em UTC,
-  // que é onde a Cloud Function roda, o cancelamento de um bracket às 11:27 vira
-  // 11:27Z e a entrada das 11:25-03:00 vira 14:25Z — as pernas de proteção canceladas
-  // NO ALVO passavam a contar como "ordens canceladas antes de entrar" e o trade
-  // ganhava HESITATION. Caso real: WINV26 de 21/08, +R$ 520, marcado com hesitação
-  // depois de o feedback já ter sido enviado ao aluno.
-  // #396 — `orderInstantMs` devolve null quando a ordem não tem instante, e `null < n`
-  // coage para `0 < n` → true. Ou seja: ordem cancelada SEM data virava "cancelada antes
-  // da entrada" e fabricava HESITATION — exatamente o defeito que o #388 consertava, por
-  // outra porta. O comportamento anterior (`new Date(undefined)`) dava NaN e era falso.
-  const cancels = orders.filter((o) => {
-    if (o.status !== 'CANCELLED') return false;
-    const ms = orderInstantMs(trade, o.cancelledAt || o.submittedAt);
-    return ms != null && ms < entryTime.getTime();
-  });
-  if (cancels.length < DEFAULT_CONFIG.hesitation.minCancels) return null;
+  const r = entryAttemptsOf(trade, orders);
+  const n = r.attempts.length;
+  if (n < DEFAULT_CONFIG.hesitation.minCancels) return null;
   return {
     code: 'HESITATION',
-    severity: cancels.length >= 4 ? 'HIGH' : cancels.length >= 3 ? 'MEDIUM' : 'LOW',
+    severity: n >= 4 ? 'HIGH' : n >= 3 ? 'MEDIUM' : 'LOW',
     confidence: 0.90, emotionMapping: EMOTION_MAPPING.HESITATION, layer: 2,
-    evidence: { cancelledOrdersCount: cancels.length }
+    evidence: {
+      cancelledOrdersCount: n,
+      hesitationMinutes: r.spanMinutes,
+      adjustmentsIgnored: r.adjustments.length,
+    }
   };
 };
 
@@ -479,58 +483,46 @@ const detectEarlyExit = (trade, orders) => {
  */
 const MESMA_LEVA_MS = 60000;
 
-/** Piramidação contra a posição — aumentar em preço pior enquanto o mercado vai contra. */
-const detectAveragingDown = (trade, orders) => {
-  if (!orders || !orders.length || !trade.side) return null;
-  const ladoEntrada = trade.side === 'LONG' ? 'BUY' : 'SELL';
-
-  // Só conta execução DENTRO da vida da posição. Aumentar posição é, por definição, algo
-  // que acontece com a posição aberta — e isto blinda contra ordem correlacionada ao trade
-  // errado: em 18/05 uma execução das 12:26 estava amarrada a um trade que fechou 11:31, e
-  // o detector a leu como piramidação.
-  const abre = tradeMs(trade.entryTime);
-  const fecha = tradeMs(trade.exitTime);
-  const dentroDaPosicao = (o) => {
-    if (abre == null || fecha == null) return true;   // sem janela, não descarta
-    const ts = orderInstantMs(trade, o.filledAt || o.submittedAt);
-    return ts == null || (ts >= abre - MESMA_LEVA_MS && ts <= fecha + MESMA_LEVA_MS);
-  };
-
-  const mesmaDirecao = orders
-    .filter((o) => (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED')
-      && !o.isStopOrder && o.side === ladoEntrada && dentroDaPosicao(o))
-    // Sem instante a ordem vai para o fim, não para o começo: `|| 0` a colocaria antes de
-    // tudo e inventaria sequência de piramidação.
-    .sort((a, b) => (orderInstantMs(trade, a.filledAt || a.submittedAt) ?? Infinity)
-      - (orderInstantMs(trade, b.filledAt || b.submittedAt) ?? Infinity));
-
-  if (mesmaDirecao.length < 2) return null;
-
-  let piramidadas = 0;
-  for (let i = 1; i < mesmaDirecao.length; i++) {
-    const antOrd = mesmaDirecao[i - 1];
-    const atualOrd = mesmaDirecao[i];
-    const ant = Number(antOrd.filledPrice != null ? antOrd.filledPrice : antOrd.price);
-    const atual = Number(atualOrd.filledPrice != null ? atualOrd.filledPrice : atualOrd.price);
-    if (!isFinite(ant) || !isFinite(atual)) continue;
-
-    // Entrada escalonada não é piramidação: duas pernas da mesma leva saem em segundos.
-    const tAnt = orderInstantMs(trade, antOrd.filledAt || antOrd.submittedAt);
-    const tAtual = orderInstantMs(trade, atualOrd.filledAt || atualOrd.submittedAt);
-    if (tAnt != null && tAtual != null && (tAtual - tAnt) < MESMA_LEVA_MS) continue;
-
-    // LONG: comprar mais barato depois de cair. SHORT: vender mais caro depois de subir.
-    const contra = trade.side === 'LONG' ? atual < ant : atual > ant;
-    if (contra) piramidadas++;
+/**
+ * Montagem de posição — aviso NEUTRO (#477), substitui o `AVERAGING_DOWN` (Negação).
+ *
+ * Aumentar a posição é fato; se foi consciência ou erro, quem decide é o mentor com o
+ * aluno (Marcio, 27/09/2026). O detector só diz O QUE houve: adição contra a posição
+ * (preço médio para trás) e/ou a favor (preço médio para frente), relativa ao preço médio
+ * do que já estava aberto. Sem emoção, sem severidade, não é violação, não alimenta gate
+ * nem score, não entra no confronto emocional.
+ *
+ * Levas a menos de 60 s são a MESMA entrada (escalonada), e só conta execução dentro da
+ * vida da posição — os dois cuidados do detector antigo (#392) vivem em
+ * `shared/positionBuild`, que também diz se cada leva nasceu com proteção própria.
+ */
+const detectPositionBuild = (trade, orders) => {
+  if (!orders || !orders.length || !trade.side) return [];
+  const pb = positionBuildOf(trade, orders);
+  if (!pb || pb.levas.length < 2) return [];
+  const adicoes = pb.levas.slice(1);
+  const evidencia = (direcao, n) => ({
+    side: trade.side,
+    additions: n,
+    legs: pb.levas.length,
+    firstPrice: pb.levas[0].price,
+    additionsWithOwnProtection: adicoes.filter((l) => l.direction === direcao && l.protected).length,
+    firstLegProtected: pb.levas[0].protected,
+  });
+  const out = [];
+  if (pb.against > 0) {
+    out.push({
+      code: 'POSITION_BUILD_AGAINST', severity: null, confidence: null, emotionMapping: null, layer: 2,
+      evidence: evidencia(POSITION_BUILD_DIRECTION.AGAINST, pb.against),
+    });
   }
-  if (piramidadas === 0) return null;
-
-  return {
-    code: 'AVERAGING_DOWN',
-    severity: piramidadas >= 3 ? 'HIGH' : piramidadas >= 2 ? 'MEDIUM' : 'LOW',
-    confidence: 0.85, emotionMapping: EMOTION_MAPPING.AVERAGING_DOWN, layer: 2,
-    evidence: { averagingCount: piramidadas, totalSameDirectionOrders: mesmaDirecao.length, side: trade.side },
-  };
+  if (pb.favor > 0) {
+    out.push({
+      code: 'POSITION_BUILD_FAVOR', severity: null, confidence: null, emotionMapping: null, layer: 2,
+      evidence: evidencia(POSITION_BUILD_DIRECTION.FAVOR, pb.favor),
+    });
+  }
+  return out;
 };
 
 /** Cancelamento dentro desta janela da saída é OCO fechando no alvo, não decisão. */
@@ -716,8 +708,8 @@ const analyzeShadowForTradeCF = (trade, adjacent, orders) => {
     const hes = detectHesitation(trade, orders);
     if (hes) patterns.push(hes);
     // #392 — dependem das ordens da corretora: só marcam trade vindo do import.
-    const ad = detectAveragingDown(trade, orders);
-    if (ad) patterns.push(ad);
+    // #477 — montagem de posição: aviso neutro (era AVERAGING_DOWN, Negação).
+    for (const pb of detectPositionBuild(trade, orders)) patterns.push(pb);
     const sp = detectStopPanic(trade, orders);
     if (sp) patterns.push(sp);
     const le = detectLateExit(trade, orders);

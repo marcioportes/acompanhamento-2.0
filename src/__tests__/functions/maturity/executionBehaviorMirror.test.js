@@ -90,7 +90,9 @@ describe('executionBehaviorMirror — paridade ESM↔CommonJS', () => {
     expect(cjs).toEqual(esm);
     // #357 — eram 3. T2 e T3 passaram a emitir UNPROTECTED_SIZE (posição sem stop
     // nenhum), caso que o detector antigo não cobria.
-    expect(cjs.length).toBe(5);
+    // #477 — 4: a venda cancelada de T2 não tem preço enviado (e T2 não tem `entry`), então
+    // não há como provar que era a MESMA entrada — hesitação não acusa o que não prova.
+    expect(cjs.length).toBe(4);
   });
 
   it('RISK_OVER_RO: paridade exata', () => {

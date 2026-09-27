@@ -12,6 +12,8 @@
 
 import { getInstrument } from '../constants/instrumentsTable.js';
 import { orderInstantMs } from './orderInstant.js';
+import { entryAttemptsOf } from './entryAttempts.js';
+import { positionBuildOf, POSITION_BUILD_DIRECTION } from './positionBuild.js';
 
 // ============================================
 // CONSTANTS & CONFIG
@@ -49,7 +51,9 @@ export const PATTERN_CODES = {
   FOMO_ENTRY: 'FOMO_ENTRY',
   EARLY_EXIT: 'EARLY_EXIT',
   LATE_EXIT: 'LATE_EXIT',
-  AVERAGING_DOWN: 'AVERAGING_DOWN'
+  // #477 — montagem de posição: aviso neutro (substitui AVERAGING_DOWN, que era Negação)
+  POSITION_BUILD_AGAINST: 'POSITION_BUILD_AGAINST',
+  POSITION_BUILD_FAVOR: 'POSITION_BUILD_FAVOR'
 };
 
 export const EMOTION_MAPPING = {
@@ -66,8 +70,8 @@ export const EMOTION_MAPPING = {
   STOP_PANIC: 'PANIC',
   FOMO_ENTRY: 'FOMO',
   EARLY_EXIT: 'FEAR',
-  LATE_EXIT: 'HOPE',
-  AVERAGING_DOWN: 'DENIAL'
+  LATE_EXIT: 'HOPE'
+  // #477 — montagem de posição não tem emoção (emotionMapping: null no detector).
 };
 
 export const DEFAULT_CONFIG = {
@@ -433,8 +437,11 @@ export const detectImpulseCluster = (trade, adjacentTrades, config = DEFAULT_CON
 
 export const detectCleanExecution = (trade, adjacentTrades, otherPatterns = []) => {
   // Clean execution = no negative patterns detected + stop present + RR respected
+  // #477 — aviso neutro (montagem de posição, sem emoção) não é padrão negativo: não
+  // impede a execução limpa. Quem julga a montagem é o mentor com o aluno.
   const hasNegativePattern = otherPatterns.some(p =>
     p != null && p.code !== PATTERN_CODES.CLEAN_EXECUTION && p.code !== PATTERN_CODES.TARGET_HIT
+    && p.code !== PATTERN_CODES.POSITION_BUILD_AGAINST && p.code !== PATTERN_CODES.POSITION_BUILD_FAVOR
   );
   if (hasNegativePattern) return null;
 
@@ -707,41 +714,26 @@ const ordemEm = (trade, valor) => {
   return new Date(ms == null ? NaN : ms);
 };
 
+/**
+ * Hesitação — tentativas de ENTRADA canceladas (#477). Espelho de
+ * `functions/shadow/shadowDetectors.js`: a regra (lado da entrada, não executada,
+ * cancelada até 30 min antes, perto do preço, ajuste não conta) mora em `entryAttempts`.
+ */
 export const detectHesitation = (trade, orders, config = DEFAULT_CONFIG.hesitation) => {
-  if (!orders || orders.length === 0) return null;
-
-  // Find cancelled orders before the trade entry
-  const entryTime = new Date(trade.entryTime);
-  if (isNaN(entryTime)) return null;
-
-  const cancelledBefore = orders.filter(o => {
-    if (o.status !== 'CANCELLED') return false;
-    const cancelTime = ordemEm(trade, o.cancelledAt || o.submittedAt);
-    return !isNaN(cancelTime) && cancelTime < entryTime;
-  });
-
-  if (cancelledBefore.length < config.minCancels) return null;
-
-  // Calculate hesitation time: first cancel to actual entry
-  const firstCancelTime = cancelledBefore
-    .map(o => ordemEm(trade, o.submittedAt))
-    .filter(d => !isNaN(d))
-    .sort((a, b) => a - b)[0];
-
-  const hesitationMinutes = firstCancelTime
-    ? (entryTime - firstCancelTime) / 60000
-    : null;
-
+  if (!orders || orders.length === 0 || !trade.entryTime) return null;
+  const r = entryAttemptsOf(trade, orders);
+  const n = r.attempts.length;
+  if (n < config.minCancels) return null;
   return {
     code: PATTERN_CODES.HESITATION,
-    severity: cancelledBefore.length >= 4 ? SEVERITY.HIGH : cancelledBefore.length >= 3 ? SEVERITY.MEDIUM : SEVERITY.LOW,
+    severity: n >= 4 ? SEVERITY.HIGH : n >= 3 ? SEVERITY.MEDIUM : SEVERITY.LOW,
     confidence: 0.90,
     emotionMapping: EMOTION_MAPPING.HESITATION,
     layer: 2,
     evidence: {
-      cancelledOrdersCount: cancelledBefore.length,
-      hesitationMinutes: hesitationMinutes != null ? Math.round(hesitationMinutes * 10) / 10 : null,
-      cancelledOrderIds: cancelledBefore.map(o => o.externalOrderId)
+      cancelledOrdersCount: n,
+      hesitationMinutes: r.spanMinutes,
+      adjustmentsIgnored: r.adjustments.length,
     }
   };
 };
@@ -916,48 +908,38 @@ export const detectLateExit = (trade, orders, config = DEFAULT_CONFIG.lateExit) 
   };
 };
 
-export const detectAveragingDown = (trade, orders) => {
-  if (!orders || orders.length === 0) return null;
-
-  const side = trade.side;
-  if (!side) return null;
-
-  // Find filled orders in the same direction as the trade
-  const sameDirection = orders.filter(o =>
-    (o.status === 'FILLED' || o.status === 'PARTIALLY_FILLED') &&
-    !o.isStopOrder &&
-    o.side === (side === 'LONG' ? 'BUY' : 'SELL')
-  ).sort((a, b) => ordemEm(trade, a.filledAt || a.submittedAt) - ordemEm(trade, b.filledAt || b.submittedAt));
-
-  if (sameDirection.length < 2) return null;
-
-  // Detect worsening prices (buying higher for LONG or selling lower for SHORT)
-  let averagingCount = 0;
-  for (let i = 1; i < sameDirection.length; i++) {
-    const prevPrice = Number(sameDirection[i - 1].filledPrice || sameDirection[i - 1].price);
-    const currPrice = Number(sameDirection[i].filledPrice || sameDirection[i].price);
-    if (isNaN(prevPrice) || isNaN(currPrice)) continue;
-
-    // For LONG: adding at higher price after it moved against = averaging down (buying lower)
-    // For SHORT: adding at lower price after it moved against = averaging down (selling higher)
-    const isWorse = side === 'LONG' ? currPrice < prevPrice : currPrice > prevPrice;
-    if (isWorse) averagingCount++;
+/**
+ * Montagem de posição — aviso NEUTRO (#477), substitui `detectAveragingDown` (Negação).
+ * Espelho de `functions/shadow/shadowDetectors.js` (`detectPositionBuild`). Devolve 0, 1
+ * ou 2 padrões: contra a posição (preço médio para trás) e/ou a favor (para frente).
+ */
+export const detectPositionBuild = (trade, orders) => {
+  if (!orders || !orders.length || !trade.side) return [];
+  const pb = positionBuildOf(trade, orders);
+  if (!pb || pb.levas.length < 2) return [];
+  const adicoes = pb.levas.slice(1);
+  const evidencia = (direcao, n) => ({
+    side: trade.side,
+    additions: n,
+    legs: pb.levas.length,
+    firstPrice: pb.levas[0].price,
+    additionsWithOwnProtection: adicoes.filter((l) => l.direction === direcao && l.protected).length,
+    firstLegProtected: pb.levas[0].protected,
+  });
+  const out = [];
+  if (pb.against > 0) {
+    out.push({
+      code: PATTERN_CODES.POSITION_BUILD_AGAINST, severity: null, confidence: null, emotionMapping: null, layer: 2,
+      evidence: evidencia(POSITION_BUILD_DIRECTION.AGAINST, pb.against),
+    });
   }
-
-  if (averagingCount === 0) return null;
-
-  return {
-    code: PATTERN_CODES.AVERAGING_DOWN,
-    severity: averagingCount >= 3 ? SEVERITY.HIGH : averagingCount >= 2 ? SEVERITY.MEDIUM : SEVERITY.LOW,
-    confidence: 0.85,
-    emotionMapping: EMOTION_MAPPING.AVERAGING_DOWN,
-    layer: 2,
-    evidence: {
-      averagingCount,
-      totalSameDirectionOrders: sameDirection.length,
-      side
-    }
-  };
+  if (pb.favor > 0) {
+    out.push({
+      code: PATTERN_CODES.POSITION_BUILD_FAVOR, severity: null, confidence: null, emotionMapping: null, layer: 2,
+      evidence: evidencia(POSITION_BUILD_DIRECTION.FAVOR, pb.favor),
+    });
+  }
+  return out;
 };
 
 // ============================================
@@ -1027,8 +1009,7 @@ export const analyzeShadowForTrade = (trade, adjacentTrades = [], orders = null,
     const lateExit = detectLateExit(trade, orders, config.lateExit);
     if (lateExit) patterns.push(lateExit);
 
-    const averaging = detectAveragingDown(trade, orders);
-    if (averaging) patterns.push(averaging);
+    for (const pb of detectPositionBuild(trade, orders)) patterns.push(pb);
   }
 
   // Clean execution is evaluated last — depends on absence of negative patterns

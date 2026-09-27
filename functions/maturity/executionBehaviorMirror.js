@@ -21,6 +21,7 @@
 const { tradeOffsetOf, instantAtOffsetMs } = require('../shared/orderInstant');
 // #466 — definição única de proteção, compartilhada com o import e o motor do cliente.
 const { isPositionProtection, legsOf } = require('../shared/orderProtection');
+const { classifyCancelledEntry, ATTEMPT_CLASS } = require('../shared/entryAttempts');
 
 const EVENT_TYPES = Object.freeze({
   STOP_TAMPERING: 'STOP_TAMPERING',
@@ -685,6 +686,11 @@ function detectHesitation(trade, orders, config) {
       continue;
     }
 
+    // #477 — hesitação só conta TENTATIVA de entrada: perto do preço da entrada e sem
+    // reenvio corrigido logo em seguida (cancelar e reenviar com a quantidade ou o preço
+    // certos é ajuste). Regra única em `entryAttempts`, a mesma do shadow.
+    if (classifyCancelledEntry(c, tradeOrders, trade) !== ATTEMPT_CLASS.ATTEMPT) continue;
+
     events.push({
       type: EVENT_TYPES.HESITATION_PRE_ENTRY,
       severity: EVENT_SEVERITY.LOW,
@@ -859,8 +865,13 @@ function detectStopHesitation(trade, orders, config) {
   const offSH = tradeOffsetOf(trade);
   const entryPrice = (trade && (trade.entry != null ? trade.entry : trade.entryPrice)) != null
     ? (trade.entry != null ? trade.entry : trade.entryPrice) : null;
-  const stops = ordersForTrade(orders, trade.id)
-    .filter(function (o) { return o.isStopOrder === true; })
+  const tradeOrdersSH = ordersForTrade(orders, trade.id);
+  // #477 — proteção SEM posição aberta nunca conta (paridade com o ESM).
+  const positionSH = positionOf(trade, tradeOrdersSH);
+  const pctxSH = { offset: offSH, lifetime: false };
+  pctxSH.legs = legsOf(positionSH, pctxSH);
+  const stops = tradeOrdersSH
+    .filter(function (o) { return o.isStopOrder === true && isPositionProtection(o, positionSH, pctxSH); })
     .map(function (o) {
       return Object.assign({}, o, {
         _ts: orderMs(o.submittedAt, offSH) || orderMs(o.cancelledAt, offSH) || orderMs(o.filledAt, offSH),
