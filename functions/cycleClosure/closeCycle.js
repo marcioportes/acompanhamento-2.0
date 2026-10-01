@@ -78,11 +78,17 @@ module.exports = onCall(
 
     // #480 — lastro da conta pro teto de capital: saldo, PL dos outros planos ativos e
     // resultado dos trades posteriores ao ciclo. Lido fora da transaction (leituras
-    // largas); a transaction confere que a conta do plano é a mesma.
-    const backing = await readAccountBacking(db, {
-      planId: payload.planId,
-      cycleEnd: payload.cycleEnd,
-    });
+    // largas); a transaction confere que a conta do plano é a mesma. Leitura que falha
+    // não derruba o fechamento: sem lastro o teto cai no equity do ciclo.
+    let backing = null;
+    try {
+      backing = await readAccountBacking(db, {
+        planId: payload.planId,
+        cycleEnd: payload.cycleEnd,
+      });
+    } catch (e) {
+      console.error('[closeCycle] lastro da conta ilegível, teto cai no equity do ciclo:', e);
+    }
 
     // Transação atomica: validar plano + verificar não-duplicação + persistir + atualizar plan
     try {
