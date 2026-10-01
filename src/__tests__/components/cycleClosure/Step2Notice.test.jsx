@@ -9,13 +9,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-const h = vi.hoisted(() => ({ trades: [], tiltDates: [] }));
+const h = vi.hoisted(() => ({ trades: [], tiltDates: [], orders: [] }));
 
 vi.mock('../../../hooks/useTrades', () => ({
   useTrades: () => ({ trades: h.trades, loading: false }),
   default: () => ({ trades: h.trades, loading: false }),
 }));
-vi.mock('../../../hooks/useOrders', () => ({ default: () => ({ orders: [] }) }));
+vi.mock('../../../hooks/useOrders', () => ({ default: () => ({ orders: h.orders }) }));
 vi.mock('../../../hooks/useMasterData', () => ({
   useMasterData: () => ({ getEmotionConfig: () => ({}) }),
   default: () => ({ getEmotionConfig: () => ({}) }),
@@ -124,5 +124,52 @@ describe('Step2Notice — rótulo honesto sobre o que o dado cobre (#416 A6)', (
     const { container } = renderCycle({ cleanPnl: 200 });
     expect(container.textContent).toContain('dias sem tilt/vingança');
     expect(container.textContent).not.toContain('dias limpos');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #482 — sem ordens no ciclo, "Stop deslocado" não foi medido: não pode aparecer
+// como zero, e o aviso fala a língua do aluno.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Step2Notice — ciclo sem ordens importadas (#482)', () => {
+  const stopChip = () => screen.getByText('Stop deslocado').parentElement;
+  const comOrdens = (orders) => {
+    h.tiltDates = [];
+    h.trades = [{ id: 't1', planId: 'p1', date: '2026-08-10', result: -100 }];
+    h.orders = orders;
+    return render(<Step2Notice {...baseProps} />);
+  };
+
+  it('sem ordens: quadro mostra "—" e "sem ordens", não 0', () => {
+    try {
+      comOrdens([]);
+      expect(flat(stopChip())).toBe('Stop deslocado—sem ordens');
+    } finally { h.orders = []; }
+  });
+
+  it('sem ordens: aviso sem jargão interno', () => {
+    try {
+      const { container } = comOrdens([]);
+      expect(container.textContent).toContain('Este ciclo não tem ordens importadas');
+      expect(container.textContent).toContain('estão medidos');
+      expect(container.textContent).not.toContain('STOP_TAMPERING');
+      expect(container.textContent).not.toContain('ingestadas');
+    } finally { h.orders = []; }
+  });
+
+  it('ordens do plano que não são de trade deste ciclo não contam como medição', () => {
+    try {
+      const { container } = comOrdens([{ id: 'o9', planId: 'p1', correlatedTradeId: 'trade-de-julho' }]);
+      expect(flat(stopChip())).toBe('Stop deslocado—sem ordens');
+      expect(container.textContent).toContain('Este ciclo não tem ordens importadas');
+    } finally { h.orders = []; }
+  });
+
+  it('com ordem ligada a trade do ciclo: quadro mostra a contagem e o aviso some', () => {
+    try {
+      const { container } = comOrdens([{ id: 'o1', planId: 'p1', correlatedTradeId: 't1' }]);
+      expect(flat(stopChip())).toBe('Stop deslocado0');
+      expect(container.textContent).not.toContain('Este ciclo não tem ordens importadas');
+    } finally { h.orders = []; }
   });
 });
