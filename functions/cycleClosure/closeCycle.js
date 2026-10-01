@@ -29,6 +29,11 @@ const {
   validateClosurePayload,
   buildClosureId,
 } = require('./validators');
+const { readAccountBacking } = require('./accountBacking');
+const {
+  computeAllocationCeiling,
+  exceedsAllocationCeiling,
+} = require('../shared/allocationCeiling');
 
 const asHttpsValidator = (fn) => (arg) => {
   try { return fn(arg); }
@@ -71,10 +76,19 @@ module.exports = onCall(
     const closureRef = db.collection('cycleClosures').doc(closureId);
     const planRef = db.collection('plans').doc(payload.planId);
 
-    // Gate de saldo agora vem do equity do CICLO sendo fechado (não da conta).
-    // Computado dentro da transaction abaixo a partir de cycleBaseline.plFinal
-    // — não precisa pré-fetch externo. Mantemos o bloco vazio só pra preservar
-    // a estrutura do try/catch downstream sem mudança de shape.
+    // #480 — lastro da conta pro teto de capital: saldo, PL dos outros planos ativos e
+    // resultado dos trades posteriores ao ciclo. Lido fora da transaction (leituras
+    // largas); a transaction confere que a conta do plano é a mesma. Leitura que falha
+    // não derruba o fechamento: sem lastro o teto cai no equity do ciclo.
+    let backing = null;
+    try {
+      backing = await readAccountBacking(db, {
+        planId: payload.planId,
+        cycleEnd: payload.cycleEnd,
+      });
+    } catch (e) {
+      console.error('[closeCycle] lastro da conta ilegível, teto cai no equity do ciclo:', e);
+    }
 
     // Transação atomica: validar plano + verificar não-duplicação + persistir + atualizar plan
     try {
@@ -258,20 +272,29 @@ module.exports = onCall(
           }
         }
 
-        // Gate de saldo — PL efetivo do plano após o close não pode exceder
-        // o EQUITY do ciclo sendo fechado (plan.pl_inicial + Σ trades_ciclo).
-        // Usa cycleBaseline.plFinal calculado acima na transaction (ground truth).
-        // NÃO usa account.currentBalance: a conta pode ter resultados de trades
-        // posteriores ao cycleEnd se o aluno deixou o ciclo aberto enquanto já
-        // operava no próximo (ex.: fechando abril em maio). Ciclo é unidade
-        // discreta de alocação — só o que ele gerou vira capital do próximo.
-        const cycleEquity = cycleBaseline.plFinal;
+        // Gate de capital (#480) — o PL do plano após o close não pode passar do teto:
+        // o maior entre o EQUITY do ciclo (plan.pl_inicial + Σ trades_ciclo, ground
+        // truth em cycleBaseline.plFinal) e o lastro da conta. Subir o capital acima do
+        // que o ciclo gerou exige saldo na conta — aporte lançado antes do fechamento.
+        // O lastro desconta os trades posteriores ao cycleEnd: a conta os inclui quando
+        // o aluno fecha abril já operando maio, e eles pertencem ao ciclo aberto (C2).
+        const sameAccount = backing && backing.accountId === plan.accountId;
+        const { ceiling, source } = computeAllocationCeiling({
+          cycleEquity: cycleBaseline.plFinal,
+          accountBalance: sameAccount ? backing.accountBalance : null,
+          otherPlansPl: sameAccount ? backing.otherPlansPl : 0,
+          postCycleResult: sameAccount ? backing.postCycleResult : 0,
+        });
         const effectivePL = Number(planUpdate.pl ?? plan.pl ?? 0);
-        if (Number.isFinite(cycleEquity) && cycleEquity > 0 && effectivePL > cycleEquity + 0.1) {
+        if (exceedsAllocationCeiling(effectivePL, ceiling)) {
+          const origem = source === 'account'
+            ? 'saldo livre da conta'
+            : 'equity do ciclo = PL inicial + resultado';
           throw new HttpsError(
             'failed-precondition',
-            `PL do plano (${effectivePL.toFixed(2)}) excede o equity do ciclo `
-              + `(${cycleEquity.toFixed(2)} = PL inicial + resultado). Recalibre o capital no Passo 6 antes de fechar o ciclo.`,
+            `PL do plano (${effectivePL.toFixed(2)}) excede o máximo alocável `
+              + `(${ceiling.toFixed(2)} — ${origem}). Para alocar mais, lance o aporte na conta `
+              + 'e recalibre o capital no Passo 6 antes de fechar o ciclo.',
           );
         }
 

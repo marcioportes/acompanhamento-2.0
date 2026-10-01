@@ -123,6 +123,16 @@ describe('advisePlanAdjustment — output schema', () => {
     expect(out.source).toBe('heuristic_stub');
   });
 
+  it('#480 — o capital sugerido é o saldo pós-ciclo, não o capital pré-ciclo', () => {
+    const base = { kelly: { sampleSize: 5 }, cycleMetrics: {}, regression: [] };
+    const negativo = advisePlanAdjustment({ ...base, currentPlan: { ...PLAN, pl: 25645.6 }, snapshotPlEnd: 25357.8 });
+    expect(negativo.newPl).toBe(25357.8);
+    const positivo = advisePlanAdjustment({ ...base, currentPlan: { ...PLAN, pl: 29000 }, snapshotPlEnd: 30426 });
+    expect(positivo.newPl).toBe(30426);
+    const semSnapshot = advisePlanAdjustment({ ...base, currentPlan: { ...PLAN, pl: 29000 } });
+    expect(semSnapshot.newPl).toBe(29000);
+  });
+
   it('campos changed/newPl/newRiskPerOp/newRRTarget sempre presentes', () => {
     const out = advisePlanAdjustment({
       kelly: { sampleSize: 5 },
