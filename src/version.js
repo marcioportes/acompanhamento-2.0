@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.16: #482 fix Passo 2 do fechamento — sem ordens, stop deslocado não é zero; aviso em linguagem de aluno (RESERVADA)
  * - 1.92.15: #480 fix fechamento de ciclo aceita aporte — teto do PL é o saldo livre da conta (PR #481, 01/10/2026)
  * - 1.92.14: #477 fix detector comportamental crava medo — ajuste não é hesitação, montagem de p (PR #478, 27/09/2026)
  * - 1.92.13: #475 fix trade protegido acusado de 'sem stop' — stop movido vira pendência, não viol (PR #476, 26/09/2026)
