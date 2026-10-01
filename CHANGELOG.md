@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.15] - 01/10/2026 · #480 · PR #481
+
+**fix:** fechamento de ciclo aceita aporte — teto do PL é o saldo livre da conta
+
+- `closeCycle` (CF): lê o lastro no servidor (`accountBacking`, fora da transaction, conta derivada do plano gravado; falha de leitura cai no equity do ciclo) e aplica o teto.
+- Passo 6: mesmo teto no cliente (helper espelhado ESM/CJS com teste de paridade); o "máx" do campo e o aviso mostram o teto e apontam o aporte.
+- Passo 6: sem ajuste do aluno, o PL efetivo é o equity do ciclo, como o servidor já faz — ciclo negativo deixou de bloquear sozinho.
+- Advisor: o capital sugerido é o saldo pós-ciclo, não o pré-ciclo — "Aceitar sugestão" deixava de passar no gate em ciclo negativo e descartava o lucro em ciclo positivo.
+
+
 ## [1.92.14] - 27/09/2026 · #477 · PR #478
 
 **fix:** detector comportamental crava medo — ajuste não é hesitação, montagem de posição vira aviso, confronto vira hipótese
