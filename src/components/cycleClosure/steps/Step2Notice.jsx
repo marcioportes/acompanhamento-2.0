@@ -23,7 +23,7 @@ import useMasterData from '../../../hooks/useMasterData';
 
 const isInRange = (date, start, end) => date >= start && date <= end;
 
-function StatChip({ label, value, tone = 'slate' }) {
+function StatChip({ label, value, tone = 'slate', hint = null }) {
   const map = {
     slate: 'bg-slate-700/40 text-slate-300',
     amber: 'bg-amber-500/20 text-amber-300',
@@ -34,6 +34,7 @@ function StatChip({ label, value, tone = 'slate' }) {
     <div className={`rounded-lg px-3 py-2 text-xs font-medium ${map[tone] || map.slate}`}>
       <span className="text-[10px] uppercase tracking-wider opacity-70 block">{label}</span>
       <span className="text-base font-bold">{value}</span>
+      {hint && <span className="text-[10px] opacity-70 block">{hint}</span>}
     </div>
   );
 }
@@ -52,6 +53,14 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
     () => orders.filter((o) => o.planId === planId),
     [orders, planId],
   );
+
+  // #482 — "sem ordens" é do CICLO: nenhuma ordem ligada a um trade dele. Plano com ordens
+  // de outro mês não mede este. Sem ordens, os padrões de execução não foram medidos —
+  // e "não medido" não pode aparecer como zero.
+  const hasCycleOrders = useMemo(() => {
+    const ids = new Set(cycleTrades.map((t) => t.id));
+    return cycleOrders.some((o) => ids.has(o.correlatedTradeId));
+  }, [cycleTrades, cycleOrders]);
 
   // Execution events — STOP_TAMPERING, RAPID_REENTRY_POST_STOP, HESITATION, etc.
   // Sem isso, tilt/revenge ficam só com sinal de losses sequenciais — perde os padrões críticos.
@@ -228,9 +237,11 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
         <h3 className="text-xl font-bold mb-1">Padrões observados</h3>
         <p className="text-sm text-slate-400">
           Auto-detectado dos motores Compliance V2 + Emotional V2 + Execution Behavior.
-          {cycleOrders.length === 0 && (
+          {!hasCycleOrders && (
             <span className="block text-[11px] text-amber-300/80 mt-1">
-              ⚠ Sem orders ingestadas neste plano — STOP_TAMPERING e RAPID_REENTRY não puderam ser detectados (ingestão por CSV é pré-requisito).
+              ⚠ Este ciclo não tem ordens importadas. Stop deslocado, reentrada após stop, perseguição de preço,
+              hesitação e breakeven cedo só aparecem com as ordens da corretora — aqui eles não foram medidos.
+              Tilt, vingança e excesso de trades vêm dos trades e estão medidos.
             </span>
           )}
         </p>
@@ -271,7 +282,12 @@ export default function Step2Notice({ studentId, planId, cycleStart, cycleEnd, o
           <StatChip label="Tilt"               value={eventCounts.tilt}              tone={eventCounts.tilt > 0 ? 'red' : 'slate'} />
           <StatChip label="Vingança"           value={eventCounts.revenge}           tone={eventCounts.revenge > 0 ? 'red' : 'slate'} />
           <StatChip label="Excesso de trades"  value={eventCounts.overtrading}       tone={eventCounts.overtrading > 0 ? 'amber' : 'slate'} />
-          <StatChip label="Stop deslocado"     value={eventCounts.stopTampering}     tone={eventCounts.stopTampering > 0 ? 'red' : 'slate'} />
+          <StatChip
+            label="Stop deslocado"
+            value={hasCycleOrders ? eventCounts.stopTampering : '—'}
+            hint={hasCycleOrders ? null : 'sem ordens'}
+            tone={eventCounts.stopTampering > 0 ? 'red' : 'slate'}
+          />
         </div>
         {(eventCounts.rapidReentry > 0 || eventCounts.hesitation > 0 || eventCounts.chaseReentry > 0 || eventCounts.breakevenTooEarly > 0) && (
           <div className="grid grid-cols-4 gap-3 mt-2">
