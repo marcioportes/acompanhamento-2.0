@@ -22,6 +22,9 @@ import { computeKelly } from '../../../utils/cycleClosure/kellyCalculator';
 import { projectNextCycle, pctOfBase } from '../../../utils/cycleClosure/monteCarlo';
 import { advisePlanAdjustment } from '../../../utils/cycleClosure/closurePlanAdvisor';
 import {
+  computeAllocationCeiling, exceedsAllocationCeiling, resolveNextCyclePl,
+} from '../../../utils/cycleClosure/allocationCeiling';
+import {
   EXPLAINERS, DECISION_LABELS, formatRiskPct,
   buildKellyReading, buildMcReading, buildAdviceCopy,
 } from '../../../utils/cycleClosure/adjustExplainers';
@@ -68,14 +71,10 @@ export default function Step6Adjust({
     [trades, planId, cycleStart, cycleEnd],
   );
 
-  // Saldo disponível pra alocar como newPl do próximo ciclo = equity do plano
-  // ao FIM do ciclo que está sendo fechado (plan.pl + Σ trades_do_ciclo).
-  // NÃO usa account.currentBalance porque a conta pode estar contaminada com
-  // resultados de trades posteriores ao cycleEnd (ex.: abril deixado aberto
-  // enquanto maio já operava — o saldo da conta inclui maio, mas o newPl
-  // deveria ser limitado ao que abril sozinho gerou).
+  // Equity do plano ao FIM do ciclo que está sendo fechado (plan.pl + Σ trades_do_ciclo):
+  // é o capital que rola pro próximo ciclo quando o aluno não ajusta nada.
   // snapshot.plEnd vem do Step1Read, já calculado como plan.pl + Σ cycle_trades.
-  const availableBalance = useMemo(() => {
+  const cycleEquity = useMemo(() => {
     const plEnd = Number(snapshot?.plEnd);
     if (Number.isFinite(plEnd)) return plEnd;
     // Fallback: equity-on-the-fly se o snapshot ainda não estiver pronto.
@@ -85,13 +84,39 @@ export default function Step6Adjust({
     return basePl + cycleTradesSum;
   }, [snapshot, plan, cycleTrades]);
 
-  const effectivePL = useMemo(() => {
-    const adj = forward?.planAdjustment;
-    if (adj?.changed && typeof adj.newPl === 'number' && adj.newPl > 0) return adj.newPl;
-    return Number(plan?.pl ?? 0);
-  }, [forward, plan]);
+  // #480 — teto do capital: o maior entre o equity do ciclo e o lastro da conta
+  // (saldo − PL dos outros planos ativos − trades posteriores ao ciclo). Subir o plano
+  // acima do que o ciclo gerou exige saldo na conta — aporte lançado antes do fechamento.
+  // O saldo da conta sozinho não serve: inclui resultados posteriores ao cycleEnd (ex.:
+  // abril deixado aberto enquanto maio já operava), que pertencem ao ciclo aberto.
+  // Mesma conta do servidor (closeCycle), que é o gate de fato.
+  const allocation = useMemo(() => {
+    const rawBalance = account ? (account.currentBalance ?? account.initialBalance) : null;
+    const otherPlansPl = plan
+      ? plans
+        .filter((p) => p.accountId === plan.accountId && p.active && p.id !== plan.id)
+        .reduce((s, p) => s + (Number(p.pl) || 0), 0)
+      : 0;
+    const postCycleResult = trades
+      .filter((t) => t.planId === planId && typeof t.date === 'string' && t.date.slice(0, 10) > cycleEnd)
+      .reduce((s, t) => s + (Number(t.result) || 0), 0);
+    return computeAllocationCeiling({
+      cycleEquity,
+      accountBalance: typeof rawBalance === 'number' ? rawBalance : null,
+      otherPlansPl,
+      postCycleResult,
+    });
+  }, [account, plan, plans, trades, planId, cycleEnd, cycleEquity]);
+  const maxAllocable = allocation.ceiling;
+  const backedByAccount = allocation.source === 'account';
 
-  const plExceedsBalance = availableBalance !== null && effectivePL > availableBalance + 0.1;
+  // Sem ajuste do aluno o servidor rola o PL pro equity do ciclo — não mantém o antigo.
+  const effectivePL = useMemo(
+    () => resolveNextCyclePl({ adjustment: forward?.planAdjustment, cycleEquity, currentPl: plan?.pl }),
+    [forward, cycleEquity, plan],
+  );
+
+  const plExceedsBalance = exceedsAllocationCeiling(effectivePL, maxAllocable);
 
   // Avisar wizard pra bloquear "Próximo" no Passo 6 e "Selar" no Passo 8.
   // Servidor tem o gate de fato (defesa em profundidade); aqui só evita
@@ -182,10 +207,10 @@ export default function Step6Adjust({
   const [editRR, setEditRR] = useState('');
 
   const startEdit = () => {
-    // Pré-preenche com o equity do ciclo (com centavos) — máximo permitido.
+    // Pré-preenche com o equity do ciclo (com centavos) — o capital que rola por padrão.
     // Evita confusão do display arredondado vs precisão do gate.
-    const defaultPl = Number.isFinite(availableBalance) && availableBalance > 0
-      ? availableBalance.toFixed(2)
+    const defaultPl = Number.isFinite(cycleEquity) && cycleEquity > 0
+      ? cycleEquity.toFixed(2)
       : String(plan?.pl ?? '');
     setEditPl(defaultPl);
     setEditRisk(String(plan?.riskPerOperation ?? ''));
@@ -277,7 +302,7 @@ export default function Step6Adjust({
         </div>
       )}
 
-      {/* Banner de saldo insuficiente — PL efetivo excede o equity do ciclo.
+      {/* Banner de capital sem lastro — PL efetivo passa do teto (#480).
           Servidor (closeCycle) rejeita o fechamento; aviso visual aqui força recalibrar. */}
       {plExceedsBalance && (
         <div className="glass-card p-5 border-2 border-amber-500/60 bg-gradient-to-br from-amber-500/15 to-amber-500/5">
@@ -286,14 +311,15 @@ export default function Step6Adjust({
               <AlertOctagon className="w-6 h-6" />
             </div>
             <div className="flex-1">
-              <h4 className="text-lg font-bold text-amber-100 mb-1">Capital alocado maior que o equity do ciclo</h4>
+              <h4 className="text-lg font-bold text-amber-100 mb-1">Capital alocado maior que o máximo alocável</h4>
               <p className="text-sm text-slate-200 leading-relaxed">
                 O novo PL seria <strong className="text-amber-200">{currencyFmt(effectivePL)}</strong>,
-                mas este ciclo terminou com equity de <strong className="text-amber-200">{currencyFmt(availableBalance)}</strong>
-                (PL inicial + resultado do ciclo). Você não pode alocar capital que o ciclo não gerou.
+                mas o máximo que este plano pode assumir é <strong className="text-amber-200">{currencyFmt(maxAllocable)}</strong>
+                {' '}({backedByAccount ? 'saldo livre da conta' : 'equity do ciclo: PL inicial + resultado'}).
+                Para alocar mais do que isso, lance o aporte na conta e volte a esta etapa.
               </p>
               <p className="text-[11px] text-amber-100/80 mt-2">
-                Edite manualmente abaixo e reduza o PL pra um valor ≤ equity do ciclo. O fechamento será bloqueado enquanto isso não couber.
+                Ou edite manualmente abaixo e reduza o PL pra um valor ≤ {currencyFmt(maxAllocable)}. O fechamento será bloqueado enquanto isso não couber.
               </p>
             </div>
           </div>
@@ -341,7 +367,10 @@ export default function Step6Adjust({
             </p>
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
-            R do próximo ciclo recalculado sobre o saldo real — não sobre o capital inicial do plano. Máximo alocável = capital base (com centavos).
+            R do próximo ciclo recalculado sobre o saldo real — não sobre o capital inicial do plano.
+            {typeof maxAllocable === 'number' && (
+              <> Máximo alocável = {currencyFmt(maxAllocable)}{backedByAccount ? ' (saldo livre da conta)' : ''}.</>
+            )}
           </p>
         </div>
       )}
@@ -489,8 +518,8 @@ export default function Step6Adjust({
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-1">
                     Capital (PL)
-                    {Number.isFinite(availableBalance) && availableBalance > 0 && (
-                      <span className="text-[10px] text-slate-600"> · máx {currencyFmt(availableBalance)}</span>
+                    {typeof maxAllocable === 'number' && (
+                      <span className="text-[10px] text-slate-600"> · máx {currencyFmt(maxAllocable)}</span>
                     )}
                   </label>
                   <input value={editPl} onChange={(e) => setEditPl(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" step="0.01" />
@@ -504,6 +533,9 @@ export default function Step6Adjust({
                   <input value={editRR} onChange={(e) => setEditRR(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-white" type="number" step="0.1" />
                 </div>
               </div>
+              <p className="text-[11px] text-slate-500">
+                O capital pode subir até o saldo livre da conta. Para ir além do máximo, lance o aporte na conta antes de fechar o ciclo.
+              </p>
               <div className="flex gap-2">
                 <button type="button" onClick={submitEdit} className="btn-primary text-sm flex items-center gap-1">
                   <CheckCircle className="w-4 h-4" /> Salvar manual

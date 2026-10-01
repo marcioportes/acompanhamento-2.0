@@ -100,7 +100,10 @@ export function advisePlanAdjustment({
 
   const baseOutput = {
     baseCapital,
-    newPl: cur.pl,
+    // #480 — o capital sugerido é o saldo pós-ciclo, a mesma base do R. Sugerir `cur.pl`
+    // devolvia o capital pré-ciclo: bloqueava no gate em ciclo negativo e descartava o
+    // lucro do capital do plano em ciclo positivo.
+    newPl: baseCapital ?? cur.pl,
     newRiskPerOp: cur.riskPerOperation,
     newRRTarget: cur.rrTarget,
     newRiskRS: newRiskRS(cur.riskPerOperation),
