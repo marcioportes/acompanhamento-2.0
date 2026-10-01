@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.16: #482 fix Passo 2 do fechamento — sem ordens, stop deslocado não é zero; aviso em linguagem de aluno (RESERVADA)
+ * - 1.92.16: #482 fix Passo 2 do fechamento — sem ordens, stop deslocado não é zero (PR #483, 01/10/2026)
  * - 1.92.15: #480 fix fechamento de ciclo aceita aporte — teto do PL é o saldo livre da conta (PR #481, 01/10/2026)
  * - 1.92.14: #477 fix detector comportamental crava medo — ajuste não é hesitação, montagem de p (PR #478, 27/09/2026)
  * - 1.92.13: #475 fix trade protegido acusado de 'sem stop' — stop movido vira pendência, não viol (PR #476, 26/09/2026)
@@ -460,7 +460,7 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.15';
+const version = '1.92.16';
 const build = '20261001';
 
 const VERSION = {

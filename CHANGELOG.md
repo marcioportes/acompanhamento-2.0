@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.16] - 01/10/2026 · #482 · PR #483
+
+**fix:** Passo 2 do fechamento — sem ordens, stop deslocado não é zero
+
+- Passo 2 do fechamento: sem ordens no ciclo, o quadro "Stop deslocado" mostra "—" com a legenda "sem ordens", em vez de 0.
+- O aviso passa a dizer, em linguagem de aluno, quais padrões dependem das ordens da corretora e quais foram medidos pelos trades.
+- "Sem ordens" passa a ser do ciclo (nenhuma ordem ligada a um trade dele), não do plano inteiro.
+
+
 ## [1.92.15] - 01/10/2026 · #480 · PR #481
 
 **fix:** fechamento de ciclo aceita aporte — teto do PL é o saldo livre da conta
