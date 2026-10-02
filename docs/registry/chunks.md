@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
+| CHUNK-04 | #484 | `fix/issue-484-plano-do-formulario-segue-a-tela` | 02/10/2026 | interativa |

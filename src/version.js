@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.17: #484 fix formulário de novo trade segue a barra de contexto — plano da tela, não o mais recente (RESERVADA)
  * - 1.92.16: #482 fix Passo 2 do fechamento — sem ordens, stop deslocado não é zero (PR #483, 01/10/2026)
  * - 1.92.15: #480 fix fechamento de ciclo aceita aporte — teto do PL é o saldo livre da conta (PR #481, 01/10/2026)
  * - 1.92.14: #477 fix detector comportamental crava medo — ajuste não é hesitação, montagem de p (PR #478, 27/09/2026)
