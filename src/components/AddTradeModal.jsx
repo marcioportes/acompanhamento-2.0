@@ -20,6 +20,7 @@ import { useMasterData } from '../hooks/useMasterData';
 import { useToast } from '../contexts/ToastContext';
 import { calculateFromPartials } from '../utils/tradeCalculations';
 import { validateExcursionPrices } from '../utils/tradeGateway';
+import { resolveDefaultTradePlanId } from '../utils/defaultTradePlan';
 import { detectInstrumentType, convertExcursionRawToPrice, derivePtsFromPrice } from '../utils/excursionParsing';
 import TradeReviewSection from './Trades/TradeReviewSection';
 import {
@@ -52,10 +53,18 @@ const AddTradeModal = ({
   editTrade = null,
   loading = false,
   plans = [],
+  defaultPlanId,
   onSubmitReview = null
 }) => {
   const toast = useToast();
   const { accounts, loading: accountsLoading } = useAccounts();
+
+  // #484 — plano inicial do trade novo vem da barra de contexto (quem abre o modal resolve e
+  // passa `defaultPlanId`). Sem contexto, só pré-seleciona quando não há ambiguidade (plano
+  // único). Nunca `plans[0]`: era o plano mais recente, não o que o aluno estava olhando.
+  const initialPlanId = defaultPlanId !== undefined
+    ? (defaultPlanId || '')
+    : resolveDefaultTradePlanId({ plans });
   const {
     setups,
     emotions,
@@ -354,7 +363,7 @@ const AddTradeModal = ({
       const defaultSetup = setups.length > 0 ? setups[0].name : '';
       const defaultEmotion = emotions.length > 0 ? emotions.find(e => e.category === 'neutral')?.name || emotions[0].name : '';
       
-      setFormData(prev => ({
+      setFormData({
         entryDate: todayIso, entryTime: timeNow,
         exitDate: todayIso, exitTime: '',
         ticker: '', exchange: defaultExchange, side: 'LONG', entry: '', exit: '', qty: '',
@@ -362,8 +371,8 @@ const AddTradeModal = ({
         mepRaw: '', menRaw: '',
         setup: defaultSetup, emotionEntry: defaultEmotion, emotionExit: defaultEmotion,
         notes: '',
-        planId: prev.planId && plans.find(p => p.id === prev.planId) ? prev.planId : (plans[0]?.id || ''),
-      }));
+        planId: initialPlanId,
+      });
 
       setMaskedInputs({
         entryDate: todayBr,
@@ -412,15 +421,15 @@ const AddTradeModal = ({
           : '';
         if (!prev.emotionEntry && defaultEmotion) { next.emotionEntry = defaultEmotion; changed = true; }
         if (!prev.emotionExit && defaultEmotion) { next.emotionExit = defaultEmotion; changed = true; }
-        if (!prev.planId && plans.length > 0) {
-          next.planId = plans[0].id;
+        if (!prev.planId && initialPlanId) {
+          next.planId = initialPlanId;
           changed = true;
         }
       }
 
       return changed ? next : prev;
     });
-  }, [isOpen, editTrade, plans, exchanges, setups, emotions]);
+  }, [isOpen, editTrade, initialPlanId, exchanges, setups, emotions]);
 
   // Recálculo de P&L quando parciais mudam
   useEffect(() => {

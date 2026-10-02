@@ -81,6 +81,7 @@ import { useMaturity } from '../hooks/useMaturity';
 import { useRecomputeStudentMaturity } from '../hooks/useRecomputeStudentMaturity';
 import useLatestClosedReview from '../hooks/useLatestClosedReview';
 import { ALL_CYCLES_KEY } from '../utils/cycleResolver';
+import { resolveDefaultTradePlanId } from '../utils/defaultTradePlan';
 import { currentTrigger, shouldGenerateAI } from '../utils/maturityAITrigger';
 
 // Contexto unificado (issue #118 — DEC-047)
@@ -212,6 +213,14 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // returnToPlanId consumido diretamente no App.jsx → setLedgerPlanId + currentView='ledger'
 
   const isLoading = tradesLoading || accountsLoading || plansLoading;
+
+  // #484 — o formulário de novo trade abre no plano que está na barra de contexto, não no
+  // mais recente. '' (Todas as contas + mais de um plano) obriga o aluno a escolher.
+  const defaultTradePlanId = useMemo(() => resolveDefaultTradePlanId({
+    plans,
+    contextPlanId: studentCtx.planId,
+    contextAccountId: studentCtx.accountId,
+  }), [plans, studentCtx.planId, studentCtx.accountId]);
 
   // === Métricas calculadas (hook extraído) ===
   // accountTypeFilter fixo em 'all' desde #164 (review): seletor de conta foi unificado
@@ -849,7 +858,7 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
       )}
 
       {/* Modais */}
-      <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} />
+      <AddTradeModal isOpen={showAddModal} onClose={() => { setShowAddModal(false); setEditingTrade(null); }} onSubmit={handleAddTrade} editTrade={editingTrade} loading={isSubmitting} plans={plans} defaultPlanId={defaultTradePlanId} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} />
       <TradeDetailModal isOpen={!!viewingTrade} onClose={() => setViewingTrade(null)} trade={viewingTrade} plans={plans} orders={orders} allTrades={trades} onViewFeedbackHistory={handleViewFeedbackHistory} onRecalcMepMen={handleRecalcMepMen} getPartials={getPartials} onSubmitReview={overrideStudentId ? undefined : handleSubmitReview} />
       <PlanManagementModal isOpen={showPlanModal} onClose={() => { setShowPlanModal(false); setEditingPlan(null); }} onSubmit={handleSavePlan} editingPlan={editingPlan} isSubmitting={isSubmitting} defaultAccountId={filters.accountId !== 'all' ? filters.accountId : undefined} />
       {extractPlan && (<PlanExtractModal isOpen={!!extractPlan} onClose={() => setExtractPlan(null)} plan={extractPlan} trades={trades.filter(t => t.planId === extractPlan.id)} />)}
