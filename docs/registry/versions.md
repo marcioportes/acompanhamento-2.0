@@ -135,4 +135,4 @@
 | 1.92.14 | #477 | `fix/issue-477-emocao-hipotese` | 27/09/2026 | consumida (PR #478 squash `11f20c05`) |
 | 1.92.15 | #480 | `fix/issue-480-aporte-no-fechamento` | 01/10/2026 | consumida (PR #481 squash `0429113f`) |
 | 1.92.16 | #482 | `fix/issue-482-sem-ordens-nao-e-zero` | 01/10/2026 | consumida (PR #483 squash `2305cf53`) |
-| 1.92.17 | #484 | `fix/issue-484-plano-do-formulario-segue-a-tela` | 02/10/2026 | reservada |
+| 1.92.17 | #484 | `fix/issue-484-plano-do-formulario-segue-a-tela` | 02/10/2026 | consumida (PR #485 squash `b4de1b36`) |
