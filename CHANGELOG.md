@@ -10,7 +10,7 @@ Version source of truth: `src/version.js`.
 
 ## [1.92.17] - 02/10/2026 · #484 · PR #485
 
-**fix:** formulário de novo trade abre no plano da barra de contexto, não no mais recen
+**fix:** formulário de novo trade abre no plano da barra de contexto, não no mais recente
 
 - `src/utils/defaultTradePlan.js` — `resolveDefaultTradePlanId`: plano da barra → plano ativo mais recente da conta da barra → plano único → vazio (aluno escolhe).
 - `AddTradeModal` — nova prop `defaultPlanId`; não usa mais `plans[0]` nem guarda o plano da abertura anterior. Sem a prop, só pré-seleciona quando há um único plano.
