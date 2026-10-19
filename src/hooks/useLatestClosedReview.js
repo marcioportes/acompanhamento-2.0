@@ -1,6 +1,6 @@
 /**
  * useLatestClosedReview
- * @version 1.1.0
+ * @version 1.2.0
  * @description Retorna em real-time a última review com status === 'CLOSED' do aluno,
  *              opcionalmente filtrada por plano único ou lista de planos (usado pelo
  *              SwotAnalysis quando o aluno está em "Todas as contas" + conta específica
@@ -9,9 +9,9 @@
  * @param {string|null} studentId - UID do aluno. Se null, não dispara listener.
  * @param {string|string[]|null} [planFilter=null] - string → where(planId ==);
  *   array → where(planId in) (máx 30); array vazio → sem review; null → sem filtro.
- * @param {string|null} [cycleKey=null] - quando truthy, restringe à review daquele
- *   ciclo (review.cycleKey ou frozenSnapshot.planContext.cycleKey). null → sem filtro
- *   de ciclo (última review fechada). Passe null para "Todos os ciclos" (#289).
+ * @param {{startISO: string, endISO: string}|null} [cycleWindow=null] - janela do ciclo
+ *   selecionado: restringe às reviews cujo período cruza a janela (#486). null → sem
+ *   filtro de ciclo (última review fechada). Passe null para "Todos os ciclos" (#289).
  * @returns {{ review: Object|null, loading: boolean, error: Error|null }}
  */
 
@@ -21,7 +21,20 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const useLatestClosedReview = (studentId, planFilter = null, cycleKey = null) => {
+// Ciclo da review sai das datas dela (#486). O `cycleKey` gravado não serve: as
+// revisões nascidas do feedback (#269 v2) gravam null, e nas antigas o campo é raro e
+// vem em formato de data ('2026-04-01'), enquanto a barra usa '2026-04'.
+// Pertence ⇔ o período [periodStart||weekStart, periodEnd||weekEnd] cruza a janela.
+export const reviewInCycleWindow = (data, cycleWindow) => {
+  if (!cycleWindow) return true;
+  const isISO = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
+  const start = [data?.periodStart, data?.weekStart].find(isISO);
+  const end = [data?.periodEnd, data?.weekEnd, start].find(isISO);
+  if (!start || !end) return false;
+  return start <= cycleWindow.endISO && end >= cycleWindow.startISO;
+};
+
+const useLatestClosedReview = (studentId, planFilter = null, cycleWindow = null) => {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(Boolean(studentId));
   const [error, setError] = useState(null);
@@ -29,7 +42,7 @@ const useLatestClosedReview = (studentId, planFilter = null, cycleKey = null) =>
   const planFilterKey = Array.isArray(planFilter)
     ? `arr:${planFilter.join(',')}`
     : (planFilter || '');
-  const cycleKeyDep = cycleKey || '';
+  const cycleWindowKey = cycleWindow ? `${cycleWindow.startISO}~${cycleWindow.endISO}` : '';
 
   useEffect(() => {
     if (!studentId) {
@@ -74,16 +87,7 @@ const useLatestClosedReview = (studentId, planFilter = null, cycleKey = null) =>
       return (top && allowedSet.has(top)) || (frozen && allowedSet.has(frozen));
     };
 
-    // Filtro de ciclo (#289): só quando cycleKey truthy. Aceita match no topo
-    // ou no snapshot congelado (planContext.cycleKey).
-    const matchesCycle = (data) => {
-      if (!cycleKey) return true;
-      const top = data?.cycleKey;
-      const frozen = data?.frozenSnapshot?.planContext?.cycleKey;
-      return top === cycleKey || frozen === cycleKey;
-    };
-
-    const matches = (data) => matchesPlan(data) && matchesCycle(data);
+    const matches = (data) => matchesPlan(data) && reviewInCycleWindow(data, cycleWindow);
 
     const unsub = onSnapshot(
       q,
@@ -104,7 +108,7 @@ const useLatestClosedReview = (studentId, planFilter = null, cycleKey = null) =>
     );
 
     return () => unsub();
-  }, [studentId, planFilterKey, cycleKeyDep]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [studentId, planFilterKey, cycleWindowKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { review, loading, error };
 };
