@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.18] - 19/10/2026 · #486 · PR #488
+
+**fix:** SWOT e Maturidade do aluno acham a revisão pelo período do ciclo
+
+- `useLatestClosedReview` recebe a janela do ciclo (`{startISO, endISO}`) no lugar da chave; a revisão pertence ao ciclo se `[periodStart||weekStart, periodEnd||weekEnd]` cruza a janela (`reviewInCycleWindow`).
+- `StudentDashboard` passa o `cycleWindow` que já existia (#432).
+- Só leitura: sem schema, rules, CF ou backfill.
+
+
 ## [1.92.17] - 02/10/2026 · #484 · PR #485
 
 **fix:** formulário de novo trade abre no plano da barra de contexto, não no mais recente
