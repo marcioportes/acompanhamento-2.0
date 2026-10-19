@@ -381,17 +381,6 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
   // Sem plano sobra só a Curva de Patrimônio (nível-conta, multi-moeda própria).
   const planSelected = selectedPlanId != null;
 
-  // Review do ciclo selecionado (#289 Fase 2): fonte única, compartilhada entre
-  // SWOT e o card de Maturidade. Filtra por plano + cycleKey (null em "Todos os
-  // ciclos" → última review). Ciclo passado (read-only) usa o maturitySnapshot
-  // congelado desta review; ciclo ativo usa a maturidade viva (maturity/current).
-  const swotPlanFilter = selectedPlanId || swotAccountPlanIds || null;
-  const cycleFilter = studentCtx.cycleKey === ALL_CYCLES_KEY ? null : (studentCtx.cycleKey || null);
-  const { review: cycleReview, loading: cycleReviewLoading } = useLatestClosedReview(
-    maturityStudentId, swotPlanFilter, cycleFilter,
-  );
-  const isPastCycle = Boolean(studentCtx.isReadOnlyCycle);
-
   // Janela ISO do ciclo selecionado na ContextBar (#432). Null em "Todos os ciclos" —
   // aí os cards voltam ao comportamento historico (ciclo aberto).
   const cycleWindow = useMemo(() => {
@@ -408,6 +397,17 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
     if (!startISO || !endISO) return null;
     return { startISO, endISO };
   }, [studentCtx.cycleKey, studentCtx.selectedCycle]);
+
+  // Review do ciclo selecionado (#289 Fase 2): fonte única, compartilhada entre
+  // SWOT e o card de Maturidade. Filtra por plano + janela do ciclo (#486: o ciclo
+  // da review sai das datas dela; null em "Todos os ciclos" → última review). Ciclo
+  // passado (read-only) usa o maturitySnapshot congelado desta review; ciclo ativo
+  // usa a maturidade viva (maturity/current).
+  const swotPlanFilter = selectedPlanId || swotAccountPlanIds || null;
+  const { review: cycleReview, loading: cycleReviewLoading } = useLatestClosedReview(
+    maturityStudentId, swotPlanFilter, cycleWindow,
+  );
+  const isPastCycle = Boolean(studentCtx.isReadOnlyCycle);
   const displayMaturity = isPastCycle
     ? (cycleReview?.frozenSnapshot?.maturitySnapshot ?? null)
     : maturity;
