@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.19: #487 fix revisão pode ser publicada sem SWOT e o aluno fica sem análise (RESERVADA)
  * - 1.92.18: #486 fix SWOT e Maturidade do aluno acham a revisão pelo período do ciclo (PR #488, 19/10/2026)
  * - 1.92.17: #484 fix formulário de novo trade abre no plano da barra de contexto, não no mais recente (PR #485, 02/10/2026)
  * - 1.92.16: #482 fix Passo 2 do fechamento — sem ordens, stop deslocado não é zero (PR #483, 01/10/2026)

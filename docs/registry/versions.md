@@ -137,3 +137,4 @@
 | 1.92.16 | #482 | `fix/issue-482-sem-ordens-nao-e-zero` | 01/10/2026 | consumida (PR #483 squash `2305cf53`) |
 | 1.92.17 | #484 | `fix/issue-484-plano-do-formulario-segue-a-tela` | 02/10/2026 | consumida (PR #485 squash `b4de1b36`) |
 | 1.92.18 | #486 | `fix/issue-486-swot-segue-o-ciclo` | 19/10/2026 | consumida (PR #488 squash `074bb322`) |
+| 1.92.19 | #487 | `fix/issue-487-publicar-garante-swot` | 20/10/2026 | reservada |
