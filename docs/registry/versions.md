@@ -138,4 +138,4 @@
 | 1.92.17 | #484 | `fix/issue-484-plano-do-formulario-segue-a-tela` | 02/10/2026 | consumida (PR #485 squash `b4de1b36`) |
 | 1.92.18 | #486 | `fix/issue-486-swot-segue-o-ciclo` | 19/10/2026 | consumida (PR #488 squash `074bb322`) |
 | 1.92.19 | #487 | `fix/issue-487-publicar-garante-swot` | 20/10/2026 | consumida (PR #489 squash `5eb0cc8a`) |
-| 1.92.20 | #490 | `fix/issue-490-mesa-prop-segue-o-dado` | 20/10/2026 | reservada |
+| 1.92.20 | #490 | `fix/issue-490-mesa-prop-segue-o-dado` | 20/10/2026 | consumida (PR #491 squash `df9e8aa0`) |

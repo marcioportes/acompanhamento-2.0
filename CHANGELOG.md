@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.20] - 20/10/2026 · #490 · PR #491
+
+**fix:** aba Mesa Prop segue o dado — histórico só com trades vivos, sugestão marcad
+
+- **Histórico só com trades vivos** (`src/utils/propLiveHistory.js`). O `drawdownHistory` continua append-only; o filtro é na leitura. Saldo refeito do tamanho da conta + resultado atual de cada trade, um ponto por trade. Fonte única de curva, KPIs, dias operados, melhor dia (zonas 1 e 2) e dias qualificáveis do payout. Remove a leitura de `propFirm.bestDayProfit` (nunca gravado).
+- **Sugestão marcada como sugestão.** `calculateMesaConstraints`, `buildMesaConstraints` e `toLegacyAttackPlanShape` devolvem `dailyLossSuggested` / `evalDeadlineSuggested` quando a mesa não tem a regra. O badge e o card dizem "limite diário sugerido (a mesa não tem daily loss)" e "ritmo sugerido (a mesa não tem prazo)". Valores não mudam.
+- **Exibição:** gauge de DD nunca negativo (`drawdownUsage`); "Sem prazo" + "N de M mínimos"; plano sem instrumento mostra "—"; cor do melhor/pior dia pelo sinal; curva começa no saldo inicial, eixo X em data DD/MM, eixo Y sem corte; DebugBadge em curva, KPIs e plano mecânico.
+
+
 ## [1.92.19] - 20/10/2026 · #487 · PR #489
 
 **fix:** publicar revisão exige SWOT; publicada sem SWOT pode gerar uma vez
