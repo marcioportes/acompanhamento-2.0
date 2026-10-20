@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.19] - 20/10/2026 · #487 · PR #489
+
+**fix:** publicar revisão exige SWOT; publicada sem SWOT pode gerar uma vez
+
+- `reviewSwotGate` (novo, `src/utils/`): rascunho só publica com SWOT; publicada sem SWOT gera uma vez; publicada com SWOT não regenera; arquivada nada.
+- `WeeklyReviewPage`: Publicar desabilitado com "Gere o SWOT antes de publicar."; em revisão publicada a geração não manda snapshot do cliente e a CF usa o `frozenSnapshot` (o que o aluno vê) — `generateWeeklySwot` já aceitava revisão publicada.
+- Sem mudança em CF, rules ou schema.
+
+
 ## [1.92.18] - 19/10/2026 · #486 · PR #488
 
 **fix:** SWOT e Maturidade do aluno acham a revisão pelo período do ciclo
