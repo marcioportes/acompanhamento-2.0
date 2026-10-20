@@ -79,6 +79,7 @@ Casos limite: sem trades → histórico vazio (curva mostra o estado vazio atual
 - C — exibição: gauge DD, prazo/dias mínimos, plano sem instrumento, cor do pior dia, eixos da curva (itens 6–9)
 
 ## Sessions
+- `A+B+C [mesa-prop-segue-o-dado] commit 2fea7df1 ok` — suíte 5516 passed (TZ=UTC); lint sem regressão (5 erros pré-existentes no main: hooks condicionais do PropAccountCard e aspas da PropFirmPage)
 
 ## Shared Deltas
 
