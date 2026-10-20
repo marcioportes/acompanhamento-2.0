@@ -1,31 +1,14 @@
 /**
  * PropHistoricalKPIs — Zona 2 da PropFirmPage: KPIs retrospectivos
- * @description Dias operados X/Y, melhor dia $, pior dia $, consistency %,
- *   tempo médio entre trades (se disponível).
- *   Fonte: drawdownHistory (reagrupa por data) + account.propFirm.bestDayProfit.
+ * @description Dias operados (vs mínimo do contrato), melhor dia $, pior dia $, consistency %.
+ *   Fonte: histórico vivo (`liveDrawdownHistory`, #490) — só trades que ainda existem.
  *
- * Ref: issue #145 Fase F, spec v2 §4 Zona 2
+ * Ref: issue #145 Fase F, spec v2 §4 Zona 2; issue #490
  */
 
-import { useMemo } from 'react';
 import { Calendar, TrendingUp, TrendingDown, Percent } from 'lucide-react';
 import { formatCurrencyDynamic } from '../../utils/currency';
-
-function groupByDay(history) {
-  const byDay = new Map();
-  for (const d of history ?? []) {
-    if (!d.date) continue;
-    const existing = byDay.get(d.date);
-    const dayPnl = typeof d.dailyPnL === 'number' ? d.dailyPnL : null;
-    if (!existing) {
-      byDay.set(d.date, { date: d.date, dailyPnL: dayPnl, lastBalance: d.balance });
-    } else if (dayPnl !== null) {
-      existing.dailyPnL = dayPnl;
-      existing.lastBalance = d.balance ?? existing.lastBalance;
-    }
-  }
-  return Array.from(byDay.values());
-}
+import DebugBadge from '../DebugBadge';
 
 const Metric = ({ icon: Icon, label, value, color = 'text-white' }) => (
   <div className="flex items-center gap-2">
@@ -37,38 +20,30 @@ const Metric = ({ icon: Icon, label, value, color = 'text-white' }) => (
   </div>
 );
 
+const pnlColor = (v) => (v == null ? 'text-slate-400' : v >= 0 ? 'text-emerald-300' : 'text-red-300');
+
 const PropHistoricalKPIs = ({
-  drawdownHistory,
-  evalTimeLimit,
+  liveHistory,
+  evalMinTradingDays,
   profitTarget,
   consistencyRule,
   phase = 'EVALUATION',
   currency = 'USD',
 }) => {
-  const days = useMemo(() => groupByDay(drawdownHistory ?? []), [drawdownHistory]);
-
-  const tradingDays = days.length;
-  const { bestDay, worstDay } = useMemo(() => {
-    let best = null;
-    let worst = null;
-    for (const d of days) {
-      if (d.dailyPnL == null) continue;
-      if (best == null || d.dailyPnL > best.dailyPnL) best = d;
-      if (worst == null || d.dailyPnL < worst.dailyPnL) worst = d;
-    }
-    return { bestDay: best, worstDay: worst };
-  }, [days]);
+  const tradingDays = liveHistory?.tradingDays ?? 0;
+  const bestDay = liveHistory?.bestDay ?? null;
+  const worstDay = liveHistory?.worstDay ?? null;
 
   const consistencyThreshold = consistencyRule && profitTarget > 0
     ? profitTarget * consistencyRule
     : null;
   const consistencyPct = consistencyThreshold && bestDay
-    ? (bestDay.dailyPnL / consistencyThreshold) * 100
+    ? (Math.max(0, bestDay.pnl) / consistencyThreshold) * 100
     : null;
   const consistencyOk = consistencyPct == null ? null : consistencyPct <= 100;
 
   return (
-    <div className="glass-card border border-slate-700/50 p-4">
+    <div className="glass-card border border-slate-700/50 p-4 pb-6">
       <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
         <Calendar className="w-4 h-4 text-blue-400" />
         KPIs retrospectivos
@@ -78,20 +53,20 @@ const PropHistoricalKPIs = ({
         <Metric
           icon={Calendar}
           label="Dias operados"
-          value={phase === 'EVALUATION' && evalTimeLimit ? `${tradingDays} / ${evalTimeLimit}` : `${tradingDays}`}
+          value={phase === 'EVALUATION' && evalMinTradingDays > 0 ? `${tradingDays} / ${evalMinTradingDays} mín.` : `${tradingDays}`}
           color="text-white"
         />
         <Metric
           icon={TrendingUp}
           label="Melhor dia"
-          value={bestDay ? formatCurrencyDynamic(bestDay.dailyPnL, currency) : '—'}
-          color="text-emerald-300"
+          value={bestDay ? formatCurrencyDynamic(bestDay.pnl, currency) : '—'}
+          color={pnlColor(bestDay?.pnl)}
         />
         <Metric
           icon={TrendingDown}
           label="Pior dia"
-          value={worstDay ? formatCurrencyDynamic(worstDay.dailyPnL, currency) : '—'}
-          color="text-red-300"
+          value={worstDay ? formatCurrencyDynamic(worstDay.pnl, currency) : '—'}
+          color={pnlColor(worstDay?.pnl)}
         />
         <Metric
           icon={Percent}
@@ -110,6 +85,7 @@ const PropHistoricalKPIs = ({
           Teto de consistency: {formatCurrencyDynamic(consistencyThreshold, currency)} · melhor dia não pode exceder.
         </div>
       )}
+      <DebugBadge component="PropHistoricalKPIs" embedded />
     </div>
   );
 };

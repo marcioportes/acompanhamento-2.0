@@ -22,6 +22,8 @@ import { useAccounts } from '../hooks/useAccounts';
 import { usePlans } from '../hooks/usePlans';
 import { usePropFirmTemplates } from '../hooks/usePropFirmTemplates';
 import { useDrawdownHistory } from '../hooks/useDrawdownHistory';
+import { useTrades } from '../hooks/useTrades';
+import { liveDrawdownHistory } from '../utils/propLiveHistory';
 import { useMovements } from '../hooks/useMovements';
 import { derivePropAlerts, getDangerAlerts } from '../utils/propFirmAlerts';
 import { formatCurrencyDynamic } from '../utils/currency';
@@ -65,8 +67,9 @@ const PropFirmPageBody = ({ viewAs }) => {
   }, [studentCtx?.selectedAccount, accounts]);
 
   const propAccountId = selectedAccount?.id || null;
-  const { history: drawdownHistory } = useDrawdownHistory(propAccountId);
+  const { history: rawDrawdownHistory } = useDrawdownHistory(propAccountId);
   const { movements: propMovements } = useMovements(propAccountId);
+  const { trades } = useTrades(overrideStudentId);
 
   // Derived data
   const propFirm = selectedAccount?.propFirm ?? null;
@@ -76,6 +79,16 @@ const PropFirmPageBody = ({ viewAs }) => {
   }, [propFirm?.templateId, getTemplateById]);
 
   const accountSize = propTemplate?.accountSize ?? selectedAccount?.initialBalance ?? 0;
+
+  // #490 — histórico só com trades vivos (o drawdownHistory é append-only e guarda
+  // snapshot de trade apagado). Fonte única de curva, KPIs, dias operados, melhor dia e payout.
+  const liveHistory = useMemo(() => liveDrawdownHistory(
+    rawDrawdownHistory,
+    (trades ?? []).filter(t => t.accountId === propAccountId),
+    accountSize,
+  ), [rawDrawdownHistory, trades, propAccountId, accountSize]);
+  const drawdownHistory = liveHistory.snapshots;
+  const bestDayProfit = liveHistory.bestDay?.pnl ?? 0;
   const drawdownMax = propTemplate?.drawdown?.maxAmount ?? 0;
   const currentBalance = selectedAccount?.currentBalance ?? accountSize;
   const currentProfit = currentBalance - accountSize;
@@ -98,7 +111,7 @@ const PropFirmPageBody = ({ viewAs }) => {
       profitTarget,
       profitRatio: profitTarget > 0 ? Math.max(0, currentProfit / profitTarget) : 0,
       evalDaysRemaining: null,
-      bestDayProfit: propFirm?.bestDayProfit ?? 0,
+      bestDayProfit,
       consistencyRule: propTemplate?.consistency?.evalRule ?? null,
       consistencyThreshold: propTemplate?.consistency?.evalRule && profitTarget > 0
         ? profitTarget * propTemplate.consistency.evalRule : null,
@@ -108,7 +121,7 @@ const PropFirmPageBody = ({ viewAs }) => {
       fmt: formatCurrencyDynamic,
     });
   }, [selectedAccount, propFirm, distanceToDD, currentBalance, currentProfit, profitTarget,
-       propTemplate, drawdownThreshold]);
+       propTemplate, drawdownThreshold, bestDayProfit]);
 
   const dangerAlerts = getDangerAlerts(alerts);
 
@@ -188,6 +201,7 @@ const PropFirmPageBody = ({ viewAs }) => {
           account={selectedAccount}
           template={propTemplate}
           drawdownHistory={drawdownHistory}
+          bestDayProfit={bestDayProfit}
           onUpdatePhase={handleUpdatePhase}
         />
       </section>
@@ -202,8 +216,8 @@ const PropFirmPageBody = ({ viewAs }) => {
           currency={currency}
         />
         <PropHistoricalKPIs
-          drawdownHistory={drawdownHistory}
-          evalTimeLimit={propTemplate?.evalTimeLimit ?? null}
+          liveHistory={liveHistory}
+          evalMinTradingDays={propTemplate?.evalMinTradingDays ?? null}
           profitTarget={profitTarget}
           consistencyRule={propTemplate?.consistency?.evalRule ?? null}
           phase={phase}

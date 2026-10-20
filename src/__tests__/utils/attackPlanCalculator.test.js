@@ -4,7 +4,9 @@ import {
   calculateMesaConstraints,
   resolveDataSource
 } from '../../utils/attackPlanCalculator';
-import { normalizeAttackProfile } from '../../constants/propFirmDefaults';
+import { normalizeAttackProfile, DEFAULT_TEMPLATES } from '../../constants/propFirmDefaults';
+import { buildMesaConstraints, calculatePlanMechanics, toLegacyAttackPlanShape } from '../../utils/calculatePlanMechanics';
+import { getInstrument } from '../../constants/instrumentsTable';
 
 // --- Templates de referência ---
 const APEX_EOD_25K = {
@@ -535,5 +537,41 @@ describe('VALIDAÇÃO OPERACIONAL — Apex EOD 25K MNQ CONS_B', () => {
     // Sem violations
     expect(plan.constraintsViolated).toEqual([]);
     expect(plan.incompatible).toBe(false);
+  });
+});
+
+// #490 — Lucid Flex 25K não tem daily loss nem prazo; o número fica, marcado como sugestão.
+
+describe('regra que a mesa não tem vira sugestão (#490)', () => {
+  const lucid = DEFAULT_TEMPLATES.find(t => t.id === 'lucid-flex-25k');
+
+  it('calculateMesaConstraints marca daily loss e prazo como sugestão', () => {
+    const c = calculateMesaConstraints(lucid, 'EVALUATION');
+    expect(c.dailyLossLimit).toBe(250);
+    expect(c.evalBusinessDays).toBe(21);
+    expect(c.dailyLossSuggested).toBe(true);
+    expect(c.evalDeadlineSuggested).toBe(true);
+  });
+
+  it('calculateAttackPlan carrega as marcas no modo abstract', () => {
+    const p = calculateAttackPlan(lucid, null, null, 'CONS_B', 'EVALUATION', null);
+    expect(p.dailyLossSuggested).toBe(true);
+    expect(p.evalDeadlineSuggested).toBe(true);
+  });
+
+  it('mesa com as regras não marca sugestão', () => {
+    const c = calculateMesaConstraints(APEX_EOD_25K, 'EVALUATION');
+    expect(c.dailyLossSuggested).toBe(false);
+    expect(c.evalDeadlineSuggested).toBe(false);
+  });
+
+  it('motor novo (buildMesaConstraints) e adapter legado marcam igual', () => {
+    const c = buildMesaConstraints(lucid, 'EVALUATION');
+    expect(c.dailyLossSuggested).toBe(true);
+    expect(c.evalDeadlineSuggested).toBe(true);
+    const plan = calculatePlanMechanics({ constraints: c, instrument: getInstrument('MNQ'), style: 'day', profile: 'CONS_B' });
+    const legacy = toLegacyAttackPlanShape(plan, lucid);
+    expect(legacy.dailyLossSuggested).toBe(true);
+    expect(legacy.evalDeadlineSuggested).toBe(true);
   });
 });

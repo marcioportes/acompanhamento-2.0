@@ -133,3 +133,23 @@ describe('classifyViability', () => {
     expect(r.text).toMatch(/preservar capital fundado/);
   });
 });
+
+// #490 — Lucid Flex 25K: sem daily loss e sem prazo. O plano usa 25% do DD (US$ 250) e
+// 30 dias corridos → 21 úteis, e o texto tem que dizer que são sugestões nossas.
+describe('classifyViability — regra que a mesa não tem (#490)', () => {
+  const lucid = {
+    ...base,
+    roPerTrade: 150, maxTradesPerDay: 2, dailyLossLimit: 250, lossesToBust: 6, evPerTrade: 75,
+    evalBusinessDays: 21, dailyLossSuggested: true, evalDeadlineSuggested: true,
+  };
+
+  it('daily loss e prazo sugeridos aparecem como sugestão', () => {
+    const r = classifyViability(lucid, 'EVALUATION');
+    expect(r.text).toBe('Plano consome 120% do limite diário sugerido (a mesa não tem daily loss) → limite apertado, exposição alta, com 21 dias úteis de ritmo sugerido (a mesa não tem prazo)');
+  });
+
+  it('mesa com as regras mantém o texto de regra', () => {
+    const r = classifyViability({ ...lucid, dailyLossSuggested: false, evalDeadlineSuggested: false }, 'EVALUATION');
+    expect(r.text).toBe('Plano consome 120% do daily loss → limite apertado, exposição alta, com 21 dias úteis para bater target');
+  });
+});
