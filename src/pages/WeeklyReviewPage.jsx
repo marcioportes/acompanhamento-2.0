@@ -44,6 +44,7 @@ import {
   recomputeAndReadMaturity,
   maybeDispatchMaturityAI,
 } from '../utils/closeReviewMaturityPipeline';
+import { reviewSwotGate } from '../utils/reviewSwotGate';
 import { fmtMoney, statusBadge, getPreviousReview } from '../utils/reviewFormatters';
 
 // ===== Subitem 1: Trades do período (flat com +/− por dia) =====
@@ -69,7 +70,7 @@ const SwotQuadrant = ({ title, items, icon: Icon, color }) => (
   </div>
 );
 
-const SwotSection = ({ swot, canGenerate, onGenerate, actionLoading, confirmRegen, setConfirmRegen }) => {
+const SwotSection = ({ swot, canGenerate, canRegenerate, onGenerate, actionLoading, confirmRegen, setConfirmRegen }) => {
   if (!swot) {
     return (
       <div className="text-center py-6 rounded-lg border border-dashed border-slate-700 bg-slate-800/20">
@@ -110,7 +111,7 @@ const SwotSection = ({ swot, canGenerate, onGenerate, actionLoading, confirmRege
         <SwotQuadrant title="Ameaças" items={swot.threats} icon={AlertTriangle} color="border-amber-500/30" />
       </div>
 
-      {canGenerate && (
+      {canRegenerate && (
         <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-slate-800/60">
           {confirmRegen ? (
             <>
@@ -584,6 +585,8 @@ const WeeklyReviewPage = ({
   // Stage 3: permissão + handlers SWOT / Notas.
   const canEdit = review?.status !== 'ARCHIVED';
   const swot = review?.swot || null;
+  // #487 — publicar exige SWOT; publicada sem SWOT gera uma vez (sem regenerar).
+  const swotGate = reviewSwotGate(review);
 
   // Sincroniza draft de sessionNotes com o doc.
   useEffect(() => {
@@ -609,11 +612,14 @@ const WeeklyReviewPage = ({
   const videoLinkValidation = useMemo(() => validateReviewUrl(videoLinkDraft), [videoLinkDraft]);
 
   const handleGenerateSwot = async () => {
-    if (!canEdit || !isDraft) return;
+    if (!swotGate.canGenerate && !swotGate.canRegenerate) return;
     try {
       // #331 — em DRAFT o frozenSnapshot ainda é null; passa o snapshot montado no cliente
       // (liveSnapshot já recomputado ao montar; rebuild defensivo se ainda não pronto).
-      const snapshot = liveSnapshot || await rebuildReviewSnapshot(review, { studentId });
+      // #487 — publicada: sem snapshot do cliente, a CF usa o frozenSnapshot (o que o aluno vê).
+      const snapshot = isDraft
+        ? (liveSnapshot || await rebuildReviewSnapshot(review, { studentId }))
+        : undefined;
       await generateSwot({ reviewId: review.id, snapshot });
       setConfirmRegen(false);
     } catch { /* error surfaced by hook */ }
@@ -651,7 +657,7 @@ const WeeklyReviewPage = ({
   // DEC-AUTO-119-14: IA é fire-and-forget — persiste em maturity/current via
   // cache e aparece no próximo render; publish não bloqueia esperando Claude.
   const handlePublish = async () => {
-    if (!isDraft) return;
+    if (!swotGate.canPublish) return;
     try {
       const { maturity: freshMaturity } = await recomputeAndReadMaturity({ studentId });
       const fresh = await rebuildSnapshotFromFirestore(review, { studentId }).catch(() => null);
@@ -843,7 +849,8 @@ const WeeklyReviewPage = ({
             <Section num="6" title="SWOT do aluno (gerado pela IA)">
               <SwotSection
                 swot={swot}
-                canGenerate={canEdit && isDraft}
+                canGenerate={swotGate.canGenerate}
+                canRegenerate={swotGate.canRegenerate}
                 onGenerate={handleGenerateSwot}
                 actionLoading={actionLoading}
                 confirmRegen={confirmRegen}
@@ -932,10 +939,13 @@ const WeeklyReviewPage = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-end">
+                  <div className="flex items-center justify-end gap-3">
+                    {!swotGate.canPublish && (
+                      <span className="text-[12px] text-amber-400">Gere o SWOT antes de publicar.</span>
+                    )}
                     <button
                       onClick={() => setConfirmPublish(true)}
-                      disabled={actionLoading}
+                      disabled={actionLoading || !swotGate.canPublish}
                       className="px-4 py-2 text-[13px] font-medium bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-500/30 disabled:opacity-40 inline-flex items-center gap-1.5"
                     >
                       <Send className="w-3.5 h-3.5" /> Publicar revisão
