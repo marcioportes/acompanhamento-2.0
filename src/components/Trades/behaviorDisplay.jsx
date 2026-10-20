@@ -9,6 +9,7 @@ import React from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { getPattern, valenciaVigente, severidadeVigente } from '../../constants/behavioralTaxonomy';
 import { isConfrontable, confrontVerdictFor, CONFRONT_VERDICT } from '../../utils/emotionConfront';
+import { redFlagLabel } from '../../utils/compliance';
 
 // Estilo por severidade. Positivos (valence 'positive') sempre emerald, ignoram severity.
 export const SEVERITY_STYLES = {
@@ -339,14 +340,31 @@ export const confrontVigente = (confront, families = null) => {
  * 3 tentativas de entrada canceladas em 4 min. Confere com o que você sentiu?". Declaração
  * positiva confirmada pela execução vira confirmação (verde), não contradição.
  *
+ * #492 — "limpa" queria dizer só "nenhum padrão confrontável", e a tela dizia "a execução
+ * saiu limpa" logo acima de "Violações (1): sem stop". Com violação de plano vigente e sem
+ * padrão que sugira emoção, o texto cita a violação como FATO e deixa a emoção como
+ * pergunta — nunca absolve a execução nem crava a emoção.
+ *
  * @param {Object} confront — `behaviorProfile.emotionConfront`
  * @param {Array} [families] — `behaviorProfile.families` (evidência da hipótese)
+ * @param {Array} [violations] — violações VIGENTES do trade (`effectiveRedFlags`)
  */
-export const emotionConfrontDisplay = (confront, families = null) => {
+export const emotionConfrontDisplay = (confront, families = null, violations = null) => {
   const c = confrontVigente(confront, families);
   if (!c) return null;
   const { verdict, declared, suggested } = c;
   const dec = declared?.name;
+
+  const quebras = (violations || [])
+    .map((f) => redFlagLabel(typeof f === 'string' ? f : f?.type))
+    .filter(Boolean)
+    .map((l) => l.charAt(0).toLowerCase() + l.slice(1));
+  if (declared?.category && !suggested && quebras.length > 0 && verdict !== CONFRONT_VERDICT.CONFIRMED) {
+    const fato = `a execução saiu do plano: ${quebras.join(', ')}`;
+    return declared.category === 'NEGATIVE' || declared.category === 'CRITICAL'
+      ? { tone: 'amber', text: `Você declarou “${dec}”, e ${fato}. Confere se foi essa emoção que conduziu a operação?` }
+      : { tone: 'amber', text: `Você declarou “${dec}”, mas ${fato} — vale revisitar o que você sentiu de fato na entrada.` };
+  }
   const hipotese = suggested
     ? `a execução tem sinais que costumam acompanhar ${emoFrase(suggested.emotion)} — ${evidenciaDe(suggested.code, families)}`
     : null;
