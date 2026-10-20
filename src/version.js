@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.20: #490 fix aba Mesa Prop contradiz o dado (RESERVADA)
  * - 1.92.19: #487 fix publicar revisão exige SWOT; publicada sem SWOT pode gerar uma vez (PR #489, 20/10/2026)
  * - 1.92.18: #486 fix SWOT e Maturidade do aluno acham a revisão pelo período do ciclo (PR #488, 19/10/2026)
  * - 1.92.17: #484 fix formulário de novo trade abre no plano da barra de contexto, não no mais recente (PR #485, 02/10/2026)
