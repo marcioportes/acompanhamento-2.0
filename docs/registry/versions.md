@@ -139,3 +139,4 @@
 | 1.92.18 | #486 | `fix/issue-486-swot-segue-o-ciclo` | 19/10/2026 | consumida (PR #488 squash `074bb322`) |
 | 1.92.19 | #487 | `fix/issue-487-publicar-garante-swot` | 20/10/2026 | consumida (PR #489 squash `5eb0cc8a`) |
 | 1.92.20 | #490 | `fix/issue-490-mesa-prop-segue-o-dado` | 20/10/2026 | consumida (PR #491 squash `df9e8aa0`) |
+| 1.92.21 | #492 | `fix/issue-492-confronto-ve-a-violacao` | 20/10/2026 | reservada |

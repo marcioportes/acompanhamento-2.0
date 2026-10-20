@@ -6,3 +6,4 @@
 | Chunk | Issue | Branch | Data | Sessão |
 |-------|-------|--------|------|--------|
 | CHUNK-08 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | interativa |
+| CHUNK-06 | #492 | `fix/issue-492-confronto-ve-a-violacao` | 20/10/2026 | interativa |
