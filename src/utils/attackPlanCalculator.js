@@ -159,6 +159,9 @@ export function calculateMesaConstraints(templateRules, phase = 'EVALUATION') {
   return {
     drawdownMax,
     dailyLossLimit: effectiveDailyLossLimit,
+    // #490 — a mesa não tem a regra: o número é sugestão nossa, nunca regra da mesa.
+    dailyLossSuggested: !(rawDailyLossLimit && rawDailyLossLimit > 0),
+    evalDeadlineSuggested: !(templateRules.evalTimeLimit > 0),
     profitTarget,
     evalTimeLimit,
     evalBusinessDays,
@@ -201,7 +204,8 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
 
   // Constraints da mesa — phase-aware (issue #145 Fase C)
   const mesaConstraints = calculateMesaConstraints(templateRules, validPhase);
-  const { drawdownMax, dailyLossLimit, profitTarget, evalBusinessDays, dailyTarget } = mesaConstraints;
+  const { drawdownMax, dailyLossLimit, profitTarget, evalBusinessDays, dailyTarget,
+    dailyLossSuggested, evalDeadlineSuggested } = mesaConstraints;
 
   // Calibragem por perfil do aluno (transparência + WR para EV)
   const { dataSource, adjustmentFactor, assumedWR } = resolveDataSource(profile4D, indicators, profile.family);
@@ -233,6 +237,8 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
       // Constraints da mesa
       drawdownMax,
       dailyLossLimit,
+      dailyLossSuggested,
+      evalDeadlineSuggested,
       profitTarget,
       evalBusinessDays,
       dailyTarget,
@@ -381,6 +387,8 @@ export function calculateAttackPlan(templateRules, profile4D, indicators, planPr
     // Hard limits da mesa
     drawdownMax,
     dailyLossLimit,
+    dailyLossSuggested,
+    evalDeadlineSuggested,
     profitTarget,
     phase: validPhase,
 

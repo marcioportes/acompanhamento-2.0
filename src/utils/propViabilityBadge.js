@@ -17,8 +17,14 @@ export const VIABILITY_STATES = {
   ERRO: 'ERRO',
 };
 
+// #490 — mesa sem prazo (Lucid Flex): os dias úteis são ritmo nosso, não prazo da mesa.
 const PHASE_SUFFIX = {
-  EVALUATION: (days) => (days ? `, com ${days} dias úteis para bater target` : ''),
+  EVALUATION: (days, suggested) => {
+    if (!days) return '';
+    return suggested
+      ? `, com ${days} dias úteis de ritmo sugerido (a mesa não tem prazo)`
+      : `, com ${days} dias úteis para bater target`;
+  },
   PA: () => ', sem deadline',
   SIM_FUNDED: () => ', foco em preservar capital fundado',
   LIVE: () => ', foco em preservar capital fundado',
@@ -27,7 +33,7 @@ const PHASE_SUFFIX = {
 function phaseSuffix(phase, plan) {
   const fn = PHASE_SUFFIX[phase];
   if (!fn) return '';
-  return fn(plan?.evalBusinessDays);
+  return fn(plan?.evalBusinessDays, plan?.evalDeadlineSuggested === true);
 }
 
 /**
@@ -135,12 +141,16 @@ export function classifyViability(plan, phase = 'EVALUATION') {
 
   const stopPct = dailyStop / plan.dailyLossLimit;
   const stopPctRounded = Math.round(stopPct * 100);
+  // #490 — mesa sem daily loss: o limite é sugestão nossa (25% do DD), não regra da mesa.
+  const dailyLossTxt = plan.dailyLossSuggested
+    ? 'do limite diário sugerido (a mesa não tem daily loss)'
+    : 'do daily loss';
 
   if (stopPct < 0.60 && lossesToBust >= 5 && ev > 0) {
     return {
       state: VIABILITY_STATES.CONFORTAVEL,
       color: 'green',
-      text: `Plano consome ${stopPctRounded}% do daily loss → confortável${phaseSuffix(phase, plan)}`,
+      text: `Plano consome ${stopPctRounded}% ${dailyLossTxt} → confortável${phaseSuffix(phase, plan)}`,
       recommendation: null,
     };
   }
@@ -149,7 +159,7 @@ export function classifyViability(plan, phase = 'EVALUATION') {
     return {
       state: VIABILITY_STATES.APERTADO,
       color: 'amber',
-      text: `Plano consome ${stopPctRounded}% do daily loss → viável mas apertado, sem margem para erro${phaseSuffix(phase, plan)}`,
+      text: `Plano consome ${stopPctRounded}% ${dailyLossTxt} → viável mas apertado, sem margem para erro${phaseSuffix(phase, plan)}`,
       recommendation: 'Revisar perfil ou aumentar consistency',
     };
   }
@@ -158,7 +168,7 @@ export function classifyViability(plan, phase = 'EVALUATION') {
   return {
     state: VIABILITY_STATES.APERTADO,
     color: 'amber',
-    text: `Plano consome ${stopPctRounded}% do daily loss → limite apertado, exposição alta${phaseSuffix(phase, plan)}`,
+    text: `Plano consome ${stopPctRounded}% ${dailyLossTxt} → limite apertado, exposição alta${phaseSuffix(phase, plan)}`,
     recommendation: 'Revisar perfil de risco',
   };
 }

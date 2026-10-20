@@ -10,6 +10,7 @@
 import { Target } from 'lucide-react';
 import PropViabilityBadge from './PropViabilityBadge';
 import { formatCurrencyDynamic } from '../../utils/currency';
+import DebugBadge from '../DebugBadge';
 
 const Row = ({ label, value, emphasize = false, muted = false }) => (
   <div className="flex items-baseline justify-between text-xs py-1 border-b border-slate-800/50 last:border-b-0">
@@ -40,10 +41,15 @@ const PlanoMecanicoCard = ({ plan, phase = 'EVALUATION', currency = 'USD' }) => 
   }
 
   const dailyStop = (plan.roPerTrade ?? 0) * (plan.maxTradesPerDay ?? 0);
+  // #490 — sem instrumento não há stop/target em pontos: "0 pts · US$ 0,00" parecia plano.
+  const hasInstrument = !!plan.instrument?.symbol;
+  const pointsRow = (pts, usd) => (hasInstrument && pts != null
+    ? `${pts} pts · ${fmt(usd ?? 0)}`
+    : '—');
   const dailyGoal = dailyStop * (plan.rrMinimum ?? 0);
 
   return (
-    <div className="glass-card border border-slate-700/50 p-4 space-y-3">
+    <div className="glass-card border border-slate-700/50 p-4 pb-6 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Target className="w-4 h-4 text-purple-400" />
@@ -57,17 +63,28 @@ const PlanoMecanicoCard = ({ plan, phase = 'EVALUATION', currency = 'USD' }) => 
       <div className="space-y-0">
         <Row label="Instrumento" value={plan.instrument?.symbol ?? '—'} />
         <Row label="RO por trade" value={fmt(plan.roPerTrade ?? 0)} />
-        <Row label="Stop" value={`${plan.stopPoints ?? 0} pts · ${fmt(plan.stopPerTrade ?? 0)}`} />
-        <Row label="Target" value={`${plan.targetPoints ?? 0} pts · ${fmt(plan.targetPerTrade ?? 0)}`} />
+        <Row label="Stop" value={pointsRow(plan.stopPoints, plan.stopPerTrade)} muted={!hasInstrument} />
+        <Row label="Target" value={pointsRow(plan.targetPoints, plan.targetPerTrade)} muted={!hasInstrument} />
         <Row label="R:R" value={`1 : ${plan.rrMinimum ?? 0}`} />
         <Row label="Max trades/dia" value={plan.maxTradesPerDay ?? 0} />
         <Row label="Daily goal (derivado)" value={fmt(dailyGoal)} emphasize />
         <Row label="Daily stop (derivado)" value={fmt(dailyStop)} />
-        <Row label="Daily target (ritmo)" value={fmt(plan.dailyTarget ?? 0)} muted />
+        <Row
+          label={plan.evalDeadlineSuggested ? 'Daily target (ritmo sugerido)' : 'Daily target (ritmo)'}
+          value={fmt(plan.dailyTarget ?? 0)}
+          muted
+        />
         <Row label="Losses até bust" value={plan.lossesToBust ?? 0} />
       </div>
 
+      {!hasInstrument && (
+        <p className="text-[11px] text-slate-500">
+          {plan.message ?? 'Selecione um instrumento para gerar o plano de execução completo.'}
+        </p>
+      )}
+
       <PropViabilityBadge plan={plan} phase={phase} />
+      <DebugBadge component="PlanoMecanicoCard" embedded />
     </div>
   );
 };

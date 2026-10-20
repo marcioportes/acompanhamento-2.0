@@ -17,6 +17,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
 import { calculateEvalDaysRemaining, isEvalDeadlineNear, DD_NEAR_THRESHOLD } from '../../utils/propFirmDrawdownEngine';
 import { derivePropAlerts } from '../../utils/propFirmAlerts';
+import { drawdownUsage } from '../../utils/propFirmDisplay';
 import { PROP_FIRM_PHASE_LABELS, DRAWDOWN_TYPE_LABELS, getPhaseLabelByFirm } from '../../constants/propFirmDefaults';
 import DebugBadge from '../DebugBadge';
 
@@ -292,7 +293,7 @@ const PhaseSelector = ({ currentPhase, onChangePhase, firmName }) => {
   );
 };
 
-const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) => {
+const PropAccountCard = ({ account, template, drawdownHistory, bestDayProfit = 0, onUpdatePhase }) => {
   const propFirm = account?.propFirm;
 
   if (!propFirm || account?.type !== 'PROP') return null;
@@ -302,6 +303,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
   const profitTarget = template?.profitTarget ?? 0;
   const dailyLossLimit = template?.dailyLossLimit ?? 0;
   const evalTimeLimit = template?.evalTimeLimit ?? null;
+  const evalMinTradingDays = template?.evalMinTradingDays ?? null;
   const consistencyRule = template?.consistency?.evalRule ?? null;
   const phase = propFirm.phase ?? 'EVALUATION';
   const currency = account.currency ?? 'USD';
@@ -313,13 +315,12 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
   const distanceToDD = propFirm.distanceToDD ?? (drawdownMax > 0 ? (currentBalance - currentDrawdownThreshold) / drawdownMax : 1);
   const isDayPaused = propFirm.isDayPaused ?? false;
   const dailyPnL = propFirm.dailyPnL ?? 0;
-  // tradingDays: derivar de drawdownHistory (datas únicas) — fix contagem errada da CF com imports (issue #145)
-  const tradingDays = useMemo(() => {
-    if (drawdownHistory && drawdownHistory.length > 0) {
-      return new Set(drawdownHistory.map(h => h.date)).size;
-    }
-    return propFirm.tradingDays ?? 0;
-  }, [drawdownHistory, propFirm.tradingDays]);
+  // tradingDays: datas únicas do histórico VIVO (#490). `propFirm.tradingDays` não
+  // desconta trade apagado — não serve de fallback.
+  const tradingDays = useMemo(
+    () => new Set((drawdownHistory ?? []).map(h => h.date)).size,
+    [drawdownHistory]
+  );
   const lockLevel = propFirm.lockLevel ?? null;
   const trailFrozen = propFirm.trailFrozen ?? false;
   const flags = propFirm.flags ?? [];
@@ -338,10 +339,12 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
 
   const evalDeadlineNear = isEvalDeadlineNear(evalDaysRemaining);
 
-  // Consistency: melhor dia vs threshold
-  const bestDayProfit = propFirm.bestDayProfit ?? 0;
+  // Consistency: melhor dia vs threshold. O melhor dia vem do histórico vivo (#490):
+  // `propFirm.bestDayProfit` nunca foi gravado por CF nenhuma e dava "US$ 0,00" eterno.
   const consistencyThreshold = consistencyRule && profitTarget > 0 ? profitTarget * consistencyRule : null;
   const consistencyOk = consistencyThreshold ? bestDayProfit <= consistencyThreshold : true;
+
+  const ddUsage = drawdownUsage({ balance: currentBalance, threshold: currentDrawdownThreshold, drawdownMax });
 
   // Drawdown type label
   const drawdownTypeLabel = template?.drawdown?.type ? (DRAWDOWN_TYPE_LABELS[template.drawdown.type] ?? template.drawdown.type) : '';
@@ -442,12 +445,14 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
 
         {/* Gauge 1: Drawdown utilizado */}
         <GaugeBar
-          value={drawdownMax > 0 ? drawdownMax - (currentBalance - currentDrawdownThreshold) : 0}
-          max={drawdownMax}
+          value={ddUsage.usedPct}
+          max={100}
           colorClass={getDistanceDDBgColor(distanceToDD)}
           label="Drawdown utilizado"
-          rightLabel={`${((1 - distanceToDD) * 100).toFixed(1)}%`}
-          sublabel={`Margem: ${formatCurrencyDynamic(Math.max(0, currentBalance - currentDrawdownThreshold), currency)} de ${formatCurrencyDynamic(drawdownMax, currency)}`}
+          rightLabel={`${ddUsage.usedPct.toFixed(1)}%`}
+          sublabel={ddUsage.aboveMax
+            ? `Margem: ${formatCurrencyDynamic(ddUsage.margin, currency)} — acima do pico; o limite sobe no fechamento do dia`
+            : `Margem: ${formatCurrencyDynamic(ddUsage.margin, currency)} de ${formatCurrencyDynamic(drawdownMax, currency)}`}
         />
 
         {/* Gauge 2: Profit vs Target */}
@@ -467,7 +472,7 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
           {/* Eval countdown */}
           <div>
             <p className="text-[11px] text-slate-600 mb-1">
-              {phase === 'EVALUATION' ? 'Eval deadline' : 'Fase'}
+              {phase === 'EVALUATION' ? 'Prazo da avaliação' : 'Fase'}
             </p>
             {evalDaysRemaining !== null ? (
               <>
@@ -481,6 +486,8 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
                   <p className="text-[10px] text-slate-600 mt-0.5">de {evalTimeLimit} dias</p>
                 )}
               </>
+            ) : phase === 'EVALUATION' ? (
+              <p className="text-base font-bold text-slate-400">Sem prazo</p>
             ) : (
               <p className="text-base font-bold text-slate-400">
                 {getPhaseLabelByFirm(phase, template?.firm) ?? phase}
@@ -491,7 +498,12 @@ const PropAccountCard = ({ account, template, drawdownHistory, onUpdatePhase }) 
           {/* Trading days */}
           <div>
             <p className="text-[11px] text-slate-600 mb-1">Dias operados</p>
-            <p className="text-base font-bold text-white">{tradingDays}</p>
+            <p className="text-base font-bold text-white">
+              {tradingDays}
+              {phase === 'EVALUATION' && evalMinTradingDays > 0 && (
+                <span className="text-xs font-normal text-slate-500"> de {evalMinTradingDays} mínimos</span>
+              )}
+            </p>
           </div>
         </div>
 

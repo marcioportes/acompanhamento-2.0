@@ -92,6 +92,9 @@ export function buildMesaConstraints(templateRules, phase = PROP_FIRM_PHASES.EVA
     drawdownBudget,
     targetGoal,
     dailyLossLimit,
+    // #490 — a mesa não tem a regra: o número é sugestão nossa, nunca regra da mesa.
+    dailyLossSuggested: !(rawDailyLossLimit && rawDailyLossLimit > 0),
+    evalDeadlineSuggested: !(templateRules.evalTimeLimit > 0),
     evalTimeLimit,
     evalBusinessDays,
     contractsMax,
@@ -534,6 +537,8 @@ export function toLegacyAttackPlanShape(plan, templateRules = null) {
 
     drawdownMax,
     dailyLossLimit,
+    dailyLossSuggested: !(dailyLossLimitFromRules && dailyLossLimitFromRules > 0),
+    evalDeadlineSuggested: !(templateRules?.evalTimeLimit > 0),
     profitTarget,
     phase: null,
 
