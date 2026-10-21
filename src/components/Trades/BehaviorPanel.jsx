@@ -258,7 +258,7 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
 
         {/* Confronto emocional: emoção declarada × emoção que a execução sugere (manchete). */}
         {(() => {
-          const c = emotionConfrontDisplay(profile?.emotionConfront, profile?.families ?? null);
+          const c = emotionConfrontDisplay(profile?.emotionConfront, profile?.families ?? null, effective);
           if (!c) return null;
           const icon = c.tone === 'red' ? '⚠' : c.tone === 'amber' ? '◐' : '✓';
           return (
