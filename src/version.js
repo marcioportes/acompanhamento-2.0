@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.21: #492 fix confronto emocional diz "execução saiu limpa" em trade com violação de plano (RESERVADA)
+ * - 1.92.21: #492 fix confronto emocional não chama de limpa a execução que saiu do plano (PR #493, 21/10/2026)
  * - 1.92.20: #490 fix aba Mesa Prop segue o dado — histórico só com trades vivos, sugestão marcada como sugestão (PR #491, 20/10/2026)
  * - 1.92.19: #487 fix publicar revisão exige SWOT; publicada sem SWOT pode gerar uma vez (PR #489, 20/10/2026)
  * - 1.92.18: #486 fix SWOT e Maturidade do aluno acham a revisão pelo período do ciclo (PR #488, 19/10/2026)
@@ -465,8 +465,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.20';
-const build = '20261020';
+const version = '1.92.21';
+const build = '20261021';
 
 const VERSION = {
   version,

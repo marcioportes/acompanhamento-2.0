@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.21] - 21/10/2026 · #492 · PR #493
+
+**fix:** confronto emocional não chama de limpa a execução que saiu do plano
+
+- **Confronto emocional vê a violação de plano.** `emotionConfrontDisplay` recebe as violações vigentes do trade (`effectiveRedFlags`, as mesmas do bloco "Violações"). Com emoção declarada, nenhum padrão que sugira emoção e ≥1 violação, o banner cita a violação como fato e deixa a emoção como pergunta — nunca "execução saiu limpa" nem "boa regulação emocional".
+- **Textos:** negativa/crítica → "Você declarou “X”, e a execução saiu do plano: sem stop declarado. Confere se foi essa emoção que conduziu a operação?"; positiva/neutra → "… mas a execução saiu do plano: … — vale revisitar o que você sentiu de fato na entrada."
+- **Só leitura:** vale para trade discutido sem regravar (INV-30). Veredito gravado pela CF não muda. Emoção da saída fora do escopo.
+
+
 ## [1.92.20] - 20/10/2026 · #490 · PR #491
 
 **fix:** aba Mesa Prop segue o dado — histórico só com trades vivos, sugestão marcada como sugestão
