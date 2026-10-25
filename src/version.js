@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.92.22: #494 fix templates Apex seguem as regras vigentes desde 01/03/2026 (RESERVADA)
  * - 1.92.21: #492 fix confronto emocional não chama de limpa a execução que saiu do plano (PR #493, 21/10/2026)
  * - 1.92.20: #490 fix aba Mesa Prop segue o dado — histórico só com trades vivos, sugestão marcada como sugestão (PR #491, 20/10/2026)
  * - 1.92.19: #487 fix publicar revisão exige SWOT; publicada sem SWOT pode gerar uma vez (PR #489, 20/10/2026)
