@@ -22,7 +22,7 @@ import { calculateComplianceRate } from './dashboardMetrics';
 import { redFlagLabel } from './compliance';
 import { effectiveRedFlags, flagType } from './violationFilter';
 import { buildPeriodState } from './dayState';
-import { getPattern, severidadeVigente, GATE_CODES } from '../constants/behavioralTaxonomy';
+import { getPattern, severidadeVigente, familiaVigente, GATE_CODES } from '../constants/behavioralTaxonomy';
 import { SEVERITY_WEIGHT } from './maturityEngine/behaviorWeights';
 import { tradeInstantMs, sortTradesChrono } from './tradeInstant';
 import { computeCurrentPl, computeCycleBalance } from './planBalance';
@@ -538,6 +538,7 @@ export function familiasDeRisco(trade) {
     const code = f?.canonicalCode;
     if (!code) continue;
     if (cleared.includes(clearedKey(code, trade.id))) continue;
+    if (!familiaVigente(f)) continue; // #495 — alvo do plano entregue
     const p = getPattern(code);
     if (!p || p.valence !== 'negative') continue;
     // Teto de leitura (#101): severidade gravada por régua abandonada não sobe a faixa.

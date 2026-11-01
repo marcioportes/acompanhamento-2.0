@@ -6,7 +6,7 @@
  * `ruleViolationRate` = trades com violação QUE ALIMENTA GATE / trades com profile (#416 C1):
  * `feedsGates` (via GATE_CODES) governa a taxa, `feedsScore` governa a penalidade por dimensão.
  */
-const { getPattern, severidadeVigente, GATE_CODES } = require('./behavioralTaxonomyMirror');
+const { getPattern, severidadeVigente, familiaVigente, GATE_CODES } = require('./behavioralTaxonomyMirror');
 
 const SEVERITY_WEIGHT = Object.freeze({ HIGH: 3, MEDIUM: 2, LOW: 1 });
 const POSITIVE_WEIGHT = 1;
@@ -42,6 +42,7 @@ function aggregateBehaviorWeights(trades = []) {
       const code = f && f.canonicalCode;
       if (!code) continue;
       if (cleared.includes(clearedKey(code, t.id))) continue;
+      if (!familiaVigente(f)) continue; // #495 — alvo do plano entregue
       const p = getPattern(code);
       if (!p) continue;
       // #477 — aviso neutro (montagem de posição) não pesa em nada: nem penalidade, nem

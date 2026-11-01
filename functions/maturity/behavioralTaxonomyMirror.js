@@ -239,6 +239,18 @@ const GATE_CODES = Object.freeze(
   Object.values(BEHAVIORAL_PATTERNS).filter((p) => p.feedsGates).map((p) => p.code),
 );
 
+/**
+ * #495 — família gravada que ainda vale na leitura. `SUB_SIZING` de trade que entregou o
+ * alvo do plano foi gravado antes da regra, e trade discutido não é regravado (INV-30).
+ * Sem os valores na evidência (perfil anterior ao #278) não há como afirmar: continua.
+ */
+function familiaVigente(family) {
+  if (family?.canonicalCode !== 'SUB_SIZING') return true;
+  const ganho = family.evidence?.actualGain;
+  const alvo = family.evidence?.expectedGainAtPlanRR;
+  return !(typeof ganho === 'number' && typeof alvo === 'number' && ganho >= alvo);
+}
+
 function severidadeVigente(code, severityGravada) {
   const teto = TETO_DE_SEVERIDADE[code];
   if (!teto) return severityGravada ?? null;
@@ -254,7 +266,7 @@ function valenciaVigente(family) {
 }
 
 module.exports = {
-  severidadeVigente, valenciaVigente,
+  severidadeVigente, valenciaVigente, familiaVigente,
   DIMENSIONS, SEVERITY, RESOLUTION,
   BEHAVIORAL_PATTERNS, LEGACY_CODE_ALIAS,
   resolveCanonical, getPattern, SCORING_CODES, GATE_CODES,

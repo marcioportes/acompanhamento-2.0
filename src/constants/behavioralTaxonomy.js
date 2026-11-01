@@ -283,6 +283,18 @@ export const GATE_CODES = Object.freeze(
 
 export default BEHAVIORAL_PATTERNS;
 
+/**
+ * #495 — família gravada que ainda vale na leitura. `SUB_SIZING` de trade que entregou o
+ * alvo do plano foi gravado antes da regra, e trade discutido não é regravado (INV-30).
+ * Sem os valores na evidência (perfil anterior ao #278) não há como afirmar: continua.
+ */
+export function familiaVigente(family) {
+  if (family?.canonicalCode !== 'SUB_SIZING') return true;
+  const ganho = family.evidence?.actualGain;
+  const alvo = family.evidence?.expectedGainAtPlanRR;
+  return !(typeof ganho === 'number' && typeof alvo === 'number' && ganho >= alvo);
+}
+
 /** @see TETO_DE_SEVERIDADE */
 export function severidadeVigente(code, severityGravada) {
   const teto = TETO_DE_SEVERIDADE[code];
