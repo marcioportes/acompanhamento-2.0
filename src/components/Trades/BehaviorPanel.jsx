@@ -9,7 +9,7 @@
  * mentor-only (isMentor) — #315: o dump de campos do schema não tem leitura pro aluno.
  */
 import React, { useState } from 'react';
-import { severidadeVigente } from '../../constants/behavioralTaxonomy';
+import { severidadeVigente, familiaVigente } from '../../constants/behavioralTaxonomy';
 import { AlertTriangle, Lock, ClipboardEdit } from 'lucide-react';
 import DebugBadge from '../DebugBadge';
 import { effectiveRedFlags, isViolationCleared, isRevokedRedFlag, isPendingRedFlag, pendingRedFlags } from '../../utils/violationFilter';
@@ -226,14 +226,16 @@ const BehaviorPanel = ({ trade, plan = null, periodState = null, isMentor = fals
   const temPendencia = pendencias.length > 0;
 
   // ② Padrões (já ordenados no profile: negativos por severidade, positivos por último)
-  const families = profile?.families ?? [];
+  // #495 — família que não vale mais na leitura sai do card e da trava.
+  const families = (profile?.families ?? []).filter(familiaVigente);
+  const familiasForaDeVigencia = (profile?.families ?? []).filter((f) => !familiaVigente(f)).map((f) => f.family);
   // #477 — valência VIGENTE (taxonomia), não a gravada: avisos neutros entre os dois.
   const negatives = families.filter((f) => { const v = familyValence(f); return v !== 'positive' && v !== 'neutral'; });
   const neutrals = families.filter((f) => familyValence(f) === 'neutral');
   const positives = families.filter((f) => familyValence(f) === 'positive');
 
   // ③ Gate
-  const gateInputs = profile?.gateInputs ?? [];
+  const gateInputs = (profile?.gateInputs ?? []).filter((g) => !familiasForaDeVigencia.includes(g));
 
   // #402 — o que ESTA operação decidiu ao abrir (fato atômico derivado do período)
   // e o que o PERÍODO fez (fato do período). Coisas diferentes, blocos diferentes.

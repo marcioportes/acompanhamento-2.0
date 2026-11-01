@@ -21,7 +21,7 @@
  * PURO: sem I/O. O caller aplica `netByDimension` ao score base + usa
  * `ruleViolationRate`/`gateCounts` nos gates.
  */
-import { getPattern, severidadeVigente, GATE_CODES } from '../../constants/behavioralTaxonomy';
+import { getPattern, severidadeVigente, familiaVigente, GATE_CODES } from '../../constants/behavioralTaxonomy';
 
 // Peso relativo de severidade (intensidade); SCALE converte intensidade média → pontos.
 // PONTO DE PARTIDA calibrado na Fase D: janela 100% HIGH numa dimensão ≈ −24 (≈ cap).
@@ -70,6 +70,7 @@ export function aggregateBehaviorWeights(trades = []) {
       const code = f && f.canonicalCode;
       if (!code) continue;
       if (cleared.includes(clearedKey(code, t.id))) continue; // clearing estendido
+      if (!familiaVigente(f)) continue; // #495 — alvo do plano entregue
       const p = getPattern(code);
       if (!p) continue;
       // #477 — aviso neutro (montagem de posição) não pesa em nada: nem penalidade, nem

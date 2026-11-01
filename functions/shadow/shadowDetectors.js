@@ -367,6 +367,8 @@ const detectUndersizedTrade = (trade) => {
 
   const result = (typeof trade.result === 'number') ? trade.result : null;
   const isWin = result != null && result > 0;
+  // #495 — entregou o alvo do plano (RO × RR): não é subdimensionamento.
+  if (isWin && expectedGainAtPlanRR != null && result >= expectedGainAtPlanRR) return null;
 
   const planRsDelivered = isWin && planRoAmount ? result / planRoAmount : null;
   const rGapVsPlan = isWin && expectedGainAtPlanRR != null ? expectedGainAtPlanRR - result : null;

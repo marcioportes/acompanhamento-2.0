@@ -639,6 +639,10 @@ export const detectDirectionFlip = (trade, adjacentTrades, config = DEFAULT_CONF
  *                     mas com gain absoluto bem abaixo do R-plano: rGapVsPlan grande)
  *   - 'WIN_RR_MISS' → result > 0 mas RR local < planRrTarget (subdimensionado + saída adiantada)
  *   - 'LOSS_BE'     → result <= 0 ou ausente (campos win-only ficam null)
+ *
+ * #495 — resultado que entrega o alvo do plano (RO × RR) não é subdimensionamento: a
+ * denúncia do #278 é "o gain ficou abaixo do plano", e aqui não ficou. Sem PL não há alvo
+ * em dinheiro para comparar, e a flag continua.
  */
 export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_CONFIG.undersizedTrade) => {
   const actualPct = trade.riskPercent;
@@ -658,6 +662,7 @@ export const detectUndersizedTrade = (trade, _adjacentTrades, config = DEFAULT_C
 
   const result = (typeof trade.result === 'number') ? trade.result : null;
   const isWin = result != null && result > 0;
+  if (isWin && expectedGainAtPlanRR != null && result >= expectedGainAtPlanRR) return null;
 
   const planRsDelivered = isWin && planRoAmount ? result / planRoAmount : null;
   const rGapVsPlan = isWin && expectedGainAtPlanRR != null ? expectedGainAtPlanRR - result : null;

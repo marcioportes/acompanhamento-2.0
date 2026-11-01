@@ -7,7 +7,7 @@
  */
 import React from 'react';
 import { formatCurrencyDynamic } from '../../utils/currency';
-import { getPattern, valenciaVigente, severidadeVigente } from '../../constants/behavioralTaxonomy';
+import { getPattern, valenciaVigente, severidadeVigente, familiaVigente } from '../../constants/behavioralTaxonomy';
 import { isConfrontable, confrontVerdictFor, CONFRONT_VERDICT } from '../../utils/emotionConfront';
 import { redFlagLabel } from '../../utils/compliance';
 
@@ -305,11 +305,15 @@ export const confrontVigente = (confront, families = null) => {
   if (!confront) return null;
   const declared = confront.declared ?? null;
   let suggested = confront.suggested?.emotion ? confront.suggested : null;
+  // #495 — a família que saiu não sustenta sugestão, nem quando era a única da lista.
+  const vigentes = Array.isArray(families) ? families.filter(familiaVigente) : null;
+  if (suggested && vigentes && vigentes.length !== families.length
+    && !vigentes.some((f) => f?.canonicalCode === suggested.code)) suggested = null;
   // Sem famílias (ou lista vazia) não há sobre o que refazer a eleição: só a sugestão
   // gravada é conferida.
-  if (Array.isArray(families) && families.length > 0) {
+  if (vigentes && vigentes.length > 0) {
     let best = null;
-    for (const f of families) {
+    for (const f of vigentes) {
       if (!f) continue;
       const sev = severidadeVigente(f.canonicalCode, f.severity);
       if (!isConfrontable(familyValence(f) ?? 'negative', f.emotionMapping, sev)) continue;
@@ -408,9 +412,14 @@ export const emotionConfrontDisplay = (confront, families = null, violations = n
   }
 };
 
-const UNDERSIZED_KEY_SENTENCE = (scenario, planRrTarget) => {
+const UNDERSIZED_KEY_SENTENCE = (scenario, planRrTarget, planRsDelivered) => {
   switch (scenario) {
-    case 'WIN_RR_HIT': return `RR de ${planRrTarget}:1 cumprido. Alvo do plano não atingido.`;
+    case 'WIN_RR_HIT':
+      // #495 — sem PL não há alvo em dinheiro: não dá para dizer que ficou abaixo dele.
+      if (planRsDelivered == null) return `RR de ${planRrTarget}:1 cumprido.`;
+      return planRsDelivered >= 1
+        ? `RR de ${planRrTarget}:1 cumprido. Stop do plano coberto, alvo não atingido.`
+        : `RR de ${planRrTarget}:1 cumprido. Alvo do plano não atingido.`;
     case 'WIN_RR_MISS': return 'Operação subdimensionada e abaixo do alvo do trade.';
     case 'LOSS_BE': return 'Operação subdimensionada e tomada em loss.';
     default: return '';
@@ -425,10 +434,12 @@ export const UndersizedEducational = ({ scenario, evidence, currency }) => {
   } = evidence;
 
   if (scenario === 'WIN_RR_HIT') {
+    // #495 — o texto veio de um trade de 0,96R; acima de 1R do plano ele mentia.
+    const cobreStop = planRsDelivered >= 1;
     return (
       <div className="text-xs text-zinc-400 mt-2 leading-relaxed space-y-2">
-        <p>Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)}) e atingiu {fmt(actualGain, currency)} — menos de um stop cheio do plano e abaixo do alvo planejado de {fmt(expectedGainAtPlanRR, currency)}.</p>
-        <p>Sua estatística (Payoff/PF/EV) lê este trade como +{rrLocalAchieved}R. Em Rs do plano são +{planRsDelivered}R. Quando vier um loss de RO cheio (−1R do plano), trades assim não cobrem o stop.</p>
+        <p>Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)}) e atingiu {fmt(actualGain, currency)} — {cobreStop ? 'cobre um stop cheio do plano, mas fica' : 'menos de um stop cheio do plano e'} abaixo do alvo planejado de {fmt(expectedGainAtPlanRR, currency)}.</p>
+        <p>Sua estatística (Payoff/PF/EV) lê este trade como +{rrLocalAchieved}R. Em Rs do plano são +{planRsDelivered}R.{!cobreStop && ' Quando vier um loss de RO cheio (−1R do plano), trades assim não cobrem o stop.'}</p>
         <p>Se o RO contratado parece grande, ajuste o plano. Subdimensionar esconde o desalinhamento e adia o acerto de contas.</p>
       </div>
     );
@@ -437,7 +448,7 @@ export const UndersizedEducational = ({ scenario, evidence, currency }) => {
     const localTarget = actualRiskAmount != null && planRrTarget != null ? actualRiskAmount * planRrTarget : null;
     return (
       <div className="text-xs text-zinc-400 mt-2 leading-relaxed space-y-2">
-        <p>Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)}) e saiu com {fmt(actualGain, currency)} — abaixo do alvo do próprio trade ({fmt(localTarget, currency)}) e muito abaixo do alvo do plano ({fmt(expectedGainAtPlanRR, currency)}).</p>
+        <p>Você arriscou {fmt(actualRiskAmount, currency)} ({utilizationPct}% do RO contratado de {fmt(planRoAmount, currency)}) e saiu com {fmt(actualGain, currency)} — abaixo do alvo do próprio trade ({fmt(localTarget, currency)}) e abaixo do alvo do plano ({fmt(expectedGainAtPlanRR, currency)}).</p>
         <p>Duplo problema: subdimensionado + saída antes do RR. Sua estatística mede Rs locais (stop usado), não Rs do plano — o trade entra como ganho parcial mas em Rs do plano entregou só +{planRsDelivered}R.</p>
         <p>Se o RO contratado parece grande, ajuste o plano em vez de operar abaixo dele.</p>
       </div>
@@ -456,7 +467,7 @@ export const UndersizedEducational = ({ scenario, evidence, currency }) => {
 export const UndersizedBody = ({ evidence = {}, currency, expanded, isMentor = false }) => {
   const { scenario, planRrTarget, utilizationPct } = evidence;
   const hasAmounts = evidence.planRoAmount != null;
-  const keySentence = UNDERSIZED_KEY_SENTENCE(scenario, planRrTarget);
+  const keySentence = UNDERSIZED_KEY_SENTENCE(scenario, planRrTarget, evidence.planRsDelivered);
   return (
     <>
       {hasAmounts ? (
