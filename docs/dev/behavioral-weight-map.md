@@ -59,7 +59,7 @@ Severidade: **A**lta / **M**édia / **B**aixa. Efeito: `penalidade no score da d
 | `LATE_EXIT` | Hope / loss aversion (§7.1) | **E+F** | M | penalidade E+F |
 | `EARLY_EXIT` | Disposition / fear (§2.2 Q4) | **E+F** | M | penalidade E+F |
 | `GREED_CLUSTER` | Profit-taking / greed (§3; §7.1 fin) | **F** | M | penalidade **F** (hoje vale zero) |
-| `SUB_SIZING` | Avoidance / subdimensionar (§2.2; UNDERSIZED #129) | **E+F** | M | penalidade; `disciplined-sizing count==0` gate 3→4 |
+| `SUB_SIZING` | Avoidance / subdimensionar (§2.2; UNDERSIZED #129) | **E+F** | M | penalidade; `disciplined-sizing count==0` gate 3→4; não conta quando o resultado entrega o alvo do plano (#495) |
 | `CHASE_REENTRY` | Overconfidence / FOMO (§2.2 Q6) | **E+O** | M | penalidade; `no-chase count==0` gate 3→4 |
 | `FOMO_ENTRY` | FOMO trigger (§3 Bloco C) | **E+O** | M | penalidade |
 | `OVERTRADING` / `IMPULSE_CLUSTER` | Anxiety / impulsividade; rule violations (§5.3) | **E+O** | M | penalidade; conta como rule-violation |
