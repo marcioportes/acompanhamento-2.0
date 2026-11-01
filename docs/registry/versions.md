@@ -141,4 +141,4 @@
 | 1.92.20 | #490 | `fix/issue-490-mesa-prop-segue-o-dado` | 20/10/2026 | consumida (PR #491 squash `df9e8aa0`) |
 | 1.92.21 | #492 | `fix/issue-492-confronto-ve-a-violacao` | 20/10/2026 | consumida (PR #493 squash `4f42098d`) |
 | 1.92.22 | #494 | `fix/issue-494-templates-apex-vigentes` | 25/10/2026 | reservada |
-| 1.92.23 | #495 | `fix/issue-495-alvo-entregue-nao-e-subdimensionado` | 01/11/2026 | reservada |
+| 1.92.23 | #495 | `fix/issue-495-alvo-entregue-nao-e-subdimensionado` | 01/11/2026 | consumida (PR #496 squash `5b00ef7f`) |

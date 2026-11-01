@@ -8,6 +8,16 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.23] - 01/11/2026 · #495 · PR #496
+
+**fix:** trade que entregou o alvo do plano não é subdimensionado
+
+- **Resultado ≥ RO × RR do plano:** `UNDERSIZED_TRADE` não dispara. Sem card, trava ou penalidade. US$ 402,50 e US$ 400 saem; US$ 399 fica.
+- **Ganho entre 1 stop cheio e o alvo:** o padrão fica, com o texto "Stop do plano coberto, alvo não atingido". "Menos de um stop cheio" só aparece abaixo de 1R do plano.
+- **Sem PL no plano:** o padrão continua, mas o card não afirma mais que o alvo não foi atingido.
+- **Perfis já gravados:** `familiaVigente` (taxonomia + espelho) tira a família na leitura, sem reescrever dado (INV-30). Vale no painel, no confronto emocional, nos pesos de maturidade (cliente + CF), no radar do mentor e no veredicto da revisão do trade.
+
+
 ## [1.92.21] - 21/10/2026 · #492 · PR #493
 
 **fix:** confronto emocional não chama de limpa a execução que saiu do plano
