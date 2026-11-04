@@ -142,4 +142,4 @@
 | 1.92.21 | #492 | `fix/issue-492-confronto-ve-a-violacao` | 20/10/2026 | consumida (PR #493 squash `4f42098d`) |
 | 1.92.22 | #494 | `fix/issue-494-templates-apex-vigentes` | 25/10/2026 | reservada |
 | 1.92.23 | #495 | `fix/issue-495-alvo-entregue-nao-e-subdimensionado` | 01/11/2026 | consumida (PR #496 squash `5b00ef7f`) |
-| 1.92.24 | #497 | `fix/issue-497-conversa-em-ciclo-selado` | 04/11/2026 | reservada |
+| 1.92.24 | #497 | `fix/issue-497-conversa-em-ciclo-selado` | 04/11/2026 | consumida (PR #498 squash `9dd77fdd`) |

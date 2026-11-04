@@ -3,7 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
- * - 1.92.24: #497 fix aluno conversa e encerra feedback de trade em ciclo fechado (RESERVADA)
+ * - 1.92.24: #497 fix aluno conversa e encerra feedback de trade em ciclo fechado (PR #498, 04/11/2026)
  * - 1.92.23: #495 fix trade que entregou o alvo do plano não é subdimensionado (PR #496, 01/11/2026)
  * - 1.92.22: #494 fix templates Apex seguem as regras vigentes desde 01/03/2026 (RESERVADA)
  * - 1.92.21: #492 fix confronto emocional não chama de limpa a execução que saiu do plano (PR #493, 21/10/2026)
@@ -468,8 +468,8 @@
 // toda vez que alguém bumpava um e esquecia os outros: aconteceu no #394 (`full`
 // atrasado, o selo que o mentor fotografa mostrava a versão anterior) e de novo hoje
 // (`display` ficou em 1.83.28). Com derivação, esquecer deixa de ser possível.
-const version = '1.92.23';
-const build = '20261101';
+const version = '1.92.24';
+const build = '20261104';
 
 const VERSION = {
   version,

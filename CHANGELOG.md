@@ -8,6 +8,15 @@ Version source of truth: `src/version.js`.
 
 ---
 
+## [1.92.24] - 04/11/2026 · #497 · PR #498
+
+**fix:** aluno conversa e encerra feedback de trade em ciclo fechado
+
+- `firestore.rules`: exceção #497 — aluno dono altera só `feedbackHistory`/`status`/`updatedAt`, saindo de REVIEWED para REVIEWED/QUESTION/CLOSED. Sem `get()` do plano. DISCUSSED segue imutável (INV-30); campos do trade seguem selados.
+- `FeedbackPage`: toast nas falhas de dúvida, encerrar e feedback.
+- Fechamento de ciclo, Etapa 8: aviso (não bloqueia) com os trades em Revisado/Dúvida e atalho "Abrir" (aluno).
+
+
 ## [1.92.23] - 01/11/2026 · #495 · PR #496
 
 **fix:** trade que entregou o alvo do plano não é subdimensionado
