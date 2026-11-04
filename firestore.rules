@@ -165,7 +165,17 @@ service cloud.firestore {
         ) ||
         // Exceção #308 — auto-revisão do aluno é reflexão (metadado), isenta do seal
         // #259 quando o ÚNICO delta é selfReview (mesma lógica de metadado do #302).
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['selfReview', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['selfReview', 'updatedAt']) ||
+        // Exceção #497 — conversa do aluno sobre o feedback (dúvida, comentário, encerrar)
+        // é isenta do seal #259. O dono já foi checado acima; aqui só a conversa:
+        // delta restrito a feedbackHistory/status/updatedAt, saindo de REVIEWED para
+        // REVIEWED (comentário), QUESTION ou CLOSED. Sem get() do plano (igual ao #302).
+        // Espelho testado: src/utils/feedbackSealException.js.
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['feedbackHistory', 'status', 'updatedAt']) &&
+          resource.data.get('status', 'OPEN') == 'REVIEWED' &&
+          request.resource.data.get('status', 'OPEN') in ['REVIEWED', 'QUESTION', 'CLOSED']
+        )
       ) && (
         // #308/#269 v2 — auto-revisão imutável depois que o trade é discutido
         // (status=DISCUSSED). get() com default p/ docs sem o campo.

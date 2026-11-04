@@ -7,9 +7,12 @@
  * Issue #259 (1A — Ritual completo de Fechamento de Ciclo).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Lock, AlertTriangle, CheckCircle, Award, ShieldAlert } from 'lucide-react';
 import { formatDateBR } from '../../../utils/renewalForecast';
+import { useTrades } from '../../../hooks/useTrades';
+import { listOpenConversations } from '../../../utils/cycleClosure/openConversations';
+import OpenConversationsNotice from '../OpenConversationsNotice';
 
 function Row({ label, value, status }) {
   const cls =
@@ -25,8 +28,14 @@ function Row({ label, value, status }) {
   );
 }
 
-export default function Step8Seal({ draft, cycleStart, cycleEnd, onConfirm, confirmed }) {
+export default function Step8Seal({ draft, studentId, planId, cycleStart, cycleEnd, onConfirm, confirmed, onOpenTrade }) {
   const cs = cycleStart, ce = cycleEnd;
+  // #497 — conversa de feedback em aberto no ciclo: avisa, não bloqueia.
+  const { trades = [] } = useTrades(studentId);
+  const openConversations = useMemo(
+    () => listOpenConversations(trades, { planId, cycleStart, cycleEnd }),
+    [trades, planId, cycleStart, cycleEnd],
+  );
   const snap = draft.snapshot || {};
   const tps = draft.metrics?.tradingPerformanceScore;
   const aar = draft.aar || {};
@@ -112,6 +121,8 @@ export default function Step8Seal({ draft, cycleStart, cycleEnd, onConfirm, conf
           />
         </div>
       </div>
+
+      <OpenConversationsNotice trades={openConversations} onOpenTrade={onOpenTrade} />
 
       {/* Atenção: irreversibilidade */}
       <div className="glass-card p-6 border border-amber-500/40 bg-amber-500/5">

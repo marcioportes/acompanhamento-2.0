@@ -58,6 +58,9 @@ import { buildPeriodState } from '../utils/dayState';
 import { stopDistanceOf } from '../utils/orderProtection';
 
 // Helpers locais
+// #497 — falha de gravação na conversa vira toast, não só console.error.
+const SEND_FAIL_HINT = 'Tente novamente. Se persistir, avise o mentor.';
+
 const formatCurrency = (value, currency = 'BRL') => {
   if (value === null || value === undefined) return '-';
   const config = {
@@ -573,6 +576,7 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       handleRemoveImage();
     } catch (err) {
       console.error('[FeedbackPage] Send error:', err);
+      toast.error(SEND_FAIL_HINT, { title: 'Não foi possível enviar o feedback' });
     } finally {
       setSending(false);
     }
@@ -586,7 +590,8 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       await onAddComment(trade.id, comment, true);
       setComment('');
     } catch (err) {
-      console.error('Erro:', err);
+      console.error('[FeedbackPage] Question error:', err);
+      toast.error(SEND_FAIL_HINT, { title: 'Não foi possível enviar a dúvida' });
     } finally {
       setSending(false);
     }
@@ -604,7 +609,8 @@ const FeedbackPage = ({ trade, onBack, onAddComment, onUpdateStatus, loading = f
       await onUpdateStatus(trade.id, STATUS.CLOSED);
       setComment('');
     } catch (err) {
-      console.error('Erro:', err);
+      console.error('[FeedbackPage] Close error:', err);
+      toast.error(SEND_FAIL_HINT, { title: 'Não foi possível encerrar o trade' });
     } finally {
       setSending(false);
     }
