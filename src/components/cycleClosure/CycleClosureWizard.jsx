@@ -42,6 +42,7 @@ export default function CycleClosureWizard({
   planName = '—',
   onSealed,
   onCancel,
+  onOpenTrade = null, // #497 — atalho "Abrir" na Etapa 8 (ausente no painel do mentor)
 }) {
   const closure = useCycleClosureDraft({
     studentId, planId, cycleKey, cycleNumber, cycleStart, cycleEnd, accountId, role,
@@ -238,10 +239,13 @@ export default function CycleClosureWizard({
       {step === 8 && (
         <Step8Seal
           draft={draft}
+          studentId={studentId}
+          planId={planId}
           cycleStart={cycleStart}
           cycleEnd={cycleEnd}
           confirmed={sealConfirmed}
           onConfirm={setSealConfirmed}
+          onOpenTrade={onOpenTrade}
         />
       )}
 

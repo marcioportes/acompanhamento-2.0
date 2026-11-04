@@ -962,6 +962,11 @@ const StudentDashboardBody = ({ viewAs = null, onNavigateToFeedback, onOpenLedge
         role={viewAs ? 'mentor' : 'student'}
         studentName={viewAs?.name}
         planName={closureContext?.planName}
+        onOpenTrade={onNavigateToFeedback ? (trade) => {
+          // #497 — fecha o wizard (rascunho fica salvo) e abre o feedback do trade.
+          setClosureContext(null);
+          onNavigateToFeedback(trade);
+        } : null}
       />
 
       <DebugBadge component="StudentDashboard" />
