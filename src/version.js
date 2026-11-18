@@ -3,6 +3,7 @@
  * @description Versão do produto Acompanhamento 2.0
  *
  * CHANGELOG:
+ * - 1.93.0: #406 feat IA responde o feedback do trade no lugar do mentor quando o aluno tem a flag (RESERVADA)
  * - 1.92.24: #497 fix aluno conversa e encerra feedback de trade em ciclo fechado (PR #498, 04/11/2026)
  * - 1.92.23: #495 fix trade que entregou o alvo do plano não é subdimensionado (PR #496, 01/11/2026)
  * - 1.92.22: #494 fix templates Apex seguem as regras vigentes desde 01/03/2026 (RESERVADA)
@@ -34,7 +35,7 @@
  * - 1.90.6: #438 fix o Dashboard perdia 168px para selo de debug e colava rótulo no valor (PR #439, 10/09/2026)
  * - 1.90.5: #436 fix as etiquetas de status voltam para a esquerda e com cor (PR #437, 10/09/2026)
  * - 1.90.4: #434 fix o filtro do Feedback estava com o texto cortado, não invisível (PR #435, 10/09/2026)
- * - 1.90.2: #406 chore harness de avaliação para feedback escrito por IA — Fase 0, decide go/no-go (RESERVADA)
+ * - 1.90.2: #406 (CANCELADA — re-reservada como 1.93.0)
  * - 1.90.1: #430 fix rescaldo do face lift — contagem única de Precisam Atenção, abas em 1024, telas sem foto e o Acompanhamento (PR #431, 07/09/2026)
  * - 1.90.0: #427 feat a Torre vira agenda de trabalho + harness de render visual (#427) (PR #429, 06/09/2026)
  * - 1.89.1: #427 pulada — saiu junto do face lift, que é minor

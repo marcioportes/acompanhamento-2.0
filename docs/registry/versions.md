@@ -111,7 +111,7 @@
 | 1.89.1 | — | `chore/issue-427-harness-visual` | 04/09/2026 | pulada — reservada para #427, mas o harness saiu no mesmo PR do face lift, que é minor |
 | 1.90.0 | #427 | `chore/issue-427-harness-visual` | 06/09/2026 | consumida (PR #429 squash `89a2deb7`) |
 | 1.90.1 | #430 | `fix/issue-430-rescaldo-face-lift` | 07/09/2026 | consumida (PR #431 squash `4370e886`) |
-| 1.90.2 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | reservada |
+| 1.90.2 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 07/09/2026 | cancelada (Fase 0 virou feature; re-reservada como 1.93.0) |
 | 1.90.4 | #434 | `fix/issue-434-filtro-feedback-ilegivel` | 10/09/2026 | consumida (PR #435 squash `de4ae6cc`) |
 | 1.90.5 | #436 | `fix/issue-436-etiquetas-status-feedback` | 10/09/2026 | consumida (PR #437 squash `a46fb5b3`) |
 | 1.90.6 | #438 | `fix/issue-438-dashboard-selos-e-card-do-plano` | 10/09/2026 | consumida (PR #439 squash `6bfbe9b3`) |
@@ -143,3 +143,4 @@
 | 1.92.22 | #494 | `fix/issue-494-templates-apex-vigentes` | 25/10/2026 | reservada |
 | 1.92.23 | #495 | `fix/issue-495-alvo-entregue-nao-e-subdimensionado` | 01/11/2026 | consumida (PR #496 squash `5b00ef7f`) |
 | 1.92.24 | #497 | `fix/issue-497-conversa-em-ciclo-selado` | 04/11/2026 | consumida (PR #498 squash `9dd77fdd`) |
+| 1.93.0 | #406 | `chore/issue-406-eval-harness-feedback-ia` | 18/11/2026 | reservada |
